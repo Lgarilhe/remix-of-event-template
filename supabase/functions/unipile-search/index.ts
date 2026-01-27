@@ -174,7 +174,7 @@ Deno.serve(async (req) => {
 
       case 'get_parameters': {
         // Get search parameter IDs (LinkedIn requires IDs not text)
-        const { type, keywords, service = 'RECRUITER' } = params;
+        const { type, keywords, service = 'recruiter' } = params;
 
         if (!type) {
           return new Response(
@@ -183,12 +183,17 @@ Deno.serve(async (req) => {
           );
         }
 
+        // Normalize service to lowercase
+        const serviceType = service.toLowerCase();
+
         const queryParams = new URLSearchParams();
         queryParams.set('account_id', account_id);
         queryParams.set('type', type);
-        queryParams.set('service', service);
+        queryParams.set('service', serviceType);
         queryParams.set('limit', '100');
         if (keywords) queryParams.set('keywords', keywords);
+        
+        console.log('Get parameters URL:', `${baseUrl}/linkedin/search/parameters?${queryParams.toString()}`);
 
         const response = await fetch(`${baseUrl}/linkedin/search/parameters?${queryParams.toString()}`, {
           headers: {
