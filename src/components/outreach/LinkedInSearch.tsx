@@ -239,23 +239,18 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
               </SelectTrigger>
               <SelectContent className="bg-white">
                 {accounts.map((account) => (
-                  <SelectItem key={account.id} value={account.id} className="py-2">
-                    <div className="flex flex-col gap-1">
-                      <span className="font-medium">{account.name || account.identifier}</span>
-                      <div className="flex gap-1 flex-wrap">
-                        {account.subscriptions?.classic && (
-                          <span className="text-[9px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-600">
-                            Classic
-                          </span>
-                        )}
+                  <SelectItem key={account.id} value={account.id}>
+                    <div className="flex items-center gap-2">
+                      <span>{account.name || account.identifier}</span>
+                      <div className="flex gap-1">
                         {account.subscriptions?.recruiter && (
                           <span className="text-[9px] px-1.5 py-0.5 rounded bg-[#0077B5]/10 text-[#0077B5] font-medium">
-                            Recruiter
+                            R
                           </span>
                         )}
                         {account.subscriptions?.sales_navigator && (
                           <span className="text-[9px] px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 font-medium">
-                            Sales Nav
+                            SN
                           </span>
                         )}
                       </div>
@@ -267,12 +262,10 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
             
             {/* Show selected account licenses */}
             {selectedAccountData?.subscriptions && (
-              <div className="flex gap-1 mt-2">
-                {selectedAccountData.subscriptions.classic && (
-                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
-                    Classic
-                  </span>
-                )}
+              <div className="flex gap-1.5 mt-2">
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
+                  Classic
+                </span>
                 {selectedAccountData.subscriptions.recruiter && (
                   <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#0077B5]/10 text-[#0077B5] font-medium">
                     Recruiter
