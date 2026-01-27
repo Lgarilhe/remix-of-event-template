@@ -8,6 +8,13 @@ import { JobFilters } from '@/components/jobs/JobFilters';
 import { SEOHead } from '@/components/SEOHead';
 import { Loader2 } from 'lucide-react';
 
+export interface CandidateCounts {
+  cv: number;
+  itw: number;
+  offre: number;
+  total: number;
+}
+
 export interface Job {
   id: string;
   title: string;
@@ -42,6 +49,8 @@ export interface Job {
   tjm: number;
   accompagnement: string[];
   jobUrl: string;
+  // Candidate counts by stage
+  candidateCounts: CandidateCounts;
 }
 
 export interface JobFiltersState {
