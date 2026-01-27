@@ -331,11 +331,24 @@ async function handleSearch(
   const data = await response.json();
 
   if (!response.ok) {
-    console.error('Search error:', data);
+    console.error('Search error:', JSON.stringify(data, null, 2));
+    console.error('Request body was:', JSON.stringify(searchBody, null, 2));
+    
+    // Try to extract more useful error info
+    let errorMessage = 'Erreur de recherche';
+    if (data.detail) {
+      // Extract just the main error message, not the full schema
+      const detailMatch = data.detail.match(/^([^\n{]+)/);
+      errorMessage = detailMatch ? detailMatch[1].trim() : data.detail.substring(0, 200);
+    } else if (data.message) {
+      errorMessage = data.message;
+    }
+    
     return new Response(
       JSON.stringify({ 
         success: false, 
-        error: data.detail || data.message || 'Erreur de recherche',
+        error: errorMessage,
+        errorType: data.type,
         debug: { status: response.status, body: searchBody }
       }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
