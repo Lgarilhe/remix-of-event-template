@@ -31,6 +31,16 @@ export const JobCard: React.FC<JobCardProps> = ({ job }) => {
     return `Jusqu'à ${max}k€`;
   };
 
+  // Check if job is new (published within the last 7 days)
+  const isNewJob = () => {
+    if (!job.openingDate) return false;
+    const openingDate = new Date(job.openingDate);
+    const now = new Date();
+    const diffTime = now.getTime() - openingDate.getTime();
+    const diffDays = diffTime / (1000 * 60 * 60 * 24);
+    return diffDays <= 7;
+  };
+
   const getStatusColor = (status: string) => {
     switch (status?.toLowerCase()) {
       case 'ouvert':
@@ -82,6 +92,11 @@ export const JobCard: React.FC<JobCardProps> = ({ job }) => {
               <h3 className="text-xl font-medium text-[#1A1A1A] truncate">
                 {job.title || 'Poste sans titre'}
               </h3>
+              {isNewJob() && (
+                <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide bg-emerald-500 text-white rounded-sm animate-pulse">
+                  Nouveau
+                </span>
+              )}
             </div>
 
             <div className="flex flex-wrap items-center gap-4 text-sm text-[#1A1A1A]/60">
