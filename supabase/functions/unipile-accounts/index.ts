@@ -34,8 +34,18 @@ Deno.serve(async (req) => {
         });
 
         const data = await response.json();
+        // Filter only LinkedIn accounts with OK or CREDENTIALS status
+        const linkedinAccounts = (data.items || [])
+          .filter((acc: { type: string }) => acc.type === 'LINKEDIN')
+          .map((acc: { id: string; name: string; sources: Array<{ status: string }> }) => ({
+            id: acc.id,
+            name: acc.name,
+            identifier: acc.name,
+            status: acc.sources?.[0]?.status || 'UNKNOWN',
+          }));
+        
         return new Response(
-          JSON.stringify({ success: true, accounts: data.items || [] }),
+          JSON.stringify({ success: true, accounts: linkedinAccounts }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
@@ -51,6 +61,8 @@ Deno.serve(async (req) => {
           );
         }
 
+        console.log('Connecting with cookie, length:', access_token.length);
+
         const response = await fetch(`${baseUrl}/accounts`, {
           method: 'POST',
           headers: {
@@ -61,16 +73,24 @@ Deno.serve(async (req) => {
           body: JSON.stringify({
             provider: 'LINKEDIN',
             access_token,
-            user_agent: user_agent || 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+            user_agent: user_agent || 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
           }),
         });
 
         const data = await response.json();
+        console.log('Unipile response status:', response.status, 'data:', JSON.stringify(data));
 
         if (!response.ok) {
+          // Provide more specific error messages
+          let errorMessage = data.message || data.error || 'Erreur de connexion';
+          if (response.status === 401) {
+            errorMessage = 'Cookie li_at invalide ou expiré. Veuillez récupérer un nouveau cookie.';
+          } else if (response.status === 409) {
+            errorMessage = 'Ce compte LinkedIn est déjà connecté.';
+          }
           return new Response(
-            JSON.stringify({ success: false, error: data.message || 'Erreur de connexion' }),
-            { status: response.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            JSON.stringify({ success: false, error: errorMessage }),
+            { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
           );
         }
 
