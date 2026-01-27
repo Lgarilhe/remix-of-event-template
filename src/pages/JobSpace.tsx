@@ -36,6 +36,8 @@ export interface JobFiltersState {
   contractType: string[];
   location: string;
   remote: string[];
+  sector: string[];
+  priority: string[];
 }
 
 const JobSpace = () => {
@@ -50,6 +52,8 @@ const JobSpace = () => {
     contractType: [],
     location: '',
     remote: [],
+    sector: [],
+    priority: [],
   });
   const navigate = useNavigate();
 
@@ -130,6 +134,16 @@ const JobSpace = () => {
 
     // Remote filter
     if (filters.remote.length > 0 && !filters.remote.includes(job.remote)) {
+      return false;
+    }
+
+    // Sector filter
+    if (filters.sector.length > 0 && !filters.sector.includes(job.client?.sector || '')) {
+      return false;
+    }
+
+    // Priority filter
+    if (filters.priority.length > 0 && !filters.priority.includes(job.priority)) {
       return false;
     }
 
