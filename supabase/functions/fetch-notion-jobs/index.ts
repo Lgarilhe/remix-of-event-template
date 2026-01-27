@@ -6,8 +6,105 @@ const corsHeaders = {
 };
 
 const NOTION_API_KEY = Deno.env.get("NOTION_API_KEY");
+const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
 const POSTES_DATABASE_ID = "2787e1816fb481d2a0e8d4b2c1dd38f9";
 const SHORTLIST_DATABASE_ID = "2787e1816fb4811986a7e6075bc63a23";
+
+// Extract technical skills using Lovable AI
+async function extractSkillsWithAI(jobs: Array<{
+  id: string;
+  title: string;
+  description: string;
+  requirements: string;
+}>): Promise<Map<string, string[]>> {
+  const skillsMap = new Map<string, string[]>();
+  
+  if (!LOVABLE_API_KEY) {
+    console.warn('LOVABLE_API_KEY not configured, skipping AI skill extraction');
+    return skillsMap;
+  }
+
+  // Build a batch prompt for all jobs
+  const jobsContext = jobs
+    .filter(job => job.title || job.requirements || job.description)
+    .map(job => `
+[Job ID: ${job.id}]
+Titre: ${job.title}
+Requirements: ${job.requirements}
+Description: ${job.description}
+`).join('\n---\n');
+
+  if (!jobsContext.trim()) {
+    return skillsMap;
+  }
+
+  try {
+    const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${LOVABLE_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'google/gemini-3-flash-preview',
+        messages: [
+          {
+            role: 'system',
+            content: `Tu es un expert en recrutement tech. Extrais les compétences techniques de chaque offre d'emploi.
+Retourne UNIQUEMENT un JSON valide avec ce format exact:
+{
+  "job_id_1": ["skill1", "skill2"],
+  "job_id_2": ["skill1", "skill2"]
+}
+
+Règles:
+- Extrais uniquement les technologies, langages, frameworks, outils (ex: Python, React, Kubernetes, AWS, SQL, Git)
+- Normalise les noms (ex: "JS" -> "JavaScript", "K8s" -> "Kubernetes")
+- Maximum 10 skills par poste, les plus importants
+- Pas de soft skills, pas de descriptions de poste
+- Retourne un objet JSON valide, rien d'autre`
+          },
+          {
+            role: 'user',
+            content: `Extrais les compétences techniques de ces offres:\n\n${jobsContext}`
+          }
+        ],
+        temperature: 0.1,
+      }),
+    });
+
+    if (!response.ok) {
+      console.error('Lovable AI error:', response.status, await response.text());
+      return skillsMap;
+    }
+
+    const data = await response.json();
+    const content = data.choices?.[0]?.message?.content || '';
+    
+    // Parse the JSON response
+    try {
+      // Clean the response - remove markdown code blocks if present
+      let cleanContent = content.trim();
+      if (cleanContent.startsWith('```')) {
+        cleanContent = cleanContent.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '');
+      }
+      
+      const skillsData = JSON.parse(cleanContent);
+      
+      for (const [jobId, skills] of Object.entries(skillsData)) {
+        if (Array.isArray(skills)) {
+          skillsMap.set(jobId, skills.filter((s): s is string => typeof s === 'string'));
+        }
+      }
+    } catch (parseError) {
+      console.error('Failed to parse AI response:', parseError, content);
+    }
+  } catch (error) {
+    console.error('AI skill extraction failed:', error);
+  }
+
+  return skillsMap;
+}
 
 interface NotionProperty {
   type: string;
@@ -216,6 +313,17 @@ serve(async (req) => {
       fetchCandidateCounts(jobIds)
     ]);
 
+    // Prepare job data for AI skill extraction
+    const jobsForAI = jobs.map((job) => ({
+      id: job.id,
+      title: getTitleFromProperties(job.properties),
+      description: getPropertyValue(job.properties['RAG — Synthèse']) || '',
+      requirements: getPropertyValue(job.properties['🔴 Must-have poste']) || '',
+    }));
+
+    // Extract skills using AI
+    const aiSkillsMap = await extractSkillsWithAI(jobsForAI);
+
     // Transform jobs data
     const transformedJobs = jobs.map((job) => {
       const clientIds = getPropertyValue(job.properties['Client']) || [];
@@ -227,6 +335,11 @@ serve(async (req) => {
         : contractTypeValue;
 
       const counts = candidateCounts.get(job.id) || { cv: 0, itw: 0, offre: 0, total: 0 };
+
+      // Get skills: prefer Notion field, fallback to AI-extracted
+      const notionSkills = getPropertyValue(job.properties['Skills sourcing'])?.split(',').map((s: string) => s.trim()).filter(Boolean) || [];
+      const aiSkills = aiSkillsMap.get(job.id) || [];
+      const skills = notionSkills.length > 0 ? notionSkills : aiSkills;
 
       return {
         id: job.id,
@@ -240,7 +353,7 @@ serve(async (req) => {
         salaryMin: getPropertyValue(job.properties['Salaire budget']),
         salaryMax: getPropertyValue(job.properties['Salaire maximum']),
         priority: getPropertyValue(job.properties['Priorité']),
-        skills: getPropertyValue(job.properties['Skills sourcing'])?.split(',').map((s: string) => s.trim()).filter(Boolean) || [],
+        skills: skills,
         entity: getPropertyValue(job.properties['Entité']),
         description: getPropertyValue(job.properties['RAG — Synthèse']) || '',
         interviewProcess: getPropertyValue(job.properties['Process']) || '',
