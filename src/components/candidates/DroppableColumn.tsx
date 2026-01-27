@@ -1,7 +1,9 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useDroppable } from '@dnd-kit/core';
 import { ShortlistEntry } from '@/pages/Candidates';
 import { DraggableCandidateCard } from './DraggableCandidateCard';
+import { Button } from '@/components/ui/button';
+import { ChevronDown } from 'lucide-react';
 
 interface PipelineStage {
   key: string;
@@ -16,7 +18,12 @@ interface DroppableColumnProps {
   isOver?: boolean;
 }
 
+const INITIAL_DISPLAY_LIMIT = 10;
+const LOAD_MORE_INCREMENT = 10;
+
 export const DroppableColumn: React.FC<DroppableColumnProps> = ({ id, stage, entries, isOver }) => {
+  const [displayLimit, setDisplayLimit] = useState(INITIAL_DISPLAY_LIMIT);
+  
   const { setNodeRef } = useDroppable({ 
     id,
     data: {
@@ -24,6 +31,13 @@ export const DroppableColumn: React.FC<DroppableColumnProps> = ({ id, stage, ent
       stageKey: stage.key,
     }
   });
+
+  const visibleEntries = entries.slice(0, displayLimit);
+  const remainingCount = entries.length - displayLimit;
+
+  const handleLoadMore = () => {
+    setDisplayLimit(prev => prev + LOAD_MORE_INCREMENT);
+  };
 
   return (
     <div
@@ -49,9 +63,23 @@ export const DroppableColumn: React.FC<DroppableColumnProps> = ({ id, stage, ent
             {isOver ? 'Déposer ici' : 'Aucun candidat'}
           </div>
         ) : (
-          entries.map(entry => (
-            <DraggableCandidateCard key={entry.id} entry={entry} columnId={id} />
-          ))
+          <>
+            {visibleEntries.map(entry => (
+              <DraggableCandidateCard key={entry.id} entry={entry} columnId={id} />
+            ))}
+            
+            {remainingCount > 0 && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleLoadMore}
+                className="w-full text-[#1A1A1A]/60 hover:text-[#1A1A1A] hover:bg-white/50 gap-1"
+              >
+                <ChevronDown className="w-4 h-4" />
+                Voir {Math.min(remainingCount, LOAD_MORE_INCREMENT)} de plus ({remainingCount} restants)
+              </Button>
+            )}
+          </>
         )}
       </div>
     </div>
