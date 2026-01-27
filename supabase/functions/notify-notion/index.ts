@@ -7,7 +7,7 @@ const corsHeaders = {
 };
 
 const NOTION_API_KEY = Deno.env.get("NOTION_API_KEY");
-const NOTION_DATABASE_ID = "655c8722-8fdf-4049-a292-ef9f5d38adc2"; // Leads Landing Page database
+const NOTION_DATABASE_ID = "8eeb02fc-1c6b-4bf3-9877-c8a2acc2e604"; // Leads Landing Page database
 
 interface ContactSubmission {
   name: string;
