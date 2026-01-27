@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { User } from '@supabase/supabase-js';
@@ -6,8 +6,15 @@ import { Navbar } from '@/components/Navbar';
 import { JobList } from '@/components/jobs/JobList';
 import { JobFilters } from '@/components/jobs/JobFilters';
 import { SEOHead } from '@/components/SEOHead';
-import { Loader2, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Loader2, ChevronLeft, ChevronRight, ArrowUpDown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 
 export interface CandidateCounts {
   cv: number;
@@ -74,6 +81,16 @@ interface PaginationInfo {
   hasMore: boolean;
 }
 
+type SortOption = 'priority' | 'salary_desc' | 'salary_asc' | 'date_desc' | 'date_asc';
+
+const SORT_OPTIONS: { value: SortOption; label: string }[] = [
+  { value: 'priority', label: 'Priorité' },
+  { value: 'salary_desc', label: 'Salaire (décroissant)' },
+  { value: 'salary_asc', label: 'Salaire (croissant)' },
+  { value: 'date_desc', label: 'Plus récent' },
+  { value: 'date_asc', label: 'Plus ancien' },
+];
+
 const JobSpace = () => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
@@ -81,6 +98,7 @@ const JobSpace = () => {
   const [allJobs, setAllJobs] = useState<Job[]>([]); // For filtering
   const [jobsLoading, setJobsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [sortBy, setSortBy] = useState<SortOption>('priority');
   const [pagination, setPagination] = useState<PaginationInfo>({
     page: 1,
     limit: 12,
@@ -218,17 +236,58 @@ const JobSpace = () => {
     });
   }, [filters]);
 
-  // Apply filters and pagination
-  const filteredJobs = filterJobs(allJobs);
-  const totalFiltered = filteredJobs.length;
+  // Sort jobs
+  const sortJobs = useCallback((jobList: Job[]) => {
+    return [...jobList].sort((a, b) => {
+      switch (sortBy) {
+        case 'priority': {
+          const priorityOrder: Record<string, number> = { 
+            'haute': 0, 'high': 0, 
+            'moyenne': 1, 'medium': 1, 
+            'basse': 2, 'low': 2 
+          };
+          const aOrder = priorityOrder[a.priority?.toLowerCase()] ?? 3;
+          const bOrder = priorityOrder[b.priority?.toLowerCase()] ?? 3;
+          return aOrder - bOrder;
+        }
+        case 'salary_desc': {
+          const aMax = a.salaryMax || a.salaryMin || 0;
+          const bMax = b.salaryMax || b.salaryMin || 0;
+          return bMax - aMax;
+        }
+        case 'salary_asc': {
+          const aMin = a.salaryMin || a.salaryMax || Infinity;
+          const bMin = b.salaryMin || b.salaryMax || Infinity;
+          return aMin - bMin;
+        }
+        case 'date_desc': {
+          const aDate = a.openingDate ? new Date(a.openingDate).getTime() : 0;
+          const bDate = b.openingDate ? new Date(b.openingDate).getTime() : 0;
+          return bDate - aDate;
+        }
+        case 'date_asc': {
+          const aDate = a.openingDate ? new Date(a.openingDate).getTime() : Infinity;
+          const bDate = b.openingDate ? new Date(b.openingDate).getTime() : Infinity;
+          return aDate - bDate;
+        }
+        default:
+          return 0;
+      }
+    });
+  }, [sortBy]);
+
+  // Apply filters, sorting, and pagination
+  const filteredJobs = useMemo(() => filterJobs(allJobs), [filterJobs, allJobs]);
+  const sortedJobs = useMemo(() => sortJobs(filteredJobs), [sortJobs, filteredJobs]);
+  const totalFiltered = sortedJobs.length;
   const totalPages = Math.ceil(totalFiltered / pagination.limit);
   const startIndex = (pagination.page - 1) * pagination.limit;
-  const paginatedJobs = filteredJobs.slice(startIndex, startIndex + pagination.limit);
+  const paginatedJobs = sortedJobs.slice(startIndex, startIndex + pagination.limit);
 
-  // Reset to page 1 when filters change
+  // Reset to page 1 when filters or sort change
   useEffect(() => {
     setPagination(prev => ({ ...prev, page: 1 }));
-  }, [filters]);
+  }, [filters, sortBy]);
 
   const goToPage = (page: number) => {
     setPagination(prev => ({ ...prev, page }));
@@ -267,7 +326,24 @@ const JobSpace = () => {
           {/* Filters */}
           <JobFilters filters={filters} setFilters={setFilters} jobs={allJobs} />
 
-          {/* Content */}
+          {/* Sort selector */}
+          <div className="flex items-center justify-end mb-4">
+            <div className="flex items-center gap-2">
+              <ArrowUpDown className="w-4 h-4 text-[#1A1A1A]/40" />
+              <Select value={sortBy} onValueChange={(v) => setSortBy(v as SortOption)}>
+                <SelectTrigger className="w-[160px] h-8 text-xs border-[#1A1A1A]/10 bg-white">
+                  <SelectValue placeholder="Trier par" />
+                </SelectTrigger>
+                <SelectContent className="bg-white">
+                  {SORT_OPTIONS.map(option => (
+                    <SelectItem key={option.value} value={option.value} className="text-xs">
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
           {jobsLoading ? (
             <div className="flex items-center justify-center py-20">
               <Loader2 className="w-8 h-8 animate-spin text-[#1A1A1A]" />
