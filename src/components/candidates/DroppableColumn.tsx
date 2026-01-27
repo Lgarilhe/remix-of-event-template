@@ -3,7 +3,7 @@ import { useDroppable } from '@dnd-kit/core';
 import { ShortlistEntry } from '@/pages/Candidates';
 import { DraggableCandidateCard } from './DraggableCandidateCard';
 import { Button } from '@/components/ui/button';
-import { ChevronDown } from 'lucide-react';
+import { ChevronDown, ChevronUp } from 'lucide-react';
 
 interface PipelineStage {
   key: string;
@@ -37,6 +37,10 @@ export const DroppableColumn: React.FC<DroppableColumnProps> = ({ id, stage, ent
 
   const handleLoadMore = () => {
     setDisplayLimit(prev => prev + LOAD_MORE_INCREMENT);
+  };
+
+  const handleCollapse = () => {
+    setDisplayLimit(INITIAL_DISPLAY_LIMIT);
   };
 
   return (
@@ -77,6 +81,18 @@ export const DroppableColumn: React.FC<DroppableColumnProps> = ({ id, stage, ent
               >
                 <ChevronDown className="w-4 h-4" />
                 Voir {Math.min(remainingCount, LOAD_MORE_INCREMENT)} de plus ({remainingCount} restants)
+              </Button>
+            )}
+            
+            {displayLimit > INITIAL_DISPLAY_LIMIT && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleCollapse}
+                className="w-full text-[#1A1A1A]/60 hover:text-[#1A1A1A] hover:bg-white/50 gap-1"
+              >
+                <ChevronUp className="w-4 h-4" />
+                Réduire
               </Button>
             )}
           </>
