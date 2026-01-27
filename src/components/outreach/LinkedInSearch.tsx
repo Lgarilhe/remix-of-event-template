@@ -52,7 +52,8 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
       const searchParams: Record<string, unknown> = {
         action: 'search',
         account_id: selectedAccount,
-        service: 'recruiter',
+        api: filters.api,
+        category: filters.category,
         limit: 25,
       };
 
@@ -99,6 +100,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
       // Simple arrays
       if (filters.seniority.length) searchParams.seniority = filters.seniority;
       if (filters.network_distance.length) searchParams.network_distance = filters.network_distance;
+      if (filters.profile_language.length) searchParams.profile_language = filters.profile_language;
 
       // Years of experience
       if (filters.years_of_experience_min !== null || filters.years_of_experience_max !== null) {
@@ -108,13 +110,37 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
         searchParams.years_of_experience = yearsExp;
       }
 
+      // Tenure filters
+      if (filters.tenure_at_company_min !== null || filters.tenure_at_company_max !== null) {
+        const tenure: Record<string, number> = {};
+        if (filters.tenure_at_company_min !== null) tenure.min = filters.tenure_at_company_min;
+        if (filters.tenure_at_company_max !== null) tenure.max = filters.tenure_at_company_max;
+        searchParams.tenure = [tenure];
+      }
+
       // Boolean filters
       if (filters.open_to_work === true) searchParams.open_to_work = true;
+      if (filters.open_to.length) searchParams.open_to = filters.open_to;
 
       // Recruiter specific
       if (filters.hiring_project) searchParams.hiring_project = filters.hiring_project;
       if (filters.talent_pool) searchParams.talent_pool = filters.talent_pool;
-      if (filters.spotlight && filters.spotlight !== '_all') searchParams.spotlight = filters.spotlight;
+      if (filters.spotlight) searchParams.spotlight = filters.spotlight;
+
+      // Company filters (Sales Navigator)
+      if (filters.company_headcount.length) searchParams.company_headcount = filters.company_headcount;
+      if (filters.company_type.length) searchParams.company_type = filters.company_type;
+
+      // Past filters
+      if (filters.past_company.length) {
+        searchParams.past_company = { include: filters.past_company.map(f => f.id) };
+      }
+      if (filters.past_job_title.length) {
+        searchParams.past_job_title = filters.past_job_title.map(item => ({
+          id: item.id,
+          priority: item.priority,
+        }));
+      }
 
       // Pagination
       if (!newSearch && cursor) {
