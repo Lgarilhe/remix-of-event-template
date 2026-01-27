@@ -3,7 +3,8 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { X, Loader2, Plus, ChevronDown, Search } from 'lucide-react';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { X, Loader2, Plus, ChevronDown, Search, AlertTriangle } from 'lucide-react';
 import { FilterItem, PriorityFilterItem, FilterPriority, PRIORITY_OPTIONS } from './types';
 
 // ===== Collapsible Section =====
@@ -53,6 +54,8 @@ interface FilterGroupProps {
   icon: React.ReactNode;
   children: React.ReactNode;
   badge?: number;
+  unsupported?: boolean;
+  unsupportedTooltip?: string;
 }
 
 export const FilterGroup: React.FC<FilterGroupProps> = ({
@@ -60,13 +63,32 @@ export const FilterGroup: React.FC<FilterGroupProps> = ({
   icon,
   children,
   badge,
+  unsupported = false,
+  unsupportedTooltip,
 }) => (
-  <div className="space-y-2">
+  <div className={`space-y-2 ${unsupported ? 'opacity-60' : ''}`}>
     <div className="flex items-center gap-2">
       {icon}
       <span className="text-xs font-medium text-[#1A1A1A]/70 uppercase tracking-wide">{title}</span>
       {badge !== undefined && badge > 0 && (
         <Badge variant="outline" className="h-4 px-1 text-[10px]">{badge}</Badge>
+      )}
+      {unsupported && (
+        <TooltipProvider delayDuration={200}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className="inline-flex items-center gap-1 ml-1">
+                <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />
+                <Badge variant="outline" className="h-4 px-1 text-[9px] border-amber-300 text-amber-600 bg-amber-50">
+                  Non supporté
+                </Badge>
+              </span>
+            </TooltipTrigger>
+            <TooltipContent side="top" className="max-w-[250px] text-xs">
+              {unsupportedTooltip || "Ce filtre n'est pas supporté par l'API sélectionnée."}
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
       )}
     </div>
     {children}
@@ -87,6 +109,7 @@ interface AutocompleteInputProps {
   loading: boolean;
   onInputChange: (value: string) => void;
   onSelect: (item: ParameterOption) => void;
+  disabled?: boolean;
 }
 
 export const AutocompleteInput: React.FC<AutocompleteInputProps> = ({
@@ -97,6 +120,7 @@ export const AutocompleteInput: React.FC<AutocompleteInputProps> = ({
   loading,
   onInputChange,
   onSelect,
+  disabled = false,
 }) => {
   return (
     <div className="relative">
@@ -106,13 +130,14 @@ export const AutocompleteInput: React.FC<AutocompleteInputProps> = ({
           value={value}
           onChange={(e) => onInputChange(e.target.value)}
           placeholder={placeholder}
-          className="text-sm h-9 pl-8"
+          className={`text-sm h-9 pl-8 ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+          disabled={disabled}
         />
         {loading && (
           <Loader2 className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 animate-spin text-[#0077B5]" />
         )}
       </div>
-      {options.length > 0 && (
+      {options.length > 0 && !disabled && (
         <div className="absolute z-50 w-full mt-1 bg-white border border-[#1A1A1A]/10 rounded-lg shadow-lg max-h-48 overflow-auto">
           {options.map((option) => (
             <button
