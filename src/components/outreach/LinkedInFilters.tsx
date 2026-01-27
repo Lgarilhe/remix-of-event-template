@@ -32,6 +32,7 @@ import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import {
   X,
   MapPin,
@@ -52,6 +53,7 @@ import {
   UserCheck,
   Folder,
   Filter,
+  AlertTriangle,
 } from 'lucide-react';
 
 interface LinkedInFiltersProps {
@@ -270,8 +272,14 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
             />
           </FilterGroup>
 
-          {/* School */}
-          <FilterGroup title="École / Formation" icon={<GraduationCap className="w-3.5 h-3.5 text-[#0077B5]" />} badge={filters.school.length}>
+          {/* School - Not supported in Recruiter API */}
+          <FilterGroup 
+            title="École / Formation" 
+            icon={<GraduationCap className="w-3.5 h-3.5 text-[#0077B5]" />} 
+            badge={filters.school.length}
+            unsupported={filters.api === 'recruiter'}
+            unsupportedTooltip="Ce filtre n'est pas supporté par l'API Recruiter. Utilisez le mode Classic ou Sales Navigator pour filtrer par école."
+          >
             <SelectedBadges items={filters.school} onRemove={(id) => handleRemoveSimpleFilter('school', id)} />
             <AutocompleteInput
               filterKey="school"
@@ -281,6 +289,7 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
               loading={loadingParams === 'school'}
               onInputChange={(val) => handleSearchInput('school', val)}
               onSelect={(item) => handleAddSimpleFilter('school', item)}
+              disabled={filters.api === 'recruiter'}
             />
           </FilterGroup>
 
