@@ -1,12 +1,16 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '@/components/ui/button';
-import { Check, ArrowRight, Users, Target, Zap, TrendingUp, Calendar, Clock, ChevronDown, Play } from 'lucide-react';
+import { Check, ArrowRight, Users, Target, Zap, TrendingUp, Calendar, Clock, ChevronDown, Play, X } from 'lucide-react';
 import { SEOHead } from '@/components/SEOHead';
 import heroVideo from '@/assets/hero-video.mp4';
 
+// Remplacez par votre vrai lien Calendly
+const CALENDLY_URL = 'https://calendly.com/demo/30min';
+
 const SkalrLanding = () => {
   const [openFaq, setOpenFaq] = useState<number | null>(null);
+  const [showCalendly, setShowCalendly] = useState(false);
 
   const packs = [
     {
@@ -122,6 +126,7 @@ const SkalrLanding = () => {
               >
                 <Button 
                   size="sm"
+                  onClick={() => setShowCalendly(true)}
                   className="rounded-full bg-white text-zinc-900 hover:bg-zinc-100 font-medium px-5"
                 >
                   Prendre RDV
@@ -179,6 +184,7 @@ const SkalrLanding = () => {
                 >
                   <Button 
                     size="lg"
+                    onClick={() => setShowCalendly(true)}
                     className="rounded-full bg-white text-zinc-900 hover:bg-zinc-100 font-medium px-8 h-12 text-base"
                   >
                     Audit gratuit
@@ -478,6 +484,7 @@ const SkalrLanding = () => {
             </p>
             <Button 
               size="lg"
+              onClick={() => setShowCalendly(true)}
               className="rounded-full bg-white text-zinc-900 hover:bg-zinc-100 font-medium px-10 h-14 text-lg"
             >
               Réserver mon audit
@@ -500,6 +507,40 @@ const SkalrLanding = () => {
             <span className="text-sm text-zinc-400">© 2025 Skalr</span>
           </div>
         </footer>
+
+        {/* Calendly Modal */}
+        <AnimatePresence>
+          {showCalendly && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+              onClick={() => setShowCalendly(false)}
+            >
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                className="relative w-full max-w-3xl h-[80vh] bg-white rounded-2xl overflow-hidden shadow-2xl"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <button
+                  onClick={() => setShowCalendly(false)}
+                  className="absolute top-4 right-4 z-10 w-10 h-10 rounded-full bg-zinc-100 hover:bg-zinc-200 flex items-center justify-center transition-colors"
+                >
+                  <X className="h-5 w-5 text-zinc-600" />
+                </button>
+                
+                <iframe
+                  src={CALENDLY_URL}
+                  className="w-full h-full border-0"
+                  title="Réserver un audit gratuit"
+                />
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
     </>
   );
