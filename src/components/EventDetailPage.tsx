@@ -11,6 +11,8 @@ import { EventRegistration } from './EventRegistration';
 import { AuthSheet } from './AuthSheet';
 import { SEOHead } from './SEOHead';
 import { RotatingBadge } from './RotatingBadge';
+import { SocialShare } from './SocialShare';
+
 interface Event {
   id: string;
   title: string;
@@ -143,6 +145,11 @@ export const EventDetailPage: React.FC = () => {
             <EventDescription description={event.description} />
             
             <EventLocation address={event.address} onGetDirections={handleGetDirections} />
+            
+            <SocialShare 
+              title={event.title} 
+              description={event.description} 
+            />
           </div>
           
           <div className="fixed bottom-0 right-0 w-[540px] bg-white py-6 border-t border-border max-lg:relative max-lg:w-full max-lg:py-6 max-lg:border-t-0">
