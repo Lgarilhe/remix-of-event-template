@@ -7,6 +7,7 @@ import {
   RoleFilter,
   FilterPriority,
   FilterScope,
+  ActivityType,
   SENIORITY_LEVELS,
   NETWORK_DISTANCES,
   PRIORITY_OPTIONS,
@@ -19,6 +20,8 @@ import {
   OPEN_TO_OPTIONS_CLASSIC,
   OPEN_TO_OPTIONS_RECRUITER,
   DEGREE_OPTIONS,
+  ACTIVITY_MESSAGE_OPTIONS,
+  ACTIVITY_NOTE_OPTIONS,
 } from './types';
 import {
   FilterSection,
@@ -59,6 +62,11 @@ import {
   Folder,
   Filter,
   AlertTriangle,
+  MessageSquare,
+  StickyNote,
+  Tag,
+  UsersRound,
+  Network,
 } from 'lucide-react';
 
 interface LinkedInFiltersProps {
@@ -112,6 +120,11 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
       service: 'SERVICE',
       connections_of: 'CONNECTIONS',
       followers_of: 'PEOPLE',
+      function: 'DEPARTMENT',
+      company_location: 'REGION',
+      groups: 'GROUPS',
+      degree: 'DEGREE',
+      tags: 'TAGS',
     };
     return typeMap[key] || key.toUpperCase();
   }, []);
@@ -248,15 +261,16 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
   }, [filters, onChange]);
 
   // Count active filters
-  const countBasicFilters = filters.location.length + filters.school.length + filters.profile_language.length + filters.network_distance.length;
-  const countPositionFilters = filters.job_title.length + filters.role.length + filters.skills.length + filters.seniority.length;
+  const countBasicFilters = filters.location.length + filters.school.length + filters.profile_language.length + filters.network_distance.length + filters.groups.length;
+  const countPositionFilters = filters.job_title.length + filters.role.length + filters.skills.length + filters.seniority.length + filters.function.length + filters.degree.length;
   const countExperienceFilters = (filters.years_of_experience_min !== null ? 1 : 0) + (filters.years_of_experience_max !== null ? 1 : 0) + 
     (filters.tenure_at_company_min !== null ? 1 : 0) + (filters.tenure_at_company_max !== null ? 1 : 0) +
     (filters.tenure_at_role_min !== null ? 1 : 0) + (filters.tenure_at_role_max !== null ? 1 : 0);
-  const countCompanyFilters = filters.company.length + filters.industry.length + filters.company_headcount.length + filters.company_type.length;
+  const countCompanyFilters = filters.company.length + filters.industry.length + filters.company_headcount.length + filters.company_type.length + filters.company_location.length;
   const countPastFilters = filters.past_company.length + filters.past_job_title.length;
   const countRecruiterFilters = (filters.spotlight ? 1 : 0) + (filters.hiring_project ? 1 : 0) + (filters.talent_pool ? 1 : 0) + 
-    (filters.open_to_work === true ? 1 : 0) + filters.open_to.length;
+    (filters.open_to_work === true ? 1 : 0) + filters.open_to.length + 
+    (filters.activity_messages ? 1 : 0) + (filters.activity_notes ? 1 : 0) + filters.tags.length;
 
   // Preview of active filters for each section
   const basicFiltersPreview: string[] = [
@@ -264,6 +278,7 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
     ...filters.school.map(f => f.name),
     ...filters.profile_language.map(l => PROFILE_LANGUAGES.find(pl => pl.value === l)?.label || l),
     ...filters.network_distance.map(d => NETWORK_DISTANCES.find(nd => nd.value === d)?.label || String(d)),
+    ...filters.groups.map(f => f.name),
   ];
   
   const positionFiltersPreview = [
@@ -271,6 +286,8 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
     ...filters.role.map(r => r.keywords),
     ...filters.skills.map(f => f.name),
     ...filters.seniority.map(s => SENIORITY_LEVELS.find(sl => sl.value === s)?.label || s),
+    ...filters.function.map(f => f.name),
+    ...filters.degree.map(d => d.name),
   ];
   
   const experienceFiltersPreview = [
@@ -287,6 +304,7 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
     ...filters.industry.map(f => f.name),
     ...filters.company_headcount.map(h => COMPANY_HEADCOUNT_OPTIONS.find(ch => ch.value === h)?.label || h),
     ...filters.company_type.map(t => COMPANY_TYPE_OPTIONS.find(ct => ct.value === t)?.label || t),
+    ...filters.company_location.map(f => f.name),
   ];
   
   const pastFiltersPreview = [
@@ -304,6 +322,9 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
     ...(filters.spotlight ? [SPOTLIGHT_OPTIONS.find(s => s.value === filters.spotlight)?.label || 'Spotlight'] : []),
     ...(filters.hiring_project ? ['Hiring Project'] : []),
     ...(filters.talent_pool ? ['Talent Pool'] : []),
+    ...(filters.activity_messages ? [ACTIVITY_MESSAGE_OPTIONS.find(a => a.value === filters.activity_messages)?.label || filters.activity_messages] : []),
+    ...(filters.activity_notes ? [ACTIVITY_NOTE_OPTIONS.find(a => a.value === filters.activity_notes)?.label || filters.activity_notes] : []),
+    ...filters.tags,
   ];
 
   return (
@@ -393,6 +414,27 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
               selected={filters.network_distance}
               onChange={(selected) => onChange({ ...filters, network_distance: selected as number[] })}
               placeholder="Sélectionner les degrés..."
+            />
+          </FilterGroup>
+
+          {/* Groups - Sales Navigator */}
+          <FilterGroup 
+            title="Groupes LinkedIn" 
+            icon={<UsersRound className="w-3.5 h-3.5 text-[#0077B5]" />} 
+            badge={filters.groups.length}
+            unsupported={!isFilterSupported(filters.api, 'groups')}
+            unsupportedTooltip={getFilterTooltip(filters.api, 'groups')}
+          >
+            <SelectedBadges items={filters.groups} onRemove={(id) => handleRemoveSimpleFilter('groups', id)} />
+            <AutocompleteInput
+              filterKey="groups"
+              placeholder="Rechercher un groupe..."
+              value={searchInputs['groups'] || ''}
+              options={parameterOptions['groups'] || []}
+              loading={loadingParams === 'groups'}
+              onInputChange={(val) => handleSearchInput('groups', val)}
+              onSelect={(item) => handleAddSimpleFilter('groups', item)}
+              disabled={!isFilterSupported(filters.api, 'groups')}
             />
           </FilterGroup>
         </FilterSection>
@@ -572,6 +614,59 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
               placeholder="Sélectionner les niveaux..."
               disabled={!isFilterSupported(filters.api, 'seniority')}
             />
+          </FilterGroup>
+
+          {/* Function / Department */}
+          <FilterGroup 
+            title="Département / Fonction" 
+            icon={<Network className="w-3.5 h-3.5 text-[#0077B5]" />} 
+            badge={filters.function.length}
+            unsupported={!isFilterSupported(filters.api, 'function')}
+            unsupportedTooltip={getFilterTooltip(filters.api, 'function')}
+          >
+            <SelectedBadges items={filters.function} onRemove={(id) => handleRemoveSimpleFilter('function', id)} />
+            <AutocompleteInput
+              filterKey="function"
+              placeholder="Rechercher un département..."
+              value={searchInputs['function'] || ''}
+              options={parameterOptions['function'] || []}
+              loading={loadingParams === 'function'}
+              onInputChange={(val) => handleSearchInput('function', val)}
+              onSelect={(item) => handleAddSimpleFilter('function', item)}
+              disabled={!isFilterSupported(filters.api, 'function')}
+            />
+          </FilterGroup>
+
+          {/* Degree - Recruiter */}
+          <FilterGroup 
+            title="Niveau d'études" 
+            icon={<GraduationCap className="w-3.5 h-3.5 text-[#0077B5]" />} 
+            badge={filters.degree.length}
+            unsupported={!isFilterSupported(filters.api, 'degree')}
+            unsupportedTooltip={getFilterTooltip(filters.api, 'degree')}
+          >
+            <PriorityBadges
+              items={filters.degree}
+              onRemove={(id) => handleRemovePriorityFilter('degree', id)}
+              onUpdatePriority={(id, priority) => handleUpdatePriority('degree', id, priority)}
+            />
+            <div className="flex flex-wrap gap-1.5">
+              {DEGREE_OPTIONS.filter(d => !filters.degree.find(fd => fd.id === d.value)).map((degree) => (
+                <Badge 
+                  key={degree.value}
+                  variant="outline" 
+                  className={`cursor-pointer hover:bg-[#0077B5]/10 text-xs ${!isFilterSupported(filters.api, 'degree') ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  onClick={() => {
+                    if (isFilterSupported(filters.api, 'degree')) {
+                      handleAddPriorityFilter('degree', { id: degree.value, title: degree.label });
+                    }
+                  }}
+                >
+                  <Plus className="w-3 h-3 mr-1" />
+                  {degree.label}
+                </Badge>
+              ))}
+            </div>
           </FilterGroup>
         </FilterSection>
 
@@ -798,6 +893,27 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
               disabled={!isFilterSupported(filters.api, 'company_type')}
             />
           </FilterGroup>
+
+          {/* Company Location - Sales Navigator */}
+          <FilterGroup 
+            title="Siège de l'entreprise" 
+            icon={<MapPin className="w-3.5 h-3.5 text-[#0077B5]" />} 
+            badge={filters.company_location.length}
+            unsupported={!isFilterSupported(filters.api, 'company_location')}
+            unsupportedTooltip={getFilterTooltip(filters.api, 'company_location')}
+          >
+            <SelectedBadges items={filters.company_location} onRemove={(id) => handleRemoveSimpleFilter('company_location', id)} />
+            <AutocompleteInput
+              filterKey="company_location"
+              placeholder="Rechercher une localisation..."
+              value={searchInputs['company_location'] || ''}
+              options={parameterOptions['company_location'] || []}
+              loading={loadingParams === 'company_location'}
+              onInputChange={(val) => handleSearchInput('company_location', val)}
+              onSelect={(item) => handleAddSimpleFilter('company_location', item)}
+              disabled={!isFilterSupported(filters.api, 'company_location')}
+            />
+          </FilterGroup>
         </FilterSection>
 
         {/* ===== PAST EXPERIENCE FILTERS ===== */}
@@ -954,6 +1070,106 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
               className={`text-sm h-8 ${!isFilterSupported(filters.api, 'talent_pool') ? 'opacity-50' : ''}`}
               disabled={!isFilterSupported(filters.api, 'talent_pool')}
             />
+          </FilterGroup>
+
+          {/* Activity: Messages */}
+          <FilterGroup 
+            title="Activité - Messages" 
+            icon={<MessageSquare className="w-3.5 h-3.5 text-purple-500" />}
+            unsupported={!isFilterSupported(filters.api, 'activity')}
+            unsupportedTooltip={getFilterTooltip(filters.api, 'activity')}
+          >
+            <Select 
+              value={filters.activity_messages || '_none'} 
+              onValueChange={(v) => onChange({ ...filters, activity_messages: v === '_none' ? null : v as ActivityType })}
+              disabled={!isFilterSupported(filters.api, 'activity')}
+            >
+              <SelectTrigger className={`text-sm h-9 ${!isFilterSupported(filters.api, 'activity') ? 'opacity-50' : ''}`}>
+                <SelectValue placeholder="Tous les profils" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="_none" className="text-xs">Tous les profils</SelectItem>
+                {ACTIVITY_MESSAGE_OPTIONS.map((opt) => (
+                  <SelectItem key={opt.value} value={opt.value} className="text-xs">
+                    {opt.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </FilterGroup>
+
+          {/* Activity: Notes */}
+          <FilterGroup 
+            title="Activité - Notes" 
+            icon={<StickyNote className="w-3.5 h-3.5 text-purple-500" />}
+            unsupported={!isFilterSupported(filters.api, 'activity')}
+            unsupportedTooltip={getFilterTooltip(filters.api, 'activity')}
+          >
+            <Select 
+              value={filters.activity_notes || '_none'} 
+              onValueChange={(v) => onChange({ ...filters, activity_notes: v === '_none' ? null : v as ActivityType })}
+              disabled={!isFilterSupported(filters.api, 'activity')}
+            >
+              <SelectTrigger className={`text-sm h-9 ${!isFilterSupported(filters.api, 'activity') ? 'opacity-50' : ''}`}>
+                <SelectValue placeholder="Tous les profils" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="_none" className="text-xs">Tous les profils</SelectItem>
+                {ACTIVITY_NOTE_OPTIONS.map((opt) => (
+                  <SelectItem key={opt.value} value={opt.value} className="text-xs">
+                    {opt.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </FilterGroup>
+
+          {/* Tags */}
+          <FilterGroup 
+            title="Tags" 
+            icon={<Tag className="w-3.5 h-3.5 text-purple-500" />}
+            badge={filters.tags.length}
+            unsupported={!isFilterSupported(filters.api, 'tags')}
+            unsupportedTooltip={getFilterTooltip(filters.api, 'tags')}
+          >
+            <div className={`space-y-2 ${!isFilterSupported(filters.api, 'tags') ? 'opacity-50 pointer-events-none' : ''}`}>
+              {filters.tags.length > 0 && (
+                <div className="flex flex-wrap gap-1.5">
+                  {filters.tags.map((tag, index) => (
+                    <Badge
+                      key={index}
+                      variant="secondary"
+                      className="gap-1 pr-1 bg-purple-100 text-purple-700 hover:bg-purple-200 text-xs"
+                    >
+                      <span className="max-w-[150px] truncate">{tag}</span>
+                      <button 
+                        type="button" 
+                        onClick={() => onChange({ ...filters, tags: filters.tags.filter((_, i) => i !== index) })} 
+                        className="ml-0.5 hover:bg-purple-300 rounded-full p-0.5"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </Badge>
+                  ))}
+                </div>
+              )}
+              <Input
+                placeholder="Ajouter un tag (Entrée pour valider)..."
+                className="text-sm h-8"
+                disabled={!isFilterSupported(filters.api, 'tags')}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    const input = e.currentTarget;
+                    const value = input.value.trim();
+                    if (value && !filters.tags.includes(value)) {
+                      onChange({ ...filters, tags: [...filters.tags, value] });
+                      input.value = '';
+                    }
+                    e.preventDefault();
+                  }
+                }}
+              />
+            </div>
           </FilterGroup>
         </FilterSection>
       </div>
