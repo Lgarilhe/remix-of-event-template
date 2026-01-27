@@ -9,6 +9,11 @@ interface JobCardProps {
 export const JobCard: React.FC<JobCardProps> = ({ job }) => {
   const [isExpanded, setIsExpanded] = useState(false);
 
+  // Handle contractType as string or array
+  const displayContractType = Array.isArray(job.contractType) 
+    ? job.contractType.join(', ') 
+    : job.contractType;
+
   const formatSalary = (min: number, max: number) => {
     if (!min && !max) return null;
     if (min && max) return `${min}k€ - ${max}k€`;
@@ -82,10 +87,10 @@ export const JobCard: React.FC<JobCardProps> = ({ job }) => {
                   {job.location}
                 </span>
               )}
-              {job.contractType && (
+              {displayContractType && (
                 <span className="flex items-center gap-1.5">
                   <Briefcase className="w-4 h-4" />
-                  {job.contractType}
+                  {displayContractType}
                 </span>
               )}
               {salary && (
