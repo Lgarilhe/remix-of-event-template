@@ -84,6 +84,13 @@ export const Navbar: React.FC = () => {
               <span className="absolute inset-0 bg-[#FA76FF] translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out"></span>
             </Link>
             <Link 
+              to="/outreach" 
+              className="relative overflow-hidden bg-[#0077B5] text-white h-[34px] px-3 flex items-center text-[11px] font-medium uppercase border-l-0 border border-black leading-none group"
+            >
+              <span className="relative z-10">OUTREACH</span>
+              <span className="absolute inset-0 bg-white translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out group-hover:text-black"></span>
+            </Link>
+            <Link 
               to="/my-events" 
               className="relative overflow-hidden bg-white text-black h-[34px] px-3 flex items-center text-[11px] font-medium uppercase border-l-0 border border-black leading-none group"
             >
@@ -166,6 +173,14 @@ export const Navbar: React.FC = () => {
                   style={{ animationDelay: '0.35s', animationFillMode: 'both' }}
                 >
                   CANDIDATS
+                </Link>
+                <Link 
+                  to="/outreach" 
+                  onClick={() => setIsMobileMenuOpen(false)}
+                  className="flex-1 flex items-center justify-center bg-[#0077B5] text-white text-[17px] font-medium uppercase border-b border-black tracking-[-0.34px] animate-fade-in"
+                  style={{ animationDelay: '0.37s', animationFillMode: 'both' }}
+                >
+                  OUTREACH
                 </Link>
                 <Link 
                   to="/my-events" 
