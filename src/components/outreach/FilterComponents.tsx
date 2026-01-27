@@ -1,10 +1,13 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { X, Loader2, Plus, ChevronDown, Search, AlertTriangle } from 'lucide-react';
+import { Checkbox } from '@/components/ui/checkbox';
+import { X, Loader2, Plus, ChevronDown, Search, AlertTriangle, Check } from 'lucide-react';
 import { FilterItem, PriorityFilterItem, FilterPriority, PRIORITY_OPTIONS } from './types';
 
 // ===== Collapsible Section =====
@@ -253,5 +256,106 @@ export const PriorityBadges: React.FC<PriorityBadgesProps> = ({
         );
       })}
     </div>
+  );
+};
+
+// ===== Multi-Select Dropdown =====
+interface MultiSelectOption {
+  value: string | number;
+  label: string;
+}
+
+interface MultiSelectDropdownProps {
+  options: MultiSelectOption[];
+  selected: (string | number)[];
+  onChange: (selected: (string | number)[]) => void;
+  placeholder?: string;
+  disabled?: boolean;
+}
+
+export const MultiSelectDropdown: React.FC<MultiSelectDropdownProps> = ({
+  options,
+  selected,
+  onChange,
+  placeholder = 'Sélectionner...',
+  disabled = false,
+}) => {
+  const [open, setOpen] = useState(false);
+
+  const toggleOption = (value: string | number) => {
+    if (selected.includes(value)) {
+      onChange(selected.filter((v) => v !== value));
+    } else {
+      onChange([...selected, value]);
+    }
+  };
+
+  const selectedLabels = selected
+    .map((v) => options.find((o) => o.value === v)?.label)
+    .filter(Boolean);
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild disabled={disabled}>
+        <Button
+          variant="outline"
+          role="combobox"
+          aria-expanded={open}
+          className={`w-full justify-between h-9 text-sm font-normal ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+          disabled={disabled}
+        >
+          {selected.length > 0 ? (
+            <div className="flex items-center gap-1 overflow-hidden">
+              <span className="truncate">
+                {selectedLabels.slice(0, 2).join(', ')}
+              </span>
+              {selected.length > 2 && (
+                <Badge variant="secondary" className="h-5 px-1 text-[10px] shrink-0">
+                  +{selected.length - 2}
+                </Badge>
+              )}
+            </div>
+          ) : (
+            <span className="text-muted-foreground">{placeholder}</span>
+          )}
+          <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-[200px] p-0 bg-white" align="start">
+        <div className="max-h-[200px] overflow-auto p-1">
+          {options.map((option) => {
+            const isSelected = selected.includes(option.value);
+            return (
+              <button
+                key={String(option.value)}
+                type="button"
+                onClick={() => toggleOption(option.value)}
+                className={`w-full flex items-center gap-2 px-2 py-1.5 text-sm rounded hover:bg-gray-100 transition-colors ${
+                  isSelected ? 'bg-[#0077B5]/5' : ''
+                }`}
+              >
+                <div className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 ${
+                  isSelected ? 'bg-[#0077B5] border-[#0077B5]' : 'border-gray-300'
+                }`}>
+                  {isSelected && <Check className="w-3 h-3 text-white" />}
+                </div>
+                <span className="truncate">{option.label}</span>
+              </button>
+            );
+          })}
+        </div>
+        {selected.length > 0 && (
+          <div className="border-t p-1">
+            <button
+              type="button"
+              onClick={() => onChange([])}
+              className="w-full text-xs text-red-500 hover:bg-red-50 p-1.5 rounded transition-colors"
+            >
+              Tout effacer
+            </button>
+          </div>
+        )}
+      </PopoverContent>
+    </Popover>
   );
 };
