@@ -30,6 +30,7 @@ const SkalrLanding = () => {
 
     setIsSubmitting(true);
     try {
+      // Save to database
       const { error } = await supabase.from('contact_submissions').insert({
         name: contactForm.name.trim(),
         email: contactForm.email.trim(),
@@ -38,6 +39,26 @@ const SkalrLanding = () => {
       });
 
       if (error) throw error;
+
+      // Send to Notion
+      try {
+        const notionResponse = await supabase.functions.invoke('notify-notion', {
+          body: {
+            name: contactForm.name.trim(),
+            email: contactForm.email.trim(),
+            company: contactForm.company.trim() || null,
+            message: contactForm.message.trim(),
+          },
+        });
+        
+        if (notionResponse.error) {
+          console.warn('Notion sync failed:', notionResponse.error);
+        } else {
+          console.log('Contact synced to Notion successfully');
+        }
+      } catch (notionError) {
+        console.warn('Notion sync error (non-blocking):', notionError);
+      }
 
       toast({ title: "Message envoyé !", description: "Nous vous recontacterons très vite." });
       setContactForm({ name: '', email: '', company: '', message: '' });
