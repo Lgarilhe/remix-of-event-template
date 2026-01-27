@@ -7,7 +7,6 @@ const corsHeaders = {
 
 const NOTION_API_KEY = Deno.env.get("NOTION_API_KEY");
 const POSTES_DATABASE_ID = "2787e1816fb481d2a0e8d4b2c1dd38f9";
-const SOCIETES_DATABASE_ID = "0c80d187899541c98f7b10a4f94ea493";
 
 interface NotionProperty {
   type: string;
@@ -51,6 +50,16 @@ function getPropertyValue(property: NotionProperty): any {
   }
 }
 
+// Find the title property (it's the one with type "title")
+function getTitleFromProperties(properties: Record<string, NotionProperty>): string {
+  for (const [key, prop] of Object.entries(properties)) {
+    if (prop.type === 'title') {
+      return prop.title?.[0]?.plain_text || 'Sans titre';
+    }
+  }
+  return 'Sans titre';
+}
+
 async function fetchNotionDatabase(databaseId: string) {
   const response = await fetch(`https://api.notion.com/v1/databases/${databaseId}/query`, {
     method: 'POST',
@@ -86,9 +95,12 @@ async function fetchCompanyDetails(companyIds: string[]): Promise<Map<string, an
       
       if (response.ok) {
         const page = await response.json();
+        // Find the title property for company name
+        const name = getTitleFromProperties(page.properties);
+        
         companies.set(id, {
           id,
-          name: getPropertyValue(page.properties['Société'] || page.properties['Name']),
+          name,
           sector: getPropertyValue(page.properties['Secteur']),
           size: getPropertyValue(page.properties['Taille']),
           website: getPropertyValue(page.properties['Site web']),
@@ -133,20 +145,27 @@ serve(async (req) => {
     const transformedJobs = jobs.map((job) => {
       const clientIds = getPropertyValue(job.properties['Client']) || [];
       const clientDetails = clientIds.map((id: string) => companies.get(id)).filter(Boolean);
+      
+      // Get contract type - handle multi_select returning array
+      const contractTypeValue = getPropertyValue(job.properties['Type de contrat']);
+      const contractType = Array.isArray(contractTypeValue) 
+        ? contractTypeValue.join(', ') 
+        : contractTypeValue;
 
       return {
         id: job.id,
-        title: getPropertyValue(job.properties['Intitulé du poste']),
+        title: getTitleFromProperties(job.properties),
         client: clientDetails[0] || null,
         status: getPropertyValue(job.properties['Statut']),
         seniority: getPropertyValue(job.properties['Séniorité']),
-        contractType: getPropertyValue(job.properties['Type de contrat']),
+        contractType: contractType,
         location: getPropertyValue(job.properties['Localisation']),
         remote: getPropertyValue(job.properties['Télétravail']),
         salaryMin: getPropertyValue(job.properties['Salaire Min']),
         salaryMax: getPropertyValue(job.properties['Salaire Max']),
         priority: getPropertyValue(job.properties['Priorité']),
         skills: getPropertyValue(job.properties['Compétences']) || [],
+        entity: getPropertyValue(job.properties['Entité']),
       };
     });
 
