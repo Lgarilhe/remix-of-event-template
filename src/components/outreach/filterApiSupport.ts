@@ -65,7 +65,7 @@ export const FILTER_API_SUPPORT: Record<LinkedInApiType, Record<FilterKey, Filte
     location: { supported: true },
     company: { supported: true },
     industry: { supported: true },
-    school: { supported: false, tooltip: "Le filtre école n'est pas supporté par l'API Recruiter. Utilisez le mode Classic ou ajoutez l'école dans les mots-clés" },
+    school: { supported: true },
     job_title: { supported: true },
     skills: { supported: true },
     role: { supported: true },

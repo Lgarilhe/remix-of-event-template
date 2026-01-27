@@ -206,14 +206,23 @@ async function handleSearch(
     }
   }
 
-  // School - only supported by Classic and Sales Navigator APIs (not Recruiter)
+  // School - different format per API:
+  // - Classic: simple array of IDs
+  // - Sales Navigator: { include: [...] }
+  // - Recruiter: array of objects with id and priority (like job_title)
   if (school?.length) {
     if (api === 'classic') {
       searchBody.school = school;
     } else if (api === 'sales_navigator') {
       searchBody.school = { include: school };
+    } else if (api === 'recruiter') {
+      // Recruiter uses priority format: [{ id: "123", priority: "MUST_HAVE" }]
+      // Since school doesn't have priority in our UI yet, default to MUST_HAVE
+      searchBody.school = school.map((id: string) => ({
+        id,
+        priority: 'MUST_HAVE',
+      }));
     }
-    // Note: Recruiter API doesn't support school filter via Unipile
   }
 
   // Job title - different handling per API
