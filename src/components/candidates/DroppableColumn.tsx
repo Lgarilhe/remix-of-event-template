@@ -29,7 +29,7 @@ export const DroppableColumn: React.FC<DroppableColumnProps> = ({ id, stage, ent
     <div
       ref={setNodeRef}
       className={`w-[300px] flex-shrink-0 rounded-lg border-2 ${stage.color} p-3 transition-all duration-200 ${
-        isOver ? 'ring-2 ring-[#1A1A1A]/30 scale-[1.02] shadow-lg' : ''
+        isOver ? 'ring-2 ring-[#1A1A1A]/30 shadow-lg' : ''
       }`}
     >
       {/* Stage header */}
