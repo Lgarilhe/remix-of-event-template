@@ -209,20 +209,40 @@ serve(async (req) => {
 
           // Fetch position names
           const positions: { id: string; name: string }[] = [];
+          
+          // Try to extract position name from the shortlist entry name (format: "Candidat X Poste")
+          const entryName = extractText(props['Nom']);
+          const extractedPositionFromName = entryName.includes(' X ') 
+            ? entryName.split(' X ').slice(1).join(' X ').trim() 
+            : null;
+          
           for (const posId of positionIds) {
             if (positionCache[posId]) {
               positions.push({ id: posId, name: positionCache[posId] });
             } else {
               const positionPage = await getNotionPage(posId);
               if (positionPage) {
+                // Try multiple property names that might contain the position title
                 const posName = extractText(positionPage.properties['Intitulé du poste']) || 
                                extractText(positionPage.properties['Name']) ||
                                extractText(positionPage.properties['Nom']) ||
-                               'Poste sans nom';
-                positionCache[posId] = posName;
-                positions.push({ id: posId, name: posName });
+                               extractText(positionPage.properties['Titre']) ||
+                               extractText(positionPage.properties['Title']) ||
+                               extractText(positionPage.properties['Poste']) ||
+                               extractedPositionFromName ||
+                               null;
+                
+                if (posName) {
+                  positionCache[posId] = posName;
+                  positions.push({ id: posId, name: posName });
+                }
               }
             }
+          }
+          
+          // If no positions found but we have an extracted name, use it
+          if (positions.length === 0 && extractedPositionFromName) {
+            positions.push({ id: 'extracted', name: extractedPositionFromName });
           }
 
           return {
