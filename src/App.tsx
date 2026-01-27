@@ -17,14 +17,14 @@ const App = () => (
     <Toaster />
     <Sonner />
     <Routes>
-      <Route path="/" element={<Discover />} />
+      <Route path="/" element={<SkalrLanding />} />
+      <Route path="/discover" element={<Discover />} />
       <Route path="/event/:id" element={<Index />} />
       <Route path="/event/:id/edit" element={<EditEvent />} />
       <Route path="/my-events" element={<MyEvents />} />
       <Route path="/create-event" element={<CreateEvent />} />
       <Route path="/auth" element={<Auth />} />
       <Route path="/admin" element={<Admin />} />
-      <Route path="/skalr" element={<SkalrLanding />} />
       {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
       <Route path="*" element={<NotFound />} />
     </Routes>
