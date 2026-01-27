@@ -32,7 +32,7 @@ Deno.serve(async (req) => {
 
     switch (action) {
       case 'search': {
-        // Search LinkedIn profiles
+        // Search LinkedIn profiles using POST method
         const {
           keywords,
           service = 'RECRUITER', // CLASSIC, RECRUITER, SALES_NAVIGATOR
@@ -59,75 +59,78 @@ Deno.serve(async (req) => {
           skills,
         } = params;
 
-        // Build query params
-        const queryParams = new URLSearchParams();
-        queryParams.set('account_id', account_id);
-        queryParams.set('api', service);
-        if (limit) queryParams.set('limit', limit.toString());
-        if (cursor) queryParams.set('cursor', cursor);
-        if (keywords) queryParams.set('keywords', keywords);
+        // Build request body for POST
+        const searchBody: Record<string, unknown> = {
+          api: service,
+          limit,
+        };
+
+        if (cursor) searchBody.cursor = cursor;
+        if (keywords) searchBody.keywords = keywords;
         
         // Location filters
         if (location?.length > 0) {
-          location.forEach((loc: string) => queryParams.append('location', loc));
+          searchBody.location = location;
         }
         
         // Company filters
-        if (company?.length > 0) {
-          company.forEach((c: string) => queryParams.append('current_company', c));
-        }
-        if (current_company?.length > 0) {
-          current_company.forEach((c: string) => queryParams.append('current_company', c));
+        if (company?.length > 0 || current_company?.length > 0) {
+          searchBody.current_company = [...(company || []), ...(current_company || [])];
         }
         if (past_company?.length > 0) {
-          past_company.forEach((c: string) => queryParams.append('past_company', c));
+          searchBody.past_company = past_company;
         }
         
         // Industry filter
         if (industry?.length > 0) {
-          industry.forEach((i: string) => queryParams.append('industry', i));
+          searchBody.industry = industry;
         }
         
         // Job title filter
         if (job_title?.length > 0) {
-          job_title.forEach((jt: string) => queryParams.append('job_title', jt));
+          searchBody.job_title = job_title;
         }
         
         // School filter
         if (school?.length > 0) {
-          school.forEach((s: string) => queryParams.append('school', s));
+          searchBody.school = school;
         }
         
         // Seniority filter
         if (seniority?.length > 0) {
-          seniority.forEach((s: string) => queryParams.append('seniority', s));
+          searchBody.seniority = seniority;
         }
         
         // Skills filter
         if (skills?.length > 0) {
-          skills.forEach((s: string) => queryParams.append('skill', s));
+          searchBody.skill = skills;
         }
         
         // Language filter
         if (language?.length > 0) {
-          language.forEach((l: string) => queryParams.append('language', l));
+          searchBody.language = language;
         }
         
         // Recruiter specific filters
-        if (hiring_project) queryParams.set('hiring_project', hiring_project);
-        if (talent_pool) queryParams.set('talent_pool', talent_pool);
-        if (spotlight) queryParams.set('spotlight', spotlight);
-        if (years_of_experience_min) queryParams.set('years_of_experience_min', years_of_experience_min.toString());
-        if (years_of_experience_max) queryParams.set('years_of_experience_max', years_of_experience_max.toString());
-        if (open_to_work !== undefined) queryParams.set('open_to_work', open_to_work ? 'true' : 'false');
+        if (hiring_project) searchBody.hiring_project = hiring_project;
+        if (talent_pool) searchBody.talent_pool = talent_pool;
+        if (spotlight) searchBody.spotlight = spotlight;
+        if (years_of_experience_min) searchBody.years_of_experience_min = years_of_experience_min;
+        if (years_of_experience_max) searchBody.years_of_experience_max = years_of_experience_max;
+        if (open_to_work !== undefined) searchBody.open_to_work = open_to_work;
 
-        console.log('Search URL:', `${baseUrl}/linkedin/search?${queryParams.toString()}`);
+        const searchUrl = `${baseUrl}/linkedin/search?account_id=${account_id}`;
+        console.log('Search URL:', searchUrl);
+        console.log('Search body:', JSON.stringify(searchBody));
 
-        const response = await fetch(`${baseUrl}/linkedin/search?${queryParams.toString()}`, {
+        const response = await fetch(searchUrl, {
+          method: 'POST',
           headers: {
             'X-API-KEY': apiKey,
             'Accept': 'application/json',
+            'Content-Type': 'application/json',
           },
+          body: JSON.stringify(searchBody),
         });
 
         const data = await response.json();
@@ -135,8 +138,8 @@ Deno.serve(async (req) => {
         if (!response.ok) {
           console.error('Search error:', data);
           return new Response(
-            JSON.stringify({ success: false, error: data.message || 'Erreur de recherche' }),
-            { status: response.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            JSON.stringify({ success: false, error: data.detail || data.message || 'Erreur de recherche' }),
+            { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
           );
         }
 
