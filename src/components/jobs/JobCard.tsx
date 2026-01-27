@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Job } from '@/pages/JobSpace';
 import { MapPin, Building2, Briefcase, Euro, ChevronDown, ChevronUp, ExternalLink, Send, Users, FileText, MessageSquare, Gift } from 'lucide-react';
 import { ApplicationModal } from './ApplicationModal';
+import { getSkillStyles } from '@/utils/skillCategories';
 
 interface JobCardProps {
   job: Job;
@@ -222,14 +223,20 @@ export const JobCard: React.FC<JobCardProps> = ({ job }) => {
               {job.remote}
             </span>
           )}
-          {job.skills?.slice(0, 3).map(skill => (
-            <span key={skill} className="px-2 py-1 bg-[#1A1A1A]/5 text-[#1A1A1A]/70 text-xs">
-              {skill}
-            </span>
-          ))}
-          {job.skills?.length > 3 && (
+          {job.skills?.slice(0, 4).map(skill => {
+            const styles = getSkillStyles(skill);
+            return (
+              <span 
+                key={skill} 
+                className={`px-2 py-1 text-xs font-medium border ${styles.bgColor} ${styles.textColor} ${styles.borderColor}`}
+              >
+                {skill}
+              </span>
+            );
+          })}
+          {job.skills?.length > 4 && (
             <span className="px-2 py-1 text-[#1A1A1A]/40 text-xs">
-              +{job.skills.length - 3}
+              +{job.skills.length - 4}
             </span>
           )}
         </div>
@@ -337,11 +344,17 @@ export const JobCard: React.FC<JobCardProps> = ({ job }) => {
                   Stack technique / Compétences
                 </h4>
                 <div className="flex flex-wrap gap-2">
-                  {job.skills.map(skill => (
-                    <span key={skill} className="px-3 py-1.5 bg-white border border-[#1A1A1A]/10 text-[#1A1A1A] text-sm">
-                      {skill}
-                    </span>
-                  ))}
+                  {job.skills.map(skill => {
+                    const styles = getSkillStyles(skill);
+                    return (
+                      <span 
+                        key={skill} 
+                        className={`px-3 py-1.5 text-sm font-medium border ${styles.bgColor} ${styles.textColor} ${styles.borderColor}`}
+                      >
+                        {skill}
+                      </span>
+                    );
+                  })}
                 </div>
               </div>
             )}
