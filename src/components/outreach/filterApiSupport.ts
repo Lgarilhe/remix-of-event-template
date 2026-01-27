@@ -17,6 +17,8 @@ export type FilterKey =
   | 'job_title'
   | 'skills'
   | 'role'
+  | 'function'
+  | 'degree'
   | 'seniority'
   | 'network_distance'
   | 'profile_language'
@@ -30,8 +32,11 @@ export type FilterKey =
   | 'talent_pool'
   | 'company_headcount'
   | 'company_type'
+  | 'company_location'
+  | 'groups'
   | 'past_company'
-  | 'past_job_title';
+  | 'past_job_title'
+  | 'advanced_keywords';
 
 // Filter support matrix based on Unipile API documentation
 export const FILTER_API_SUPPORT: Record<LinkedInApiType, Record<FilterKey, FilterSupport>> = {
@@ -41,9 +46,11 @@ export const FILTER_API_SUPPORT: Record<LinkedInApiType, Record<FilterKey, Filte
     company: { supported: true },
     industry: { supported: true },
     school: { supported: true },
-    job_title: { supported: false, tooltip: "Utilisez le filtre 'Mots-clés' pour rechercher par titre de poste en mode Classic" },
-    skills: { supported: false, tooltip: "Les compétences ne sont pas disponibles en mode Classic. Utilisez Recruiter ou Sales Navigator" },
+    job_title: { supported: false, tooltip: "Utilisez 'Mots-clés avancés > Titre' ou le filtre 'Mots-clés' en mode Classic" },
+    skills: { supported: false, tooltip: "Les compétences ne sont pas disponibles en mode Classic. Utilisez Recruiter" },
     role: { supported: false, tooltip: "Le filtre de rôle booléen n'est disponible qu'en mode Recruiter" },
+    function: { supported: false, tooltip: "Le département n'est pas disponible en mode Classic" },
+    degree: { supported: false, tooltip: "Le niveau d'études n'est pas disponible en mode Classic" },
     seniority: { supported: false, tooltip: "Le niveau de séniorité n'est pas disponible en mode Classic" },
     network_distance: { supported: true },
     profile_language: { supported: true },
@@ -57,18 +64,23 @@ export const FILTER_API_SUPPORT: Record<LinkedInApiType, Record<FilterKey, Filte
     talent_pool: { supported: false, tooltip: "Les talent pools ne sont disponibles qu'en mode Recruiter" },
     company_headcount: { supported: false, tooltip: "La taille d'entreprise n'est pas disponible en mode Classic" },
     company_type: { supported: false, tooltip: "Le type d'entreprise n'est pas disponible en mode Classic" },
+    company_location: { supported: false, tooltip: "La localisation de l'entreprise n'est pas disponible en mode Classic" },
+    groups: { supported: false, tooltip: "Les groupes ne sont disponibles qu'en mode Sales Navigator" },
     past_company: { supported: true },
     past_job_title: { supported: false, tooltip: "Les titres passés ne sont pas filtrables en mode Classic" },
+    advanced_keywords: { supported: true }, // first_name, last_name, title, company, school
   },
   recruiter: {
     keywords: { supported: true },
     location: { supported: true },
     company: { supported: true },
     industry: { supported: true },
-    school: { supported: true },
-    job_title: { supported: true },
-    skills: { supported: true },
-    role: { supported: true },
+    school: { supported: true }, // With priority
+    job_title: { supported: true }, // With priority
+    skills: { supported: true }, // With priority
+    role: { supported: true }, // With keywords, priority, scope
+    function: { supported: true }, // Department filter
+    degree: { supported: true }, // With priority
     seniority: { supported: true },
     network_distance: { supported: true },
     profile_language: { supported: true },
@@ -82,24 +94,29 @@ export const FILTER_API_SUPPORT: Record<LinkedInApiType, Record<FilterKey, Filte
     talent_pool: { supported: true },
     company_headcount: { supported: false, tooltip: "Utilisez Sales Navigator pour filtrer par taille d'entreprise" },
     company_type: { supported: false, tooltip: "Utilisez Sales Navigator pour filtrer par type d'entreprise" },
+    company_location: { supported: false, tooltip: "Utilisez Sales Navigator pour filtrer par localisation d'entreprise" },
+    groups: { supported: false, tooltip: "Les groupes ne sont disponibles qu'en mode Sales Navigator" },
     past_company: { supported: true },
-    past_job_title: { supported: true },
+    past_job_title: { supported: true }, // With priority
+    advanced_keywords: { supported: false, tooltip: "Utilisez les filtres de rôle et titre de poste en mode Recruiter" },
   },
   sales_navigator: {
     keywords: { supported: true },
-    location: { supported: true },
-    company: { supported: true },
-    industry: { supported: true },
-    school: { supported: true },
-    job_title: { supported: true },
+    location: { supported: true }, // With include/exclude
+    company: { supported: true }, // With include/exclude
+    industry: { supported: true }, // With include/exclude
+    school: { supported: true }, // With include/exclude
+    job_title: { supported: true }, // current_job_title with priority
     skills: { supported: false, tooltip: "Les compétences ne sont pas disponibles en Sales Navigator. Utilisez Recruiter" },
     role: { supported: false, tooltip: "Le filtre de rôle booléen n'est disponible qu'en mode Recruiter" },
+    function: { supported: true }, // Department with include/exclude
+    degree: { supported: false, tooltip: "Le niveau d'études n'est pas disponible en Sales Navigator" },
     seniority: { supported: true },
     network_distance: { supported: true },
     profile_language: { supported: true },
-    years_of_experience: { supported: true },
+    years_of_experience: { supported: true }, // tenure
     tenure_at_company: { supported: true },
-    tenure_at_role: { supported: true },
+    tenure_at_role: { supported: false, tooltip: "L'ancienneté au poste n'est pas disponible en Sales Navigator" },
     open_to_work: { supported: false, tooltip: "Open to Work n'est pas disponible en Sales Navigator" },
     open_to: { supported: false, tooltip: "Open to n'est pas disponible en Sales Navigator" },
     spotlight: { supported: false, tooltip: "Spotlight n'est disponible qu'en mode Recruiter" },
@@ -107,8 +124,11 @@ export const FILTER_API_SUPPORT: Record<LinkedInApiType, Record<FilterKey, Filte
     talent_pool: { supported: false, tooltip: "Les talent pools ne sont disponibles qu'en mode Recruiter" },
     company_headcount: { supported: true },
     company_type: { supported: true },
-    past_company: { supported: true },
-    past_job_title: { supported: true },
+    company_location: { supported: true }, // With include/exclude
+    groups: { supported: true },
+    past_company: { supported: true }, // With include/exclude
+    past_job_title: { supported: true }, // With priority
+    advanced_keywords: { supported: false, tooltip: "Utilisez les filtres de nom et titre en mode Sales Navigator" },
   },
 };
 

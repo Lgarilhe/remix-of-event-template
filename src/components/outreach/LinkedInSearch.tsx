@@ -78,7 +78,18 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
 
       // Simple ID-array filters (extract IDs from FilterItem[])
       if (filters.location.length) searchParams.location = filters.location.map(f => f.id);
-      if (filters.school.length) searchParams.school = filters.school.map(f => f.id);
+      
+      // School - Recruiter uses priority format, others use simple ID array
+      if (filters.school.length) {
+        if (filters.api === 'recruiter') {
+          searchParams.school = filters.school.map(f => ({
+            id: f.id,
+            priority: f.priority || 'MUST_HAVE',
+          }));
+        } else {
+          searchParams.school = filters.school.map(f => f.id);
+        }
+      }
       
       // Industry - structure with include for Recruiter/Sales Nav
       if (filters.industry.length) {
@@ -88,6 +99,29 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
       // Company - structure with include
       if (filters.company.length) {
         searchParams.company = { include: filters.company.map(f => f.id) };
+      }
+      
+      // Function/Department
+      if (filters.function.length) {
+        searchParams.function = { include: filters.function.map(f => f.id) };
+      }
+      
+      // Degree - with priority (Recruiter)
+      if (filters.degree.length && filters.api === 'recruiter') {
+        searchParams.degree = filters.degree.map(f => ({
+          id: f.id,
+          priority: f.priority || 'MUST_HAVE',
+        }));
+      }
+      
+      // Groups (Sales Navigator)
+      if (filters.groups.length && filters.api === 'sales_navigator') {
+        searchParams.groups = filters.groups.map(f => f.id);
+      }
+      
+      // Company location (Sales Navigator)
+      if (filters.company_location.length && filters.api === 'sales_navigator') {
+        searchParams.company_location = { include: filters.company_location.map(f => f.id) };
       }
 
       // Job title - use current_job_title for Recruiter API with priority

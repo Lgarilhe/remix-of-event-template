@@ -19,16 +19,19 @@ interface SearchParams {
   // ID-based filters
   location?: string[];
   company?: { include?: string[]; exclude?: string[] } | string[];
-  industry?: { include?: string[] } | string[];
-  school?: string[];
+  industry?: { include?: string[]; exclude?: string[] } | string[];
+  school?: string[] | Array<{ id: string; priority: string }>;
   
-  // Priority filters (Recruiter)
+  // Priority filters (Recruiter/Sales Nav)
   job_title?: Array<{ id: string; priority: string }>;
   current_job_title?: Array<{ id: string; priority: string }>;
   skills?: Array<{ id: string; priority: string }>;
   
   // Role filter (Recruiter)
   role?: Array<{ keywords: string; priority: string; scope: string }>;
+  
+  // Function/Department filter (Recruiter/Sales Nav)
+  function?: { include?: string[]; exclude?: string[] } | string[];
   
   // Enum filters
   seniority?: string[];
@@ -38,6 +41,8 @@ interface SearchParams {
   // Range filters
   years_of_experience?: { min?: number; max?: number };
   tenure?: Array<{ min?: number; max?: number }>;
+  tenure_at_company?: Array<{ min?: number; max?: number }>;
+  tenure_at_role?: Array<{ min?: number; max?: number }>;
   
   // Boolean/enum filters
   open_to_work?: boolean;
@@ -48,13 +53,33 @@ interface SearchParams {
   talent_pool?: string;
   spotlight?: string;
   
+  // Degree filter (Recruiter)
+  degree?: Array<{ id: string; priority: string }>;
+  
   // Company filters (Sales Navigator)
-  company_headcount?: string[];
+  company_headcount?: Array<{ min?: number; max?: number }> | string[];
   company_type?: string[];
+  company_location?: { include?: string[]; exclude?: string[] };
+  
+  // Groups (Sales Navigator)
+  groups?: string[];
   
   // Past filters
-  past_company?: { include?: string[] };
+  past_company?: { include?: string[]; exclude?: string[] } | string[];
   past_job_title?: Array<{ id: string; priority: string }>;
+  
+  // Advanced keywords (Classic)
+  advanced_keywords?: {
+    first_name?: string;
+    last_name?: string;
+    title?: string;
+    company?: string;
+    school?: string;
+  };
+  
+  // Saved/Recent searches (Sales Navigator)
+  saved_search_id?: string;
+  recent_search_id?: string;
 }
 
 Deno.serve(async (req) => {
@@ -135,20 +160,29 @@ async function handleSearch(
     job_title,
     skills,
     role,
+    function: functionFilter,
     seniority,
     network_distance,
     profile_language,
     years_of_experience,
     tenure,
+    tenure_at_company,
+    tenure_at_role,
     open_to_work,
     open_to,
     hiring_project,
     talent_pool,
     spotlight,
+    degree,
     company_headcount,
     company_type,
+    company_location,
+    groups,
     past_company,
     past_job_title,
+    advanced_keywords,
+    saved_search_id,
+    recent_search_id,
   } = params;
 
   // Build request body based on API type
@@ -161,25 +195,42 @@ async function handleSearch(
   // Pagination cursor
   if (cursor) searchBody.cursor = cursor;
 
+  // Saved/Recent search IDs (Sales Navigator) - overrides other filters
+  if (api === 'sales_navigator') {
+    if (saved_search_id) {
+      searchBody.saved_search_id = saved_search_id;
+    }
+    if (recent_search_id) {
+      searchBody.recent_search_id = recent_search_id;
+    }
+  }
+
   // Keywords (all APIs)
   if (keywords) searchBody.keywords = keywords;
 
-  // Helper function to format filter based on API type
-  // For Recruiter/Sales Navigator, some filters need { include: [...] } structure
-  const formatFilter = (value: unknown, useIncludeStructure: boolean) => {
-    if (Array.isArray(value)) {
-      if (value.length === 0) return undefined;
-      return useIncludeStructure ? { include: value } : value;
+  // Advanced keywords (Classic only)
+  if (api === 'classic' && advanced_keywords) {
+    const advKw: Record<string, string> = {};
+    if (advanced_keywords.first_name) advKw.first_name = advanced_keywords.first_name;
+    if (advanced_keywords.last_name) advKw.last_name = advanced_keywords.last_name;
+    if (advanced_keywords.title) advKw.title = advanced_keywords.title;
+    if (advanced_keywords.company) advKw.company = advanced_keywords.company;
+    if (advanced_keywords.school) advKw.school = advanced_keywords.school;
+    if (Object.keys(advKw).length > 0) {
+      searchBody.advanced_keywords = advKw;
     }
-    return value;
-  };
+  }
 
-  // For Recruiter/Sales Navigator, ONLY company/industry/past_company need include structure
-  // school/location stay as arrays (or may not be supported - they'll just be ignored by API)
-
-  // Location - array format for all APIs (documented examples show array)
+  // Location - different format per API:
+  // - Classic: simple array
+  // - Sales Navigator: { include: [...], exclude: [...] }
+  // - Recruiter: simple array (based on API docs)
   if (location?.length) {
-    searchBody.location = location;
+    if (api === 'sales_navigator') {
+      searchBody.location = { include: location };
+    } else {
+      searchBody.location = location;
+    }
   }
 
   // Company filter - uses include/exclude structure for recruiter/sales_nav
@@ -201,27 +252,35 @@ async function handleSearch(
       if (industry.length > 0) {
         searchBody.industry = needsInclude ? { include: industry } : industry;
       }
-    } else if (industry.include?.length) {
+    } else if (industry.include?.length || industry.exclude?.length) {
       searchBody.industry = industry;
     }
   }
 
   // School - different format per API:
   // - Classic: simple array of IDs
-  // - Sales Navigator: { include: [...] }
-  // - Recruiter: array of objects with id and priority (like job_title)
+  // - Sales Navigator: { include: [...], exclude: [...] }
+  // - Recruiter: array of objects with id and priority
   if (school?.length) {
     if (api === 'classic') {
       searchBody.school = school;
     } else if (api === 'sales_navigator') {
-      searchBody.school = { include: school };
+      // Check if it's already formatted with priority
+      if (typeof school[0] === 'object' && 'id' in school[0]) {
+        searchBody.school = { include: (school as Array<{ id: string }>).map(s => s.id) };
+      } else {
+        searchBody.school = { include: school };
+      }
     } else if (api === 'recruiter') {
       // Recruiter uses priority format: [{ id: "123", priority: "MUST_HAVE" }]
-      // Since school doesn't have priority in our UI yet, default to MUST_HAVE
-      searchBody.school = school.map((id: string) => ({
-        id,
-        priority: 'MUST_HAVE',
-      }));
+      if (typeof school[0] === 'object' && 'id' in school[0]) {
+        searchBody.school = school;
+      } else {
+        searchBody.school = (school as string[]).map((id: string) => ({
+          id,
+          priority: 'MUST_HAVE',
+        }));
+      }
     }
   }
 
@@ -234,19 +293,19 @@ async function handleSearch(
         priority: t.priority,
       }));
     } else if (api === 'sales_navigator') {
-      // Sales Navigator also supports priority
+      // Sales Navigator uses current_job_title with include/exclude structure
       searchBody.current_job_title = job_title.map(t => ({
         id: t.id,
         priority: t.priority,
       }));
     } else {
-      // Classic - just IDs
-      searchBody.job_title = job_title.map(t => t.id);
+      // Classic - just IDs via advanced_keywords.title or keywords
+      // Classic doesn't have job_title filter, use keywords instead
     }
   }
 
-  // Skills with priority (Recruiter/SalesNav)
-  if (skills?.length) {
+  // Skills with priority (Recruiter only - not supported in Sales Navigator)
+  if (skills?.length && api === 'recruiter') {
     searchBody.skills = skills.map(s => ({
       id: s.id,
       priority: s.priority,
@@ -262,30 +321,82 @@ async function handleSearch(
     }));
   }
 
-  // Seniority (all APIs)
-  if (seniority?.length) searchBody.seniority = seniority;
+  // Function/Department filter (Recruiter/Sales Navigator)
+  if (functionFilter) {
+    if (api === 'recruiter' || api === 'sales_navigator') {
+      if (Array.isArray(functionFilter)) {
+        if (functionFilter.length > 0) {
+          searchBody.function = { include: functionFilter };
+        }
+      } else if (functionFilter.include?.length || functionFilter.exclude?.length) {
+        searchBody.function = functionFilter;
+      }
+    }
+  }
+
+  // Degree filter (Recruiter) - array of objects with id and priority
+  if (degree?.length && api === 'recruiter') {
+    searchBody.degree = degree.map(d => ({
+      id: d.id,
+      priority: d.priority,
+    }));
+  }
+
+  // Seniority (all APIs but different values)
+  if (seniority?.length) {
+    searchBody.seniority = seniority;
+  }
 
   // Network distance (all APIs)
-  if (network_distance?.length) searchBody.network_distance = network_distance;
+  if (network_distance?.length) {
+    searchBody.network_distance = network_distance;
+  }
 
   // Profile language
-  if (profile_language?.length) searchBody.profile_language = profile_language;
-
-  // Years of experience
-  if (years_of_experience && (years_of_experience.min !== undefined || years_of_experience.max !== undefined)) {
-    searchBody.years_of_experience = years_of_experience;
+  if (profile_language?.length) {
+    searchBody.profile_language = profile_language;
   }
 
-  // Tenure at company/role (Sales Navigator/Recruiter)
-  if (tenure?.length) {
-    searchBody.tenure = tenure;
+  // Years of experience / Tenure - different per API
+  if (api === 'recruiter') {
+    // Recruiter uses years_of_experience as object
+    if (years_of_experience && (years_of_experience.min !== undefined || years_of_experience.max !== undefined)) {
+      searchBody.years_of_experience = years_of_experience;
+    }
+  } else if (api === 'sales_navigator') {
+    // Sales Navigator uses tenure array of ranges
+    if (tenure?.length) {
+      searchBody.tenure = tenure;
+    }
   }
 
-  // Open to work
-  if (open_to_work === true) {
-    searchBody.open_to = open_to?.length ? open_to : ['all'];
-  } else if (open_to?.length) {
-    searchBody.open_to = open_to;
+  // Tenure at company (Sales Navigator/Recruiter)
+  if (tenure_at_company?.length) {
+    searchBody.tenure_at_company = tenure_at_company;
+  }
+
+  // Tenure at role (Recruiter)
+  if (tenure_at_role?.length && api === 'recruiter') {
+    searchBody.tenure_at_role = tenure_at_role;
+  }
+
+  // Open to work / Open to
+  if (api === 'classic') {
+    // Classic only supports proBono, boardMember
+    if (open_to?.length) {
+      searchBody.open_to = open_to;
+    }
+  } else if (api === 'recruiter') {
+    // Recruiter has open_to_work boolean and spotlight for OPEN_TO_WORK
+    if (open_to_work === true) {
+      // Use spotlight instead
+      if (!spotlight) {
+        searchBody.spotlight = 'OPEN_TO_WORK';
+      }
+    }
+    if (open_to?.length) {
+      searchBody.open_to = open_to;
+    }
   }
 
   // Recruiter specific filters
@@ -295,33 +406,85 @@ async function handleSearch(
     if (spotlight) searchBody.spotlight = spotlight;
   }
 
-  // Company headcount (Sales Navigator)
-  if (company_headcount?.length && api === 'sales_navigator') {
-    searchBody.company_headcount = company_headcount;
+  // Company headcount - different format per API
+  if (company_headcount?.length) {
+    if (api === 'sales_navigator') {
+      // Sales Navigator uses array of ranges: [{ min: 1, max: 10 }, { min: 11, max: 50 }]
+      // Convert our string values to ranges
+      const headcountMap: Record<string, { min: number; max?: number }> = {
+        'A': { min: 1, max: 1 },
+        'B': { min: 1, max: 10 },
+        'C': { min: 11, max: 50 },
+        'D': { min: 51, max: 200 },
+        'E': { min: 201, max: 500 },
+        'F': { min: 501, max: 1000 },
+        'G': { min: 1001, max: 5000 },
+        'H': { min: 5001, max: 10000 },
+        'I': { min: 10001 },
+      };
+      
+      if (typeof company_headcount[0] === 'string') {
+        const ranges = company_headcount
+          .map(h => headcountMap[h as string])
+          .filter(Boolean);
+        if (ranges.length > 0) {
+          searchBody.company_headcount = ranges;
+        }
+      } else {
+        searchBody.company_headcount = company_headcount;
+      }
+    }
   }
 
-  // Company type
-  if (company_type?.length) {
-    searchBody.company_type = company_type;
+  // Company type (Sales Navigator)
+  if (company_type?.length && api === 'sales_navigator') {
+    // Map our values to API format
+    const typeMap: Record<string, string> = {
+      'C': 'public_company',
+      'O': 'privately_held',
+      'E': 'non_profit',
+      'S': 'educational_institution',
+      'P': 'partnership',
+      'G': 'self_employed',
+      'D': 'government_agency',
+    };
+    
+    const mappedTypes = company_type.map(t => typeMap[t] || t);
+    searchBody.company_type = mappedTypes;
+  }
+
+  // Company location (Sales Navigator)
+  if (company_location && api === 'sales_navigator') {
+    if (company_location.include?.length || company_location.exclude?.length) {
+      searchBody.company_location = company_location;
+    }
+  }
+
+  // Groups (Sales Navigator)
+  if (groups?.length && api === 'sales_navigator') {
+    searchBody.groups = groups;
   }
 
   // Past company
   if (past_company) {
     if (Array.isArray(past_company)) {
       if (past_company.length > 0) {
-        searchBody.past_company = { include: past_company };
+        const needsInclude = api === 'recruiter' || api === 'sales_navigator';
+        searchBody.past_company = needsInclude ? { include: past_company } : past_company;
       }
-    } else if (past_company.include?.length) {
+    } else if (past_company.include?.length || past_company.exclude?.length) {
       searchBody.past_company = past_company;
     }
   }
 
-  // Past job title
+  // Past job title (Recruiter/Sales Navigator)
   if (past_job_title?.length) {
-    searchBody.past_job_title = past_job_title.map(t => ({
-      id: t.id,
-      priority: t.priority,
-    }));
+    if (api === 'recruiter' || api === 'sales_navigator') {
+      searchBody.past_job_title = past_job_title.map(t => ({
+        id: t.id,
+        priority: t.priority,
+      }));
+    }
   }
 
   const searchUrl = `${baseUrl}/linkedin/search?account_id=${accountId}`;
