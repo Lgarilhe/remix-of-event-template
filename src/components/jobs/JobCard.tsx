@@ -125,14 +125,20 @@ export const JobCard: React.FC<JobCardProps> = ({ job }) => {
         </div>
 
         {/* Recruitment Pipeline Progress */}
-        {job.candidateCounts && job.candidateCounts.total > 0 && (
+        {job.candidateCounts && (
           <div className="mt-4 pt-4 border-t border-[#1A1A1A]/10">
             {/* Total count header */}
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-1.5 text-sm">
                 <Users className="w-4 h-4 text-[#1A1A1A]/50" />
-                <span className="font-medium text-[#1A1A1A]">{job.candidateCounts.total}</span>
-                <span className="text-[#1A1A1A]/50">candidat{job.candidateCounts.total > 1 ? 's' : ''} en cours</span>
+                {job.candidateCounts.total > 0 ? (
+                  <>
+                    <span className="font-medium text-[#1A1A1A]">{job.candidateCounts.total}</span>
+                    <span className="text-[#1A1A1A]/50">candidat{job.candidateCounts.total > 1 ? 's' : ''} en cours</span>
+                  </>
+                ) : (
+                  <span className="text-[#1A1A1A]/40 italic">Aucun candidat</span>
+                )}
               </div>
             </div>
             
