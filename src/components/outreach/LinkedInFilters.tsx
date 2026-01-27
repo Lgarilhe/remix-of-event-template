@@ -68,14 +68,14 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
   onChange,
   accountId,
 }) => {
-  // Section open states
+  // Section open states - collapsed by default
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({
-    basic: true,
-    position: true,
-    experience: true,
-    company: true,
-    past: true,
-    recruiter: true,
+    basic: false,
+    position: false,
+    experience: false,
+    company: false,
+    past: false,
+    recruiter: false,
   });
 
   // Autocomplete states
@@ -247,6 +247,50 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
   const countRecruiterFilters = (filters.spotlight ? 1 : 0) + (filters.hiring_project ? 1 : 0) + (filters.talent_pool ? 1 : 0) + 
     (filters.open_to_work === true ? 1 : 0) + filters.open_to.length;
 
+  // Preview of active filters for each section
+  const basicFiltersPreview: string[] = [
+    ...filters.location.map(f => f.name),
+    ...filters.school.map(f => f.name),
+    ...filters.profile_language.map(l => PROFILE_LANGUAGES.find(pl => pl.value === l)?.label || l),
+    ...filters.network_distance.map(d => NETWORK_DISTANCES.find(nd => nd.value === d)?.label || String(d)),
+  ];
+  
+  const positionFiltersPreview = [
+    ...filters.job_title.map(f => f.name),
+    ...filters.role.map(r => r.keywords),
+    ...filters.skills.map(f => f.name),
+    ...filters.seniority.map(s => SENIORITY_LEVELS.find(sl => sl.value === s)?.label || s),
+  ];
+  
+  const experienceFiltersPreview = [
+    ...(filters.years_of_experience_min !== null || filters.years_of_experience_max !== null 
+      ? [`Exp: ${filters.years_of_experience_min ?? 0}-${filters.years_of_experience_max ?? '∞'} ans`] 
+      : []),
+    ...(filters.tenure_at_company_min !== null || filters.tenure_at_company_max !== null 
+      ? [`Ancienneté: ${filters.tenure_at_company_min ?? 0}-${filters.tenure_at_company_max ?? '∞'} ans`] 
+      : []),
+  ];
+  
+  const companyFiltersPreview = [
+    ...filters.company.map(f => f.name),
+    ...filters.industry.map(f => f.name),
+    ...filters.company_headcount.map(h => COMPANY_HEADCOUNT_OPTIONS.find(ch => ch.value === h)?.label || h),
+    ...filters.company_type.map(t => COMPANY_TYPE_OPTIONS.find(ct => ct.value === t)?.label || t),
+  ];
+  
+  const pastFiltersPreview = [
+    ...filters.past_company.map(f => f.name),
+    ...filters.past_job_title.map(f => f.name),
+  ];
+  
+  const recruiterFiltersPreview = [
+    ...(filters.open_to_work === true ? ['Open to Work'] : []),
+    ...filters.open_to.map(o => OPEN_TO_OPTIONS.find(oo => oo.value === o)?.label || o),
+    ...(filters.spotlight ? [SPOTLIGHT_OPTIONS.find(s => s.value === filters.spotlight)?.label || 'Spotlight'] : []),
+    ...(filters.hiring_project ? ['Hiring Project'] : []),
+    ...(filters.talent_pool ? ['Talent Pool'] : []),
+  ];
+
   return (
     <div className="h-[calc(100vh-220px)] bg-white rounded-xl border border-[#1A1A1A]/10 overflow-y-auto">
       <div>
@@ -258,6 +302,7 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
           badge={countBasicFilters}
           isOpen={openSections.basic}
           onToggle={() => toggleSection('basic')}
+          activeFiltersPreview={basicFiltersPreview}
         >
           {/* Location */}
           <FilterGroup title="Localisation" icon={<MapPin className="w-3.5 h-3.5 text-[#0077B5]" />} badge={filters.location.length}>
@@ -347,6 +392,7 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
           badge={countPositionFilters}
           isOpen={openSections.position}
           onToggle={() => toggleSection('position')}
+          activeFiltersPreview={positionFiltersPreview}
         >
           {/* Job Title with priority */}
           <FilterGroup 
@@ -499,6 +545,7 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
           badge={countExperienceFilters}
           isOpen={openSections.experience}
           onToggle={() => toggleSection('experience')}
+          activeFiltersPreview={experienceFiltersPreview}
         >
           {/* Years of Experience */}
           <FilterGroup 
@@ -650,6 +697,7 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
           badge={countCompanyFilters}
           isOpen={openSections.company}
           onToggle={() => toggleSection('company')}
+          activeFiltersPreview={companyFiltersPreview}
         >
           {/* Company */}
           <FilterGroup title="Nom de l'entreprise" icon={<Building2 className="w-3.5 h-3.5 text-[#0077B5]" />} badge={filters.company.length}>
@@ -746,6 +794,7 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
           badge={countPastFilters}
           isOpen={openSections.past}
           onToggle={() => toggleSection('past')}
+          activeFiltersPreview={pastFiltersPreview}
         >
           {/* Past Company */}
           <FilterGroup title="Ancienne entreprise" icon={<Building2 className="w-3.5 h-3.5 text-amber-600" />} badge={filters.past_company.length}>
@@ -795,6 +844,7 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
           badge={countRecruiterFilters}
           isOpen={openSections.recruiter}
           onToggle={() => toggleSection('recruiter')}
+          activeFiltersPreview={recruiterFiltersPreview}
         >
           {/* Open to Work */}
           <FilterGroup 

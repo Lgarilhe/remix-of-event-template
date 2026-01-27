@@ -16,6 +16,7 @@ interface FilterSectionProps {
   badge?: number;
   isOpen: boolean;
   onToggle: () => void;
+  activeFiltersPreview?: string[];
 }
 
 export const FilterSection: React.FC<FilterSectionProps> = ({
@@ -26,19 +27,44 @@ export const FilterSection: React.FC<FilterSectionProps> = ({
   badge,
   isOpen,
   onToggle,
+  activeFiltersPreview,
 }) => (
   <Collapsible open={isOpen} onOpenChange={onToggle} className="border-b border-[#1A1A1A]/10">
-    <CollapsibleTrigger className="flex items-center justify-between w-full p-4 hover:bg-gray-50/50 transition-colors">
-      <div className="flex items-center gap-2">
-        {icon}
-        <span className="text-sm font-semibold text-[#1A1A1A]">{title}</span>
-        {badge !== undefined && badge > 0 && (
-          <Badge variant="secondary" className="h-5 px-1.5 text-xs bg-[#0077B5]/10 text-[#0077B5]">
-            {badge}
-          </Badge>
-        )}
+    <CollapsibleTrigger className="flex flex-col items-start w-full p-4 hover:bg-gray-50/50 transition-colors">
+      <div className="flex items-center justify-between w-full">
+        <div className="flex items-center gap-2">
+          {icon}
+          <span className="text-sm font-semibold text-[#1A1A1A]">{title}</span>
+          {badge !== undefined && badge > 0 && (
+            <Badge variant="secondary" className="h-5 px-1.5 text-xs bg-[#0077B5]/10 text-[#0077B5]">
+              {badge}
+            </Badge>
+          )}
+        </div>
+        <ChevronDown className={`w-4 h-4 text-[#1A1A1A]/40 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
       </div>
-      <ChevronDown className={`w-4 h-4 text-[#1A1A1A]/40 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
+      {/* Preview of active filters when collapsed */}
+      {!isOpen && activeFiltersPreview && activeFiltersPreview.length > 0 && (
+        <div className="flex flex-wrap gap-1 mt-2 w-full">
+          {activeFiltersPreview.slice(0, 5).map((filter, index) => (
+            <Badge 
+              key={index} 
+              variant="outline" 
+              className="text-[10px] h-5 px-1.5 bg-gray-50 text-[#1A1A1A]/70 border-[#1A1A1A]/10 font-normal"
+            >
+              {filter.length > 20 ? `${filter.slice(0, 20)}...` : filter}
+            </Badge>
+          ))}
+          {activeFiltersPreview.length > 5 && (
+            <Badge 
+              variant="outline" 
+              className="text-[10px] h-5 px-1.5 bg-[#0077B5]/5 text-[#0077B5] border-[#0077B5]/20 font-normal"
+            >
+              +{activeFiltersPreview.length - 5}
+            </Badge>
+          )}
+        </div>
+      )}
     </CollapsibleTrigger>
     <CollapsibleContent className="px-4 pb-4">
       <div className="space-y-4">
