@@ -62,14 +62,14 @@ export const CandidateFilters: React.FC<CandidateFiltersProps> = ({
 
       {/* Stage filter */}
       <Select
-        value={filters.stage[0] || ''}
-        onValueChange={(value) => onFiltersChange({ ...filters, stage: value ? [value] : [] })}
+        value={filters.stage[0] || 'all'}
+        onValueChange={(value) => onFiltersChange({ ...filters, stage: value === 'all' ? [] : [value] })}
       >
         <SelectTrigger className="w-[140px] h-9 text-sm bg-white border-[#1A1A1A]/10">
           <SelectValue placeholder="Étape" />
         </SelectTrigger>
         <SelectContent className="bg-white">
-          <SelectItem value="">Toutes les étapes</SelectItem>
+          <SelectItem value="all">Toutes les étapes</SelectItem>
           {options.stages.map(stage => (
             <SelectItem key={stage} value={stage}>{stage}</SelectItem>
           ))}
@@ -78,14 +78,14 @@ export const CandidateFilters: React.FC<CandidateFiltersProps> = ({
 
       {/* Entity filter */}
       <Select
-        value={filters.entity[0] || ''}
-        onValueChange={(value) => onFiltersChange({ ...filters, entity: value ? [value] : [] })}
+        value={filters.entity[0] || 'all'}
+        onValueChange={(value) => onFiltersChange({ ...filters, entity: value === 'all' ? [] : [value] })}
       >
         <SelectTrigger className="w-[120px] h-9 text-sm bg-white border-[#1A1A1A]/10">
           <SelectValue placeholder="Entité" />
         </SelectTrigger>
         <SelectContent className="bg-white">
-          <SelectItem value="">Toutes</SelectItem>
+          <SelectItem value="all">Toutes</SelectItem>
           {options.entities.map(entity => (
             <SelectItem key={entity} value={entity}>{entity}</SelectItem>
           ))}
@@ -94,14 +94,14 @@ export const CandidateFilters: React.FC<CandidateFiltersProps> = ({
 
       {/* Expertise filter */}
       <Select
-        value={filters.expertise[0] || ''}
-        onValueChange={(value) => onFiltersChange({ ...filters, expertise: value ? [value] : [] })}
+        value={filters.expertise[0] || 'all'}
+        onValueChange={(value) => onFiltersChange({ ...filters, expertise: value === 'all' ? [] : [value] })}
       >
         <SelectTrigger className="w-[150px] h-9 text-sm bg-white border-[#1A1A1A]/10">
           <SelectValue placeholder="Expertise" />
         </SelectTrigger>
         <SelectContent className="bg-white max-h-[300px]">
-          <SelectItem value="">Toutes</SelectItem>
+          <SelectItem value="all">Toutes</SelectItem>
           {options.expertise.map(exp => (
             <SelectItem key={exp} value={exp}>{exp}</SelectItem>
           ))}
