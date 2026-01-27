@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Job } from '@/pages/JobSpace';
 import { MapPin, Building2, Briefcase, Euro, ChevronDown, ChevronUp, ExternalLink, Send, Users, FileText, MessageSquare, Gift } from 'lucide-react';
 import { ApplicationModal } from './ApplicationModal';
@@ -10,6 +10,13 @@ interface JobCardProps {
 export const JobCard: React.FC<JobCardProps> = ({ job }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const [isApplicationOpen, setIsApplicationOpen] = useState(false);
+  const [isAnimated, setIsAnimated] = useState(false);
+
+  // Trigger animation after mount
+  useEffect(() => {
+    const timer = setTimeout(() => setIsAnimated(true), 100);
+    return () => clearTimeout(timer);
+  }, []);
 
   // Handle contractType as string or array
   const displayContractType = Array.isArray(job.contractType) 
@@ -135,8 +142,8 @@ export const JobCard: React.FC<JobCardProps> = ({ job }) => {
               <div className="flex-1 group relative">
                 <div className="h-2 bg-gray-100 rounded-l-full overflow-hidden">
                   <div 
-                    className="h-full bg-gray-400 transition-all duration-500 ease-out"
-                    style={{ width: job.candidateCounts.cv > 0 ? '100%' : '0%' }}
+                    className="h-full bg-gray-400 transition-all duration-700 ease-out"
+                    style={{ width: isAnimated && job.candidateCounts.cv > 0 ? '100%' : '0%' }}
                   />
                 </div>
                 <div className="mt-1.5 flex items-center justify-center gap-1">
@@ -157,8 +164,8 @@ export const JobCard: React.FC<JobCardProps> = ({ job }) => {
               <div className="flex-1 group relative">
                 <div className="h-2 bg-yellow-50 overflow-hidden">
                   <div 
-                    className="h-full bg-yellow-400 transition-all duration-500 ease-out"
-                    style={{ width: job.candidateCounts.itw > 0 ? '100%' : '0%' }}
+                    className="h-full bg-yellow-400 transition-all duration-700 ease-out delay-150"
+                    style={{ width: isAnimated && job.candidateCounts.itw > 0 ? '100%' : '0%' }}
                   />
                 </div>
                 <div className="mt-1.5 flex items-center justify-center gap-1">
@@ -179,8 +186,8 @@ export const JobCard: React.FC<JobCardProps> = ({ job }) => {
               <div className="flex-1 group relative">
                 <div className="h-2 bg-blue-50 rounded-r-full overflow-hidden">
                   <div 
-                    className="h-full bg-blue-500 transition-all duration-500 ease-out"
-                    style={{ width: job.candidateCounts.offre > 0 ? '100%' : '0%' }}
+                    className="h-full bg-blue-500 transition-all duration-700 ease-out delay-300"
+                    style={{ width: isAnimated && job.candidateCounts.offre > 0 ? '100%' : '0%' }}
                   />
                 </div>
                 <div className="mt-1.5 flex items-center justify-center gap-1">
