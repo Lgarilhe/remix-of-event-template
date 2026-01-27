@@ -237,6 +237,13 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
     onChange({ ...filters, role: filters.role.filter((_, i) => i !== index) });
   }, [filters, onChange]);
 
+  const handleUpdateRole = useCallback((index: number, updates: Partial<RoleFilter>) => {
+    onChange({
+      ...filters,
+      role: filters.role.map((r, i) => (i === index ? { ...r, ...updates } : r)),
+    });
+  }, [filters, onChange]);
+
   // Count active filters
   const countBasicFilters = filters.location.length + filters.school.length + filters.profile_language.length + filters.network_distance.length;
   const countPositionFilters = filters.job_title.length + filters.role.length + filters.skills.length + filters.seniority.length;
@@ -404,24 +411,43 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
             unsupported={!isFilterSupported(filters.api, 'role')}
             unsupportedTooltip={getFilterTooltip(filters.api, 'role')}
           >
-            {filters.role.map((role, index) => {
-              const priorityConfig = PRIORITY_OPTIONS.find((p) => p.value === role.priority);
-              const scopeConfig = SCOPE_OPTIONS.find((s) => s.value === role.scope);
-              return (
-                <div key={index} className="p-2 bg-purple-50 rounded-lg mb-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium text-purple-900">{role.keywords}</span>
-                    <button type="button" onClick={() => handleRemoveRole(index)} className="text-purple-400 hover:text-purple-600">
-                      <X className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                  <div className="flex gap-1 mt-1">
-                    <Badge className={`text-[10px] h-5 ${priorityConfig?.color}`}>{priorityConfig?.label}</Badge>
-                    <Badge variant="outline" className="text-[10px] h-5">{scopeConfig?.label}</Badge>
-                  </div>
+            {filters.role.map((role, index) => (
+              <div key={index} className="p-2 bg-purple-50 rounded-lg mb-2 space-y-2">
+                <div className="flex items-center gap-2">
+                  <Input
+                    value={role.keywords}
+                    onChange={(e) => handleUpdateRole(index, { keywords: e.target.value })}
+                    className="text-sm h-7 flex-1 bg-white border-purple-200"
+                    placeholder="Mots-clés du rôle..."
+                  />
+                  <button type="button" onClick={() => handleRemoveRole(index)} className="text-purple-400 hover:text-purple-600 shrink-0">
+                    <X className="w-4 h-4" />
+                  </button>
                 </div>
-              );
-            })}
+                <div className="grid grid-cols-2 gap-2">
+                  <Select value={role.priority} onValueChange={(v) => handleUpdateRole(index, { priority: v as FilterPriority })}>
+                    <SelectTrigger className="text-xs h-6 bg-white border-purple-200">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {PRIORITY_OPTIONS.map((opt) => (
+                        <SelectItem key={opt.value} value={opt.value} className="text-xs">{opt.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Select value={role.scope} onValueChange={(v) => handleUpdateRole(index, { scope: v as FilterScope })}>
+                    <SelectTrigger className="text-xs h-6 bg-white border-purple-200">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {SCOPE_OPTIONS.map((opt) => (
+                        <SelectItem key={opt.value} value={opt.value} className="text-xs">{opt.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            ))}
             <div className={`space-y-2 p-2 bg-gray-50 rounded-lg ${!isFilterSupported(filters.api, 'role') ? 'opacity-50 pointer-events-none' : ''}`}>
               <div className="flex gap-2">
                 <Input
