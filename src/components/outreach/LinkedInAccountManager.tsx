@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Linkedin, Loader2, Trash2, CheckCircle, AlertCircle, Key, Cookie } from 'lucide-react';
+import { Linkedin, Loader2, Trash2, CheckCircle, AlertCircle, Key, Cookie, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface LinkedInAccountManagerProps {
@@ -25,6 +25,7 @@ export const LinkedInAccountManager: React.FC<LinkedInAccountManagerProps> = ({
   const [connectMethod, setConnectMethod] = useState<'cookie' | 'credentials'>('cookie');
   const [connecting, setConnecting] = useState(false);
   const [disconnecting, setDisconnecting] = useState<string | null>(null);
+  const [reconnectingAccount, setReconnectingAccount] = useState<LinkedInAccount | null>(null);
   
   // Cookie method
   const [liAtCookie, setLiAtCookie] = useState('');
@@ -70,6 +71,7 @@ export const LinkedInAccountManager: React.FC<LinkedInAccountManagerProps> = ({
 
       setLiAtCookie('');
       setUserAgent('');
+      setReconnectingAccount(null);
       onAccountConnected();
     } catch (error) {
       console.error('Connection error:', error);
@@ -77,6 +79,19 @@ export const LinkedInAccountManager: React.FC<LinkedInAccountManagerProps> = ({
     } finally {
       setConnecting(false);
     }
+  };
+
+  const handleReconnect = (account: LinkedInAccount) => {
+    setReconnectingAccount(account);
+    setConnectMethod('cookie');
+  };
+
+  const handleCancelReconnect = () => {
+    setReconnectingAccount(null);
+    setLiAtCookie('');
+    setUserAgent('');
+    setEmail('');
+    setPassword('');
   };
 
   const handleConnectWithCredentials = async () => {
@@ -111,6 +126,7 @@ export const LinkedInAccountManager: React.FC<LinkedInAccountManagerProps> = ({
 
       setEmail('');
       setPassword('');
+      setReconnectingAccount(null);
       onAccountConnected();
     } catch (error) {
       console.error('Connection error:', error);
@@ -246,19 +262,32 @@ export const LinkedInAccountManager: React.FC<LinkedInAccountManagerProps> = ({
                       </div>
                     </div>
                   </div>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => handleDisconnect(account.id)}
-                    disabled={disconnecting === account.id}
-                    className="text-red-500 hover:text-red-600 hover:bg-red-50"
-                  >
-                    {disconnecting === account.id ? (
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                    ) : (
-                      <Trash2 className="w-4 h-4" />
+                  <div className="flex items-center gap-1">
+                    {account.status === 'CREDENTIALS' && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleReconnect(account)}
+                        className="text-[#0077B5] hover:text-[#005E93] hover:bg-blue-50 border-[#0077B5]/30"
+                      >
+                        <RefreshCw className="w-4 h-4 mr-1" />
+                        Reconnecter
+                      </Button>
                     )}
-                  </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleDisconnect(account.id)}
+                      disabled={disconnecting === account.id}
+                      className="text-red-500 hover:text-red-600 hover:bg-red-50"
+                    >
+                      {disconnecting === account.id ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <Trash2 className="w-4 h-4" />
+                      )}
+                    </Button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -266,12 +295,22 @@ export const LinkedInAccountManager: React.FC<LinkedInAccountManagerProps> = ({
         </CardContent>
       </Card>
 
-      {/* Connect new account */}
+      {/* Connect new account or Reconnect */}
       <Card>
         <CardHeader>
-          <CardTitle>Connecter un compte</CardTitle>
+          <CardTitle className="flex items-center justify-between">
+            <span>{reconnectingAccount ? 'Reconnecter le compte' : 'Connecter un compte'}</span>
+            {reconnectingAccount && (
+              <Button variant="ghost" size="sm" onClick={handleCancelReconnect}>
+                Annuler
+              </Button>
+            )}
+          </CardTitle>
           <CardDescription>
-            Ajoutez un nouveau compte LinkedIn Recruiter
+            {reconnectingAccount 
+              ? `Reconnectez "${reconnectingAccount.name || reconnectingAccount.identifier}" avec de nouveaux identifiants`
+              : 'Ajoutez un nouveau compte LinkedIn Recruiter'
+            }
           </CardDescription>
         </CardHeader>
         <CardContent>
