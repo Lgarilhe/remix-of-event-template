@@ -232,6 +232,11 @@ export const LinkedInAccountManager: React.FC<LinkedInAccountManagerProps> = ({
                             <CheckCircle className="w-3 h-3 text-green-500" />
                             <span className="text-green-600">Connecté</span>
                           </>
+                        ) : account.status === 'CREDENTIALS' ? (
+                          <>
+                            <AlertCircle className="w-3 h-3 text-orange-500" />
+                            <span className="text-orange-600">Reconnexion requise</span>
+                          </>
                         ) : (
                           <>
                             <AlertCircle className="w-3 h-3 text-yellow-500" />
