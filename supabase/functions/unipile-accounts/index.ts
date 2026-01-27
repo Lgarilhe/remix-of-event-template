@@ -34,26 +34,32 @@ Deno.serve(async (req) => {
         });
 
         const data = await response.json();
-        // Filter only LinkedIn accounts and extract subscription info from sources
+        // Filter only LinkedIn accounts and extract subscription info
         const linkedinAccounts = (data.items || [])
           .filter((acc: { type: string }) => acc.type === 'LINKEDIN')
           .map((acc: { 
             id: string; 
             name: string; 
+            connection_params?: {
+              im?: {
+                premiumFeatures?: string[];
+              };
+            };
             sources: Array<{ 
-              type: string; 
               status: string;
             }> 
           }) => {
-            // Check for Recruiter and Sales Navigator sources
+            // Check for premium features (recruiter, sales_navigator)
+            const premiumFeatures = acc.connection_params?.im?.premiumFeatures || [];
+            const hasRecruiter = premiumFeatures.some((f: string) => 
+              f.toLowerCase().includes('recruiter')
+            );
+            const hasSalesNavigator = premiumFeatures.some((f: string) => 
+              f.toLowerCase().includes('sales') || f.toLowerCase().includes('navigator')
+            );
+            
+            // Get main status from sources
             const sources = acc.sources || [];
-            const hasRecruiter = sources.some((s: { type: string; status: string }) => 
-              s.type === 'LINKEDIN_RECRUITER' && s.status === 'OK'
-            );
-            const hasSalesNavigator = sources.some((s: { type: string; status: string }) => 
-              s.type === 'LINKEDIN_SALES_NAVIGATOR' && s.status === 'OK'
-            );
-            // Get main status - prefer OK status, otherwise take first source status
             const okSource = sources.find((s: { status: string }) => s.status === 'OK');
             const mainStatus = okSource?.status || sources[0]?.status || 'UNKNOWN';
             
