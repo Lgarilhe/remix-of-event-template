@@ -218,6 +218,13 @@ export default function Candidates() {
     return grouped;
   }, [filteredShortlist]);
 
+  // Handle stage change (optimistic update)
+  const handleStageChange = (entryId: string, newStage: string) => {
+    setShortlist(prev => prev.map(entry => 
+      entry.id === entryId ? { ...entry, stage: newStage } : entry
+    ));
+  };
+
   return (
     <div className="min-h-screen bg-[#FAFAFA]">
       <SEOHead
@@ -272,7 +279,11 @@ export default function Candidates() {
               ) : (
                 <>
                   <TabsContent value="pipeline" className="mt-0">
-                    <CandidatePipeline data={pipelineData} stages={PIPELINE_STAGES} />
+                    <CandidatePipeline 
+                      data={pipelineData} 
+                      stages={PIPELINE_STAGES} 
+                      onStageChange={handleStageChange}
+                    />
                   </TabsContent>
 
                   <TabsContent value="list" className="mt-0">
