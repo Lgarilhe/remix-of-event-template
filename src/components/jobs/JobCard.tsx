@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Job } from '@/pages/JobSpace';
-import { MapPin, Building2, Briefcase, Euro, ChevronDown, ChevronUp, ExternalLink, Send } from 'lucide-react';
+import { MapPin, Building2, Briefcase, Euro, ChevronDown, ChevronUp, ExternalLink, Send, Users, FileText, MessageSquare, Gift } from 'lucide-react';
 import { ApplicationModal } from './ApplicationModal';
 
 interface JobCardProps {
@@ -116,6 +116,37 @@ export const JobCard: React.FC<JobCardProps> = ({ job }) => {
             </button>
           </div>
         </div>
+
+        {/* Candidate Counts Bar */}
+        {job.candidateCounts && job.candidateCounts.total > 0 && (
+          <div className="flex items-center gap-4 mt-4 pt-4 border-t border-[#1A1A1A]/10">
+            <div className="flex items-center gap-1.5 text-sm">
+              <Users className="w-4 h-4 text-[#1A1A1A]/50" />
+              <span className="font-medium text-[#1A1A1A]">{job.candidateCounts.total}</span>
+              <span className="text-[#1A1A1A]/50">candidat{job.candidateCounts.total > 1 ? 's' : ''}</span>
+            </div>
+            <div className="flex items-center gap-3 text-xs">
+              {job.candidateCounts.cv > 0 && (
+                <span className="flex items-center gap-1 px-2 py-1 bg-gray-100 text-gray-700 rounded">
+                  <FileText className="w-3 h-3" />
+                  {job.candidateCounts.cv} CV
+                </span>
+              )}
+              {job.candidateCounts.itw > 0 && (
+                <span className="flex items-center gap-1 px-2 py-1 bg-yellow-100 text-yellow-800 rounded">
+                  <MessageSquare className="w-3 h-3" />
+                  {job.candidateCounts.itw} ITW
+                </span>
+              )}
+              {job.candidateCounts.offre > 0 && (
+                <span className="flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-800 rounded">
+                  <Gift className="w-3 h-3" />
+                  {job.candidateCounts.offre} Offre
+                </span>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Tags */}
         <div className="flex flex-wrap gap-2 mt-4">

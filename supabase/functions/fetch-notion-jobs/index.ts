@@ -7,6 +7,7 @@ const corsHeaders = {
 
 const NOTION_API_KEY = Deno.env.get("NOTION_API_KEY");
 const POSTES_DATABASE_ID = "2787e1816fb481d2a0e8d4b2c1dd38f9";
+const SHORTLIST_DATABASE_ID = "2787e1816fb4811986a7e6075bc63a23";
 
 interface NotionProperty {
   type: string;
@@ -24,6 +25,13 @@ interface NotionProperty {
 interface NotionPage {
   id: string;
   properties: Record<string, NotionProperty>;
+}
+
+interface CandidateCounts {
+  cv: number;
+  itw: number;
+  offre: number;
+  total: number;
 }
 
 function getPropertyValue(property: NotionProperty): any {
@@ -53,7 +61,6 @@ function getPropertyValue(property: NotionProperty): any {
   }
 }
 
-// Find the title property (it's the one with type "title")
 function getTitleFromProperties(properties: Record<string, NotionProperty>): string {
   for (const [key, prop] of Object.entries(properties)) {
     if (prop.type === 'title') {
@@ -63,7 +70,12 @@ function getTitleFromProperties(properties: Record<string, NotionProperty>): str
   return 'Sans titre';
 }
 
-async function fetchNotionDatabase(databaseId: string) {
+async function fetchNotionDatabase(databaseId: string, filter?: any) {
+  const body: any = { page_size: 100 };
+  if (filter) {
+    body.filter = filter;
+  }
+  
   const response = await fetch(`https://api.notion.com/v1/databases/${databaseId}/query`, {
     method: 'POST',
     headers: {
@@ -71,9 +83,7 @@ async function fetchNotionDatabase(databaseId: string) {
       'Notion-Version': '2022-06-28',
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({
-      page_size: 100,
-    }),
+    body: JSON.stringify(body),
   });
 
   if (!response.ok) {
@@ -98,7 +108,6 @@ async function fetchCompanyDetails(companyIds: string[]): Promise<Map<string, an
       
       if (response.ok) {
         const page = await response.json();
-        // Find the title property for company name
         const name = getTitleFromProperties(page.properties);
         
         companies.set(id, {
@@ -118,6 +127,58 @@ async function fetchCompanyDetails(companyIds: string[]): Promise<Map<string, an
   return companies;
 }
 
+async function fetchCandidateCounts(jobIds: string[]): Promise<Map<string, CandidateCounts>> {
+  const countsMap = new Map<string, CandidateCounts>();
+  
+  // Initialize counts for all jobs
+  jobIds.forEach(id => {
+    countsMap.set(id, { cv: 0, itw: 0, offre: 0, total: 0 });
+  });
+
+  try {
+    // Fetch all shortlist entries that are in active stages
+    const activeStages = ['CV envoyé', 'ITW 1', 'ITW 2', 'ITW 3', 'ITW Final', 'Offre', 'Pré-qualif', 'Contacté', 'Pressenti'];
+    
+    const shortlistData = await fetchNotionDatabase(SHORTLIST_DATABASE_ID, {
+      property: 'Etape',
+      select: {
+        is_not_empty: true
+      }
+    });
+
+    const shortlistEntries: NotionPage[] = shortlistData.results;
+
+    for (const entry of shortlistEntries) {
+      const etape = getPropertyValue(entry.properties['Etape']);
+      const posteIds = getPropertyValue(entry.properties['💼 Postes']) || [];
+
+      for (const posteId of posteIds) {
+        const current = countsMap.get(posteId) || { cv: 0, itw: 0, offre: 0, total: 0 };
+        
+        // Count by stage category
+        if (['CV envoyé', 'Pré-qualif', 'Contacté', 'Pressenti'].includes(etape)) {
+          current.cv++;
+        } else if (['ITW 1', 'ITW 2', 'ITW 3', 'ITW Final'].includes(etape)) {
+          current.itw++;
+        } else if (etape === 'Offre') {
+          current.offre++;
+        }
+        
+        // Only count active stages in total
+        if (activeStages.includes(etape)) {
+          current.total++;
+        }
+        
+        countsMap.set(posteId, current);
+      }
+    }
+  } catch (error) {
+    console.error('Failed to fetch candidate counts:', error);
+  }
+
+  return countsMap;
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -128,32 +189,44 @@ serve(async (req) => {
       throw new Error('NOTION_API_KEY is not configured');
     }
 
-    // Fetch jobs from Notion
-    const jobsData = await fetchNotionDatabase(POSTES_DATABASE_ID);
+    // Fetch jobs from Notion - only active ones (Publié status)
+    const jobsData = await fetchNotionDatabase(POSTES_DATABASE_ID, {
+      property: 'État',
+      status: {
+        equals: 'Publié'
+      }
+    });
     const jobs: NotionPage[] = jobsData.results;
 
-    // Collect all company IDs
+    // Collect all company IDs and job IDs
     const companyIds = new Set<string>();
+    const jobIds: string[] = [];
+    
     jobs.forEach((job) => {
+      jobIds.push(job.id);
       const clientRelation = job.properties['Client'];
       if (clientRelation?.type === 'relation') {
         clientRelation.relation?.forEach(r => companyIds.add(r.id));
       }
     });
 
-    // Fetch company details
-    const companies = await fetchCompanyDetails(Array.from(companyIds));
+    // Fetch company details and candidate counts in parallel
+    const [companies, candidateCounts] = await Promise.all([
+      fetchCompanyDetails(Array.from(companyIds)),
+      fetchCandidateCounts(jobIds)
+    ]);
 
     // Transform jobs data
     const transformedJobs = jobs.map((job) => {
       const clientIds = getPropertyValue(job.properties['Client']) || [];
       const clientDetails = clientIds.map((id: string) => companies.get(id)).filter(Boolean);
       
-      // Get contract type - handle multi_select returning array
       const contractTypeValue = getPropertyValue(job.properties['Type de contrat']);
       const contractType = Array.isArray(contractTypeValue) 
         ? contractTypeValue.join(', ') 
         : contractTypeValue;
+
+      const counts = candidateCounts.get(job.id) || { cv: 0, itw: 0, offre: 0, total: 0 };
 
       return {
         id: job.id,
@@ -169,7 +242,6 @@ serve(async (req) => {
         priority: getPropertyValue(job.properties['Priorité']),
         skills: getPropertyValue(job.properties['Skills sourcing'])?.split(',').map((s: string) => s.trim()).filter(Boolean) || [],
         entity: getPropertyValue(job.properties['Entité']),
-        // Detailed fields
         description: getPropertyValue(job.properties['RAG — Synthèse']) || '',
         interviewProcess: getPropertyValue(job.properties['Process']) || '',
         requirements: getPropertyValue(job.properties['🔴 Must-have poste']) || '',
@@ -183,6 +255,8 @@ serve(async (req) => {
         tjm: getPropertyValue(job.properties['TJM']),
         accompagnement: getPropertyValue(job.properties['Type d\'accompagnement']) || [],
         jobUrl: getPropertyValue(job.properties['userDefined:URL']),
+        // Candidate counts by stage
+        candidateCounts: counts,
       };
     });
 
