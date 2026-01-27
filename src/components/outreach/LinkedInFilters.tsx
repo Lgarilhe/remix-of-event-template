@@ -40,20 +40,38 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
     );
   };
 
+  // Map frontend filter keys to Unipile API parameter types
+  const getParameterType = (key: string): string => {
+    const typeMap: Record<string, string> = {
+      location: 'LOCATION',
+      company: 'COMPANY',
+      job_title: 'JOB_TITLE',
+      industry: 'INDUSTRY',
+      school: 'SCHOOL',
+      skills: 'SKILL', // Note: singular, not SKILLS
+    };
+    return typeMap[key] || key.toUpperCase();
+  };
+
   const fetchParameters = useCallback(async (type: string, keywords: string) => {
     if (!accountId || !keywords.trim()) return;
 
     setLoadingParams(type);
     try {
+      const paramType = getParameterType(type);
+      console.log('Fetching parameters for type:', paramType, 'keywords:', keywords);
+      
       const response = await supabase.functions.invoke('unipile-search', {
         body: {
           action: 'get_parameters',
           account_id: accountId,
-          type: type.toUpperCase(),
+          type: paramType,
           keywords: keywords.trim(),
-          service: 'RECRUITER',
+          service: 'recruiter', // lowercase for API
         },
       });
+
+      console.log('Parameters response:', response);
 
       if (response.error) throw response.error;
       if (!response.data?.success) throw new Error(response.data?.error);
@@ -64,7 +82,10 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
       }));
     } catch (error) {
       console.error('Error fetching parameters:', error);
-      toast.error('Erreur de chargement des options');
+      // Only show toast for real errors, not empty results
+      if (error instanceof Error && !error.message.includes('empty')) {
+        toast.error('Erreur de chargement des options');
+      }
     } finally {
       setLoadingParams(null);
     }
