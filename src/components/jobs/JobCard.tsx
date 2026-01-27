@@ -145,12 +145,55 @@ export const JobCard: React.FC<JobCardProps> = ({ job }) => {
       {/* Expanded content */}
       {isExpanded && (
         <div className="border-t border-[#1A1A1A]/10 p-6 bg-[#FAFAFA]">
+          {/* Key info bar */}
+          <div className="flex flex-wrap gap-4 mb-6 pb-6 border-b border-[#1A1A1A]/10">
+            {job.xpMin !== null && job.xpMin !== undefined && (
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] font-medium uppercase tracking-wide text-[#1A1A1A]/60">Expérience:</span>
+                <span className="text-sm text-[#1A1A1A]">
+                  {job.xpMin}{job.xpMax ? `-${job.xpMax}` : '+'} ans
+                </span>
+              </div>
+            )}
+            {(job.salaryMin || job.salaryMax) && (
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] font-medium uppercase tracking-wide text-[#1A1A1A]/60">Salaire:</span>
+                <span className="text-sm text-[#1A1A1A]">
+                  {job.salaryMin && job.salaryMax 
+                    ? `${(job.salaryMin / 1000).toFixed(0)}k€ - ${(job.salaryMax / 1000).toFixed(0)}k€`
+                    : job.salaryMin 
+                      ? `${(job.salaryMin / 1000).toFixed(0)}k€+`
+                      : `Jusqu'à ${(job.salaryMax / 1000).toFixed(0)}k€`
+                  }
+                </span>
+              </div>
+            )}
+            {job.tjm && (
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] font-medium uppercase tracking-wide text-[#1A1A1A]/60">TJM:</span>
+                <span className="text-sm text-[#1A1A1A]">{job.tjm}€/jour</span>
+              </div>
+            )}
+            {job.startDate && (
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] font-medium uppercase tracking-wide text-[#1A1A1A]/60">Démarrage:</span>
+                <span className="text-sm text-[#1A1A1A]">{new Date(job.startDate).toLocaleDateString('fr-FR')}</span>
+              </div>
+            )}
+            {job.remote && (
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] font-medium uppercase tracking-wide text-[#1A1A1A]/60">Remote:</span>
+                <span className="text-sm text-[#1A1A1A]">{job.remote}</span>
+              </div>
+            )}
+          </div>
+
           <div className="grid md:grid-cols-2 gap-6">
             {/* Description */}
             {job.description && (
               <div className="md:col-span-2">
                 <h4 className="text-[11px] font-medium uppercase tracking-wide text-[#1A1A1A]/60 mb-3">
-                  Description du poste
+                  À propos du poste
                 </h4>
                 <p className="text-sm text-[#1A1A1A] whitespace-pre-wrap leading-relaxed">
                   {job.description}
@@ -158,13 +201,13 @@ export const JobCard: React.FC<JobCardProps> = ({ job }) => {
               </div>
             )}
 
-            {/* Requirements */}
+            {/* Requirements / Must-have */}
             {job.requirements && (
-              <div>
+              <div className="md:col-span-2">
                 <h4 className="text-[11px] font-medium uppercase tracking-wide text-[#1A1A1A]/60 mb-3">
-                  Pré-requis
+                  🔴 Critères essentiels
                 </h4>
-                <p className="text-sm text-[#1A1A1A] whitespace-pre-wrap">
+                <p className="text-sm text-[#1A1A1A] whitespace-pre-wrap bg-red-50 p-4 border-l-4 border-red-400">
                   {job.requirements}
                 </p>
               </div>
@@ -182,18 +225,6 @@ export const JobCard: React.FC<JobCardProps> = ({ job }) => {
               </div>
             )}
 
-            {/* Advantages */}
-            {job.advantages && (
-              <div>
-                <h4 className="text-[11px] font-medium uppercase tracking-wide text-[#1A1A1A]/60 mb-3">
-                  Avantages
-                </h4>
-                <p className="text-sm text-[#1A1A1A] whitespace-pre-wrap">
-                  {job.advantages}
-                </p>
-              </div>
-            )}
-
             {/* Team Info */}
             {job.teamInfo && (
               <div>
@@ -206,11 +237,27 @@ export const JobCard: React.FC<JobCardProps> = ({ job }) => {
               </div>
             )}
 
+            {/* All skills */}
+            {job.skills?.length > 0 && (
+              <div>
+                <h4 className="text-[11px] font-medium uppercase tracking-wide text-[#1A1A1A]/60 mb-3">
+                  Stack technique / Compétences
+                </h4>
+                <div className="flex flex-wrap gap-2">
+                  {job.skills.map(skill => (
+                    <span key={skill} className="px-3 py-1.5 bg-white border border-[#1A1A1A]/10 text-[#1A1A1A] text-sm">
+                      {skill}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* Company details */}
             {job.client && (
               <div>
                 <h4 className="text-[11px] font-medium uppercase tracking-wide text-[#1A1A1A]/60 mb-3">
-                  Entreprise
+                  L'entreprise
                 </h4>
                 <div className="space-y-2">
                   <p className="font-medium text-[#1A1A1A]">{job.client.name}</p>
@@ -218,7 +265,7 @@ export const JobCard: React.FC<JobCardProps> = ({ job }) => {
                     <p className="text-sm text-[#1A1A1A]/60">Secteur: {job.client.sector}</p>
                   )}
                   {job.client.size && (
-                    <p className="text-sm text-[#1A1A1A]/60">Taille: {job.client.size}</p>
+                    <p className="text-sm text-[#1A1A1A]/60">Taille: {job.client.size} employés</p>
                   )}
                   <div className="flex gap-3 mt-3">
                     {job.client.website && (
@@ -246,22 +293,36 @@ export const JobCard: React.FC<JobCardProps> = ({ job }) => {
               </div>
             )}
 
-            {/* All skills */}
-            {job.skills?.length > 0 && (
+            {/* Accompagnement type */}
+            {job.accompagnement?.length > 0 && (
               <div>
                 <h4 className="text-[11px] font-medium uppercase tracking-wide text-[#1A1A1A]/60 mb-3">
-                  Compétences requises
+                  Type d'accompagnement
                 </h4>
                 <div className="flex flex-wrap gap-2">
-                  {job.skills.map(skill => (
-                    <span key={skill} className="px-3 py-1.5 bg-white border border-[#1A1A1A]/10 text-[#1A1A1A] text-sm">
-                      {skill}
+                  {job.accompagnement.map(type => (
+                    <span key={type} className="px-3 py-1.5 bg-purple-100 text-purple-800 text-sm">
+                      {type}
                     </span>
                   ))}
                 </div>
               </div>
             )}
           </div>
+
+          {/* External link if available */}
+          {job.jobUrl && (
+            <div className="mt-6 pt-4 border-t border-[#1A1A1A]/10">
+              <a 
+                href={job.jobUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 text-sm text-[#FA76FF] hover:underline"
+              >
+                Voir l'offre complète <ExternalLink className="w-3 h-3" />
+              </a>
+            </div>
+          )}
 
           {/* Action button */}
           <div className="mt-6 pt-6 border-t border-[#1A1A1A]/10">

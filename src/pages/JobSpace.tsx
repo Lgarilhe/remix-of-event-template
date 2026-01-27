@@ -28,15 +28,20 @@ export interface Job {
   salaryMax: number;
   priority: string;
   skills: string[];
-  // New fields
+  // Detailed fields
   description: string;
   interviewProcess: string;
   requirements: string;
   openingDate: string;
+  startDate: string;
   channel: string;
   sourcingCriteria: string;
-  advantages: string;
   teamInfo: string;
+  xpMin: number;
+  xpMax: number;
+  tjm: number;
+  accompagnement: string[];
+  jobUrl: string;
 }
 
 export interface JobFiltersState {

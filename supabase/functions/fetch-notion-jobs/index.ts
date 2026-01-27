@@ -18,6 +18,7 @@ interface NotionProperty {
   url?: string;
   relation?: Array<{ id: string }>;
   status?: { name: string };
+  date?: { start: string; end?: string };
 }
 
 interface NotionPage {
@@ -32,7 +33,7 @@ function getPropertyValue(property: NotionProperty): any {
     case 'title':
       return property.title?.[0]?.plain_text || '';
     case 'rich_text':
-      return property.rich_text?.[0]?.plain_text || '';
+      return property.rich_text?.map(t => t.plain_text).join('') || '';
     case 'select':
       return property.select?.name || null;
     case 'multi_select':
@@ -45,6 +46,8 @@ function getPropertyValue(property: NotionProperty): any {
       return property.relation?.map(r => r.id) || [];
     case 'status':
       return property.status?.name || null;
+    case 'date':
+      return property.date?.start || null;
     default:
       return null;
   }
@@ -156,25 +159,30 @@ serve(async (req) => {
         id: job.id,
         title: getTitleFromProperties(job.properties),
         client: clientDetails[0] || null,
-        status: getPropertyValue(job.properties['Statut']),
+        status: getPropertyValue(job.properties['État']),
         seniority: getPropertyValue(job.properties['Séniorité']),
         contractType: contractType,
         location: getPropertyValue(job.properties['Localisation']),
-        remote: getPropertyValue(job.properties['Télétravail']),
-        salaryMin: getPropertyValue(job.properties['Salaire Min']),
-        salaryMax: getPropertyValue(job.properties['Salaire Max']),
+        remote: getPropertyValue(job.properties['Politique de remote']),
+        salaryMin: getPropertyValue(job.properties['Salaire budget']),
+        salaryMax: getPropertyValue(job.properties['Salaire maximum']),
         priority: getPropertyValue(job.properties['Priorité']),
-        skills: getPropertyValue(job.properties['Compétences']) || [],
+        skills: getPropertyValue(job.properties['Skills sourcing'])?.split(',').map((s: string) => s.trim()).filter(Boolean) || [],
         entity: getPropertyValue(job.properties['Entité']),
-        // New fields
-        description: getPropertyValue(job.properties['Description']) || getPropertyValue(job.properties['Descriptif']) || '',
-        interviewProcess: getPropertyValue(job.properties['Process entretiens']) || '',
-        requirements: getPropertyValue(job.properties['Pré-requis']) || '',
+        // Detailed fields
+        description: getPropertyValue(job.properties['RAG — Synthèse']) || '',
+        interviewProcess: getPropertyValue(job.properties['Process']) || '',
+        requirements: getPropertyValue(job.properties['🔴 Must-have poste']) || '',
         openingDate: getPropertyValue(job.properties['Date d\'ouverture']),
+        startDate: getPropertyValue(job.properties['Date de démarrage espérée']),
         channel: getPropertyValue(job.properties['Canal de publication']),
         sourcingCriteria: getPropertyValue(job.properties['Critères sourcing']) || '',
-        advantages: getPropertyValue(job.properties['Avantages']) || '',
         teamInfo: getPropertyValue(job.properties['Équipe (client)']) || '',
+        xpMin: getPropertyValue(job.properties['XP minimum']),
+        xpMax: getPropertyValue(job.properties['XP maximum']),
+        tjm: getPropertyValue(job.properties['TJM']),
+        accompagnement: getPropertyValue(job.properties['Type d\'accompagnement']) || [],
+        jobUrl: getPropertyValue(job.properties['userDefined:URL']),
       };
     });
 
