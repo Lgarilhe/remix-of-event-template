@@ -205,10 +205,16 @@ export const NETWORK_DISTANCES = [
   { value: 3, label: '3ème degré' },
 ];
 
-// Priority options
+// Priority options - Note: For 'role' filter, only MUST_HAVE is reliably supported by Unipile API
 export const PRIORITY_OPTIONS = [
   { value: 'MUST_HAVE', label: 'Obligatoire', color: 'bg-green-100 text-green-700', icon: '✓' },
   { value: 'SHOULD_HAVE', label: 'Préféré', color: 'bg-blue-100 text-blue-700', icon: '○' },
+  { value: 'DOESNT_HAVE', label: 'Exclure', color: 'bg-red-100 text-red-700', icon: '✕' },
+];
+
+// Role-specific priority options (SHOULD_HAVE may not be supported)
+export const ROLE_PRIORITY_OPTIONS = [
+  { value: 'MUST_HAVE', label: 'Obligatoire', color: 'bg-green-100 text-green-700', icon: '✓' },
   { value: 'DOESNT_HAVE', label: 'Exclure', color: 'bg-red-100 text-red-700', icon: '✕' },
 ];
 
