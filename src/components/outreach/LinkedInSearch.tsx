@@ -3,67 +3,23 @@ import { supabase } from '@/integrations/supabase/client';
 import { LinkedInAccount } from '@/pages/Outreach';
 import { LinkedInFilters } from './LinkedInFilters';
 import { LinkedInResultCard } from './LinkedInResultCard';
+import {
+  LinkedInFiltersState,
+  LinkedInProfile,
+  INITIAL_FILTERS,
+} from './types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Search, Loader2, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Search, Loader2, ChevronRight } from 'lucide-react';
 import { toast } from 'sonner';
-
-export interface LinkedInFiltersState {
-  keywords: string;
-  location: string[];
-  company: string[];
-  industry: string[];
-  job_title: string[];
-  school: string[];
-  seniority: string[];
-  skills: string[];
-  years_of_experience_min: number | null;
-  years_of_experience_max: number | null;
-  open_to_work: boolean | null;
-  hiring_project: string;
-  talent_pool: string;
-  spotlight: string;
-}
-
-export interface LinkedInProfile {
-  id: string;
-  provider_id: string;
-  first_name: string;
-  last_name: string;
-  headline: string;
-  profile_url: string;
-  profile_picture_url: string;
-  location: string;
-  current_company: string;
-  current_position: string;
-  connection_level: number;
-  open_to_work: boolean;
-}
 
 interface LinkedInSearchProps {
   accounts: LinkedInAccount[];
   selectedAccount: string | null;
   onAccountChange: (accountId: string | null) => void;
 }
-
-const INITIAL_FILTERS: LinkedInFiltersState = {
-  keywords: '',
-  location: [],
-  company: [],
-  industry: [],
-  job_title: [],
-  school: [],
-  seniority: [],
-  skills: [],
-  years_of_experience_min: null,
-  years_of_experience_max: null,
-  open_to_work: null,
-  hiring_project: '',
-  talent_pool: '',
-  spotlight: '',
-};
 
 export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
   accounts,
@@ -85,33 +41,79 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
 
     setLoading(true);
     try {
-      const searchParams: any = {
+      const searchParams: Record<string, unknown> = {
         action: 'search',
         account_id: selectedAccount,
-        service: 'RECRUITER',
+        service: 'recruiter',
         limit: 25,
       };
 
-      // Add filters
+      // Keywords
       if (filters.keywords) searchParams.keywords = filters.keywords;
-      if (filters.location.length) searchParams.location = filters.location;
-      if (filters.company.length) searchParams.company = filters.company;
-      if (filters.industry.length) searchParams.industry = filters.industry;
-      if (filters.job_title.length) searchParams.job_title = filters.job_title;
-      if (filters.school.length) searchParams.school = filters.school;
+
+      // Simple ID-array filters (extract IDs from FilterItem[])
+      if (filters.location.length) searchParams.location = filters.location.map(f => f.id);
+      if (filters.industry.length) searchParams.industry = filters.industry.map(f => f.id);
+      if (filters.school.length) searchParams.school = filters.school.map(f => f.id);
+      
+      // Company - structure with include
+      if (filters.company.length) {
+        searchParams.company = {
+          include: filters.company.map(f => f.id),
+        };
+      }
+
+      // Job title - with priority (MUST_HAVE, SHOULD_HAVE, DOESNT_HAVE)
+      if (filters.job_title.length) {
+        searchParams.job_title = filters.job_title.map(item => ({
+          id: item.id,
+          priority: item.priority,
+        }));
+      }
+
+      // Skills - with priority
+      if (filters.skills.length) {
+        searchParams.skills = filters.skills.map(item => ({
+          id: item.id,
+          priority: item.priority,
+        }));
+      }
+
+      // Role - with keywords, priority, scope
+      if (filters.role.length) {
+        searchParams.role = filters.role.map(r => ({
+          keywords: r.keywords,
+          priority: r.priority,
+          scope: r.scope,
+        }));
+      }
+
+      // Simple arrays
       if (filters.seniority.length) searchParams.seniority = filters.seniority;
-      if (filters.skills.length) searchParams.skills = filters.skills;
-      if (filters.years_of_experience_min) searchParams.years_of_experience_min = filters.years_of_experience_min;
-      if (filters.years_of_experience_max) searchParams.years_of_experience_max = filters.years_of_experience_max;
-      if (filters.open_to_work !== null) searchParams.open_to_work = filters.open_to_work;
+      if (filters.network_distance.length) searchParams.network_distance = filters.network_distance;
+
+      // Years of experience
+      if (filters.years_of_experience_min !== null || filters.years_of_experience_max !== null) {
+        const yearsExp: Record<string, number> = {};
+        if (filters.years_of_experience_min !== null) yearsExp.min = filters.years_of_experience_min;
+        if (filters.years_of_experience_max !== null) yearsExp.max = filters.years_of_experience_max;
+        searchParams.years_of_experience = yearsExp;
+      }
+
+      // Boolean filters
+      if (filters.open_to_work === true) searchParams.open_to_work = true;
+
+      // Recruiter specific
       if (filters.hiring_project) searchParams.hiring_project = filters.hiring_project;
       if (filters.talent_pool) searchParams.talent_pool = filters.talent_pool;
-      if (filters.spotlight) searchParams.spotlight = filters.spotlight;
+      if (filters.spotlight && filters.spotlight !== '_all') searchParams.spotlight = filters.spotlight;
 
       // Pagination
       if (!newSearch && cursor) {
         searchParams.cursor = cursor;
       }
+
+      console.log('Search params:', searchParams);
 
       const response = await supabase.functions.invoke('unipile-search', {
         body: searchParams,
@@ -121,13 +123,13 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
       if (!response.data?.success) throw new Error(response.data?.error);
 
       const newResults = response.data.results || [];
-      
+
       if (newSearch) {
         setResults(newResults);
       } else {
         setResults(prev => [...prev, ...newResults]);
       }
-      
+
       setCursor(response.data.cursor || null);
       setTotal(response.data.total || null);
       setHasSearched(true);
@@ -254,10 +256,10 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
             </div>
           ) : (
             <div className="p-4 space-y-3">
-              {results.map((profile) => (
-                <LinkedInResultCard key={profile.id || profile.provider_id} profile={profile} />
+              {results.map((profile, index) => (
+                <LinkedInResultCard key={profile.id || `profile-${index}`} profile={profile} />
               ))}
-              
+
               {/* Load more */}
               {cursor && (
                 <div className="pt-4 text-center">
@@ -282,3 +284,6 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
     </div>
   );
 };
+
+// Re-export types for backward compatibility
+export type { LinkedInFiltersState, LinkedInProfile } from './types';
