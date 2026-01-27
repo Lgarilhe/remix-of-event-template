@@ -81,6 +81,7 @@ export default function Candidates() {
     stage: [] as string[],
     expertise: [] as string[],
     entity: [] as string[],
+    position: [] as string[],
   });
 
   // Check auth
@@ -152,17 +153,24 @@ export default function Candidates() {
     const stages = new Set<string>();
     const expertise = new Set<string>();
     const entities = new Set<string>();
+    const positionsMap = new Map<string, string>();
 
     shortlist.forEach(entry => {
       if (entry.stage) stages.add(entry.stage);
       if (entry.entity) entities.add(entry.entity);
       entry.candidate?.expertise?.forEach(e => expertise.add(e));
+      entry.positions?.forEach(pos => {
+        if (!positionsMap.has(pos.id)) {
+          positionsMap.set(pos.id, pos.name);
+        }
+      });
     });
 
     return {
       stages: Array.from(stages),
       expertise: Array.from(expertise),
       entities: Array.from(entities),
+      positions: Array.from(positionsMap.entries()).map(([id, name]) => ({ id, name })),
     };
   }, [shortlist]);
 
@@ -175,7 +183,8 @@ export default function Candidates() {
         const matchName = entry.name?.toLowerCase().includes(search);
         const matchCandidate = entry.candidate?.name?.toLowerCase().includes(search);
         const matchEmail = entry.candidate?.email?.toLowerCase().includes(search);
-        if (!matchName && !matchCandidate && !matchEmail) return false;
+        const matchPosition = entry.positions?.some(p => p.name.toLowerCase().includes(search));
+        if (!matchName && !matchCandidate && !matchEmail && !matchPosition) return false;
       }
 
       // Stage filter
@@ -192,6 +201,14 @@ export default function Candidates() {
       if (filters.expertise.length > 0) {
         const candidateExpertise = entry.candidate?.expertise || [];
         if (!filters.expertise.some(e => candidateExpertise.includes(e))) {
+          return false;
+        }
+      }
+
+      // Position filter
+      if (filters.position.length > 0) {
+        const entryPositionIds = entry.positions?.map(p => p.id) || [];
+        if (!filters.position.some(posId => entryPositionIds.includes(posId))) {
           return false;
         }
       }
