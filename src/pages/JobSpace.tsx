@@ -38,6 +38,7 @@ export interface JobFiltersState {
   remote: string[];
   sector: string[];
   priority: string[];
+  seniority: string[];
 }
 
 const JobSpace = () => {
@@ -54,6 +55,7 @@ const JobSpace = () => {
     remote: [],
     sector: [],
     priority: [],
+    seniority: [],
   });
   const navigate = useNavigate();
 
@@ -144,6 +146,11 @@ const JobSpace = () => {
 
     // Priority filter
     if (filters.priority.length > 0 && !filters.priority.includes(job.priority)) {
+      return false;
+    }
+
+    // Seniority filter
+    if (filters.seniority.length > 0 && !filters.seniority.includes(job.seniority)) {
       return false;
     }
 
