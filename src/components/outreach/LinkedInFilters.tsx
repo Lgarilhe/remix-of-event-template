@@ -25,6 +25,7 @@ import {
   PriorityBadges,
   ParameterOption,
 } from './FilterComponents';
+import { isFilterSupported, getFilterTooltip, FilterKey } from './filterApiSupport';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
@@ -272,13 +273,13 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
             />
           </FilterGroup>
 
-          {/* School - Not supported in Recruiter API */}
+          {/* School */}
           <FilterGroup 
             title="École / Formation" 
             icon={<GraduationCap className="w-3.5 h-3.5 text-[#0077B5]" />} 
             badge={filters.school.length}
-            unsupported={filters.api === 'recruiter'}
-            unsupportedTooltip="Ce filtre n'est pas supporté par l'API Recruiter. Utilisez le mode Classic ou Sales Navigator pour filtrer par école."
+            unsupported={!isFilterSupported(filters.api, 'school')}
+            unsupportedTooltip={getFilterTooltip(filters.api, 'school')}
           >
             <SelectedBadges items={filters.school} onRemove={(id) => handleRemoveSimpleFilter('school', id)} />
             <AutocompleteInput
@@ -289,7 +290,7 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
               loading={loadingParams === 'school'}
               onInputChange={(val) => handleSearchInput('school', val)}
               onSelect={(item) => handleAddSimpleFilter('school', item)}
-              disabled={filters.api === 'recruiter'}
+              disabled={!isFilterSupported(filters.api, 'school')}
             />
           </FilterGroup>
 
@@ -348,7 +349,13 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
           onToggle={() => toggleSection('position')}
         >
           {/* Job Title with priority */}
-          <FilterGroup title="Titre du poste" icon={<Briefcase className="w-3.5 h-3.5 text-[#0077B5]" />} badge={filters.job_title.length}>
+          <FilterGroup 
+            title="Titre du poste" 
+            icon={<Briefcase className="w-3.5 h-3.5 text-[#0077B5]" />} 
+            badge={filters.job_title.length}
+            unsupported={!isFilterSupported(filters.api, 'job_title')}
+            unsupportedTooltip={getFilterTooltip(filters.api, 'job_title')}
+          >
             <PriorityBadges
               items={filters.job_title}
               onRemove={(id) => handleRemovePriorityFilter('job_title', id)}
@@ -362,11 +369,18 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
               loading={loadingParams === 'job_title'}
               onInputChange={(val) => handleSearchInput('job_title', val)}
               onSelect={(item) => handleAddPriorityFilter('job_title', item)}
+              disabled={!isFilterSupported(filters.api, 'job_title')}
             />
           </FilterGroup>
 
-          {/* Role (keywords with scope) - Recruiter */}
-          <FilterGroup title="Rôle (mots-clés booléens)" icon={<Sparkles className="w-3.5 h-3.5 text-purple-500" />} badge={filters.role.length}>
+          {/* Role (keywords with scope) - Recruiter only */}
+          <FilterGroup 
+            title="Rôle (mots-clés booléens)" 
+            icon={<Sparkles className="w-3.5 h-3.5 text-purple-500" />} 
+            badge={filters.role.length}
+            unsupported={!isFilterSupported(filters.api, 'role')}
+            unsupportedTooltip={getFilterTooltip(filters.api, 'role')}
+          >
             {filters.role.map((role, index) => {
               const priorityConfig = PRIORITY_OPTIONS.find((p) => p.value === role.priority);
               const scopeConfig = SCOPE_OPTIONS.find((s) => s.value === role.scope);
@@ -385,15 +399,16 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
                 </div>
               );
             })}
-            <div className="space-y-2 p-2 bg-gray-50 rounded-lg">
+            <div className={`space-y-2 p-2 bg-gray-50 rounded-lg ${!isFilterSupported(filters.api, 'role') ? 'opacity-50 pointer-events-none' : ''}`}>
               <Input
                 value={newRoleKeywords}
                 onChange={(e) => setNewRoleKeywords(e.target.value)}
                 placeholder="Ex: developer OR engineer AND NOT junior"
                 className="text-sm h-8"
+                disabled={!isFilterSupported(filters.api, 'role')}
               />
               <div className="grid grid-cols-2 gap-2">
-                <Select value={newRolePriority} onValueChange={(v) => setNewRolePriority(v as FilterPriority)}>
+                <Select value={newRolePriority} onValueChange={(v) => setNewRolePriority(v as FilterPriority)} disabled={!isFilterSupported(filters.api, 'role')}>
                   <SelectTrigger className="text-xs h-7">
                     <SelectValue />
                   </SelectTrigger>
@@ -403,7 +418,7 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
                     ))}
                   </SelectContent>
                 </Select>
-                <Select value={newRoleScope} onValueChange={(v) => setNewRoleScope(v as FilterScope)}>
+                <Select value={newRoleScope} onValueChange={(v) => setNewRoleScope(v as FilterScope)} disabled={!isFilterSupported(filters.api, 'role')}>
                   <SelectTrigger className="text-xs h-7">
                     <SelectValue />
                   </SelectTrigger>
@@ -414,7 +429,7 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
                   </SelectContent>
                 </Select>
               </div>
-              <Button size="sm" variant="outline" onClick={handleAddRole} disabled={!newRoleKeywords.trim()} className="w-full h-7 text-xs">
+              <Button size="sm" variant="outline" onClick={handleAddRole} disabled={!newRoleKeywords.trim() || !isFilterSupported(filters.api, 'role')} className="w-full h-7 text-xs">
                 <Plus className="w-3 h-3 mr-1" />
                 Ajouter le rôle
               </Button>
@@ -422,7 +437,13 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
           </FilterGroup>
 
           {/* Skills with priority */}
-          <FilterGroup title="Compétences" icon={<Zap className="w-3.5 h-3.5 text-[#0077B5]" />} badge={filters.skills.length}>
+          <FilterGroup 
+            title="Compétences" 
+            icon={<Zap className="w-3.5 h-3.5 text-[#0077B5]" />} 
+            badge={filters.skills.length}
+            unsupported={!isFilterSupported(filters.api, 'skills')}
+            unsupportedTooltip={getFilterTooltip(filters.api, 'skills')}
+          >
             <PriorityBadges
               items={filters.skills}
               onRemove={(id) => handleRemovePriorityFilter('skills', id)}
@@ -436,12 +457,19 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
               loading={loadingParams === 'skills'}
               onInputChange={(val) => handleSearchInput('skills', val)}
               onSelect={(item) => handleAddPriorityFilter('skills', item)}
+              disabled={!isFilterSupported(filters.api, 'skills')}
             />
           </FilterGroup>
 
           {/* Seniority */}
-          <FilterGroup title="Niveau de séniorité" icon={<Target className="w-3.5 h-3.5 text-[#0077B5]" />} badge={filters.seniority.length}>
-            <div className="grid grid-cols-2 gap-1.5">
+          <FilterGroup 
+            title="Niveau de séniorité" 
+            icon={<Target className="w-3.5 h-3.5 text-[#0077B5]" />} 
+            badge={filters.seniority.length}
+            unsupported={!isFilterSupported(filters.api, 'seniority')}
+            unsupportedTooltip={getFilterTooltip(filters.api, 'seniority')}
+          >
+            <div className={`grid grid-cols-2 gap-1.5 ${!isFilterSupported(filters.api, 'seniority') ? 'opacity-50 pointer-events-none' : ''}`}>
               {SENIORITY_LEVELS.map((level) => (
                 <label key={level.value} className="flex items-center gap-2 text-sm cursor-pointer p-1.5 rounded hover:bg-gray-50">
                   <Checkbox
@@ -454,6 +482,7 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
                       }
                     }}
                     className="h-3.5 w-3.5"
+                    disabled={!isFilterSupported(filters.api, 'seniority')}
                   />
                   <span className="text-xs truncate">{level.label}</span>
                 </label>
@@ -472,8 +501,13 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
           onToggle={() => toggleSection('experience')}
         >
           {/* Years of Experience */}
-          <FilterGroup title="Années d'expérience totale" icon={<Clock className="w-3.5 h-3.5 text-[#0077B5]" />}>
-            <div className="grid grid-cols-2 gap-2">
+          <FilterGroup 
+            title="Années d'expérience totale" 
+            icon={<Clock className="w-3.5 h-3.5 text-[#0077B5]" />}
+            unsupported={!isFilterSupported(filters.api, 'years_of_experience')}
+            unsupportedTooltip={getFilterTooltip(filters.api, 'years_of_experience')}
+          >
+            <div className={`grid grid-cols-2 gap-2 ${!isFilterSupported(filters.api, 'years_of_experience') ? 'opacity-50 pointer-events-none' : ''}`}>
               <div>
                 <Label className="text-[10px] text-muted-foreground uppercase">Min</Label>
                 <Input
@@ -489,6 +523,7 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
                   }
                   placeholder="0"
                   className="text-sm h-8"
+                  disabled={!isFilterSupported(filters.api, 'years_of_experience')}
                 />
               </div>
               <div>
@@ -506,14 +541,20 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
                   }
                   placeholder="50"
                   className="text-sm h-8"
+                  disabled={!isFilterSupported(filters.api, 'years_of_experience')}
                 />
               </div>
             </div>
           </FilterGroup>
 
           {/* Tenure at Company */}
-          <FilterGroup title="Ancienneté dans l'entreprise actuelle" icon={<Building className="w-3.5 h-3.5 text-[#0077B5]" />}>
-            <div className="grid grid-cols-2 gap-2">
+          <FilterGroup 
+            title="Ancienneté dans l'entreprise actuelle" 
+            icon={<Building className="w-3.5 h-3.5 text-[#0077B5]" />}
+            unsupported={!isFilterSupported(filters.api, 'tenure_at_company')}
+            unsupportedTooltip={getFilterTooltip(filters.api, 'tenure_at_company')}
+          >
+            <div className={`grid grid-cols-2 gap-2 ${!isFilterSupported(filters.api, 'tenure_at_company') ? 'opacity-50 pointer-events-none' : ''}`}>
               <div>
                 <Label className="text-[10px] text-muted-foreground uppercase">Min (années)</Label>
                 <Input
@@ -529,6 +570,7 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
                   }
                   placeholder="0"
                   className="text-sm h-8"
+                  disabled={!isFilterSupported(filters.api, 'tenure_at_company')}
                 />
               </div>
               <div>
@@ -546,14 +588,20 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
                   }
                   placeholder="50"
                   className="text-sm h-8"
+                  disabled={!isFilterSupported(filters.api, 'tenure_at_company')}
                 />
               </div>
             </div>
           </FilterGroup>
 
           {/* Tenure at Role */}
-          <FilterGroup title="Ancienneté dans le poste actuel" icon={<Briefcase className="w-3.5 h-3.5 text-[#0077B5]" />}>
-            <div className="grid grid-cols-2 gap-2">
+          <FilterGroup 
+            title="Ancienneté dans le poste actuel" 
+            icon={<Briefcase className="w-3.5 h-3.5 text-[#0077B5]" />}
+            unsupported={!isFilterSupported(filters.api, 'tenure_at_role')}
+            unsupportedTooltip={getFilterTooltip(filters.api, 'tenure_at_role')}
+          >
+            <div className={`grid grid-cols-2 gap-2 ${!isFilterSupported(filters.api, 'tenure_at_role') ? 'opacity-50 pointer-events-none' : ''}`}>
               <div>
                 <Label className="text-[10px] text-muted-foreground uppercase">Min (années)</Label>
                 <Input
@@ -569,6 +617,7 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
                   }
                   placeholder="0"
                   className="text-sm h-8"
+                  disabled={!isFilterSupported(filters.api, 'tenure_at_role')}
                 />
               </div>
               <div>
@@ -586,6 +635,7 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
                   }
                   placeholder="50"
                   className="text-sm h-8"
+                  disabled={!isFilterSupported(filters.api, 'tenure_at_role')}
                 />
               </div>
             </div>
@@ -630,8 +680,14 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
           </FilterGroup>
 
           {/* Company Headcount */}
-          <FilterGroup title="Taille de l'entreprise" icon={<BarChart3 className="w-3.5 h-3.5 text-[#0077B5]" />} badge={filters.company_headcount.length}>
-            <div className="grid grid-cols-2 gap-1.5">
+          <FilterGroup 
+            title="Taille de l'entreprise" 
+            icon={<BarChart3 className="w-3.5 h-3.5 text-[#0077B5]" />} 
+            badge={filters.company_headcount.length}
+            unsupported={!isFilterSupported(filters.api, 'company_headcount')}
+            unsupportedTooltip={getFilterTooltip(filters.api, 'company_headcount')}
+          >
+            <div className={`grid grid-cols-2 gap-1.5 ${!isFilterSupported(filters.api, 'company_headcount') ? 'opacity-50 pointer-events-none' : ''}`}>
               {COMPANY_HEADCOUNT_OPTIONS.map((opt) => (
                 <label key={opt.value} className="flex items-center gap-2 text-sm cursor-pointer p-1.5 rounded hover:bg-gray-50">
                   <Checkbox
@@ -644,6 +700,7 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
                       }
                     }}
                     className="h-3.5 w-3.5"
+                    disabled={!isFilterSupported(filters.api, 'company_headcount')}
                   />
                   <span className="text-xs">{opt.label}</span>
                 </label>
@@ -652,8 +709,14 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
           </FilterGroup>
 
           {/* Company Type */}
-          <FilterGroup title="Type d'entreprise" icon={<Building className="w-3.5 h-3.5 text-[#0077B5]" />} badge={filters.company_type.length}>
-            <div className="space-y-1.5">
+          <FilterGroup 
+            title="Type d'entreprise" 
+            icon={<Building className="w-3.5 h-3.5 text-[#0077B5]" />} 
+            badge={filters.company_type.length}
+            unsupported={!isFilterSupported(filters.api, 'company_type')}
+            unsupportedTooltip={getFilterTooltip(filters.api, 'company_type')}
+          >
+            <div className={`space-y-1.5 ${!isFilterSupported(filters.api, 'company_type') ? 'opacity-50 pointer-events-none' : ''}`}>
               {COMPANY_TYPE_OPTIONS.map((opt) => (
                 <label key={opt.value} className="flex items-center gap-2 text-sm cursor-pointer p-1.5 rounded hover:bg-gray-50">
                   <Checkbox
@@ -666,6 +729,7 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
                       }
                     }}
                     className="h-3.5 w-3.5"
+                    disabled={!isFilterSupported(filters.api, 'company_type')}
                   />
                   <span className="text-xs">{opt.label}</span>
                 </label>
@@ -698,7 +762,13 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
           </FilterGroup>
 
           {/* Past Job Title */}
-          <FilterGroup title="Ancien poste" icon={<Briefcase className="w-3.5 h-3.5 text-amber-600" />} badge={filters.past_job_title.length}>
+          <FilterGroup 
+            title="Ancien poste" 
+            icon={<Briefcase className="w-3.5 h-3.5 text-amber-600" />} 
+            badge={filters.past_job_title.length}
+            unsupported={!isFilterSupported(filters.api, 'past_job_title')}
+            unsupportedTooltip={getFilterTooltip(filters.api, 'past_job_title')}
+          >
             <PriorityBadges
               items={filters.past_job_title}
               onRemove={(id) => handleRemovePriorityFilter('past_job_title', id)}
@@ -712,6 +782,7 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
               loading={loadingParams === 'past_job_title'}
               onInputChange={(val) => handleSearchInput('past_job_title', val)}
               onSelect={(item) => handleAddPriorityFilter('past_job_title', item)}
+              disabled={!isFilterSupported(filters.api, 'past_job_title')}
             />
           </FilterGroup>
         </FilterSection>
@@ -726,8 +797,13 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
           onToggle={() => toggleSection('recruiter')}
         >
           {/* Open to Work */}
-          <FilterGroup title="Open to Work" icon={<UserCheck className="w-3.5 h-3.5 text-green-500" />}>
-            <div className="flex items-center justify-between p-2 bg-green-50 rounded-lg">
+          <FilterGroup 
+            title="Open to Work" 
+            icon={<UserCheck className="w-3.5 h-3.5 text-green-500" />}
+            unsupported={!isFilterSupported(filters.api, 'open_to_work')}
+            unsupportedTooltip={getFilterTooltip(filters.api, 'open_to_work')}
+          >
+            <div className={`flex items-center justify-between p-2 bg-green-50 rounded-lg ${!isFilterSupported(filters.api, 'open_to_work') ? 'opacity-50' : ''}`}>
               <span className="text-sm text-green-800">Profils Open to Work uniquement</span>
               <Switch
                 checked={filters.open_to_work === true}
@@ -737,13 +813,20 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
                     open_to_work: checked ? true : null,
                   })
                 }
+                disabled={!isFilterSupported(filters.api, 'open_to_work')}
               />
             </div>
           </FilterGroup>
 
           {/* Open to types */}
-          <FilterGroup title="Open to (type)" icon={<Zap className="w-3.5 h-3.5 text-[#0077B5]" />} badge={filters.open_to.length}>
-            <div className="space-y-1.5">
+          <FilterGroup 
+            title="Open to (type)" 
+            icon={<Zap className="w-3.5 h-3.5 text-[#0077B5]" />} 
+            badge={filters.open_to.length}
+            unsupported={!isFilterSupported(filters.api, 'open_to')}
+            unsupportedTooltip={getFilterTooltip(filters.api, 'open_to')}
+          >
+            <div className={`space-y-1.5 ${!isFilterSupported(filters.api, 'open_to') ? 'opacity-50 pointer-events-none' : ''}`}>
               {OPEN_TO_OPTIONS.map((opt) => (
                 <label key={opt.value} className="flex items-center gap-2 text-sm cursor-pointer p-1.5 rounded hover:bg-gray-50">
                   <Checkbox
@@ -756,6 +839,7 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
                       }
                     }}
                     className="h-3.5 w-3.5"
+                    disabled={!isFilterSupported(filters.api, 'open_to')}
                   />
                   <span className="text-xs">{opt.label}</span>
                 </label>
@@ -764,12 +848,18 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
           </FilterGroup>
 
           {/* Spotlight */}
-          <FilterGroup title="Spotlight" icon={<Sparkles className="w-3.5 h-3.5 text-purple-500" />}>
+          <FilterGroup 
+            title="Spotlight" 
+            icon={<Sparkles className="w-3.5 h-3.5 text-purple-500" />}
+            unsupported={!isFilterSupported(filters.api, 'spotlight')}
+            unsupportedTooltip={getFilterTooltip(filters.api, 'spotlight')}
+          >
             <Select 
               value={filters.spotlight || '_empty'} 
               onValueChange={(v) => onChange({ ...filters, spotlight: v === '_empty' ? '' : v as typeof filters.spotlight })}
+              disabled={!isFilterSupported(filters.api, 'spotlight')}
             >
-              <SelectTrigger className="text-sm h-9">
+              <SelectTrigger className={`text-sm h-9 ${!isFilterSupported(filters.api, 'spotlight') ? 'opacity-50' : ''}`}>
                 <SelectValue placeholder="Tous les profils" />
               </SelectTrigger>
               <SelectContent>
@@ -783,22 +873,34 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
           </FilterGroup>
 
           {/* Hiring Project */}
-          <FilterGroup title="Hiring Project (ID)" icon={<Folder className="w-3.5 h-3.5 text-purple-500" />}>
+          <FilterGroup 
+            title="Hiring Project (ID)" 
+            icon={<Folder className="w-3.5 h-3.5 text-purple-500" />}
+            unsupported={!isFilterSupported(filters.api, 'hiring_project')}
+            unsupportedTooltip={getFilterTooltip(filters.api, 'hiring_project')}
+          >
             <Input
               value={filters.hiring_project}
               onChange={(e) => onChange({ ...filters, hiring_project: e.target.value })}
               placeholder="ID du projet de recrutement"
-              className="text-sm h-8"
+              className={`text-sm h-8 ${!isFilterSupported(filters.api, 'hiring_project') ? 'opacity-50' : ''}`}
+              disabled={!isFilterSupported(filters.api, 'hiring_project')}
             />
           </FilterGroup>
 
           {/* Talent Pool */}
-          <FilterGroup title="Talent Pool (ID)" icon={<Users className="w-3.5 h-3.5 text-purple-500" />}>
+          <FilterGroup 
+            title="Talent Pool (ID)" 
+            icon={<Users className="w-3.5 h-3.5 text-purple-500" />}
+            unsupported={!isFilterSupported(filters.api, 'talent_pool')}
+            unsupportedTooltip={getFilterTooltip(filters.api, 'talent_pool')}
+          >
             <Input
               value={filters.talent_pool}
               onChange={(e) => onChange({ ...filters, talent_pool: e.target.value })}
               placeholder="ID du pool de talents"
-              className="text-sm h-8"
+              className={`text-sm h-8 ${!isFilterSupported(filters.api, 'talent_pool') ? 'opacity-50' : ''}`}
+              disabled={!isFilterSupported(filters.api, 'talent_pool')}
             />
           </FilterGroup>
         </FilterSection>
