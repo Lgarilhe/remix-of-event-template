@@ -1,6 +1,8 @@
 import React, { useState, useMemo } from 'react';
-import { Search, X, Code } from 'lucide-react';
+import { Search, X, Code, ChevronDown, Filter } from 'lucide-react';
 import { Job, JobFiltersState } from '@/pages/JobSpace';
+import { useIsMobile } from '@/hooks/use-mobile';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 
 interface JobFiltersProps {
   filters: JobFiltersState;
@@ -10,6 +12,8 @@ interface JobFiltersProps {
 
 export const JobFilters: React.FC<JobFiltersProps> = ({ filters, setFilters, jobs }) => {
   const [skillSearch, setSkillSearch] = useState('');
+  const isMobile = useIsMobile();
+  const [isOpen, setIsOpen] = useState(!isMobile);
 
   // Extract unique values for filters
   const statuses = [...new Set(jobs.map(j => j.status).filter(Boolean))];
@@ -34,10 +38,10 @@ export const JobFilters: React.FC<JobFiltersProps> = ({ filters, setFilters, job
 
   // Filter skills based on search
   const filteredSkills = useMemo(() => {
-    if (!skillSearch) return allSkills.slice(0, 20);
+    if (!skillSearch) return allSkills.slice(0, 15);
     return allSkills.filter(skill => 
       skill.toLowerCase().includes(skillSearch.toLowerCase())
-    ).slice(0, 20);
+    ).slice(0, 15);
   }, [allSkills, skillSearch]);
 
   const toggleFilter = (key: 'status' | 'contractType' | 'remote' | 'sector' | 'priority' | 'seniority' | 'skills', value: string) => {
@@ -65,256 +69,263 @@ export const JobFilters: React.FC<JobFiltersProps> = ({ filters, setFilters, job
     setSkillSearch('');
   };
 
-  const hasActiveFilters = filters.search || 
-    filters.status.length > 0 || 
-    filters.contractType.length > 0 || 
-    filters.location || 
-    filters.remote.length > 0 ||
-    filters.sector.length > 0 ||
-    filters.priority.length > 0 ||
-    filters.seniority.length > 0 ||
-    filters.skills.length > 0;
+  const activeFilterCount = 
+    filters.status.length + 
+    filters.contractType.length + 
+    filters.remote.length +
+    filters.sector.length +
+    filters.priority.length +
+    filters.seniority.length +
+    filters.skills.length +
+    (filters.location ? 1 : 0);
+
+  const hasActiveFilters = filters.search || activeFilterCount > 0;
 
   return (
-    <div className="bg-white border border-black p-6 mb-6">
-      {/* Search */}
-      <div className="relative mb-6">
-        <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-[#1A1A1A]/40" />
+    <div className="mb-6">
+      {/* Search - Always visible */}
+      <div className="relative mb-3">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#1A1A1A]/40" />
         <input
           type="text"
           placeholder="Rechercher un poste, une entreprise..."
           value={filters.search}
           onChange={(e) => setFilters(prev => ({ ...prev, search: e.target.value }))}
-          className="w-full pl-12 pr-4 py-3 border border-[#1A1A1A]/20 focus:border-[#1A1A1A] focus:outline-none transition-colors"
+          className="w-full pl-10 pr-4 py-2.5 bg-white border border-[#1A1A1A]/10 focus:border-[#1A1A1A]/30 focus:outline-none transition-colors text-sm rounded-sm"
         />
       </div>
 
-      {/* Filter groups */}
-      <div className="space-y-4">
-        {/* Priority */}
-        {priorities.length > 0 && (
-          <div>
-            <label className="block text-[11px] font-medium uppercase tracking-wide text-[#1A1A1A]/60 mb-2">
-              Priorité
-            </label>
-            <div className="flex flex-wrap gap-2">
-              {priorities.map((priority, index) => (
-                <button
-                  key={`priority-${index}-${priority}`}
-                  onClick={() => toggleFilter('priority', priority)}
-                  className={`px-3 py-1.5 text-xs font-medium uppercase tracking-wide border transition-colors ${
-                    filters.priority.includes(priority)
-                      ? 'bg-[#1A1A1A] text-white border-[#1A1A1A]'
-                      : 'bg-white text-[#1A1A1A] border-[#1A1A1A]/20 hover:border-[#1A1A1A]'
-                  }`}
-                >
-                  {priority}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
+      <Collapsible open={isOpen} onOpenChange={setIsOpen}>
+        <div className="flex items-center justify-between">
+          <CollapsibleTrigger className="flex items-center gap-2 text-sm text-[#1A1A1A]/60 hover:text-[#1A1A1A] transition-colors py-2">
+            <Filter className="w-4 h-4" />
+            <span>Filtres avancés</span>
+            {activeFilterCount > 0 && (
+              <span className="px-1.5 py-0.5 text-[10px] bg-[#FA76FF] text-white rounded-full font-medium">
+                {activeFilterCount}
+              </span>
+            )}
+            <ChevronDown className={`w-4 h-4 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+          </CollapsibleTrigger>
 
-        {/* Skills Filter */}
-        {allSkills.length > 0 && (
-          <div>
-            <label className="block text-[11px] font-medium uppercase tracking-wide text-[#1A1A1A]/60 mb-2">
-              <Code className="w-3 h-3 inline mr-1" />
-              Compétences techniques
-            </label>
-            
-            {/* Selected skills */}
-            {filters.skills.length > 0 && (
-              <div className="flex flex-wrap gap-2 mb-3">
-                {filters.skills.map((skill, index) => (
-                  <button
-                    key={`selected-skill-${index}-${skill}`}
-                    onClick={() => toggleFilter('skills', skill)}
-                    className="px-3 py-1.5 text-xs font-medium tracking-wide border bg-[#FA76FF] text-white border-[#FA76FF] hover:bg-[#FA76FF]/90 transition-colors flex items-center gap-1"
-                  >
-                    {skill}
-                    <X className="w-3 h-3" />
-                  </button>
-                ))}
-              </div>
+          {hasActiveFilters && (
+            <button
+              onClick={clearFilters}
+              className="flex items-center gap-1.5 text-xs text-[#1A1A1A]/50 hover:text-[#1A1A1A] transition-colors"
+            >
+              <X className="w-3 h-3" />
+              Effacer
+            </button>
+          )}
+        </div>
+
+        <CollapsibleContent className="pt-3">
+          <div className="bg-white/50 border border-[#1A1A1A]/5 rounded-sm p-4 space-y-4">
+            {/* Skills Filter */}
+            {allSkills.length > 0 && (
+              <FilterSection 
+                label="Compétences" 
+                icon={<Code className="w-3 h-3" />}
+              >
+                {/* Selected skills */}
+                {filters.skills.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 mb-2">
+                    {filters.skills.map((skill, index) => (
+                      <FilterChip
+                        key={`selected-skill-${index}-${skill}`}
+                        label={skill}
+                        active
+                        onToggle={() => toggleFilter('skills', skill)}
+                        showRemove
+                        accent
+                      />
+                    ))}
+                  </div>
+                )}
+
+                {/* Skills search */}
+                <div className="relative mb-2">
+                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#1A1A1A]/30" />
+                  <input
+                    type="text"
+                    placeholder="Rechercher..."
+                    value={skillSearch}
+                    onChange={(e) => setSkillSearch(e.target.value)}
+                    className="w-full md:w-48 pl-8 pr-3 py-1.5 border border-[#1A1A1A]/10 focus:border-[#1A1A1A]/20 focus:outline-none transition-colors text-xs bg-white/80 rounded-sm"
+                  />
+                </div>
+
+                {/* Available skills */}
+                <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto">
+                  {filteredSkills
+                    .filter(skill => !filters.skills.includes(skill))
+                    .map((skill, index) => (
+                      <FilterChip
+                        key={`skill-${index}-${skill}`}
+                        label={skill}
+                        onToggle={() => toggleFilter('skills', skill)}
+                      />
+                    ))}
+                  {filteredSkills.length === 0 && skillSearch && (
+                    <span className="text-xs text-[#1A1A1A]/40 italic">Aucune compétence trouvée</span>
+                  )}
+                </div>
+              </FilterSection>
             )}
 
-            {/* Skills search */}
-            <div className="relative mb-2">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#1A1A1A]/40" />
-              <input
-                type="text"
-                placeholder="Rechercher une compétence..."
-                value={skillSearch}
-                onChange={(e) => setSkillSearch(e.target.value)}
-                className="w-full md:w-64 pl-9 pr-4 py-2 border border-[#1A1A1A]/20 focus:border-[#1A1A1A] focus:outline-none transition-colors text-sm bg-white"
-              />
-            </div>
+            {/* Two column layout for other filters */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Priority */}
+              {priorities.length > 0 && (
+                <FilterSection label="Priorité">
+                  <div className="flex flex-wrap gap-1.5">
+                    {priorities.map((priority, index) => (
+                      <FilterChip
+                        key={`priority-${index}-${priority}`}
+                        label={priority}
+                        active={filters.priority.includes(priority)}
+                        onToggle={() => toggleFilter('priority', priority)}
+                      />
+                    ))}
+                  </div>
+                </FilterSection>
+              )}
 
-            {/* Available skills */}
-            <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto">
-              {filteredSkills
-                .filter(skill => !filters.skills.includes(skill))
-                .map((skill, index) => (
-                  <button
-                    key={`skill-${index}-${skill}`}
-                    onClick={() => toggleFilter('skills', skill)}
-                    className="px-3 py-1.5 text-xs font-medium tracking-wide border bg-white text-[#1A1A1A] border-[#1A1A1A]/20 hover:border-[#FA76FF] hover:text-[#FA76FF] transition-colors"
-                  >
-                    {skill}
-                  </button>
-                ))}
-              {filteredSkills.length === 0 && skillSearch && (
-                <span className="text-sm text-[#1A1A1A]/40 italic">Aucune compétence trouvée</span>
+              {/* Seniority */}
+              {seniorities.length > 0 && (
+                <FilterSection label="Séniorité">
+                  <div className="flex flex-wrap gap-1.5">
+                    {seniorities.map((seniority, index) => (
+                      <FilterChip
+                        key={`seniority-${index}-${seniority}`}
+                        label={seniority}
+                        active={filters.seniority.includes(seniority)}
+                        onToggle={() => toggleFilter('seniority', seniority)}
+                      />
+                    ))}
+                  </div>
+                </FilterSection>
+              )}
+
+              {/* Sector */}
+              {sectors.length > 0 && (
+                <FilterSection label="Secteur">
+                  <div className="flex flex-wrap gap-1.5">
+                    {sectors.map((sector, index) => (
+                      <FilterChip
+                        key={`sector-${index}-${sector}`}
+                        label={sector}
+                        active={filters.sector.includes(sector)}
+                        onToggle={() => toggleFilter('sector', sector)}
+                      />
+                    ))}
+                  </div>
+                </FilterSection>
+              )}
+
+              {/* Contract Type */}
+              {contractTypes.length > 0 && (
+                <FilterSection label="Type de contrat">
+                  <div className="flex flex-wrap gap-1.5">
+                    {contractTypes.map((type, index) => (
+                      <FilterChip
+                        key={`contract-${index}-${type}`}
+                        label={type}
+                        active={filters.contractType.includes(type)}
+                        onToggle={() => toggleFilter('contractType', type)}
+                      />
+                    ))}
+                  </div>
+                </FilterSection>
+              )}
+
+              {/* Remote */}
+              {remoteOptions.length > 0 && (
+                <FilterSection label="Télétravail">
+                  <div className="flex flex-wrap gap-1.5">
+                    {remoteOptions.map((option, index) => (
+                      <FilterChip
+                        key={`remote-${index}-${option}`}
+                        label={option}
+                        active={filters.remote.includes(option)}
+                        onToggle={() => toggleFilter('remote', option)}
+                      />
+                    ))}
+                  </div>
+                </FilterSection>
+              )}
+
+              {/* Status */}
+              {statuses.length > 0 && (
+                <FilterSection label="Statut">
+                  <div className="flex flex-wrap gap-1.5">
+                    {statuses.map((status, index) => (
+                      <FilterChip
+                        key={`status-${index}-${status}`}
+                        label={status}
+                        active={filters.status.includes(status)}
+                        onToggle={() => toggleFilter('status', status)}
+                      />
+                    ))}
+                  </div>
+                </FilterSection>
               )}
             </div>
+
+            {/* Location */}
+            <FilterSection label="Localisation">
+              <input
+                type="text"
+                placeholder="Paris, Lyon, Remote..."
+                value={filters.location}
+                onChange={(e) => setFilters(prev => ({ ...prev, location: e.target.value }))}
+                className="w-full md:w-48 px-3 py-1.5 border border-[#1A1A1A]/10 focus:border-[#1A1A1A]/20 focus:outline-none transition-colors text-xs bg-white/80 rounded-sm"
+              />
+            </FilterSection>
           </div>
-        )}
-
-        {seniorities.length > 0 && (
-          <div>
-            <label className="block text-[11px] font-medium uppercase tracking-wide text-[#1A1A1A]/60 mb-2">
-              Séniorité
-            </label>
-            <div className="flex flex-wrap gap-2">
-              {seniorities.map((seniority, index) => (
-                <button
-                  key={`seniority-${index}-${seniority}`}
-                  onClick={() => toggleFilter('seniority', seniority)}
-                  className={`px-3 py-1.5 text-xs font-medium uppercase tracking-wide border transition-colors ${
-                    filters.seniority.includes(seniority)
-                      ? 'bg-[#1A1A1A] text-white border-[#1A1A1A]'
-                      : 'bg-white text-[#1A1A1A] border-[#1A1A1A]/20 hover:border-[#1A1A1A]'
-                  }`}
-                >
-                  {seniority}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Sector */}
-        {sectors.length > 0 && (
-          <div>
-            <label className="block text-[11px] font-medium uppercase tracking-wide text-[#1A1A1A]/60 mb-2">
-              Secteur d'activité
-            </label>
-            <div className="flex flex-wrap gap-2">
-              {sectors.map((sector, index) => (
-                <button
-                  key={`sector-${index}-${sector}`}
-                  onClick={() => toggleFilter('sector', sector)}
-                  className={`px-3 py-1.5 text-xs font-medium tracking-wide border transition-colors ${
-                    filters.sector.includes(sector)
-                      ? 'bg-[#1A1A1A] text-white border-[#1A1A1A]'
-                      : 'bg-white text-[#1A1A1A] border-[#1A1A1A]/20 hover:border-[#1A1A1A]'
-                  }`}
-                >
-                  {sector}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Status */}
-        {statuses.length > 0 && (
-          <div>
-            <label className="block text-[11px] font-medium uppercase tracking-wide text-[#1A1A1A]/60 mb-2">
-              Statut
-            </label>
-            <div className="flex flex-wrap gap-2">
-              {statuses.map((status, index) => (
-                <button
-                  key={`status-${index}-${status}`}
-                  onClick={() => toggleFilter('status', status)}
-                  className={`px-3 py-1.5 text-xs font-medium uppercase tracking-wide border transition-colors ${
-                    filters.status.includes(status)
-                      ? 'bg-[#1A1A1A] text-white border-[#1A1A1A]'
-                      : 'bg-white text-[#1A1A1A] border-[#1A1A1A]/20 hover:border-[#1A1A1A]'
-                  }`}
-                >
-                  {status}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Contract Type */}
-        {contractTypes.length > 0 && (
-          <div>
-            <label className="block text-[11px] font-medium uppercase tracking-wide text-[#1A1A1A]/60 mb-2">
-              Type de contrat
-            </label>
-            <div className="flex flex-wrap gap-2">
-              {contractTypes.map((type, index) => (
-                <button
-                  key={`contract-${index}-${type}`}
-                  onClick={() => toggleFilter('contractType', type)}
-                  className={`px-3 py-1.5 text-xs font-medium uppercase tracking-wide border transition-colors ${
-                    filters.contractType.includes(type)
-                      ? 'bg-[#1A1A1A] text-white border-[#1A1A1A]'
-                      : 'bg-white text-[#1A1A1A] border-[#1A1A1A]/20 hover:border-[#1A1A1A]'
-                  }`}
-                >
-                  {type}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Remote */}
-        {remoteOptions.length > 0 && (
-          <div>
-            <label className="block text-[11px] font-medium uppercase tracking-wide text-[#1A1A1A]/60 mb-2">
-              Télétravail
-            </label>
-            <div className="flex flex-wrap gap-2">
-              {remoteOptions.map((option, index) => (
-                <button
-                  key={`remote-${index}-${option}`}
-                  onClick={() => toggleFilter('remote', option)}
-                  className={`px-3 py-1.5 text-xs font-medium uppercase tracking-wide border transition-colors ${
-                    filters.remote.includes(option)
-                      ? 'bg-[#1A1A1A] text-white border-[#1A1A1A]'
-                      : 'bg-white text-[#1A1A1A] border-[#1A1A1A]/20 hover:border-[#1A1A1A]'
-                  }`}
-                >
-                  {option}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Location */}
-        <div>
-          <label className="block text-[11px] font-medium uppercase tracking-wide text-[#1A1A1A]/60 mb-2">
-            Localisation
-          </label>
-          <input
-            type="text"
-            placeholder="Paris, Lyon, Remote..."
-            value={filters.location}
-            onChange={(e) => setFilters(prev => ({ ...prev, location: e.target.value }))}
-            className="w-full md:w-64 px-4 py-2 border border-[#1A1A1A]/20 focus:border-[#1A1A1A] focus:outline-none transition-colors text-sm"
-          />
-        </div>
-      </div>
-
-      {/* Clear filters */}
-      {hasActiveFilters && (
-        <button
-          onClick={clearFilters}
-          className="mt-4 flex items-center gap-2 text-sm text-[#1A1A1A]/60 hover:text-[#1A1A1A] transition-colors"
-        >
-          <X className="w-4 h-4" />
-          Effacer les filtres
-        </button>
-      )}
+        </CollapsibleContent>
+      </Collapsible>
     </div>
   );
 };
+
+// Sub-components
+interface FilterSectionProps {
+  label: string;
+  icon?: React.ReactNode;
+  children: React.ReactNode;
+}
+
+const FilterSection: React.FC<FilterSectionProps> = ({ label, icon, children }) => (
+  <div>
+    <label className="flex items-center gap-1 text-[10px] font-medium uppercase tracking-wide text-[#1A1A1A]/50 mb-1.5">
+      {icon}
+      {label}
+    </label>
+    {children}
+  </div>
+);
+
+interface FilterChipProps {
+  label: string;
+  active?: boolean;
+  onToggle: () => void;
+  showRemove?: boolean;
+  accent?: boolean;
+}
+
+const FilterChip: React.FC<FilterChipProps> = ({ label, active, onToggle, showRemove, accent }) => (
+  <button
+    onClick={onToggle}
+    className={`px-2 py-1 text-[11px] font-medium tracking-wide border transition-all rounded-sm flex items-center gap-1 ${
+      active
+        ? accent
+          ? 'bg-[#FA76FF] text-white border-[#FA76FF] hover:bg-[#FA76FF]/90'
+          : 'bg-[#1A1A1A] text-white border-[#1A1A1A]'
+        : 'bg-white/80 text-[#1A1A1A]/70 border-[#1A1A1A]/10 hover:border-[#1A1A1A]/30 hover:text-[#1A1A1A]'
+    }`}
+  >
+    {label}
+    {showRemove && <X className="w-2.5 h-2.5" />}
+  </button>
+);
