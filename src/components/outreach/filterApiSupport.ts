@@ -36,7 +36,9 @@ export type FilterKey =
   | 'groups'
   | 'past_company'
   | 'past_job_title'
-  | 'advanced_keywords';
+  | 'advanced_keywords'
+  | 'activity'
+  | 'tags';
 
 // Filter support matrix based on Unipile API documentation
 export const FILTER_API_SUPPORT: Record<LinkedInApiType, Record<FilterKey, FilterSupport>> = {
@@ -69,6 +71,8 @@ export const FILTER_API_SUPPORT: Record<LinkedInApiType, Record<FilterKey, Filte
     past_company: { supported: true },
     past_job_title: { supported: false, tooltip: "Les titres passés ne sont pas filtrables en mode Classic" },
     advanced_keywords: { supported: true }, // first_name, last_name, title, company, school
+    activity: { supported: false, tooltip: "Les filtres d'activité ne sont disponibles qu'en mode Recruiter" },
+    tags: { supported: false, tooltip: "Les tags ne sont disponibles qu'en mode Recruiter" },
   },
   recruiter: {
     keywords: { supported: true },
@@ -99,6 +103,8 @@ export const FILTER_API_SUPPORT: Record<LinkedInApiType, Record<FilterKey, Filte
     past_company: { supported: true },
     past_job_title: { supported: true }, // With priority
     advanced_keywords: { supported: false, tooltip: "Utilisez les filtres de rôle et titre de poste en mode Recruiter" },
+    activity: { supported: true }, // Recruiter specific
+    tags: { supported: true }, // Recruiter specific
   },
   sales_navigator: {
     keywords: { supported: true },
@@ -129,6 +135,8 @@ export const FILTER_API_SUPPORT: Record<LinkedInApiType, Record<FilterKey, Filte
     past_company: { supported: true }, // With include/exclude
     past_job_title: { supported: true }, // With priority
     advanced_keywords: { supported: false, tooltip: "Utilisez les filtres de nom et titre en mode Sales Navigator" },
+    activity: { supported: false, tooltip: "Les filtres d'activité ne sont disponibles qu'en mode Recruiter" },
+    tags: { supported: false, tooltip: "Les tags ne sont disponibles qu'en mode Recruiter" },
   },
 };
 

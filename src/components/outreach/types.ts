@@ -46,6 +46,9 @@ export type SpotlightType =
   | 'OPEN_TO_WORK';
 
 // Full LinkedIn filters state
+// Activity filter types (Recruiter specific)
+export type ActivityType = 'with_message' | 'without_message' | 'with_note' | 'without_note';
+
 export interface LinkedInFiltersState {
   // Basic search
   keywords: string;
@@ -116,6 +119,11 @@ export interface LinkedInFiltersState {
   first_name: string;
   last_name: string;
   title_keywords: string;
+  
+  // Activity filters (Recruiter specific)
+  activity_messages: ActivityType | null;  // with_message, without_message
+  activity_notes: ActivityType | null;     // with_note, without_note
+  tags: string[];                          // Tag IDs
 }
 
 export const INITIAL_FILTERS: LinkedInFiltersState = {
@@ -155,7 +163,22 @@ export const INITIAL_FILTERS: LinkedInFiltersState = {
   first_name: '',
   last_name: '',
   title_keywords: '',
+  // Activity filters
+  activity_messages: null,
+  activity_notes: null,
+  tags: [],
 };
+
+// Activity filter options
+export const ACTIVITY_MESSAGE_OPTIONS = [
+  { value: 'with_message', label: 'Avec messages' },
+  { value: 'without_message', label: 'Sans messages' },
+];
+
+export const ACTIVITY_NOTE_OPTIONS = [
+  { value: 'with_note', label: 'Avec notes' },
+  { value: 'without_note', label: 'Sans notes' },
+];
 
 // LinkedIn profile from search results
 export interface LinkedInProfile {
