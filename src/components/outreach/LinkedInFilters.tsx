@@ -423,39 +423,57 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
               );
             })}
             <div className={`space-y-2 p-2 bg-gray-50 rounded-lg ${!isFilterSupported(filters.api, 'role') ? 'opacity-50 pointer-events-none' : ''}`}>
-              <Input
-                value={newRoleKeywords}
-                onChange={(e) => setNewRoleKeywords(e.target.value)}
-                placeholder="Ex: developer OR engineer AND NOT junior"
-                className="text-sm h-8"
-                disabled={!isFilterSupported(filters.api, 'role')}
-              />
-              <div className="grid grid-cols-2 gap-2">
-                <Select value={newRolePriority} onValueChange={(v) => setNewRolePriority(v as FilterPriority)} disabled={!isFilterSupported(filters.api, 'role')}>
-                  <SelectTrigger className="text-xs h-7">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {PRIORITY_OPTIONS.map((opt) => (
-                      <SelectItem key={opt.value} value={opt.value} className="text-xs">{opt.label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Select value={newRoleScope} onValueChange={(v) => setNewRoleScope(v as FilterScope)} disabled={!isFilterSupported(filters.api, 'role')}>
-                  <SelectTrigger className="text-xs h-7">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {SCOPE_OPTIONS.map((opt) => (
-                      <SelectItem key={opt.value} value={opt.value} className="text-xs">{opt.label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+              <div className="flex gap-2">
+                <Input
+                  value={newRoleKeywords}
+                  onChange={(e) => setNewRoleKeywords(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && newRoleKeywords.trim()) {
+                      e.preventDefault();
+                      handleAddRole();
+                    }
+                  }}
+                  onBlur={() => {
+                    if (newRoleKeywords.trim()) {
+                      handleAddRole();
+                    }
+                  }}
+                  placeholder="Tapez un rôle et appuyez Entrée..."
+                  className="text-sm h-8 flex-1"
+                  disabled={!isFilterSupported(filters.api, 'role')}
+                />
               </div>
-              <Button size="sm" variant="outline" onClick={handleAddRole} disabled={!newRoleKeywords.trim() || !isFilterSupported(filters.api, 'role')} className="w-full h-7 text-xs">
-                <Plus className="w-3 h-3 mr-1" />
-                Ajouter le rôle
-              </Button>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1">
+                  <Label className="text-[10px] text-muted-foreground">Priorité</Label>
+                  <Select value={newRolePriority} onValueChange={(v) => setNewRolePriority(v as FilterPriority)} disabled={!isFilterSupported(filters.api, 'role')}>
+                    <SelectTrigger className="text-xs h-7">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {PRIORITY_OPTIONS.map((opt) => (
+                        <SelectItem key={opt.value} value={opt.value} className="text-xs">{opt.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-[10px] text-muted-foreground">Scope</Label>
+                  <Select value={newRoleScope} onValueChange={(v) => setNewRoleScope(v as FilterScope)} disabled={!isFilterSupported(filters.api, 'role')}>
+                    <SelectTrigger className="text-xs h-7">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {SCOPE_OPTIONS.map((opt) => (
+                        <SelectItem key={opt.value} value={opt.value} className="text-xs">{opt.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <p className="text-[10px] text-muted-foreground text-center">
+                Appuyez sur Entrée ou sortez du champ pour ajouter
+              </p>
             </div>
           </FilterGroup>
 
