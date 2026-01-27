@@ -59,6 +59,7 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
   const [parameterOptions, setParameterOptions] = useState<Record<string, ParameterOption[]>>({});
   const [searchInputs, setSearchInputs] = useState<Record<string, string>>({});
   const debounceRef = useRef<Record<string, NodeJS.Timeout>>({});
+  const abortControllerRef = useRef<Record<string, AbortController>>({});
 
   const toggleSection = (section: string) => {
     setExpandedSections((prev) =>
@@ -86,6 +87,12 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
         return;
       }
 
+      // Cancel any existing request for this key
+      if (abortControllerRef.current[key]) {
+        abortControllerRef.current[key].abort();
+      }
+      abortControllerRef.current[key] = new AbortController();
+
       setLoadingParams(key);
       try {
         const paramType = getParameterType(key);
@@ -100,6 +107,11 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
           },
         });
 
+        // Check if request was aborted
+        if (abortControllerRef.current[key]?.signal.aborted) {
+          return;
+        }
+
         if (response.error) throw response.error;
         if (!response.data?.success) {
           console.warn('Parameters fetch failed:', response.data?.error);
@@ -112,6 +124,10 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
           [key]: response.data.items || [],
         }));
       } catch (error) {
+        // Ignore abort errors
+        if (error instanceof Error && error.name === 'AbortError') {
+          return;
+        }
         console.error('Error fetching parameters:', error);
         setParameterOptions((prev) => ({ ...prev, [key]: [] }));
       } finally {
@@ -129,11 +145,16 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
       clearTimeout(debounceRef.current[key]);
     }
 
-    // Debounced search
+    // Cancel any in-flight request
+    if (abortControllerRef.current[key]) {
+      abortControllerRef.current[key].abort();
+    }
+
+    // Debounced search - increased to 600ms to reduce API calls
     if (value.length >= 2) {
       debounceRef.current[key] = setTimeout(() => {
         fetchParameters(key, value);
-      }, 300);
+      }, 600);
     } else {
       setParameterOptions((prev) => ({ ...prev, [key]: [] }));
     }
