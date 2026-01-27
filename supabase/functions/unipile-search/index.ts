@@ -206,13 +206,14 @@ async function handleSearch(
     }
   }
 
-  // School - array format for all APIs (Recruiter may not support school filter directly)
+  // School - only supported by Classic and Sales Navigator APIs (not Recruiter)
   if (school?.length) {
-    // For now, only send school filter for classic API since Recruiter doesn't support it
     if (api === 'classic') {
       searchBody.school = school;
+    } else if (api === 'sales_navigator') {
+      searchBody.school = { include: school };
     }
-    // Note: For Recruiter, school filtering might need to be done via keywords or not supported
+    // Note: Recruiter API doesn't support school filter via Unipile
   }
 
   // Job title - different handling per API
