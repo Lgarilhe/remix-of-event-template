@@ -7,7 +7,8 @@ import {
   RoleFilter,
   FilterPriority,
   FilterScope,
-  ActivityType,
+  ActivityMessageType,
+  ActivityNoteType,
   SENIORITY_LEVELS,
   NETWORK_DISTANCES,
   PRIORITY_OPTIONS,
@@ -22,6 +23,7 @@ import {
   DEGREE_OPTIONS,
   ACTIVITY_MESSAGE_OPTIONS,
   ACTIVITY_NOTE_OPTIONS,
+  ACTIVITY_DAYS_OPTIONS,
 } from './types';
 import {
   FilterSection,
@@ -322,8 +324,16 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
     ...(filters.spotlight ? [SPOTLIGHT_OPTIONS.find(s => s.value === filters.spotlight)?.label || 'Spotlight'] : []),
     ...(filters.hiring_project ? ['Hiring Project'] : []),
     ...(filters.talent_pool ? ['Talent Pool'] : []),
-    ...(filters.activity_messages ? [ACTIVITY_MESSAGE_OPTIONS.find(a => a.value === filters.activity_messages)?.label || filters.activity_messages] : []),
-    ...(filters.activity_notes ? [ACTIVITY_NOTE_OPTIONS.find(a => a.value === filters.activity_notes)?.label || filters.activity_notes] : []),
+    ...(filters.activity_messages ? [
+      `${ACTIVITY_MESSAGE_OPTIONS.find(a => a.value === filters.activity_messages)?.label || filters.activity_messages}${
+        filters.activity_messages_days ? ` (${filters.activity_messages_days}j)` : ''
+      }`
+    ] : []),
+    ...(filters.activity_notes ? [
+      `${ACTIVITY_NOTE_OPTIONS.find(a => a.value === filters.activity_notes)?.label || filters.activity_notes}${
+        filters.activity_notes_days ? ` (${filters.activity_notes_days}j)` : ''
+      }`
+    ] : []),
     ...filters.tags,
   ];
 
@@ -1079,23 +1089,50 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
             unsupported={!isFilterSupported(filters.api, 'activity')}
             unsupportedTooltip={getFilterTooltip(filters.api, 'activity')}
           >
-            <Select 
-              value={filters.activity_messages || '_none'} 
-              onValueChange={(v) => onChange({ ...filters, activity_messages: v === '_none' ? null : v as ActivityType })}
-              disabled={!isFilterSupported(filters.api, 'activity')}
-            >
-              <SelectTrigger className={`text-sm h-9 ${!isFilterSupported(filters.api, 'activity') ? 'opacity-50' : ''}`}>
-                <SelectValue placeholder="Tous les profils" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="_none" className="text-xs">Tous les profils</SelectItem>
-                {ACTIVITY_MESSAGE_OPTIONS.map((opt) => (
-                  <SelectItem key={opt.value} value={opt.value} className="text-xs">
-                    {opt.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <div className="space-y-2">
+              <Select 
+                value={filters.activity_messages || '_none'} 
+                onValueChange={(v) => onChange({ 
+                  ...filters, 
+                  activity_messages: v === '_none' ? null : v as ActivityMessageType,
+                  activity_messages_days: v === '_none' ? null : filters.activity_messages_days
+                })}
+                disabled={!isFilterSupported(filters.api, 'activity')}
+              >
+                <SelectTrigger className={`text-sm h-9 ${!isFilterSupported(filters.api, 'activity') ? 'opacity-50' : ''}`}>
+                  <SelectValue placeholder="Tous les profils" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="_none" className="text-xs">Tous les profils</SelectItem>
+                  {ACTIVITY_MESSAGE_OPTIONS.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value} className="text-xs">
+                      {opt.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {filters.activity_messages && (
+                <Select 
+                  value={filters.activity_messages_days?.toString() || '_all'} 
+                  onValueChange={(v) => onChange({ 
+                    ...filters, 
+                    activity_messages_days: v === '_all' ? null : parseInt(v)
+                  })}
+                  disabled={!isFilterSupported(filters.api, 'activity')}
+                >
+                  <SelectTrigger className="text-sm h-8 bg-purple-50 border-purple-200">
+                    <SelectValue placeholder="Période..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {ACTIVITY_DAYS_OPTIONS.map((opt) => (
+                      <SelectItem key={opt.value?.toString() || '_all'} value={opt.value?.toString() || '_all'} className="text-xs">
+                        {opt.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            </div>
           </FilterGroup>
 
           {/* Activity: Notes */}
@@ -1105,23 +1142,50 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
             unsupported={!isFilterSupported(filters.api, 'activity')}
             unsupportedTooltip={getFilterTooltip(filters.api, 'activity')}
           >
-            <Select 
-              value={filters.activity_notes || '_none'} 
-              onValueChange={(v) => onChange({ ...filters, activity_notes: v === '_none' ? null : v as ActivityType })}
-              disabled={!isFilterSupported(filters.api, 'activity')}
-            >
-              <SelectTrigger className={`text-sm h-9 ${!isFilterSupported(filters.api, 'activity') ? 'opacity-50' : ''}`}>
-                <SelectValue placeholder="Tous les profils" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="_none" className="text-xs">Tous les profils</SelectItem>
-                {ACTIVITY_NOTE_OPTIONS.map((opt) => (
-                  <SelectItem key={opt.value} value={opt.value} className="text-xs">
-                    {opt.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <div className="space-y-2">
+              <Select 
+                value={filters.activity_notes || '_none'} 
+                onValueChange={(v) => onChange({ 
+                  ...filters, 
+                  activity_notes: v === '_none' ? null : v as ActivityNoteType,
+                  activity_notes_days: v === '_none' ? null : filters.activity_notes_days
+                })}
+                disabled={!isFilterSupported(filters.api, 'activity')}
+              >
+                <SelectTrigger className={`text-sm h-9 ${!isFilterSupported(filters.api, 'activity') ? 'opacity-50' : ''}`}>
+                  <SelectValue placeholder="Tous les profils" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="_none" className="text-xs">Tous les profils</SelectItem>
+                  {ACTIVITY_NOTE_OPTIONS.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value} className="text-xs">
+                      {opt.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {filters.activity_notes && (
+                <Select 
+                  value={filters.activity_notes_days?.toString() || '_all'} 
+                  onValueChange={(v) => onChange({ 
+                    ...filters, 
+                    activity_notes_days: v === '_all' ? null : parseInt(v)
+                  })}
+                  disabled={!isFilterSupported(filters.api, 'activity')}
+                >
+                  <SelectTrigger className="text-sm h-8 bg-purple-50 border-purple-200">
+                    <SelectValue placeholder="Période..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {ACTIVITY_DAYS_OPTIONS.map((opt) => (
+                      <SelectItem key={opt.value?.toString() || '_all'} value={opt.value?.toString() || '_all'} className="text-xs">
+                        {opt.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            </div>
           </FilterGroup>
 
           {/* Tags */}

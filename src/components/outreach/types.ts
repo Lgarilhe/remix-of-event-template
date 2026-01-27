@@ -47,6 +47,10 @@ export type SpotlightType =
 
 // Full LinkedIn filters state
 // Activity filter types (Recruiter specific)
+export type ActivityMessageType = 'with_message' | 'without_message' | null;
+export type ActivityNoteType = 'with_note' | 'without_note' | null;
+
+// Backward compatibility
 export type ActivityType = 'with_message' | 'without_message' | 'with_note' | 'without_note';
 
 export interface LinkedInFiltersState {
@@ -121,8 +125,10 @@ export interface LinkedInFiltersState {
   title_keywords: string;
   
   // Activity filters (Recruiter specific)
-  activity_messages: ActivityType | null;  // with_message, without_message
-  activity_notes: ActivityType | null;     // with_note, without_note
+  activity_messages: ActivityMessageType;  // with_message, without_message
+  activity_messages_days: number | null;   // Since X days (null = all time)
+  activity_notes: ActivityNoteType;        // with_note, without_note
+  activity_notes_days: number | null;      // Since X days (null = all time)
   tags: string[];                          // Tag IDs
 }
 
@@ -165,9 +171,23 @@ export const INITIAL_FILTERS: LinkedInFiltersState = {
   title_keywords: '',
   // Activity filters
   activity_messages: null,
+  activity_messages_days: null,
   activity_notes: null,
+  activity_notes_days: null,
   tags: [],
 };
+
+// Predefined day ranges for activity filters
+export const ACTIVITY_DAYS_OPTIONS = [
+  { value: null, label: 'Tout le temps' },
+  { value: 7, label: '7 derniers jours' },
+  { value: 14, label: '14 derniers jours' },
+  { value: 30, label: '30 derniers jours' },
+  { value: 60, label: '60 derniers jours' },
+  { value: 90, label: '90 derniers jours' },
+  { value: 180, label: '6 derniers mois' },
+  { value: 365, label: '12 derniers mois' },
+];
 
 // Activity filter options
 export const ACTIVITY_MESSAGE_OPTIONS = [
