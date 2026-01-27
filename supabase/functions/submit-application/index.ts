@@ -7,9 +7,10 @@ const corsHeaders = {
 
 const NOTION_API_KEY = Deno.env.get("NOTION_API_KEY");
 const CANDIDATS_DATABASE_ID = "2787e1816fb4812b8ebddfcb3ab95510";
+const SHORTLIST_DATABASE_ID = "2787e1816fb4814a8219000bb7cb9e81";
 
 interface ApplicationData {
-  jobId: string;
+  jobId: string; // Notion page ID of the job
   jobTitle: string;
   clientName: string;
   name: string;
@@ -18,6 +19,29 @@ interface ApplicationData {
   linkedin: string;
   message: string;
   cvUrl: string;
+}
+
+async function createNotionPage(databaseId: string, properties: Record<string, unknown>) {
+  const response = await fetch('https://api.notion.com/v1/pages', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${NOTION_API_KEY}`,
+      'Notion-Version': '2022-06-28',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      parent: { database_id: databaseId },
+      properties,
+    }),
+  });
+
+  if (!response.ok) {
+    const error = await response.text();
+    console.error('Notion API error:', error);
+    throw new Error(`Failed to create Notion page: ${error}`);
+  }
+
+  return response.json();
 }
 
 serve(async (req) => {
@@ -37,60 +61,75 @@ serve(async (req) => {
       throw new Error('Name and email are required');
     }
 
-    // Create a page in the Candidats database
-    const response = await fetch('https://api.notion.com/v1/pages', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${NOTION_API_KEY}`,
-        'Notion-Version': '2022-06-28',
-        'Content-Type': 'application/json',
+    // Step 1: Create the candidate in Candidats database (without job relation first)
+    const candidatProperties: Record<string, unknown> = {
+      'Nom': {
+        title: [{ text: { content: data.name } }]
       },
-      body: JSON.stringify({
-        parent: { database_id: CANDIDATS_DATABASE_ID },
-        properties: {
-          // Title property - candidate name
-          'Nom': {
-            title: [
-              {
-                text: {
-                  content: data.name
-                }
-              }
-            ]
-          },
-          // Email
-          'E-mail': {
-            email: data.email
-          },
-          // Phone
-          'Téléphone': {
-            phone_number: data.phone || null
-          },
-          // LinkedIn URL
-          'URL Linkedin': {
-            url: data.linkedin || null
-          },
-          // CV URL (using Lien source)
-          'Lien source': {
-            url: data.cvUrl || null
-          }
-        }
-      }),
-    });
+      'E-mail': {
+        email: data.email
+      },
+    };
 
-    if (!response.ok) {
-      const error = await response.text();
-      console.error('Notion API error:', error);
-      throw new Error(`Failed to submit application: ${error}`);
+    // Add optional fields
+    if (data.phone) {
+      candidatProperties['Téléphone'] = { phone_number: data.phone };
+    }
+    if (data.linkedin) {
+      candidatProperties['URL Linkedin'] = { url: data.linkedin };
+    }
+    if (data.cvUrl) {
+      candidatProperties['Lien source'] = { url: data.cvUrl };
     }
 
-    const result = await response.json();
+    // Add relation to the job position if jobId looks valid
+    if (data.jobId) {
+      candidatProperties['💼 Postes'] = {
+        relation: [{ id: data.jobId }]
+      };
+    }
+
+    console.log('Creating candidate with properties:', JSON.stringify(candidatProperties));
+    const candidatResult = await createNotionPage(CANDIDATS_DATABASE_ID, candidatProperties);
+    console.log('Candidate created:', candidatResult.id);
+
+    // Step 2: Create a Shortlist entry linking candidate and job
+    const shortlistProperties: Record<string, unknown> = {
+      // Title - use candidate name + job title
+      'Nom candidat (shortlist)': {
+        title: [{ text: { content: `${data.name} - ${data.jobTitle}` } }]
+      },
+      // Relation to candidate
+      'Candidats': {
+        relation: [{ id: candidatResult.id }]
+      },
+      // Status - new application
+      'Statut': {
+        status: { name: 'CV à envoyer' }
+      },
+      // Entity - default to Konekt
+      'Entité': {
+        select: { name: 'Konekt' }
+      }
+    };
+
+    // Add relation to job position
+    if (data.jobId) {
+      shortlistProperties['💼 Poste'] = {
+        relation: [{ id: data.jobId }]
+      };
+    }
+
+    console.log('Creating shortlist with properties:', JSON.stringify(shortlistProperties));
+    const shortlistResult = await createNotionPage(SHORTLIST_DATABASE_ID, shortlistProperties);
+    console.log('Shortlist created:', shortlistResult.id);
 
     return new Response(
       JSON.stringify({ 
         success: true, 
         message: 'Application submitted successfully',
-        pageId: result.id
+        candidateId: candidatResult.id,
+        shortlistId: shortlistResult.id
       }),
       { 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
