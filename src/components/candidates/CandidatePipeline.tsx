@@ -1,7 +1,24 @@
 import React from 'react';
+import {
+  DndContext,
+  DragEndEvent,
+  DragOverlay,
+  DragStartEvent,
+  closestCorners,
+  PointerSensor,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core';
+import {
+  SortableContext,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
 import { ShortlistEntry } from '@/pages/Candidates';
-import { CandidateCard } from './CandidateCard';
+import { DraggableCandidateCard } from './DraggableCandidateCard';
+import { DroppableColumn } from './DroppableColumn';
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
+import { supabase } from '@/integrations/supabase/client';
+import { toast } from 'sonner';
 
 interface PipelineStage {
   key: string;
@@ -12,41 +29,113 @@ interface PipelineStage {
 interface CandidatePipelineProps {
   data: Record<string, ShortlistEntry[]>;
   stages: PipelineStage[];
+  onStageChange?: (entryId: string, newStage: string) => void;
 }
 
-export const CandidatePipeline: React.FC<CandidatePipelineProps> = ({ data, stages }) => {
-  return (
-    <ScrollArea className="w-full">
-      <div className="flex gap-4 pb-4 min-w-max">
-        {stages.map(stage => (
-          <div
-            key={stage.key}
-            className={`w-[300px] flex-shrink-0 rounded-lg border-2 ${stage.color} p-3`}
-          >
-            {/* Stage header */}
-            <div className="flex items-center justify-between mb-3 px-1">
-              <h3 className="font-semibold text-[#1A1A1A]">{stage.label}</h3>
-              <span className="text-sm text-[#1A1A1A]/60 bg-white px-2 py-0.5 rounded-full border">
-                {data[stage.key]?.length || 0}
-              </span>
-            </div>
+export const CandidatePipeline: React.FC<CandidatePipelineProps> = ({ data, stages, onStageChange }) => {
+  const [activeEntry, setActiveEntry] = React.useState<ShortlistEntry | null>(null);
 
-            {/* Cards */}
-            <div className="space-y-2">
-              {data[stage.key]?.length === 0 ? (
-                <div className="text-center py-8 text-[#1A1A1A]/40 text-sm">
-                  Aucun candidat
-                </div>
-              ) : (
-                data[stage.key]?.map(entry => (
-                  <CandidateCard key={entry.id} entry={entry} compact />
-                ))
-              )}
-            </div>
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8,
+      },
+    })
+  );
+
+  const findEntryById = (id: string): ShortlistEntry | null => {
+    for (const stage of stages) {
+      const entry = data[stage.key]?.find(e => e.id === id);
+      if (entry) return entry;
+    }
+    return null;
+  };
+
+  const findStageByEntryId = (id: string): string | null => {
+    for (const stage of stages) {
+      const entry = data[stage.key]?.find(e => e.id === id);
+      if (entry) return stage.key;
+    }
+    return null;
+  };
+
+  const handleDragStart = (event: DragStartEvent) => {
+    const { active } = event;
+    const entry = findEntryById(active.id as string);
+    setActiveEntry(entry);
+  };
+
+  const handleDragEnd = async (event: DragEndEvent) => {
+    const { active, over } = event;
+    setActiveEntry(null);
+
+    if (!over) return;
+
+    const activeId = active.id as string;
+    const overId = over.id as string;
+
+    // Check if dropped on a column
+    const targetStage = stages.find(s => s.key === overId);
+    const currentStage = findStageByEntryId(activeId);
+
+    if (targetStage && currentStage !== targetStage.key) {
+      // Move to new stage
+      try {
+        // Optimistic update
+        onStageChange?.(activeId, targetStage.key);
+
+        // Update in Notion
+        const response = await supabase.functions.invoke('update-candidate-stage', {
+          body: {
+            shortlistId: activeId,
+            newStage: targetStage.key,
+          },
+        });
+
+        if (response.error || !response.data?.success) {
+          throw new Error(response.data?.error || 'Failed to update stage');
+        }
+
+        toast.success(`Candidat déplacé vers "${targetStage.label}"`);
+      } catch (error) {
+        console.error('Error updating stage:', error);
+        toast.error('Erreur lors de la mise à jour');
+        // Revert optimistic update
+        if (currentStage) {
+          onStageChange?.(activeId, currentStage);
+        }
+      }
+    }
+  };
+
+  return (
+    <DndContext
+      sensors={sensors}
+      collisionDetection={closestCorners}
+      onDragStart={handleDragStart}
+      onDragEnd={handleDragEnd}
+    >
+      <ScrollArea className="w-full">
+        <div className="flex gap-4 pb-4 min-w-max">
+          {stages.map(stage => (
+            <DroppableColumn
+              key={stage.key}
+              id={stage.key}
+              stage={stage}
+              entries={data[stage.key] || []}
+            />
+          ))}
+        </div>
+        <ScrollBar orientation="horizontal" />
+      </ScrollArea>
+
+      <DragOverlay>
+        {activeEntry ? (
+          <div className="w-[280px] opacity-95">
+            <DraggableCandidateCard entry={activeEntry} />
           </div>
-        ))}
-      </div>
-      <ScrollBar orientation="horizontal" />
-    </ScrollArea>
+        ) : null}
+      </DragOverlay>
+    </DndContext>
   );
 };
