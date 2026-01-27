@@ -424,7 +424,7 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
     (filters.open_to_work === true ? 1 : 0) + filters.open_to.length;
 
   return (
-    <ScrollArea className="h-[calc(100vh-220px)] bg-white rounded-xl border border-[#1A1A1A]/10">
+    <div className="h-[calc(100vh-220px)] bg-white rounded-xl border border-[#1A1A1A]/10 overflow-y-auto">
       <div>
         {/* ===== BASIC / GEOGRAPHIC FILTERS ===== */}
         <FilterSection 
@@ -932,6 +932,6 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
           </FilterGroup>
         </FilterSection>
       </div>
-    </ScrollArea>
+    </div>
   );
 };
