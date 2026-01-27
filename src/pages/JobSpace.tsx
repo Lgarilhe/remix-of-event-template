@@ -6,8 +6,9 @@ import { Navbar } from '@/components/Navbar';
 import { JobList } from '@/components/jobs/JobList';
 import { JobFilters } from '@/components/jobs/JobFilters';
 import { SEOHead } from '@/components/SEOHead';
-import { Loader2, ChevronLeft, ChevronRight, ArrowUpDown } from 'lucide-react';
+import { Loader2, ChevronLeft, ChevronRight, ArrowUpDown, Heart } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { useFavoriteJobs } from '@/hooks/useFavoriteJobs';
 import {
   Select,
   SelectContent,
@@ -81,10 +82,11 @@ interface PaginationInfo {
   hasMore: boolean;
 }
 
-type SortOption = 'priority' | 'salary_desc' | 'salary_asc' | 'date_desc' | 'date_asc';
+type SortOption = 'priority' | 'salary_desc' | 'salary_asc' | 'date_desc' | 'date_asc' | 'favorites';
 
 const SORT_OPTIONS: { value: SortOption; label: string }[] = [
   { value: 'priority', label: 'Priorité' },
+  { value: 'favorites', label: 'Favoris' },
   { value: 'salary_desc', label: 'Salaire (décroissant)' },
   { value: 'salary_asc', label: 'Salaire (croissant)' },
   { value: 'date_desc', label: 'Plus récent' },
@@ -118,6 +120,7 @@ const JobSpace = () => {
     skills: [],
   });
   const navigate = useNavigate();
+  const { favorites, toggleFavorite, isFavorite, favoritesCount } = useFavoriteJobs(user?.id);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -240,6 +243,11 @@ const JobSpace = () => {
   const sortJobs = useCallback((jobList: Job[]) => {
     return [...jobList].sort((a, b) => {
       switch (sortBy) {
+        case 'favorites': {
+          const aFav = favorites.has(a.id) ? 0 : 1;
+          const bFav = favorites.has(b.id) ? 0 : 1;
+          return aFav - bFav;
+        }
         case 'priority': {
           const priorityOrder: Record<string, number> = { 
             'haute': 0, 'high': 0, 
@@ -274,7 +282,7 @@ const JobSpace = () => {
           return 0;
       }
     });
-  }, [sortBy]);
+  }, [sortBy, favorites]);
 
   // Apply filters, sorting, and pagination
   const filteredJobs = useMemo(() => filterJobs(allJobs), [filterJobs, allJobs]);
@@ -326,9 +334,15 @@ const JobSpace = () => {
           {/* Filters */}
           <JobFilters filters={filters} setFilters={setFilters} jobs={allJobs} />
 
-          {/* Sort selector */}
-          <div className="flex items-center justify-end mb-4">
-            <div className="flex items-center gap-2">
+          {/* Sort selector and favorites count */}
+          <div className="flex items-center justify-between mb-4">
+            {favoritesCount > 0 && (
+              <div className="flex items-center gap-1.5 text-sm text-[#1A1A1A]/60">
+                <Heart className="w-4 h-4 text-red-400 fill-red-400" />
+                <span>{favoritesCount} favori{favoritesCount > 1 ? 's' : ''}</span>
+              </div>
+            )}
+            <div className={`flex items-center gap-2 ${favoritesCount === 0 ? 'ml-auto' : ''}`}>
               <ArrowUpDown className="w-4 h-4 text-[#1A1A1A]/40" />
               <Select value={sortBy} onValueChange={(v) => setSortBy(v as SortOption)}>
                 <SelectTrigger className="w-[160px] h-8 text-xs border-[#1A1A1A]/10 bg-white">
@@ -360,7 +374,11 @@ const JobSpace = () => {
             </div>
           ) : (
             <>
-              <JobList jobs={paginatedJobs} />
+              <JobList 
+                jobs={paginatedJobs} 
+                onToggleFavorite={toggleFavorite}
+                isFavorite={isFavorite}
+              />
               
               {/* Pagination */}
               {totalPages > 1 && (

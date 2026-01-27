@@ -1,14 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import { Job } from '@/pages/JobSpace';
-import { MapPin, Building2, Briefcase, Euro, ChevronDown, ChevronUp, ExternalLink, Send, Users, FileText, MessageSquare, Gift } from 'lucide-react';
+import { MapPin, Building2, Briefcase, Euro, ChevronDown, ChevronUp, ExternalLink, Send, Users, FileText, MessageSquare, Gift, Heart } from 'lucide-react';
 import { ApplicationModal } from './ApplicationModal';
 import { getSkillStyles } from '@/utils/skillCategories';
 
 interface JobCardProps {
   job: Job;
+  isFavorite?: boolean;
+  onToggleFavorite?: () => void;
 }
 
-export const JobCard: React.FC<JobCardProps> = ({ job }) => {
+export const JobCard: React.FC<JobCardProps> = ({ job, isFavorite = false, onToggleFavorite }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const [isApplicationOpen, setIsApplicationOpen] = useState(false);
   const [isAnimated, setIsAnimated] = useState(false);
@@ -128,7 +130,23 @@ export const JobCard: React.FC<JobCardProps> = ({ job }) => {
           </div>
 
           {/* Right side */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
+            {onToggleFavorite && (
+              <button 
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onToggleFavorite();
+                }}
+                className={`p-2 transition-colors ${
+                  isFavorite 
+                    ? 'text-red-500 hover:text-red-600' 
+                    : 'text-[#1A1A1A]/30 hover:text-red-400'
+                }`}
+                aria-label={isFavorite ? 'Retirer des favoris' : 'Ajouter aux favoris'}
+              >
+                <Heart className={`w-5 h-5 ${isFavorite ? 'fill-current' : ''}`} />
+              </button>
+            )}
             {job.status && (
               <span className={`px-3 py-1 text-xs font-medium uppercase tracking-wide border ${getStatusColor(job.status)}`}>
                 {job.status}
