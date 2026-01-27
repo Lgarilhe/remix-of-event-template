@@ -8,6 +8,8 @@ import {
   LinkedInProfile,
   INITIAL_FILTERS,
   SENIORITY_LEVELS,
+  API_TYPE_OPTIONS,
+  LinkedInApiType,
 } from './types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -213,22 +215,52 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
         )}
 
         {/* Account selector */}
-        <div className="bg-white rounded-lg border border-[#1A1A1A]/10 p-4">
-          <label className="text-sm font-medium text-[#1A1A1A] mb-2 block">
-            Compte LinkedIn
-          </label>
-          <Select value={selectedAccount || ''} onValueChange={onAccountChange}>
-            <SelectTrigger>
-              <SelectValue placeholder="Sélectionner un compte" />
-            </SelectTrigger>
-            <SelectContent>
-              {accounts.map((account) => (
-                <SelectItem key={account.id} value={account.id}>
-                  {account.name || account.identifier}
-                </SelectItem>
+        <div className="bg-white rounded-lg border border-[#1A1A1A]/10 p-4 space-y-4">
+          <div>
+            <label className="text-sm font-medium text-[#1A1A1A] mb-2 block">
+              Compte LinkedIn
+            </label>
+            <Select value={selectedAccount || ''} onValueChange={onAccountChange}>
+              <SelectTrigger>
+                <SelectValue placeholder="Sélectionner un compte" />
+              </SelectTrigger>
+              <SelectContent>
+                {accounts.map((account) => (
+                  <SelectItem key={account.id} value={account.id}>
+                    {account.name || account.identifier}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* API Type selector */}
+          <div>
+            <label className="text-sm font-medium text-[#1A1A1A] mb-2 block">
+              Mode de recherche
+            </label>
+            <div className="grid grid-cols-3 gap-1 p-1 bg-gray-100 rounded-lg">
+              {API_TYPE_OPTIONS.map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  onClick={() => setFilters(f => ({ ...f, api: option.value as LinkedInApiType }))}
+                  className={`px-2 py-1.5 text-xs font-medium rounded-md transition-all ${
+                    filters.api === option.value
+                      ? 'bg-white text-[#0077B5] shadow-sm'
+                      : 'text-[#1A1A1A]/60 hover:text-[#1A1A1A] hover:bg-white/50'
+                  }`}
+                >
+                  {option.label}
+                </button>
               ))}
-            </SelectContent>
-          </Select>
+            </div>
+            <p className="text-[10px] text-[#1A1A1A]/50 mt-1.5">
+              {filters.api === 'recruiter' && 'Accès aux filtres avancés de recrutement'}
+              {filters.api === 'sales_navigator' && 'Filtres orientés vente et prospection'}
+              {filters.api === 'classic' && 'Recherche LinkedIn standard'}
+            </p>
+          </div>
         </div>
 
         {/* Search input */}
