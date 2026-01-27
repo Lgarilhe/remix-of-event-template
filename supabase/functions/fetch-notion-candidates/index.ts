@@ -179,7 +179,10 @@ serve(async (req) => {
       // Fetch shortlist (candidatures with pipeline)
       const data = await queryNotionDatabase(SHORTLIST_DATABASE_ID);
       
-      // Get candidate details for each shortlist entry
+      // Cache for positions to avoid duplicate fetches
+      const positionCache: Record<string, string> = {};
+      
+      // Get candidate and position details for each shortlist entry
       const shortlistWithCandidates = await Promise.all(
         data.results.map(async (page: { id: string; properties: Record<string, NotionProperty> }) => {
           const props = page.properties;
@@ -204,6 +207,24 @@ serve(async (req) => {
             }
           }
 
+          // Fetch position names
+          const positions: { id: string; name: string }[] = [];
+          for (const posId of positionIds) {
+            if (positionCache[posId]) {
+              positions.push({ id: posId, name: positionCache[posId] });
+            } else {
+              const positionPage = await getNotionPage(posId);
+              if (positionPage) {
+                const posName = extractText(positionPage.properties['Intitulé du poste']) || 
+                               extractText(positionPage.properties['Name']) ||
+                               extractText(positionPage.properties['Nom']) ||
+                               'Poste sans nom';
+                positionCache[posId] = posName;
+                positions.push({ id: posId, name: posName });
+              }
+            }
+          }
+
           return {
             id: page.id,
             name: extractText(props['Nom']),
@@ -219,6 +240,7 @@ serve(async (req) => {
             startDate: extractDate(props['Date de démarrage']),
             createdAt: extractCreatedTime(props['Date de création']),
             positionIds,
+            positions,
             candidate: candidateInfo,
           };
         })
