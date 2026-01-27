@@ -17,18 +17,23 @@ import {
   COMPANY_TYPE_OPTIONS,
   OPEN_TO_OPTIONS,
 } from './types';
+import {
+  FilterSection,
+  FilterGroup,
+  AutocompleteInput,
+  SelectedBadges,
+  PriorityBadges,
+  ParameterOption,
+} from './FilterComponents';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
   X,
-  Loader2,
   MapPin,
   Building2,
   Briefcase,
@@ -44,10 +49,8 @@ import {
   Building,
   BarChart3,
   History,
-  ChevronDown,
   UserCheck,
   Folder,
-  Search,
   Filter,
 } from 'lucide-react';
 
@@ -57,17 +60,12 @@ interface LinkedInFiltersProps {
   accountId: string | null;
 }
 
-interface ParameterOption {
-  id: string;
-  title: string;
-}
-
 export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
   filters,
   onChange,
   accountId,
 }) => {
-  // All sections open by default
+  // Section open states
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({
     basic: true,
     position: true,
@@ -77,18 +75,24 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
     recruiter: true,
   });
 
+  // Autocomplete states
   const [loadingParams, setLoadingParams] = useState<string | null>(null);
   const [parameterOptions, setParameterOptions] = useState<Record<string, ParameterOption[]>>({});
   const [searchInputs, setSearchInputs] = useState<Record<string, string>>({});
   const debounceRef = useRef<Record<string, NodeJS.Timeout>>({});
   const abortControllerRef = useRef<Record<string, AbortController>>({});
 
-  const toggleSection = (section: string) => {
+  // Role filter state
+  const [newRoleKeywords, setNewRoleKeywords] = useState('');
+  const [newRolePriority, setNewRolePriority] = useState<FilterPriority>('MUST_HAVE');
+  const [newRoleScope, setNewRoleScope] = useState<FilterScope>('CURRENT_OR_PAST');
+
+  const toggleSection = useCallback((section: string) => {
     setOpenSections(prev => ({ ...prev, [section]: !prev[section] }));
-  };
+  }, []);
 
   // Map frontend filter keys to Unipile API parameter types
-  const getParameterType = (key: string): string => {
+  const getParameterType = useCallback((key: string): string => {
     const typeMap: Record<string, string> = {
       location: 'LOCATION',
       company: 'COMPANY',
@@ -103,7 +107,7 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
       followers_of: 'PEOPLE',
     };
     return typeMap[key] || key.toUpperCase();
-  };
+  }, []);
 
   const fetchParameters = useCallback(
     async (key: string, keywords: string) => {
@@ -151,10 +155,10 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
         setLoadingParams(null);
       }
     },
-    [accountId, filters.api]
+    [accountId, filters.api, getParameterType]
   );
 
-  const handleSearchInput = (key: string, value: string) => {
+  const handleSearchInput = useCallback((key: string, value: string) => {
     setSearchInputs((prev) => ({ ...prev, [key]: value }));
 
     if (debounceRef.current[key]) {
@@ -172,24 +176,24 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
     } else {
       setParameterOptions((prev) => ({ ...prev, [key]: [] }));
     }
-  };
+  }, [fetchParameters]);
 
-  // Simple filter add
-  const handleAddSimpleFilter = (key: 'location' | 'company' | 'industry' | 'school' | 'past_company', item: ParameterOption) => {
+  // Simple filter handlers
+  const handleAddSimpleFilter = useCallback((key: 'location' | 'company' | 'industry' | 'school' | 'past_company', item: ParameterOption) => {
     const current = filters[key];
     if (!current.find((f) => f.id === item.id)) {
       onChange({ ...filters, [key]: [...current, { id: item.id, name: item.title }] });
     }
     setSearchInputs((prev) => ({ ...prev, [key]: '' }));
     setParameterOptions((prev) => ({ ...prev, [key]: [] }));
-  };
+  }, [filters, onChange]);
 
-  const handleRemoveSimpleFilter = (key: 'location' | 'company' | 'industry' | 'school' | 'past_company', id: string) => {
+  const handleRemoveSimpleFilter = useCallback((key: 'location' | 'company' | 'industry' | 'school' | 'past_company', id: string) => {
     onChange({ ...filters, [key]: filters[key].filter((f) => f.id !== id) });
-  };
+  }, [filters, onChange]);
 
-  // Priority filter add
-  const handleAddPriorityFilter = (
+  // Priority filter handlers
+  const handleAddPriorityFilter = useCallback((
     key: 'job_title' | 'skills' | 'past_job_title',
     item: ParameterOption,
     priority: FilterPriority = 'MUST_HAVE'
@@ -200,25 +204,21 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
     }
     setSearchInputs((prev) => ({ ...prev, [key]: '' }));
     setParameterOptions((prev) => ({ ...prev, [key]: [] }));
-  };
+  }, [filters, onChange]);
 
-  const handleUpdatePriority = (key: 'job_title' | 'skills' | 'past_job_title', id: string, priority: FilterPriority) => {
+  const handleUpdatePriority = useCallback((key: 'job_title' | 'skills' | 'past_job_title', id: string, priority: FilterPriority) => {
     onChange({
       ...filters,
       [key]: filters[key].map((f) => (f.id === id ? { ...f, priority } : f)),
     });
-  };
+  }, [filters, onChange]);
 
-  const handleRemovePriorityFilter = (key: 'job_title' | 'skills' | 'past_job_title', id: string) => {
+  const handleRemovePriorityFilter = useCallback((key: 'job_title' | 'skills' | 'past_job_title', id: string) => {
     onChange({ ...filters, [key]: filters[key].filter((f) => f.id !== id) });
-  };
+  }, [filters, onChange]);
 
-  // Role filter state
-  const [newRoleKeywords, setNewRoleKeywords] = useState('');
-  const [newRolePriority, setNewRolePriority] = useState<FilterPriority>('MUST_HAVE');
-  const [newRoleScope, setNewRoleScope] = useState<FilterScope>('CURRENT_OR_PAST');
-
-  const handleAddRole = () => {
+  // Role handlers
+  const handleAddRole = useCallback(() => {
     if (!newRoleKeywords.trim()) return;
     const newRole: RoleFilter = {
       keywords: newRoleKeywords.trim(),
@@ -227,190 +227,11 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
     };
     onChange({ ...filters, role: [...filters.role, newRole] });
     setNewRoleKeywords('');
-  };
+  }, [newRoleKeywords, newRolePriority, newRoleScope, filters, onChange]);
 
-  const handleRemoveRole = (index: number) => {
+  const handleRemoveRole = useCallback((index: number) => {
     onChange({ ...filters, role: filters.role.filter((_, i) => i !== index) });
-  };
-
-  // Collapsible section component
-  const FilterSection = ({ 
-    id, 
-    title, 
-    icon, 
-    children, 
-    badge 
-  }: { 
-    id: string;
-    title: string; 
-    icon: React.ReactNode; 
-    children: React.ReactNode; 
-    badge?: number 
-  }) => (
-    <Collapsible open={openSections[id]} onOpenChange={() => toggleSection(id)} className="border-b border-[#1A1A1A]/10">
-      <CollapsibleTrigger className="flex items-center justify-between w-full p-4 hover:bg-gray-50/50 transition-colors">
-        <div className="flex items-center gap-2">
-          {icon}
-          <span className="text-sm font-semibold text-[#1A1A1A]">{title}</span>
-          {badge !== undefined && badge > 0 && (
-            <Badge variant="secondary" className="h-5 px-1.5 text-xs bg-[#0077B5]/10 text-[#0077B5]">
-              {badge}
-            </Badge>
-          )}
-        </div>
-        <ChevronDown className={`w-4 h-4 text-[#1A1A1A]/40 transition-transform duration-200 ${openSections[id] ? 'rotate-180' : ''}`} />
-      </CollapsibleTrigger>
-      <CollapsibleContent className="px-4 pb-4">
-        <div className="space-y-4">
-          {children}
-        </div>
-      </CollapsibleContent>
-    </Collapsible>
-  );
-
-  // Filter group within a section
-  const FilterGroup = ({ 
-    title, 
-    icon, 
-    children,
-    badge,
-  }: { 
-    title: string; 
-    icon: React.ReactNode; 
-    children: React.ReactNode;
-    badge?: number;
-  }) => (
-    <div className="space-y-2">
-      <div className="flex items-center gap-2">
-        {icon}
-        <span className="text-xs font-medium text-[#1A1A1A]/70 uppercase tracking-wide">{title}</span>
-        {badge !== undefined && badge > 0 && (
-          <Badge variant="outline" className="h-4 px-1 text-[10px]">{badge}</Badge>
-        )}
-      </div>
-      {children}
-    </div>
-  );
-
-  // Autocomplete input for filters
-  const AutocompleteInput = ({
-    filterKey,
-    placeholder,
-    onSelect,
-  }: {
-    filterKey: string;
-    placeholder: string;
-    onSelect: (item: ParameterOption) => void;
-  }) => {
-    const searchValue = searchInputs[filterKey] || '';
-    const options = parameterOptions[filterKey] || [];
-
-    return (
-      <div className="relative">
-        <div className="relative">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#1A1A1A]/40" />
-          <Input
-            value={searchValue}
-            onChange={(e) => handleSearchInput(filterKey, e.target.value)}
-            placeholder={placeholder}
-            className="text-sm h-9 pl-8"
-          />
-          {loadingParams === filterKey && (
-            <Loader2 className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 animate-spin text-[#0077B5]" />
-          )}
-        </div>
-        {options.length > 0 && (
-          <div className="absolute z-50 w-full mt-1 bg-white border border-[#1A1A1A]/10 rounded-lg shadow-lg max-h-48 overflow-auto">
-            {options.map((option) => (
-              <button
-                key={option.id}
-                onClick={() => onSelect(option)}
-                className="w-full text-left px-3 py-2 text-sm hover:bg-[#0077B5]/5 transition-colors flex items-center justify-between group"
-              >
-                <span className="truncate">{option.title}</span>
-                <Plus className="w-4 h-4 text-[#0077B5] opacity-0 group-hover:opacity-100 transition-opacity" />
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-    );
-  };
-
-  // Selected badges display
-  const SelectedBadges = ({
-    items,
-    onRemove,
-  }: {
-    items: FilterItem[];
-    onRemove: (id: string) => void;
-  }) => {
-    if (items.length === 0) return null;
-    return (
-      <div className="flex flex-wrap gap-1.5 mb-2">
-        {items.map((item) => (
-          <Badge
-            key={item.id}
-            variant="secondary"
-            className="gap-1 pr-1 bg-[#0077B5]/10 text-[#0077B5] hover:bg-[#0077B5]/20 text-xs"
-          >
-            <span className="max-w-[150px] truncate">{item.name}</span>
-            <button onClick={() => onRemove(item.id)} className="ml-0.5 hover:bg-[#0077B5]/30 rounded-full p-0.5">
-              <X className="w-3 h-3" />
-            </button>
-          </Badge>
-        ))}
-      </div>
-    );
-  };
-
-  // Priority badges display
-  const PriorityBadges = ({
-    items,
-    filterKey,
-    onRemove,
-    onUpdatePriority,
-  }: {
-    items: PriorityFilterItem[];
-    filterKey: 'job_title' | 'skills' | 'past_job_title';
-    onRemove: (id: string) => void;
-    onUpdatePriority: (id: string, priority: FilterPriority) => void;
-  }) => {
-    if (items.length === 0) return null;
-    return (
-      <div className="space-y-1.5 mb-2">
-        {items.map((item) => {
-          const priorityConfig = PRIORITY_OPTIONS.find((p) => p.value === item.priority);
-          return (
-            <div key={item.id} className="flex items-center gap-2 p-2 bg-gray-50 rounded-lg">
-              <span className="text-sm flex-1 truncate">{item.name}</span>
-              <Select
-                value={item.priority}
-                onValueChange={(val) => onUpdatePriority(item.id, val as FilterPriority)}
-              >
-                <SelectTrigger className={`h-6 w-24 text-[10px] border-0 ${priorityConfig?.color}`}>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {PRIORITY_OPTIONS.map((opt) => (
-                    <SelectItem key={opt.value} value={opt.value} className="text-xs">
-                      <span className="flex items-center gap-1">
-                        <span>{opt.icon}</span>
-                        <span>{opt.label}</span>
-                      </span>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <button onClick={() => onRemove(item.id)} className="text-red-400 hover:text-red-600 p-0.5">
-                <X className="w-3.5 h-3.5" />
-              </button>
-            </div>
-          );
-        })}
-      </div>
-    );
-  };
+  }, [filters, onChange]);
 
   // Count active filters
   const countBasicFilters = filters.location.length + filters.school.length + filters.profile_language.length + filters.network_distance.length;
@@ -432,6 +253,8 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
           title="Recherche de base" 
           icon={<Filter className="w-4 h-4 text-[#0077B5]" />}
           badge={countBasicFilters}
+          isOpen={openSections.basic}
+          onToggle={() => toggleSection('basic')}
         >
           {/* Location */}
           <FilterGroup title="Localisation" icon={<MapPin className="w-3.5 h-3.5 text-[#0077B5]" />} badge={filters.location.length}>
@@ -439,6 +262,10 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
             <AutocompleteInput
               filterKey="location"
               placeholder="Ville, région, pays..."
+              value={searchInputs['location'] || ''}
+              options={parameterOptions['location'] || []}
+              loading={loadingParams === 'location'}
+              onInputChange={(val) => handleSearchInput('location', val)}
               onSelect={(item) => handleAddSimpleFilter('location', item)}
             />
           </FilterGroup>
@@ -449,6 +276,10 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
             <AutocompleteInput
               filterKey="school"
               placeholder="Rechercher une école..."
+              value={searchInputs['school'] || ''}
+              options={parameterOptions['school'] || []}
+              loading={loadingParams === 'school'}
+              onInputChange={(val) => handleSearchInput('school', val)}
               onSelect={(item) => handleAddSimpleFilter('school', item)}
             />
           </FilterGroup>
@@ -504,18 +335,23 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
           title="Poste & Compétences" 
           icon={<Briefcase className="w-4 h-4 text-[#0077B5]" />}
           badge={countPositionFilters}
+          isOpen={openSections.position}
+          onToggle={() => toggleSection('position')}
         >
           {/* Job Title with priority */}
           <FilterGroup title="Titre du poste" icon={<Briefcase className="w-3.5 h-3.5 text-[#0077B5]" />} badge={filters.job_title.length}>
             <PriorityBadges
               items={filters.job_title}
-              filterKey="job_title"
               onRemove={(id) => handleRemovePriorityFilter('job_title', id)}
               onUpdatePriority={(id, priority) => handleUpdatePriority('job_title', id, priority)}
             />
             <AutocompleteInput
               filterKey="job_title"
               placeholder="Rechercher un poste..."
+              value={searchInputs['job_title'] || ''}
+              options={parameterOptions['job_title'] || []}
+              loading={loadingParams === 'job_title'}
+              onInputChange={(val) => handleSearchInput('job_title', val)}
               onSelect={(item) => handleAddPriorityFilter('job_title', item)}
             />
           </FilterGroup>
@@ -529,7 +365,7 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
                 <div key={index} className="p-2 bg-purple-50 rounded-lg mb-2">
                   <div className="flex items-center justify-between">
                     <span className="text-sm font-medium text-purple-900">{role.keywords}</span>
-                    <button onClick={() => handleRemoveRole(index)} className="text-purple-400 hover:text-purple-600">
+                    <button type="button" onClick={() => handleRemoveRole(index)} className="text-purple-400 hover:text-purple-600">
                       <X className="w-3.5 h-3.5" />
                     </button>
                   </div>
@@ -580,13 +416,16 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
           <FilterGroup title="Compétences" icon={<Zap className="w-3.5 h-3.5 text-[#0077B5]" />} badge={filters.skills.length}>
             <PriorityBadges
               items={filters.skills}
-              filterKey="skills"
               onRemove={(id) => handleRemovePriorityFilter('skills', id)}
               onUpdatePriority={(id, priority) => handleUpdatePriority('skills', id, priority)}
             />
             <AutocompleteInput
               filterKey="skills"
               placeholder="Rechercher une compétence..."
+              value={searchInputs['skills'] || ''}
+              options={parameterOptions['skills'] || []}
+              loading={loadingParams === 'skills'}
+              onInputChange={(val) => handleSearchInput('skills', val)}
               onSelect={(item) => handleAddPriorityFilter('skills', item)}
             />
           </FilterGroup>
@@ -620,6 +459,8 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
           title="Expérience & Ancienneté" 
           icon={<Clock className="w-4 h-4 text-[#0077B5]" />}
           badge={countExperienceFilters}
+          isOpen={openSections.experience}
+          onToggle={() => toggleSection('experience')}
         >
           {/* Years of Experience */}
           <FilterGroup title="Années d'expérience totale" icon={<Clock className="w-3.5 h-3.5 text-[#0077B5]" />}>
@@ -748,6 +589,8 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
           title="Entreprise actuelle" 
           icon={<Building2 className="w-4 h-4 text-[#0077B5]" />}
           badge={countCompanyFilters}
+          isOpen={openSections.company}
+          onToggle={() => toggleSection('company')}
         >
           {/* Company */}
           <FilterGroup title="Nom de l'entreprise" icon={<Building2 className="w-3.5 h-3.5 text-[#0077B5]" />} badge={filters.company.length}>
@@ -755,6 +598,10 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
             <AutocompleteInput
               filterKey="company"
               placeholder="Rechercher une entreprise..."
+              value={searchInputs['company'] || ''}
+              options={parameterOptions['company'] || []}
+              loading={loadingParams === 'company'}
+              onInputChange={(val) => handleSearchInput('company', val)}
               onSelect={(item) => handleAddSimpleFilter('company', item)}
             />
           </FilterGroup>
@@ -765,6 +612,10 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
             <AutocompleteInput
               filterKey="industry"
               placeholder="Rechercher un secteur..."
+              value={searchInputs['industry'] || ''}
+              options={parameterOptions['industry'] || []}
+              loading={loadingParams === 'industry'}
+              onInputChange={(val) => handleSearchInput('industry', val)}
               onSelect={(item) => handleAddSimpleFilter('industry', item)}
             />
           </FilterGroup>
@@ -820,6 +671,8 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
           title="Expérience passée" 
           icon={<History className="w-4 h-4 text-amber-600" />}
           badge={countPastFilters}
+          isOpen={openSections.past}
+          onToggle={() => toggleSection('past')}
         >
           {/* Past Company */}
           <FilterGroup title="Ancienne entreprise" icon={<Building2 className="w-3.5 h-3.5 text-amber-600" />} badge={filters.past_company.length}>
@@ -827,6 +680,10 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
             <AutocompleteInput
               filterKey="past_company"
               placeholder="Rechercher une ancienne entreprise..."
+              value={searchInputs['past_company'] || ''}
+              options={parameterOptions['past_company'] || []}
+              loading={loadingParams === 'past_company'}
+              onInputChange={(val) => handleSearchInput('past_company', val)}
               onSelect={(item) => handleAddSimpleFilter('past_company', item)}
             />
           </FilterGroup>
@@ -835,13 +692,16 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
           <FilterGroup title="Ancien poste" icon={<Briefcase className="w-3.5 h-3.5 text-amber-600" />} badge={filters.past_job_title.length}>
             <PriorityBadges
               items={filters.past_job_title}
-              filterKey="past_job_title"
               onRemove={(id) => handleRemovePriorityFilter('past_job_title', id)}
               onUpdatePriority={(id, priority) => handleUpdatePriority('past_job_title', id, priority)}
             />
             <AutocompleteInput
               filterKey="past_job_title"
               placeholder="Rechercher un ancien poste..."
+              value={searchInputs['past_job_title'] || ''}
+              options={parameterOptions['past_job_title'] || []}
+              loading={loadingParams === 'past_job_title'}
+              onInputChange={(val) => handleSearchInput('past_job_title', val)}
               onSelect={(item) => handleAddPriorityFilter('past_job_title', item)}
             />
           </FilterGroup>
@@ -853,6 +713,8 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
           title="Filtres avancés (Recruiter)" 
           icon={<Target className="w-4 h-4 text-purple-500" />}
           badge={countRecruiterFilters}
+          isOpen={openSections.recruiter}
+          onToggle={() => toggleSection('recruiter')}
         >
           {/* Open to Work */}
           <FilterGroup title="Open to Work" icon={<UserCheck className="w-3.5 h-3.5 text-green-500" />}>
