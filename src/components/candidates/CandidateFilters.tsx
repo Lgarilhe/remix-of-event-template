@@ -14,6 +14,7 @@ interface FilterOptions {
   stages: string[];
   expertise: string[];
   entities: string[];
+  positions: { id: string; name: string }[];
 }
 
 interface Filters {
@@ -21,6 +22,7 @@ interface Filters {
   stage: string[];
   expertise: string[];
   entity: string[];
+  position: string[];
 }
 
 interface CandidateFiltersProps {
@@ -35,7 +37,7 @@ export const CandidateFilters: React.FC<CandidateFiltersProps> = ({
   options,
 }) => {
   const hasActiveFilters = filters.search || filters.stage.length > 0 || 
-    filters.expertise.length > 0 || filters.entity.length > 0;
+    filters.expertise.length > 0 || filters.entity.length > 0 || filters.position.length > 0;
 
   const clearFilters = () => {
     onFiltersChange({
@@ -43,6 +45,7 @@ export const CandidateFilters: React.FC<CandidateFiltersProps> = ({
       stage: [],
       expertise: [],
       entity: [],
+      position: [],
     });
   };
 
@@ -60,6 +63,22 @@ export const CandidateFilters: React.FC<CandidateFiltersProps> = ({
         />
       </div>
 
+      {/* Position filter */}
+      <Select
+        value={filters.position[0] || 'all'}
+        onValueChange={(value) => onFiltersChange({ ...filters, position: value === 'all' ? [] : [value] })}
+      >
+        <SelectTrigger className="w-[180px] h-9 text-sm bg-white border-[#1A1A1A]/10">
+          <SelectValue placeholder="Poste" />
+        </SelectTrigger>
+        <SelectContent className="bg-white z-50 max-h-[300px]">
+          <SelectItem value="all">Tous les postes</SelectItem>
+          {options.positions.map(pos => (
+            <SelectItem key={pos.id} value={pos.id}>{pos.name}</SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+
       {/* Stage filter */}
       <Select
         value={filters.stage[0] || 'all'}
@@ -68,7 +87,7 @@ export const CandidateFilters: React.FC<CandidateFiltersProps> = ({
         <SelectTrigger className="w-[140px] h-9 text-sm bg-white border-[#1A1A1A]/10">
           <SelectValue placeholder="Étape" />
         </SelectTrigger>
-        <SelectContent className="bg-white">
+        <SelectContent className="bg-white z-50">
           <SelectItem value="all">Toutes les étapes</SelectItem>
           {options.stages.map(stage => (
             <SelectItem key={stage} value={stage}>{stage}</SelectItem>
@@ -84,7 +103,7 @@ export const CandidateFilters: React.FC<CandidateFiltersProps> = ({
         <SelectTrigger className="w-[120px] h-9 text-sm bg-white border-[#1A1A1A]/10">
           <SelectValue placeholder="Entité" />
         </SelectTrigger>
-        <SelectContent className="bg-white">
+        <SelectContent className="bg-white z-50">
           <SelectItem value="all">Toutes</SelectItem>
           {options.entities.map(entity => (
             <SelectItem key={entity} value={entity}>{entity}</SelectItem>
@@ -100,7 +119,7 @@ export const CandidateFilters: React.FC<CandidateFiltersProps> = ({
         <SelectTrigger className="w-[150px] h-9 text-sm bg-white border-[#1A1A1A]/10">
           <SelectValue placeholder="Expertise" />
         </SelectTrigger>
-        <SelectContent className="bg-white max-h-[300px]">
+        <SelectContent className="bg-white z-50 max-h-[300px]">
           <SelectItem value="all">Toutes</SelectItem>
           {options.expertise.map(exp => (
             <SelectItem key={exp} value={exp}>{exp}</SelectItem>
