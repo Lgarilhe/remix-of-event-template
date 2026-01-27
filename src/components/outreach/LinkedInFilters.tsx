@@ -695,7 +695,7 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
             </div>
             <div>
               <Label className="text-xs">Spotlight</Label>
-              <Select value={filters.spotlight} onValueChange={(v) => onChange({ ...filters, spotlight: v })}>
+              <Select value={filters.spotlight || '_empty'} onValueChange={(v) => onChange({ ...filters, spotlight: v === '_empty' ? '' : v as typeof filters.spotlight })}>
                 <SelectTrigger className="text-sm">
                   <SelectValue placeholder="Tous" />
                 </SelectTrigger>
