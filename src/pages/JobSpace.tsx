@@ -62,6 +62,7 @@ export interface JobFiltersState {
   sector: string[];
   priority: string[];
   seniority: string[];
+  skills: string[];
 }
 
 const JobSpace = () => {
@@ -79,6 +80,7 @@ const JobSpace = () => {
     sector: [],
     priority: [],
     seniority: [],
+    skills: [],
   });
   const navigate = useNavigate();
 
@@ -175,6 +177,15 @@ const JobSpace = () => {
     // Seniority filter
     if (filters.seniority.length > 0 && !filters.seniority.includes(job.seniority)) {
       return false;
+    }
+
+    // Skills filter
+    if (filters.skills.length > 0) {
+      const jobSkills = job.skills || [];
+      const hasMatchingSkill = filters.skills.some(skill => 
+        jobSkills.some(jobSkill => jobSkill.toLowerCase().includes(skill.toLowerCase()))
+      );
+      if (!hasMatchingSkill) return false;
     }
 
     return true;

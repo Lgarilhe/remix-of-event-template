@@ -1,5 +1,5 @@
-import React from 'react';
-import { Search, X } from 'lucide-react';
+import React, { useState, useMemo } from 'react';
+import { Search, X, Code } from 'lucide-react';
 import { Job, JobFiltersState } from '@/pages/JobSpace';
 
 interface JobFiltersProps {
@@ -9,6 +9,8 @@ interface JobFiltersProps {
 }
 
 export const JobFilters: React.FC<JobFiltersProps> = ({ filters, setFilters, jobs }) => {
+  const [skillSearch, setSkillSearch] = useState('');
+
   // Extract unique values for filters
   const statuses = [...new Set(jobs.map(j => j.status).filter(Boolean))];
   const contractTypes = [...new Set(jobs.map(j => j.contractType).filter(Boolean))];
@@ -16,8 +18,29 @@ export const JobFilters: React.FC<JobFiltersProps> = ({ filters, setFilters, job
   const sectors = [...new Set(jobs.map(j => j.client?.sector).filter(Boolean))] as string[];
   const priorities = [...new Set(jobs.map(j => j.priority).filter(Boolean))];
   const seniorities = [...new Set(jobs.map(j => j.seniority).filter(Boolean))];
+  
+  // Extract all unique skills from jobs
+  const allSkills = useMemo(() => {
+    const skillsSet = new Set<string>();
+    jobs.forEach(job => {
+      job.skills?.forEach(skill => {
+        if (skill && skill.trim()) {
+          skillsSet.add(skill.trim());
+        }
+      });
+    });
+    return [...skillsSet].sort();
+  }, [jobs]);
 
-  const toggleFilter = (key: 'status' | 'contractType' | 'remote' | 'sector' | 'priority' | 'seniority', value: string) => {
+  // Filter skills based on search
+  const filteredSkills = useMemo(() => {
+    if (!skillSearch) return allSkills.slice(0, 20);
+    return allSkills.filter(skill => 
+      skill.toLowerCase().includes(skillSearch.toLowerCase())
+    ).slice(0, 20);
+  }, [allSkills, skillSearch]);
+
+  const toggleFilter = (key: 'status' | 'contractType' | 'remote' | 'sector' | 'priority' | 'seniority' | 'skills', value: string) => {
     setFilters(prev => {
       const current = prev[key];
       const updated = current.includes(value)
@@ -37,7 +60,9 @@ export const JobFilters: React.FC<JobFiltersProps> = ({ filters, setFilters, job
       sector: [],
       priority: [],
       seniority: [],
+      skills: [],
     });
+    setSkillSearch('');
   };
 
   const hasActiveFilters = filters.search || 
@@ -47,7 +72,8 @@ export const JobFilters: React.FC<JobFiltersProps> = ({ filters, setFilters, job
     filters.remote.length > 0 ||
     filters.sector.length > 0 ||
     filters.priority.length > 0 ||
-    filters.seniority.length > 0;
+    filters.seniority.length > 0 ||
+    filters.skills.length > 0;
 
   return (
     <div className="bg-white border border-black p-6 mb-6">
@@ -89,7 +115,62 @@ export const JobFilters: React.FC<JobFiltersProps> = ({ filters, setFilters, job
           </div>
         )}
 
-        {/* Seniority */}
+        {/* Skills Filter */}
+        {allSkills.length > 0 && (
+          <div>
+            <label className="block text-[11px] font-medium uppercase tracking-wide text-[#1A1A1A]/60 mb-2">
+              <Code className="w-3 h-3 inline mr-1" />
+              Compétences techniques
+            </label>
+            
+            {/* Selected skills */}
+            {filters.skills.length > 0 && (
+              <div className="flex flex-wrap gap-2 mb-3">
+                {filters.skills.map((skill, index) => (
+                  <button
+                    key={`selected-skill-${index}-${skill}`}
+                    onClick={() => toggleFilter('skills', skill)}
+                    className="px-3 py-1.5 text-xs font-medium tracking-wide border bg-[#FA76FF] text-white border-[#FA76FF] hover:bg-[#FA76FF]/90 transition-colors flex items-center gap-1"
+                  >
+                    {skill}
+                    <X className="w-3 h-3" />
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* Skills search */}
+            <div className="relative mb-2">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#1A1A1A]/40" />
+              <input
+                type="text"
+                placeholder="Rechercher une compétence..."
+                value={skillSearch}
+                onChange={(e) => setSkillSearch(e.target.value)}
+                className="w-full md:w-64 pl-9 pr-4 py-2 border border-[#1A1A1A]/20 focus:border-[#1A1A1A] focus:outline-none transition-colors text-sm bg-white"
+              />
+            </div>
+
+            {/* Available skills */}
+            <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto">
+              {filteredSkills
+                .filter(skill => !filters.skills.includes(skill))
+                .map((skill, index) => (
+                  <button
+                    key={`skill-${index}-${skill}`}
+                    onClick={() => toggleFilter('skills', skill)}
+                    className="px-3 py-1.5 text-xs font-medium tracking-wide border bg-white text-[#1A1A1A] border-[#1A1A1A]/20 hover:border-[#FA76FF] hover:text-[#FA76FF] transition-colors"
+                  >
+                    {skill}
+                  </button>
+                ))}
+              {filteredSkills.length === 0 && skillSearch && (
+                <span className="text-sm text-[#1A1A1A]/40 italic">Aucune compétence trouvée</span>
+              )}
+            </div>
+          </div>
+        )}
+
         {seniorities.length > 0 && (
           <div>
             <label className="block text-[11px] font-medium uppercase tracking-wide text-[#1A1A1A]/60 mb-2">
