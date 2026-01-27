@@ -7,7 +7,7 @@ const corsHeaders = {
 
 const NOTION_API_KEY = Deno.env.get("NOTION_API_KEY");
 const CANDIDATS_DATABASE_ID = "2787e1816fb4812b8ebddfcb3ab95510";
-const SHORTLIST_DATABASE_ID = "2787e1816fb4814a8219000bb7cb9e81";
+const SHORTLIST_DATABASE_ID = "2787e1816fb4811986a7e6075bc63a23";
 
 interface ApplicationData {
   jobId: string; // Notion page ID of the job
@@ -96,16 +96,16 @@ serve(async (req) => {
     // Step 2: Create a Shortlist entry linking candidate and job
     const shortlistProperties: Record<string, unknown> = {
       // Title - use candidate name + job title
-      'Nom candidat (shortlist)': {
+      'Nom': {
         title: [{ text: { content: `${data.name} - ${data.jobTitle}` } }]
       },
       // Relation to candidate
       'Candidats': {
         relation: [{ id: candidatResult.id }]
       },
-      // Status - new application
-      'Statut': {
-        status: { name: 'CV à envoyer' }
+      // Etape - new application (Pressenti = identified candidate)
+      'Etape': {
+        select: { name: 'Pressenti' }
       },
       // Entity - default to Konekt
       'Entité': {
@@ -115,7 +115,7 @@ serve(async (req) => {
 
     // Add relation to job position
     if (data.jobId) {
-      shortlistProperties['💼 Poste'] = {
+      shortlistProperties['💼 Postes'] = {
         relation: [{ id: data.jobId }]
       };
     }
