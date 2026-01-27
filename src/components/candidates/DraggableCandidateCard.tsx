@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useSortable } from '@dnd-kit/sortable';
+import { useDraggable } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
 import { ShortlistEntry } from '@/pages/Candidates';
 import { Mail, Phone, Linkedin, Calendar, GripVertical, ExternalLink } from 'lucide-react';
@@ -8,9 +8,10 @@ import { fr } from 'date-fns/locale';
 
 interface DraggableCandidateCardProps {
   entry: ShortlistEntry;
+  columnId: string;
 }
 
-export const DraggableCandidateCard: React.FC<DraggableCandidateCardProps> = ({ entry }) => {
+export const DraggableCandidateCard: React.FC<DraggableCandidateCardProps> = ({ entry, columnId }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const candidate = entry.candidate;
 
@@ -19,13 +20,19 @@ export const DraggableCandidateCard: React.FC<DraggableCandidateCardProps> = ({ 
     listeners,
     setNodeRef,
     transform,
-    transition,
     isDragging,
-  } = useSortable({ id: entry.id });
+  } = useDraggable({ 
+    id: entry.id,
+    data: {
+      type: 'card',
+      columnId,
+      entry,
+    }
+  });
 
   const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
+    transform: CSS.Translate.toString(transform),
+    opacity: isDragging ? 0.5 : 1,
   };
 
   const formatDate = (dateStr: string | null) => {
@@ -42,7 +49,7 @@ export const DraggableCandidateCard: React.FC<DraggableCandidateCardProps> = ({ 
       ref={setNodeRef}
       style={style}
       className={`bg-white rounded-lg border border-[#1A1A1A]/10 p-3 hover:shadow-md transition-shadow ${
-        isDragging ? 'shadow-lg opacity-90 z-50' : ''
+        isDragging ? 'shadow-lg z-50' : ''
       }`}
     >
       <div className="flex items-start gap-2">
