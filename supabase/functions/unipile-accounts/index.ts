@@ -34,15 +34,41 @@ Deno.serve(async (req) => {
         });
 
         const data = await response.json();
-        // Filter only LinkedIn accounts with OK or CREDENTIALS status
+        // Filter only LinkedIn accounts and extract subscription info from sources
         const linkedinAccounts = (data.items || [])
           .filter((acc: { type: string }) => acc.type === 'LINKEDIN')
-          .map((acc: { id: string; name: string; sources: Array<{ status: string }> }) => ({
-            id: acc.id,
-            name: acc.name,
-            identifier: acc.name,
-            status: acc.sources?.[0]?.status || 'UNKNOWN',
-          }));
+          .map((acc: { 
+            id: string; 
+            name: string; 
+            sources: Array<{ 
+              type: string; 
+              status: string;
+            }> 
+          }) => {
+            // Check for Recruiter and Sales Navigator sources
+            const sources = acc.sources || [];
+            const hasRecruiter = sources.some((s: { type: string; status: string }) => 
+              s.type === 'LINKEDIN_RECRUITER' && s.status === 'OK'
+            );
+            const hasSalesNavigator = sources.some((s: { type: string; status: string }) => 
+              s.type === 'LINKEDIN_SALES_NAVIGATOR' && s.status === 'OK'
+            );
+            // Get main status - prefer OK status, otherwise take first source status
+            const okSource = sources.find((s: { status: string }) => s.status === 'OK');
+            const mainStatus = okSource?.status || sources[0]?.status || 'UNKNOWN';
+            
+            return {
+              id: acc.id,
+              name: acc.name,
+              identifier: acc.name,
+              status: mainStatus,
+              subscriptions: {
+                classic: true, // Always available
+                recruiter: hasRecruiter,
+                sales_navigator: hasSalesNavigator,
+              },
+            };
+          });
         
         return new Response(
           JSON.stringify({ success: true, accounts: linkedinAccounts }),

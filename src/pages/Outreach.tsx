@@ -8,11 +8,18 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Search, Users, Settings } from 'lucide-react';
 import { toast } from 'sonner';
 
+export interface LinkedInAccountSubscriptions {
+  classic: boolean;
+  recruiter: boolean;
+  sales_navigator: boolean;
+}
+
 export interface LinkedInAccount {
   id: string;
   name: string;
   identifier: string;
   status: string;
+  subscriptions?: LinkedInAccountSubscriptions;
 }
 
 export default function Outreach() {
