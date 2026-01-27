@@ -49,7 +49,7 @@ serve(async (req) => {
         parent: { database_id: CANDIDATS_DATABASE_ID },
         properties: {
           // Title property - candidate name
-          'Name': {
+          'Nom': {
             title: [
               {
                 text: {
@@ -59,7 +59,7 @@ serve(async (req) => {
             ]
           },
           // Email
-          'Email': {
+          'E-mail': {
             email: data.email
           },
           // Phone
@@ -67,38 +67,12 @@ serve(async (req) => {
             phone_number: data.phone || null
           },
           // LinkedIn URL
-          'LinkedIn': {
+          'URL Linkedin': {
             url: data.linkedin || null
           },
-          // CV URL
-          'CV': {
+          // CV URL (using Lien source)
+          'Lien source': {
             url: data.cvUrl || null
-          },
-          // Job reference - rich text with job title and client
-          'Poste': {
-            rich_text: [
-              {
-                text: {
-                  content: `${data.jobTitle} - ${data.clientName}`
-                }
-              }
-            ]
-          },
-          // Message/motivation
-          'Message': {
-            rich_text: [
-              {
-                text: {
-                  content: data.message || ''
-                }
-              }
-            ]
-          },
-          // Source
-          'Source': {
-            select: {
-              name: 'Job Space'
-            }
           }
         }
       }),
