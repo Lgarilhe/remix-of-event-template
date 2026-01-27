@@ -109,6 +109,27 @@ export type Database = {
         }
         Relationships: []
       }
+      job_favorites: {
+        Row: {
+          created_at: string
+          id: string
+          job_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          job_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          job_id?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       job_skills_cache: {
         Row: {
           created_at: string
