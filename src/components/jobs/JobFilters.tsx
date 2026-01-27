@@ -15,8 +15,9 @@ export const JobFilters: React.FC<JobFiltersProps> = ({ filters, setFilters, job
   const remoteOptions = [...new Set(jobs.map(j => j.remote).filter(Boolean))];
   const sectors = [...new Set(jobs.map(j => j.client?.sector).filter(Boolean))] as string[];
   const priorities = [...new Set(jobs.map(j => j.priority).filter(Boolean))];
+  const seniorities = [...new Set(jobs.map(j => j.seniority).filter(Boolean))];
 
-  const toggleFilter = (key: 'status' | 'contractType' | 'remote' | 'sector' | 'priority', value: string) => {
+  const toggleFilter = (key: 'status' | 'contractType' | 'remote' | 'sector' | 'priority' | 'seniority', value: string) => {
     setFilters(prev => {
       const current = prev[key];
       const updated = current.includes(value)
@@ -35,6 +36,7 @@ export const JobFilters: React.FC<JobFiltersProps> = ({ filters, setFilters, job
       remote: [],
       sector: [],
       priority: [],
+      seniority: [],
     });
   };
 
@@ -44,7 +46,8 @@ export const JobFilters: React.FC<JobFiltersProps> = ({ filters, setFilters, job
     filters.location || 
     filters.remote.length > 0 ||
     filters.sector.length > 0 ||
-    filters.priority.length > 0;
+    filters.priority.length > 0 ||
+    filters.seniority.length > 0;
 
   return (
     <div className="bg-white border border-black p-6 mb-6">
@@ -80,6 +83,30 @@ export const JobFilters: React.FC<JobFiltersProps> = ({ filters, setFilters, job
                   }`}
                 >
                   {priority}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Seniority */}
+        {seniorities.length > 0 && (
+          <div>
+            <label className="block text-[11px] font-medium uppercase tracking-wide text-[#1A1A1A]/60 mb-2">
+              Séniorité
+            </label>
+            <div className="flex flex-wrap gap-2">
+              {seniorities.map((seniority, index) => (
+                <button
+                  key={`seniority-${index}-${seniority}`}
+                  onClick={() => toggleFilter('seniority', seniority)}
+                  className={`px-3 py-1.5 text-xs font-medium uppercase tracking-wide border transition-colors ${
+                    filters.seniority.includes(seniority)
+                      ? 'bg-[#1A1A1A] text-white border-[#1A1A1A]'
+                      : 'bg-white text-[#1A1A1A] border-[#1A1A1A]/20 hover:border-[#1A1A1A]'
+                  }`}
+                >
+                  {seniority}
                 </button>
               ))}
             </div>
