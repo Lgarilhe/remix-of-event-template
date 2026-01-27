@@ -174,7 +174,7 @@ Deno.serve(async (req) => {
 
       case 'get_parameters': {
         // Get search parameter IDs (LinkedIn requires IDs not text)
-        const { type, keywords, service = 'recruiter' } = params;
+        const { type, keywords, service = 'RECRUITER' } = params;
 
         if (!type) {
           return new Response(
@@ -183,8 +183,8 @@ Deno.serve(async (req) => {
           );
         }
 
-        // Normalize service to lowercase
-        const serviceType = service.toLowerCase();
+        // Service must be UPPERCASE for parameters API: CLASSIC, RECRUITER, SALES_NAVIGATOR
+        const serviceType = service.toUpperCase();
 
         const queryParams = new URLSearchParams();
         queryParams.set('account_id', account_id);
