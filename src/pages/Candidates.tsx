@@ -4,6 +4,7 @@ import { User } from '@supabase/supabase-js';
 import { Navbar } from '@/components/Navbar';
 import { SEOHead } from '@/components/SEOHead';
 import { CandidatePipeline } from '@/components/candidates/CandidatePipeline';
+import { PipelineStats } from '@/components/candidates/PipelineStats';
 import { CandidateList } from '@/components/candidates/CandidateList';
 import { CandidateFilters } from '@/components/candidates/CandidateFilters';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -297,6 +298,7 @@ export default function Candidates() {
               ) : (
                 <>
                   <TabsContent value="pipeline" className="mt-0">
+                    <PipelineStats data={pipelineData} stages={PIPELINE_STAGES} />
                     <CandidatePipeline 
                       data={pipelineData} 
                       stages={PIPELINE_STAGES} 
