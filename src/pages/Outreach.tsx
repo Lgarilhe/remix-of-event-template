@@ -12,9 +12,7 @@ export interface LinkedInAccount {
   id: string;
   name: string;
   identifier: string;
-  provider: string;
   status: string;
-  created_at: string;
 }
 
 export default function Outreach() {
@@ -33,14 +31,15 @@ export default function Outreach() {
       if (response.error) throw response.error;
       if (!response.data?.success) throw new Error(response.data?.error);
 
-      const linkedinAccounts = (response.data.accounts || []).filter(
-        (acc: any) => acc.provider === 'LINKEDIN'
-      );
-      setAccounts(linkedinAccounts);
+      // Accounts are already filtered to LinkedIn only by the edge function
+      setAccounts(response.data.accounts || []);
       
-      // Auto-select first account
-      if (linkedinAccounts.length > 0 && !selectedAccount) {
-        setSelectedAccount(linkedinAccounts[0].id);
+      // Auto-select first OK account
+      const okAccount = response.data.accounts?.find((a: LinkedInAccount) => a.status === 'OK');
+      if (okAccount && !selectedAccount) {
+        setSelectedAccount(okAccount.id);
+      } else if (response.data.accounts?.length > 0 && !selectedAccount) {
+        setSelectedAccount(response.data.accounts[0].id);
       }
     } catch (error) {
       console.error('Error fetching accounts:', error);
