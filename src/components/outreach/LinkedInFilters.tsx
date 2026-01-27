@@ -1,14 +1,41 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { LinkedInFiltersState } from './LinkedInSearch';
+import {
+  LinkedInFiltersState,
+  FilterItem,
+  PriorityFilterItem,
+  RoleFilter,
+  FilterPriority,
+  FilterScope,
+  SENIORITY_LEVELS,
+  NETWORK_DISTANCES,
+  PRIORITY_OPTIONS,
+  SCOPE_OPTIONS,
+  SPOTLIGHT_OPTIONS,
+} from './types';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
-import { Slider } from '@/components/ui/slider';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { ChevronDown, X, Loader2, MapPin, Building2, Briefcase, GraduationCap, Layers, Zap, Target, Users } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import {
+  ChevronDown,
+  X,
+  Loader2,
+  MapPin,
+  Building2,
+  Briefcase,
+  GraduationCap,
+  Layers,
+  Zap,
+  Target,
+  Users,
+  Plus,
+  Sparkles,
+} from 'lucide-react';
 import { toast } from 'sonner';
 
 interface LinkedInFiltersProps {
@@ -19,7 +46,7 @@ interface LinkedInFiltersProps {
 
 interface ParameterOption {
   id: string;
-  name: string;
+  title: string; // API returns 'title', not 'name'
 }
 
 export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
@@ -27,16 +54,15 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
   onChange,
   accountId,
 }) => {
-  const [expandedSections, setExpandedSections] = useState<string[]>(['location', 'company']);
+  const [expandedSections, setExpandedSections] = useState<string[]>(['location', 'job_title']);
   const [loadingParams, setLoadingParams] = useState<string | null>(null);
   const [parameterOptions, setParameterOptions] = useState<Record<string, ParameterOption[]>>({});
   const [searchInputs, setSearchInputs] = useState<Record<string, string>>({});
+  const debounceRef = useRef<Record<string, NodeJS.Timeout>>({});
 
   const toggleSection = (section: string) => {
-    setExpandedSections(prev =>
-      prev.includes(section)
-        ? prev.filter(s => s !== section)
-        : [...prev, section]
+    setExpandedSections((prev) =>
+      prev.includes(section) ? prev.filter((s) => s !== section) : [...prev, section]
     );
   };
 
@@ -48,88 +74,142 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
       job_title: 'JOB_TITLE',
       industry: 'INDUSTRY',
       school: 'SCHOOL',
-      skills: 'SKILL', // Note: singular, not SKILLS
+      skills: 'SKILL',
     };
     return typeMap[key] || key.toUpperCase();
   };
 
-  const fetchParameters = useCallback(async (type: string, keywords: string) => {
-    if (!accountId || !keywords.trim()) return;
-
-    setLoadingParams(type);
-    try {
-      const paramType = getParameterType(type);
-      console.log('Fetching parameters for type:', paramType, 'keywords:', keywords);
-      
-      const response = await supabase.functions.invoke('unipile-search', {
-        body: {
-          action: 'get_parameters',
-          account_id: accountId,
-          type: paramType,
-          keywords: keywords.trim(),
-          service: 'recruiter', // lowercase for API
-        },
-      });
-
-      console.log('Parameters response:', response);
-
-      if (response.error) throw response.error;
-      if (!response.data?.success) throw new Error(response.data?.error);
-
-      setParameterOptions(prev => ({
-        ...prev,
-        [type]: response.data.items || [],
-      }));
-    } catch (error) {
-      console.error('Error fetching parameters:', error);
-      // Only show toast for real errors, not empty results
-      if (error instanceof Error && !error.message.includes('empty')) {
-        toast.error('Erreur de chargement des options');
+  const fetchParameters = useCallback(
+    async (key: string, keywords: string) => {
+      if (!accountId || !keywords.trim() || keywords.length < 2) {
+        setParameterOptions((prev) => ({ ...prev, [key]: [] }));
+        return;
       }
-    } finally {
-      setLoadingParams(null);
-    }
-  }, [accountId]);
 
-  const handleAddFilter = (key: keyof LinkedInFiltersState, value: string) => {
-    const currentValues = filters[key] as string[];
-    if (!currentValues.includes(value)) {
-      onChange({ ...filters, [key]: [...currentValues, value] });
-    }
-    setSearchInputs(prev => ({ ...prev, [key]: '' }));
-    setParameterOptions(prev => ({ ...prev, [key]: [] }));
-  };
+      setLoadingParams(key);
+      try {
+        const paramType = getParameterType(key);
 
-  const handleRemoveFilter = (key: keyof LinkedInFiltersState, value: string) => {
-    const currentValues = filters[key] as string[];
-    onChange({ ...filters, [key]: currentValues.filter(v => v !== value) });
-  };
+        const response = await supabase.functions.invoke('unipile-search', {
+          body: {
+            action: 'get_parameters',
+            account_id: accountId,
+            type: paramType,
+            keywords: keywords.trim(),
+            service: 'RECRUITER',
+          },
+        });
+
+        if (response.error) throw response.error;
+        if (!response.data?.success) {
+          console.warn('Parameters fetch failed:', response.data?.error);
+          setParameterOptions((prev) => ({ ...prev, [key]: [] }));
+          return;
+        }
+
+        setParameterOptions((prev) => ({
+          ...prev,
+          [key]: response.data.items || [],
+        }));
+      } catch (error) {
+        console.error('Error fetching parameters:', error);
+        setParameterOptions((prev) => ({ ...prev, [key]: [] }));
+      } finally {
+        setLoadingParams(null);
+      }
+    },
+    [accountId]
+  );
 
   const handleSearchInput = (key: string, value: string) => {
-    setSearchInputs(prev => ({ ...prev, [key]: value }));
-    
+    setSearchInputs((prev) => ({ ...prev, [key]: value }));
+
+    // Clear existing debounce
+    if (debounceRef.current[key]) {
+      clearTimeout(debounceRef.current[key]);
+    }
+
     // Debounced search
     if (value.length >= 2) {
-      const paramType = key === 'job_title' ? 'JOB_TITLE' : key.toUpperCase();
-      fetchParameters(key, value);
+      debounceRef.current[key] = setTimeout(() => {
+        fetchParameters(key, value);
+      }, 300);
+    } else {
+      setParameterOptions((prev) => ({ ...prev, [key]: [] }));
     }
   };
 
-  const renderFilterSection = (
-    key: keyof LinkedInFiltersState,
-    label: string,
-    icon: React.ReactNode,
-    paramType?: string
+  // Simple filter add (location, company, industry, school)
+  const handleAddSimpleFilter = (key: 'location' | 'company' | 'industry' | 'school', item: ParameterOption) => {
+    const current = filters[key];
+    if (!current.find((f) => f.id === item.id)) {
+      onChange({ ...filters, [key]: [...current, { id: item.id, name: item.title }] });
+    }
+    setSearchInputs((prev) => ({ ...prev, [key]: '' }));
+    setParameterOptions((prev) => ({ ...prev, [key]: [] }));
+  };
+
+  const handleRemoveSimpleFilter = (key: 'location' | 'company' | 'industry' | 'school', id: string) => {
+    onChange({ ...filters, [key]: filters[key].filter((f) => f.id !== id) });
+  };
+
+  // Priority filter add (job_title, skills)
+  const handleAddPriorityFilter = (
+    key: 'job_title' | 'skills',
+    item: ParameterOption,
+    priority: FilterPriority = 'MUST_HAVE'
   ) => {
-    const values = filters[key] as string[];
+    const current = filters[key];
+    if (!current.find((f) => f.id === item.id)) {
+      onChange({ ...filters, [key]: [...current, { id: item.id, name: item.title, priority }] });
+    }
+    setSearchInputs((prev) => ({ ...prev, [key]: '' }));
+    setParameterOptions((prev) => ({ ...prev, [key]: [] }));
+  };
+
+  const handleUpdatePriority = (key: 'job_title' | 'skills', id: string, priority: FilterPriority) => {
+    onChange({
+      ...filters,
+      [key]: filters[key].map((f) => (f.id === id ? { ...f, priority } : f)),
+    });
+  };
+
+  const handleRemovePriorityFilter = (key: 'job_title' | 'skills', id: string) => {
+    onChange({ ...filters, [key]: filters[key].filter((f) => f.id !== id) });
+  };
+
+  // Role filter
+  const [newRoleKeywords, setNewRoleKeywords] = useState('');
+  const [newRolePriority, setNewRolePriority] = useState<FilterPriority>('MUST_HAVE');
+  const [newRoleScope, setNewRoleScope] = useState<FilterScope>('CURRENT_OR_PAST');
+
+  const handleAddRole = () => {
+    if (!newRoleKeywords.trim()) return;
+    const newRole: RoleFilter = {
+      keywords: newRoleKeywords.trim(),
+      priority: newRolePriority,
+      scope: newRoleScope,
+    };
+    onChange({ ...filters, role: [...filters.role, newRole] });
+    setNewRoleKeywords('');
+  };
+
+  const handleRemoveRole = (index: number) => {
+    onChange({ ...filters, role: filters.role.filter((_, i) => i !== index) });
+  };
+
+  // Render simple filter section
+  const renderSimpleFilterSection = (
+    key: 'location' | 'company' | 'industry' | 'school',
+    label: string,
+    icon: React.ReactNode
+  ) => {
+    const values = filters[key];
     const searchValue = searchInputs[key] || '';
     const options = parameterOptions[key] || [];
 
     return (
-      <Collapsible
-        open={expandedSections.includes(key)}
-        onOpenChange={() => toggleSection(key)}
-      >
+      <Collapsible open={expandedSections.includes(key)} onOpenChange={() => toggleSection(key)}>
         <CollapsibleTrigger className="flex items-center justify-between w-full p-3 hover:bg-gray-50 rounded-lg transition-colors">
           <div className="flex items-center gap-2 text-sm font-medium text-[#1A1A1A]">
             {icon}
@@ -140,22 +220,26 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
               </Badge>
             )}
           </div>
-          <ChevronDown className={`w-4 h-4 text-[#1A1A1A]/40 transition-transform ${expandedSections.includes(key) ? 'rotate-180' : ''}`} />
+          <ChevronDown
+            className={`w-4 h-4 text-[#1A1A1A]/40 transition-transform ${
+              expandedSections.includes(key) ? 'rotate-180' : ''
+            }`}
+          />
         </CollapsibleTrigger>
         <CollapsibleContent className="px-3 pb-3">
           <div className="space-y-2">
             {/* Selected values */}
             {values.length > 0 && (
               <div className="flex flex-wrap gap-1">
-                {values.map((value) => (
+                {values.map((item) => (
                   <Badge
-                    key={value}
+                    key={item.id}
                     variant="secondary"
                     className="gap-1 pr-1 bg-[#0077B5]/10 text-[#0077B5] hover:bg-[#0077B5]/20"
                   >
-                    {value}
+                    {item.name}
                     <button
-                      onClick={() => handleRemoveFilter(key, value)}
+                      onClick={() => handleRemoveSimpleFilter(key, item.id)}
                       className="ml-1 hover:bg-[#0077B5]/20 rounded-full p-0.5"
                     >
                       <X className="w-3 h-3" />
@@ -164,7 +248,7 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
                 ))}
               </div>
             )}
-            
+
             {/* Search input */}
             <div className="relative">
               <Input
@@ -177,17 +261,119 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
                 <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 animate-spin text-[#0077B5]" />
               )}
             </div>
-            
+
             {/* Options dropdown */}
             {options.length > 0 && (
               <div className="bg-white border rounded-lg shadow-lg max-h-40 overflow-auto">
                 {options.map((option) => (
                   <button
                     key={option.id}
-                    onClick={() => handleAddFilter(key, option.id)}
+                    onClick={() => handleAddSimpleFilter(key, option)}
                     className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 transition-colors"
                   >
-                    {option.name}
+                    {option.title}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </CollapsibleContent>
+      </Collapsible>
+    );
+  };
+
+  // Render priority filter section (job_title, skills)
+  const renderPriorityFilterSection = (
+    key: 'job_title' | 'skills',
+    label: string,
+    icon: React.ReactNode
+  ) => {
+    const values = filters[key];
+    const searchValue = searchInputs[key] || '';
+    const options = parameterOptions[key] || [];
+
+    return (
+      <Collapsible open={expandedSections.includes(key)} onOpenChange={() => toggleSection(key)}>
+        <CollapsibleTrigger className="flex items-center justify-between w-full p-3 hover:bg-gray-50 rounded-lg transition-colors">
+          <div className="flex items-center gap-2 text-sm font-medium text-[#1A1A1A]">
+            {icon}
+            {label}
+            {values.length > 0 && (
+              <Badge variant="secondary" className="ml-1 h-5 px-1.5 text-xs">
+                {values.length}
+              </Badge>
+            )}
+          </div>
+          <ChevronDown
+            className={`w-4 h-4 text-[#1A1A1A]/40 transition-transform ${
+              expandedSections.includes(key) ? 'rotate-180' : ''
+            }`}
+          />
+        </CollapsibleTrigger>
+        <CollapsibleContent className="px-3 pb-3">
+          <div className="space-y-2">
+            {/* Selected values with priority */}
+            {values.length > 0 && (
+              <div className="space-y-1">
+                {values.map((item) => {
+                  const priorityConfig = PRIORITY_OPTIONS.find((p) => p.value === item.priority);
+                  return (
+                    <div
+                      key={item.id}
+                      className="flex items-center justify-between gap-2 p-2 bg-gray-50 rounded-lg"
+                    >
+                      <span className="text-sm flex-1 truncate">{item.name}</span>
+                      <Select
+                        value={item.priority}
+                        onValueChange={(val) => handleUpdatePriority(key, item.id, val as FilterPriority)}
+                      >
+                        <SelectTrigger className={`h-7 w-28 text-xs ${priorityConfig?.color}`}>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {PRIORITY_OPTIONS.map((opt) => (
+                            <SelectItem key={opt.value} value={opt.value}>
+                              {opt.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <button
+                        onClick={() => handleRemovePriorityFilter(key, item.id)}
+                        className="text-red-400 hover:text-red-600"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Search input */}
+            <div className="relative">
+              <Input
+                value={searchValue}
+                onChange={(e) => handleSearchInput(key, e.target.value)}
+                placeholder={`Rechercher ${label.toLowerCase()}...`}
+                className="text-sm"
+              />
+              {loadingParams === key && (
+                <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 animate-spin text-[#0077B5]" />
+              )}
+            </div>
+
+            {/* Options dropdown */}
+            {options.length > 0 && (
+              <div className="bg-white border rounded-lg shadow-lg max-h-40 overflow-auto">
+                {options.map((option) => (
+                  <button
+                    key={option.id}
+                    onClick={() => handleAddPriorityFilter(key, option)}
+                    className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 transition-colors flex items-center justify-between"
+                  >
+                    <span>{option.title}</span>
+                    <Plus className="w-4 h-4 text-[#0077B5]" />
                   </button>
                 ))}
               </div>
@@ -200,110 +386,243 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
 
   return (
     <ScrollArea className="bg-white rounded-lg border border-[#1A1A1A]/10">
-      <div className="p-2 max-h-[500px]">
+      <div className="p-2 max-h-[600px]">
         {/* Location */}
-        {renderFilterSection('location', 'Localisation', <MapPin className="w-4 h-4 text-[#0077B5]" />)}
-        
+        {renderSimpleFilterSection('location', 'Localisation', <MapPin className="w-4 h-4 text-[#0077B5]" />)}
+
         {/* Company */}
-        {renderFilterSection('company', 'Entreprise', <Building2 className="w-4 h-4 text-[#0077B5]" />)}
-        
-        {/* Job Title */}
-        {renderFilterSection('job_title', 'Poste', <Briefcase className="w-4 h-4 text-[#0077B5]" />)}
-        
+        {renderSimpleFilterSection('company', 'Entreprise', <Building2 className="w-4 h-4 text-[#0077B5]" />)}
+
+        {/* Job Title with priority */}
+        {renderPriorityFilterSection('job_title', 'Poste', <Briefcase className="w-4 h-4 text-[#0077B5]" />)}
+
+        {/* Role (keywords with scope) */}
+        <Collapsible open={expandedSections.includes('role')} onOpenChange={() => toggleSection('role')}>
+          <CollapsibleTrigger className="flex items-center justify-between w-full p-3 hover:bg-gray-50 rounded-lg transition-colors">
+            <div className="flex items-center gap-2 text-sm font-medium text-[#1A1A1A]">
+              <Sparkles className="w-4 h-4 text-purple-500" />
+              Rôle (mots-clés)
+              {filters.role.length > 0 && (
+                <Badge variant="secondary" className="ml-1 h-5 px-1.5 text-xs">
+                  {filters.role.length}
+                </Badge>
+              )}
+            </div>
+            <ChevronDown
+              className={`w-4 h-4 text-[#1A1A1A]/40 transition-transform ${
+                expandedSections.includes('role') ? 'rotate-180' : ''
+              }`}
+            />
+          </CollapsibleTrigger>
+          <CollapsibleContent className="px-3 pb-3">
+            <div className="space-y-2">
+              {/* Existing roles */}
+              {filters.role.map((role, index) => {
+                const priorityConfig = PRIORITY_OPTIONS.find((p) => p.value === role.priority);
+                const scopeConfig = SCOPE_OPTIONS.find((s) => s.value === role.scope);
+                return (
+                  <div key={index} className="p-2 bg-gray-50 rounded-lg space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium">{role.keywords}</span>
+                      <button onClick={() => handleRemoveRole(index)} className="text-red-400 hover:text-red-600">
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                    <div className="flex gap-1 text-xs">
+                      <Badge className={priorityConfig?.color}>{priorityConfig?.label}</Badge>
+                      <Badge variant="outline">{scopeConfig?.label}</Badge>
+                    </div>
+                  </div>
+                );
+              })}
+
+              {/* Add new role */}
+              <div className="space-y-2 pt-2 border-t">
+                <Input
+                  value={newRoleKeywords}
+                  onChange={(e) => setNewRoleKeywords(e.target.value)}
+                  placeholder="Ex: developer OR engineer"
+                  className="text-sm"
+                />
+                <div className="grid grid-cols-2 gap-2">
+                  <Select value={newRolePriority} onValueChange={(v) => setNewRolePriority(v as FilterPriority)}>
+                    <SelectTrigger className="text-xs h-8">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {PRIORITY_OPTIONS.map((opt) => (
+                        <SelectItem key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Select value={newRoleScope} onValueChange={(v) => setNewRoleScope(v as FilterScope)}>
+                    <SelectTrigger className="text-xs h-8">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {SCOPE_OPTIONS.map((opt) => (
+                        <SelectItem key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <Button size="sm" variant="outline" onClick={handleAddRole} disabled={!newRoleKeywords.trim()} className="w-full">
+                  <Plus className="w-4 h-4 mr-1" />
+                  Ajouter le rôle
+                </Button>
+              </div>
+            </div>
+          </CollapsibleContent>
+        </Collapsible>
+
         {/* Industry */}
-        {renderFilterSection('industry', 'Secteur', <Layers className="w-4 h-4 text-[#0077B5]" />)}
-        
+        {renderSimpleFilterSection('industry', 'Secteur', <Layers className="w-4 h-4 text-[#0077B5]" />)}
+
         {/* School */}
-        {renderFilterSection('school', 'École', <GraduationCap className="w-4 h-4 text-[#0077B5]" />)}
-        
-        {/* Skills */}
-        {renderFilterSection('skills', 'Compétences', <Zap className="w-4 h-4 text-[#0077B5]" />)}
-        
+        {renderSimpleFilterSection('school', 'École', <GraduationCap className="w-4 h-4 text-[#0077B5]" />)}
+
+        {/* Skills with priority */}
+        {renderPriorityFilterSection('skills', 'Compétences', <Zap className="w-4 h-4 text-[#0077B5]" />)}
+
         {/* Seniority */}
-        <Collapsible
-          open={expandedSections.includes('seniority')}
-          onOpenChange={() => toggleSection('seniority')}
-        >
+        <Collapsible open={expandedSections.includes('seniority')} onOpenChange={() => toggleSection('seniority')}>
           <CollapsibleTrigger className="flex items-center justify-between w-full p-3 hover:bg-gray-50 rounded-lg transition-colors">
             <div className="flex items-center gap-2 text-sm font-medium text-[#1A1A1A]">
               <Target className="w-4 h-4 text-[#0077B5]" />
               Niveau d'expérience
+              {filters.seniority.length > 0 && (
+                <Badge variant="secondary" className="ml-1 h-5 px-1.5 text-xs">
+                  {filters.seniority.length}
+                </Badge>
+              )}
             </div>
-            <ChevronDown className={`w-4 h-4 text-[#1A1A1A]/40 transition-transform ${expandedSections.includes('seniority') ? 'rotate-180' : ''}`} />
+            <ChevronDown
+              className={`w-4 h-4 text-[#1A1A1A]/40 transition-transform ${
+                expandedSections.includes('seniority') ? 'rotate-180' : ''
+              }`}
+            />
           </CollapsibleTrigger>
           <CollapsibleContent className="px-3 pb-3">
             <div className="space-y-2">
-              {['Entry', 'Senior', 'Director', 'VP', 'CXO'].map((level) => (
-                <label key={level} className="flex items-center gap-2 text-sm">
+              {SENIORITY_LEVELS.map((level) => (
+                <label key={level.value} className="flex items-center gap-2 text-sm">
                   <input
                     type="checkbox"
-                    checked={filters.seniority.includes(level)}
+                    checked={filters.seniority.includes(level.value)}
                     onChange={(e) => {
                       if (e.target.checked) {
-                        onChange({ ...filters, seniority: [...filters.seniority, level] });
+                        onChange({ ...filters, seniority: [...filters.seniority, level.value] });
                       } else {
-                        onChange({ ...filters, seniority: filters.seniority.filter(s => s !== level) });
+                        onChange({ ...filters, seniority: filters.seniority.filter((s) => s !== level.value) });
                       }
                     }}
                     className="rounded border-gray-300"
                   />
-                  {level}
+                  {level.label}
                 </label>
               ))}
             </div>
           </CollapsibleContent>
         </Collapsible>
-        
+
+        {/* Network Distance */}
+        <Collapsible open={expandedSections.includes('network')} onOpenChange={() => toggleSection('network')}>
+          <CollapsibleTrigger className="flex items-center justify-between w-full p-3 hover:bg-gray-50 rounded-lg transition-colors">
+            <div className="flex items-center gap-2 text-sm font-medium text-[#1A1A1A]">
+              <Users className="w-4 h-4 text-[#0077B5]" />
+              Degré de connexion
+              {filters.network_distance.length > 0 && (
+                <Badge variant="secondary" className="ml-1 h-5 px-1.5 text-xs">
+                  {filters.network_distance.length}
+                </Badge>
+              )}
+            </div>
+            <ChevronDown
+              className={`w-4 h-4 text-[#1A1A1A]/40 transition-transform ${
+                expandedSections.includes('network') ? 'rotate-180' : ''
+              }`}
+            />
+          </CollapsibleTrigger>
+          <CollapsibleContent className="px-3 pb-3">
+            <div className="space-y-2">
+              {NETWORK_DISTANCES.map((dist) => (
+                <label key={dist.value} className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={filters.network_distance.includes(dist.value)}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        onChange({ ...filters, network_distance: [...filters.network_distance, dist.value] });
+                      } else {
+                        onChange({ ...filters, network_distance: filters.network_distance.filter((d) => d !== dist.value) });
+                      }
+                    }}
+                    className="rounded border-gray-300"
+                  />
+                  {dist.label}
+                </label>
+              ))}
+            </div>
+          </CollapsibleContent>
+        </Collapsible>
+
         {/* Years of Experience */}
-        <Collapsible
-          open={expandedSections.includes('experience')}
-          onOpenChange={() => toggleSection('experience')}
-        >
+        <Collapsible open={expandedSections.includes('experience')} onOpenChange={() => toggleSection('experience')}>
           <CollapsibleTrigger className="flex items-center justify-between w-full p-3 hover:bg-gray-50 rounded-lg transition-colors">
             <div className="flex items-center gap-2 text-sm font-medium text-[#1A1A1A]">
               <Users className="w-4 h-4 text-[#0077B5]" />
               Années d'expérience
             </div>
-            <ChevronDown className={`w-4 h-4 text-[#1A1A1A]/40 transition-transform ${expandedSections.includes('experience') ? 'rotate-180' : ''}`} />
+            <ChevronDown
+              className={`w-4 h-4 text-[#1A1A1A]/40 transition-transform ${
+                expandedSections.includes('experience') ? 'rotate-180' : ''
+              }`}
+            />
           </CollapsibleTrigger>
           <CollapsibleContent className="px-3 pb-3">
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <Label className="text-xs">Min</Label>
-                  <Input
-                    type="number"
-                    min={0}
-                    max={50}
-                    value={filters.years_of_experience_min || ''}
-                    onChange={(e) => onChange({ 
-                      ...filters, 
-                      years_of_experience_min: e.target.value ? parseInt(e.target.value) : null 
-                    })}
-                    placeholder="0"
-                    className="text-sm"
-                  />
-                </div>
-                <div>
-                  <Label className="text-xs">Max</Label>
-                  <Input
-                    type="number"
-                    min={0}
-                    max={50}
-                    value={filters.years_of_experience_max || ''}
-                    onChange={(e) => onChange({ 
-                      ...filters, 
-                      years_of_experience_max: e.target.value ? parseInt(e.target.value) : null 
-                    })}
-                    placeholder="50"
-                    className="text-sm"
-                  />
-                </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <Label className="text-xs">Min</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  max={50}
+                  value={filters.years_of_experience_min ?? ''}
+                  onChange={(e) =>
+                    onChange({
+                      ...filters,
+                      years_of_experience_min: e.target.value ? parseInt(e.target.value) : null,
+                    })
+                  }
+                  placeholder="0"
+                  className="text-sm"
+                />
+              </div>
+              <div>
+                <Label className="text-xs">Max</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  max={50}
+                  value={filters.years_of_experience_max ?? ''}
+                  onChange={(e) =>
+                    onChange({
+                      ...filters,
+                      years_of_experience_max: e.target.value ? parseInt(e.target.value) : null,
+                    })
+                  }
+                  placeholder="50"
+                  className="text-sm"
+                />
               </div>
             </div>
           </CollapsibleContent>
         </Collapsible>
-        
+
         {/* Open to Work */}
         <div className="flex items-center justify-between p-3">
           <div className="flex items-center gap-2 text-sm font-medium text-[#1A1A1A]">
@@ -312,28 +631,31 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
           </div>
           <Switch
             checked={filters.open_to_work === true}
-            onCheckedChange={(checked) => onChange({ 
-              ...filters, 
-              open_to_work: checked ? true : null 
-            })}
+            onCheckedChange={(checked) =>
+              onChange({
+                ...filters,
+                open_to_work: checked ? true : null,
+              })
+            }
           />
         </div>
-        
+
         {/* Recruiter Specific */}
-        <Collapsible
-          open={expandedSections.includes('recruiter')}
-          onOpenChange={() => toggleSection('recruiter')}
-        >
+        <Collapsible open={expandedSections.includes('recruiter')} onOpenChange={() => toggleSection('recruiter')}>
           <CollapsibleTrigger className="flex items-center justify-between w-full p-3 hover:bg-gray-50 rounded-lg transition-colors">
             <div className="flex items-center gap-2 text-sm font-medium text-[#1A1A1A]">
               <Target className="w-4 h-4 text-purple-500" />
               Filtres Recruiter
             </div>
-            <ChevronDown className={`w-4 h-4 text-[#1A1A1A]/40 transition-transform ${expandedSections.includes('recruiter') ? 'rotate-180' : ''}`} />
+            <ChevronDown
+              className={`w-4 h-4 text-[#1A1A1A]/40 transition-transform ${
+                expandedSections.includes('recruiter') ? 'rotate-180' : ''
+              }`}
+            />
           </CollapsibleTrigger>
           <CollapsibleContent className="px-3 pb-3 space-y-3">
             <div>
-              <Label className="text-xs">Hiring Project</Label>
+              <Label className="text-xs">Hiring Project (ID)</Label>
               <Input
                 value={filters.hiring_project}
                 onChange={(e) => onChange({ ...filters, hiring_project: e.target.value })}
@@ -342,7 +664,7 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
               />
             </div>
             <div>
-              <Label className="text-xs">Talent Pool</Label>
+              <Label className="text-xs">Talent Pool (ID)</Label>
               <Input
                 value={filters.talent_pool}
                 onChange={(e) => onChange({ ...filters, talent_pool: e.target.value })}
@@ -352,16 +674,18 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
             </div>
             <div>
               <Label className="text-xs">Spotlight</Label>
-              <select
-                value={filters.spotlight}
-                onChange={(e) => onChange({ ...filters, spotlight: e.target.value })}
-                className="w-full px-3 py-2 text-sm border rounded-md"
-              >
-                <option value="">Tous</option>
-                <option value="RECENTLY_CHANGED_JOBS">Changement récent</option>
-                <option value="RECENTLY_PROMOTED">Promu récemment</option>
-                <option value="OPEN_LINK">Open Link</option>
-              </select>
+              <Select value={filters.spotlight} onValueChange={(v) => onChange({ ...filters, spotlight: v })}>
+                <SelectTrigger className="text-sm">
+                  <SelectValue placeholder="Tous" />
+                </SelectTrigger>
+                <SelectContent>
+                  {SPOTLIGHT_OPTIONS.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value || '_all'}>
+                      {opt.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </CollapsibleContent>
         </Collapsible>
