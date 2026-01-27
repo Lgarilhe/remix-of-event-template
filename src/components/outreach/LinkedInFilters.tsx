@@ -24,6 +24,7 @@ import {
   SelectedBadges,
   PriorityBadges,
   ParameterOption,
+  MultiSelectDropdown,
 } from './FilterComponents';
 import { isFilterSupported, getFilterTooltip, FilterKey } from './filterApiSupport';
 import { Input } from '@/components/ui/input';
@@ -341,46 +342,22 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
 
           {/* Profile Languages */}
           <FilterGroup title="Langue du profil" icon={<Globe className="w-3.5 h-3.5 text-[#0077B5]" />} badge={filters.profile_language.length}>
-            <div className="grid grid-cols-2 gap-1.5">
-              {PROFILE_LANGUAGES.map((lang) => (
-                <label key={lang.value} className="flex items-center gap-2 text-sm cursor-pointer p-1.5 rounded hover:bg-gray-50">
-                  <Checkbox
-                    checked={filters.profile_language.includes(lang.value)}
-                    onCheckedChange={(checked) => {
-                      if (checked) {
-                        onChange({ ...filters, profile_language: [...filters.profile_language, lang.value] });
-                      } else {
-                        onChange({ ...filters, profile_language: filters.profile_language.filter((l) => l !== lang.value) });
-                      }
-                    }}
-                    className="h-3.5 w-3.5"
-                  />
-                  <span className="text-xs">{lang.label}</span>
-                </label>
-              ))}
-            </div>
+            <MultiSelectDropdown
+              options={PROFILE_LANGUAGES.map(l => ({ value: l.value, label: l.label }))}
+              selected={filters.profile_language}
+              onChange={(selected) => onChange({ ...filters, profile_language: selected as string[] })}
+              placeholder="Sélectionner les langues..."
+            />
           </FilterGroup>
 
           {/* Network Distance */}
           <FilterGroup title="Degré de connexion" icon={<Users className="w-3.5 h-3.5 text-[#0077B5]" />} badge={filters.network_distance.length}>
-            <div className="space-y-1.5">
-              {NETWORK_DISTANCES.map((dist) => (
-                <label key={dist.value} className="flex items-center gap-2 text-sm cursor-pointer p-1.5 rounded hover:bg-gray-50">
-                  <Checkbox
-                    checked={filters.network_distance.includes(dist.value)}
-                    onCheckedChange={(checked) => {
-                      if (checked) {
-                        onChange({ ...filters, network_distance: [...filters.network_distance, dist.value] });
-                      } else {
-                        onChange({ ...filters, network_distance: filters.network_distance.filter((d) => d !== dist.value) });
-                      }
-                    }}
-                    className="h-3.5 w-3.5"
-                  />
-                  <span className="text-xs">{dist.label}</span>
-                </label>
-              ))}
-            </div>
+            <MultiSelectDropdown
+              options={NETWORK_DISTANCES.map(d => ({ value: d.value, label: d.label }))}
+              selected={filters.network_distance}
+              onChange={(selected) => onChange({ ...filters, network_distance: selected as number[] })}
+              placeholder="Sélectionner les degrés..."
+            />
           </FilterGroup>
         </FilterSection>
 
@@ -515,25 +492,13 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
             unsupported={!isFilterSupported(filters.api, 'seniority')}
             unsupportedTooltip={getFilterTooltip(filters.api, 'seniority')}
           >
-            <div className={`grid grid-cols-2 gap-1.5 ${!isFilterSupported(filters.api, 'seniority') ? 'opacity-50 pointer-events-none' : ''}`}>
-              {SENIORITY_LEVELS.map((level) => (
-                <label key={level.value} className="flex items-center gap-2 text-sm cursor-pointer p-1.5 rounded hover:bg-gray-50">
-                  <Checkbox
-                    checked={filters.seniority.includes(level.value)}
-                    onCheckedChange={(checked) => {
-                      if (checked) {
-                        onChange({ ...filters, seniority: [...filters.seniority, level.value] });
-                      } else {
-                        onChange({ ...filters, seniority: filters.seniority.filter((s) => s !== level.value) });
-                      }
-                    }}
-                    className="h-3.5 w-3.5"
-                    disabled={!isFilterSupported(filters.api, 'seniority')}
-                  />
-                  <span className="text-xs truncate">{level.label}</span>
-                </label>
-              ))}
-            </div>
+            <MultiSelectDropdown
+              options={SENIORITY_LEVELS.map(l => ({ value: l.value, label: l.label }))}
+              selected={filters.seniority}
+              onChange={(selected) => onChange({ ...filters, seniority: selected as string[] })}
+              placeholder="Sélectionner les niveaux..."
+              disabled={!isFilterSupported(filters.api, 'seniority')}
+            />
           </FilterGroup>
         </FilterSection>
 
@@ -735,25 +700,13 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
             unsupported={!isFilterSupported(filters.api, 'company_headcount')}
             unsupportedTooltip={getFilterTooltip(filters.api, 'company_headcount')}
           >
-            <div className={`grid grid-cols-2 gap-1.5 ${!isFilterSupported(filters.api, 'company_headcount') ? 'opacity-50 pointer-events-none' : ''}`}>
-              {COMPANY_HEADCOUNT_OPTIONS.map((opt) => (
-                <label key={opt.value} className="flex items-center gap-2 text-sm cursor-pointer p-1.5 rounded hover:bg-gray-50">
-                  <Checkbox
-                    checked={filters.company_headcount.includes(opt.value)}
-                    onCheckedChange={(checked) => {
-                      if (checked) {
-                        onChange({ ...filters, company_headcount: [...filters.company_headcount, opt.value] });
-                      } else {
-                        onChange({ ...filters, company_headcount: filters.company_headcount.filter((h) => h !== opt.value) });
-                      }
-                    }}
-                    className="h-3.5 w-3.5"
-                    disabled={!isFilterSupported(filters.api, 'company_headcount')}
-                  />
-                  <span className="text-xs">{opt.label}</span>
-                </label>
-              ))}
-            </div>
+            <MultiSelectDropdown
+              options={COMPANY_HEADCOUNT_OPTIONS.map(o => ({ value: o.value, label: o.label }))}
+              selected={filters.company_headcount}
+              onChange={(selected) => onChange({ ...filters, company_headcount: selected as string[] })}
+              placeholder="Sélectionner les tailles..."
+              disabled={!isFilterSupported(filters.api, 'company_headcount')}
+            />
           </FilterGroup>
 
           {/* Company Type */}
@@ -764,25 +717,13 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
             unsupported={!isFilterSupported(filters.api, 'company_type')}
             unsupportedTooltip={getFilterTooltip(filters.api, 'company_type')}
           >
-            <div className={`space-y-1.5 ${!isFilterSupported(filters.api, 'company_type') ? 'opacity-50 pointer-events-none' : ''}`}>
-              {COMPANY_TYPE_OPTIONS.map((opt) => (
-                <label key={opt.value} className="flex items-center gap-2 text-sm cursor-pointer p-1.5 rounded hover:bg-gray-50">
-                  <Checkbox
-                    checked={filters.company_type.includes(opt.value)}
-                    onCheckedChange={(checked) => {
-                      if (checked) {
-                        onChange({ ...filters, company_type: [...filters.company_type, opt.value] });
-                      } else {
-                        onChange({ ...filters, company_type: filters.company_type.filter((t) => t !== opt.value) });
-                      }
-                    }}
-                    className="h-3.5 w-3.5"
-                    disabled={!isFilterSupported(filters.api, 'company_type')}
-                  />
-                  <span className="text-xs">{opt.label}</span>
-                </label>
-              ))}
-            </div>
+            <MultiSelectDropdown
+              options={COMPANY_TYPE_OPTIONS.map(o => ({ value: o.value, label: o.label }))}
+              selected={filters.company_type}
+              onChange={(selected) => onChange({ ...filters, company_type: selected as string[] })}
+              placeholder="Sélectionner les types..."
+              disabled={!isFilterSupported(filters.api, 'company_type')}
+            />
           </FilterGroup>
         </FilterSection>
 
@@ -876,25 +817,13 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
             unsupported={!isFilterSupported(filters.api, 'open_to')}
             unsupportedTooltip={getFilterTooltip(filters.api, 'open_to')}
           >
-            <div className={`space-y-1.5 ${!isFilterSupported(filters.api, 'open_to') ? 'opacity-50 pointer-events-none' : ''}`}>
-              {OPEN_TO_OPTIONS.map((opt) => (
-                <label key={opt.value} className="flex items-center gap-2 text-sm cursor-pointer p-1.5 rounded hover:bg-gray-50">
-                  <Checkbox
-                    checked={filters.open_to.includes(opt.value as any)}
-                    onCheckedChange={(checked) => {
-                      if (checked) {
-                        onChange({ ...filters, open_to: [...filters.open_to, opt.value as any] });
-                      } else {
-                        onChange({ ...filters, open_to: filters.open_to.filter((o) => o !== opt.value) });
-                      }
-                    }}
-                    className="h-3.5 w-3.5"
-                    disabled={!isFilterSupported(filters.api, 'open_to')}
-                  />
-                  <span className="text-xs">{opt.label}</span>
-                </label>
-              ))}
-            </div>
+            <MultiSelectDropdown
+              options={OPEN_TO_OPTIONS.map(o => ({ value: o.value, label: o.label }))}
+              selected={filters.open_to}
+              onChange={(selected) => onChange({ ...filters, open_to: selected as typeof filters.open_to })}
+              placeholder="Sélectionner les types..."
+              disabled={!isFilterSupported(filters.api, 'open_to')}
+            />
           </FilterGroup>
 
           {/* Spotlight */}
