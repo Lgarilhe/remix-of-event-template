@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { motion } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Check, ArrowRight, Users, Target, Zap, TrendingUp, Calendar, Clock, Star, ChevronDown } from 'lucide-react';
@@ -125,28 +126,48 @@ const SkalrLanding = () => {
         {/* Hero Section */}
         <section className="pt-32 pb-20 px-6">
           <div className="max-w-5xl mx-auto text-center">
-            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/10 text-primary text-sm font-medium mb-8">
+            <motion.div 
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6 }}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/10 text-primary text-sm font-medium mb-8"
+            >
               <Star className="h-4 w-4" />
               Studio d'innovation talent
-            </div>
-            <h1 className="text-5xl md:text-7xl font-bold tracking-tight mb-6 leading-[1.1]">
+            </motion.div>
+            <motion.h1 
+              initial={{ opacity: 0, y: 30 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6, delay: 0.1 }}
+              className="text-5xl md:text-7xl font-bold tracking-tight mb-6 leading-[1.1]"
+            >
               Transformez votre recrutement en{' '}
               <span className="bg-gradient-to-r from-primary to-primary/60 bg-clip-text text-transparent">
                 levier de croissance
               </span>
-            </h1>
-            <p className="text-xl text-muted-foreground max-w-3xl mx-auto mb-10">
+            </motion.h1>
+            <motion.p 
+              initial={{ opacity: 0, y: 30 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6, delay: 0.2 }}
+              className="text-xl text-muted-foreground max-w-3xl mx-auto mb-10"
+            >
               Nous aidons les startups et scale-ups à recruter plus efficacement, plus rapidement 
               et avec un meilleur taux de succès grâce à des méthodologies sur-mesure.
-            </p>
-            <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+            </motion.p>
+            <motion.div 
+              initial={{ opacity: 0, y: 30 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6, delay: 0.3 }}
+              className="flex flex-col sm:flex-row items-center justify-center gap-4"
+            >
               <Button size="lg" className="rounded-full px-8 h-14 text-lg">
                 Réserver un audit gratuit <ArrowRight className="ml-2 h-5 w-5" />
               </Button>
               <Button size="lg" variant="outline" className="rounded-full px-8 h-14 text-lg">
                 Découvrir la méthode
               </Button>
-            </div>
+            </motion.div>
           </div>
         </section>
 
@@ -155,10 +176,17 @@ const SkalrLanding = () => {
           <div className="max-w-6xl mx-auto">
             <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
               {stats.map((stat, index) => (
-                <div key={index} className="text-center">
+                <motion.div 
+                  key={index} 
+                  initial={{ opacity: 0, scale: 0.8 }}
+                  whileInView={{ opacity: 1, scale: 1 }}
+                  viewport={{ once: true, margin: "-50px" }}
+                  transition={{ duration: 0.5, delay: index * 0.1 }}
+                  className="text-center"
+                >
                   <div className="text-4xl md:text-5xl font-bold text-primary mb-2">{stat.value}</div>
                   <div className="text-sm text-muted-foreground">{stat.label}</div>
-                </div>
+                </motion.div>
               ))}
             </div>
           </div>
@@ -167,26 +195,44 @@ const SkalrLanding = () => {
         {/* Pillars Section */}
         <section id="methode" className="py-24 px-6">
           <div className="max-w-6xl mx-auto">
-            <div className="text-center mb-16">
+            <motion.div 
+              initial={{ opacity: 0, y: 30 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true, margin: "-100px" }}
+              transition={{ duration: 0.6 }}
+              className="text-center mb-16"
+            >
               <h2 className="text-3xl md:text-4xl font-bold mb-4">Notre méthode en 3 piliers</h2>
               <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
                 Une approche systémique éprouvée sur plus de 150 startups pour transformer 
                 votre recrutement d'un centre de coût en avantage compétitif.
               </p>
-            </div>
+            </motion.div>
             <div className="grid md:grid-cols-3 gap-8">
               {pillars.map((pillar, index) => (
-                <Card key={index} className="border-2 hover:border-primary/50 transition-colors">
-                  <CardHeader>
-                    <div className="w-14 h-14 rounded-2xl bg-primary/10 flex items-center justify-center mb-4">
-                      <pillar.icon className="h-7 w-7 text-primary" />
-                    </div>
-                    <CardTitle className="text-xl">{pillar.title}</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <CardDescription className="text-base">{pillar.description}</CardDescription>
-                  </CardContent>
-                </Card>
+                <motion.div
+                  key={index}
+                  initial={{ opacity: 0, y: 40 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true, margin: "-50px" }}
+                  transition={{ duration: 0.5, delay: index * 0.15 }}
+                >
+                  <Card className="border-2 hover:border-primary/50 transition-colors h-full">
+                    <CardHeader>
+                      <motion.div 
+                        whileHover={{ scale: 1.1, rotate: 5 }}
+                        transition={{ type: "spring", stiffness: 300 }}
+                        className="w-14 h-14 rounded-2xl bg-primary/10 flex items-center justify-center mb-4"
+                      >
+                        <pillar.icon className="h-7 w-7 text-primary" />
+                      </motion.div>
+                      <CardTitle className="text-xl">{pillar.title}</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <CardDescription className="text-base">{pillar.description}</CardDescription>
+                    </CardContent>
+                  </Card>
+                </motion.div>
               ))}
             </div>
           </div>
@@ -195,57 +241,90 @@ const SkalrLanding = () => {
         {/* Pricing Section */}
         <section id="offres" className="py-24 px-6 bg-muted/50">
           <div className="max-w-6xl mx-auto">
-            <div className="text-center mb-16">
+            <motion.div 
+              initial={{ opacity: 0, y: 30 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true, margin: "-100px" }}
+              transition={{ duration: 0.6 }}
+              className="text-center mb-16"
+            >
               <h2 className="text-3xl md:text-4xl font-bold mb-4">Nos packs d'accompagnement</h2>
               <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
                 Choisissez le niveau d'accompagnement adapté à vos besoins et à votre maturité recrutement.
               </p>
-            </div>
+            </motion.div>
             <div className="grid md:grid-cols-3 gap-8">
               {packs.map((pack, index) => (
-                <Card 
-                  key={index} 
-                  className={`relative ${pack.highlight ? 'border-primary border-2 shadow-lg scale-105' : 'border-2'}`}
+                <motion.div
+                  key={index}
+                  initial={{ opacity: 0, y: 50 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true, margin: "-50px" }}
+                  transition={{ duration: 0.5, delay: index * 0.15 }}
+                  whileHover={{ y: -8 }}
                 >
-                  {pack.highlight && (
-                    <div className="absolute -top-4 left-1/2 -translate-x-1/2 px-4 py-1 bg-primary text-primary-foreground text-sm font-medium rounded-full">
-                      Recommandé
-                    </div>
-                  )}
-                  <CardHeader className="pb-4">
-                    <CardTitle className="text-2xl">{pack.name}</CardTitle>
-                    <CardDescription>{pack.description}</CardDescription>
-                    <div className="pt-4">
-                      <span className="text-4xl font-bold">{pack.price} €</span>
-                      <span className="text-muted-foreground ml-2">HT</span>
-                    </div>
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground pt-2">
-                      <Clock className="h-4 w-4" />
-                      {pack.duration}
-                    </div>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <ul className="space-y-3">
-                      {pack.features.map((feature, i) => (
-                        <li key={i} className="flex items-start gap-3">
-                          <Check className="h-5 w-5 text-primary shrink-0 mt-0.5" />
-                          <span className="text-sm">{feature}</span>
-                        </li>
-                      ))}
-                    </ul>
-                    <Button 
-                      className={`w-full rounded-full ${pack.highlight ? '' : 'variant-outline'}`}
-                      variant={pack.highlight ? 'default' : 'outline'}
-                    >
-                      Choisir {pack.name}
-                    </Button>
-                  </CardContent>
-                </Card>
+                  <Card 
+                    className={`relative h-full ${pack.highlight ? 'border-primary border-2 shadow-lg scale-105' : 'border-2'}`}
+                  >
+                    {pack.highlight && (
+                      <motion.div 
+                        initial={{ opacity: 0, scale: 0.8 }}
+                        whileInView={{ opacity: 1, scale: 1 }}
+                        viewport={{ once: true }}
+                        transition={{ duration: 0.4, delay: 0.3 }}
+                        className="absolute -top-4 left-1/2 -translate-x-1/2 px-4 py-1 bg-primary text-primary-foreground text-sm font-medium rounded-full"
+                      >
+                        Recommandé
+                      </motion.div>
+                    )}
+                    <CardHeader className="pb-4">
+                      <CardTitle className="text-2xl">{pack.name}</CardTitle>
+                      <CardDescription>{pack.description}</CardDescription>
+                      <div className="pt-4">
+                        <span className="text-4xl font-bold">{pack.price} €</span>
+                        <span className="text-muted-foreground ml-2">HT</span>
+                      </div>
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground pt-2">
+                        <Clock className="h-4 w-4" />
+                        {pack.duration}
+                      </div>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <ul className="space-y-3">
+                        {pack.features.map((feature, i) => (
+                          <motion.li 
+                            key={i} 
+                            initial={{ opacity: 0, x: -10 }}
+                            whileInView={{ opacity: 1, x: 0 }}
+                            viewport={{ once: true }}
+                            transition={{ duration: 0.3, delay: 0.4 + i * 0.05 }}
+                            className="flex items-start gap-3"
+                          >
+                            <Check className="h-5 w-5 text-primary shrink-0 mt-0.5" />
+                            <span className="text-sm">{feature}</span>
+                          </motion.li>
+                        ))}
+                      </ul>
+                      <Button 
+                        className={`w-full rounded-full ${pack.highlight ? '' : 'variant-outline'}`}
+                        variant={pack.highlight ? 'default' : 'outline'}
+                      >
+                        Choisir {pack.name}
+                      </Button>
+                    </CardContent>
+                  </Card>
+                </motion.div>
               ))}
             </div>
-            <p className="text-center text-sm text-muted-foreground mt-8">
+            <motion.p 
+              initial={{ opacity: 0 }}
+              whileInView={{ opacity: 1 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.5, delay: 0.5 }}
+              className="text-center text-sm text-muted-foreground mt-8"
+            >
               Sessions Expert à la carte également disponibles (490€ - 1 490€ HT)
-            </p>
+            </motion.p>
           </div>
         </section>
 
@@ -253,7 +332,12 @@ const SkalrLanding = () => {
         <section id="resultats" className="py-24 px-6">
           <div className="max-w-6xl mx-auto">
             <div className="grid md:grid-cols-2 gap-16 items-center">
-              <div>
+              <motion.div
+                initial={{ opacity: 0, x: -50 }}
+                whileInView={{ opacity: 1, x: 0 }}
+                viewport={{ once: true, margin: "-100px" }}
+                transition={{ duration: 0.6 }}
+              >
                 <h2 className="text-3xl md:text-4xl font-bold mb-6">
                   8 ans d'expérience au service de la French Tech
                 </h2>
@@ -262,36 +346,40 @@ const SkalrLanding = () => {
                   Notre méthodologie a été construite et affinée sur le terrain, avec plus de 150 entreprises innovantes.
                 </p>
                 <div className="space-y-4">
-                  <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
-                      <TrendingUp className="h-6 w-6 text-primary" />
-                    </div>
-                    <div>
-                      <div className="font-semibold">Réduction des coûts</div>
-                      <div className="text-sm text-muted-foreground">-40% sur les coûts de recrutement externes</div>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
-                      <Calendar className="h-6 w-6 text-primary" />
-                    </div>
-                    <div>
-                      <div className="font-semibold">Time-to-hire optimisé</div>
-                      <div className="text-sm text-muted-foreground">De 40 jours à 28 jours en moyenne</div>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
-                      <Users className="h-6 w-6 text-primary" />
-                    </div>
-                    <div>
-                      <div className="font-semibold">Qualité des recrutements</div>
-                      <div className="text-sm text-muted-foreground">85% de succès en période d'essai</div>
-                    </div>
-                  </div>
+                  {[
+                    { icon: TrendingUp, title: "Réduction des coûts", desc: "-40% sur les coûts de recrutement externes" },
+                    { icon: Calendar, title: "Time-to-hire optimisé", desc: "De 40 jours à 28 jours en moyenne" },
+                    { icon: Users, title: "Qualité des recrutements", desc: "85% de succès en période d'essai" },
+                  ].map((item, index) => (
+                    <motion.div 
+                      key={index}
+                      initial={{ opacity: 0, x: -20 }}
+                      whileInView={{ opacity: 1, x: 0 }}
+                      viewport={{ once: true }}
+                      transition={{ duration: 0.4, delay: 0.2 + index * 0.1 }}
+                      className="flex items-center gap-4"
+                    >
+                      <motion.div 
+                        whileHover={{ scale: 1.1 }}
+                        className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center"
+                      >
+                        <item.icon className="h-6 w-6 text-primary" />
+                      </motion.div>
+                      <div>
+                        <div className="font-semibold">{item.title}</div>
+                        <div className="text-sm text-muted-foreground">{item.desc}</div>
+                      </div>
+                    </motion.div>
+                  ))}
                 </div>
-              </div>
-              <div className="bg-gradient-to-br from-primary/20 to-primary/5 rounded-3xl p-8 md:p-12">
+              </motion.div>
+              <motion.div 
+                initial={{ opacity: 0, x: 50 }}
+                whileInView={{ opacity: 1, x: 0 }}
+                viewport={{ once: true, margin: "-100px" }}
+                transition={{ duration: 0.6, delay: 0.2 }}
+                className="bg-gradient-to-br from-primary/20 to-primary/5 rounded-3xl p-8 md:p-12"
+              >
                 <blockquote className="text-xl md:text-2xl font-medium mb-6">
                   "Skalr nous a permis de structurer notre recrutement pour supporter notre croissance de 0 à 50 collaborateurs en 18 mois."
                 </blockquote>
@@ -302,7 +390,7 @@ const SkalrLanding = () => {
                     <div className="text-sm text-muted-foreground">Série B - 20M€</div>
                   </div>
                 </div>
-              </div>
+              </motion.div>
             </div>
           </div>
         </section>
@@ -343,17 +431,28 @@ const SkalrLanding = () => {
 
         {/* CTA Section */}
         <section className="py-24 px-6">
-          <div className="max-w-4xl mx-auto text-center">
+          <motion.div 
+            initial={{ opacity: 0, y: 40 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, margin: "-100px" }}
+            transition={{ duration: 0.6 }}
+            className="max-w-4xl mx-auto text-center"
+          >
             <h2 className="text-3xl md:text-5xl font-bold mb-6">
               Prêt à transformer votre recrutement ?
             </h2>
             <p className="text-xl text-muted-foreground mb-10">
               Réservez un audit gratuit de 30 minutes pour identifier vos opportunités d'optimisation.
             </p>
-            <Button size="lg" className="rounded-full px-10 h-16 text-lg">
-              Réserver mon audit gratuit <ArrowRight className="ml-2 h-5 w-5" />
-            </Button>
-          </div>
+            <motion.div
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.98 }}
+            >
+              <Button size="lg" className="rounded-full px-10 h-16 text-lg">
+                Réserver mon audit gratuit <ArrowRight className="ml-2 h-5 w-5" />
+              </Button>
+            </motion.div>
+          </motion.div>
         </section>
 
         {/* Footer */}
