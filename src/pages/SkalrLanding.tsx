@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { Check, ArrowRight, Users, Target, Zap, TrendingUp, Calendar, Clock, ChevronDown, Play } from 'lucide-react';
 import { SEOHead } from '@/components/SEOHead';
+import heroVideo from '@/assets/hero-video.mp4';
 
 const SkalrLanding = () => {
   const [openFaq, setOpenFaq] = useState<number | null>(null);
@@ -65,60 +66,25 @@ const SkalrLanding = () => {
       />
       
       <div className="min-h-screen bg-white text-zinc-900">
-        {/* Hero with video-like effect */}
+        {/* Hero with video background */}
         <section className="relative min-h-screen overflow-hidden bg-zinc-950">
-          {/* Animated gradient mesh background */}
+          {/* Video background */}
           <div className="absolute inset-0">
-            {/* Base gradient */}
-            <div className="absolute inset-0 bg-gradient-to-br from-zinc-900 via-zinc-950 to-black" />
+            <video
+              autoPlay
+              muted
+              loop
+              playsInline
+              className="absolute inset-0 w-full h-full object-cover"
+            >
+              <source src={heroVideo} type="video/mp4" />
+            </video>
             
-            {/* Animated color blobs - simulating video feel */}
-            <motion.div
-              className="absolute top-[-20%] left-[-10%] w-[60%] h-[60%] rounded-full opacity-40"
-              style={{ background: 'radial-gradient(circle, #7c3aed 0%, transparent 70%)' }}
-              animate={{
-                x: [0, 100, 50, 0],
-                y: [0, 50, 100, 0],
-                scale: [1, 1.2, 0.9, 1],
-              }}
-              transition={{ duration: 20, repeat: Infinity, ease: "easeInOut" }}
-            />
-            <motion.div
-              className="absolute top-[20%] right-[-10%] w-[50%] h-[50%] rounded-full opacity-30"
-              style={{ background: 'radial-gradient(circle, #ec4899 0%, transparent 70%)' }}
-              animate={{
-                x: [0, -80, -40, 0],
-                y: [0, 80, 40, 0],
-                scale: [1, 0.9, 1.1, 1],
-              }}
-              transition={{ duration: 25, repeat: Infinity, ease: "easeInOut" }}
-            />
-            <motion.div
-              className="absolute bottom-[-10%] left-[30%] w-[40%] h-[40%] rounded-full opacity-30"
-              style={{ background: 'radial-gradient(circle, #3b82f6 0%, transparent 70%)' }}
-              animate={{
-                x: [0, 60, -30, 0],
-                y: [0, -60, 30, 0],
-                scale: [1, 1.1, 0.95, 1],
-              }}
-              transition={{ duration: 18, repeat: Infinity, ease: "easeInOut" }}
-            />
+            {/* Dark overlay for readability */}
+            <div className="absolute inset-0 bg-black/50" />
             
-            {/* Noise overlay for video texture */}
-            <div 
-              className="absolute inset-0 opacity-[0.03]"
-              style={{
-                backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E")`,
-              }}
-            />
-            
-            {/* Subtle scan lines */}
-            <div 
-              className="absolute inset-0 opacity-[0.02]"
-              style={{
-                backgroundImage: 'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(255,255,255,0.03) 2px, rgba(255,255,255,0.03) 4px)',
-              }}
-            />
+            {/* Gradient overlay */}
+            <div className="absolute inset-0 bg-gradient-to-b from-black/30 via-transparent to-black/60" />
           </div>
 
           {/* Navigation */}
