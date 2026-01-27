@@ -7,6 +7,7 @@ import {
   LinkedInFiltersState,
   LinkedInProfile,
   INITIAL_FILTERS,
+  SENIORITY_LEVELS,
 } from './types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -62,18 +63,21 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
 
       // Simple ID-array filters (extract IDs from FilterItem[])
       if (filters.location.length) searchParams.location = filters.location.map(f => f.id);
-      if (filters.industry.length) searchParams.industry = filters.industry.map(f => f.id);
       if (filters.school.length) searchParams.school = filters.school.map(f => f.id);
+      
+      // Industry - structure with include for Recruiter/Sales Nav
+      if (filters.industry.length) {
+        searchParams.industry = { include: filters.industry.map(f => f.id) };
+      }
       
       // Company - structure with include
       if (filters.company.length) {
-        searchParams.company = {
-          include: filters.company.map(f => f.id),
-        };
+        searchParams.company = { include: filters.company.map(f => f.id) };
       }
 
-      // Job title - with priority (MUST_HAVE, SHOULD_HAVE, DOESNT_HAVE)
+      // Job title - use current_job_title for Recruiter API with priority
       if (filters.job_title.length) {
+        // Recruiter uses current_job_title, edge function handles the mapping
         searchParams.job_title = filters.job_title.map(item => ({
           id: item.id,
           priority: item.priority,
@@ -97,8 +101,13 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
         }));
       }
 
-      // Simple arrays
-      if (filters.seniority.length) searchParams.seniority = filters.seniority;
+      // Simple arrays - Convert seniority from internal values to API values
+      if (filters.seniority.length) {
+        searchParams.seniority = filters.seniority.map(val => {
+          const level = SENIORITY_LEVELS.find(l => l.value === val);
+          return level?.apiValue || val;
+        });
+      }
       if (filters.network_distance.length) searchParams.network_distance = filters.network_distance;
       if (filters.profile_language.length) searchParams.profile_language = filters.profile_language;
 
