@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -7,8 +8,70 @@ const corsHeaders = {
 
 const NOTION_API_KEY = Deno.env.get("NOTION_API_KEY");
 const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const POSTES_DATABASE_ID = "2787e1816fb481d2a0e8d4b2c1dd38f9";
 const SHORTLIST_DATABASE_ID = "2787e1816fb4811986a7e6075bc63a23";
+
+// Cache expiry: 24 hours
+const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+
+// Initialize Supabase client with service role for cache operations
+const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
+// Get cached skills from database
+async function getCachedSkills(jobIds: string[]): Promise<Map<string, string[]>> {
+  const skillsMap = new Map<string, string[]>();
+  
+  try {
+    const { data, error } = await supabase
+      .from('job_skills_cache')
+      .select('job_id, skills, updated_at')
+      .in('job_id', jobIds);
+    
+    if (error) {
+      console.error('Failed to fetch cached skills:', error);
+      return skillsMap;
+    }
+    
+    const now = new Date().getTime();
+    for (const row of data || []) {
+      const updatedAt = new Date(row.updated_at).getTime();
+      // Only use cache if not expired
+      if (now - updatedAt < CACHE_TTL_MS) {
+        skillsMap.set(row.job_id, row.skills || []);
+      }
+    }
+  } catch (error) {
+    console.error('Cache fetch error:', error);
+  }
+  
+  return skillsMap;
+}
+
+// Save skills to cache
+async function cacheSkills(skillsMap: Map<string, string[]>): Promise<void> {
+  try {
+    const records = Array.from(skillsMap.entries()).map(([jobId, skills]) => ({
+      job_id: jobId,
+      skills: skills,
+      source: 'ai',
+      updated_at: new Date().toISOString(),
+    }));
+    
+    if (records.length === 0) return;
+    
+    const { error } = await supabase
+      .from('job_skills_cache')
+      .upsert(records, { onConflict: 'job_id' });
+    
+    if (error) {
+      console.error('Failed to cache skills:', error);
+    }
+  } catch (error) {
+    console.error('Cache save error:', error);
+  }
+}
 
 // Extract technical skills using Lovable AI
 async function extractSkillsWithAI(jobs: Array<{
@@ -286,6 +349,12 @@ serve(async (req) => {
       throw new Error('NOTION_API_KEY is not configured');
     }
 
+    // Parse pagination parameters
+    const url = new URL(req.url);
+    const page = parseInt(url.searchParams.get('page') || '1', 10);
+    const limit = parseInt(url.searchParams.get('limit') || '20', 10);
+    const skipPagination = url.searchParams.get('all') === 'true';
+
     // Fetch jobs from Notion - only active ones (Publié status)
     const jobsData = await fetchNotionDatabase(POSTES_DATABASE_ID, {
       property: 'État',
@@ -307,22 +376,37 @@ serve(async (req) => {
       }
     });
 
-    // Fetch company details and candidate counts in parallel
-    const [companies, candidateCounts] = await Promise.all([
+    // Fetch company details, candidate counts, and cached skills in parallel
+    const [companies, candidateCounts, cachedSkills] = await Promise.all([
       fetchCompanyDetails(Array.from(companyIds)),
-      fetchCandidateCounts(jobIds)
+      fetchCandidateCounts(jobIds),
+      getCachedSkills(jobIds)
     ]);
 
-    // Prepare job data for AI skill extraction
-    const jobsForAI = jobs.map((job) => ({
-      id: job.id,
-      title: getTitleFromProperties(job.properties),
-      description: getPropertyValue(job.properties['RAG — Synthèse']) || '',
-      requirements: getPropertyValue(job.properties['🔴 Must-have poste']) || '',
-    }));
+    // Find jobs that need AI skill extraction (not in cache)
+    const jobsNeedingSkills = jobs
+      .filter((job) => !cachedSkills.has(job.id))
+      .map((job) => ({
+        id: job.id,
+        title: getTitleFromProperties(job.properties),
+        description: getPropertyValue(job.properties['RAG — Synthèse']) || '',
+        requirements: getPropertyValue(job.properties['🔴 Must-have poste']) || '',
+      }));
 
-    // Extract skills using AI
-    const aiSkillsMap = await extractSkillsWithAI(jobsForAI);
+    // Extract skills using AI only for uncached jobs
+    let aiSkillsMap = new Map<string, string[]>();
+    if (jobsNeedingSkills.length > 0) {
+      console.log(`Extracting skills for ${jobsNeedingSkills.length} jobs via AI...`);
+      aiSkillsMap = await extractSkillsWithAI(jobsNeedingSkills);
+      
+      // Cache the newly extracted skills
+      if (aiSkillsMap.size > 0) {
+        await cacheSkills(aiSkillsMap);
+      }
+    }
+
+    // Merge cached and new AI skills
+    const allSkillsMap = new Map([...cachedSkills, ...aiSkillsMap]);
 
     // Transform jobs data
     const transformedJobs = jobs.map((job) => {
@@ -336,9 +420,9 @@ serve(async (req) => {
 
       const counts = candidateCounts.get(job.id) || { cv: 0, itw: 0, offre: 0, total: 0 };
 
-      // Get skills: prefer Notion field, fallback to AI-extracted
+      // Get skills: prefer Notion field, fallback to AI-extracted/cached
       const notionSkills = getPropertyValue(job.properties['Skills sourcing'])?.split(',').map((s: string) => s.trim()).filter(Boolean) || [];
-      const aiSkills = aiSkillsMap.get(job.id) || [];
+      const aiSkills = allSkillsMap.get(job.id) || [];
       const skills = notionSkills.length > 0 ? notionSkills : aiSkills;
 
       return {
@@ -373,11 +457,25 @@ serve(async (req) => {
       };
     });
 
+    // Apply pagination
+    const total = transformedJobs.length;
+    const totalPages = Math.ceil(total / limit);
+    const startIndex = (page - 1) * limit;
+    const paginatedJobs = skipPagination 
+      ? transformedJobs 
+      : transformedJobs.slice(startIndex, startIndex + limit);
+
     return new Response(
       JSON.stringify({ 
         success: true, 
-        jobs: transformedJobs,
-        total: transformedJobs.length 
+        jobs: paginatedJobs,
+        pagination: {
+          page,
+          limit,
+          total,
+          totalPages,
+          hasMore: page < totalPages,
+        }
       }),
       { 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },

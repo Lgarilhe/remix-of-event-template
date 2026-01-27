@@ -109,6 +109,33 @@ export type Database = {
         }
         Relationships: []
       }
+      job_skills_cache: {
+        Row: {
+          created_at: string
+          id: string
+          job_id: string
+          skills: string[]
+          source: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          job_id: string
+          skills?: string[]
+          source?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          job_id?: string
+          skills?: string[]
+          source?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           created_at: string
