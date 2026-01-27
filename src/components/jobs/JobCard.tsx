@@ -146,6 +146,66 @@ export const JobCard: React.FC<JobCardProps> = ({ job }) => {
       {isExpanded && (
         <div className="border-t border-[#1A1A1A]/10 p-6 bg-[#FAFAFA]">
           <div className="grid md:grid-cols-2 gap-6">
+            {/* Description */}
+            {job.description && (
+              <div className="md:col-span-2">
+                <h4 className="text-[11px] font-medium uppercase tracking-wide text-[#1A1A1A]/60 mb-3">
+                  Description du poste
+                </h4>
+                <p className="text-sm text-[#1A1A1A] whitespace-pre-wrap leading-relaxed">
+                  {job.description}
+                </p>
+              </div>
+            )}
+
+            {/* Requirements */}
+            {job.requirements && (
+              <div>
+                <h4 className="text-[11px] font-medium uppercase tracking-wide text-[#1A1A1A]/60 mb-3">
+                  Pré-requis
+                </h4>
+                <p className="text-sm text-[#1A1A1A] whitespace-pre-wrap">
+                  {job.requirements}
+                </p>
+              </div>
+            )}
+
+            {/* Interview Process */}
+            {job.interviewProcess && (
+              <div>
+                <h4 className="text-[11px] font-medium uppercase tracking-wide text-[#1A1A1A]/60 mb-3">
+                  Process d'entretien
+                </h4>
+                <p className="text-sm text-[#1A1A1A] whitespace-pre-wrap">
+                  {job.interviewProcess}
+                </p>
+              </div>
+            )}
+
+            {/* Advantages */}
+            {job.advantages && (
+              <div>
+                <h4 className="text-[11px] font-medium uppercase tracking-wide text-[#1A1A1A]/60 mb-3">
+                  Avantages
+                </h4>
+                <p className="text-sm text-[#1A1A1A] whitespace-pre-wrap">
+                  {job.advantages}
+                </p>
+              </div>
+            )}
+
+            {/* Team Info */}
+            {job.teamInfo && (
+              <div>
+                <h4 className="text-[11px] font-medium uppercase tracking-wide text-[#1A1A1A]/60 mb-3">
+                  L'équipe
+                </h4>
+                <p className="text-sm text-[#1A1A1A]">
+                  {job.teamInfo}
+                </p>
+              </div>
+            )}
+
             {/* Company details */}
             {job.client && (
               <div>
