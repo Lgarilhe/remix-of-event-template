@@ -192,8 +192,8 @@ Deno.serve(async (req) => {
         if (!response.ok) {
           console.error('Parameters error:', data);
           return new Response(
-            JSON.stringify({ success: false, error: data.message || 'Erreur de récupération' }),
-            { status: response.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            JSON.stringify({ success: false, error: data.detail || data.message || 'Erreur de récupération', items: [] }),
+            { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
           );
         }
 
