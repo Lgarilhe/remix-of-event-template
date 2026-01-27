@@ -117,33 +117,82 @@ export const JobCard: React.FC<JobCardProps> = ({ job }) => {
           </div>
         </div>
 
-        {/* Candidate Counts Bar */}
+        {/* Recruitment Pipeline Progress */}
         {job.candidateCounts && job.candidateCounts.total > 0 && (
-          <div className="flex items-center gap-4 mt-4 pt-4 border-t border-[#1A1A1A]/10">
-            <div className="flex items-center gap-1.5 text-sm">
-              <Users className="w-4 h-4 text-[#1A1A1A]/50" />
-              <span className="font-medium text-[#1A1A1A]">{job.candidateCounts.total}</span>
-              <span className="text-[#1A1A1A]/50">candidat{job.candidateCounts.total > 1 ? 's' : ''}</span>
+          <div className="mt-4 pt-4 border-t border-[#1A1A1A]/10">
+            {/* Total count header */}
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-1.5 text-sm">
+                <Users className="w-4 h-4 text-[#1A1A1A]/50" />
+                <span className="font-medium text-[#1A1A1A]">{job.candidateCounts.total}</span>
+                <span className="text-[#1A1A1A]/50">candidat{job.candidateCounts.total > 1 ? 's' : ''} en cours</span>
+              </div>
             </div>
-            <div className="flex items-center gap-3 text-xs">
-              {job.candidateCounts.cv > 0 && (
-                <span className="flex items-center gap-1 px-2 py-1 bg-gray-100 text-gray-700 rounded">
-                  <FileText className="w-3 h-3" />
-                  {job.candidateCounts.cv} CV
+            
+            {/* Visual Pipeline */}
+            <div className="flex items-center gap-1">
+              {/* CV Stage */}
+              <div className="flex-1 group relative">
+                <div className="h-2 bg-gray-100 rounded-l-full overflow-hidden">
+                  <div 
+                    className="h-full bg-gray-400 transition-all duration-500 ease-out"
+                    style={{ width: job.candidateCounts.cv > 0 ? '100%' : '0%' }}
+                  />
+                </div>
+                <div className="mt-1.5 flex items-center justify-center gap-1">
+                  <FileText className="w-3 h-3 text-gray-500" />
+                  <span className={`text-xs font-medium ${job.candidateCounts.cv > 0 ? 'text-gray-700' : 'text-gray-400'}`}>
+                    {job.candidateCounts.cv}
+                  </span>
+                </div>
+                <span className="absolute -top-8 left-1/2 -translate-x-1/2 px-2 py-1 bg-gray-800 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">
+                  CV / Pré-qualif
                 </span>
-              )}
-              {job.candidateCounts.itw > 0 && (
-                <span className="flex items-center gap-1 px-2 py-1 bg-yellow-100 text-yellow-800 rounded">
-                  <MessageSquare className="w-3 h-3" />
-                  {job.candidateCounts.itw} ITW
+              </div>
+
+              {/* Arrow */}
+              <div className="text-[#1A1A1A]/20 flex-shrink-0">→</div>
+
+              {/* ITW Stage */}
+              <div className="flex-1 group relative">
+                <div className="h-2 bg-yellow-50 overflow-hidden">
+                  <div 
+                    className="h-full bg-yellow-400 transition-all duration-500 ease-out"
+                    style={{ width: job.candidateCounts.itw > 0 ? '100%' : '0%' }}
+                  />
+                </div>
+                <div className="mt-1.5 flex items-center justify-center gap-1">
+                  <MessageSquare className="w-3 h-3 text-yellow-600" />
+                  <span className={`text-xs font-medium ${job.candidateCounts.itw > 0 ? 'text-yellow-700' : 'text-yellow-400'}`}>
+                    {job.candidateCounts.itw}
+                  </span>
+                </div>
+                <span className="absolute -top-8 left-1/2 -translate-x-1/2 px-2 py-1 bg-gray-800 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">
+                  Entretiens
                 </span>
-              )}
-              {job.candidateCounts.offre > 0 && (
-                <span className="flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-800 rounded">
-                  <Gift className="w-3 h-3" />
-                  {job.candidateCounts.offre} Offre
+              </div>
+
+              {/* Arrow */}
+              <div className="text-[#1A1A1A]/20 flex-shrink-0">→</div>
+
+              {/* Offre Stage */}
+              <div className="flex-1 group relative">
+                <div className="h-2 bg-blue-50 rounded-r-full overflow-hidden">
+                  <div 
+                    className="h-full bg-blue-500 transition-all duration-500 ease-out"
+                    style={{ width: job.candidateCounts.offre > 0 ? '100%' : '0%' }}
+                  />
+                </div>
+                <div className="mt-1.5 flex items-center justify-center gap-1">
+                  <Gift className="w-3 h-3 text-blue-600" />
+                  <span className={`text-xs font-medium ${job.candidateCounts.offre > 0 ? 'text-blue-700' : 'text-blue-400'}`}>
+                    {job.candidateCounts.offre}
+                  </span>
+                </div>
+                <span className="absolute -top-8 left-1/2 -translate-x-1/2 px-2 py-1 bg-gray-800 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">
+                  Offre
                 </span>
-              )}
+              </div>
             </div>
           </div>
         )}
