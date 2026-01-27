@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Job } from '@/pages/JobSpace';
-import { MapPin, Building2, Briefcase, Euro, ChevronDown, ChevronUp, ExternalLink } from 'lucide-react';
+import { MapPin, Building2, Briefcase, Euro, ChevronDown, ChevronUp, ExternalLink, Send } from 'lucide-react';
+import { ApplicationModal } from './ApplicationModal';
 
 interface JobCardProps {
   job: Job;
@@ -8,6 +9,7 @@ interface JobCardProps {
 
 export const JobCard: React.FC<JobCardProps> = ({ job }) => {
   const [isExpanded, setIsExpanded] = useState(false);
+  const [isApplicationOpen, setIsApplicationOpen] = useState(false);
 
   // Handle contractType as string or array
   const displayContractType = Array.isArray(job.contractType) 
@@ -203,12 +205,26 @@ export const JobCard: React.FC<JobCardProps> = ({ job }) => {
 
           {/* Action button */}
           <div className="mt-6 pt-6 border-t border-[#1A1A1A]/10">
-            <button className="px-6 py-3 bg-[#1A1A1A] text-white text-sm font-medium uppercase tracking-wide hover:bg-[#1A1A1A]/90 transition-colors">
+            <button 
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsApplicationOpen(true);
+              }}
+              className="px-6 py-3 bg-[#1A1A1A] text-white text-sm font-medium uppercase tracking-wide hover:bg-[#1A1A1A]/90 transition-colors flex items-center gap-2"
+            >
+              <Send className="w-4 h-4" />
               Postuler
             </button>
           </div>
         </div>
       )}
+
+      {/* Application Modal */}
+      <ApplicationModal 
+        job={job}
+        isOpen={isApplicationOpen}
+        onClose={() => setIsApplicationOpen(false)}
+      />
     </div>
   );
 };
