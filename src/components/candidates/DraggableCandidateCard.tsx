@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useDraggable } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
 import { ShortlistEntry } from '@/pages/Candidates';
-import { Mail, Phone, Linkedin, Calendar, GripVertical, ExternalLink, Briefcase } from 'lucide-react';
+import { Mail, Phone, Linkedin, Calendar, ExternalLink, Briefcase, ChevronDown, ChevronUp } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 
@@ -44,29 +44,24 @@ export const DraggableCandidateCard: React.FC<DraggableCandidateCardProps> = ({ 
     }
   };
 
+  const handleExpandClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setIsExpanded(!isExpanded);
+  };
+
   return (
     <div
       ref={setNodeRef}
       style={style}
-      className={`bg-white rounded-lg border border-[#1A1A1A]/10 p-3 hover:shadow-md transition-shadow ${
+      {...attributes}
+      {...listeners}
+      className={`bg-white rounded-lg border border-[#1A1A1A]/10 p-3 hover:shadow-md transition-shadow cursor-grab active:cursor-grabbing touch-none ${
         isDragging ? 'shadow-lg z-50' : ''
       }`}
     >
       <div className="flex items-start gap-2">
-        {/* Drag handle */}
-        <button
-          {...attributes}
-          {...listeners}
-          className="mt-1 p-1 text-[#1A1A1A]/30 hover:text-[#1A1A1A]/60 cursor-grab active:cursor-grabbing touch-none"
-        >
-          <GripVertical className="w-4 h-4" />
-        </button>
-
         {/* Content */}
-        <div
-          className="flex-1 min-w-0 cursor-pointer"
-          onClick={() => setIsExpanded(!isExpanded)}
-        >
+        <div className="flex-1 min-w-0">
           <div className="flex items-start justify-between gap-2">
             <div className="flex-1 min-w-0">
               <h4 className="font-medium text-[#1A1A1A] truncate">
@@ -85,13 +80,22 @@ export const DraggableCandidateCard: React.FC<DraggableCandidateCardProps> = ({ 
                 </p>
               )}
             </div>
-            {entry.entity && (
-              <span className={`text-xs px-2 py-0.5 rounded-full flex-shrink-0 ${
-                entry.entity === 'Konekt' ? 'bg-green-100 text-green-700' : 'bg-purple-100 text-purple-700'
-              }`}>
-                {entry.entity}
-              </span>
-            )}
+            <div className="flex items-center gap-1 flex-shrink-0">
+              {entry.entity && (
+                <span className={`text-xs px-2 py-0.5 rounded-full ${
+                  entry.entity === 'Konekt' ? 'bg-green-100 text-green-700' : 'bg-purple-100 text-purple-700'
+                }`}>
+                  {entry.entity}
+                </span>
+              )}
+              <button
+                onClick={handleExpandClick}
+                onPointerDown={(e) => e.stopPropagation()}
+                className="p-1 text-[#1A1A1A]/40 hover:text-[#1A1A1A] hover:bg-[#1A1A1A]/5 rounded"
+              >
+                {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+              </button>
+            </div>
           </div>
 
           {isExpanded && (
@@ -101,6 +105,7 @@ export const DraggableCandidateCard: React.FC<DraggableCandidateCardProps> = ({ 
                   href={`mailto:${candidate.email}`}
                   className="flex items-center gap-2 text-xs text-[#1A1A1A]/70 hover:text-[#1A1A1A]"
                   onClick={e => e.stopPropagation()}
+                  onPointerDown={e => e.stopPropagation()}
                 >
                   <Mail className="w-3 h-3" />
                   {candidate.email}
@@ -111,6 +116,7 @@ export const DraggableCandidateCard: React.FC<DraggableCandidateCardProps> = ({ 
                   href={`tel:${candidate.phone}`}
                   className="flex items-center gap-2 text-xs text-[#1A1A1A]/70 hover:text-[#1A1A1A]"
                   onClick={e => e.stopPropagation()}
+                  onPointerDown={e => e.stopPropagation()}
                 >
                   <Phone className="w-3 h-3" />
                   {candidate.phone}
@@ -123,6 +129,7 @@ export const DraggableCandidateCard: React.FC<DraggableCandidateCardProps> = ({ 
                   rel="noopener noreferrer"
                   className="flex items-center gap-2 text-xs text-blue-600 hover:text-blue-700"
                   onClick={e => e.stopPropagation()}
+                  onPointerDown={e => e.stopPropagation()}
                 >
                   <Linkedin className="w-3 h-3" />
                   LinkedIn
