@@ -35,7 +35,7 @@ Deno.serve(async (req) => {
         // Search LinkedIn profiles using POST method
         const {
           keywords,
-          service = 'RECRUITER', // CLASSIC, RECRUITER, SALES_NAVIGATOR
+          service = 'recruiter', // classic, recruiter, sales_navigator (lowercase!)
           limit = 25,
           cursor,
           // Common filters
@@ -59,39 +59,47 @@ Deno.serve(async (req) => {
           skills,
         } = params;
 
-        // Build request body for POST
+        // Normalize service to lowercase
+        const apiType = service.toLowerCase();
+
+        // Build request body for POST - format depends on api type
         const searchBody: Record<string, unknown> = {
-          api: service,
+          api: apiType,
+          category: 'people', // Required for all search types
           limit,
         };
 
         if (cursor) searchBody.cursor = cursor;
         if (keywords) searchBody.keywords = keywords;
         
-        // Location filters
+        // Location filters (needs IDs, not text)
         if (location?.length > 0) {
           searchBody.location = location;
         }
         
-        // Company filters
+        // Company filters (needs IDs)
         if (company?.length > 0 || current_company?.length > 0) {
-          searchBody.current_company = [...(company || []), ...(current_company || [])];
+          searchBody.company = [...(company || []), ...(current_company || [])];
         }
         if (past_company?.length > 0) {
           searchBody.past_company = past_company;
         }
         
-        // Industry filter
+        // Industry filter (needs IDs)
         if (industry?.length > 0) {
           searchBody.industry = industry;
         }
         
-        // Job title filter
+        // Job title filter - for recruiter it's different
         if (job_title?.length > 0) {
-          searchBody.job_title = job_title;
+          if (apiType === 'recruiter') {
+            searchBody.current_job_title = job_title;
+          } else {
+            searchBody.job_title = job_title;
+          }
         }
         
-        // School filter
+        // School filter (needs IDs)
         if (school?.length > 0) {
           searchBody.school = school;
         }
@@ -108,16 +116,26 @@ Deno.serve(async (req) => {
         
         // Language filter
         if (language?.length > 0) {
-          searchBody.language = language;
+          searchBody.profile_language = language;
         }
         
         // Recruiter specific filters
-        if (hiring_project) searchBody.hiring_project = hiring_project;
-        if (talent_pool) searchBody.talent_pool = talent_pool;
-        if (spotlight) searchBody.spotlight = spotlight;
-        if (years_of_experience_min) searchBody.years_of_experience_min = years_of_experience_min;
-        if (years_of_experience_max) searchBody.years_of_experience_max = years_of_experience_max;
-        if (open_to_work !== undefined) searchBody.open_to_work = open_to_work;
+        if (apiType === 'recruiter') {
+          if (hiring_project) searchBody.hiring_project = hiring_project;
+          if (talent_pool) searchBody.talent_pool = talent_pool;
+          if (spotlight) searchBody.spotlight = spotlight;
+          if (years_of_experience_min !== null && years_of_experience_min !== undefined) {
+            searchBody.years_of_experience = searchBody.years_of_experience || {};
+            (searchBody.years_of_experience as Record<string, number>).min = years_of_experience_min;
+          }
+          if (years_of_experience_max !== null && years_of_experience_max !== undefined) {
+            searchBody.years_of_experience = searchBody.years_of_experience || {};
+            (searchBody.years_of_experience as Record<string, number>).max = years_of_experience_max;
+          }
+          if (open_to_work === true) {
+            searchBody.open_to = ['all'];
+          }
+        }
 
         const searchUrl = `${baseUrl}/linkedin/search?account_id=${account_id}`;
         console.log('Search URL:', searchUrl);
