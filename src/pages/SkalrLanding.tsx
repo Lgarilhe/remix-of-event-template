@@ -192,6 +192,36 @@ const SkalrLanding = () => {
           </div>
         </section>
 
+        {/* Clients/Partners Section */}
+        <section className="py-12 px-6 border-b border-border">
+          <div className="max-w-6xl mx-auto">
+            <motion.p 
+              initial={{ opacity: 0 }}
+              whileInView={{ opacity: 1 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.5 }}
+              className="text-center text-sm text-muted-foreground mb-8"
+            >
+              Ils nous ont fait confiance
+            </motion.p>
+            <div className="flex flex-wrap items-center justify-center gap-8 md:gap-16">
+              {['Ledger', 'PayFit', 'Lydia', 'Qonto', 'Alan', 'Swile'].map((company, index) => (
+                <motion.div
+                  key={company}
+                  initial={{ opacity: 0, y: 20 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true }}
+                  transition={{ duration: 0.4, delay: index * 0.1 }}
+                  whileHover={{ scale: 1.1 }}
+                  className="text-2xl md:text-3xl font-bold text-muted-foreground/40 hover:text-muted-foreground/70 transition-colors cursor-default"
+                >
+                  {company}
+                </motion.div>
+              ))}
+            </div>
+          </div>
+        </section>
+
         {/* Pillars Section */}
         <section id="methode" className="py-24 px-6">
           <div className="max-w-6xl mx-auto">
