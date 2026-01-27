@@ -28,6 +28,15 @@ export interface Job {
   salaryMax: number;
   priority: string;
   skills: string[];
+  // New fields
+  description: string;
+  interviewProcess: string;
+  requirements: string;
+  openingDate: string;
+  channel: string;
+  sourcingCriteria: string;
+  advantages: string;
+  teamInfo: string;
 }
 
 export interface JobFiltersState {

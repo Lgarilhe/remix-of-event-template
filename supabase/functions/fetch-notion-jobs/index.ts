@@ -166,6 +166,15 @@ serve(async (req) => {
         priority: getPropertyValue(job.properties['Priorité']),
         skills: getPropertyValue(job.properties['Compétences']) || [],
         entity: getPropertyValue(job.properties['Entité']),
+        // New fields
+        description: getPropertyValue(job.properties['Description']) || getPropertyValue(job.properties['Descriptif']) || '',
+        interviewProcess: getPropertyValue(job.properties['Process entretiens']) || '',
+        requirements: getPropertyValue(job.properties['Pré-requis']) || '',
+        openingDate: getPropertyValue(job.properties['Date d\'ouverture']),
+        channel: getPropertyValue(job.properties['Canal de publication']),
+        sourcingCriteria: getPropertyValue(job.properties['Critères sourcing']) || '',
+        advantages: getPropertyValue(job.properties['Avantages']) || '',
+        teamInfo: getPropertyValue(job.properties['Équipe (client)']) || '',
       };
     });
 
