@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { LinkedInAccount } from '@/pages/Outreach';
 import { LinkedInFilters } from './LinkedInFilters';
@@ -12,7 +12,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Search, Loader2, ChevronRight } from 'lucide-react';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Search, Loader2, ChevronRight, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface LinkedInSearchProps {
@@ -32,6 +33,13 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
   const [cursor, setCursor] = useState<string | null>(null);
   const [total, setTotal] = useState<number | null>(null);
   const [hasSearched, setHasSearched] = useState(false);
+
+  // Check if selected account needs reconnection
+  const selectedAccountData = useMemo(() => 
+    accounts.find(a => a.id === selectedAccount),
+    [accounts, selectedAccount]
+  );
+  const needsReconnection = selectedAccountData && selectedAccountData.status !== 'OK';
 
   const handleSearch = useCallback(async (newSearch = true) => {
     if (!selectedAccount) {
@@ -157,6 +165,18 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
     <div className="grid lg:grid-cols-[320px_1fr] gap-6">
       {/* Filters sidebar */}
       <div className="space-y-4">
+        {/* Reconnection alert */}
+        {needsReconnection && (
+          <Alert variant="destructive" className="bg-amber-50 border-amber-200">
+            <AlertTriangle className="h-4 w-4 text-amber-600" />
+            <AlertTitle className="text-amber-800">Reconnexion requise</AlertTitle>
+            <AlertDescription className="text-amber-700">
+              Le compte <strong>{selectedAccountData?.name || selectedAccountData?.identifier}</strong> est déconnecté. 
+              Rendez-vous dans l'onglet <strong>Comptes</strong> pour le reconnecter.
+            </AlertDescription>
+          </Alert>
+        )}
+
         {/* Account selector */}
         <div className="bg-white rounded-lg border border-[#1A1A1A]/10 p-4">
           <label className="text-sm font-medium text-[#1A1A1A] mb-2 block">
