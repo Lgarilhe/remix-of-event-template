@@ -16,7 +16,8 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Search, Loader2, ChevronRight, AlertTriangle } from 'lucide-react';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { Search, Loader2, ChevronRight, AlertTriangle, Lock } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface LinkedInSearchProps {
@@ -37,12 +38,24 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
   const [total, setTotal] = useState<number | null>(null);
   const [hasSearched, setHasSearched] = useState(false);
 
-  // Check if selected account needs reconnection
+  // Check if selected account needs reconnection or has subscription issues
   const selectedAccountData = useMemo(() => 
     accounts.find(a => a.id === selectedAccount),
     [accounts, selectedAccount]
   );
   const needsReconnection = selectedAccountData && selectedAccountData.status !== 'OK';
+  
+  // Check subscription availability for current API mode
+  const subscriptions = selectedAccountData?.subscriptions;
+  const isApiModeAvailable = useMemo(() => {
+    if (!subscriptions) return true; // Default to available if no subscription info
+    switch (filters.api) {
+      case 'recruiter': return subscriptions.recruiter;
+      case 'sales_navigator': return subscriptions.sales_navigator;
+      case 'classic': return subscriptions.classic;
+      default: return true;
+    }
+  }, [subscriptions, filters.api]);
 
   const handleSearch = useCallback(async (newSearch = true) => {
     if (!selectedAccount) {
@@ -239,28 +252,73 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
             <label className="text-sm font-medium text-[#1A1A1A] mb-2 block">
               Mode de recherche
             </label>
-            <div className="grid grid-cols-3 gap-1 p-1 bg-gray-100 rounded-lg">
-              {API_TYPE_OPTIONS.map((option) => (
-                <button
-                  key={option.value}
-                  type="button"
-                  onClick={() => setFilters(f => ({ ...f, api: option.value as LinkedInApiType }))}
-                  className={`px-2 py-1.5 text-xs font-medium rounded-md transition-all ${
-                    filters.api === option.value
-                      ? 'bg-white text-[#0077B5] shadow-sm'
-                      : 'text-[#1A1A1A]/60 hover:text-[#1A1A1A] hover:bg-white/50'
-                  }`}
-                >
-                  {option.label}
-                </button>
-              ))}
-            </div>
+            <TooltipProvider>
+              <div className="grid grid-cols-3 gap-1 p-1 bg-gray-100 rounded-lg">
+                {API_TYPE_OPTIONS.map((option) => {
+                  const isAvailable = !subscriptions || 
+                    (option.value === 'classic' && subscriptions.classic) ||
+                    (option.value === 'recruiter' && subscriptions.recruiter) ||
+                    (option.value === 'sales_navigator' && subscriptions.sales_navigator);
+                  
+                  const button = (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => isAvailable && setFilters(f => ({ ...f, api: option.value as LinkedInApiType }))}
+                      disabled={!isAvailable}
+                      className={`px-2 py-1.5 text-xs font-medium rounded-md transition-all relative ${
+                        !isAvailable 
+                          ? 'text-[#1A1A1A]/30 cursor-not-allowed'
+                          : filters.api === option.value
+                            ? 'bg-white text-[#0077B5] shadow-sm'
+                            : 'text-[#1A1A1A]/60 hover:text-[#1A1A1A] hover:bg-white/50'
+                      }`}
+                    >
+                      <span className="flex items-center justify-center gap-1">
+                        {!isAvailable && <Lock className="w-3 h-3" />}
+                        {option.label}
+                      </span>
+                    </button>
+                  );
+                  
+                  if (!isAvailable) {
+                    return (
+                      <Tooltip key={option.value}>
+                        <TooltipTrigger asChild>
+                          {button}
+                        </TooltipTrigger>
+                        <TooltipContent side="bottom" className="max-w-[200px]">
+                          <p className="text-xs">
+                            Votre compte LinkedIn n'a pas de licence {option.label}. 
+                            Connectez un compte avec cette licence pour utiliser ce mode.
+                          </p>
+                        </TooltipContent>
+                      </Tooltip>
+                    );
+                  }
+                  
+                  return button;
+                })}
+              </div>
+            </TooltipProvider>
             <p className="text-[10px] text-[#1A1A1A]/50 mt-1.5">
               {filters.api === 'recruiter' && 'Accès aux filtres avancés de recrutement'}
               {filters.api === 'sales_navigator' && 'Filtres orientés vente et prospection'}
               {filters.api === 'classic' && 'Recherche LinkedIn standard'}
             </p>
           </div>
+
+          {/* License warning */}
+          {!isApiModeAvailable && (
+            <Alert variant="destructive" className="bg-red-50 border-red-200">
+              <Lock className="h-4 w-4 text-red-600" />
+              <AlertTitle className="text-red-800">Licence non disponible</AlertTitle>
+              <AlertDescription className="text-red-700">
+                Votre compte LinkedIn n'a pas de licence {filters.api === 'recruiter' ? 'Recruiter' : 'Sales Navigator'}. 
+                Sélectionnez le mode <strong>LinkedIn Classic</strong> ou connectez un compte avec la licence appropriée.
+              </AlertDescription>
+            </Alert>
+          )}
         </div>
 
         {/* Search input */}
@@ -289,7 +347,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
         <div className="flex gap-2">
           <Button
             onClick={() => handleSearch()}
-            disabled={loading || !selectedAccount}
+            disabled={loading || !selectedAccount || needsReconnection || !isApiModeAvailable}
             className="flex-1 bg-[#0077B5] hover:bg-[#005E93]"
           >
             {loading ? (
