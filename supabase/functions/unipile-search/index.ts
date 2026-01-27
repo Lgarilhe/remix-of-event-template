@@ -164,14 +164,30 @@ async function handleSearch(
   // Keywords (all APIs)
   if (keywords) searchBody.keywords = keywords;
 
-  // Location (all APIs) - array of IDs
-  if (location?.length) searchBody.location = location;
+  // Helper function to format filter based on API type
+  // For Recruiter/Sales Navigator, some filters need { include: [...] } structure
+  const formatFilter = (value: unknown, useIncludeStructure: boolean) => {
+    if (Array.isArray(value)) {
+      if (value.length === 0) return undefined;
+      return useIncludeStructure ? { include: value } : value;
+    }
+    return value;
+  };
 
-  // Company filter - supports include/exclude structure
+  // For Recruiter/Sales Navigator, ONLY company/industry/past_company need include structure
+  // school/location stay as arrays (or may not be supported - they'll just be ignored by API)
+
+  // Location - array format for all APIs (documented examples show array)
+  if (location?.length) {
+    searchBody.location = location;
+  }
+
+  // Company filter - uses include/exclude structure for recruiter/sales_nav
   if (company) {
     if (Array.isArray(company)) {
       if (company.length > 0) {
-        searchBody.company = { include: company };
+        const needsInclude = api === 'recruiter' || api === 'sales_navigator';
+        searchBody.company = needsInclude ? { include: company } : company;
       }
     } else if (company.include?.length || company.exclude?.length) {
       searchBody.company = company;
@@ -180,17 +196,24 @@ async function handleSearch(
 
   // Industry - with include structure for Recruiter/SalesNav
   if (industry) {
+    const needsInclude = api === 'recruiter' || api === 'sales_navigator';
     if (Array.isArray(industry)) {
       if (industry.length > 0) {
-        searchBody.industry = { include: industry };
+        searchBody.industry = needsInclude ? { include: industry } : industry;
       }
     } else if (industry.include?.length) {
       searchBody.industry = industry;
     }
   }
 
-  // School (all APIs)
-  if (school?.length) searchBody.school = school;
+  // School - array format for all APIs (Recruiter may not support school filter directly)
+  if (school?.length) {
+    // For now, only send school filter for classic API since Recruiter doesn't support it
+    if (api === 'classic') {
+      searchBody.school = school;
+    }
+    // Note: For Recruiter, school filtering might need to be done via keywords or not supported
+  }
 
   // Job title - different handling per API
   if (job_title?.length) {
