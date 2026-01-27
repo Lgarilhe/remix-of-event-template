@@ -45,6 +45,7 @@ export interface ShortlistEntry {
   startDate: string | null;
   createdAt: string | null;
   positionIds: string[];
+  positions: { id: string; name: string }[];
   candidate: {
     id: string;
     name: string;

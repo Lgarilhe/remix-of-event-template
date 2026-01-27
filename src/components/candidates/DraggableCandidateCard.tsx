@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useDraggable } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
 import { ShortlistEntry } from '@/pages/Candidates';
-import { Mail, Phone, Linkedin, Calendar, GripVertical, ExternalLink } from 'lucide-react';
+import { Mail, Phone, Linkedin, Calendar, GripVertical, ExternalLink, Briefcase } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 
@@ -72,8 +72,15 @@ export const DraggableCandidateCard: React.FC<DraggableCandidateCardProps> = ({ 
               <h4 className="font-medium text-[#1A1A1A] truncate">
                 {candidate?.name || entry.name}
               </h4>
+              {/* Position name */}
+              {entry.positions && entry.positions.length > 0 && (
+                <p className="text-xs text-blue-600 truncate flex items-center gap-1 mt-0.5">
+                  <Briefcase className="w-3 h-3 flex-shrink-0" />
+                  {entry.positions[0].name}
+                </p>
+              )}
               {candidate?.expertise && candidate.expertise.length > 0 && (
-                <p className="text-xs text-[#1A1A1A]/60 truncate">
+                <p className="text-xs text-[#1A1A1A]/60 truncate mt-0.5">
                   {candidate.expertise.slice(0, 2).join(', ')}
                 </p>
               )}
