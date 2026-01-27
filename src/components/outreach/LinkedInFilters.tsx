@@ -16,7 +16,9 @@ import {
   PROFILE_LANGUAGES,
   COMPANY_HEADCOUNT_OPTIONS,
   COMPANY_TYPE_OPTIONS,
-  OPEN_TO_OPTIONS,
+  OPEN_TO_OPTIONS_CLASSIC,
+  OPEN_TO_OPTIONS_RECRUITER,
+  DEGREE_OPTIONS,
 } from './types';
 import {
   FilterSection,
@@ -183,9 +185,9 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
     }
   }, [fetchParameters]);
 
-  // Simple filter handlers
-  const handleAddSimpleFilter = useCallback((key: 'location' | 'company' | 'industry' | 'school' | 'past_company', item: ParameterOption) => {
-    const current = filters[key];
+  // Simple filter handlers (for filters without priority)
+  const handleAddSimpleFilter = useCallback((key: 'location' | 'company' | 'industry' | 'past_company' | 'function' | 'company_location' | 'groups', item: ParameterOption) => {
+    const current = filters[key] as FilterItem[];
     if (!current.find((f) => f.id === item.id)) {
       onChange({ ...filters, [key]: [...current, { id: item.id, name: item.title }] });
     }
@@ -193,13 +195,13 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
     setParameterOptions((prev) => ({ ...prev, [key]: [] }));
   }, [filters, onChange]);
 
-  const handleRemoveSimpleFilter = useCallback((key: 'location' | 'company' | 'industry' | 'school' | 'past_company', id: string) => {
-    onChange({ ...filters, [key]: filters[key].filter((f) => f.id !== id) });
+  const handleRemoveSimpleFilter = useCallback((key: 'location' | 'company' | 'industry' | 'past_company' | 'function' | 'company_location' | 'groups', id: string) => {
+    onChange({ ...filters, [key]: (filters[key] as FilterItem[]).filter((f) => f.id !== id) });
   }, [filters, onChange]);
 
-  // Priority filter handlers
+  // Priority filter handlers (for filters with priority: job_title, skills, school, degree, past_job_title)
   const handleAddPriorityFilter = useCallback((
-    key: 'job_title' | 'skills' | 'past_job_title',
+    key: 'job_title' | 'skills' | 'past_job_title' | 'school' | 'degree',
     item: ParameterOption,
     priority: FilterPriority = 'MUST_HAVE'
   ) => {
@@ -211,14 +213,14 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
     setParameterOptions((prev) => ({ ...prev, [key]: [] }));
   }, [filters, onChange]);
 
-  const handleUpdatePriority = useCallback((key: 'job_title' | 'skills' | 'past_job_title', id: string, priority: FilterPriority) => {
+  const handleUpdatePriority = useCallback((key: 'job_title' | 'skills' | 'past_job_title' | 'school' | 'degree', id: string, priority: FilterPriority) => {
     onChange({
       ...filters,
       [key]: filters[key].map((f) => (f.id === id ? { ...f, priority } : f)),
     });
   }, [filters, onChange]);
 
-  const handleRemovePriorityFilter = useCallback((key: 'job_title' | 'skills' | 'past_job_title', id: string) => {
+  const handleRemovePriorityFilter = useCallback((key: 'job_title' | 'skills' | 'past_job_title' | 'school' | 'degree', id: string) => {
     onChange({ ...filters, [key]: filters[key].filter((f) => f.id !== id) });
   }, [filters, onChange]);
 
@@ -294,7 +296,11 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
   
   const recruiterFiltersPreview = [
     ...(filters.open_to_work === true ? ['Open to Work'] : []),
-    ...filters.open_to.map(o => OPEN_TO_OPTIONS.find(oo => oo.value === o)?.label || o),
+    ...filters.open_to.map(o => {
+      const classicOpt = OPEN_TO_OPTIONS_CLASSIC.find(oo => oo.value === o);
+      const recruiterOpt = OPEN_TO_OPTIONS_RECRUITER.find(oo => oo.value === o);
+      return classicOpt?.label || recruiterOpt?.label || o;
+    }),
     ...(filters.spotlight ? [SPOTLIGHT_OPTIONS.find(s => s.value === filters.spotlight)?.label || 'Spotlight'] : []),
     ...(filters.hiring_project ? ['Hiring Project'] : []),
     ...(filters.talent_pool ? ['Talent Pool'] : []),
@@ -327,7 +333,7 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
             />
           </FilterGroup>
 
-          {/* School */}
+          {/* School - with priority for Recruiter */}
           <FilterGroup 
             title="École / Formation" 
             icon={<GraduationCap className="w-3.5 h-3.5 text-[#0077B5]" />} 
@@ -335,17 +341,39 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
             unsupported={!isFilterSupported(filters.api, 'school')}
             unsupportedTooltip={getFilterTooltip(filters.api, 'school')}
           >
-            <SelectedBadges items={filters.school} onRemove={(id) => handleRemoveSimpleFilter('school', id)} />
-            <AutocompleteInput
-              filterKey="school"
-              placeholder="Rechercher une école..."
-              value={searchInputs['school'] || ''}
-              options={parameterOptions['school'] || []}
-              loading={loadingParams === 'school'}
-              onInputChange={(val) => handleSearchInput('school', val)}
-              onSelect={(item) => handleAddSimpleFilter('school', item)}
-              disabled={!isFilterSupported(filters.api, 'school')}
-            />
+            {filters.api === 'recruiter' ? (
+              <>
+                <PriorityBadges
+                  items={filters.school}
+                  onRemove={(id) => handleRemovePriorityFilter('school', id)}
+                  onUpdatePriority={(id, priority) => handleUpdatePriority('school', id, priority)}
+                />
+                <AutocompleteInput
+                  filterKey="school"
+                  placeholder="Rechercher une école..."
+                  value={searchInputs['school'] || ''}
+                  options={parameterOptions['school'] || []}
+                  loading={loadingParams === 'school'}
+                  onInputChange={(val) => handleSearchInput('school', val)}
+                  onSelect={(item) => handleAddPriorityFilter('school', item)}
+                  disabled={!isFilterSupported(filters.api, 'school')}
+                />
+              </>
+            ) : (
+              <>
+                <SelectedBadges items={filters.school} onRemove={(id) => handleRemovePriorityFilter('school', id)} />
+                <AutocompleteInput
+                  filterKey="school"
+                  placeholder="Rechercher une école..."
+                  value={searchInputs['school'] || ''}
+                  options={parameterOptions['school'] || []}
+                  loading={loadingParams === 'school'}
+                  onInputChange={(val) => handleSearchInput('school', val)}
+                  onSelect={(item) => handleAddPriorityFilter('school', item)}
+                  disabled={!isFilterSupported(filters.api, 'school')}
+                />
+              </>
+            )}
           </FilterGroup>
 
           {/* Profile Languages */}
@@ -863,7 +891,7 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
             unsupportedTooltip={getFilterTooltip(filters.api, 'open_to')}
           >
             <MultiSelectDropdown
-              options={OPEN_TO_OPTIONS.map(o => ({ value: o.value, label: o.label }))}
+              options={(filters.api === 'classic' ? OPEN_TO_OPTIONS_CLASSIC : OPEN_TO_OPTIONS_RECRUITER).map(o => ({ value: o.value, label: o.label }))}
               selected={filters.open_to}
               onChange={(selected) => onChange({ ...filters, open_to: selected as typeof filters.open_to })}
               placeholder="Sélectionner les types..."

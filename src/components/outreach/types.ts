@@ -6,8 +6,9 @@ export interface FilterItem {
   name: string;
 }
 
-// Priority for advanced filters (Recruiter)
-export type FilterPriority = 'MUST_HAVE' | 'SHOULD_HAVE' | 'DOESNT_HAVE';
+// Priority for advanced filters (Recruiter/Sales Navigator)
+// CAN_HAVE = Nice to have, MUST_HAVE = Required, DOESNT_HAVE = Exclude
+export type FilterPriority = 'CAN_HAVE' | 'MUST_HAVE' | 'DOESNT_HAVE';
 
 // Scope for role/title filters
 export type FilterScope = 'CURRENT' | 'PAST' | 'CURRENT_OR_PAST';
@@ -31,7 +32,7 @@ export type LinkedInApiType = 'classic' | 'recruiter' | 'sales_navigator';
 export type SearchCategory = 'people' | 'companies' | 'jobs' | 'posts';
 
 // Open to work types
-export type OpenToType = 'all' | 'jobs' | 'hiring' | 'services' | 'providing';
+export type OpenToType = 'all' | 'jobs' | 'hiring' | 'services' | 'providing' | 'proBono' | 'boardMember';
 
 // Spotlight types for Recruiter
 export type SpotlightType = 
@@ -57,7 +58,7 @@ export interface LinkedInFiltersState {
   location: FilterItem[];
   company: FilterItem[];
   industry: FilterItem[];
-  school: FilterItem[];
+  school: PriorityFilterItem[]; // Now supports priority for Recruiter
   
   // Advanced filters with priority
   job_title: PriorityFilterItem[];
@@ -65,6 +66,12 @@ export interface LinkedInFiltersState {
   
   // Role filter (Recruiter specific with keywords + scope)
   role: RoleFilter[];
+  
+  // Function/Department filter (Recruiter/Sales Nav)
+  function: FilterItem[];
+  
+  // Degree filter (Recruiter)
+  degree: PriorityFilterItem[];
   
   // Simple enum filters - using string arrays as per API
   seniority: string[];
@@ -96,10 +103,19 @@ export interface LinkedInFiltersState {
   company_headcount: string[];
   company_type: string[];
   company_revenue: string[];
+  company_location: FilterItem[];
+  
+  // Groups (Sales Navigator)
+  groups: FilterItem[];
   
   // Past filters
   past_company: FilterItem[];
   past_job_title: PriorityFilterItem[];
+  
+  // Advanced keywords (Classic)
+  first_name: string;
+  last_name: string;
+  title_keywords: string;
 }
 
 export const INITIAL_FILTERS: LinkedInFiltersState = {
@@ -113,6 +129,8 @@ export const INITIAL_FILTERS: LinkedInFiltersState = {
   job_title: [],
   skills: [],
   role: [],
+  function: [],
+  degree: [],
   seniority: [],
   network_distance: [],
   profile_language: [],
@@ -130,8 +148,13 @@ export const INITIAL_FILTERS: LinkedInFiltersState = {
   company_headcount: [],
   company_type: [],
   company_revenue: [],
+  company_location: [],
+  groups: [],
   past_company: [],
   past_job_title: [],
+  first_name: '',
+  last_name: '',
+  title_keywords: '',
 };
 
 // LinkedIn profile from search results
@@ -205,14 +228,14 @@ export const NETWORK_DISTANCES = [
   { value: 3, label: '3ème degré' },
 ];
 
-// Priority options for general filters (job_title, skills, etc.)
+// Priority options for all filters that support priority
 export const PRIORITY_OPTIONS = [
   { value: 'MUST_HAVE', label: 'Obligatoire', color: 'bg-green-100 text-green-700', icon: '✓' },
-  { value: 'SHOULD_HAVE', label: 'Préféré', color: 'bg-blue-100 text-blue-700', icon: '○' },
+  { value: 'CAN_HAVE', label: 'Souhaité', color: 'bg-blue-100 text-blue-700', icon: '○' },
   { value: 'DOESNT_HAVE', label: 'Exclure', color: 'bg-red-100 text-red-700', icon: '✕' },
 ];
 
-// Role-specific priority options (SHOULD_HAVE is NOT supported by Unipile API for role filter)
+// Role-specific priority options (CAN_HAVE may not be supported for role filter)
 export const ROLE_PRIORITY_OPTIONS = [
   { value: 'MUST_HAVE', label: 'Obligatoire', color: 'bg-green-100 text-green-700', icon: '✓' },
   { value: 'DOESNT_HAVE', label: 'Exclure', color: 'bg-red-100 text-red-700', icon: '✕' },
@@ -265,23 +288,38 @@ export const COMPANY_HEADCOUNT_OPTIONS = [
   { value: 'I', label: '10001+' },
 ];
 
-// Company types
+// Company types (Sales Navigator)
 export const COMPANY_TYPE_OPTIONS = [
-  { value: 'C', label: 'Entreprise publique' },
-  { value: 'D', label: 'Détenue par le gouvernement' },
-  { value: 'E', label: 'Association' },
-  { value: 'G', label: 'Auto-entrepreneur' },
-  { value: 'O', label: 'Entreprise privée' },
-  { value: 'P', label: 'Partenariat' },
-  { value: 'S', label: 'Établissement éducatif' },
+  { value: 'public_company', label: 'Entreprise publique' },
+  { value: 'privately_held', label: 'Entreprise privée' },
+  { value: 'non_profit', label: 'Association' },
+  { value: 'educational_institution', label: 'Établissement éducatif' },
+  { value: 'partnership', label: 'Partenariat' },
+  { value: 'self_employed', label: 'Auto-entrepreneur' },
+  { value: 'government_agency', label: 'Agence gouvernementale' },
 ];
 
-// Open to types
-export const OPEN_TO_OPTIONS = [
+// Open to types (different per API)
+export const OPEN_TO_OPTIONS_CLASSIC = [
+  { value: 'proBono', label: 'Pro Bono' },
+  { value: 'boardMember', label: 'Board Member' },
+];
+
+export const OPEN_TO_OPTIONS_RECRUITER = [
   { value: 'all', label: 'Tous (Open to Work)' },
   { value: 'jobs', label: 'Ouvert aux opportunités' },
   { value: 'hiring', label: 'En recrutement' },
   { value: 'services', label: 'Services' },
+];
+
+// Degree options (Recruiter)
+export const DEGREE_OPTIONS = [
+  { value: '1', label: 'Baccalauréat / High School' },
+  { value: '2', label: 'Licence / Bachelor\'s' },
+  { value: '3', label: 'Master / Master\'s' },
+  { value: '4', label: 'MBA' },
+  { value: '5', label: 'Doctorat / PhD' },
+  { value: '6', label: 'Autre' },
 ];
 
 // Parameter types for autocomplete API
@@ -296,6 +334,8 @@ export const PARAMETER_TYPES = {
   JOB_FUNCTION: 'JOB_FUNCTION',
   PEOPLE: 'PEOPLE',
   CONNECTIONS: 'CONNECTIONS',
+  DEGREE: 'DEGREE',
+  DEPARTMENT: 'DEPARTMENT',
   // Recruiter specific
   HIRING_PROJECTS: 'HIRING_PROJECTS',
   TALENT_POOLS: 'TALENT_POOLS',
@@ -306,4 +346,5 @@ export const PARAMETER_TYPES = {
   LEAD_LISTS: 'LEAD_LISTS',
   REGION: 'REGION',
   POSTAL_CODE: 'POSTAL_CODE',
+  SALES_INDUSTRY: 'SALES_INDUSTRY',
 } as const;
