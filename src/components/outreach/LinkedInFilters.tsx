@@ -10,6 +10,7 @@ import {
   SENIORITY_LEVELS,
   NETWORK_DISTANCES,
   PRIORITY_OPTIONS,
+  ROLE_PRIORITY_OPTIONS,
   SCOPE_OPTIONS,
   SPOTLIGHT_OPTIONS,
   PROFILE_LANGUAGES,
@@ -430,7 +431,7 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      {PRIORITY_OPTIONS.map((opt) => (
+                      {ROLE_PRIORITY_OPTIONS.map((opt) => (
                         <SelectItem key={opt.value} value={opt.value} className="text-xs">{opt.label}</SelectItem>
                       ))}
                     </SelectContent>
@@ -477,7 +478,7 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      {PRIORITY_OPTIONS.map((opt) => (
+                      {ROLE_PRIORITY_OPTIONS.map((opt) => (
                         <SelectItem key={opt.value} value={opt.value} className="text-xs">{opt.label}</SelectItem>
                       ))}
                     </SelectContent>
