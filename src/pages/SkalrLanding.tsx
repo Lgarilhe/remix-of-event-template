@@ -1,8 +1,12 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '@/components/ui/button';
-import { Check, ArrowRight, Users, Target, Zap, TrendingUp, Calendar, Clock, ChevronDown, Play, X } from 'lucide-react';
+import { Check, ArrowRight, Users, Target, Zap, TrendingUp, Calendar, Clock, ChevronDown, Play, X, Mail, Loader2 } from 'lucide-react';
 import { SEOHead } from '@/components/SEOHead';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { supabase } from '@/integrations/supabase/client';
+import { useToast } from '@/hooks/use-toast';
 import heroVideo from '@/assets/hero-video.mp4';
 
 // Remplacez par votre vrai lien Calendly
@@ -11,6 +15,40 @@ const CALENDLY_URL = 'https://calendly.com/demo/30min';
 const SkalrLanding = () => {
   const [openFaq, setOpenFaq] = useState<number | null>(null);
   const [showCalendly, setShowCalendly] = useState(false);
+  const [showContact, setShowContact] = useState(false);
+  const [contactForm, setContactForm] = useState({ name: '', email: '', company: '', message: '' });
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const { toast } = useToast();
+
+  const handleContactSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!contactForm.name.trim() || !contactForm.email.trim() || !contactForm.message.trim()) {
+      toast({ title: "Erreur", description: "Veuillez remplir tous les champs obligatoires.", variant: "destructive" });
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const { error } = await supabase.from('contact_submissions').insert({
+        name: contactForm.name.trim(),
+        email: contactForm.email.trim(),
+        company: contactForm.company.trim() || null,
+        message: contactForm.message.trim(),
+      });
+
+      if (error) throw error;
+
+      toast({ title: "Message envoyé !", description: "Nous vous recontacterons très vite." });
+      setContactForm({ name: '', email: '', company: '', message: '' });
+      setShowContact(false);
+    } catch (error) {
+      console.error('Contact form error:', error);
+      toast({ title: "Erreur", description: "Une erreur est survenue. Veuillez réessayer.", variant: "destructive" });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   const packs = [
     {
@@ -194,12 +232,11 @@ const SkalrLanding = () => {
                   <Button 
                     size="lg"
                     variant="ghost"
+                    onClick={() => setShowContact(true)}
                     className="rounded-full text-white hover:bg-white/10 font-medium px-6 h-12 text-base group"
                   >
-                    <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center mr-2 group-hover:bg-white/20 transition-colors">
-                      <Play className="h-3 w-3 text-white fill-white" />
-                    </div>
-                    Voir la démo
+                    <Mail className="h-4 w-4 mr-2" />
+                    Nous contacter
                   </Button>
                 </motion.div>
               </div>
@@ -482,14 +519,25 @@ const SkalrLanding = () => {
             <p className="text-lg text-zinc-400 mb-10">
               Audit gratuit de 30 minutes • Sans engagement
             </p>
-            <Button 
-              size="lg"
-              onClick={() => setShowCalendly(true)}
-              className="rounded-full bg-white text-zinc-900 hover:bg-zinc-100 font-medium px-10 h-14 text-lg"
-            >
-              Réserver mon audit
-              <ArrowRight className="ml-2 h-5 w-5" />
-            </Button>
+            <div className="flex flex-wrap justify-center gap-4">
+              <Button 
+                size="lg"
+                onClick={() => setShowCalendly(true)}
+                className="rounded-full bg-white text-zinc-900 hover:bg-zinc-100 font-medium px-10 h-14 text-lg"
+              >
+                Réserver mon audit
+                <ArrowRight className="ml-2 h-5 w-5" />
+              </Button>
+              <Button 
+                size="lg"
+                variant="outline"
+                onClick={() => setShowContact(true)}
+                className="rounded-full border-zinc-600 text-white hover:bg-white/10 font-medium px-8 h-14 text-lg"
+              >
+                <Mail className="mr-2 h-5 w-5" />
+                Envoyer un message
+              </Button>
+            </div>
           </div>
         </section>
 
@@ -537,6 +585,101 @@ const SkalrLanding = () => {
                   className="w-full h-full border-0"
                   title="Réserver un audit gratuit"
                 />
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+        {/* Contact Form Modal */}
+        <AnimatePresence>
+          {showContact && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+              onClick={() => setShowContact(false)}
+            >
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                className="relative w-full max-w-lg bg-white rounded-2xl overflow-hidden shadow-2xl p-8"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <button
+                  onClick={() => setShowContact(false)}
+                  className="absolute top-4 right-4 w-10 h-10 rounded-full bg-zinc-100 hover:bg-zinc-200 flex items-center justify-center transition-colors"
+                >
+                  <X className="h-5 w-5 text-zinc-600" />
+                </button>
+
+                <h3 className="text-2xl font-semibold text-zinc-900 mb-2">Nous contacter</h3>
+                <p className="text-zinc-500 mb-6">Préférez un échange par email ? Laissez-nous un message.</p>
+
+                <form onSubmit={handleContactSubmit} className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-zinc-700 mb-1">Nom *</label>
+                      <Input
+                        value={contactForm.name}
+                        onChange={(e) => setContactForm({ ...contactForm, name: e.target.value })}
+                        placeholder="Votre nom"
+                        className="rounded-lg"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-zinc-700 mb-1">Email *</label>
+                      <Input
+                        type="email"
+                        value={contactForm.email}
+                        onChange={(e) => setContactForm({ ...contactForm, email: e.target.value })}
+                        placeholder="vous@entreprise.com"
+                        className="rounded-lg"
+                        required
+                      />
+                    </div>
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-zinc-700 mb-1">Entreprise</label>
+                    <Input
+                      value={contactForm.company}
+                      onChange={(e) => setContactForm({ ...contactForm, company: e.target.value })}
+                      placeholder="Nom de votre entreprise"
+                      className="rounded-lg"
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-zinc-700 mb-1">Message *</label>
+                    <Textarea
+                      value={contactForm.message}
+                      onChange={(e) => setContactForm({ ...contactForm, message: e.target.value })}
+                      placeholder="Comment pouvons-nous vous aider ?"
+                      className="rounded-lg min-h-[120px]"
+                      required
+                    />
+                  </div>
+
+                  <Button
+                    type="submit"
+                    disabled={isSubmitting}
+                    className="w-full rounded-full bg-zinc-900 text-white hover:bg-zinc-800 h-12 font-medium"
+                  >
+                    {isSubmitting ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Envoi en cours...
+                      </>
+                    ) : (
+                      <>
+                        Envoyer le message
+                        <ArrowRight className="ml-2 h-4 w-4" />
+                      </>
+                    )}
+                  </Button>
+                </form>
               </motion.div>
             </motion.div>
           )}
