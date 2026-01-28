@@ -419,11 +419,11 @@ async function handleSearch(
     }));
   }
 
-  // Seniority (all APIs but different values)
-  // Recruiter API expects seniority as array of level values
-  // According to Unipile docs, seniority values should be: Entry, Mid, Senior, Manager, Director, VP, CXO, Partner, Owner
-  if (seniority?.length) {
-    console.log('Seniority filter received:', seniority);
+  // Seniority - ONLY for Classic and Sales Navigator (NOT Recruiter people search)
+  // Recruiter API does NOT support seniority filter for people search
+  // Use years_of_experience instead for Recruiter
+  if (seniority?.length && api !== 'recruiter') {
+    console.log('Seniority filter applied (non-recruiter):', seniority);
     searchBody.seniority = seniority;
   }
 
