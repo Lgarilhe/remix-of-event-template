@@ -14,6 +14,7 @@ interface ProfileData {
   skills?: string[];
   pastPositions?: string[];
   education?: string[];
+  yearsOfExperience?: number;
 }
 
 interface JobData {
@@ -28,6 +29,12 @@ interface JobData {
   remote?: string;
   xpMin?: number;
   xpMax?: number;
+  // Salary information
+  salaryMin?: number;
+  salaryMax?: number;
+  tjmMin?: number;
+  tjmMax?: number;
+  contractType?: string; // CDI, Freelance, etc.
 }
 
 serve(async (req) => {
@@ -55,6 +62,37 @@ serve(async (req) => {
       throw new Error("No profile(s) provided");
     }
 
+    // Format salary info for prompt
+    const formatSalaryInfo = (job: JobData): string => {
+      const parts: string[] = [];
+      
+      if (job.salaryMin || job.salaryMax) {
+        if (job.salaryMin && job.salaryMax) {
+          parts.push(`Salaire: ${job.salaryMin}k€ - ${job.salaryMax}k€ brut/an`);
+        } else if (job.salaryMin) {
+          parts.push(`Salaire minimum: ${job.salaryMin}k€ brut/an`);
+        } else if (job.salaryMax) {
+          parts.push(`Salaire maximum: ${job.salaryMax}k€ brut/an`);
+        }
+      }
+      
+      if (job.tjmMin || job.tjmMax) {
+        if (job.tjmMin && job.tjmMax) {
+          parts.push(`TJM: ${job.tjmMin}€ - ${job.tjmMax}€/jour`);
+        } else if (job.tjmMin) {
+          parts.push(`TJM minimum: ${job.tjmMin}€/jour`);
+        } else if (job.tjmMax) {
+          parts.push(`TJM maximum: ${job.tjmMax}€/jour`);
+        }
+      }
+      
+      if (job.contractType) {
+        parts.push(`Type de contrat: ${job.contractType}`);
+      }
+      
+      return parts.length > 0 ? parts.join('\n') : 'Rémunération: Non spécifiée (à estimer)';
+    };
+
     const results = await Promise.all(
       profilesToScore.map(async (p) => {
         try {
@@ -69,15 +107,20 @@ serve(async (req) => {
             !profileSkills.some(ps => ps.includes(js) || js.includes(ps))
           );
 
-          const prompt = `Évalue la compatibilité entre ce profil et cette offre d'emploi.
+          const salaryInfo = formatSalaryInfo(job);
+          const hasSalaryInfo = job.salaryMin || job.salaryMax || job.tjmMin || job.tjmMax;
+
+          const prompt = `Évalue la compatibilité entre ce profil et cette offre d'emploi, Y COMPRIS l'adéquation salaire/expérience.
 
 PROFIL:
 - Nom: ${p.name}
 - Titre: ${p.headline || 'Non spécifié'}
 - Poste actuel: ${p.currentRole || 'Non spécifié'} chez ${p.currentCompany || 'Non spécifié'}
 - Localisation: ${p.location || 'Non spécifié'}
+- Années d'expérience estimées: ${p.yearsOfExperience ? `${p.yearsOfExperience} ans` : 'À déterminer selon parcours'}
 - Compétences: ${p.skills?.join(', ') || 'Non spécifiées'}
 - Expériences: ${p.pastPositions?.join('; ') || 'Non spécifiées'}
+- Formation: ${p.education?.join('; ') || 'Non spécifiée'}
 
 OFFRE D'EMPLOI:
 - Poste: ${job.title}
@@ -86,12 +129,21 @@ OFFRE D'EMPLOI:
 - Séniorité: ${job.seniority || 'Non spécifié'}
 - Localisation: ${job.location || 'Non spécifié'}
 - Télétravail: ${job.remote || 'Non spécifié'}
-- Expérience: ${job.xpMin || '?'}-${job.xpMax || '?'} ans
+- Expérience requise: ${job.xpMin || '?'}-${job.xpMax || '?'} ans
+${salaryInfo}
 ${job.requirements ? `- Exigences: ${job.requirements.slice(0, 300)}` : ''}
 
 ANALYSE PRÉ-CALCULÉE:
 - Skills matchés: ${matchingSkills.join(', ') || 'Aucun'}
 - Skills manquants: ${missingSkills.join(', ') || 'Aucun'}
+
+${hasSalaryInfo ? `
+ANALYSE SALAIRE DEMANDÉE:
+Compare le salaire proposé avec ce que ce profil pourrait légitimement attendre sur le marché français (en fonction de son expérience, ses compétences, son poste actuel, et ses entreprises précédentes).
+` : `
+ESTIMATION SALAIRE DEMANDÉE:
+La rémunération n'est pas spécifiée sur le poste. Estime une fourchette de salaire marché pour ce type de poste (${job.title}, ${job.seniority || 'non précisé'}, ${job.location || 'France'}).
+`}
 
 Réponds UNIQUEMENT en JSON valide:
 {
@@ -101,14 +153,38 @@ Réponds UNIQUEMENT en JSON valide:
   "experience_match": "compatible" | "trop_junior" | "trop_senior" | "incertain",
   "location_match": true | false,
   "summary": "Une phrase de synthèse (max 20 mots)",
-  "recommendation": "go" | "maybe" | "skip"
+  "recommendation": "go" | "maybe" | "skip",
+  
+  "salary_analysis": {
+    "status": "adequate" | "too_low" | "too_high" | "unknown",
+    "confidence": "high" | "medium" | "low",
+    "estimated_market_salary": {
+      "min": 55,
+      "max": 70,
+      "currency": "k€/an"
+    },
+    "job_salary": {
+      "min": ${job.salaryMin || 'null'},
+      "max": ${job.salaryMax || 'null'},
+      "currency": "k€/an"
+    },
+    "gap_percentage": 0,
+    "explanation": "Courte explication (max 25 mots)"
+  }
 }
 
 Règles:
 - match_score: 0-100, basé sur les compétences, l'expérience et la cohérence du parcours
 - matching_skills: liste des compétences du profil qui correspondent au poste (max 6)
 - missing_skills: compétences clés manquantes (max 4)
-- Sois objectif et factuel`;
+- salary_analysis.status: 
+  * "adequate": salaire proposé cohérent avec le profil (±15%)
+  * "too_low": salaire trop bas pour ce niveau d'expérience/compétences (candidat surqualifié)
+  * "too_high": salaire trop élevé pour ce niveau (candidat potentiellement junior)
+  * "unknown": pas assez d'infos pour juger
+- salary_analysis.confidence: confiance dans l'évaluation (high/medium/low)
+- salary_analysis.gap_percentage: écart en % (positif = sous-payé, négatif = sur-payé)
+- Sois objectif et factuel, base-toi sur les données du marché français tech/digital`;
 
           const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
             method: "POST",
@@ -121,11 +197,11 @@ Règles:
               messages: [
                 { 
                   role: "system", 
-                  content: "Tu es un expert en recrutement tech. Tu évalues la compatibilité entre profils et offres. Tu réponds TOUJOURS en JSON valide, sans markdown." 
+                  content: "Tu es un expert en recrutement tech avec une connaissance approfondie des grilles salariales du marché français (Paris et régions). Tu évalues la compatibilité entre profils et offres en incluant l'adéquation salaire/expérience. Tu réponds TOUJOURS en JSON valide, sans markdown." 
                 },
                 { role: "user", content: prompt }
               ],
-              max_tokens: 350,
+              max_tokens: 600,
               temperature: 0.2,
             }),
           });
@@ -160,6 +236,11 @@ Règles:
               location_match: false,
               summary: "Analyse automatique basée sur les compétences",
               recommendation: matchingSkills.length >= 3 ? "maybe" : "skip",
+              salary_analysis: {
+                status: "unknown",
+                confidence: "low",
+                explanation: "Analyse automatique - vérification manuelle recommandée",
+              },
             };
           }
         } catch (err) {

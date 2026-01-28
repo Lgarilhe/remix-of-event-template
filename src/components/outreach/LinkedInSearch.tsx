@@ -750,6 +750,32 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
     const workExperience = profile.work_experience || [];
     const currentJob = workExperience.find(exp => !exp.end) || workExperience[0];
     const pastJobs = workExperience.filter(exp => exp.end).slice(0, 5);
+    const education = profile.education || [];
+    
+    // Calculate years of experience from diploma end date (same logic as card)
+    const calculateYearsFromDiploma = () => {
+      const relevantDegreeKeywords = [
+        'bachelor', 'licence', 'bac+3',
+        'master', 'msc', 'bac+5', 'maîtrise',
+        'mba', 'ingénieur', 'engineer', 'engineering',
+        'phd', 'doctorat', 'bac+8',
+        'diplôme', 'degree', 'graduate', 'grande école'
+      ];
+      
+      const relevantEdu = education
+        .filter((edu: any) => {
+          if (!edu.end?.year) return false;
+          const combined = `${edu.degree || ''} ${edu.school || ''} ${edu.field_of_study || ''}`.toLowerCase();
+          return relevantDegreeKeywords.some(kw => combined.includes(kw));
+        })
+        .sort((a: any, b: any) => (b.end?.year || 0) - (a.end?.year || 0));
+      
+      const diplomaToUse = relevantEdu[0] || education.filter((edu: any) => edu.end?.year).sort((a: any, b: any) => (b.end?.year || 0) - (a.end?.year || 0))[0];
+      
+      if (!diplomaToUse?.end?.year) return null;
+      const years = new Date().getFullYear() - diplomaToUse.end.year;
+      return years > 0 ? years : null;
+    };
     
     return {
       name: profile.name || `${profile.first_name || ''} ${profile.last_name || ''}`.trim(),
@@ -759,7 +785,8 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
       location: profile.location,
       skills: profile.skills?.map((s: any) => s.name || s).slice(0, 15) || [],
       pastPositions: pastJobs.map(p => `${p.role} chez ${p.company}`),
-      education: profile.education?.map((e: any) => `${e.degree || ''} - ${e.school}`) || [],
+      education: education.map((e: any) => `${e.degree || ''} - ${e.school}`) || [],
+      yearsOfExperience: calculateYearsFromDiploma(),
     };
   }, []);
 
@@ -788,6 +815,11 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
             remote: selectedJob.remote,
             xpMin: selectedJob.xpMin,
             xpMax: selectedJob.xpMax,
+            // Salary information for adequacy analysis
+            salaryMin: selectedJob.salaryMin,
+            salaryMax: selectedJob.salaryMax,
+            tjmMin: selectedJob.tjm, // TJM stored as single value
+            contractType: selectedJob.contractType,
           }
         }
       });
@@ -835,6 +867,11 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
             remote: selectedJob.remote,
             xpMin: selectedJob.xpMin,
             xpMax: selectedJob.xpMax,
+            // Salary information for adequacy analysis
+            salaryMin: selectedJob.salaryMin,
+            salaryMax: selectedJob.salaryMax,
+            tjmMin: selectedJob.tjm, // TJM stored as single value
+            contractType: selectedJob.contractType,
           }
         }
       });
