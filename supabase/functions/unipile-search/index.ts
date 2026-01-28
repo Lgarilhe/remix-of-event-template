@@ -62,8 +62,8 @@ interface SearchParams {
     timespan?: number; // Days since today
   }>;
   
-  // Degree filter (Recruiter)
-  degree?: Array<{ id: string; priority: string }>;
+  // Degree filter (Recruiter) - { include: string[], exclude: string[] }
+  degree?: { include?: string[]; exclude?: string[] };
   
   // Company filters (Sales Navigator)
   company_headcount?: Array<{ min?: number; max?: number }> | string[];
@@ -451,12 +451,16 @@ async function handleSearch(
     }
   }
 
-  // Degree filter (Recruiter) - array of objects with id and priority
-  if (degree?.length && api === 'recruiter') {
-    searchBody.degree = degree.map(d => ({
-      id: d.id,
-      priority: d.priority,
-    }));
+  // Degree filter (Recruiter) - Doc: { include: string[], exclude: string[] }
+  if (degree && api === 'recruiter') {
+    const hasInclude = degree.include?.length;
+    const hasExclude = degree.exclude?.length;
+    if (hasInclude || hasExclude) {
+      searchBody.degree = {
+        ...(hasInclude && { include: degree.include }),
+        ...(hasExclude && { exclude: degree.exclude }),
+      };
+    }
   }
 
   // Seniority
