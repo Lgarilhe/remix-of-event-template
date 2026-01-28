@@ -414,7 +414,7 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
           bgColorClass="bg-sky-50/40"
         >
           {/* Location - with priority and scope for Recruiter */}
-          <FilterGroup title="Localisation" icon={<MapPin className="w-3.5 h-3.5 text-[#0077B5]" />} badge={filters.location.length}>
+          <FilterGroup title="Localisation" badge={filters.location.length}>
             {filters.api === 'recruiter' ? (
               <>
                 <LocationBadges
@@ -482,7 +482,6 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
           {/* School - with priority for Recruiter */}
           <FilterGroup 
             title="École / Formation" 
-            icon={<GraduationCap className="w-3.5 h-3.5 text-[#0077B5]" />} 
             badge={filters.school.length}
             unsupported={!isFilterSupported(filters.api, 'school')}
             unsupportedTooltip={getFilterTooltip(filters.api, 'school')}
@@ -523,7 +522,7 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
           </FilterGroup>
 
           {/* Profile Languages */}
-          <FilterGroup title="Langue du profil" icon={<Globe className="w-3.5 h-3.5 text-[#0077B5]" />} badge={filters.profile_language.length}>
+          <FilterGroup title="Langue du profil" badge={filters.profile_language.length}>
             <MultiSelectDropdown
               options={PROFILE_LANGUAGES.map(l => ({ value: l.value, label: l.label }))}
               selected={filters.profile_language}
@@ -533,7 +532,7 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
           </FilterGroup>
 
           {/* Network Distance */}
-          <FilterGroup title="Degré de connexion" icon={<Users className="w-3.5 h-3.5 text-[#0077B5]" />} badge={filters.network_distance.length}>
+          <FilterGroup title="Degré de connexion" badge={filters.network_distance.length}>
             <MultiSelectDropdown
               options={NETWORK_DISTANCES.map(d => ({ value: d.value, label: d.label }))}
               selected={filters.network_distance}
@@ -545,7 +544,6 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
           {/* Groups - Sales Navigator */}
           <FilterGroup 
             title="Groupes LinkedIn" 
-            icon={<UsersRound className="w-3.5 h-3.5 text-[#0077B5]" />} 
             badge={filters.groups.length}
             unsupported={!isFilterSupported(filters.api, 'groups')}
             unsupportedTooltip={getFilterTooltip(filters.api, 'groups')}
@@ -578,7 +576,6 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
           {/* Job Title with priority */}
           <FilterGroup 
             title="Titre du poste" 
-            icon={<Briefcase className="w-3.5 h-3.5 text-[#0077B5]" />} 
             badge={filters.job_title.length}
             unsupported={!isFilterSupported(filters.api, 'job_title')}
             unsupportedTooltip={getFilterTooltip(filters.api, 'job_title')}
@@ -603,7 +600,6 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
           {/* Role (keywords with scope) - Recruiter only */}
           <FilterGroup 
             title="Rôle (mots-clés booléens)" 
-            icon={<Sparkles className="w-3.5 h-3.5 text-purple-500" />} 
             badge={filters.role.length}
             unsupported={!isFilterSupported(filters.api, 'role')}
             unsupportedTooltip={getFilterTooltip(filters.api, 'role')}
@@ -703,7 +699,6 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
           {/* Skills with priority */}
           <FilterGroup 
             title="Compétences" 
-            icon={<Zap className="w-3.5 h-3.5 text-[#0077B5]" />} 
             badge={filters.skills.length}
             unsupported={!isFilterSupported(filters.api, 'skills')}
             unsupportedTooltip={getFilterTooltip(filters.api, 'skills')}
@@ -728,7 +723,6 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
           {/* Seniority */}
           <FilterGroup 
             title="Niveau de séniorité" 
-            icon={<Target className="w-3.5 h-3.5 text-[#0077B5]" />} 
             badge={filters.seniority.length}
             unsupported={!isFilterSupported(filters.api, 'seniority')}
             unsupportedTooltip={getFilterTooltip(filters.api, 'seniority')}
@@ -745,7 +739,6 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
           {/* Function / Department */}
           <FilterGroup 
             title="Département / Fonction" 
-            icon={<Network className="w-3.5 h-3.5 text-[#0077B5]" />} 
             badge={filters.function.length}
             unsupported={!isFilterSupported(filters.api, 'function')}
             unsupportedTooltip={getFilterTooltip(filters.api, 'function')}
@@ -766,7 +759,6 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
           {/* Degree - Recruiter */}
           <FilterGroup 
             title="Niveau d'études" 
-            icon={<GraduationCap className="w-3.5 h-3.5 text-[#0077B5]" />} 
             badge={filters.degree.length}
             unsupported={!isFilterSupported(filters.api, 'degree')}
             unsupportedTooltip={getFilterTooltip(filters.api, 'degree')}
@@ -803,7 +795,6 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
           {/* Years of Experience */}
           <FilterGroup 
             title="Années d'expérience totale" 
-            icon={<Clock className="w-3.5 h-3.5 text-[#0077B5]" />}
             unsupported={!isFilterSupported(filters.api, 'years_of_experience')}
             unsupportedTooltip={getFilterTooltip(filters.api, 'years_of_experience')}
           >
@@ -850,7 +841,6 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
           {/* Tenure at Company */}
           <FilterGroup 
             title="Ancienneté dans l'entreprise actuelle" 
-            icon={<Building className="w-3.5 h-3.5 text-[#0077B5]" />}
             unsupported={!isFilterSupported(filters.api, 'tenure_at_company')}
             unsupportedTooltip={getFilterTooltip(filters.api, 'tenure_at_company')}
           >
@@ -897,7 +887,6 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
           {/* Tenure at Role */}
           <FilterGroup 
             title="Ancienneté dans le poste actuel" 
-            icon={<Briefcase className="w-3.5 h-3.5 text-[#0077B5]" />}
             unsupported={!isFilterSupported(filters.api, 'tenure_at_role')}
             unsupportedTooltip={getFilterTooltip(filters.api, 'tenure_at_role')}
           >
@@ -956,7 +945,6 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
           {/* Company - with dual mode for Recruiter */}
           <FilterGroup 
             title="Nom de l'entreprise" 
-            icon={<Building2 className="w-3.5 h-3.5 text-[#0077B5]" />} 
             badge={filters.company.length + filters.company_keywords.length}
           >
             <CompanyFilter
@@ -976,7 +964,7 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
           </FilterGroup>
 
           {/* Industry */}
-          <FilterGroup title="Secteur d'activité" icon={<Layers className="w-3.5 h-3.5 text-[#0077B5]" />} badge={filters.industry.length}>
+          <FilterGroup title="Secteur d'activité" badge={filters.industry.length}>
             <SelectedBadges items={filters.industry} onRemove={(id) => handleRemoveSimpleFilter('industry', id)} />
             <AutocompleteInput
               filterKey="industry"
@@ -992,7 +980,6 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
           {/* Company Headcount */}
           <FilterGroup 
             title="Taille de l'entreprise" 
-            icon={<BarChart3 className="w-3.5 h-3.5 text-[#0077B5]" />} 
             badge={filters.company_headcount.length}
             unsupported={!isFilterSupported(filters.api, 'company_headcount')}
             unsupportedTooltip={getFilterTooltip(filters.api, 'company_headcount')}
@@ -1009,7 +996,6 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
           {/* Company Type */}
           <FilterGroup 
             title="Type d'entreprise" 
-            icon={<Building className="w-3.5 h-3.5 text-[#0077B5]" />} 
             badge={filters.company_type.length}
             unsupported={!isFilterSupported(filters.api, 'company_type')}
             unsupportedTooltip={getFilterTooltip(filters.api, 'company_type')}
@@ -1026,7 +1012,6 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
           {/* Company Location - Sales Navigator */}
           <FilterGroup 
             title="Siège de l'entreprise" 
-            icon={<MapPin className="w-3.5 h-3.5 text-[#0077B5]" />} 
             badge={filters.company_location.length}
             unsupported={!isFilterSupported(filters.api, 'company_location')}
             unsupportedTooltip={getFilterTooltip(filters.api, 'company_location')}
@@ -1057,7 +1042,7 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
           bgColorClass="bg-amber-50/40"
         >
           {/* Past Company */}
-          <FilterGroup title="Ancienne entreprise" icon={<Building2 className="w-3.5 h-3.5 text-amber-600" />} badge={filters.past_company.length}>
+          <FilterGroup title="Ancienne entreprise" badge={filters.past_company.length}>
             <SelectedBadges items={filters.past_company} onRemove={(id) => handleRemoveSimpleFilter('past_company', id)} />
             <AutocompleteInput
               filterKey="past_company"
@@ -1073,7 +1058,6 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
           {/* Past Job Title */}
           <FilterGroup 
             title="Ancien poste" 
-            icon={<Briefcase className="w-3.5 h-3.5 text-amber-600" />} 
             badge={filters.past_job_title.length}
             unsupported={!isFilterSupported(filters.api, 'past_job_title')}
             unsupportedTooltip={getFilterTooltip(filters.api, 'past_job_title')}
@@ -1110,7 +1094,6 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
           {/* Open to Work */}
           <FilterGroup 
             title="Open to Work" 
-            icon={<UserCheck className="w-3.5 h-3.5 text-green-500" />}
             unsupported={!isFilterSupported(filters.api, 'open_to_work')}
             unsupportedTooltip={getFilterTooltip(filters.api, 'open_to_work')}
           >
@@ -1132,7 +1115,6 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
           {/* Open to types */}
           <FilterGroup 
             title="Open to (type)" 
-            icon={<Zap className="w-3.5 h-3.5 text-[#0077B5]" />} 
             badge={filters.open_to.length}
             unsupported={!isFilterSupported(filters.api, 'open_to')}
             unsupportedTooltip={getFilterTooltip(filters.api, 'open_to')}
@@ -1149,7 +1131,6 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
           {/* Spotlight */}
           <FilterGroup 
             title="Spotlight" 
-            icon={<Sparkles className="w-3.5 h-3.5 text-purple-500" />}
             unsupported={!isFilterSupported(filters.api, 'spotlight')}
             unsupportedTooltip={getFilterTooltip(filters.api, 'spotlight')}
           >
@@ -1174,7 +1155,6 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
           {/* Hiring Project */}
           <FilterGroup 
             title="Hiring Project (ID)" 
-            icon={<Folder className="w-3.5 h-3.5 text-purple-500" />}
             unsupported={!isFilterSupported(filters.api, 'hiring_project')}
             unsupportedTooltip={getFilterTooltip(filters.api, 'hiring_project')}
           >
@@ -1190,7 +1170,6 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
           {/* Talent Pool */}
           <FilterGroup 
             title="Talent Pool (ID)" 
-            icon={<Users className="w-3.5 h-3.5 text-purple-500" />}
             unsupported={!isFilterSupported(filters.api, 'talent_pool')}
             unsupportedTooltip={getFilterTooltip(filters.api, 'talent_pool')}
           >
@@ -1206,7 +1185,6 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
           {/* Activity: Messages */}
           <FilterGroup 
             title="Activité - Messages" 
-            icon={<MessageSquare className="w-3.5 h-3.5 text-purple-500" />}
             unsupported={!isFilterSupported(filters.api, 'activity')}
             unsupportedTooltip={getFilterTooltip(filters.api, 'activity')}
           >
@@ -1259,7 +1237,6 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
           {/* Activity: Notes */}
           <FilterGroup 
             title="Activité - Notes" 
-            icon={<StickyNote className="w-3.5 h-3.5 text-purple-500" />}
             unsupported={!isFilterSupported(filters.api, 'activity')}
             unsupportedTooltip={getFilterTooltip(filters.api, 'activity')}
           >
@@ -1312,7 +1289,6 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
           {/* Tags */}
           <FilterGroup 
             title="Tags" 
-            icon={<Tag className="w-3.5 h-3.5 text-purple-500" />}
             badge={filters.tags.length}
             unsupported={!isFilterSupported(filters.api, 'tags')}
             unsupportedTooltip={getFilterTooltip(filters.api, 'tags')}
