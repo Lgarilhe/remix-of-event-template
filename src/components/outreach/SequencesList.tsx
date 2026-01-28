@@ -41,7 +41,6 @@ import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { SequenceBuilder, Sequence, SequenceStep } from './SequenceBuilder';
 import { SequenceEnrollModal } from './SequenceEnrollModal';
-import { CreateSequenceModal } from './CreateSequenceModal';
 import { LinkedInProfile } from './types';
 import { formatDistanceToNow } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -82,7 +81,6 @@ export const SequencesList: React.FC<SequencesListProps> = ({
   const [sequences, setSequences] = useState<SequenceWithStats[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-  const [showCreateModal, setShowCreateModal] = useState(false);
   const [showBuilder, setShowBuilder] = useState(false);
   const [editingSequence, setEditingSequence] = useState<Sequence | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
@@ -308,8 +306,7 @@ export const SequencesList: React.FC<SequencesListProps> = ({
     fetchSequences();
   };
 
-  const handleCreateManual = () => {
-    setShowCreateModal(false);
+  const handleCreateNew = () => {
     setEditingSequence(null);
     setShowBuilder(true);
   };
@@ -336,7 +333,7 @@ export const SequencesList: React.FC<SequencesListProps> = ({
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold text-gray-900">Séquences</h1>
         <Button 
-          onClick={() => setShowCreateModal(true)}
+          onClick={handleCreateNew}
           className="bg-blue-600 hover:bg-blue-700 text-white rounded-lg px-4"
         >
           <Send className="w-4 h-4 mr-2" />
@@ -384,7 +381,7 @@ export const SequencesList: React.FC<SequencesListProps> = ({
             Créez votre première séquence d'outreach pour automatiser vos prises de contact LinkedIn.
           </p>
           <Button 
-            onClick={() => setShowCreateModal(true)}
+            onClick={handleCreateNew}
             className="bg-blue-600 hover:bg-blue-700"
           >
             <Plus className="w-4 h-4 mr-2" />
@@ -488,13 +485,6 @@ export const SequencesList: React.FC<SequencesListProps> = ({
           </div>
         </div>
       )}
-
-      {/* Create modal */}
-      <CreateSequenceModal
-        isOpen={showCreateModal}
-        onClose={() => setShowCreateModal(false)}
-        onCreateManual={handleCreateManual}
-      />
 
       {/* Builder modal */}
       {showBuilder && (
