@@ -229,14 +229,15 @@ async function handleSearch(
   }
 
   // Location - different format per API:
-  // - Classic: simple array
+  // - Classic: simple array of IDs
   // - Sales Navigator: { include: [...], exclude: [...] }
-  // - Recruiter: simple array (based on API docs)
+  // - Recruiter: { include: [...] } object format
   if (location?.length) {
-    if (api === 'sales_navigator') {
-      searchBody.location = { include: location };
-    } else {
+    if (api === 'classic') {
       searchBody.location = location;
+    } else {
+      // Both Recruiter and Sales Navigator use include/exclude structure
+      searchBody.location = { include: location };
     }
   }
 
