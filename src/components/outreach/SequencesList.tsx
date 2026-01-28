@@ -173,7 +173,7 @@ export const SequencesList: React.FC<SequencesListProps> = ({
           ai_tone: step.aiTone,
           timeout_days: step.timeoutDays,
           wait_for_event: step.waitForEvent,
-          timeout_branch_step_id: step.timeoutBranchStepId,
+          timeout_branch_step_id: null,
         }));
 
         const { error: stepsError } = await supabase
@@ -212,7 +212,7 @@ export const SequencesList: React.FC<SequencesListProps> = ({
           ai_tone: step.aiTone,
           timeout_days: step.timeoutDays,
           wait_for_event: step.waitForEvent,
-          timeout_branch_step_id: step.timeoutBranchStepId,
+          timeout_branch_step_id: null,
         }));
 
         const { error: stepsError } = await supabase
