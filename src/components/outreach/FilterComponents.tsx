@@ -275,25 +275,42 @@ export const LocationBadges: React.FC<LocationBadgesProps> = ({
 }) => {
   if (items.length === 0) return null;
   return (
-    <div className="space-y-1.5 mb-2">
+    <div className="space-y-2 mb-3">
       {items.map((item) => {
         const priorityConfig = PRIORITY_OPTIONS.find((p) => p.value === item.priority);
         const scopeConfig = LOCATION_SCOPE_OPTIONS.find((s) => s.value === item.scope);
         return (
-          <div key={item.id} className="flex items-center gap-2 p-2 bg-gray-50 rounded-lg flex-wrap">
-            <span className="text-sm flex-1 truncate min-w-0">{item.name}</span>
-            <div className="flex items-center gap-1.5">
+          <div 
+            key={item.id} 
+            className="bg-gradient-to-r from-gray-50 to-white border border-gray-100 rounded-lg p-3 shadow-sm"
+          >
+            {/* Location name and remove button */}
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm font-medium text-[#1A1A1A] truncate flex-1 pr-2">
+                {item.name}
+              </span>
+              <button 
+                type="button" 
+                onClick={() => onRemove(item.id)} 
+                className="text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-full p-1 transition-colors"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+            
+            {/* Priority and Scope selectors in a clean row */}
+            <div className="flex items-center gap-2">
               <Select
                 value={item.priority}
                 onValueChange={(val) => onUpdatePriority(item.id, val as FilterPriority)}
               >
-                <SelectTrigger className={`h-6 w-[85px] text-[10px] border-0 ${priorityConfig?.color}`}>
+                <SelectTrigger className={`h-7 flex-1 text-[11px] border-0 shadow-sm ${priorityConfig?.color}`}>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent className="bg-white z-50">
                   {PRIORITY_OPTIONS.map((opt) => (
                     <SelectItem key={opt.value} value={opt.value} className="text-xs">
-                      <span className="flex items-center gap-1">
+                      <span className="flex items-center gap-1.5">
                         <span>{opt.icon}</span>
                         <span>{opt.label}</span>
                       </span>
@@ -301,11 +318,12 @@ export const LocationBadges: React.FC<LocationBadgesProps> = ({
                   ))}
                 </SelectContent>
               </Select>
+              
               <Select
                 value={item.scope}
                 onValueChange={(val) => onUpdateScope(item.id, val as LocationScope)}
               >
-                <SelectTrigger className="h-6 w-[110px] text-[10px] border border-gray-200 bg-white">
+                <SelectTrigger className="h-7 flex-1 text-[11px] border border-gray-200 bg-white shadow-sm">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent className="bg-white z-50">
@@ -316,9 +334,6 @@ export const LocationBadges: React.FC<LocationBadgesProps> = ({
                   ))}
                 </SelectContent>
               </Select>
-              <button type="button" onClick={() => onRemove(item.id)} className="text-red-400 hover:text-red-600 p-0.5">
-                <X className="w-3.5 h-3.5" />
-              </button>
             </div>
           </div>
         );
@@ -326,7 +341,6 @@ export const LocationBadges: React.FC<LocationBadgesProps> = ({
     </div>
   );
 }
-
 // ===== Multi-Select Dropdown =====
 interface MultiSelectOption {
   value: string | number;
