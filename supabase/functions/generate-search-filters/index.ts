@@ -56,9 +56,13 @@ serve(async (req) => {
     // Build the prompt for AI
     const systemPrompt = `Tu es un expert en recrutement LinkedIn. À partir d'une fiche de poste, tu génères des filtres de recherche LinkedIn optimaux.
 
+IMPORTANT: Les mots-clés de rôle seront utilisés dans une recherche booléenne. 
+- Le champ "keywords" doit contenir TOUS les titres alternatifs combinés avec OR (ex: "Data Engineer" OR "ML Engineer" OR "MLOps")
+- Le champ "role_keywords" doit contenir UN SEUL élément avec tous les titres combinés en OR (pas plusieurs éléments séparés)
+
 Retourne UNIQUEMENT un objet JSON valide avec les champs suivants:
-- keywords: string - Mots-clés principaux pour la recherche (titre de poste + variations)
-- role_keywords: string[] - Liste de titres/intitulés de poste alternatifs (max 5)
+- keywords: string - Mots-clés principaux combinés avec OR (ex: "Data Engineer" OR "ML Engineer")
+- role_keywords: string[] - UN SEUL élément contenant tous les titres combinés avec OR (ex: ["Data Engineer OR ML Engineer OR MLOps Engineer"])
 - seniority_levels: string[] - Niveaux hiérarchiques parmi: "1" (Entry), "2" (Associate), "3" (Mid), "4" (Senior), "5" (Manager), "6" (Director), "7" (VP), "8" (CXO), "9" (Partner), "10" (Owner)
 - years_experience_min: number | null - Années d'expérience minimum
 - years_experience_max: number | null - Années d'expérience maximum
@@ -145,13 +149,21 @@ ${job.sourcingCriteria ? `Critères de sourcing: ${job.sourcingCriteria}` : ''}
     }
 
     // Transform to filter format
+    // IMPORTANT: Role keywords should be combined into a SINGLE role filter with OR logic
+    // Multiple MUST_HAVE roles are AND'ed together by LinkedIn, which returns 0 results
+    const roleKeywords = parsed.role_keywords || [];
+    const combinedRoleKeywords = roleKeywords.length > 1 
+      ? roleKeywords.join(' OR ')  // Combine all into one OR query
+      : roleKeywords[0] || job.title;
+
     const filters: GeneratedFilters = {
       keywords: parsed.keywords || job.title,
-      role: (parsed.role_keywords || []).slice(0, 5).map((kw: string) => ({
-        keywords: kw,
+      // Single role filter with all titles combined via OR
+      role: [{
+        keywords: combinedRoleKeywords,
         priority: "MUST_HAVE",
         scope: "CURRENT",
-      })),
+      }],
       seniority: parsed.seniority_levels || [],
       years_of_experience_min: parsed.years_experience_min ?? job.xpMin ?? null,
       years_of_experience_max: parsed.years_experience_max ?? job.xpMax ?? null,
