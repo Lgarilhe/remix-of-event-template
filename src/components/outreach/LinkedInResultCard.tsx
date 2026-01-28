@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { 
   ExternalLink, 
   UserPlus, 
@@ -28,6 +29,9 @@ import {
   TrendingUp,
   CheckCircle2,
   AlertTriangle,
+  FileText,
+  Newspaper,
+  X,
   Target,
   PenLine,
 } from 'lucide-react';
@@ -595,170 +599,260 @@ export const LinkedInResultCard: React.FC<LinkedInResultCardProps> = ({
           </CollapsibleTrigger>
         </div>
 
-        {/* Expanded content */}
+        {/* Expanded content with tabs */}
         <CollapsibleContent>
-          <div className="px-4 pb-4 border-t border-[#1A1A1A]/5 pt-4 space-y-4">
-            {/* All current positions (including simultaneous roles) */}
-            {currentJobs.length > 0 && (
-              <div className="space-y-2">
-                <h4 className="text-xs font-semibold text-[#1A1A1A]/50 uppercase tracking-wider flex items-center gap-2">
+          <div className="px-4 pb-4 border-t border-[#1A1A1A]/5 pt-4">
+            {/* Header with close button */}
+            <div className="flex items-center justify-between mb-3">
+              <h4 className="text-sm font-semibold text-[#1A1A1A]">Détails du profil</h4>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setIsExpanded(false)}
+                className="h-7 w-7 p-0 text-[#1A1A1A]/40 hover:text-[#1A1A1A]"
+              >
+                <X className="w-4 h-4" />
+              </Button>
+            </div>
+            
+            <Tabs defaultValue="experience" className="w-full">
+              <TabsList className="w-full justify-start bg-[#1A1A1A]/5 p-1 h-auto flex-wrap gap-1">
+                <TabsTrigger value="experience" className="text-xs px-3 py-1.5 data-[state=active]:bg-white gap-1.5">
                   <Briefcase className="w-3.5 h-3.5" />
-                  {currentJobs.length > 1 ? `Postes actuels (${currentJobs.length})` : 'Poste actuel'}
-                </h4>
-                <div className="space-y-2">
-                  {currentJobs.map((pos, index) => (
-                    <div key={index} className="bg-gradient-to-r from-green-50 to-white rounded-lg p-3 border border-green-100">
-                      <div className="flex items-start gap-3">
-                        {pos.logo ? (
-                          <img src={pos.logo} alt={pos.company} className="w-10 h-10 rounded object-contain bg-white border" />
-                        ) : (
-                          <div className="w-10 h-10 rounded bg-green-100 flex items-center justify-center shrink-0">
-                            <Building2 className="w-5 h-5 text-green-600" />
-                          </div>
-                        )}
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2">
-                            <p className="font-medium text-sm text-[#1A1A1A]">{pos.role}</p>
-                            <Badge variant="outline" className="h-4 px-1.5 text-[9px] border-green-300 text-green-600 bg-green-50">
-                              Actuel
-                            </Badge>
-                          </div>
-                          <p className="text-sm text-[#1A1A1A]/60">{pos.company}</p>
-                          <div className="flex gap-4 mt-2 text-xs text-[#1A1A1A]/50">
-                            {pos.start && (
-                              <span className="flex items-center gap-1">
-                                <Clock className="w-3 h-3" />
-                                Depuis {pos.start.month ? `${pos.start.month}/` : ''}{pos.start.year}
-                                {getTenureDisplay(pos.start, pos.end) && (
-                                  <span className="text-green-600 font-medium ml-1">
-                                    ({getTenureDisplay(pos.start, pos.end)})
+                  Expérience
+                </TabsTrigger>
+                <TabsTrigger value="education" className="text-xs px-3 py-1.5 data-[state=active]:bg-white gap-1.5">
+                  <GraduationCap className="w-3.5 h-3.5" />
+                  Formation
+                </TabsTrigger>
+                <TabsTrigger value="skills" className="text-xs px-3 py-1.5 data-[state=active]:bg-white gap-1.5">
+                  <Zap className="w-3.5 h-3.5" />
+                  Compétences
+                </TabsTrigger>
+                <TabsTrigger value="messages" className="text-xs px-3 py-1.5 data-[state=active]:bg-white gap-1.5">
+                  <MessageSquare className="w-3.5 h-3.5" />
+                  Messages
+                </TabsTrigger>
+                <TabsTrigger value="posts" className="text-xs px-3 py-1.5 data-[state=active]:bg-white gap-1.5">
+                  <Newspaper className="w-3.5 h-3.5" />
+                  Posts
+                </TabsTrigger>
+              </TabsList>
+
+              {/* Experience Tab */}
+              <TabsContent value="experience" className="mt-4 space-y-4">
+                {/* All current positions */}
+                {currentJobs.length > 0 && (
+                  <div className="space-y-2">
+                    <h4 className="text-xs font-semibold text-[#1A1A1A]/50 uppercase tracking-wider flex items-center gap-2">
+                      <Briefcase className="w-3.5 h-3.5" />
+                      {currentJobs.length > 1 ? `Postes actuels (${currentJobs.length})` : 'Poste actuel'}
+                    </h4>
+                    <div className="space-y-2">
+                      {currentJobs.map((pos, index) => (
+                        <div key={index} className="bg-gradient-to-r from-green-50 to-white rounded-lg p-3 border border-green-100">
+                          <div className="flex items-start gap-3">
+                            {pos.logo ? (
+                              <img src={pos.logo} alt={pos.company} className="w-10 h-10 rounded object-contain bg-white border" />
+                            ) : (
+                              <div className="w-10 h-10 rounded bg-green-100 flex items-center justify-center shrink-0">
+                                <Building2 className="w-5 h-5 text-green-600" />
+                              </div>
+                            )}
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2">
+                                <p className="font-medium text-sm text-[#1A1A1A]">{pos.role}</p>
+                                <Badge variant="outline" className="h-4 px-1.5 text-[9px] border-green-300 text-green-600 bg-green-50">
+                                  Actuel
+                                </Badge>
+                              </div>
+                              <p className="text-sm text-[#1A1A1A]/60">{pos.company}</p>
+                              <div className="flex gap-4 mt-2 text-xs text-[#1A1A1A]/50">
+                                {pos.start && (
+                                  <span className="flex items-center gap-1">
+                                    <Clock className="w-3 h-3" />
+                                    Depuis {pos.start.month ? `${pos.start.month}/` : ''}{pos.start.year}
+                                    {getTenureDisplay(pos.start, pos.end) && (
+                                      <span className="text-green-600 font-medium ml-1">
+                                        ({getTenureDisplay(pos.start, pos.end)})
+                                      </span>
+                                    )}
                                   </span>
                                 )}
-                              </span>
+                              </div>
+                              {pos.description && (
+                                <p className="text-xs text-[#1A1A1A]/60 mt-2 line-clamp-3">{pos.description}</p>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* All past positions */}
+                {pastJobs.length > 0 && (
+                  <div className="space-y-2">
+                    <h4 className="text-xs font-semibold text-[#1A1A1A]/50 uppercase tracking-wider flex items-center gap-2">
+                      <Clock className="w-3.5 h-3.5" />
+                      Expérience passée ({pastJobs.length} postes)
+                    </h4>
+                    <div className="space-y-2">
+                      {pastJobs.map((pos, index) => (
+                        <div key={index} className="flex items-start gap-3 text-sm p-2 bg-[#1A1A1A]/3 rounded-lg">
+                          {pos.logo ? (
+                            <img src={pos.logo} alt={pos.company} className="w-8 h-8 rounded object-contain bg-white border" />
+                          ) : (
+                            <div className="w-8 h-8 rounded bg-[#0077B5]/10 flex items-center justify-center shrink-0">
+                              <Building2 className="w-4 h-4 text-[#0077B5]/60" />
+                            </div>
+                          )}
+                          <div className="flex-1 min-w-0">
+                            <p className="font-medium text-[#1A1A1A]/80">{pos.role}</p>
+                            <p className="text-xs text-[#1A1A1A]/50">
+                              {pos.company}
+                              {pos.start?.year && pos.end?.year && (
+                                <span className="ml-2 px-1.5 py-0.5 bg-[#1A1A1A]/5 rounded text-[10px]">
+                                  {pos.start.year} - {pos.end.year} ({getTenureDisplay(pos.start, pos.end)})
+                                </span>
+                              )}
+                            </p>
+                            {pos.description && (
+                              <p className="text-xs text-[#1A1A1A]/40 mt-1 line-clamp-2">{pos.description}</p>
                             )}
                           </div>
-                          {pos.description && (
-                            <p className="text-xs text-[#1A1A1A]/60 mt-2 line-clamp-3">
-                              {pos.description}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Summary */}
+                {(profile as any).summary && (
+                  <div className="space-y-2">
+                    <h4 className="text-xs font-semibold text-[#1A1A1A]/50 uppercase tracking-wider flex items-center gap-2">
+                      <FileText className="w-3.5 h-3.5" />
+                      À propos
+                    </h4>
+                    <p className="text-sm text-[#1A1A1A]/70 leading-relaxed bg-[#1A1A1A]/3 p-3 rounded-lg">
+                      {(profile as any).summary}
+                    </p>
+                  </div>
+                )}
+              </TabsContent>
+
+              {/* Education Tab */}
+              <TabsContent value="education" className="mt-4 space-y-4">
+                {education.length > 0 ? (
+                  <div className="space-y-2">
+                    {education.map((edu: any, index: number) => (
+                      <div key={index} className="flex items-start gap-3 text-sm p-3 bg-amber-50/50 rounded-lg border border-amber-100">
+                        {edu.school_details?.logo ? (
+                          <img src={edu.school_details.logo} alt={edu.school} className="w-10 h-10 rounded object-contain bg-white border" />
+                        ) : (
+                          <div className="w-10 h-10 rounded bg-amber-100 flex items-center justify-center shrink-0">
+                            <GraduationCap className="w-5 h-5 text-amber-600" />
+                          </div>
+                        )}
+                        <div className="flex-1">
+                          <p className="font-medium text-[#1A1A1A]">{edu.school}</p>
+                          <p className="text-sm text-[#1A1A1A]/70">
+                            {edu.degree}
+                            {edu.field_of_study && ` - ${edu.field_of_study}`}
+                          </p>
+                          {(edu.start?.year || edu.end?.year) && (
+                            <p className="text-xs text-[#1A1A1A]/50 mt-1">
+                              {edu.start?.year && `${edu.start.year}`}
+                              {edu.start?.year && edu.end?.year && ' - '}
+                              {edu.end?.year && `${edu.end.year}`}
+                            </p>
+                          )}
+                          {edu.school_details?.description && (
+                            <p className="text-xs text-[#1A1A1A]/50 mt-2 line-clamp-2">
+                              {edu.school_details.description}
                             </p>
                           )}
                         </div>
                       </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-8 text-[#1A1A1A]/40">
+                    <GraduationCap className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                    <p className="text-sm">Aucune formation disponible</p>
+                  </div>
+                )}
+              </TabsContent>
 
-            {/* All past positions */}
-            {pastJobs.length > 0 && (
-              <div className="space-y-2">
-                <h4 className="text-xs font-semibold text-[#1A1A1A]/50 uppercase tracking-wider flex items-center gap-2">
-                  <Clock className="w-3.5 h-3.5" />
-                  Expérience complète ({workExperience.length} postes)
-                </h4>
-                <div className="space-y-2">
-                  {pastJobs.map((pos, index) => (
-                    <div key={index} className="flex items-start gap-3 text-sm p-2 bg-[#1A1A1A]/3 rounded-lg">
-                      {pos.logo ? (
-                        <img src={pos.logo} alt={pos.company} className="w-8 h-8 rounded object-contain bg-white border" />
-                      ) : (
-                        <div className="w-8 h-8 rounded bg-[#0077B5]/10 flex items-center justify-center shrink-0">
-                          <Building2 className="w-4 h-4 text-[#0077B5]/60" />
-                        </div>
-                      )}
-                      <div className="flex-1 min-w-0">
-                        <p className="font-medium text-[#1A1A1A]/80">{pos.role}</p>
-                        <p className="text-xs text-[#1A1A1A]/50">
-                          {pos.company}
-                          {pos.start?.year && pos.end?.year && (
-                            <span className="ml-2 px-1.5 py-0.5 bg-[#1A1A1A]/5 rounded text-[10px]">
-                              {pos.start.year} - {pos.end.year} ({getTenureDisplay(pos.start, pos.end)})
-                            </span>
-                          )}
-                        </p>
-                        {pos.description && (
-                          <p className="text-xs text-[#1A1A1A]/40 mt-1 line-clamp-2">{pos.description}</p>
+              {/* Skills Tab */}
+              <TabsContent value="skills" className="mt-4 space-y-4">
+                {skills.length > 0 ? (
+                  <div className="flex flex-wrap gap-2">
+                    {skills.map((skill: any, index: number) => (
+                      <Badge 
+                        key={index} 
+                        variant="secondary" 
+                        className="text-xs px-3 py-1.5 bg-[#0077B5]/10 text-[#0077B5] font-normal"
+                      >
+                        {skill.name || skill}
+                        {skill.endorsement_count && (
+                          <span className="ml-1.5 text-[10px] text-[#0077B5]/60">
+                            ({skill.endorsement_count})
+                          </span>
                         )}
-                        {pos.skills && pos.skills.length > 0 && (
-                          <div className="flex flex-wrap gap-1 mt-1">
-                            {pos.skills.slice(0, 4).map((skill, i) => (
-                              <span key={i} className="text-[9px] px-1.5 py-0.5 bg-[#0077B5]/5 text-[#0077B5] rounded">
-                                {skill.name}
-                              </span>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
+                      </Badge>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-8 text-[#1A1A1A]/40">
+                    <Zap className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                    <p className="text-sm">Aucune compétence disponible</p>
+                  </div>
+                )}
+              </TabsContent>
 
-            {/* Education */}
-            {education.length > 0 && (
-              <div className="space-y-2">
-                <h4 className="text-xs font-semibold text-[#1A1A1A]/50 uppercase tracking-wider flex items-center gap-2">
-                  <GraduationCap className="w-3.5 h-3.5" />
-                  Formation
-                </h4>
-                <div className="space-y-2">
-                  {education.map((edu: any, index: number) => (
-                    <div key={index} className="flex items-start gap-3 text-sm p-2 bg-[#1A1A1A]/3 rounded-lg">
-                      <div className="w-2 h-2 rounded-full bg-amber-400 mt-1.5 shrink-0" />
-                      <div>
-                        <p className="font-medium text-[#1A1A1A]/80">{edu.school}</p>
-                        <p className="text-xs text-[#1A1A1A]/50">
-                          {edu.degree}
-                          {edu.field_of_study && ` - ${edu.field_of_study}`}
-                          {edu.end?.year && (
-                            <span className="ml-2 px-1.5 py-0.5 bg-[#1A1A1A]/5 rounded">
-                              {edu.end.year}
-                            </span>
-                          )}
-                        </p>
-                      </div>
-                    </div>
-                  ))}
+              {/* Messages Tab */}
+              <TabsContent value="messages" className="mt-4">
+                <div className="text-center py-8 text-[#1A1A1A]/40 bg-[#1A1A1A]/3 rounded-lg">
+                  <MessageSquare className="w-10 h-10 mx-auto mb-3 opacity-50" />
+                  <p className="text-sm font-medium mb-1">Historique des messages</p>
+                  <p className="text-xs text-[#1A1A1A]/50 mb-4">
+                    Consultez l'historique des échanges avec ce candidat
+                  </p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="text-[#0077B5] border-[#0077B5]/30 hover:bg-[#0077B5]/10"
+                  >
+                    <MessageSquare className="w-4 h-4 mr-2" />
+                    Charger l'historique
+                  </Button>
                 </div>
-              </div>
-            )}
+              </TabsContent>
 
-            {/* All skills */}
-            {skills.length > 5 && (
-              <div className="space-y-2">
-                <h4 className="text-xs font-semibold text-[#1A1A1A]/50 uppercase tracking-wider">
-                  Toutes les compétences
-                </h4>
-                <div className="flex flex-wrap gap-1.5">
-                  {skills.map((skill: any, index: number) => (
-                    <Badge 
-                      key={index} 
-                      variant="secondary" 
-                      className="text-[10px] px-2 py-0.5 bg-[#1A1A1A]/5 text-[#1A1A1A]/70 font-normal"
-                    >
-                      {skill.name || skill}
-                    </Badge>
-                  ))}
+              {/* Posts Tab */}
+              <TabsContent value="posts" className="mt-4">
+                <div className="text-center py-8 text-[#1A1A1A]/40 bg-[#1A1A1A]/3 rounded-lg">
+                  <Newspaper className="w-10 h-10 mx-auto mb-3 opacity-50" />
+                  <p className="text-sm font-medium mb-1">Publications LinkedIn</p>
+                  <p className="text-xs text-[#1A1A1A]/50 mb-4">
+                    Consultez les dernières publications de ce candidat
+                  </p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="text-[#0077B5] border-[#0077B5]/30 hover:bg-[#0077B5]/10"
+                  >
+                    <Newspaper className="w-4 h-4 mr-2" />
+                    Voir les posts
+                  </Button>
                 </div>
-              </div>
-            )}
-
-            {/* Summary */}
-            {(profile as any).summary && (
-              <div className="space-y-2">
-                <h4 className="text-xs font-semibold text-[#1A1A1A]/50 uppercase tracking-wider">
-                  À propos
-                </h4>
-                <p className="text-sm text-[#1A1A1A]/70 leading-relaxed line-clamp-4">
-                  {(profile as any).summary}
-                </p>
-              </div>
-            )}
+              </TabsContent>
+            </Tabs>
 
             {/* Quick actions */}
-            <div className="flex gap-2 pt-2">
+            <div className="flex gap-2 pt-4 mt-4 border-t border-[#1A1A1A]/5">
               {profileUrl && (
                 <Button
                   variant="outline"
