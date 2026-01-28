@@ -2,9 +2,6 @@ import React, { useState } from 'react';
 import {
   Dialog,
   DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -13,6 +10,7 @@ import { Label } from '@/components/ui/label';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { 
   Plus, 
   Trash2, 
@@ -27,6 +25,9 @@ import {
   MoreHorizontal,
   Pencil,
   X,
+  ArrowLeft,
+  Linkedin,
+  Lock,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
@@ -69,6 +70,17 @@ interface SequenceBuilderProps {
   initialSequence?: Sequence;
 }
 
+// Step picker actions
+const STEP_ACTIONS = {
+  automatic: [
+    { type: 'smart_message', label: 'Smart Message', description: 'Message auto-adapté', icon: Sparkles, color: 'text-purple-600 bg-purple-50', available: true },
+    { type: 'inmail', label: 'InMail', description: 'Envoyer un InMail LinkedIn', icon: Mail, color: 'text-blue-600 bg-blue-50', available: true },
+    { type: 'connection_request', label: 'Invitation', description: 'Envoyer sur LinkedIn', icon: UserPlus, color: 'text-emerald-600 bg-emerald-50', available: true },
+    { type: 'message', label: 'Message direct', description: 'Envoyer sur LinkedIn', icon: MessageSquare, color: 'text-orange-600 bg-orange-50', available: true },
+    { type: 'profile_visit', label: 'Visiter le profil', description: 'Visiter le profil', icon: Eye, color: 'text-sky-600 bg-sky-50', available: true },
+  ],
+};
+
 const ACTION_CONFIG: Record<string, { label: string; icon: typeof Mail; bgColor: string; iconColor: string }> = {
   smart_message: { label: 'Smart Message', icon: Sparkles, bgColor: 'bg-purple-50', iconColor: 'text-purple-500' },
   connection_request: { label: 'Invitation', icon: UserPlus, bgColor: 'bg-emerald-50', iconColor: 'text-emerald-500' },
@@ -86,10 +98,10 @@ const CONDITION_OPTIONS = [
   { value: 'wait_for_event', label: 'Attendre événement' },
 ];
 
-const createEmptyStep = (order: number): SequenceStep => ({
+const createEmptyStep = (order: number, actionType: string = 'smart_message'): SequenceStep => ({
   id: crypto.randomUUID(),
   order,
-  actionType: order === 0 ? 'profile_visit' : 'smart_message',
+  actionType: actionType as any,
   conditionType: 'always',
   delayDays: order === 0 ? 0 : 2,
   delayHours: 0,
@@ -112,12 +124,13 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = ({
     initialSequence || {
       name: '',
       description: '',
-      steps: [createEmptyStep(0)],
+      steps: [],
       isActive: true,
     }
   );
   const [isSaving, setIsSaving] = useState(false);
   const [selectedStepId, setSelectedStepId] = useState<string | null>(null);
+  const [showStepPicker, setShowStepPicker] = useState(!initialSequence && sequence.steps.length === 0);
 
   const selectedStep = sequence.steps.find(s => s.id === selectedStepId);
 
@@ -130,14 +143,14 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = ({
     }));
   };
 
-  const addStep = (afterIndex: number) => {
-    const newStep = createEmptyStep(afterIndex + 1);
-    const newSteps = [...sequence.steps];
-    newSteps.splice(afterIndex + 1, 0, newStep);
+  const addStep = (actionType: string) => {
+    const newStep = createEmptyStep(sequence.steps.length, actionType);
     setSequence(prev => ({
       ...prev,
-      steps: newSteps.map((s, idx) => ({ ...s, order: idx })),
+      steps: [...prev.steps, newStep],
     }));
+    setSelectedStepId(newStep.id);
+    setShowStepPicker(false);
   };
 
   const removeStep = (stepId: string) => {
@@ -147,12 +160,12 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = ({
       .map((s, idx) => ({ ...s, order: idx }));
     setSequence(prev => ({ ...prev, steps: newSteps }));
     if (selectedStepId === stepId) {
-      setSelectedStepId(null);
+      setSelectedStepId(newSteps[0]?.id || null);
     }
   };
 
   const handleSave = async () => {
-    if (!sequence.name.trim()) return;
+    if (!sequence.name.trim() || sequence.steps.length === 0) return;
     setIsSaving(true);
     try {
       await onSave(sequence);
@@ -164,11 +177,88 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = ({
 
   const needsMessage = (type: string) => ['inmail', 'connection_request', 'message', 'smart_message'].includes(type);
 
+  // Step picker view
+  if (showStepPicker) {
+    return (
+      <Dialog open={isOpen} onOpenChange={onClose}>
+        <DialogContent className="max-w-2xl p-0 gap-0 bg-white overflow-hidden">
+          {/* Header */}
+          <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+            <div className="flex items-center gap-3">
+              {sequence.steps.length > 0 && (
+                <button 
+                  onClick={() => setShowStepPicker(false)}
+                  className="p-1 rounded hover:bg-gray-100 text-gray-400"
+                >
+                  <ArrowLeft className="w-5 h-5" />
+                </button>
+              )}
+              <div>
+                <h2 className="text-lg font-semibold text-gray-900">Construire ma séquence</h2>
+                <p className="text-sm text-gray-500">Choisir les étapes</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <Tabs defaultValue="steps">
+                <TabsList className="bg-gray-100">
+                  <TabsTrigger value="steps" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white">
+                    Étapes
+                  </TabsTrigger>
+                  <TabsTrigger value="conditions" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white">
+                    Conditions
+                  </TabsTrigger>
+                </TabsList>
+              </Tabs>
+            </div>
+          </div>
+
+          {/* Content */}
+          <div className="p-6">
+            <div className="mb-6">
+              <h3 className="text-sm font-medium text-gray-700 mb-3">Étapes automatiques</h3>
+              <div className="space-y-2">
+                {STEP_ACTIONS.automatic.map((action) => {
+                  const Icon = action.icon;
+                  return (
+                    <button
+                      key={action.type}
+                      onClick={() => action.available && addStep(action.type)}
+                      disabled={!action.available}
+                      className={cn(
+                        "w-full flex items-center gap-4 p-4 rounded-xl border-2 border-gray-100 hover:border-blue-200 hover:bg-blue-50/30 transition-all text-left",
+                        !action.available && "opacity-50 cursor-not-allowed"
+                      )}
+                    >
+                      <div className={cn("w-10 h-10 rounded-lg flex items-center justify-center", action.color)}>
+                        <Icon className="w-5 h-5" />
+                        <Linkedin className="w-3 h-3 absolute bottom-0 right-0 text-[#0077B5]" style={{display: 'none'}} />
+                      </div>
+                      <div className="flex-1">
+                        <div className="font-medium text-gray-900">{action.label}</div>
+                        <div className="text-sm text-gray-500">{action.description}</div>
+                      </div>
+                      {!action.available && (
+                        <div className="flex items-center gap-1 text-sm text-gray-400">
+                          <Lock className="w-4 h-4" />
+                          Accès
+                        </div>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+    );
+  }
+
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="max-w-5xl max-h-[90vh] overflow-hidden flex flex-col p-0 gap-0 bg-[#f8fafc]">
         {/* Header */}
-        <DialogHeader className="px-6 py-4 border-b border-gray-200 bg-white flex-row items-center justify-between">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 bg-white">
           <div className="flex items-center gap-4 flex-1">
             <Input
               value={sequence.name}
@@ -177,12 +267,24 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = ({
               className="max-w-md border-0 bg-transparent text-lg font-medium placeholder:text-gray-400 focus-visible:ring-0 px-0"
             />
           </div>
-          <div className="flex items-center gap-2">
-            <Button variant="ghost" size="sm" onClick={onClose}>
-              <X className="w-4 h-4" />
+          <div className="flex items-center gap-3">
+            <Button variant="outline" onClick={onClose} className="border-gray-200">
+              Annuler
+            </Button>
+            <Button 
+              onClick={handleSave} 
+              disabled={isSaving || !sequence.name.trim() || sequence.steps.length === 0}
+              className="bg-blue-600 hover:bg-blue-700"
+            >
+              {isSaving ? 'Enregistrement...' : (
+                <>
+                  <Save className="w-4 h-4 mr-2" />
+                  Enregistrer
+                </>
+              )}
             </Button>
           </div>
-        </DialogHeader>
+        </div>
 
         {/* Main content - 2 columns */}
         <div className="flex-1 flex overflow-hidden">
@@ -202,7 +304,7 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = ({
                         <div className="flex flex-col items-center">
                           <div className="w-px h-4 bg-gray-300" />
                           <button
-                            onClick={() => addStep(index - 1)}
+                            onClick={() => setShowStepPicker(true)}
                             className="w-6 h-6 rounded-full border-2 border-gray-300 bg-white hover:border-blue-400 hover:bg-blue-50 flex items-center justify-center text-gray-400 hover:text-blue-500 transition-colors"
                           >
                             <Plus className="w-3 h-3" />
@@ -229,22 +331,12 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = ({
                             <span className="text-blue-600 font-medium">
                               {step.delayDays} jour{step.delayDays > 1 ? 's' : ''}
                             </span>
-                            <button 
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setSelectedStepId(step.id);
-                              }}
-                              className="ml-1 text-gray-400 hover:text-gray-600"
-                            >
-                              <Pencil className="w-3 h-3" />
-                            </button>
                           </div>
                         )}
 
                         {/* Card content */}
                         <div className="p-4 pt-5">
                           <div className="flex items-start gap-3">
-                            {/* Icon */}
                             <div className={cn(
                               "w-9 h-9 rounded-lg flex items-center justify-center shrink-0",
                               config.bgColor
@@ -252,7 +344,6 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = ({
                               <Icon className={cn("w-4.5 h-4.5", config.iconColor)} />
                             </div>
 
-                            {/* Content */}
                             <div className="flex-1 min-w-0">
                               <div className="font-medium text-gray-900 text-sm">
                                 {config.label}
@@ -260,7 +351,7 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = ({
                               {step.useAiPersonalization && needsMessage(step.actionType) ? (
                                 <div className="flex items-center gap-1 text-xs text-purple-600 mt-0.5">
                                   <Sparkles className="w-3 h-3" />
-                                  Message personnalisé par IA
+                                  Message IA
                                 </div>
                               ) : step.conditionType !== 'always' ? (
                                 <div className="text-xs text-gray-500 mt-0.5">
@@ -269,7 +360,6 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = ({
                               ) : null}
                             </div>
 
-                            {/* Menu */}
                             <DropdownMenu>
                               <DropdownMenuTrigger asChild>
                                 <button 
@@ -279,7 +369,7 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = ({
                                   <MoreHorizontal className="w-4 h-4" />
                                 </button>
                               </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end">
+                              <DropdownMenuContent align="end" className="bg-white">
                                 <DropdownMenuItem onClick={() => setSelectedStepId(step.id)}>
                                   <Pencil className="w-4 h-4 mr-2" />
                                   Modifier
@@ -305,7 +395,7 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = ({
                 <div className="flex flex-col items-center mt-2">
                   <div className="w-px h-6 bg-gray-300" />
                   <button
-                    onClick={() => addStep(sequence.steps.length - 1)}
+                    onClick={() => setShowStepPicker(true)}
                     className="flex items-center gap-2 px-4 py-2 rounded-lg border-2 border-dashed border-gray-300 text-gray-500 hover:border-blue-400 hover:text-blue-600 hover:bg-blue-50/50 transition-colors text-sm font-medium"
                   >
                     <Plus className="w-4 h-4" />
@@ -353,7 +443,7 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = ({
                       <SelectTrigger className="mt-2 bg-white">
                         <SelectValue />
                       </SelectTrigger>
-                      <SelectContent>
+                      <SelectContent className="bg-white">
                         {Object.entries(ACTION_CONFIG).map(([value, config]) => (
                           <SelectItem key={value} value={value}>
                             <div className="flex items-center gap-2">
@@ -406,7 +496,7 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = ({
                       <SelectTrigger className="mt-2">
                         <SelectValue />
                       </SelectTrigger>
-                      <SelectContent>
+                      <SelectContent className="bg-white">
                         {CONDITION_OPTIONS.map((opt) => (
                           <SelectItem key={opt.value} value={opt.value}>
                             {opt.label}
@@ -427,7 +517,7 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = ({
                         <SelectTrigger className="mt-2">
                           <SelectValue />
                         </SelectTrigger>
-                        <SelectContent>
+                        <SelectContent className="bg-white">
                           <SelectItem value="connection_accepted">Connexion acceptée</SelectItem>
                           <SelectItem value="reply_received">Réponse reçue</SelectItem>
                         </SelectContent>
@@ -468,7 +558,7 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = ({
                             <SelectTrigger className="mt-1 bg-white border-amber-200">
                               <SelectValue placeholder="Suivante" />
                             </SelectTrigger>
-                            <SelectContent>
+                            <SelectContent className="bg-white">
                               <SelectItem value="none">Étape suivante</SelectItem>
                               {sequence.steps
                                 .filter(s => s.id !== selectedStep.id && s.order > selectedStep.order)
@@ -508,17 +598,17 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = ({
                             <Sparkles className="w-4 h-4 text-purple-600" />
                             <span className="text-sm font-medium text-purple-900">IA activée</span>
                           </div>
-                          <p className="text-xs text-purple-700">
+                          <p className="text-xs text-purple-700 mb-3">
                             Message personnalisé selon le profil
                           </p>
                           <Select
                             value={selectedStep.aiTone || 'professional'}
                             onValueChange={(v) => updateStep(selectedStep.id, { aiTone: v as any })}
                           >
-                            <SelectTrigger className="mt-3 bg-white border-purple-200 text-sm">
+                            <SelectTrigger className="bg-white border-purple-200 text-sm">
                               <SelectValue />
                             </SelectTrigger>
-                            <SelectContent>
+                            <SelectContent className="bg-white">
                               <SelectItem value="professional">Professionnel</SelectItem>
                               <SelectItem value="casual">Décontracté</SelectItem>
                               <SelectItem value="enthusiastic">Enthousiaste</SelectItem>
@@ -552,25 +642,6 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = ({
             </div>
           )}
         </div>
-
-        {/* Footer */}
-        <DialogFooter className="px-6 py-4 border-t border-gray-200 bg-white">
-          <Button variant="outline" onClick={onClose}>
-            Annuler
-          </Button>
-          <Button 
-            onClick={handleSave} 
-            disabled={isSaving || !sequence.name.trim()}
-            className="bg-blue-600 hover:bg-blue-700"
-          >
-            {isSaving ? 'Enregistrement...' : (
-              <>
-                <Save className="w-4 h-4 mr-2" />
-                Enregistrer
-              </>
-            )}
-          </Button>
-        </DialogFooter>
       </DialogContent>
     </Dialog>
   );

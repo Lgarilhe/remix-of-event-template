@@ -1,24 +1,24 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { 
   Plus, 
-  GitBranch, 
-  Play, 
-  Pause, 
+  Search,
+  Star,
+  BarChart3,
+  MoreHorizontal,
   Trash2, 
   Edit2,
   Users,
-  Clock,
-  CheckCircle,
-  MessageSquare,
+  Sparkles,
+  Send,
   Mail,
   UserPlus,
   Eye,
-  MoreHorizontal,
+  MessageSquare,
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -41,7 +41,10 @@ import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { SequenceBuilder, Sequence, SequenceStep } from './SequenceBuilder';
 import { SequenceEnrollModal } from './SequenceEnrollModal';
+import { CreateSequenceModal } from './CreateSequenceModal';
 import { LinkedInProfile } from './types';
+import { formatDistanceToNow } from 'date-fns';
+import { fr } from 'date-fns/locale';
 
 interface SequenceWithStats {
   id: string;
@@ -66,12 +69,8 @@ interface SequencesListProps {
   onClearSelection?: () => void;
 }
 
-const ACTION_ICONS = {
-  inmail: Mail,
-  connection_request: UserPlus,
-  profile_visit: Eye,
-  message: MessageSquare,
-};
+// Emoji pour les séquences
+const SEQUENCE_EMOJIS = ['🎯', '🚀', '💼', '✨', '🔥', '💡', '📈', '🎨', '⚡', '🏆', '💪', '🌟'];
 
 export const SequencesList: React.FC<SequencesListProps> = ({
   accounts,
@@ -82,6 +81,8 @@ export const SequencesList: React.FC<SequencesListProps> = ({
 }) => {
   const [sequences, setSequences] = useState<SequenceWithStats[]>([]);
   const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [showCreateModal, setShowCreateModal] = useState(false);
   const [showBuilder, setShowBuilder] = useState(false);
   const [editingSequence, setEditingSequence] = useState<Sequence | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
@@ -89,7 +90,6 @@ export const SequencesList: React.FC<SequencesListProps> = ({
 
   const fetchSequences = async () => {
     try {
-      // Fetch sequences
       const { data: seqData, error: seqError } = await supabase
         .from('outreach_sequences')
         .select('*')
@@ -97,7 +97,6 @@ export const SequencesList: React.FC<SequencesListProps> = ({
 
       if (seqError) throw seqError;
 
-      // Fetch steps for each sequence
       const sequenceIds = seqData?.map(s => s.id) || [];
       const { data: stepsData } = await supabase
         .from('sequence_steps')
@@ -105,14 +104,12 @@ export const SequencesList: React.FC<SequencesListProps> = ({
         .in('sequence_id', sequenceIds)
         .order('step_order', { ascending: true });
 
-      // Fetch enrollment stats
       const { data: enrollData } = await supabase
         .from('sequence_enrollments')
         .select('sequence_id, status')
         .in('sequence_id', sequenceIds);
 
-      // Build enriched sequences
-      const enriched: SequenceWithStats[] = (seqData || []).map(seq => {
+      const enriched: SequenceWithStats[] = (seqData || []).map((seq, index) => {
         const steps = stepsData?.filter(s => s.sequence_id === seq.id) || [];
         const enrollments = enrollData?.filter(e => e.sequence_id === seq.id) || [];
         
@@ -147,7 +144,6 @@ export const SequencesList: React.FC<SequencesListProps> = ({
       if (!user) throw new Error('Non authentifié');
 
       if (sequence.id) {
-        // Update existing
         const { error: updateError } = await supabase
           .from('outreach_sequences')
           .update({
@@ -159,7 +155,6 @@ export const SequencesList: React.FC<SequencesListProps> = ({
 
         if (updateError) throw updateError;
 
-        // Delete old steps and insert new ones
         await supabase
           .from('sequence_steps')
           .delete()
@@ -178,6 +173,9 @@ export const SequencesList: React.FC<SequencesListProps> = ({
           message_template: step.messageTemplate,
           use_ai_personalization: step.useAiPersonalization,
           ai_tone: step.aiTone,
+          timeout_days: step.timeoutDays,
+          wait_for_event: step.waitForEvent,
+          timeout_branch_step_id: step.timeoutBranchStepId,
         }));
 
         const { error: stepsError } = await supabase
@@ -188,7 +186,6 @@ export const SequencesList: React.FC<SequencesListProps> = ({
 
         toast.success('Séquence mise à jour');
       } else {
-        // Create new
         const { data: newSeq, error: createError } = await supabase
           .from('outreach_sequences')
           .insert({
@@ -215,6 +212,9 @@ export const SequencesList: React.FC<SequencesListProps> = ({
           message_template: step.messageTemplate,
           use_ai_personalization: step.useAiPersonalization,
           ai_tone: step.aiTone,
+          timeout_days: step.timeoutDays,
+          wait_for_event: step.waitForEvent,
+          timeout_branch_step_id: step.timeoutBranchStepId,
         }));
 
         const { error: stepsError } = await supabase
@@ -293,6 +293,9 @@ export const SequencesList: React.FC<SequencesListProps> = ({
         messageTemplate: s.message_template,
         useAiPersonalization: s.use_ai_personalization,
         aiTone: s.ai_tone,
+        timeoutDays: s.timeout_days,
+        waitForEvent: s.wait_for_event,
+        timeoutBranchStepId: s.timeout_branch_step_id,
       })),
     };
     setEditingSequence(sequence);
@@ -305,10 +308,24 @@ export const SequencesList: React.FC<SequencesListProps> = ({
     fetchSequences();
   };
 
+  const handleCreateManual = () => {
+    setShowCreateModal(false);
+    setEditingSequence(null);
+    setShowBuilder(true);
+  };
+
+  const filteredSequences = sequences.filter(seq =>
+    seq.name.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  const getSequenceEmoji = (index: number) => {
+    return SEQUENCE_EMOJIS[index % SEQUENCE_EMOJIS.length];
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#0077B5]" />
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
       </div>
     );
   }
@@ -317,169 +334,167 @@ export const SequencesList: React.FC<SequencesListProps> = ({
     <div className="space-y-4">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-lg font-semibold flex items-center gap-2">
-            <GitBranch className="w-5 h-5 text-[#0077B5]" />
-            Mes séquences
-          </h2>
-          <p className="text-sm text-muted-foreground">
-            Créez des séquences d'outreach automatisées
-          </p>
-        </div>
+        <h1 className="text-2xl font-semibold text-gray-900">Séquences</h1>
         <Button 
-          onClick={() => {
-            setEditingSequence(null);
-            setShowBuilder(true);
-          }}
-          className="bg-[#0077B5] hover:bg-[#005E93]"
+          onClick={() => setShowCreateModal(true)}
+          className="bg-blue-600 hover:bg-blue-700 text-white rounded-lg px-4"
         >
-          <Plus className="w-4 h-4 mr-2" />
-          Nouvelle séquence
+          <Send className="w-4 h-4 mr-2" />
+          Créer une séquence
         </Button>
+      </div>
+
+      {/* Search & Filters */}
+      <div className="flex items-center gap-3">
+        <div className="relative flex-1 max-w-sm">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+          <Input
+            placeholder="Rechercher une séquence..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="pl-9 bg-white border-gray-200"
+          />
+        </div>
       </div>
 
       {/* Selected profiles banner */}
       {selectedProfiles.length > 0 && (
-        <div className="p-3 bg-[#0077B5]/10 rounded-lg flex items-center justify-between">
+        <div className="p-3 bg-blue-50 border border-blue-100 rounded-lg flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Users className="w-5 h-5 text-[#0077B5]" />
-            <span className="font-medium">{selectedProfiles.length} candidat(s) sélectionné(s)</span>
+            <Users className="w-5 h-5 text-blue-600" />
+            <span className="font-medium text-blue-900">{selectedProfiles.length} candidat(s) sélectionné(s)</span>
             {selectedJob && (
-              <Badge variant="outline">{selectedJob.title}</Badge>
+              <Badge variant="outline" className="bg-white">{selectedJob.title}</Badge>
             )}
           </div>
-          <p className="text-sm text-muted-foreground">
+          <p className="text-sm text-blue-700">
             Cliquez sur une séquence pour y inscrire les candidats
           </p>
         </div>
       )}
 
-      {/* Sequences grid */}
+      {/* Table */}
       {sequences.length === 0 ? (
-        <Card className="border-dashed">
-          <CardContent className="flex flex-col items-center justify-center py-12">
-            <GitBranch className="w-12 h-12 text-muted-foreground/30 mb-4" />
-            <h3 className="font-semibold text-lg mb-2">Aucune séquence</h3>
-            <p className="text-muted-foreground text-center mb-4 max-w-md">
-              Créez votre première séquence d'outreach pour automatiser vos prises de contact LinkedIn.
-            </p>
-            <Button 
-              onClick={() => setShowBuilder(true)}
-              className="bg-[#0077B5] hover:bg-[#005E93]"
-            >
-              <Plus className="w-4 h-4 mr-2" />
-              Créer une séquence
-            </Button>
-          </CardContent>
-        </Card>
+        <div className="flex flex-col items-center justify-center py-16 bg-white rounded-xl border border-gray-100">
+          <div className="w-16 h-16 rounded-full bg-gray-100 flex items-center justify-center mb-4">
+            <Send className="w-8 h-8 text-gray-400" />
+          </div>
+          <h3 className="font-semibold text-lg text-gray-900 mb-2">Aucune séquence</h3>
+          <p className="text-gray-500 text-center mb-6 max-w-md">
+            Créez votre première séquence d'outreach pour automatiser vos prises de contact LinkedIn.
+          </p>
+          <Button 
+            onClick={() => setShowCreateModal(true)}
+            className="bg-blue-600 hover:bg-blue-700"
+          >
+            <Plus className="w-4 h-4 mr-2" />
+            Créer une séquence
+          </Button>
+        </div>
       ) : (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {sequences.map((seq) => (
-            <Card 
-              key={seq.id}
-              className={cn(
-                "transition-all cursor-pointer hover:shadow-md",
-                !seq.is_active && "opacity-60",
-                selectedProfiles.length > 0 && "hover:border-[#0077B5]"
-              )}
-              onClick={() => {
-                if (selectedProfiles.length > 0 && selectedAccount) {
-                  setEnrollModalSequence(seq);
-                }
-              }}
-            >
-              <CardHeader className="pb-2">
-                <div className="flex items-start justify-between">
+        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+          {/* Table header */}
+          <div className="grid grid-cols-[auto_auto_1fr_100px_100px_100px_80px] gap-4 px-4 py-3 bg-gray-50 border-b border-gray-200 text-xs font-medium text-gray-500 uppercase tracking-wide">
+            <div className="w-5" />
+            <div>Statut</div>
+            <div>Nom de la séquence</div>
+            <div className="text-center">Prospects</div>
+            <div className="text-center">Créé à</div>
+            <div className="text-center">Actions</div>
+            <div />
+          </div>
+
+          {/* Table body */}
+          <div className="divide-y divide-gray-100">
+            {filteredSequences.map((seq, index) => (
+              <div
+                key={seq.id}
+                className={cn(
+                  "grid grid-cols-[auto_auto_1fr_100px_100px_100px_80px] gap-4 px-4 py-3 items-center hover:bg-gray-50 transition-colors",
+                  selectedProfiles.length > 0 && "cursor-pointer"
+                )}
+                onClick={() => {
+                  if (selectedProfiles.length > 0 && selectedAccount) {
+                    setEnrollModalSequence(seq);
+                  }
+                }}
+              >
+                {/* Checkbox placeholder */}
+                <div className="w-5" />
+
+                {/* Toggle */}
+                <Switch
+                  checked={seq.is_active}
+                  onCheckedChange={() => handleToggleActive(seq.id, seq.is_active)}
+                  onClick={(e) => e.stopPropagation()}
+                  className="data-[state=checked]:bg-blue-600"
+                />
+
+                {/* Name */}
+                <div className="flex items-center gap-3 min-w-0">
+                  <span className="text-lg">{getSequenceEmoji(index)}</span>
                   <div className="flex-1 min-w-0">
-                    <CardTitle className="text-base flex items-center gap-2">
-                      {seq.name}
-                      {!seq.is_active && (
-                        <Badge variant="secondary" className="text-xs">Inactive</Badge>
-                      )}
-                    </CardTitle>
+                    <div className="font-medium text-gray-900 truncate">{seq.name}</div>
                     {seq.description && (
-                      <CardDescription className="mt-1 line-clamp-2">
-                        {seq.description}
-                      </CardDescription>
+                      <div className="text-xs text-gray-500 truncate">{seq.description}</div>
                     )}
                   </div>
-                  
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-                      <Button variant="ghost" size="icon" className="h-8 w-8">
-                        <MoreHorizontal className="w-4 h-4" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleEdit(seq); }}>
-                        <Edit2 className="w-4 h-4 mr-2" />
-                        Modifier
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleToggleActive(seq.id, seq.is_active); }}>
-                        {seq.is_active ? (
-                          <>
-                            <Pause className="w-4 h-4 mr-2" />
-                            Désactiver
-                          </>
-                        ) : (
-                          <>
-                            <Play className="w-4 h-4 mr-2" />
-                            Activer
-                          </>
-                        )}
-                      </DropdownMenuItem>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem 
-                        className="text-destructive"
-                        onClick={(e) => { e.stopPropagation(); setDeleteConfirmId(seq.id); }}
-                      >
-                        <Trash2 className="w-4 h-4 mr-2" />
-                        Supprimer
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
-              </CardHeader>
-              
-              <CardContent>
-                {/* Steps preview */}
-                <div className="flex items-center gap-1 mb-3">
-                  {seq.steps.slice(0, 5).map((step, idx) => {
-                    const Icon = ACTION_ICONS[step.action_type as keyof typeof ACTION_ICONS] || Mail;
-                    return (
-                      <React.Fragment key={step.id}>
-                        {idx > 0 && <span className="text-muted-foreground/50">→</span>}
-                        <div className="w-6 h-6 rounded bg-muted flex items-center justify-center">
-                          <Icon className="w-3 h-3" />
-                        </div>
-                      </React.Fragment>
-                    );
-                  })}
-                  {seq.steps.length > 5 && (
-                    <span className="text-xs text-muted-foreground ml-1">+{seq.steps.length - 5}</span>
-                  )}
                 </div>
 
-                {/* Stats */}
-                <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                  <div className="flex items-center gap-1">
-                    <Users className="w-3 h-3" />
-                    {seq.enrollments.total} inscrits
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <Clock className="w-3 h-3" />
-                    {seq.enrollments.active} actifs
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <CheckCircle className="w-3 h-3" />
-                    {seq.enrollments.replied} réponses
-                  </div>
+                {/* Prospects */}
+                <div className="text-center text-sm text-gray-600">
+                  {seq.enrollments.completed}/{seq.enrollments.total}
                 </div>
-              </CardContent>
-            </Card>
-          ))}
+
+                {/* Created */}
+                <div className="text-center text-sm text-gray-500">
+                  {formatDistanceToNow(new Date(seq.created_at), { addSuffix: false, locale: fr })}
+                </div>
+
+                {/* Actions */}
+                <div className="flex items-center justify-center gap-1">
+                  <button className="p-1.5 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600">
+                    <Star className="w-4 h-4" />
+                  </button>
+                  <button className="p-1.5 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600">
+                    <BarChart3 className="w-4 h-4" />
+                  </button>
+                </div>
+
+                {/* Menu */}
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                    <button className="p-1.5 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600">
+                      <MoreHorizontal className="w-4 h-4" />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="bg-white">
+                    <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleEdit(seq); }}>
+                      <Edit2 className="w-4 h-4 mr-2" />
+                      Modifier
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem 
+                      className="text-red-600"
+                      onClick={(e) => { e.stopPropagation(); setDeleteConfirmId(seq.id); }}
+                    >
+                      <Trash2 className="w-4 h-4 mr-2" />
+                      Supprimer
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+            ))}
+          </div>
         </div>
       )}
+
+      {/* Create modal */}
+      <CreateSequenceModal
+        isOpen={showCreateModal}
+        onClose={() => setShowCreateModal(false)}
+        onCreateManual={handleCreateManual}
+      />
 
       {/* Builder modal */}
       {showBuilder && (
@@ -509,7 +524,7 @@ export const SequencesList: React.FC<SequencesListProps> = ({
 
       {/* Delete confirmation */}
       <AlertDialog open={!!deleteConfirmId} onOpenChange={() => setDeleteConfirmId(null)}>
-        <AlertDialogContent>
+        <AlertDialogContent className="bg-white">
           <AlertDialogHeader>
             <AlertDialogTitle>Supprimer cette séquence ?</AlertDialogTitle>
             <AlertDialogDescription>
@@ -520,7 +535,7 @@ export const SequencesList: React.FC<SequencesListProps> = ({
             <AlertDialogCancel>Annuler</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => deleteConfirmId && handleDelete(deleteConfirmId)}
-              className="bg-destructive hover:bg-destructive/90"
+              className="bg-red-600 hover:bg-red-700"
             >
               Supprimer
             </AlertDialogAction>
