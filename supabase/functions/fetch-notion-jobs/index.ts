@@ -1,9 +1,11 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
+// Pin + target=deno to reduce cold-start flakiness / upstream bundle changes.
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  // Must match what the browser sends to functions.
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 };
 
 const NOTION_API_KEY = Deno.env.get("NOTION_API_KEY");
@@ -12,6 +14,13 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const POSTES_DATABASE_ID = "2787e1816fb481d2a0e8d4b2c1dd38f9";
 const SHORTLIST_DATABASE_ID = "2787e1816fb4811986a7e6075bc63a23";
+
+console.log('[fetch-notion-jobs] boot', {
+  hasNotionKey: Boolean(NOTION_API_KEY),
+  hasLovableKey: Boolean(LOVABLE_API_KEY),
+  hasSupabaseUrl: Boolean(SUPABASE_URL),
+  hasServiceRole: Boolean(SUPABASE_SERVICE_ROLE_KEY),
+});
 
 // Cache expiry: 24 hours
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
