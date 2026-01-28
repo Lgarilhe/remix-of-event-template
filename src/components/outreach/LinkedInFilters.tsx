@@ -266,8 +266,11 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
     if (!current.find((f) => f.id === item.id)) {
       onChange({ ...filters, [key]: [...current, { id: item.id, name: item.title, priority }] });
     }
-    setSearchInputs((prev) => ({ ...prev, [key]: '' }));
-    setParameterOptions((prev) => ({ ...prev, [key]: [] }));
+    // Keep input value but remove the selected item from options (allows multi-select)
+    setParameterOptions((prev) => ({
+      ...prev,
+      [key]: (prev[key] || []).filter((opt) => opt.id !== item.id),
+    }));
   }, [filters, onChange]);
 
   const handleUpdatePriority = useCallback((key: 'job_title' | 'skills' | 'past_job_title' | 'school' | 'degree', id: string, priority: FilterPriority) => {
