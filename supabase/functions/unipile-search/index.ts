@@ -139,6 +139,10 @@ Deno.serve(async (req) => {
         return await handleGetMessages(baseUrl, apiKey, account_id, params);
       }
 
+      case 'send_message': {
+        return await handleSendMessage(baseUrl, apiKey, account_id, params);
+      }
+
       default:
         return new Response(
           JSON.stringify({ success: false, error: 'Action non reconnue' }),
@@ -856,6 +860,73 @@ async function handleGetMessages(
       success: true, 
       messages: data.items || [],
       cursor: data.cursor,
+    }),
+    { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+  );
+}
+
+/**
+ * Handle Send Message - Send a message to an existing chat
+ * API: POST /chats/{chat_id}/messages
+ * Uses multipart/form-data with 'text' field
+ */
+async function handleSendMessage(
+  baseUrl: string,
+  apiKey: string,
+  accountId: string,
+  params: Record<string, unknown>
+): Promise<Response> {
+  const { chat_id, text } = params;
+
+  if (!chat_id) {
+    return new Response(
+      JSON.stringify({ success: false, error: 'Chat ID requis' }),
+      { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  }
+
+  if (!text || typeof text !== 'string' || text.trim().length === 0) {
+    return new Response(
+      JSON.stringify({ success: false, error: 'Message vide' }),
+      { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  }
+
+  // Build multipart form data
+  const formData = new FormData();
+  formData.append('text', text.trim());
+
+  const url = `${baseUrl}/chats/${chat_id}/messages`;
+  console.log('Send message URL:', url);
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'X-API-KEY': apiKey,
+      'Accept': 'application/json',
+    },
+    body: formData,
+  });
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    console.error('Send message error:', data);
+    return new Response(
+      JSON.stringify({ 
+        success: false, 
+        error: data.detail || data.message || "Erreur lors de l'envoi du message",
+      }),
+      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  }
+
+  console.log('Message sent successfully:', data);
+
+  return new Response(
+    JSON.stringify({ 
+      success: true, 
+      message: data,
     }),
     { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
   );
