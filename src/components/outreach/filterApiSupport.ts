@@ -85,7 +85,7 @@ export const FILTER_API_SUPPORT: Record<LinkedInApiType, Record<FilterKey, Filte
     role: { supported: true }, // With keywords, priority, scope
     function: { supported: true }, // Department filter
     degree: { supported: true }, // With priority
-    seniority: { supported: true },
+    seniority: { supported: false, tooltip: "Le filtre séniorité n'est pas disponible pour la recherche de personnes en Recruiter. Utilisez 'Années d'expérience'" },
     network_distance: { supported: true },
     profile_language: { supported: true },
     years_of_experience: { supported: true },
