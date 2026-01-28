@@ -18,6 +18,7 @@ interface SearchParams {
   
   // ID-based filters
   location?: string[];
+  location_within_area?: number; // Search radius in miles (Recruiter only)
   company?: { include?: string[]; exclude?: string[] } | string[];
   industry?: { include?: string[]; exclude?: string[] } | string[];
   school?: string[] | Array<{ id: string; priority: string }>;
@@ -161,6 +162,7 @@ async function handleSearch(
     limit = 25,
     cursor,
     location,
+    location_within_area,
     company,
     industry,
     school,
@@ -264,6 +266,11 @@ async function handleSearch(
       );
       searchBody.location = locationIds;
     }
+  }
+
+  // Location within area (radius in miles) - Recruiter only
+  if (api === 'recruiter' && location_within_area !== undefined && location_within_area !== null) {
+    searchBody.location_within_area = location_within_area;
   }
 
   // Company filter - uses include/exclude structure for recruiter/sales_nav

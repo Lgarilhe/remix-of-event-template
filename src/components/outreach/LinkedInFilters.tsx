@@ -17,6 +17,7 @@ import {
   ROLE_PRIORITY_OPTIONS,
   SCOPE_OPTIONS,
   LOCATION_SCOPE_OPTIONS,
+  LOCATION_RADIUS_OPTIONS,
   SPOTLIGHT_OPTIONS,
   PROFILE_LANGUAGES,
   COMPANY_HEADCOUNT_OPTIONS,
@@ -421,6 +422,36 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
                   onSelect={handleAddLocation}
                 />
               </>
+            )}
+            {/* Location radius - only for Recruiter when locations are selected */}
+            {filters.api === 'recruiter' && filters.location.length > 0 && (
+              <div className="mt-3 pt-3 border-t border-gray-100">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-[#1A1A1A]/60">Rayon de recherche</span>
+                  <Select
+                    value={filters.location_within_area?.toString() || 'null'}
+                    onValueChange={(val) => onChange({ 
+                      ...filters, 
+                      location_within_area: val === 'null' ? null : parseInt(val) 
+                    })}
+                  >
+                    <SelectTrigger className="h-7 w-[140px] text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent className="bg-white z-50">
+                      {LOCATION_RADIUS_OPTIONS.map((opt) => (
+                        <SelectItem 
+                          key={opt.value?.toString() || 'null'} 
+                          value={opt.value?.toString() || 'null'} 
+                          className="text-xs"
+                        >
+                          {opt.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
             )}
           </FilterGroup>
 
