@@ -71,7 +71,14 @@ export const LinkedInResultCard: React.FC<LinkedInResultCardProps> = ({
 
   // Get work experience - API returns work_experience array
   const workExperience = profile.work_experience || [];
-  const currentJob = workExperience.find(exp => !exp.end) || workExperience[0];
+  
+  // Get ALL current jobs (without end date) - there can be multiple simultaneous positions
+  const currentJobs = workExperience.filter(exp => !exp.end);
+  // For display purposes, use the first current job as the "main" one
+  const currentJob = currentJobs[0] || workExperience[0];
+  // Other current jobs (if multiple simultaneous positions)
+  const otherCurrentJobs = currentJobs.slice(1);
+  // Past jobs have an end date
   const pastJobs = workExperience.filter(exp => exp.end).slice(0, 5);
 
   // Fallback to legacy fields if work_experience is empty
@@ -438,18 +445,33 @@ export const LinkedInResultCard: React.FC<LinkedInResultCardProps> = ({
                 </div>
               )}
 
-              {/* Experience preview - always visible */}
-              {pastJobs.length > 0 && (
+              {/* Experience preview - show other current jobs + past jobs */}
+              {(otherCurrentJobs.length > 0 || pastJobs.length > 0) && (
                 <div className="mt-3 pt-3 border-t border-[#1A1A1A]/5">
                   <div className="flex items-center gap-2 mb-2">
                     <Briefcase className="w-3.5 h-3.5 text-[#1A1A1A]/40" />
                     <span className="text-[10px] font-semibold text-[#1A1A1A]/40 uppercase tracking-wider">
-                      Parcours récent
+                      {otherCurrentJobs.length > 0 ? 'Autres postes actuels + Parcours récent' : 'Parcours récent'}
                     </span>
                   </div>
                   <div className="space-y-1.5">
-                    {pastJobs.slice(0, 2).map((pos, index) => (
-                      <div key={index} className="flex items-center gap-2 text-xs">
+                    {/* Show other current jobs first (simultaneous positions) */}
+                    {otherCurrentJobs.slice(0, 2).map((pos, index) => (
+                      <div key={`current-${index}`} className="flex items-center gap-2 text-xs">
+                        <div className="w-1.5 h-1.5 rounded-full bg-green-500 shrink-0" />
+                        <span className="text-[#1A1A1A]/70 truncate">
+                          <span className="font-medium">{pos.role}</span>
+                          <span className="text-[#1A1A1A]/40"> chez </span>
+                          <span>{pos.company}</span>
+                          <Badge variant="outline" className="ml-1.5 h-4 px-1 text-[9px] border-green-300 text-green-600 bg-green-50">
+                            Actuel
+                          </Badge>
+                        </span>
+                      </div>
+                    ))}
+                    {/* Then show past jobs */}
+                    {pastJobs.slice(0, otherCurrentJobs.length > 0 ? 1 : 2).map((pos, index) => (
+                      <div key={`past-${index}`} className="flex items-center gap-2 text-xs">
                         <div className="w-1.5 h-1.5 rounded-full bg-[#0077B5]/40 shrink-0" />
                         <span className="text-[#1A1A1A]/70 truncate">
                           <span className="font-medium">{pos.role}</span>
@@ -463,9 +485,9 @@ export const LinkedInResultCard: React.FC<LinkedInResultCardProps> = ({
                         </span>
                       </div>
                     ))}
-                    {pastJobs.length > 2 && (
+                    {(otherCurrentJobs.length + pastJobs.length) > 2 && (
                       <span className="text-[10px] text-[#0077B5] font-medium">
-                        +{pastJobs.length - 2} autres expériences
+                        +{otherCurrentJobs.length + pastJobs.length - 2} autres expériences
                       </span>
                     )}
                   </div>
@@ -509,29 +531,54 @@ export const LinkedInResultCard: React.FC<LinkedInResultCardProps> = ({
         {/* Expanded content */}
         <CollapsibleContent>
           <div className="px-4 pb-4 border-t border-[#1A1A1A]/5 pt-4 space-y-4">
-            {/* Current role details */}
-            {currentPosition && (
+            {/* All current positions (including simultaneous roles) */}
+            {currentJobs.length > 0 && (
               <div className="space-y-2">
                 <h4 className="text-xs font-semibold text-[#1A1A1A]/50 uppercase tracking-wider flex items-center gap-2">
                   <Briefcase className="w-3.5 h-3.5" />
-                  Poste actuel
+                  {currentJobs.length > 1 ? `Postes actuels (${currentJobs.length})` : 'Poste actuel'}
                 </h4>
-                <div className="bg-[#1A1A1A]/3 rounded-lg p-3">
-                  <p className="font-medium text-sm text-[#1A1A1A]">{currentRole}</p>
-                  <p className="text-sm text-[#1A1A1A]/60">{currentCompany}</p>
-                  <div className="flex gap-4 mt-2 text-xs text-[#1A1A1A]/50">
-                    {currentPosition.start && (
-                      <span className="flex items-center gap-1">
-                        <Clock className="w-3 h-3" />
-                        Depuis {currentPosition.start.month ? `${currentPosition.start.month}/` : ''}{currentPosition.start.year}
-                      </span>
-                    )}
-                  </div>
-                  {currentPosition.description && (
-                    <p className="text-xs text-[#1A1A1A]/60 mt-2 line-clamp-3">
-                      {currentPosition.description}
-                    </p>
-                  )}
+                <div className="space-y-2">
+                  {currentJobs.map((pos, index) => (
+                    <div key={index} className="bg-gradient-to-r from-green-50 to-white rounded-lg p-3 border border-green-100">
+                      <div className="flex items-start gap-3">
+                        {pos.logo ? (
+                          <img src={pos.logo} alt={pos.company} className="w-10 h-10 rounded object-contain bg-white border" />
+                        ) : (
+                          <div className="w-10 h-10 rounded bg-green-100 flex items-center justify-center shrink-0">
+                            <Building2 className="w-5 h-5 text-green-600" />
+                          </div>
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <p className="font-medium text-sm text-[#1A1A1A]">{pos.role}</p>
+                            <Badge variant="outline" className="h-4 px-1.5 text-[9px] border-green-300 text-green-600 bg-green-50">
+                              Actuel
+                            </Badge>
+                          </div>
+                          <p className="text-sm text-[#1A1A1A]/60">{pos.company}</p>
+                          <div className="flex gap-4 mt-2 text-xs text-[#1A1A1A]/50">
+                            {pos.start && (
+                              <span className="flex items-center gap-1">
+                                <Clock className="w-3 h-3" />
+                                Depuis {pos.start.month ? `${pos.start.month}/` : ''}{pos.start.year}
+                                {getTenureDisplay(pos.start, pos.end) && (
+                                  <span className="text-green-600 font-medium ml-1">
+                                    ({getTenureDisplay(pos.start, pos.end)})
+                                  </span>
+                                )}
+                              </span>
+                            )}
+                          </div>
+                          {pos.description && (
+                            <p className="text-xs text-[#1A1A1A]/60 mt-2 line-clamp-3">
+                              {pos.description}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
             )}
