@@ -60,7 +60,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
   const [showBulkInMailModal, setShowBulkInMailModal] = useState(false);
   
   // Debounce ref for auto-search on filter change
-  const searchDebounceRef = useRef<NodeJS.Timeout | null>(null);
+  const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isInitialMount = useRef(true);
   
   // Update API mode based on selected filter
@@ -68,258 +68,8 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
     quota.setApiMode(filters.api);
   }, [filters.api]);
   
-  // Serialize filters to JSON for stable dependency tracking
+  // Serialize filters to JSON for stable dependency tracking (for debounce)
   const filtersJson = useMemo(() => JSON.stringify(filters), [filters]);
-  
-  // Auto-search with 2s debounce when filters change
-  useEffect(() => {
-    // Skip initial mount and only trigger when we have an account selected
-    if (isInitialMount.current) {
-      isInitialMount.current = false;
-      return;
-    }
-    
-    if (!selectedAccount) return;
-    
-    // Parse current filters from serialized version
-    const currentFilters = JSON.parse(filtersJson) as LinkedInFiltersState;
-    
-    // Clear previous timeout
-    if (searchDebounceRef.current) {
-      clearTimeout(searchDebounceRef.current);
-    }
-    
-    // Set new timeout for auto-search with inline search logic to avoid stale closure
-    searchDebounceRef.current = setTimeout(async () => {
-      // Trigger search with current filters - call handleSearch directly
-      // We need to re-trigger the search, the handleSearch will use latest filters from state
-      setLoading(true);
-      try {
-        const searchParams: Record<string, unknown> = {
-          action: 'search',
-          account_id: selectedAccount,
-          api: currentFilters.api,
-          category: currentFilters.category,
-          limit: 25,
-        };
-
-        // Keywords
-        if (currentFilters.keywords) searchParams.keywords = currentFilters.keywords;
-
-        // Location
-        if (currentFilters.location.length) {
-          if (currentFilters.api === 'recruiter') {
-            searchParams.location = currentFilters.location.map(f => ({
-              id: f.id,
-              priority: f.priority || 'MUST_HAVE',
-              scope: f.scope || 'CURRENT_OR_OPEN_TO_RELOCATE',
-            }));
-            if (currentFilters.location_within_area !== null) {
-              searchParams.location_within_area = currentFilters.location_within_area;
-            }
-          } else {
-            searchParams.location = currentFilters.location.map(f => f.id);
-          }
-        }
-        
-        // School
-        if (currentFilters.school.length) {
-          if (currentFilters.api === 'recruiter') {
-            searchParams.school = currentFilters.school.map(f => ({
-              id: f.id,
-              priority: f.priority || 'MUST_HAVE',
-            }));
-          } else {
-            searchParams.school = currentFilters.school.map(f => f.id);
-          }
-        }
-        
-        // Industry
-        if (currentFilters.industry.length) {
-          searchParams.industry = { include: currentFilters.industry.map(f => f.id) };
-        }
-        
-        // Company
-        if (currentFilters.company.length) {
-          searchParams.company = { include: currentFilters.company.map(f => f.id) };
-        }
-        
-        // Company keywords (Recruiter only)
-        if (currentFilters.api === 'recruiter' && currentFilters.company_keywords.length) {
-          searchParams.company_keywords = currentFilters.company_keywords.map(c => ({
-            keywords: c.keywords,
-            priority: c.priority,
-            scope: c.scope,
-          }));
-        }
-        
-        // Function/Department
-        if (currentFilters.function.length) {
-          searchParams.function = { include: currentFilters.function.map(f => f.id) };
-        }
-        
-        // Degree
-        if (currentFilters.degree.length && currentFilters.api === 'recruiter') {
-          searchParams.degree = currentFilters.degree.map(f => ({
-            id: f.id,
-            priority: f.priority || 'MUST_HAVE',
-          }));
-        }
-        
-        // Groups (Sales Navigator)
-        if (currentFilters.groups.length && currentFilters.api === 'sales_navigator') {
-          searchParams.groups = currentFilters.groups.map(f => f.id);
-        }
-        
-        // Company location (Sales Navigator)
-        if (currentFilters.company_location.length && currentFilters.api === 'sales_navigator') {
-          searchParams.company_location = { include: currentFilters.company_location.map(f => f.id) };
-        }
-
-        // Job title
-        if (currentFilters.job_title.length) {
-          searchParams.job_title = currentFilters.job_title.map(item => ({
-            id: item.id,
-            priority: item.priority,
-          }));
-        }
-
-        // Skills
-        if (currentFilters.skills.length) {
-          searchParams.skills = currentFilters.skills.map(item => ({
-            id: item.id,
-            priority: item.priority,
-          }));
-        }
-
-        // Role
-        if (currentFilters.role.length) {
-          searchParams.role = currentFilters.role.map(r => ({
-            keywords: r.keywords,
-            priority: r.priority,
-            scope: r.scope,
-          }));
-        }
-
-        // Seniority
-        if (currentFilters.seniority.length) {
-          searchParams.seniority = currentFilters.seniority.map(val => {
-            const level = SENIORITY_LEVELS.find(l => l.value === val);
-            return level?.apiValue || val;
-          });
-        }
-        if (currentFilters.network_distance.length) searchParams.network_distance = currentFilters.network_distance;
-        if (currentFilters.profile_language.length) searchParams.profile_language = currentFilters.profile_language;
-
-        // Years of experience
-        if (currentFilters.years_of_experience_min !== null || currentFilters.years_of_experience_max !== null) {
-          const yearsExp: Record<string, number> = {};
-          if (currentFilters.years_of_experience_min !== null) yearsExp.min = currentFilters.years_of_experience_min;
-          if (currentFilters.years_of_experience_max !== null) yearsExp.max = currentFilters.years_of_experience_max;
-          searchParams.years_of_experience = yearsExp;
-        }
-
-        // Tenure
-        if (currentFilters.tenure_at_company_min !== null || currentFilters.tenure_at_company_max !== null) {
-          const tenure: Record<string, number> = {};
-          if (currentFilters.tenure_at_company_min !== null) tenure.min = currentFilters.tenure_at_company_min;
-          if (currentFilters.tenure_at_company_max !== null) tenure.max = currentFilters.tenure_at_company_max;
-          searchParams.tenure = [tenure];
-        }
-
-        // Boolean filters
-        if (currentFilters.open_to_work === true) searchParams.open_to_work = true;
-        if (currentFilters.open_to.length) searchParams.open_to = currentFilters.open_to;
-
-        // Recruiter specific
-        if (currentFilters.hiring_project) searchParams.hiring_project = currentFilters.hiring_project;
-        if (currentFilters.talent_pool) searchParams.talent_pool = currentFilters.talent_pool;
-        if (currentFilters.spotlight) searchParams.spotlight = currentFilters.spotlight;
-        
-        // Recruiting activity
-        const recruitingActivity: Array<{
-          id: 'messages' | 'tags' | 'notes' | 'projects' | 'resumes' | 'reviews';
-          priority: 'CAN_HAVE' | 'MUST_HAVE' | 'DOESNT_HAVE';
-          timespan?: number;
-        }> = [];
-        
-        if (currentFilters.activity_messages) {
-          recruitingActivity.push({
-            id: 'messages',
-            priority: currentFilters.activity_messages === 'with_message' ? 'MUST_HAVE' : 'DOESNT_HAVE',
-            timespan: currentFilters.activity_messages_days ?? 3650,
-          });
-        }
-        
-        if (currentFilters.activity_notes) {
-          recruitingActivity.push({
-            id: 'notes',
-            priority: currentFilters.activity_notes === 'with_note' ? 'MUST_HAVE' : 'DOESNT_HAVE',
-            timespan: currentFilters.activity_notes_days ?? 3650,
-          });
-        }
-        
-        if (currentFilters.tags.length) {
-          recruitingActivity.push({
-            id: 'tags',
-            priority: 'MUST_HAVE',
-            timespan: 3650,
-          });
-        }
-        
-        if (recruitingActivity.length) {
-          searchParams.recruiting_activity = recruitingActivity;
-        }
-
-        // Company filters (Sales Navigator)
-        if (currentFilters.company_headcount.length) searchParams.company_headcount = currentFilters.company_headcount;
-        if (currentFilters.company_type.length) searchParams.company_type = currentFilters.company_type;
-
-        // Past filters
-        if (currentFilters.past_company.length) {
-          searchParams.past_company = { include: currentFilters.past_company.map(f => f.id) };
-        }
-        if (currentFilters.past_job_title.length) {
-          searchParams.past_job_title = currentFilters.past_job_title.map(item => ({
-            id: item.id,
-            priority: item.priority,
-          }));
-        }
-
-        console.log('Auto-search params:', searchParams);
-
-        const response = await supabase.functions.invoke('unipile-search', {
-          body: searchParams,
-        });
-
-        if (response.error) throw response.error;
-        if (!response.data?.success) throw new Error(response.data?.error);
-
-        const newResults = response.data.results || [];
-        
-        setResults(newResults);
-        setCursor(response.data.cursor || null);
-        setTotal(response.data.total || null);
-        setHasSearched(true);
-
-        if (newResults.length === 0) {
-          toast.info('Aucun résultat trouvé');
-        }
-      } catch (error) {
-        console.error('Auto-search error:', error);
-        toast.error(error instanceof Error ? error.message : 'Erreur de recherche');
-      } finally {
-        setLoading(false);
-      }
-    }, 2000);
-    
-    // Cleanup on unmount or filter change
-    return () => {
-      if (searchDebounceRef.current) {
-        clearTimeout(searchDebounceRef.current);
-      }
-    };
-  }, [filtersJson, selectedAccount]);
 
   // Sort results by score if enabled
   const sortedResults = useMemo(() => {
@@ -579,6 +329,47 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
 
       const newResults = response.data.results || [];
 
+      // Post-filter skills client-side to guarantee the selected skill(s) are reflected in displayed results.
+      // This is defensive: the upstream API can return broad results even when a skill filter is provided.
+      const normalize = (s: string) => s.toLowerCase().trim();
+      const extractSkillNames = (profile: any): string[] => {
+        const raw = profile?.skills;
+        if (!raw) return [];
+        if (Array.isArray(raw)) {
+          return raw
+            .map((x: any) => (typeof x === 'string' ? x : x?.name))
+            .filter(Boolean)
+            .map((x: string) => x.trim());
+        }
+        return [];
+      };
+
+      const mustHave = filters.skills.filter(s => (s.priority ?? 'MUST_HAVE') === 'MUST_HAVE');
+      const doesntHave = filters.skills.filter(s => s.priority === 'DOESNT_HAVE');
+
+      const matchesSkill = (profileSkills: string[], required: string) => {
+        const req = normalize(required);
+        return profileSkills.some(ps => {
+          const p = normalize(ps);
+          return p === req || p.includes(req) || req.includes(p);
+        });
+      };
+
+      const displayedResults = (mustHave.length || doesntHave.length)
+        ? newResults.filter((p: any) => {
+            const profileSkills = extractSkillNames(p);
+            // MUST_HAVE: every selected MUST_HAVE skill should match
+            for (const s of mustHave) {
+              if (!matchesSkill(profileSkills, s.name)) return false;
+            }
+            // DOESNT_HAVE: none of selected DOESNT_HAVE should match
+            for (const s of doesntHave) {
+              if (matchesSkill(profileSkills, s.name)) return false;
+            }
+            return true;
+          })
+        : newResults;
+
       // Track quota usage
       quota.recordAction('searchResultsFetched', newResults.length);
       
@@ -588,9 +379,9 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
       }
 
       if (newSearch) {
-        setResults(newResults);
+        setResults(displayedResults);
       } else {
-        setResults(prev => [...prev, ...newResults]);
+        setResults(prev => [...prev, ...displayedResults]);
       }
 
       setCursor(response.data.cursor || null);
@@ -607,6 +398,29 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
       setLoading(false);
     }
   }, [selectedAccount, filters, cursor]);
+
+  // Auto-search with 2s debounce when filters change
+  useEffect(() => {
+    if (isInitialMount.current) {
+      isInitialMount.current = false;
+      return;
+    }
+    if (!selectedAccount) return;
+
+    if (searchDebounceRef.current) {
+      clearTimeout(searchDebounceRef.current);
+    }
+
+    searchDebounceRef.current = setTimeout(() => {
+      handleSearch(true);
+    }, 2000);
+
+    return () => {
+      if (searchDebounceRef.current) {
+        clearTimeout(searchDebounceRef.current);
+      }
+    };
+  }, [filtersJson, selectedAccount, handleSearch]);
 
   const handleClearFilters = () => {
     setFilters(INITIAL_FILTERS);
