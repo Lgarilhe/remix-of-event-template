@@ -218,42 +218,48 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
       }
 
       // Role - with keywords, priority, scope
-      // Also includes seniority-derived title keywords when in Recruiter mode
-      const seniorityTitleKeywords: Array<{ keywords: string; priority: 'MUST_HAVE' | 'DOESNT_HAVE'; scope: 'CURRENT' | 'PAST' | 'CURRENT_OR_PAST' }> = [];
-      
-      // Map seniority levels to title keywords for Recruiter mode
+      // NOTE: The backend ignores `seniority` for PEOPLE searches (Unipile limitation),
+      // so we approximate seniority by injecting title keywords into the Recruiter `role` filter.
+      // Important UX rule: if user selects multiple seniority levels, we combine them with OR.
+      const seniorityDerivedRole: Array<{ keywords: string; priority: 'MUST_HAVE' | 'DOESNT_HAVE'; scope: 'CURRENT' | 'PAST' | 'CURRENT_OR_PAST' }> = [];
+
       if (filters.api === 'recruiter' && filters.seniority.length) {
         const titlesByLevel: Record<string, string[]> = {
-          '5': ['Manager', 'Team Lead', 'Lead', 'Head of'],
+          '1': ['Intern', 'Internship', 'Stagiaire', 'Apprentice', 'Trainee', 'Graduate'],
+          '2': ['Associate', 'Junior', 'Assistant', 'Consultant', 'Analyst'],
+          '3': ['Intermediate', 'Confirmé', 'Confirmed', 'Mid', 'Middle'],
+          '4': ['Senior', 'Sr', 'Principal', 'Staff', 'Lead'],
+          '5': ['Manager', 'Team Lead', 'Head of', 'Engineering Manager', 'Product Manager'],
           '6': ['Director', 'Directeur', 'Head of', 'Senior Director'],
           '7': ['VP', 'Vice President', 'Vice-President', 'SVP', 'EVP'],
           '8': ['CEO', 'CTO', 'CFO', 'COO', 'CMO', 'CIO', 'CHRO', 'Chief', 'C-Level', 'President', 'Président', 'Managing Director'],
           '9': ['Partner', 'Associé', 'Principal', 'Managing Partner'],
           '10': ['Owner', 'Founder', 'Co-Founder', 'Fondateur', 'Propriétaire', 'Entrepreneur'],
         };
-        
-        filters.seniority.forEach(level => {
-          const titles = titlesByLevel[level];
-          if (titles) {
-            // Add each title as a separate role filter with OR logic (CAN_HAVE would be nice but API only supports MUST_HAVE/DOESNT_HAVE for role)
-            // We use a single combined keywords string with OR separator for the API
-            seniorityTitleKeywords.push({
-              keywords: titles.join(' OR '),
-              priority: 'MUST_HAVE',
-              scope: 'CURRENT',
-            });
-          }
-        });
+
+        const mergedTitles = Array.from(
+          new Set(
+            filters.seniority.flatMap((level) => titlesByLevel[level] ?? [])
+          )
+        );
+
+        if (mergedTitles.length) {
+          seniorityDerivedRole.push({
+            keywords: mergedTitles.join(' OR '),
+            priority: 'MUST_HAVE',
+            scope: 'CURRENT',
+          });
+        }
       }
-      
-      // Combine user-defined roles with seniority-derived roles
+
+      // Combine user-defined roles with seniority-derived role approximation
       const allRoles = [
         ...filters.role.map(r => ({
           keywords: r.keywords,
           priority: r.priority as 'MUST_HAVE' | 'DOESNT_HAVE',
           scope: r.scope as 'CURRENT' | 'PAST' | 'CURRENT_OR_PAST',
         })),
-        ...seniorityTitleKeywords,
+        ...seniorityDerivedRole,
       ];
       
       if (allRoles.length) {
