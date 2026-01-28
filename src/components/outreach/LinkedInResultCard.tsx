@@ -41,10 +41,15 @@ export const LinkedInResultCard: React.FC<LinkedInResultCardProps> = ({ profile 
   const initials = `${firstName[0] || ''}${lastName[0] || ''}`.toUpperCase();
   const fullName = profile.name || `${firstName} ${lastName}`.trim();
 
-  // Get current position info
+  // Get work experience - API returns work_experience array
+  const workExperience = profile.work_experience || [];
+  const currentJob = workExperience.find(exp => !exp.end) || workExperience[0];
+  const pastJobs = workExperience.filter(exp => exp.end).slice(0, 5);
+
+  // Fallback to legacy fields if work_experience is empty
   const currentPosition = profile.current_positions?.[0];
-  const currentCompany = currentPosition?.company;
-  const currentRole = currentPosition?.role;
+  const currentCompany = currentJob?.company || currentPosition?.company;
+  const currentRole = currentJob?.role || currentPosition?.role;
 
   // Network distance - handle different formats
   const networkDistance = typeof profile.network_distance === 'string'
@@ -55,43 +60,44 @@ export const LinkedInResultCard: React.FC<LinkedInResultCardProps> = ({ profile 
   const profileUrl = profile.profile_url || profile.public_profile_url;
 
   // Calculate tenure display
-  const getTenureDisplay = (tenure?: { years?: number; months?: number }) => {
-    if (!tenure) return null;
-    const years = tenure.years || 0;
-    const months = tenure.months || 0;
+  const getTenureDisplay = (start?: { year?: number; month?: number }, end?: { year?: number; month?: number }) => {
+    if (!start?.year) return null;
+    const startDate = new Date(start.year, (start.month || 1) - 1);
+    const endDate = end?.year ? new Date(end.year, (end.month || 12) - 1) : new Date();
+    const diffMonths = (endDate.getFullYear() - startDate.getFullYear()) * 12 + (endDate.getMonth() - startDate.getMonth());
+    const years = Math.floor(diffMonths / 12);
+    const months = diffMonths % 12;
     if (years > 0 && months > 0) return `${years} an${years > 1 ? 's' : ''} ${months} mois`;
     if (years > 0) return `${years} an${years > 1 ? 's' : ''}`;
     if (months > 0) return `${months} mois`;
     return null;
   };
 
-  const companyTenure = getTenureDisplay(currentPosition?.tenure_at_company);
+  const currentJobTenure = currentJob ? getTenureDisplay(currentJob.start, currentJob.end) : null;
 
-  // Get skills (first 5)
-  const skills = (profile as any).skills?.slice(0, 8) || [];
+  // Get skills
+  const skills = profile.skills?.slice(0, 8) || [];
   
   // Get education
-  const education = (profile as any).education?.slice(0, 2) || [];
-  
-  // Get past positions
-  const pastPositions = profile.past_positions?.slice(0, 3) || [];
+  const education = profile.education?.slice(0, 2) || [];
   
   // Connection count
-  const connectionsCount = (profile as any).connections_count;
+  const connectionsCount = profile.connections_count;
 
   // Check for interest indicators
-  const interests = (profile as any).interests || [];
+  const interests = profile.interests || [];
   const isLikelyToRespond = interests.includes('LIKELY_TO_RESPOND');
+  const isActiveTalent = interests.includes('ACTIVE_TALENT');
 
   // Calculate total experience years
   const calculateTotalExperience = () => {
     let totalMonths = 0;
-    const allPositions = [...(profile.current_positions || []), ...(profile.past_positions || [])];
-    
-    allPositions.forEach(pos => {
-      const tenure = (pos as any).tenure_at_role || (pos as any).tenure_at_company;
-      if (tenure) {
-        totalMonths += (tenure.years || 0) * 12 + (tenure.months || 0);
+    workExperience.forEach(exp => {
+      const tenure = getTenureDisplay(exp.start, exp.end);
+      if (exp.start?.year) {
+        const startDate = new Date(exp.start.year, (exp.start.month || 1) - 1);
+        const endDate = exp.end?.year ? new Date(exp.end.year, (exp.end.month || 12) - 1) : new Date();
+        totalMonths += (endDate.getFullYear() - startDate.getFullYear()) * 12 + (endDate.getMonth() - startDate.getMonth());
       }
     });
     
@@ -117,7 +123,7 @@ export const LinkedInResultCard: React.FC<LinkedInResultCardProps> = ({ profile 
         currentCompany,
         location: profile.location,
         skills: skills.map((s: any) => s.name || s).slice(0, 10),
-        pastPositions: pastPositions.map(p => `${p.role} chez ${p.company}`),
+        pastPositions: pastJobs.map(p => `${p.role} chez ${p.company}`),
         education: education.map((e: any) => `${e.degree || ''} - ${e.school}`),
       };
 
@@ -251,8 +257,8 @@ export const LinkedInResultCard: React.FC<LinkedInResultCardProps> = ({ profile 
                   <span className="flex items-center gap-1.5 font-medium text-[#1A1A1A]/80">
                     <Building2 className="w-3.5 h-3.5 text-[#0077B5]" />
                     {currentCompany}
-                    {companyTenure && (
-                      <span className="text-[#1A1A1A]/40 font-normal">• {companyTenure}</span>
+                    {currentJobTenure && (
+                      <span className="text-[#1A1A1A]/40 font-normal">• {currentJobTenure}</span>
                     )}
                   </span>
                 )}
@@ -288,7 +294,7 @@ export const LinkedInResultCard: React.FC<LinkedInResultCardProps> = ({ profile 
               )}
 
               {/* Experience preview - always visible */}
-              {pastPositions.length > 0 && (
+              {pastJobs.length > 0 && (
                 <div className="mt-3 pt-3 border-t border-[#1A1A1A]/5">
                   <div className="flex items-center gap-2 mb-2">
                     <Briefcase className="w-3.5 h-3.5 text-[#1A1A1A]/40" />
@@ -297,7 +303,7 @@ export const LinkedInResultCard: React.FC<LinkedInResultCardProps> = ({ profile 
                     </span>
                   </div>
                   <div className="space-y-1.5">
-                    {pastPositions.slice(0, 2).map((pos, index) => (
+                    {pastJobs.slice(0, 2).map((pos, index) => (
                       <div key={index} className="flex items-center gap-2 text-xs">
                         <div className="w-1.5 h-1.5 rounded-full bg-[#0077B5]/40 shrink-0" />
                         <span className="text-[#1A1A1A]/70 truncate">
@@ -312,9 +318,9 @@ export const LinkedInResultCard: React.FC<LinkedInResultCardProps> = ({ profile 
                         </span>
                       </div>
                     ))}
-                    {pastPositions.length > 2 && (
+                    {pastJobs.length > 2 && (
                       <span className="text-[10px] text-[#0077B5] font-medium">
-                        +{pastPositions.length - 2} autres expériences
+                        +{pastJobs.length - 2} autres expériences
                       </span>
                     )}
                   </div>
@@ -386,28 +392,43 @@ export const LinkedInResultCard: React.FC<LinkedInResultCardProps> = ({ profile 
             )}
 
             {/* All past positions */}
-            {pastPositions.length > 0 && (
+            {pastJobs.length > 0 && (
               <div className="space-y-2">
                 <h4 className="text-xs font-semibold text-[#1A1A1A]/50 uppercase tracking-wider flex items-center gap-2">
                   <Clock className="w-3.5 h-3.5" />
-                  Expérience complète
+                  Expérience complète ({workExperience.length} postes)
                 </h4>
                 <div className="space-y-2">
-                  {pastPositions.map((pos, index) => (
+                  {pastJobs.map((pos, index) => (
                     <div key={index} className="flex items-start gap-3 text-sm p-2 bg-[#1A1A1A]/3 rounded-lg">
-                      <div className="w-2 h-2 rounded-full bg-[#0077B5]/60 mt-1.5 shrink-0" />
-                      <div className="flex-1">
+                      {pos.logo ? (
+                        <img src={pos.logo} alt={pos.company} className="w-8 h-8 rounded object-contain bg-white border" />
+                      ) : (
+                        <div className="w-8 h-8 rounded bg-[#0077B5]/10 flex items-center justify-center shrink-0">
+                          <Building2 className="w-4 h-4 text-[#0077B5]/60" />
+                        </div>
+                      )}
+                      <div className="flex-1 min-w-0">
                         <p className="font-medium text-[#1A1A1A]/80">{pos.role}</p>
                         <p className="text-xs text-[#1A1A1A]/50">
                           {pos.company}
                           {pos.start?.year && pos.end?.year && (
-                            <span className="ml-2 px-1.5 py-0.5 bg-[#1A1A1A]/5 rounded">
-                              {pos.start.year} - {pos.end.year}
+                            <span className="ml-2 px-1.5 py-0.5 bg-[#1A1A1A]/5 rounded text-[10px]">
+                              {pos.start.year} - {pos.end.year} ({getTenureDisplay(pos.start, pos.end)})
                             </span>
                           )}
                         </p>
                         {pos.description && (
                           <p className="text-xs text-[#1A1A1A]/40 mt-1 line-clamp-2">{pos.description}</p>
+                        )}
+                        {pos.skills && pos.skills.length > 0 && (
+                          <div className="flex flex-wrap gap-1 mt-1">
+                            {pos.skills.slice(0, 4).map((skill, i) => (
+                              <span key={i} className="text-[9px] px-1.5 py-0.5 bg-[#0077B5]/5 text-[#0077B5] rounded">
+                                {skill.name}
+                              </span>
+                            ))}
+                          </div>
                         )}
                       </div>
                     </div>

@@ -208,9 +208,11 @@ export interface LinkedInProfile {
   first_name?: string;
   last_name?: string;
   headline?: string;
+  summary?: string;
   profile_url?: string;
   public_profile_url?: string;
   profile_picture_url?: string;
+  profile_picture_url_large?: string;
   location?: string;
   industry?: string;
   network_distance?: string | number;
@@ -222,6 +224,42 @@ export interface LinkedInProfile {
   recruiter_candidate_id?: string;
   member_urn?: string;
   public_identifier?: string;
+  connections_count?: number;
+  interests?: string[];
+  skills?: Array<{
+    name: string;
+    endorsement_count?: number;
+  }>;
+  education?: Array<{
+    school?: string;
+    school_id?: string;
+    degree?: string;
+    field_of_study?: string;
+    start?: { year?: number; month?: number };
+    end?: { year?: number; month?: number };
+    school_details?: {
+      name?: string;
+      description?: string;
+      logo?: string;
+    };
+  }>;
+  // API returns work_experience (full history)
+  work_experience?: Array<{
+    company?: string;
+    company_id?: string;
+    company_url?: string;
+    company_description?: string;
+    company_headcount?: { min?: number; max?: number };
+    industry?: string;
+    location?: string;
+    role?: string;
+    description?: string;
+    skills?: Array<{ name: string; endorsement_count?: number }>;
+    logo?: string;
+    start?: { month?: number; year?: number };
+    end?: { month?: number; year?: number };
+  }>;
+  // Legacy fields (may still be used by some endpoints)
   current_positions?: Array<{
     company?: string;
     company_id?: string;
