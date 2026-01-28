@@ -22,13 +22,16 @@ import {
   Sparkles,
   Save,
   GripVertical,
+  GitBranch,
+  Zap,
+  Timer,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 export interface SequenceStep {
   id: string;
   order: number;
-  actionType: 'inmail' | 'connection_request' | 'profile_visit' | 'message' | 'smart_message';
+  actionType: 'inmail' | 'connection_request' | 'profile_visit' | 'message' | 'smart_message' | 'trigger';
   conditionType: 'always' | 'if_connected' | 'if_not_connected' | 'if_no_response' | 'wait_until_connected' | 'wait_for_event';
   delayDays: number;
   delayHours: number;
@@ -39,8 +42,13 @@ export interface SequenceStep {
   useAiPersonalization: boolean;
   aiTone?: 'professional' | 'casual' | 'enthusiastic';
   timeoutDays?: number;
-  waitForEvent?: 'connection_accepted' | 'reply_received';
+  waitForEvent?: 'connection_accepted' | 'reply_received' | 'profile_visited' | 'invite_sent';
   timeoutBranchStepId?: string;
+  // Advanced trigger options
+  triggerType?: 'wait_event' | 'condition_branch';
+  triggerCondition?: 'connection_accepted' | 'profile_visited' | 'reply_received' | 'no_reply_timeout';
+  timeoutAction?: 'skip' | 'alternative_step' | 'end_sequence';
+  alternativeStepIndex?: number;
 }
 
 export interface Sequence {
@@ -64,6 +72,7 @@ const ACTION_TYPES = [
   { value: 'message', label: 'Message direct', icon: MessageSquare, color: 'text-orange-600' },
   { value: 'profile_visit', label: 'Visite de profil', icon: Eye, color: 'text-sky-600' },
   { value: 'smart_message', label: 'Smart Message (IA)', icon: Sparkles, color: 'text-purple-600' },
+  { value: 'trigger', label: 'Trigger / Condition', icon: GitBranch, color: 'text-amber-600' },
 ];
 
 const CONDITION_TYPES = [
@@ -71,6 +80,23 @@ const CONDITION_TYPES = [
   { value: 'if_connected', label: 'Si connecté' },
   { value: 'if_not_connected', label: 'Si non connecté' },
   { value: 'if_no_response', label: 'Si pas de réponse' },
+];
+
+const TRIGGER_TYPES = [
+  { value: 'wait_event', label: 'Attendre un événement', icon: Timer, description: 'Pause la séquence jusqu\'à ce qu\'un événement se produise' },
+  { value: 'condition_branch', label: 'Branchement conditionnel', icon: GitBranch, description: 'Si condition vraie → continuer, sinon → action alternative' },
+];
+
+const WAIT_EVENTS = [
+  { value: 'connection_accepted', label: 'Connexion acceptée', description: 'Attendre que l\'invitation soit acceptée' },
+  { value: 'reply_received', label: 'Réponse reçue', description: 'Attendre une réponse du prospect' },
+  { value: 'profile_visited', label: 'Profil visité (par le prospect)', description: 'Attendre que le prospect visite notre profil' },
+];
+
+const TIMEOUT_ACTIONS = [
+  { value: 'skip', label: 'Passer à l\'étape suivante' },
+  { value: 'alternative_step', label: 'Exécuter étape alternative' },
+  { value: 'end_sequence', label: 'Terminer la séquence' },
 ];
 
 const AI_TONES = [
@@ -90,6 +116,10 @@ const createEmptyStep = (order: number): SequenceStep => ({
   preferredHourEnd: 18,
   useAiPersonalization: false,
   aiTone: 'professional',
+  triggerType: 'wait_event',
+  triggerCondition: 'connection_accepted',
+  timeoutDays: 7,
+  timeoutAction: 'skip',
 });
 
 export const SequenceBuilder: React.FC<SequenceBuilderProps> = ({
@@ -325,6 +355,121 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = ({
                                 className="mt-1.5"
                               />
                             </div>
+                          </div>
+                        )}
+
+                        {/* Trigger configuration */}
+                        {step.actionType === 'trigger' && (
+                          <div className="space-y-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                            <div className="flex items-center gap-2 text-amber-700">
+                              <Zap className="w-4 h-4" />
+                              <span className="font-medium text-sm">Configuration du trigger</span>
+                            </div>
+                            
+                            {/* Trigger type */}
+                            <div>
+                              <Label>Type de trigger</Label>
+                              <Select
+                                value={step.triggerType || 'wait_event'}
+                                onValueChange={(value) => updateStep(step.id, { triggerType: value as any })}
+                              >
+                                <SelectTrigger className="mt-1.5">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {TRIGGER_TYPES.map(trigger => (
+                                    <SelectItem key={trigger.value} value={trigger.value}>
+                                      <div className="flex items-center gap-2">
+                                        <trigger.icon className="w-4 h-4" />
+                                        {trigger.label}
+                                      </div>
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+
+                            {/* Wait event selection */}
+                            <div>
+                              <Label>Événement à attendre</Label>
+                              <Select
+                                value={step.triggerCondition || 'connection_accepted'}
+                                onValueChange={(value) => updateStep(step.id, { triggerCondition: value as any })}
+                              >
+                                <SelectTrigger className="mt-1.5">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {WAIT_EVENTS.map(event => (
+                                    <SelectItem key={event.value} value={event.value}>
+                                      {event.label}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                              <p className="text-xs text-muted-foreground mt-1">
+                                {WAIT_EVENTS.find(e => e.value === step.triggerCondition)?.description}
+                              </p>
+                            </div>
+
+                            {/* Timeout configuration */}
+                            <div className="grid grid-cols-2 gap-4">
+                              <div>
+                                <Label>Timeout (jours)</Label>
+                                <Input
+                                  type="number"
+                                  min={1}
+                                  value={step.timeoutDays || 7}
+                                  onChange={(e) => updateStep(step.id, { timeoutDays: parseInt(e.target.value) || 7 })}
+                                  className="mt-1.5"
+                                />
+                                <p className="text-xs text-muted-foreground mt-1">
+                                  Temps max d'attente
+                                </p>
+                              </div>
+                              <div>
+                                <Label>Si timeout</Label>
+                                <Select
+                                  value={step.timeoutAction || 'skip'}
+                                  onValueChange={(value) => updateStep(step.id, { timeoutAction: value as any })}
+                                >
+                                  <SelectTrigger className="mt-1.5">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {TIMEOUT_ACTIONS.map(action => (
+                                      <SelectItem key={action.value} value={action.value}>
+                                        {action.label}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                            </div>
+
+                            {/* Alternative step selection */}
+                            {step.timeoutAction === 'alternative_step' && sequence.steps.length > 1 && (
+                              <div>
+                                <Label>Étape alternative</Label>
+                                <Select
+                                  value={step.alternativeStepIndex?.toString() || ''}
+                                  onValueChange={(value) => updateStep(step.id, { alternativeStepIndex: parseInt(value) })}
+                                >
+                                  <SelectTrigger className="mt-1.5">
+                                    <SelectValue placeholder="Sélectionner une étape" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {sequence.steps
+                                      .filter(s => s.id !== step.id)
+                                      .map((s, idx) => (
+                                        <SelectItem key={s.id} value={idx.toString()}>
+                                          Étape {idx + 1}: {ACTION_TYPES.find(a => a.value === s.actionType)?.label}
+                                        </SelectItem>
+                                      ))}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                            )}
                           </div>
                         )}
 
