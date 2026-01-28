@@ -940,18 +940,71 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
               <p className="text-sm text-[#1A1A1A]/50">Recherche en cours...</p>
             </div>
           ) : results.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-20 text-[#1A1A1A]/40 px-8">
-              <div className="w-20 h-20 rounded-full bg-[#1A1A1A]/5 flex items-center justify-center mb-6">
-                <Search className="w-10 h-10" />
-              </div>
-              <p className="text-lg font-medium text-[#1A1A1A]/60 mb-2">
-                {hasSearched ? 'Aucun profil trouvé' : 'Lancez une recherche'}
-              </p>
-              <p className="text-sm text-center max-w-md">
-                {hasSearched
-                  ? 'Essayez d\'ajuster vos filtres pour élargir votre recherche'
-                  : 'Configurez vos filtres LinkedIn dans le panneau de gauche et cliquez sur Rechercher'}
-              </p>
+            <div className="flex flex-col items-center justify-center py-12 text-[#1A1A1A]/40 px-8">
+              {hasSearched ? (
+                // No results found after search
+                <>
+                  <div className="w-20 h-20 rounded-full bg-[#1A1A1A]/5 flex items-center justify-center mb-6">
+                    <Search className="w-10 h-10" />
+                  </div>
+                  <p className="text-lg font-medium text-[#1A1A1A]/60 mb-2">
+                    Aucun profil trouvé
+                  </p>
+                  <p className="text-sm text-center max-w-md">
+                    Essayez d'ajuster vos filtres pour élargir votre recherche
+                  </p>
+                </>
+              ) : (
+                // Welcome message - no search performed yet
+                <div className="w-full max-w-lg">
+                  <div className="text-center mb-8">
+                    <div className="w-16 h-16 rounded-full bg-gradient-to-br from-[#0077B5]/20 to-[#0077B5]/5 flex items-center justify-center mx-auto mb-4">
+                      <Search className="w-8 h-8 text-[#0077B5]" />
+                    </div>
+                    <h3 className="text-xl font-semibold text-[#1A1A1A] mb-2">
+                      Recherche LinkedIn
+                    </h3>
+                    <p className="text-sm text-[#1A1A1A]/60">
+                      Trouvez des candidats qualifiés en utilisant les filtres avancés
+                    </p>
+                  </div>
+                  
+                  <div className="space-y-4">
+                    <div className="bg-[#0077B5]/5 rounded-xl p-4 border border-[#0077B5]/10">
+                      <h4 className="font-medium text-[#1A1A1A] mb-3 flex items-center gap-2">
+                        <span className="w-6 h-6 rounded-full bg-[#0077B5] text-white text-xs flex items-center justify-center">1</span>
+                        Configurez vos filtres
+                      </h4>
+                      <ul className="text-sm text-[#1A1A1A]/70 space-y-2 ml-8">
+                        <li>• <strong>Mots-clés</strong> : titres de poste, compétences...</li>
+                        <li>• <strong>Localisation</strong> : ville, région, pays</li>
+                        <li>• <strong>Entreprise</strong> : nom ou secteur d'activité</li>
+                        <li>• <strong>Expérience</strong> : années, séniorité, fonctions</li>
+                      </ul>
+                    </div>
+                    
+                    <div className="bg-[#1A1A1A]/5 rounded-xl p-4 border border-[#1A1A1A]/10">
+                      <h4 className="font-medium text-[#1A1A1A] mb-3 flex items-center gap-2">
+                        <span className="w-6 h-6 rounded-full bg-[#1A1A1A] text-white text-xs flex items-center justify-center">2</span>
+                        Lancez la recherche
+                      </h4>
+                      <p className="text-sm text-[#1A1A1A]/70 ml-8">
+                        Cliquez sur <strong>Rechercher</strong> ou attendez 2 secondes après avoir modifié un filtre pour lancer une recherche automatique.
+                      </p>
+                    </div>
+                    
+                    <div className="bg-gradient-to-r from-amber-50 to-orange-50 rounded-xl p-4 border border-amber-200/50">
+                      <h4 className="font-medium text-amber-800 mb-3 flex items-center gap-2">
+                        <Sparkles className="w-5 h-5 text-amber-600" />
+                        Astuce : Scoring IA
+                      </h4>
+                      <p className="text-sm text-amber-700/80 ml-7">
+                        Sélectionnez un <strong>poste de référence</strong> dans le panneau de gauche pour scorer automatiquement les candidats selon leur adéquation au job.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           ) : (
             <div className="p-4 space-y-3">
