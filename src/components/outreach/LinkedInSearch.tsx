@@ -329,46 +329,9 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
 
       const newResults = response.data.results || [];
 
-      // Post-filter skills client-side to guarantee the selected skill(s) are reflected in displayed results.
-      // This is defensive: the upstream API can return broad results even when a skill filter is provided.
-      const normalize = (s: string) => s.toLowerCase().trim();
-      const extractSkillNames = (profile: any): string[] => {
-        const raw = profile?.skills;
-        if (!raw) return [];
-        if (Array.isArray(raw)) {
-          return raw
-            .map((x: any) => (typeof x === 'string' ? x : x?.name))
-            .filter(Boolean)
-            .map((x: string) => x.trim());
-        }
-        return [];
-      };
-
-      const mustHave = filters.skills.filter(s => (s.priority ?? 'MUST_HAVE') === 'MUST_HAVE');
-      const doesntHave = filters.skills.filter(s => s.priority === 'DOESNT_HAVE');
-
-      const matchesSkill = (profileSkills: string[], required: string) => {
-        const req = normalize(required);
-        return profileSkills.some(ps => {
-          const p = normalize(ps);
-          return p === req || p.includes(req) || req.includes(p);
-        });
-      };
-
-      const displayedResults = (mustHave.length || doesntHave.length)
-        ? newResults.filter((p: any) => {
-            const profileSkills = extractSkillNames(p);
-            // MUST_HAVE: every selected MUST_HAVE skill should match
-            for (const s of mustHave) {
-              if (!matchesSkill(profileSkills, s.name)) return false;
-            }
-            // DOESNT_HAVE: none of selected DOESNT_HAVE should match
-            for (const s of doesntHave) {
-              if (matchesSkill(profileSkills, s.name)) return false;
-            }
-            return true;
-          })
-        : newResults;
+      // Don't apply client-side skill filtering - trust the API to filter correctly
+      // The API already applies skill filters on the server side with proper matching logic
+      const displayedResults = newResults;
 
       // Track quota usage
       quota.recordAction('searchResultsFetched', newResults.length);
