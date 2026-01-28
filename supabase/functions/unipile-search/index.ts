@@ -230,22 +230,39 @@ async function handleSearch(
 
   // Location - different format per API:
   // - Classic: "location" as simple array of IDs
-  // - Recruiter: "location" as array of objects with id, priority, scope
+  // - Recruiter: "location" as array of objects with id, priority, scope (sent from frontend)
   // - Sales Navigator: "location" with { include: [...], exclude: [...] }
   if (location?.length) {
     if (api === 'recruiter') {
       // Recruiter expects array of objects: { id, priority, scope }
-      // Default to MUST_HAVE priority and CURRENT scope
-      searchBody.location = location.map((loc: string) => ({
-        id: loc,
-        priority: 'MUST_HAVE',
-        scope: 'CURRENT_OR_OPEN_TO_RELOCATE'
-      }));
+      // Frontend sends objects with id, priority, scope - or strings for backward compat
+      searchBody.location = location.map((loc: string | { id: string; priority?: string; scope?: string }) => {
+        if (typeof loc === 'object' && loc.id) {
+          return {
+            id: loc.id,
+            priority: loc.priority || 'MUST_HAVE',
+            scope: loc.scope || 'CURRENT_OR_OPEN_TO_RELOCATE'
+          };
+        }
+        // Fallback for string IDs
+        return {
+          id: loc as string,
+          priority: 'MUST_HAVE',
+          scope: 'CURRENT_OR_OPEN_TO_RELOCATE'
+        };
+      });
     } else if (api === 'sales_navigator') {
-      searchBody.location = { include: location };
+      // Sales Navigator expects include array of IDs
+      const locationIds = location.map((loc: string | { id: string }) => 
+        typeof loc === 'object' ? loc.id : loc
+      );
+      searchBody.location = { include: locationIds };
     } else {
-      // Classic uses simple array
-      searchBody.location = location;
+      // Classic uses simple array of IDs
+      const locationIds = location.map((loc: string | { id: string }) => 
+        typeof loc === 'object' ? loc.id : loc
+      );
+      searchBody.location = locationIds;
     }
   }
 

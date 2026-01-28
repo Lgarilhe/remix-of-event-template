@@ -4,9 +4,11 @@ import {
   LinkedInFiltersState,
   FilterItem,
   PriorityFilterItem,
+  LocationFilterItem,
   RoleFilter,
   FilterPriority,
   FilterScope,
+  LocationScope,
   ActivityMessageType,
   ActivityNoteType,
   SENIORITY_LEVELS,
@@ -14,6 +16,7 @@ import {
   PRIORITY_OPTIONS,
   ROLE_PRIORITY_OPTIONS,
   SCOPE_OPTIONS,
+  LOCATION_SCOPE_OPTIONS,
   SPOTLIGHT_OPTIONS,
   PROFILE_LANGUAGES,
   COMPANY_HEADCOUNT_OPTIONS,
@@ -31,6 +34,7 @@ import {
   AutocompleteInput,
   SelectedBadges,
   PriorityBadges,
+  LocationBadges,
   ParameterOption,
   MultiSelectDropdown,
 } from './FilterComponents';
@@ -200,8 +204,8 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
     }
   }, [fetchParameters]);
 
-  // Simple filter handlers (for filters without priority)
-  const handleAddSimpleFilter = useCallback((key: 'location' | 'company' | 'industry' | 'past_company' | 'function' | 'company_location' | 'groups', item: ParameterOption) => {
+  // Simple filter handlers (for filters without priority - excludes location now)
+  const handleAddSimpleFilter = useCallback((key: 'company' | 'industry' | 'past_company' | 'function' | 'company_location' | 'groups', item: ParameterOption) => {
     const current = filters[key] as FilterItem[];
     if (!current.find((f) => f.id === item.id)) {
       onChange({ ...filters, [key]: [...current, { id: item.id, name: item.title }] });
@@ -210,8 +214,42 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
     setParameterOptions((prev) => ({ ...prev, [key]: [] }));
   }, [filters, onChange]);
 
-  const handleRemoveSimpleFilter = useCallback((key: 'location' | 'company' | 'industry' | 'past_company' | 'function' | 'company_location' | 'groups', id: string) => {
+  const handleRemoveSimpleFilter = useCallback((key: 'company' | 'industry' | 'past_company' | 'function' | 'company_location' | 'groups', id: string) => {
     onChange({ ...filters, [key]: (filters[key] as FilterItem[]).filter((f) => f.id !== id) });
+  }, [filters, onChange]);
+
+  // Location filter handlers (with priority and scope for Recruiter)
+  const handleAddLocation = useCallback((item: ParameterOption) => {
+    const current = filters.location;
+    if (!current.find((f) => f.id === item.id)) {
+      const newLocation: LocationFilterItem = {
+        id: item.id,
+        name: item.title,
+        priority: 'MUST_HAVE',
+        scope: 'CURRENT_OR_OPEN_TO_RELOCATE'
+      };
+      onChange({ ...filters, location: [...current, newLocation] });
+    }
+    setSearchInputs((prev) => ({ ...prev, location: '' }));
+    setParameterOptions((prev) => ({ ...prev, location: [] }));
+  }, [filters, onChange]);
+
+  const handleRemoveLocation = useCallback((id: string) => {
+    onChange({ ...filters, location: filters.location.filter((f) => f.id !== id) });
+  }, [filters, onChange]);
+
+  const handleUpdateLocationPriority = useCallback((id: string, priority: FilterPriority) => {
+    onChange({
+      ...filters,
+      location: filters.location.map((f) => (f.id === id ? { ...f, priority } : f)),
+    });
+  }, [filters, onChange]);
+
+  const handleUpdateLocationScope = useCallback((id: string, scope: LocationScope) => {
+    onChange({
+      ...filters,
+      location: filters.location.map((f) => (f.id === id ? { ...f, scope } : f)),
+    });
   }, [filters, onChange]);
 
   // Priority filter handlers (for filters with priority: job_title, skills, school, degree, past_job_title)
@@ -350,18 +388,40 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
           onToggle={() => toggleSection('basic')}
           activeFiltersPreview={basicFiltersPreview}
         >
-          {/* Location */}
+          {/* Location - with priority and scope for Recruiter */}
           <FilterGroup title="Localisation" icon={<MapPin className="w-3.5 h-3.5 text-[#0077B5]" />} badge={filters.location.length}>
-            <SelectedBadges items={filters.location} onRemove={(id) => handleRemoveSimpleFilter('location', id)} />
-            <AutocompleteInput
-              filterKey="location"
-              placeholder="Ville, région, pays..."
-              value={searchInputs['location'] || ''}
-              options={parameterOptions['location'] || []}
-              loading={loadingParams === 'location'}
-              onInputChange={(val) => handleSearchInput('location', val)}
-              onSelect={(item) => handleAddSimpleFilter('location', item)}
-            />
+            {filters.api === 'recruiter' ? (
+              <>
+                <LocationBadges
+                  items={filters.location}
+                  onRemove={handleRemoveLocation}
+                  onUpdatePriority={handleUpdateLocationPriority}
+                  onUpdateScope={handleUpdateLocationScope}
+                />
+                <AutocompleteInput
+                  filterKey="location"
+                  placeholder="Ville, région, pays..."
+                  value={searchInputs['location'] || ''}
+                  options={parameterOptions['location'] || []}
+                  loading={loadingParams === 'location'}
+                  onInputChange={(val) => handleSearchInput('location', val)}
+                  onSelect={handleAddLocation}
+                />
+              </>
+            ) : (
+              <>
+                <SelectedBadges items={filters.location} onRemove={handleRemoveLocation} />
+                <AutocompleteInput
+                  filterKey="location"
+                  placeholder="Ville, région, pays..."
+                  value={searchInputs['location'] || ''}
+                  options={parameterOptions['location'] || []}
+                  loading={loadingParams === 'location'}
+                  onInputChange={(val) => handleSearchInput('location', val)}
+                  onSelect={handleAddLocation}
+                />
+              </>
+            )}
           </FilterGroup>
 
           {/* School - with priority for Recruiter */}
