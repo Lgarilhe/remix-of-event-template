@@ -225,22 +225,90 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
         }));
       }
 
-      // Simple arrays - Convert seniority from internal values to API values
-      if (filters.seniority.length) {
-        searchParams.seniority = filters.seniority.map(val => {
-          const level = SENIORITY_LEVELS.find(l => l.value === val);
-          return level?.apiValue || val;
-        });
-      }
+      // NOTE: Unipile rejects `seniority` for People searches (400 invalid_parameters).
+      // We still support the UI by mapping the selected seniority levels to experience ranges.
+      const deriveExperienceFromSeniority = (values: string[]) => {
+        // Returns a broad range matching the selected levels.
+        // These ranges are approximations aligned with the labels shown in UI.
+        const ranges = values
+          .map((v) => {
+            switch (String(v)) {
+              case '1': // Entry (0-2)
+                return { min: 0, max: 2 };
+              case '2': // Associate
+                return { min: 2, max: 5 };
+              case '3': // Mid (3-5)
+                return { min: 3, max: 5 };
+              case '4': // Senior (6-9)
+                return { min: 6, max: 9 };
+              case '5': // Manager
+                return { min: 8, max: 12 };
+              case '6': // Director
+                return { min: 10, max: 15 };
+              case '7': // VP
+                return { min: 12, max: 20 };
+              case '8': // C-Level
+                return { min: 15, max: null };
+              case '9': // Partner
+                return { min: 15, max: null };
+              case '10': // Owner
+                return { min: 10, max: null };
+              default:
+                return null;
+            }
+          })
+          .filter((r): r is { min: number; max: number | null } => Boolean(r));
+
+        if (!ranges.length) return null;
+        const min = Math.min(...ranges.map((r) => r.min));
+        const maxValues = ranges.map((r) => r.max).filter((m): m is number => typeof m === 'number');
+        const max = maxValues.length ? Math.max(...maxValues) : null;
+        return { min, max };
+      };
       if (filters.network_distance.length) searchParams.network_distance = filters.network_distance;
       if (filters.profile_language.length) searchParams.profile_language = filters.profile_language;
 
-      // Years of experience
-      if (filters.years_of_experience_min !== null || filters.years_of_experience_max !== null) {
-        const yearsExp: Record<string, number> = {};
-        if (filters.years_of_experience_min !== null) yearsExp.min = filters.years_of_experience_min;
-        if (filters.years_of_experience_max !== null) yearsExp.max = filters.years_of_experience_max;
-        searchParams.years_of_experience = yearsExp;
+      // Years of experience (Recruiter) / Tenure (Sales Navigator)
+      // Combine explicit year filters with seniority-derived ranges (intersection when both exist).
+      const seniorityExp = filters.seniority.length ? deriveExperienceFromSeniority(filters.seniority) : null;
+
+      const explicitMin = filters.years_of_experience_min;
+      const explicitMax = filters.years_of_experience_max;
+
+      const combinedMin = Math.max(
+        explicitMin ?? 0,
+        seniorityExp?.min ?? 0
+      );
+
+      const combinedMax = (() => {
+        const candidates: number[] = [];
+        if (explicitMax !== null) candidates.push(explicitMax);
+        if (typeof seniorityExp?.max === 'number') candidates.push(seniorityExp.max);
+        if (!candidates.length) return null;
+        return Math.min(...candidates);
+      })();
+
+      // Apply only if user set explicit range OR selected a seniority level.
+      const shouldApplyExperience =
+        explicitMin !== null || explicitMax !== null || Boolean(seniorityExp);
+
+      if (shouldApplyExperience) {
+        if (filters.api === 'recruiter') {
+          const yearsExp: Record<string, number> = {};
+          if (combinedMin > 0) yearsExp.min = combinedMin;
+          if (combinedMax !== null) yearsExp.max = combinedMax;
+          if (Object.keys(yearsExp).length) {
+            searchParams.years_of_experience = yearsExp;
+          }
+        } else if (filters.api === 'sales_navigator') {
+          // Sales Navigator uses `tenure` ranges
+          const tenure: Record<string, number> = {};
+          if (combinedMin > 0) tenure.min = combinedMin;
+          if (combinedMax !== null) tenure.max = combinedMax;
+          if (Object.keys(tenure).length) {
+            searchParams.tenure = [tenure];
+          }
+        }
       }
 
       // Tenure filters

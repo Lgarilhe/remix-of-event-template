@@ -215,6 +215,40 @@ async function handleSearch(
     limit,
   };
 
+  // Normalise seniority values to the only ones accepted by Unipile schema.
+  // Unipile expects one of: intern | entry | associate | mid_senior | director | executive
+  // Our UI historically produced values like: Entry, Mid, Senior, Manager, Director, VP, CXO...
+  const normaliseSeniority = (value: string): string | null => {
+    const v = String(value).trim().toLowerCase();
+    if (!v) return null;
+
+    // Already valid
+    if (['intern', 'entry', 'associate', 'mid_senior', 'director', 'executive'].includes(v)) return v;
+
+    // UI / legacy labels
+    if (v === 'entry' || v === 'junior' || v === 'débutant' || v === 'debutant') return 'entry';
+    if (v === 'associate') return 'associate';
+    if (v === 'mid' || v === 'intermédiaire' || v === 'intermediaire' || v === 'mid-level') return 'mid_senior';
+    if (v === 'senior' || v === 'mid-senior' || v === 'mid senior' || v === 'mid_senior') return 'mid_senior';
+    if (v === 'manager') return 'director';
+    if (v === 'director' || v === 'directeur') return 'director';
+    if (v === 'vp' || v === 'cxo' || v === 'c-level' || v === 'executive' || v === 'partner' || v === 'owner') return 'executive';
+
+    // Numeric codes coming from some UIs (1..10)
+    // 1=Entry, 2=Associate, 3=Mid, 4=Senior, 5=Manager, 6=Director, 7+=Executive
+    if (/^\d+$/.test(v)) {
+      const n = Number(v);
+      if (n <= 1) return 'entry';
+      if (n === 2) return 'associate';
+      if (n === 3 || n === 4) return 'mid_senior';
+      if (n === 5 || n === 6) return 'director';
+      return 'executive';
+    }
+
+    // Unknown value → omit to avoid API 400
+    return null;
+  };
+
   // Pagination cursor
   if (cursor) searchBody.cursor = cursor;
 
@@ -419,19 +453,19 @@ async function handleSearch(
     }));
   }
 
-  // Seniority - format differs by API
-  // Recruiter uses object format: { include: [], exclude: [] }
-  // Classic/Sales Navigator uses array format: []
+  // Seniority
+  // IMPORTANT: Unipile rejects `seniority` for People searches (400 invalid_parameters).
+  // Keep support for Jobs searches only.
   if (seniority?.length) {
-    console.log('Seniority filter received:', seniority, 'API:', api);
-    if (api === 'recruiter') {
-      // Recruiter expects { include: [...], exclude: [...] }
-      searchBody.seniority = {
-        include: seniority,
-      };
+    if (category !== 'jobs') {
+      console.log('Seniority provided but ignored (category != jobs):', { api, category, seniority });
     } else {
-      // Classic and Sales Navigator expect simple array
-      searchBody.seniority = seniority;
+      const normalised = seniority.map(normaliseSeniority).filter((v): v is string => Boolean(v));
+      console.log('Seniority (jobs) received:', seniority, '→ normalised:', normalised, 'API:', api);
+      if (normalised.length) {
+        // Jobs schema expects simple array (see Unipile validation schema)
+        searchBody.seniority = normalised;
+      }
     }
   }
 
