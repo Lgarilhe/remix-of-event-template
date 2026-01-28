@@ -5,16 +5,21 @@ import { useState, useCallback, useEffect } from 'react';
  * Based on: https://developer.unipile.com/docs/provider-limits-and-restrictions
  */
 export const LINKEDIN_LIMITS = {
-  // Profile visits/retrieval: ~100/day (recommendation)
-  PROFILE_VISITS: 100,
+  // Profile visits/retrieval: ~1000/day for Recruiter, ~100/day for standard
+  PROFILE_VISITS_STANDARD: 100,
+  PROFILE_VISITS_RECRUITER: 1000,
   // Search results fetched: 1000/day standard, 2500/day for Recruiter/Sales Nav
   SEARCH_RESULTS_STANDARD: 1000,
   SEARCH_RESULTS_PREMIUM: 2500,
   // Connection requests (invitations): 80-100/day for paid accounts
   INVITATIONS_PAID: 80,
   INVITATIONS_FREE: 5,
-  // InMail: 30-50/day recommended to maximize monthly allocation
-  INMAIL_DAILY: 30,
+  // InMail: 150 credits/month for Recruiter, 30 for Lite
+  // Technical daily max ~1000 but limited by monthly credits
+  INMAIL_DAILY_RECRUITER: 50, // Conservative daily limit to preserve monthly credits
+  INMAIL_DAILY_LITE: 10,
+  INMAIL_MONTHLY_RECRUITER: 150,
+  INMAIL_MONTHLY_LITE: 30,
   // Messages to connections: ~100/day
   MESSAGES: 100,
   // Other actions (comments, likes, etc.): ~100/day
@@ -70,13 +75,13 @@ const getLimitForType = (type: keyof Omit<QuotaState, 'lastReset'>, isPremium: b
     case 'searchResultsFetched':
       return isPremium ? LINKEDIN_LIMITS.SEARCH_RESULTS_PREMIUM : LINKEDIN_LIMITS.SEARCH_RESULTS_STANDARD;
     case 'profileVisits':
-      return LINKEDIN_LIMITS.PROFILE_VISITS;
+      return isPremium ? LINKEDIN_LIMITS.PROFILE_VISITS_RECRUITER : LINKEDIN_LIMITS.PROFILE_VISITS_STANDARD;
     case 'messagesSent':
       return LINKEDIN_LIMITS.MESSAGES;
     case 'invitationsSent':
       return isPremium ? LINKEDIN_LIMITS.INVITATIONS_PAID : LINKEDIN_LIMITS.INVITATIONS_FREE;
     case 'inmailsSent':
-      return LINKEDIN_LIMITS.INMAIL_DAILY;
+      return isPremium ? LINKEDIN_LIMITS.INMAIL_DAILY_RECRUITER : LINKEDIN_LIMITS.INMAIL_DAILY_LITE;
     case 'otherActions':
       return LINKEDIN_LIMITS.OTHER_ACTIONS;
     default:

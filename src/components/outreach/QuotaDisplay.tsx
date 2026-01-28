@@ -79,7 +79,9 @@ export const QuotaDisplay: React.FC<QuotaDisplayProps> = ({
   compact = false,
 }) => {
   const searchLimit = isPremium ? 2500 : 1000;
+  const profileLimit = isPremium ? 1000 : 100;
   const inviteLimit = isPremium ? 80 : 5;
+  const inmailLimit = isPremium ? 50 : 10;
 
   if (compact) {
     const totalUsed = searchResultsFetched + profileVisits + messagesSent;
@@ -114,7 +116,7 @@ export const QuotaDisplay: React.FC<QuotaDisplayProps> = ({
               <QuotaItem
                 label="Visites profils"
                 current={profileVisits}
-                limit={100}
+                limit={profileLimit}
                 icon={<User className="w-3.5 h-3.5" />}
               />
               <QuotaItem
@@ -132,7 +134,7 @@ export const QuotaDisplay: React.FC<QuotaDisplayProps> = ({
               <QuotaItem
                 label="InMails"
                 current={inmailsSent}
-                limit={30}
+                limit={inmailLimit}
                 icon={<Mail className="w-3.5 h-3.5" />}
               />
             </div>
@@ -175,7 +177,7 @@ export const QuotaDisplay: React.FC<QuotaDisplayProps> = ({
         <QuotaItem
           label="Visites profils"
           current={profileVisits}
-          limit={100}
+          limit={profileLimit}
           icon={<User className="w-3.5 h-3.5" />}
         />
         <QuotaItem
@@ -193,7 +195,7 @@ export const QuotaDisplay: React.FC<QuotaDisplayProps> = ({
         <QuotaItem
           label="InMails"
           current={inmailsSent}
-          limit={30}
+          limit={inmailLimit}
           icon={<Mail className="w-3.5 h-3.5" />}
         />
       </div>
