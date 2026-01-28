@@ -27,7 +27,6 @@ import {
   COMPANY_TYPE_OPTIONS,
   OPEN_TO_OPTIONS_CLASSIC,
   OPEN_TO_OPTIONS_RECRUITER,
-  DEGREE_OPTIONS,
   ACTIVITY_MESSAGE_OPTIONS,
   ACTIVITY_NOTE_OPTIONS,
   ACTIVITY_DAYS_OPTIONS,
@@ -772,23 +771,16 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
               onRemove={(id) => handleRemovePriorityFilter('degree', id)}
               onUpdatePriority={(id, priority) => handleUpdatePriority('degree', id, priority)}
             />
-            <div className="flex flex-wrap gap-1.5">
-              {DEGREE_OPTIONS.filter(d => !filters.degree.find(fd => fd.id === d.value)).map((degree) => (
-                <Badge 
-                  key={degree.value}
-                  variant="outline" 
-                  className={`cursor-pointer hover:bg-[#0077B5]/10 text-xs ${!isFilterSupported(filters.api, 'degree') ? 'opacity-50 cursor-not-allowed' : ''}`}
-                  onClick={() => {
-                    if (isFilterSupported(filters.api, 'degree')) {
-                      handleAddPriorityFilter('degree', { id: degree.value, title: degree.label });
-                    }
-                  }}
-                >
-                  <Plus className="w-3 h-3 mr-1" />
-                  {degree.label}
-                </Badge>
-              ))}
-            </div>
+            <AutocompleteInput
+              filterKey="degree"
+              placeholder="Rechercher un diplôme (ex: Master, Licence...)"
+              value={searchInputs['degree'] || ''}
+              options={parameterOptions['degree'] || []}
+              loading={loadingParams === 'degree'}
+              onInputChange={(val) => handleSearchInput('degree', val)}
+              onSelect={(item) => handleAddPriorityFilter('degree', item)}
+              disabled={!isFilterSupported(filters.api, 'degree')}
+            />
           </FilterGroup>
         </FilterSection>
 
