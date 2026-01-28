@@ -211,6 +211,36 @@ export type Database = {
         }
         Relationships: []
       }
+      outreach_sequences: {
+        Row: {
+          created_at: string
+          created_by: string
+          description: string | null
+          id: string
+          is_active: boolean
+          name: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by: string
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          name: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          name?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           created_at: string
@@ -234,6 +264,196 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      sequence_enrollments: {
+        Row: {
+          account_id: string
+          completed_at: string | null
+          created_at: string
+          created_by: string
+          current_step_order: number
+          id: string
+          job_id: string | null
+          job_title: string | null
+          profile_headline: string | null
+          profile_id: string
+          profile_name: string | null
+          profile_url: string | null
+          replied_at: string | null
+          sequence_id: string
+          status: string
+          updated_at: string
+          user_timezone: string
+        }
+        Insert: {
+          account_id: string
+          completed_at?: string | null
+          created_at?: string
+          created_by: string
+          current_step_order?: number
+          id?: string
+          job_id?: string | null
+          job_title?: string | null
+          profile_headline?: string | null
+          profile_id: string
+          profile_name?: string | null
+          profile_url?: string | null
+          replied_at?: string | null
+          sequence_id: string
+          status?: string
+          updated_at?: string
+          user_timezone?: string
+        }
+        Update: {
+          account_id?: string
+          completed_at?: string | null
+          created_at?: string
+          created_by?: string
+          current_step_order?: number
+          id?: string
+          job_id?: string | null
+          job_title?: string | null
+          profile_headline?: string | null
+          profile_id?: string
+          profile_name?: string | null
+          profile_url?: string | null
+          replied_at?: string | null
+          sequence_id?: string
+          status?: string
+          updated_at?: string
+          user_timezone?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sequence_enrollments_sequence_id_fkey"
+            columns: ["sequence_id"]
+            isOneToOne: false
+            referencedRelation: "outreach_sequences"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sequence_step_executions: {
+        Row: {
+          created_at: string
+          enrollment_id: string
+          error_message: string | null
+          executed_at: string | null
+          final_message: string | null
+          final_subject: string | null
+          id: string
+          scheduled_at: string
+          skip_reason: string | null
+          status: string
+          step_id: string
+          step_order: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          enrollment_id: string
+          error_message?: string | null
+          executed_at?: string | null
+          final_message?: string | null
+          final_subject?: string | null
+          id?: string
+          scheduled_at: string
+          skip_reason?: string | null
+          status?: string
+          step_id: string
+          step_order: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          enrollment_id?: string
+          error_message?: string | null
+          executed_at?: string | null
+          final_message?: string | null
+          final_subject?: string | null
+          id?: string
+          scheduled_at?: string
+          skip_reason?: string | null
+          status?: string
+          step_id?: string
+          step_order?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sequence_step_executions_enrollment_id_fkey"
+            columns: ["enrollment_id"]
+            isOneToOne: false
+            referencedRelation: "sequence_enrollments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sequence_step_executions_step_id_fkey"
+            columns: ["step_id"]
+            isOneToOne: false
+            referencedRelation: "sequence_steps"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sequence_steps: {
+        Row: {
+          action_type: string
+          ai_tone: string | null
+          condition_type: string | null
+          created_at: string
+          delay_days: number
+          delay_hours: number
+          id: string
+          message_template: string | null
+          preferred_hour_end: number | null
+          preferred_hour_start: number | null
+          sequence_id: string
+          step_order: number
+          subject_template: string | null
+          use_ai_personalization: boolean
+        }
+        Insert: {
+          action_type: string
+          ai_tone?: string | null
+          condition_type?: string | null
+          created_at?: string
+          delay_days?: number
+          delay_hours?: number
+          id?: string
+          message_template?: string | null
+          preferred_hour_end?: number | null
+          preferred_hour_start?: number | null
+          sequence_id: string
+          step_order: number
+          subject_template?: string | null
+          use_ai_personalization?: boolean
+        }
+        Update: {
+          action_type?: string
+          ai_tone?: string | null
+          condition_type?: string | null
+          created_at?: string
+          delay_days?: number
+          delay_hours?: number
+          id?: string
+          message_template?: string | null
+          preferred_hour_end?: number | null
+          preferred_hour_start?: number | null
+          sequence_id?: string
+          step_order?: number
+          subject_template?: string | null
+          use_ai_personalization?: boolean
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sequence_steps_sequence_id_fkey"
+            columns: ["sequence_id"]
+            isOneToOne: false
+            referencedRelation: "outreach_sequences"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       user_roles: {
         Row: {
