@@ -738,7 +738,12 @@ async function handleGetProfile(
 
 /**
  * Handle Get Chats - List conversations for an account
- * Optionally filter by attendee (LinkedIn profile ID)
+ * If attendee_provider_id is provided, use the dedicated endpoint to find chats for that specific attendee
+ * Otherwise list all chats for the account
+ * 
+ * API Docs: 
+ * - List all chats: GET /chats?account_id={account_id}
+ * - List chats by attendee: GET /chat_attendees/{attendee_id}/chats?account_id={account_id}
  */
 async function handleGetChats(
   baseUrl: string,
@@ -746,21 +751,26 @@ async function handleGetChats(
   accountId: string,
   params: Record<string, unknown>
 ): Promise<Response> {
-  const { attendee_id, limit = 50, cursor } = params;
+  const { attendee_provider_id, limit = 50, cursor } = params;
 
   const queryParams = new URLSearchParams();
   queryParams.set('account_id', accountId);
   queryParams.set('limit', String(limit));
   
-  if (attendee_id) {
-    queryParams.set('attendee_id', String(attendee_id));
-  }
   if (cursor) {
     queryParams.set('cursor', String(cursor));
   }
 
-  const url = `${baseUrl}/chats?${queryParams.toString()}`;
-  console.log('Get chats URL:', url);
+  // If we have an attendee_provider_id, use the dedicated endpoint
+  // This is more efficient than listing all chats and filtering client-side
+  let url: string;
+  if (attendee_provider_id) {
+    url = `${baseUrl}/chat_attendees/${encodeURIComponent(String(attendee_provider_id))}/chats?${queryParams.toString()}`;
+    console.log('Get chats by attendee URL:', url);
+  } else {
+    url = `${baseUrl}/chats?${queryParams.toString()}`;
+    console.log('Get all chats URL:', url);
+  }
 
   const response = await fetch(url, {
     headers: {
