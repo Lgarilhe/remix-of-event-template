@@ -65,19 +65,19 @@ interface SequenceBuilderProps {
 
 // ACTIONS = ce qu'on FAIT
 const ACTIONS = [
-  { value: 'connection_request', label: 'Invitation LinkedIn', icon: UserPlus, color: 'bg-emerald-100 text-emerald-600', description: 'Envoyer une demande de connexion' },
-  { value: 'inmail', label: 'InMail', icon: Mail, color: 'bg-blue-100 text-blue-600', description: 'Envoyer un InMail (payant)' },
-  { value: 'message', label: 'Message direct', icon: MessageSquare, color: 'bg-orange-100 text-orange-600', description: 'Envoyer un message (si connecté)' },
-  { value: 'profile_visit', label: 'Visite de profil', icon: Eye, color: 'bg-sky-100 text-sky-600', description: 'Visiter le profil du prospect' },
-  { value: 'smart_message', label: 'Smart Message (IA)', icon: Sparkles, color: 'bg-purple-100 text-purple-600', description: 'Message personnalisé par IA' },
+  { value: 'connection_request', label: 'Invitation LinkedIn', icon: UserPlus, color: 'bg-emerald-100 text-emerald-600', description: 'Envoyer une demande de connexion', requiresPrevious: [], excludeIfPrevious: ['connection_request'], requiresConnection: false },
+  { value: 'inmail', label: 'InMail', icon: Mail, color: 'bg-blue-100 text-blue-600', description: 'Envoyer un InMail (payant)', requiresPrevious: [], excludeIfPrevious: [], requiresConnection: false },
+  { value: 'profile_visit', label: 'Visite de profil', icon: Eye, color: 'bg-sky-100 text-sky-600', description: 'Visiter le profil du prospect', requiresPrevious: [], excludeIfPrevious: [], requiresConnection: false },
+  { value: 'message', label: 'Message direct', icon: MessageSquare, color: 'bg-orange-100 text-orange-600', description: 'Envoyer un message (si connecté)', requiresPrevious: ['wait_connection'], excludeIfPrevious: [], requiresConnection: true },
+  { value: 'smart_message', label: 'Smart Message (IA)', icon: Sparkles, color: 'bg-purple-100 text-purple-600', description: 'Message personnalisé par IA', requiresPrevious: ['wait_connection'], excludeIfPrevious: [], requiresConnection: true },
 ];
 
 // TRIGGERS = ce qu'on ATTEND
 const TRIGGERS = [
-  { value: 'wait_connection', label: 'Attendre connexion', icon: Timer, color: 'bg-amber-100 text-amber-600', description: 'Pause jusqu\'à acceptation', waitEvent: 'connection_accepted' },
-  { value: 'wait_reply', label: 'Attendre réponse', icon: MessageSquare, color: 'bg-amber-100 text-amber-600', description: 'Pause jusqu\'à réponse', waitEvent: 'reply_received' },
-  { value: 'wait_profile_visit', label: 'Attendre visite', icon: Eye, color: 'bg-amber-100 text-amber-600', description: 'Pause jusqu\'à visite profil', waitEvent: 'profile_visited' },
-  { value: 'condition_branch', label: 'Branchement', icon: GitBranch, color: 'bg-rose-100 text-rose-600', description: 'Si/Sinon conditionnel' },
+  { value: 'wait_connection', label: 'Attendre connexion', icon: Timer, color: 'bg-amber-100 text-amber-600', description: 'Pause jusqu\'à acceptation', waitEvent: 'connection_accepted', requiresPrevious: ['connection_request'], excludeIfPrevious: ['wait_connection'] },
+  { value: 'wait_reply', label: 'Attendre réponse', icon: MessageSquare, color: 'bg-amber-100 text-amber-600', description: 'Pause jusqu\'à réponse', waitEvent: 'reply_received', requiresPrevious: ['inmail', 'message', 'smart_message'], excludeIfPrevious: [] },
+  { value: 'wait_profile_visit', label: 'Attendre visite retour', icon: Eye, color: 'bg-amber-100 text-amber-600', description: 'Pause si visite profil', waitEvent: 'profile_visited', requiresPrevious: ['profile_visit'], excludeIfPrevious: [] },
+  { value: 'condition_branch', label: 'Branchement', icon: GitBranch, color: 'bg-rose-100 text-rose-600', description: 'Si/Sinon conditionnel', requiresPrevious: [], excludeIfPrevious: [] },
 ];
 
 const ALL_STEP_TYPES = [...ACTIONS, ...TRIGGERS];
@@ -94,6 +94,42 @@ const TIMEOUT_ACTIONS = [
   { value: 'alternative_step', label: 'Exécuter étape alternative' },
   { value: 'end_sequence', label: 'Terminer la séquence' },
 ];
+
+// Helper to get available actions/triggers based on previous steps
+const getAvailableStepTypes = (previousSteps: SequenceStep[]) => {
+  const previousTypes = previousSteps.map(s => s.actionType);
+  const hasConnectionRequest = previousTypes.includes('connection_request');
+  const hasWaitConnection = previousTypes.includes('wait_connection');
+  const hasMessage = previousTypes.some(t => ['inmail', 'message', 'smart_message'].includes(t));
+  const hasProfileVisit = previousTypes.includes('profile_visit');
+
+  const availableActions = ACTIONS.filter(action => {
+    // Check if excluded by previous steps
+    if (action.excludeIfPrevious.some(ex => previousTypes.includes(ex as SequenceStep['actionType']))) {
+      return false;
+    }
+    // Check if requires connection but no wait_connection happened
+    if (action.requiresConnection && !hasWaitConnection) {
+      return false;
+    }
+    return true;
+  });
+
+  const availableTriggers = TRIGGERS.filter(trigger => {
+    // Check if excluded by previous steps
+    if (trigger.excludeIfPrevious.some(ex => previousTypes.includes(ex as SequenceStep['actionType']))) {
+      return false;
+    }
+    // Check if requires specific previous action
+    if (trigger.requiresPrevious.length > 0) {
+      const hasRequired = trigger.requiresPrevious.some(req => previousTypes.includes(req as SequenceStep['actionType']));
+      if (!hasRequired) return false;
+    }
+    return true;
+  });
+
+  return { availableActions, availableTriggers };
+};
 
 const AI_TONES = [
   { value: 'professional', label: 'Professionnel' },
@@ -514,75 +550,99 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = ({
             </div>
 
             {/* Step picker - shows when no steps or user clicked add */}
-            {(showStepPicker || sequence.steps.length === 0) && (
-              <div className={cn(
-                "mt-4 p-4 border-2 border-dashed rounded-lg",
-                sequence.steps.length === 0 
-                  ? "border-primary bg-primary/5" 
-                  : "border-primary/30 bg-muted/20"
-              )}>
-                <div className="flex items-center justify-between mb-4">
-                  <span className="font-medium text-sm">
-                    {sequence.steps.length === 0 ? 'Commencer par ajouter une étape' : 'Ajouter une étape'}
-                  </span>
-                  {sequence.steps.length > 0 && (
-                    <Button variant="ghost" size="sm" onClick={() => setShowStepPicker(false)}>
-                      <X className="w-4 h-4" />
-                    </Button>
+            {(showStepPicker || sequence.steps.length === 0) && (() => {
+              const { availableActions, availableTriggers } = getAvailableStepTypes(sequence.steps);
+              const hasNoOptions = availableActions.length === 0 && availableTriggers.length === 0;
+
+              return (
+                <div className={cn(
+                  "mt-4 p-4 border-2 border-dashed rounded-lg",
+                  sequence.steps.length === 0 
+                    ? "border-primary bg-primary/5" 
+                    : "border-primary/30 bg-muted/20"
+                )}>
+                  <div className="flex items-center justify-between mb-4">
+                    <span className="font-medium text-sm">
+                      {sequence.steps.length === 0 ? 'Commencer par ajouter une étape' : 'Ajouter une étape'}
+                    </span>
+                    {sequence.steps.length > 0 && (
+                      <Button variant="ghost" size="sm" onClick={() => setShowStepPicker(false)}>
+                        <X className="w-4 h-4" />
+                      </Button>
+                    )}
+                  </div>
+
+                  {hasNoOptions ? (
+                    <div className="text-center py-4 text-muted-foreground text-sm">
+                      Séquence complète ! Aucune action supplémentaire disponible.
+                    </div>
+                  ) : (
+                    <>
+                      {/* Actions section */}
+                      {availableActions.length > 0 && (
+                        <div className="mb-4">
+                          <div className="flex items-center gap-2 mb-2">
+                            <Zap className="w-4 h-4 text-emerald-600" />
+                            <span className="text-xs font-semibold uppercase text-muted-foreground">Actions</span>
+                          </div>
+                          <div className="grid grid-cols-2 gap-2">
+                            {availableActions.map(action => (
+                              <button
+                                key={action.value}
+                                onClick={() => addStep(action.value)}
+                                className="flex items-center gap-2 p-2.5 rounded-lg border border-border hover:border-primary hover:bg-primary/5 transition-colors text-left"
+                              >
+                                <div className={cn("w-8 h-8 rounded-lg flex items-center justify-center", action.color)}>
+                                  <action.icon className="w-4 h-4" />
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <div className="font-medium text-sm truncate">{action.label}</div>
+                                  <div className="text-xs text-muted-foreground truncate">{action.description}</div>
+                                </div>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Triggers section */}
+                      {availableTriggers.length > 0 && (
+                        <div>
+                          <div className="flex items-center gap-2 mb-2">
+                            <Timer className="w-4 h-4 text-amber-600" />
+                            <span className="text-xs font-semibold uppercase text-muted-foreground">Triggers</span>
+                          </div>
+                          <div className="grid grid-cols-2 gap-2">
+                            {availableTriggers.map(trigger => (
+                              <button
+                                key={trigger.value}
+                                onClick={() => addStep(trigger.value)}
+                                className="flex items-center gap-2 p-2.5 rounded-lg border border-border hover:border-amber-400 hover:bg-amber-50 transition-colors text-left"
+                              >
+                                <div className={cn("w-8 h-8 rounded-lg flex items-center justify-center", trigger.color)}>
+                                  <trigger.icon className="w-4 h-4" />
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <div className="font-medium text-sm truncate">{trigger.label}</div>
+                                  <div className="text-xs text-muted-foreground truncate">{trigger.description}</div>
+                                </div>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Show hint when some options are hidden */}
+                      {(availableActions.length < ACTIONS.length || availableTriggers.length < TRIGGERS.length) && (
+                        <p className="text-xs text-muted-foreground mt-3 text-center italic">
+                          Certaines options sont masquées car non pertinentes à cette étape
+                        </p>
+                      )}
+                    </>
                   )}
                 </div>
-
-                {/* Actions section */}
-                <div className="mb-4">
-                  <div className="flex items-center gap-2 mb-2">
-                    <Zap className="w-4 h-4 text-emerald-600" />
-                    <span className="text-xs font-semibold uppercase text-muted-foreground">Actions</span>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    {ACTIONS.map(action => (
-                      <button
-                        key={action.value}
-                        onClick={() => addStep(action.value)}
-                        className="flex items-center gap-2 p-2.5 rounded-lg border border-border hover:border-primary hover:bg-primary/5 transition-colors text-left"
-                      >
-                        <div className={cn("w-8 h-8 rounded-lg flex items-center justify-center", action.color)}>
-                          <action.icon className="w-4 h-4" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="font-medium text-sm truncate">{action.label}</div>
-                          <div className="text-xs text-muted-foreground truncate">{action.description}</div>
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Triggers section */}
-                <div>
-                  <div className="flex items-center gap-2 mb-2">
-                    <Timer className="w-4 h-4 text-amber-600" />
-                    <span className="text-xs font-semibold uppercase text-muted-foreground">Triggers</span>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    {TRIGGERS.map(trigger => (
-                      <button
-                        key={trigger.value}
-                        onClick={() => addStep(trigger.value)}
-                        className="flex items-center gap-2 p-2.5 rounded-lg border border-border hover:border-amber-400 hover:bg-amber-50 transition-colors text-left"
-                      >
-                        <div className={cn("w-8 h-8 rounded-lg flex items-center justify-center", trigger.color)}>
-                          <trigger.icon className="w-4 h-4" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="font-medium text-sm truncate">{trigger.label}</div>
-                          <div className="text-xs text-muted-foreground truncate">{trigger.description}</div>
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            )}
+              );
+            })()}
 
             {/* Add step button - only show when steps exist and picker is hidden */}
             {sequence.steps.length > 0 && !showStepPicker && (
