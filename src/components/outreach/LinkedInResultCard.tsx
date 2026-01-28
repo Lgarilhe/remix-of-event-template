@@ -35,7 +35,9 @@ import {
   Target,
   PenLine,
   Send,
+  GitBranch,
 } from 'lucide-react';
+import { SequenceEnrollButton } from './SequenceEnrollButton';
 import { Textarea } from '@/components/ui/textarea';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -49,6 +51,7 @@ interface LinkedInResultCardProps {
   onScoreProfile?: () => void;
   accountId?: string;
   onMessageSent?: () => void;
+  onSequenceEnroll?: () => void;
 }
 
 interface ChatMessage {
@@ -76,6 +79,7 @@ export const LinkedInResultCard: React.FC<LinkedInResultCardProps> = ({
   onScoreProfile,
   accountId,
   onMessageSent,
+  onSequenceEnroll,
 }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const [showMessageModal, setShowMessageModal] = useState(false);
@@ -521,6 +525,17 @@ export const LinkedInResultCard: React.FC<LinkedInResultCardProps> = ({
                       </a>
                     </Button>
                   )}
+                  
+                  {/* Sequence enroll button */}
+                  {accountId && (
+                    <SequenceEnrollButton
+                      selectedProfiles={[profile]}
+                      accountId={accountId}
+                      selectedJob={selectedJob ? { id: selectedJob.id, title: selectedJob.title } : undefined}
+                      onSuccess={onSequenceEnroll}
+                    />
+                  )}
+                  
                   <Button
                     variant="outline"
                     size="sm"
