@@ -67,6 +67,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
   const isInitialMount = useRef(true);
   const hasAccountBeenSelected = useRef(false); // Track if account was already selected once
   const scrollAreaRef = useRef<HTMLDivElement>(null); // Ref for scrolling to top on pagination
+  const shouldScrollToTop = useRef(false); // Flag to scroll after pagination load completes
   
   // Update API mode based on selected filter
   useEffect(() => {
@@ -537,19 +538,26 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
     }
   }, []);
 
+  // Scroll to top when loading finishes after pagination
+  useEffect(() => {
+    if (!loading && shouldScrollToTop.current) {
+      scrollToTop();
+      shouldScrollToTop.current = false;
+    }
+  }, [loading, scrollToTop]);
+
   // Pagination handlers
   const handleNextPage = useCallback(() => {
     if (!cursor) return;
-    // Store current cursor before navigating
+    shouldScrollToTop.current = true; // Flag to scroll after load
     setCursors(prev => [...prev, cursor]);
     setCurrentPage(prev => prev + 1);
     handleSearch(false, cursor);
-    // Scroll to top after navigation
-    setTimeout(scrollToTop, 100);
-  }, [cursor, handleSearch, scrollToTop]);
+  }, [cursor, handleSearch]);
 
   const handlePreviousPage = useCallback(() => {
     if (currentPage <= 1) return;
+    shouldScrollToTop.current = true; // Flag to scroll after load
     const newPage = currentPage - 1;
     setCurrentPage(newPage);
     
@@ -563,9 +571,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
       setCursors(prev => prev.slice(0, newPage - 1));
       handleSearch(false, previousCursor);
     }
-    // Scroll to top after navigation
-    setTimeout(scrollToTop, 100);
-  }, [currentPage, cursors, handleSearch, scrollToTop]);
+  }, [currentPage, cursors, handleSearch]);
 
   // Reset pagination when filters change
   useEffect(() => {
