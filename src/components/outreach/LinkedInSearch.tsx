@@ -66,6 +66,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isInitialMount = useRef(true);
   const hasAccountBeenSelected = useRef(false); // Track if account was already selected once
+  const scrollAreaRef = useRef<HTMLDivElement>(null); // Ref for scrolling to top on pagination
   
   // Update API mode based on selected filter
   useEffect(() => {
@@ -526,6 +527,16 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
     setJobScores({});
   };
 
+  // Scroll to top of results
+  const scrollToTop = useCallback(() => {
+    if (scrollAreaRef.current) {
+      const viewport = scrollAreaRef.current.querySelector('[data-radix-scroll-area-viewport]');
+      if (viewport) {
+        viewport.scrollTop = 0;
+      }
+    }
+  }, []);
+
   // Pagination handlers
   const handleNextPage = useCallback(() => {
     if (!cursor) return;
@@ -533,7 +544,9 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
     setCursors(prev => [...prev, cursor]);
     setCurrentPage(prev => prev + 1);
     handleSearch(false, cursor);
-  }, [cursor, handleSearch]);
+    // Scroll to top after navigation
+    setTimeout(scrollToTop, 100);
+  }, [cursor, handleSearch, scrollToTop]);
 
   const handlePreviousPage = useCallback(() => {
     if (currentPage <= 1) return;
@@ -550,7 +563,9 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
       setCursors(prev => prev.slice(0, newPage - 1));
       handleSearch(false, previousCursor);
     }
-  }, [currentPage, cursors, handleSearch]);
+    // Scroll to top after navigation
+    setTimeout(scrollToTop, 100);
+  }, [currentPage, cursors, handleSearch, scrollToTop]);
 
   // Reset pagination when filters change
   useEffect(() => {
@@ -1013,7 +1028,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
         </div>
 
         {/* Results list */}
-        <ScrollArea className="flex-1">
+        <ScrollArea className="flex-1" ref={scrollAreaRef}>
           {loading && results.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-20">
               <Loader2 className="w-10 h-10 animate-spin text-[#0077B5] mb-4" />
@@ -1090,17 +1105,48 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
             <div className="p-4 space-y-3">
               {/* Results stats banner */}
               {hasSearched && total !== null && total > 0 && (
-                <div className="bg-gradient-to-r from-[#0077B5]/5 to-transparent rounded-lg p-3 mb-4 flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full bg-[#0077B5]/10 flex items-center justify-center">
-                    <Users className="w-5 h-5 text-[#0077B5]" />
+                <div className="bg-gradient-to-r from-[#0077B5]/5 to-transparent rounded-lg p-3 mb-4 flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-full bg-[#0077B5]/10 flex items-center justify-center">
+                      <Users className="w-5 h-5 text-[#0077B5]" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-[#1A1A1A]">
+                        {total.toLocaleString()} candidats correspondent à vos critères
+                      </p>
+                      <p className="text-xs text-[#1A1A1A]/50">
+                        {RESULTS_PER_PAGE * (currentPage - 1) + 1} - {Math.min(RESULTS_PER_PAGE * currentPage, total)} affichés
+                      </p>
+                    </div>
                   </div>
-                  <div>
-                    <p className="text-sm font-medium text-[#1A1A1A]">
-                      {total.toLocaleString()} candidats correspondent à vos critères
-                    </p>
-                    <p className="text-xs text-[#1A1A1A]/50">
-                      Cliquez sur un profil pour voir plus de détails
-                    </p>
+                  
+                  {/* Top pagination */}
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={handlePreviousPage}
+                      disabled={loading || currentPage <= 1}
+                      className="gap-1 h-8"
+                    >
+                      <ChevronLeft className="w-4 h-4" />
+                      <span className="hidden sm:inline">Préc.</span>
+                    </Button>
+                    
+                    <span className="px-3 py-1.5 text-xs font-medium text-[#1A1A1A] bg-white rounded-md border border-[#1A1A1A]/10">
+                      {currentPage}
+                    </span>
+                    
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={handleNextPage}
+                      disabled={loading || !cursor}
+                      className="gap-1 h-8"
+                    >
+                      <span className="hidden sm:inline">Suiv.</span>
+                      <ChevronRight className="w-4 h-4" />
+                    </Button>
                   </div>
                 </div>
               )}
@@ -1120,7 +1166,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
                 />
               ))}
 
-              {/* Pagination */}
+              {/* Bottom Pagination */}
               {hasSearched && (results.length > 0 || currentPage > 1) && (
                 <div className="pt-6 pb-4 flex flex-col items-center gap-3">
                   <div className="flex items-center gap-2">
