@@ -19,7 +19,12 @@ import {
   MessageSquare,
   Users,
   Sparkles,
+  Bot,
+  Loader2,
+  TrendingUp,
 } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
+import { toast } from 'sonner';
 
 interface LinkedInResultCardProps {
   profile: LinkedInProfile;
@@ -27,6 +32,8 @@ interface LinkedInResultCardProps {
 
 export const LinkedInResultCard: React.FC<LinkedInResultCardProps> = ({ profile }) => {
   const [isExpanded, setIsExpanded] = useState(false);
+  const [aiAnalysis, setAiAnalysis] = useState<string | null>(null);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
 
   // Handle both API formats
   const firstName = profile.first_name || profile.name?.split(' ')[0] || '';
@@ -59,7 +66,6 @@ export const LinkedInResultCard: React.FC<LinkedInResultCardProps> = ({ profile 
   };
 
   const companyTenure = getTenureDisplay(currentPosition?.tenure_at_company);
-  const roleTenure = getTenureDisplay(currentPosition?.tenure_at_role);
 
   // Get skills (first 5)
   const skills = (profile as any).skills?.slice(0, 8) || [];
@@ -76,8 +82,58 @@ export const LinkedInResultCard: React.FC<LinkedInResultCardProps> = ({ profile 
   // Check for interest indicators
   const interests = (profile as any).interests || [];
   const isLikelyToRespond = interests.includes('LIKELY_TO_RESPOND');
-  const isRecentlyOpenToWork = interests.includes('RECENTLY_OPEN_TO_WORK');
-  const isActiveTalent = interests.includes('ACTIVE_TALENT');
+
+  // Calculate total experience years
+  const calculateTotalExperience = () => {
+    let totalMonths = 0;
+    const allPositions = [...(profile.current_positions || []), ...(profile.past_positions || [])];
+    
+    allPositions.forEach(pos => {
+      const tenure = (pos as any).tenure_at_role || (pos as any).tenure_at_company;
+      if (tenure) {
+        totalMonths += (tenure.years || 0) * 12 + (tenure.months || 0);
+      }
+    });
+    
+    const years = Math.floor(totalMonths / 12);
+    return years > 0 ? `${years}+ ans d'exp.` : null;
+  };
+
+  const totalExperience = calculateTotalExperience();
+
+  // AI Analysis function
+  const handleAiAnalysis = async () => {
+    if (aiAnalysis) {
+      setAiAnalysis(null);
+      return;
+    }
+
+    setIsAnalyzing(true);
+    try {
+      const profileSummary = {
+        name: fullName,
+        headline: profile.headline,
+        currentRole,
+        currentCompany,
+        location: profile.location,
+        skills: skills.map((s: any) => s.name || s).slice(0, 10),
+        pastPositions: pastPositions.map(p => `${p.role} chez ${p.company}`),
+        education: education.map((e: any) => `${e.degree || ''} - ${e.school}`),
+      };
+
+      const { data, error } = await supabase.functions.invoke('analyze-linkedin-profile', {
+        body: { profile: profileSummary }
+      });
+
+      if (error) throw error;
+      setAiAnalysis(data.analysis);
+    } catch (error) {
+      console.error('AI analysis error:', error);
+      toast.error("Erreur lors de l'analyse IA");
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
 
   return (
     <Collapsible open={isExpanded} onOpenChange={setIsExpanded}>
@@ -97,7 +153,6 @@ export const LinkedInResultCard: React.FC<LinkedInResultCardProps> = ({ profile 
                   {initials || '?'}
                 </AvatarFallback>
               </Avatar>
-              {/* Network badge overlay */}
               {networkDistance && networkDistance <= 3 && (
                 <span className="absolute -bottom-1 -right-1 w-5 h-5 bg-white border-2 border-[#0077B5] rounded-full flex items-center justify-center text-[10px] font-bold text-[#0077B5]">
                   {networkDistance}°
@@ -118,11 +173,6 @@ export const LinkedInResultCard: React.FC<LinkedInResultCardProps> = ({ profile 
                       <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-5 text-amber-600 border-amber-300 bg-amber-50">
                         <Star className="w-3 h-3 mr-0.5 fill-amber-400" />
                         Premium
-                      </Badge>
-                    )}
-                    {profile.open_profile && (
-                      <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-5 text-blue-600 border-blue-300 bg-blue-50">
-                        Open Link
                       </Badge>
                     )}
                     {profile.open_to_work && (
@@ -147,6 +197,20 @@ export const LinkedInResultCard: React.FC<LinkedInResultCardProps> = ({ profile 
 
                 {/* Actions */}
                 <div className="flex items-center gap-1 shrink-0">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleAiAnalysis}
+                    disabled={isAnalyzing}
+                    className="text-purple-600 hover:text-purple-700 hover:bg-purple-50 h-8 w-8 p-0"
+                    title="Analyse IA du profil"
+                  >
+                    {isAnalyzing ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <Bot className="w-4 h-4" />
+                    )}
+                  </Button>
                   {profile.can_send_inmail && (
                     <Button
                       variant="ghost"
@@ -198,6 +262,12 @@ export const LinkedInResultCard: React.FC<LinkedInResultCardProps> = ({ profile 
                     {profile.location}
                   </span>
                 )}
+                {totalExperience && (
+                  <span className="flex items-center gap-1 text-emerald-600 font-medium">
+                    <TrendingUp className="w-3.5 h-3.5" />
+                    {totalExperience}
+                  </span>
+                )}
                 {connectionsCount && (
                   <span className="flex items-center gap-1">
                     <Users className="w-3.5 h-3.5" />
@@ -205,6 +275,51 @@ export const LinkedInResultCard: React.FC<LinkedInResultCardProps> = ({ profile 
                   </span>
                 )}
               </div>
+
+              {/* AI Analysis panel */}
+              {aiAnalysis && (
+                <div className="mt-3 p-3 bg-gradient-to-r from-purple-50 to-blue-50 rounded-lg border border-purple-100">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Bot className="w-4 h-4 text-purple-600" />
+                    <span className="text-xs font-semibold text-purple-700">Analyse IA</span>
+                  </div>
+                  <p className="text-sm text-[#1A1A1A]/80 leading-relaxed">{aiAnalysis}</p>
+                </div>
+              )}
+
+              {/* Experience preview - always visible */}
+              {pastPositions.length > 0 && (
+                <div className="mt-3 pt-3 border-t border-[#1A1A1A]/5">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Briefcase className="w-3.5 h-3.5 text-[#1A1A1A]/40" />
+                    <span className="text-[10px] font-semibold text-[#1A1A1A]/40 uppercase tracking-wider">
+                      Parcours récent
+                    </span>
+                  </div>
+                  <div className="space-y-1.5">
+                    {pastPositions.slice(0, 2).map((pos, index) => (
+                      <div key={index} className="flex items-center gap-2 text-xs">
+                        <div className="w-1.5 h-1.5 rounded-full bg-[#0077B5]/40 shrink-0" />
+                        <span className="text-[#1A1A1A]/70 truncate">
+                          <span className="font-medium">{pos.role}</span>
+                          <span className="text-[#1A1A1A]/40"> chez </span>
+                          <span>{pos.company}</span>
+                          {pos.start?.year && pos.end?.year && (
+                            <span className="text-[#1A1A1A]/30 ml-1">
+                              ({pos.start.year}-{pos.end.year})
+                            </span>
+                          )}
+                        </span>
+                      </div>
+                    ))}
+                    {pastPositions.length > 2 && (
+                      <span className="text-[10px] text-[#0077B5] font-medium">
+                        +{pastPositions.length - 2} autres expériences
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )}
 
               {/* Skills preview */}
               {skills.length > 0 && (
@@ -260,9 +375,6 @@ export const LinkedInResultCard: React.FC<LinkedInResultCardProps> = ({ profile 
                         Depuis {currentPosition.start.month ? `${currentPosition.start.month}/` : ''}{currentPosition.start.year}
                       </span>
                     )}
-                    {roleTenure && (
-                      <span>{roleTenure} dans ce rôle</span>
-                    )}
                   </div>
                   {currentPosition.description && (
                     <p className="text-xs text-[#1A1A1A]/60 mt-2 line-clamp-3">
@@ -273,25 +385,30 @@ export const LinkedInResultCard: React.FC<LinkedInResultCardProps> = ({ profile 
               </div>
             )}
 
-            {/* Past positions */}
+            {/* All past positions */}
             {pastPositions.length > 0 && (
               <div className="space-y-2">
                 <h4 className="text-xs font-semibold text-[#1A1A1A]/50 uppercase tracking-wider flex items-center gap-2">
                   <Clock className="w-3.5 h-3.5" />
-                  Expérience précédente
+                  Expérience complète
                 </h4>
                 <div className="space-y-2">
                   {pastPositions.map((pos, index) => (
-                    <div key={index} className="flex items-start gap-3 text-sm">
-                      <div className="w-1.5 h-1.5 rounded-full bg-[#1A1A1A]/20 mt-2 shrink-0" />
-                      <div>
+                    <div key={index} className="flex items-start gap-3 text-sm p-2 bg-[#1A1A1A]/3 rounded-lg">
+                      <div className="w-2 h-2 rounded-full bg-[#0077B5]/60 mt-1.5 shrink-0" />
+                      <div className="flex-1">
                         <p className="font-medium text-[#1A1A1A]/80">{pos.role}</p>
                         <p className="text-xs text-[#1A1A1A]/50">
                           {pos.company}
                           {pos.start?.year && pos.end?.year && (
-                            <span> • {pos.start.year} - {pos.end.year}</span>
+                            <span className="ml-2 px-1.5 py-0.5 bg-[#1A1A1A]/5 rounded">
+                              {pos.start.year} - {pos.end.year}
+                            </span>
                           )}
                         </p>
+                        {pos.description && (
+                          <p className="text-xs text-[#1A1A1A]/40 mt-1 line-clamp-2">{pos.description}</p>
+                        )}
                       </div>
                     </div>
                   ))}
@@ -308,14 +425,18 @@ export const LinkedInResultCard: React.FC<LinkedInResultCardProps> = ({ profile 
                 </h4>
                 <div className="space-y-2">
                   {education.map((edu: any, index: number) => (
-                    <div key={index} className="flex items-start gap-3 text-sm">
-                      <div className="w-1.5 h-1.5 rounded-full bg-[#1A1A1A]/20 mt-2 shrink-0" />
+                    <div key={index} className="flex items-start gap-3 text-sm p-2 bg-[#1A1A1A]/3 rounded-lg">
+                      <div className="w-2 h-2 rounded-full bg-amber-400 mt-1.5 shrink-0" />
                       <div>
                         <p className="font-medium text-[#1A1A1A]/80">{edu.school}</p>
                         <p className="text-xs text-[#1A1A1A]/50">
                           {edu.degree}
                           {edu.field_of_study && ` - ${edu.field_of_study}`}
-                          {edu.end?.year && ` (${edu.end.year})`}
+                          {edu.end?.year && (
+                            <span className="ml-2 px-1.5 py-0.5 bg-[#1A1A1A]/5 rounded">
+                              {edu.end.year}
+                            </span>
+                          )}
                         </p>
                       </div>
                     </div>
