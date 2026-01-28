@@ -404,13 +404,54 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
     }
   }, [selectedAccount, filters, cursor]);
 
-  // Auto-search with 2s debounce when filters change
+  // Check if filters have any active search criteria
+  const hasActiveFilters = useMemo(() => {
+    return (
+      filters.keywords.trim() !== '' ||
+      filters.location.length > 0 ||
+      filters.company.length > 0 ||
+      filters.company_keywords.length > 0 ||
+      filters.industry.length > 0 ||
+      filters.school.length > 0 ||
+      filters.job_title.length > 0 ||
+      filters.skills.length > 0 ||
+      filters.role.length > 0 ||
+      filters.function.length > 0 ||
+      filters.degree.length > 0 ||
+      filters.groups.length > 0 ||
+      filters.seniority.length > 0 ||
+      filters.network_distance.length > 0 ||
+      filters.profile_language.length > 0 ||
+      filters.years_of_experience_min !== null ||
+      filters.years_of_experience_max !== null ||
+      filters.tenure_at_company_min !== null ||
+      filters.tenure_at_company_max !== null ||
+      filters.open_to_work === true ||
+      filters.open_to.length > 0 ||
+      filters.hiring_project !== null ||
+      filters.talent_pool !== null ||
+      filters.spotlight !== null ||
+      filters.past_company.length > 0 ||
+      filters.past_job_title.length > 0 ||
+      filters.company_headcount.length > 0 ||
+      filters.company_type.length > 0 ||
+      filters.company_location.length > 0 ||
+      filters.activity_messages !== null ||
+      filters.activity_notes !== null ||
+      filters.tags.length > 0
+    );
+  }, [filters]);
+
+  // Auto-search with 2s debounce when filters change - only if filters are not empty
   useEffect(() => {
     if (isInitialMount.current) {
       isInitialMount.current = false;
       return;
     }
     if (!selectedAccount) return;
+    
+    // Don't auto-search if no filters are set
+    if (!hasActiveFilters) return;
 
     if (searchDebounceRef.current) {
       clearTimeout(searchDebounceRef.current);
@@ -425,7 +466,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
         clearTimeout(searchDebounceRef.current);
       }
     };
-  }, [filtersJson, selectedAccount, handleSearch]);
+  }, [filtersJson, selectedAccount, handleSearch, hasActiveFilters]);
 
   const handleClearFilters = () => {
     setFilters(INITIAL_FILTERS);
