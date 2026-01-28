@@ -17,7 +17,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { Search, Loader2, ChevronRight, AlertTriangle, Lock } from 'lucide-react';
+import { Search, Loader2, ChevronRight, AlertTriangle, Lock, Users } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface LinkedInSearchProps {
@@ -473,58 +473,105 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
       </div>
 
       {/* Results */}
-      <div className="bg-white rounded-lg border border-[#1A1A1A]/10 min-h-[600px]">
+      <div className="bg-white rounded-xl border border-[#1A1A1A]/10 flex flex-col h-[calc(100vh-140px)]">
         {/* Results header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-[#1A1A1A]/10">
-          <div className="text-sm text-[#1A1A1A]/60">
-            {hasSearched ? (
-              total !== null ? (
-                <span>{total.toLocaleString()} résultat{total > 1 ? 's' : ''}</span>
+        <div className="flex items-center justify-between px-5 py-4 border-b border-[#1A1A1A]/10 shrink-0">
+          <div className="flex items-center gap-4">
+            <div className="text-base font-semibold text-[#1A1A1A]">
+              {hasSearched ? (
+                total !== null ? (
+                  <span>{total.toLocaleString()} profil{total > 1 ? 's' : ''}</span>
+                ) : (
+                  <span>{results.length} profil{results.length > 1 ? 's' : ''}</span>
+                )
               ) : (
-                <span>{results.length} résultat{results.length > 1 ? 's' : ''}</span>
-              )
-            ) : (
-              <span>Lancez une recherche</span>
+                <span>Résultats de recherche</span>
+              )}
+            </div>
+            {hasSearched && total !== null && total > results.length && (
+              <span className="text-xs text-[#1A1A1A]/40 bg-[#1A1A1A]/5 px-2 py-1 rounded">
+                {results.length} affichés
+              </span>
             )}
           </div>
+          
+          {/* Filter summary */}
+          {hasSearched && (
+            <div className="flex items-center gap-2 text-xs text-[#1A1A1A]/50">
+              <span className="hidden md:inline">Mode:</span>
+              <span className="font-medium text-[#0077B5]">
+                {filters.api === 'recruiter' ? 'Recruiter' : filters.api === 'sales_navigator' ? 'Sales Nav' : 'Classic'}
+              </span>
+            </div>
+          )}
         </div>
 
         {/* Results list */}
-        <ScrollArea className="h-[calc(100vh-300px)]">
+        <ScrollArea className="flex-1">
           {loading && results.length === 0 ? (
-            <div className="flex items-center justify-center py-20">
-              <Loader2 className="w-8 h-8 animate-spin text-[#0077B5]" />
+            <div className="flex flex-col items-center justify-center py-20">
+              <Loader2 className="w-10 h-10 animate-spin text-[#0077B5] mb-4" />
+              <p className="text-sm text-[#1A1A1A]/50">Recherche en cours...</p>
             </div>
           ) : results.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-20 text-[#1A1A1A]/40">
-              <Search className="w-12 h-12 mb-4" />
-              <p>
+            <div className="flex flex-col items-center justify-center py-20 text-[#1A1A1A]/40 px-8">
+              <div className="w-20 h-20 rounded-full bg-[#1A1A1A]/5 flex items-center justify-center mb-6">
+                <Search className="w-10 h-10" />
+              </div>
+              <p className="text-lg font-medium text-[#1A1A1A]/60 mb-2">
+                {hasSearched ? 'Aucun profil trouvé' : 'Lancez une recherche'}
+              </p>
+              <p className="text-sm text-center max-w-md">
                 {hasSearched
-                  ? 'Aucun résultat pour ces critères'
-                  : 'Configurez vos filtres et lancez une recherche'}
+                  ? 'Essayez d\'ajuster vos filtres pour élargir votre recherche'
+                  : 'Configurez vos filtres LinkedIn dans le panneau de gauche et cliquez sur Rechercher'}
               </p>
             </div>
           ) : (
             <div className="p-4 space-y-3">
+              {/* Results stats banner */}
+              {hasSearched && total !== null && total > 0 && (
+                <div className="bg-gradient-to-r from-[#0077B5]/5 to-transparent rounded-lg p-3 mb-4 flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-[#0077B5]/10 flex items-center justify-center">
+                    <Users className="w-5 h-5 text-[#0077B5]" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-[#1A1A1A]">
+                      {total.toLocaleString()} candidats correspondent à vos critères
+                    </p>
+                    <p className="text-xs text-[#1A1A1A]/50">
+                      Cliquez sur un profil pour voir plus de détails
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* Profile cards */}
               {results.map((profile, index) => (
                 <LinkedInResultCard key={profile.id || `profile-${index}`} profile={profile} />
               ))}
 
               {/* Load more */}
               {cursor && (
-                <div className="pt-4 text-center">
+                <div className="pt-6 pb-4 text-center">
                   <Button
                     variant="outline"
                     onClick={() => handleSearch(false)}
                     disabled={loading}
+                    className="px-8"
                   >
                     {loading ? (
                       <Loader2 className="w-4 h-4 animate-spin mr-2" />
                     ) : (
                       <ChevronRight className="w-4 h-4 mr-2" />
                     )}
-                    Charger plus
+                    Charger plus de profils
                   </Button>
+                  {total !== null && (
+                    <p className="text-xs text-[#1A1A1A]/40 mt-2">
+                      {results.length} sur {total.toLocaleString()} affichés
+                    </p>
+                  )}
                 </div>
               )}
             </div>
