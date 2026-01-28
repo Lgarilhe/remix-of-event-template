@@ -59,14 +59,25 @@ serve(async (req) => {
             }
 
             // Check conditions
-            const shouldExecute = await checkStepCondition(
+            const conditionResult = await checkStepCondition(
               supabase,
               step.condition_type,
               enrollment.account_id,
-              enrollment.profile_id
+              enrollment.profile_id,
+              step.wait_for_event
             );
 
-            if (!shouldExecute) {
+            if (conditionResult === 'wait') {
+              // Put execution in waiting state
+              await supabase
+                .from('sequence_step_executions')
+                .update({ status: 'waiting_event' })
+                .eq('id', exec.id);
+              results.skipped++;
+              continue;
+            }
+
+            if (!conditionResult) {
               await supabase
                 .from('sequence_step_executions')
                 .update({ 
@@ -184,6 +195,71 @@ serve(async (req) => {
         });
       }
 
+      case 'check_timeouts': {
+        // Check for steps waiting too long and branch accordingly
+        const timeoutResults = await checkTimeoutBranches(supabase);
+        return new Response(JSON.stringify({ success: true, ...timeoutResults }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      case 'check_wait_events': {
+        // Check enrollments waiting for events (connection accepted, etc.)
+        const { data: waitingExecutions } = await supabase
+          .from('sequence_step_executions')
+          .select(`
+            *,
+            enrollment:sequence_enrollments(*),
+            step:sequence_steps(*)
+          `)
+          .eq('status', 'waiting_event');
+
+        let eventsTriggered = 0;
+
+        for (const exec of waitingExecutions || []) {
+          const step = exec.step;
+          const enrollment = exec.enrollment;
+          
+          if (!step || !enrollment) continue;
+
+          let eventOccurred = false;
+
+          switch (step.wait_for_event) {
+            case 'connection_accepted': {
+              const profile = await getProfileInfo(enrollment.account_id, enrollment.profile_id);
+              eventOccurred = profile?.network_distance === 'FIRST_DEGREE';
+              break;
+            }
+            case 'reply_received': {
+              eventOccurred = await checkHasProspectReplied(enrollment.account_id, enrollment.profile_id);
+              break;
+            }
+          }
+
+          if (eventOccurred) {
+            // Event occurred! Execute the step
+            await supabase
+              .from('sequence_step_executions')
+              .update({ status: 'scheduled', scheduled_at: new Date().toISOString() })
+              .eq('id', exec.id);
+            
+            // Update connection status if applicable
+            if (step.wait_for_event === 'connection_accepted') {
+              await supabase
+                .from('sequence_enrollments')
+                .update({ connection_status: 'connected' })
+                .eq('id', enrollment.id);
+            }
+            
+            eventsTriggered++;
+          }
+        }
+
+        return new Response(JSON.stringify({ success: true, eventsTriggered }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
       default:
         return new Response(JSON.stringify({ error: 'Unknown action' }), {
           status: 400,
@@ -192,7 +268,7 @@ serve(async (req) => {
     }
   } catch (error) {
     console.error('Sequence processor error:', error);
-    return new Response(JSON.stringify({ 
+    return new Response(JSON.stringify({
       success: false, 
       error: error instanceof Error ? error.message : 'Unknown error' 
     }), {
@@ -206,8 +282,9 @@ async function checkStepCondition(
   _supabase: unknown,
   conditionType: string,
   accountId: string,
-  profileId: string
-): Promise<boolean> {
+  profileId: string,
+  waitForEvent?: string
+): Promise<boolean | 'wait'> {
   switch (conditionType) {
     case 'always':
       return true;
@@ -231,9 +308,31 @@ async function checkStepCondition(
     }
 
     case 'wait_until_connected': {
-      // Only proceed if connected
+      // Check if connected, if not return 'wait' to pause execution
       const profile = await getProfileInfo(accountId, profileId);
-      return profile?.network_distance === 'FIRST_DEGREE';
+      if (profile?.network_distance === 'FIRST_DEGREE') {
+        return true;
+      }
+      // Not connected yet - put in waiting state
+      return 'wait';
+    }
+
+    case 'wait_for_event': {
+      // Custom wait for specific event
+      if (!waitForEvent) return true;
+      
+      switch (waitForEvent) {
+        case 'connection_accepted': {
+          const profile = await getProfileInfo(accountId, profileId);
+          return profile?.network_distance === 'FIRST_DEGREE' ? true : 'wait';
+        }
+        case 'reply_received': {
+          const hasReply = await checkHasProspectReplied(accountId, profileId);
+          return hasReply ? true : 'wait';
+        }
+        default:
+          return true;
+      }
     }
 
     default:
@@ -449,14 +548,27 @@ async function logAnalytics(
   }
 }
 
-async function scheduleNextStep(supabase: any, enrollment: any, currentStepOrder: number) {
-  // Get next step
-  const { data: nextStep } = await supabase
-    .from('sequence_steps')
-    .select('*')
-    .eq('sequence_id', enrollment.sequence_id)
-    .eq('step_order', currentStepOrder + 1)
-    .maybeSingle();
+async function scheduleNextStep(supabase: any, enrollment: any, currentStepOrder: number, forceBranchStepId?: string) {
+  let nextStep;
+  
+  if (forceBranchStepId) {
+    // Force branch to a specific step (timeout branch)
+    const { data } = await supabase
+      .from('sequence_steps')
+      .select('*')
+      .eq('id', forceBranchStepId)
+      .maybeSingle();
+    nextStep = data;
+  } else {
+    // Get next step in sequence order
+    const { data } = await supabase
+      .from('sequence_steps')
+      .select('*')
+      .eq('sequence_id', enrollment.sequence_id)
+      .eq('step_order', currentStepOrder + 1)
+      .maybeSingle();
+    nextStep = data;
+  }
 
   if (!nextStep) {
     // Sequence complete
@@ -497,6 +609,69 @@ async function scheduleNextStep(supabase: any, enrollment: any, currentStepOrder
       scheduled_at: scheduledAt.toISOString(),
       status: 'scheduled',
     });
+}
+
+// Check wait_until_connected steps for timeout and branch
+async function checkTimeoutBranches(supabase: any) {
+  // Get enrollments waiting for connection with timeout configured
+  const { data: waitingExecutions } = await supabase
+    .from('sequence_step_executions')
+    .select(`
+      *,
+      enrollment:sequence_enrollments(*),
+      step:sequence_steps(*)
+    `)
+    .eq('status', 'waiting_event')
+    .not('step.timeout_days', 'is', null);
+
+  if (!waitingExecutions?.length) return { checked: 0, branched: 0 };
+
+  let branched = 0;
+
+  for (const exec of waitingExecutions) {
+    const step = exec.step;
+    const enrollment = exec.enrollment;
+    
+    if (!step?.timeout_days || !enrollment) continue;
+
+    // Check if timeout has passed
+    const waitingSince = new Date(exec.created_at);
+    const now = new Date();
+    const daysPassed = Math.floor((now.getTime() - waitingSince.getTime()) / (1000 * 60 * 60 * 24));
+
+    if (daysPassed >= step.timeout_days) {
+      // Timeout reached!
+      if (step.timeout_branch_step_id) {
+        // Branch to alternative step
+        await supabase
+          .from('sequence_step_executions')
+          .update({ 
+            status: 'skipped', 
+            skip_reason: `Timeout after ${step.timeout_days} days - branching to alternative`,
+            executed_at: now.toISOString(),
+          })
+          .eq('id', exec.id);
+
+        // Schedule the timeout branch step
+        await scheduleNextStep(supabase, enrollment, step.step_order, step.timeout_branch_step_id);
+        branched++;
+      } else {
+        // No branch configured, just skip and continue
+        await supabase
+          .from('sequence_step_executions')
+          .update({ 
+            status: 'skipped', 
+            skip_reason: `Timeout after ${step.timeout_days} days - no branch configured`,
+            executed_at: now.toISOString(),
+          })
+          .eq('id', exec.id);
+
+        await scheduleNextStep(supabase, enrollment, step.step_order);
+      }
+    }
+  }
+
+  return { checked: waitingExecutions.length, branched };
 }
 
 async function checkForReply(accountId: string, profileId: string): Promise<boolean> {
