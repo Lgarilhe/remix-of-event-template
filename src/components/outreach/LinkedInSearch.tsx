@@ -40,6 +40,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
   onAccountChange,
 }) => {
   const [filters, setFilters] = useState<LinkedInFiltersState>(INITIAL_FILTERS);
+  const filtersRef = useRef<LinkedInFiltersState>(INITIAL_FILTERS);
   const [results, setResults] = useState<LinkedInProfile[]>([]);
   const [loading, setLoading] = useState(false);
   const [cursor, setCursor] = useState<string | null>(null);
@@ -68,6 +69,10 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
   const hasAccountBeenSelected = useRef(false); // Track if account was already selected once
   const scrollAreaRef = useRef<HTMLDivElement>(null); // Ref for scrolling to top on pagination
   const shouldScrollToTop = useRef(false); // Flag to scroll after pagination load completes
+
+  useEffect(() => {
+    filtersRef.current = filters;
+  }, [filters]);
   
   // Handler for AI-generated filter auto-fill
   const handleAutoFillFilters = useCallback((generatedFilters: GeneratedFilters) => {
@@ -109,6 +114,60 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
       // Open to work flag
       open_to_work: generatedFilters.open_to_work ?? prev.open_to_work,
     }));
+
+    // Resolve location keywords → location IDs (required by Recruiter API)
+    // If we don't resolve IDs, the UI looks empty and the API can't apply the location filter.
+    const locationKeyword = generatedFilters.location_keywords?.[0]?.trim();
+    if (locationKeyword && selectedAccount) {
+      void (async () => {
+        try {
+          // Don't overwrite a location the user already chose
+          if (filtersRef.current.location.length > 0) return;
+
+          const { data, error } = await supabase.functions.invoke('unipile-search', {
+            body: {
+              action: 'get_parameters',
+              account_id: selectedAccount,
+              type: 'LOCATION',
+              keywords: locationKeyword,
+              service: 'RECRUITER',
+            },
+          });
+
+          if (error) throw error;
+          if (!data?.success || !Array.isArray(data?.items) || data.items.length === 0) {
+            console.warn('[AutoFill] Location could not be resolved from keyword:', locationKeyword);
+            return;
+          }
+
+          const normalized = locationKeyword.toLowerCase();
+          const best =
+            data.items.find((it: any) => String(it.title || '').toLowerCase() === normalized) ||
+            data.items.find((it: any) => String(it.title || '').toLowerCase().includes(normalized)) ||
+            data.items[0];
+
+          if (!best?.id || !best?.title) return;
+
+          setFilters((curr) => ({
+            ...curr,
+            location: curr.location.length
+              ? curr.location
+              : [
+                  {
+                    id: String(best.id),
+                    name: String(best.title),
+                    priority: 'MUST_HAVE',
+                    scope: 'CURRENT_OR_OPEN_TO_RELOCATE',
+                  },
+                ],
+          }));
+
+          console.log('[AutoFill] Resolved location:', { keyword: locationKeyword, id: best.id, title: best.title });
+        } catch (e) {
+          console.error('[AutoFill] Failed to resolve location keyword:', locationKeyword, e);
+        }
+      })();
+    }
     
     // Log what was applied
     console.log('[AutoFill] Applied filters:', {
@@ -118,11 +177,12 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
       xp: `${generatedFilters.years_of_experience_min}-${generatedFilters.years_of_experience_max}`,
       companyExclusions: generatedFilters.company_keywords?.length,
       schools: generatedFilters.school?.length,
+      locationKeywords: generatedFilters.location_keywords,
       locationRadius: generatedFilters.location_within_area,
       spotlight: generatedFilters.spotlight,
       openToWork: generatedFilters.open_to_work,
     });
-  }, []);
+  }, [selectedAccount]);
   
   // Update API mode based on selected filter
   useEffect(() => {
@@ -207,14 +267,21 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
       }
       
       // School - Recruiter uses priority format, others use simple ID array
-      if (filters.school.length) {
+      // IMPORTANT: On the Unipile Recruiter endpoint, "school" behaves like a HARD filter.
+      // So we only send non-CAN_HAVE items; CAN_HAVE stays as a signal in the UI.
+      const effectiveSchool =
+        filters.api === 'recruiter'
+          ? filters.school.filter((f) => (f.priority || 'MUST_HAVE') !== 'CAN_HAVE')
+          : filters.school;
+
+      if (effectiveSchool.length) {
         if (filters.api === 'recruiter') {
-          searchParams.school = filters.school.map(f => ({
+          searchParams.school = effectiveSchool.map(f => ({
             id: f.id,
             priority: f.priority || 'MUST_HAVE',
           }));
         } else {
-          searchParams.school = filters.school.map(f => f.id);
+          searchParams.school = effectiveSchool.map(f => f.id);
         }
       }
       
