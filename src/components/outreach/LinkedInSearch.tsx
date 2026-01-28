@@ -54,12 +54,10 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
   const [scoringInProgress, setScoringInProgress] = useState(false);
   const [sortByScore, setSortByScore] = useState(false);
   
-  // Update premium status based on account subscriptions
+  // Update API mode based on selected filter
   useEffect(() => {
-    const selectedAccountData = accounts.find(a => a.id === selectedAccount);
-    const isPremium = !!(selectedAccountData?.subscriptions?.recruiter || selectedAccountData?.subscriptions?.sales_navigator);
-    quota.setPremiumAccount(isPremium);
-  }, [selectedAccount, accounts]);
+    quota.setApiMode(filters.api);
+  }, [filters.api]);
 
   // Sort results by score if enabled
   const sortedResults = useMemo(() => {
@@ -674,7 +672,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
           messagesSent={quota.quotas.messagesSent}
           invitationsSent={quota.quotas.invitationsSent}
           inmailsSent={quota.quotas.inmailsSent}
-          isPremium={quota.isPremiumAccount}
+          apiMode={quota.apiMode}
         />
 
         {/* Action buttons */}
@@ -769,7 +767,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
               messagesSent={quota.quotas.messagesSent}
               invitationsSent={quota.quotas.invitationsSent}
               inmailsSent={quota.quotas.inmailsSent}
-              isPremium={quota.isPremiumAccount}
+              apiMode={quota.apiMode}
               compact
             />
             

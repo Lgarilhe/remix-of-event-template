@@ -3,6 +3,7 @@ import { Progress } from '@/components/ui/progress';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { AlertTriangle, Info, Search, User, MessageSquare, UserPlus, Mail } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { LinkedInApiMode, LINKEDIN_LIMITS } from '@/hooks/useUnipileQuota';
 
 interface QuotaItemProps {
   label: string;
@@ -65,9 +66,17 @@ interface QuotaDisplayProps {
   messagesSent: number;
   invitationsSent: number;
   inmailsSent: number;
-  isPremium?: boolean;
+  apiMode?: LinkedInApiMode;
   compact?: boolean;
 }
+
+const getApiModeLabel = (mode: LinkedInApiMode): string => {
+  switch (mode) {
+    case 'recruiter': return 'Recruiter';
+    case 'sales_navigator': return 'Sales Nav';
+    default: return 'Classic';
+  }
+};
 
 export const QuotaDisplay: React.FC<QuotaDisplayProps> = ({
   searchResultsFetched,
@@ -75,17 +84,18 @@ export const QuotaDisplay: React.FC<QuotaDisplayProps> = ({
   messagesSent,
   invitationsSent,
   inmailsSent,
-  isPremium = false,
+  apiMode = 'classic',
   compact = false,
 }) => {
-  const searchLimit = isPremium ? 2500 : 1000;
-  const profileLimit = isPremium ? 1000 : 100;
-  const inviteLimit = isPremium ? 80 : 5;
-  const inmailLimit = isPremium ? 50 : 10;
+  const searchLimit = LINKEDIN_LIMITS.SEARCH_RESULTS[apiMode];
+  const profileLimit = LINKEDIN_LIMITS.PROFILE_VISITS[apiMode];
+  const messageLimit = LINKEDIN_LIMITS.MESSAGES[apiMode];
+  const inviteLimit = LINKEDIN_LIMITS.INVITATIONS[apiMode];
+  const inmailLimit = LINKEDIN_LIMITS.INMAIL_DAILY[apiMode];
 
   if (compact) {
     const totalUsed = searchResultsFetched + profileVisits + messagesSent;
-    const totalLimit = searchLimit + 100 + 100;
+    const totalLimit = searchLimit + profileLimit + messageLimit;
     const percentUsed = Math.min(100, (totalUsed / totalLimit) * 100);
     const isWarning = percentUsed >= 70;
     const isCritical = percentUsed >= 90;
@@ -105,7 +115,7 @@ export const QuotaDisplay: React.FC<QuotaDisplayProps> = ({
             </div>
           </TooltipTrigger>
           <TooltipContent side="bottom" className="w-64 p-3">
-            <p className="text-xs font-medium mb-3">Quotas LinkedIn journaliers</p>
+            <p className="text-xs font-medium mb-3">Quotas LinkedIn ({getApiModeLabel(apiMode)})</p>
             <div className="space-y-2.5">
               <QuotaItem
                 label="Résultats recherche"
@@ -122,7 +132,7 @@ export const QuotaDisplay: React.FC<QuotaDisplayProps> = ({
               <QuotaItem
                 label="Messages"
                 current={messagesSent}
-                limit={100}
+                limit={messageLimit}
                 icon={<MessageSquare className="w-3.5 h-3.5" />}
               />
               <QuotaItem
@@ -140,7 +150,7 @@ export const QuotaDisplay: React.FC<QuotaDisplayProps> = ({
             </div>
             <p className="text-[10px] text-muted-foreground mt-3 flex items-start gap-1">
               <Info className="w-3 h-3 mt-0.5 shrink-0" />
-              Limites recommandées par Unipile pour éviter les restrictions LinkedIn
+              Limites pour {getApiModeLabel(apiMode)} - se réinitialisent chaque jour
             </p>
           </TooltipContent>
         </Tooltip>
@@ -151,7 +161,7 @@ export const QuotaDisplay: React.FC<QuotaDisplayProps> = ({
   return (
     <div className="bg-white rounded-lg border border-border p-4">
       <div className="flex items-center justify-between mb-3">
-        <h4 className="text-sm font-medium">Quotas LinkedIn (journaliers)</h4>
+        <h4 className="text-sm font-medium">Quotas LinkedIn ({getApiModeLabel(apiMode)})</h4>
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger>
@@ -159,8 +169,8 @@ export const QuotaDisplay: React.FC<QuotaDisplayProps> = ({
             </TooltipTrigger>
             <TooltipContent side="left" className="max-w-xs">
               <p className="text-xs">
-                Limites recommandées par Unipile pour éviter les restrictions de compte LinkedIn.
-                Ces quotas se réinitialisent chaque jour.
+              Limites pour {getApiModeLabel(apiMode)} - se réinitialisent chaque jour.
+              Ces quotas sont recommandés par Unipile pour éviter les restrictions LinkedIn.
               </p>
             </TooltipContent>
           </Tooltip>
@@ -183,7 +193,7 @@ export const QuotaDisplay: React.FC<QuotaDisplayProps> = ({
         <QuotaItem
           label="Messages"
           current={messagesSent}
-          limit={100}
+          limit={messageLimit}
           icon={<MessageSquare className="w-3.5 h-3.5" />}
         />
         <QuotaItem
