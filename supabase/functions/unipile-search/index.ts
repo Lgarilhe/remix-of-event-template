@@ -437,10 +437,16 @@ async function handleSearch(
     if (api === 'recruiter' || api === 'sales_navigator') {
       if (Array.isArray(functionFilter)) {
         if (functionFilter.length > 0) {
-          searchBody.function = { include: functionFilter };
+          // Doc: function is an array of string IDs (DEPARTMENT)
+          searchBody.function = functionFilter;
         }
-      } else if (functionFilter.include?.length || functionFilter.exclude?.length) {
-        searchBody.function = functionFilter;
+      } else if (functionFilter.include?.length) {
+        // Backward compat: frontend previously sent { include: [...] }
+        searchBody.function = functionFilter.include;
+      } else if (functionFilter.exclude?.length) {
+        // Unipile schema for PEOPLE expects `function` as a string[], no exclude support.
+        // Keep the least-surprising behavior: drop exclude and log.
+        console.log('Function filter exclude provided but ignored (schema expects string[]):', functionFilter.exclude);
       }
     }
   }
