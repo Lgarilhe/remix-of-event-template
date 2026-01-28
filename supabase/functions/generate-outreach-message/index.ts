@@ -30,10 +30,11 @@ serve(async (req) => {
   }
 
   try {
-    const { profile, job, tone = "professional" } = await req.json() as {
+    const { profile, job, tone = "professional", senderName } = await req.json() as {
       profile: ProfileData;
       job: JobData;
       tone?: "professional" | "casual" | "enthusiastic";
+      senderName?: string;
     };
     
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
@@ -80,7 +81,8 @@ RÈGLES ABSOLUES - MESSAGE HUMAIN:
 7. UN SEUL point de personnalisation, pas trois.
 8. Maximum 80-120 mots. Court = humain.
 9. Call-to-action simple: "Dispo pour en parler ?" ou "Un café virtuel cette semaine ?"
-10. Signe avec juste le prénom, pas "[Ton Prénom]"
+10. Signe avec le prénom: "${senderName || '[Prénom]'}"
+
 
 EXEMPLE DE BON MESSAGE (casual):
 "Salut Thomas,
