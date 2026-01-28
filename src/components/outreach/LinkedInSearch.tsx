@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo, useEffect } from 'react';
+import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { LinkedInAccount } from '@/pages/Outreach';
 import { LinkedInFilters } from './LinkedInFilters';
@@ -59,10 +59,81 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
   // Bulk InMail modal state
   const [showBulkInMailModal, setShowBulkInMailModal] = useState(false);
   
+  // Debounce ref for auto-search on filter change
+  const searchDebounceRef = useRef<NodeJS.Timeout | null>(null);
+  const isInitialMount = useRef(true);
+  
   // Update API mode based on selected filter
   useEffect(() => {
     quota.setApiMode(filters.api);
   }, [filters.api]);
+  
+  // Auto-search with 2s debounce when filters change
+  useEffect(() => {
+    // Skip initial mount and only trigger when we have an account selected
+    if (isInitialMount.current) {
+      isInitialMount.current = false;
+      return;
+    }
+    
+    if (!selectedAccount) return;
+    
+    // Clear previous timeout
+    if (searchDebounceRef.current) {
+      clearTimeout(searchDebounceRef.current);
+    }
+    
+    // Set new timeout for auto-search
+    searchDebounceRef.current = setTimeout(() => {
+      handleSearch(true);
+    }, 2000);
+    
+    // Cleanup on unmount or filter change
+    return () => {
+      if (searchDebounceRef.current) {
+        clearTimeout(searchDebounceRef.current);
+      }
+    };
+  }, [
+    filters.keywords,
+    filters.location,
+    filters.company,
+    filters.company_keywords,
+    filters.industry,
+    filters.school,
+    filters.job_title,
+    filters.skills,
+    filters.role,
+    filters.function,
+    filters.degree,
+    filters.seniority,
+    filters.network_distance,
+    filters.profile_language,
+    filters.years_of_experience_min,
+    filters.years_of_experience_max,
+    filters.tenure_at_company_min,
+    filters.tenure_at_company_max,
+    filters.tenure_at_role_min,
+    filters.tenure_at_role_max,
+    filters.open_to_work,
+    filters.open_to,
+    filters.spotlight,
+    filters.hiring_project,
+    filters.talent_pool,
+    filters.company_headcount,
+    filters.company_type,
+    filters.company_location,
+    filters.groups,
+    filters.past_company,
+    filters.past_job_title,
+    filters.location_within_area,
+    filters.activity_messages,
+    filters.activity_messages_days,
+    filters.activity_notes,
+    filters.activity_notes_days,
+    filters.tags,
+    selectedAccount,
+  ]);
 
   // Sort results by score if enabled
   const sortedResults = useMemo(() => {
