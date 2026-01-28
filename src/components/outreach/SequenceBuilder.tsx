@@ -135,15 +135,16 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = ({
     initialSequence || {
       name: '',
       description: '',
-      steps: [createEmptyStep(0)],
+      steps: [],
       isActive: true,
     }
   );
   const [isSaving, setIsSaving] = useState(false);
   const [expandedStepId, setExpandedStepId] = useState<string | null>(
-    initialSequence?.steps[0]?.id || sequence.steps[0]?.id || null
+    initialSequence?.steps[0]?.id || null
   );
-  const [showStepPicker, setShowStepPicker] = useState(false);
+  // Show step picker immediately if no steps yet
+  const [showStepPicker, setShowStepPicker] = useState(!initialSequence || initialSequence.steps.length === 0);
 
   const updateStep = (stepId: string, updates: Partial<SequenceStep>) => {
     setSequence(prev => ({
@@ -512,14 +513,23 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = ({
               })}
             </div>
 
-            {/* Step picker */}
-            {showStepPicker ? (
-              <div className="mt-4 p-4 border-2 border-dashed border-primary/30 rounded-lg bg-muted/20">
+            {/* Step picker - shows when no steps or user clicked add */}
+            {(showStepPicker || sequence.steps.length === 0) && (
+              <div className={cn(
+                "mt-4 p-4 border-2 border-dashed rounded-lg",
+                sequence.steps.length === 0 
+                  ? "border-primary bg-primary/5" 
+                  : "border-primary/30 bg-muted/20"
+              )}>
                 <div className="flex items-center justify-between mb-4">
-                  <span className="font-medium text-sm">Ajouter une étape</span>
-                  <Button variant="ghost" size="sm" onClick={() => setShowStepPicker(false)}>
-                    <X className="w-4 h-4" />
-                  </Button>
+                  <span className="font-medium text-sm">
+                    {sequence.steps.length === 0 ? 'Commencer par ajouter une étape' : 'Ajouter une étape'}
+                  </span>
+                  {sequence.steps.length > 0 && (
+                    <Button variant="ghost" size="sm" onClick={() => setShowStepPicker(false)}>
+                      <X className="w-4 h-4" />
+                    </Button>
+                  )}
                 </div>
 
                 {/* Actions section */}
@@ -572,7 +582,10 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = ({
                   </div>
                 </div>
               </div>
-            ) : (
+            )}
+
+            {/* Add step button - only show when steps exist and picker is hidden */}
+            {sequence.steps.length > 0 && !showStepPicker && (
               <Button
                 variant="outline"
                 onClick={() => setShowStepPicker(true)}
