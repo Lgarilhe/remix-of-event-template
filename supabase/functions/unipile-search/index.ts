@@ -228,14 +228,19 @@ async function handleSearch(
     }
   }
 
-  // Location - different format and name per API:
+  // Location - different format per API:
   // - Classic: "location" as simple array of IDs
-  // - Recruiter: "geo" with { include: [...] } format
+  // - Recruiter: "location" as array of objects with id, priority, scope
   // - Sales Navigator: "location" with { include: [...], exclude: [...] }
   if (location?.length) {
     if (api === 'recruiter') {
-      // Recruiter uses "geo" parameter with include object
-      searchBody.geo = { include: location };
+      // Recruiter expects array of objects: { id, priority, scope }
+      // Default to MUST_HAVE priority and CURRENT scope
+      searchBody.location = location.map((loc: string) => ({
+        id: loc,
+        priority: 'MUST_HAVE',
+        scope: 'CURRENT_OR_OPEN_TO_RELOCATE'
+      }));
     } else if (api === 'sales_navigator') {
       searchBody.location = { include: location };
     } else {
