@@ -179,7 +179,8 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
       
       // Function/Department
       if (filters.function.length) {
-        searchParams.function = { include: filters.function.map(f => f.id) };
+        // Doc (Unipile): function = array of strings (IDs) (type DEPARTMENT)
+        searchParams.function = filters.function.map((f) => f.id);
       }
       
       // Degree - with priority (Recruiter)
