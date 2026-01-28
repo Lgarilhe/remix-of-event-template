@@ -217,94 +217,68 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
       }
 
       // Role - with keywords, priority, scope
-      if (filters.role.length) {
-        searchParams.role = filters.role.map(r => ({
-          keywords: r.keywords,
-          priority: r.priority,
-          scope: r.scope,
-        }));
+      // Also includes seniority-derived title keywords when in Recruiter mode
+      const seniorityTitleKeywords: Array<{ keywords: string; priority: 'MUST_HAVE' | 'DOESNT_HAVE'; scope: 'CURRENT' | 'PAST' | 'CURRENT_OR_PAST' }> = [];
+      
+      // Map seniority levels to title keywords for Recruiter mode
+      if (filters.api === 'recruiter' && filters.seniority.length) {
+        const titlesByLevel: Record<string, string[]> = {
+          '5': ['Manager', 'Team Lead', 'Lead', 'Head of'],
+          '6': ['Director', 'Directeur', 'Head of', 'Senior Director'],
+          '7': ['VP', 'Vice President', 'Vice-President', 'SVP', 'EVP'],
+          '8': ['CEO', 'CTO', 'CFO', 'COO', 'CMO', 'CIO', 'CHRO', 'Chief', 'C-Level', 'President', 'Président', 'Managing Director'],
+          '9': ['Partner', 'Associé', 'Principal', 'Managing Partner'],
+          '10': ['Owner', 'Founder', 'Co-Founder', 'Fondateur', 'Propriétaire', 'Entrepreneur'],
+        };
+        
+        filters.seniority.forEach(level => {
+          const titles = titlesByLevel[level];
+          if (titles) {
+            // Add each title as a separate role filter with OR logic (CAN_HAVE would be nice but API only supports MUST_HAVE/DOESNT_HAVE for role)
+            // We use a single combined keywords string with OR separator for the API
+            seniorityTitleKeywords.push({
+              keywords: titles.join(' OR '),
+              priority: 'MUST_HAVE',
+              scope: 'CURRENT',
+            });
+          }
+        });
       }
-
-      // NOTE: Unipile rejects `seniority` for People searches (400 invalid_parameters).
-      // We still support the UI by mapping the selected seniority levels to experience ranges.
-      const deriveExperienceFromSeniority = (values: string[]) => {
-        // Returns a broad range matching the selected levels.
-        // These ranges are approximations aligned with the labels shown in UI.
-        const ranges = values
-          .map((v) => {
-            switch (String(v)) {
-              case '1': // Entry (0-2)
-                return { min: 0, max: 2 };
-              case '2': // Associate
-                return { min: 2, max: 5 };
-              case '3': // Mid (3-5)
-                return { min: 3, max: 5 };
-              case '4': // Senior (6-9)
-                return { min: 6, max: 9 };
-              case '5': // Manager
-                return { min: 8, max: 12 };
-              case '6': // Director
-                return { min: 10, max: 15 };
-              case '7': // VP
-                return { min: 12, max: 20 };
-              case '8': // C-Level
-                return { min: 15, max: null };
-              case '9': // Partner
-                return { min: 15, max: null };
-              case '10': // Owner
-                return { min: 10, max: null };
-              default:
-                return null;
-            }
-          })
-          .filter((r): r is { min: number; max: number | null } => Boolean(r));
-
-        if (!ranges.length) return null;
-        const min = Math.min(...ranges.map((r) => r.min));
-        const maxValues = ranges.map((r) => r.max).filter((m): m is number => typeof m === 'number');
-        const max = maxValues.length ? Math.max(...maxValues) : null;
-        return { min, max };
-      };
+      
+      // Combine user-defined roles with seniority-derived roles
+      const allRoles = [
+        ...filters.role.map(r => ({
+          keywords: r.keywords,
+          priority: r.priority as 'MUST_HAVE' | 'DOESNT_HAVE',
+          scope: r.scope as 'CURRENT' | 'PAST' | 'CURRENT_OR_PAST',
+        })),
+        ...seniorityTitleKeywords,
+      ];
+      
+      if (allRoles.length) {
+        searchParams.role = allRoles;
+      }
       if (filters.network_distance.length) searchParams.network_distance = filters.network_distance;
       if (filters.profile_language.length) searchParams.profile_language = filters.profile_language;
 
       // Years of experience (Recruiter) / Tenure (Sales Navigator)
-      // Combine explicit year filters with seniority-derived ranges (intersection when both exist).
-      const seniorityExp = filters.seniority.length ? deriveExperienceFromSeniority(filters.seniority) : null;
-
+      // Only use explicit years_of_experience filters (seniority now mapped to role/title keywords)
       const explicitMin = filters.years_of_experience_min;
       const explicitMax = filters.years_of_experience_max;
 
-      const combinedMin = Math.max(
-        explicitMin ?? 0,
-        seniorityExp?.min ?? 0
-      );
-
-      const combinedMax = (() => {
-        const candidates: number[] = [];
-        if (explicitMax !== null) candidates.push(explicitMax);
-        if (typeof seniorityExp?.max === 'number') candidates.push(seniorityExp.max);
-        if (!candidates.length) return null;
-        return Math.min(...candidates);
-      })();
-
-      // Apply only if user set explicit range OR selected a seniority level.
-      const shouldApplyExperience =
-        explicitMin !== null || explicitMax !== null || Boolean(seniorityExp);
-
-      if (shouldApplyExperience) {
+      if (explicitMin !== null || explicitMax !== null) {
         if (filters.api === 'recruiter') {
           const yearsExp: Record<string, number> = {};
-          if (combinedMin > 0) yearsExp.min = combinedMin;
-          if (combinedMax !== null) yearsExp.max = combinedMax;
+          if (explicitMin !== null) yearsExp.min = explicitMin;
+          if (explicitMax !== null) yearsExp.max = explicitMax;
           if (Object.keys(yearsExp).length) {
             searchParams.years_of_experience = yearsExp;
           }
         } else if (filters.api === 'sales_navigator') {
           // Sales Navigator uses `tenure` ranges
           const tenure: Record<string, number> = {};
-          if (combinedMin > 0) tenure.min = combinedMin;
-          if (combinedMax !== null) tenure.max = combinedMax;
+          if (explicitMin !== null) tenure.min = explicitMin;
+          if (explicitMax !== null) tenure.max = explicitMax;
           if (Object.keys(tenure).length) {
             searchParams.tenure = [tenure];
           }
