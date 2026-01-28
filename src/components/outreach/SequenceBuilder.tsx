@@ -28,6 +28,8 @@ import {
   ArrowRight,
   GitBranch,
   Save,
+  Timer,
+  AlertTriangle,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -35,7 +37,7 @@ export interface SequenceStep {
   id: string;
   order: number;
   actionType: 'inmail' | 'connection_request' | 'profile_visit' | 'message' | 'smart_message';
-  conditionType: 'always' | 'if_connected' | 'if_not_connected' | 'if_no_response' | 'wait_until_connected';
+  conditionType: 'always' | 'if_connected' | 'if_not_connected' | 'if_no_response' | 'wait_until_connected' | 'wait_for_event';
   delayDays: number;
   delayHours: number;
   preferredHourStart: number;
@@ -45,7 +47,8 @@ export interface SequenceStep {
   useAiPersonalization: boolean;
   aiTone?: 'professional' | 'casual' | 'enthusiastic';
   timeoutDays?: number;
-  waitForEvent?: string;
+  waitForEvent?: 'connection_accepted' | 'reply_received';
+  timeoutBranchStepId?: string; // Reference to an alternative step
 }
 
 export interface Sequence {
@@ -76,7 +79,13 @@ const CONDITION_TYPES = [
   { value: 'if_connected', label: 'Si connecté', description: 'Uniquement si la demande de connexion a été acceptée' },
   { value: 'if_not_connected', label: 'Si non connecté', description: 'Uniquement si pas encore connecté (1er niveau)' },
   { value: 'if_no_response', label: 'Si pas de réponse', description: 'Uniquement si aucune réponse reçue' },
-  { value: 'wait_until_connected', label: 'Attendre connexion', description: 'Pause jusqu\'à ce que la demande soit acceptée' },
+  { value: 'wait_until_connected', label: 'Attendre connexion', description: 'Pause jusqu\'à acceptation (avec timeout optionnel)' },
+  { value: 'wait_for_event', label: 'Attendre événement', description: 'Pause jusqu\'à un événement spécifique' },
+];
+
+const WAIT_EVENTS = [
+  { value: 'connection_accepted', label: 'Connexion acceptée', description: 'Attendre que l\'invitation soit acceptée' },
+  { value: 'reply_received', label: 'Réponse reçue', description: 'Attendre une réponse du prospect' },
 ];
 
 const createEmptyStep = (order: number): SequenceStep => ({
@@ -92,6 +101,7 @@ const createEmptyStep = (order: number): SequenceStep => ({
   aiTone: 'professional',
   timeoutDays: undefined,
   waitForEvent: undefined,
+  timeoutBranchStepId: undefined,
 });
 
 export const SequenceBuilder: React.FC<SequenceBuilderProps> = ({
@@ -348,6 +358,110 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = ({
                                 </Select>
                               </div>
                             </div>
+
+                            {/* Wait for event selection (when condition is wait_for_event) */}
+                            {step.conditionType === 'wait_for_event' && (
+                              <div>
+                                <Label>Événement à attendre</Label>
+                                <Select
+                                  value={step.waitForEvent || 'connection_accepted'}
+                                  onValueChange={(v) => updateStep(step.id, { waitForEvent: v as any })}
+                                >
+                                  <SelectTrigger className="mt-1">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {WAIT_EVENTS.map((evt) => (
+                                      <SelectItem key={evt.value} value={evt.value}>
+                                        <div>
+                                          <div>{evt.label}</div>
+                                          <div className="text-xs text-muted-foreground">{evt.description}</div>
+                                        </div>
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                            )}
+
+                            {/* Timeout configuration (for wait conditions) */}
+                            {(step.conditionType === 'wait_until_connected' || step.conditionType === 'wait_for_event') && (
+                              <div className="border border-amber-200 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-800 rounded-lg p-4">
+                                <div className="flex items-center gap-2 mb-3">
+                                  <Timer className="w-4 h-4 text-amber-600" />
+                                  <Label className="font-medium text-amber-800 dark:text-amber-200">
+                                    Configuration du timeout (branche alternative)
+                                  </Label>
+                                </div>
+                                
+                                <div className="grid grid-cols-2 gap-4">
+                                  <div>
+                                    <Label className="text-sm">Timeout après (jours)</Label>
+                                    <Input
+                                      type="number"
+                                      min={1}
+                                      max={30}
+                                      value={step.timeoutDays || ''}
+                                      onChange={(e) => updateStep(step.id, { 
+                                        timeoutDays: e.target.value ? parseInt(e.target.value) : undefined 
+                                      })}
+                                      placeholder="Ex: 4"
+                                      className="mt-1"
+                                    />
+                                    <p className="text-xs text-muted-foreground mt-1">
+                                      Si l'événement ne se produit pas après X jours
+                                    </p>
+                                  </div>
+                                  
+                                  <div>
+                                    <Label className="text-sm">Branche alternative</Label>
+                                    <Select
+                                      value={step.timeoutBranchStepId || 'none'}
+                                      onValueChange={(v) => updateStep(step.id, { 
+                                        timeoutBranchStepId: v === 'none' ? undefined : v 
+                                      })}
+                                    >
+                                      <SelectTrigger className="mt-1">
+                                        <SelectValue placeholder="Sélectionner une étape" />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        <SelectItem value="none">
+                                          Passer à l'étape suivante
+                                        </SelectItem>
+                                        {sequence.steps
+                                          .filter(s => s.id !== step.id && s.order > step.order)
+                                          .map((s) => {
+                                            const cfg = getActionConfig(s.actionType);
+                                            return (
+                                              <SelectItem key={s.id} value={s.id}>
+                                                <div className="flex items-center gap-2">
+                                                  <cfg.icon className="w-3 h-3" />
+                                                  Étape {s.order + 1}: {cfg.label}
+                                                </div>
+                                              </SelectItem>
+                                            );
+                                          })}
+                                      </SelectContent>
+                                    </Select>
+                                    <p className="text-xs text-muted-foreground mt-1">
+                                      Vers quelle étape basculer en cas de timeout
+                                    </p>
+                                  </div>
+                                </div>
+
+                                {step.timeoutDays && (
+                                  <div className="flex items-center gap-2 mt-3 text-xs text-amber-700 dark:text-amber-300 bg-amber-100 dark:bg-amber-900/30 p-2 rounded">
+                                    <AlertTriangle className="w-3 h-3" />
+                                    <span>
+                                      Si {step.conditionType === 'wait_until_connected' ? 'la connexion n\'est pas acceptée' : 'l\'événement ne se produit pas'} après {step.timeoutDays} jours,
+                                      {step.timeoutBranchStepId 
+                                        ? ` basculer vers l'étape ${sequence.steps.find(s => s.id === step.timeoutBranchStepId)?.order !== undefined ? sequence.steps.find(s => s.id === step.timeoutBranchStepId)!.order + 1 : '?'}`
+                                        : ' passer à l\'étape suivante'}
+                                    </span>
+                                  </div>
+                                )}
+                              </div>
+                            )}
 
                             {/* Delay (not for first step) */}
                             {index > 0 && (

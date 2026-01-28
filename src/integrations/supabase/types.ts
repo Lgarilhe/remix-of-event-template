@@ -461,6 +461,7 @@ export type Database = {
           sequence_id: string
           step_order: number
           subject_template: string | null
+          timeout_branch_step_id: string | null
           timeout_days: number | null
           use_ai_personalization: boolean
           wait_for_event: string | null
@@ -479,6 +480,7 @@ export type Database = {
           sequence_id: string
           step_order: number
           subject_template?: string | null
+          timeout_branch_step_id?: string | null
           timeout_days?: number | null
           use_ai_personalization?: boolean
           wait_for_event?: string | null
@@ -497,6 +499,7 @@ export type Database = {
           sequence_id?: string
           step_order?: number
           subject_template?: string | null
+          timeout_branch_step_id?: string | null
           timeout_days?: number | null
           use_ai_personalization?: boolean
           wait_for_event?: string | null
@@ -507,6 +510,13 @@ export type Database = {
             columns: ["sequence_id"]
             isOneToOne: false
             referencedRelation: "outreach_sequences"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sequence_steps_timeout_branch_step_id_fkey"
+            columns: ["timeout_branch_step_id"]
+            isOneToOne: false
+            referencedRelation: "sequence_steps"
             referencedColumns: ["id"]
           },
         ]
