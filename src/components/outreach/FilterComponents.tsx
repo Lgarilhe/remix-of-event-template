@@ -168,9 +168,9 @@ export const AutocompleteInput: React.FC<AutocompleteInputProps> = ({
       </div>
       {options.length > 0 && !disabled && (
         <div className="absolute z-50 w-full mt-1 bg-white border border-[#1A1A1A]/10 rounded-lg shadow-lg max-h-48 overflow-auto">
-          {options.map((option) => (
+          {options.map((option, index) => (
             <button
-              key={option.id}
+              key={`${option.id}-${index}`}
               type="button"
               onClick={() => onSelect(option)}
               className="w-full text-left px-3 py-2 text-sm hover:bg-[#0077B5]/5 transition-colors flex items-center justify-between group"
