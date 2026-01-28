@@ -183,12 +183,19 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
         searchParams.function = filters.function.map((f) => f.id);
       }
       
-      // Degree - with priority (Recruiter)
+      // Degree (Recruiter) - Doc: { include: string[], exclude: string[] }
       if (filters.degree.length && filters.api === 'recruiter') {
-        searchParams.degree = filters.degree.map(f => ({
-          id: f.id,
-          priority: f.priority || 'MUST_HAVE',
-        }));
+        const includeIds = filters.degree
+          .filter(d => d.priority !== 'DOESNT_HAVE')
+          .map(d => d.id);
+        const excludeIds = filters.degree
+          .filter(d => d.priority === 'DOESNT_HAVE')
+          .map(d => d.id);
+        
+        searchParams.degree = {
+          ...(includeIds.length > 0 && { include: includeIds }),
+          ...(excludeIds.length > 0 && { exclude: excludeIds }),
+        };
       }
       
       // Groups (Sales Navigator)
