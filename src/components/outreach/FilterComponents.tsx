@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Checkbox } from '@/components/ui/checkbox';
 import { X, Loader2, Plus, ChevronDown, Search, AlertTriangle, Check } from 'lucide-react';
-import { FilterItem, PriorityFilterItem, FilterPriority, PRIORITY_OPTIONS } from './types';
+import { FilterItem, PriorityFilterItem, LocationFilterItem, FilterPriority, LocationScope, PRIORITY_OPTIONS, LOCATION_SCOPE_OPTIONS } from './types';
 
 // ===== Collapsible Section =====
 interface FilterSectionProps {
@@ -258,6 +258,74 @@ export const PriorityBadges: React.FC<PriorityBadgesProps> = ({
     </div>
   );
 };
+
+// ===== Location Badges (with priority and scope for Recruiter) =====
+interface LocationBadgesProps {
+  items: LocationFilterItem[];
+  onRemove: (id: string) => void;
+  onUpdatePriority: (id: string, priority: FilterPriority) => void;
+  onUpdateScope: (id: string, scope: LocationScope) => void;
+}
+
+export const LocationBadges: React.FC<LocationBadgesProps> = ({
+  items,
+  onRemove,
+  onUpdatePriority,
+  onUpdateScope,
+}) => {
+  if (items.length === 0) return null;
+  return (
+    <div className="space-y-1.5 mb-2">
+      {items.map((item) => {
+        const priorityConfig = PRIORITY_OPTIONS.find((p) => p.value === item.priority);
+        const scopeConfig = LOCATION_SCOPE_OPTIONS.find((s) => s.value === item.scope);
+        return (
+          <div key={item.id} className="flex items-center gap-2 p-2 bg-gray-50 rounded-lg flex-wrap">
+            <span className="text-sm flex-1 truncate min-w-0">{item.name}</span>
+            <div className="flex items-center gap-1.5">
+              <Select
+                value={item.priority}
+                onValueChange={(val) => onUpdatePriority(item.id, val as FilterPriority)}
+              >
+                <SelectTrigger className={`h-6 w-[85px] text-[10px] border-0 ${priorityConfig?.color}`}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="bg-white z-50">
+                  {PRIORITY_OPTIONS.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value} className="text-xs">
+                      <span className="flex items-center gap-1">
+                        <span>{opt.icon}</span>
+                        <span>{opt.label}</span>
+                      </span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select
+                value={item.scope}
+                onValueChange={(val) => onUpdateScope(item.id, val as LocationScope)}
+              >
+                <SelectTrigger className="h-6 w-[110px] text-[10px] border border-gray-200 bg-white">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="bg-white z-50">
+                  {LOCATION_SCOPE_OPTIONS.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value} className="text-xs">
+                      {opt.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <button type="button" onClick={() => onRemove(item.id)} className="text-red-400 hover:text-red-600 p-0.5">
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 // ===== Multi-Select Dropdown =====
 interface MultiSelectOption {

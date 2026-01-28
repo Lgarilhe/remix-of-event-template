@@ -98,8 +98,20 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
       // Keywords
       if (filters.keywords) searchParams.keywords = filters.keywords;
 
-      // Simple ID-array filters (extract IDs from FilterItem[])
-      if (filters.location.length) searchParams.location = filters.location.map(f => f.id);
+      // Location - Recruiter uses full objects with priority/scope, others use IDs
+      if (filters.location.length) {
+        if (filters.api === 'recruiter') {
+          // Send full location objects with priority and scope
+          searchParams.location = filters.location.map(f => ({
+            id: f.id,
+            priority: f.priority || 'MUST_HAVE',
+            scope: f.scope || 'CURRENT_OR_OPEN_TO_RELOCATE',
+          }));
+        } else {
+          // Classic and Sales Navigator use simple ID arrays
+          searchParams.location = filters.location.map(f => f.id);
+        }
+      }
       
       // School - Recruiter uses priority format, others use simple ID array
       if (filters.school.length) {

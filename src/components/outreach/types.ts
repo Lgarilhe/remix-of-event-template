@@ -13,9 +13,18 @@ export type FilterPriority = 'CAN_HAVE' | 'MUST_HAVE' | 'DOESNT_HAVE';
 // Scope for role/title filters
 export type FilterScope = 'CURRENT' | 'PAST' | 'CURRENT_OR_PAST';
 
+// Location scope (different from role scope - for Recruiter location filter)
+export type LocationScope = 'CURRENT' | 'OPEN_TO_RELOCATE_ONLY' | 'CURRENT_OR_OPEN_TO_RELOCATE';
+
 // Advanced filter with priority
 export interface PriorityFilterItem extends FilterItem {
   priority: FilterPriority;
+}
+
+// Location filter with priority and scope (Recruiter specific)
+export interface LocationFilterItem extends FilterItem {
+  priority: FilterPriority;
+  scope: LocationScope;
 }
 
 // Role filter with keywords, priority and scope
@@ -61,8 +70,8 @@ export interface LinkedInFiltersState {
   api: LinkedInApiType;
   category: SearchCategory;
   
-  // Simple ID-based filters (store both id and name for display)
-  location: FilterItem[];
+  // Location filter - uses LocationFilterItem for Recruiter with priority/scope
+  location: LocationFilterItem[];
   company: FilterItem[];
   industry: FilterItem[];
   school: PriorityFilterItem[]; // Now supports priority for Recruiter
@@ -327,6 +336,13 @@ export const SCOPE_OPTIONS = [
   { value: 'CURRENT', label: 'Poste actuel' },
   { value: 'PAST', label: 'Poste passé' },
   { value: 'CURRENT_OR_PAST', label: 'Actuel ou passé' },
+];
+
+// Location scope options (Recruiter specific)
+export const LOCATION_SCOPE_OPTIONS = [
+  { value: 'CURRENT', label: 'Localisation actuelle' },
+  { value: 'OPEN_TO_RELOCATE_ONLY', label: 'Ouvert à la relocalisation' },
+  { value: 'CURRENT_OR_OPEN_TO_RELOCATE', label: 'Actuel ou ouvert' },
 ];
 
 // Spotlight options (Recruiter specific)
