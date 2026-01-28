@@ -109,6 +109,60 @@ export type Database = {
         }
         Relationships: []
       }
+      inmail_queue: {
+        Row: {
+          account_id: string
+          created_at: string
+          created_by: string
+          error_message: string | null
+          id: string
+          message: string
+          recipient_headline: string | null
+          recipient_name: string | null
+          recipient_profile_id: string
+          scheduled_at: string | null
+          sent_at: string | null
+          status: string
+          subject: string
+          updated_at: string
+          user_timezone: string
+        }
+        Insert: {
+          account_id: string
+          created_at?: string
+          created_by: string
+          error_message?: string | null
+          id?: string
+          message: string
+          recipient_headline?: string | null
+          recipient_name?: string | null
+          recipient_profile_id: string
+          scheduled_at?: string | null
+          sent_at?: string | null
+          status?: string
+          subject: string
+          updated_at?: string
+          user_timezone?: string
+        }
+        Update: {
+          account_id?: string
+          created_at?: string
+          created_by?: string
+          error_message?: string | null
+          id?: string
+          message?: string
+          recipient_headline?: string | null
+          recipient_name?: string | null
+          recipient_profile_id?: string
+          scheduled_at?: string | null
+          sent_at?: string | null
+          status?: string
+          subject?: string
+          updated_at?: string
+          user_timezone?: string
+        }
+        Relationships: []
+      }
       job_favorites: {
         Row: {
           created_at: string
