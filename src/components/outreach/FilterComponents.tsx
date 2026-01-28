@@ -95,12 +95,12 @@ export const FilterGroup: React.FC<FilterGroupProps> = ({
   unsupported = false,
   unsupportedTooltip,
 }) => (
-  <div className={`space-y-2 ${unsupported ? 'opacity-60' : ''}`}>
-    <div className="flex items-center gap-2">
+  <div className={`rounded-lg border border-[#1A1A1A]/8 bg-gradient-to-b from-gray-50/80 to-white p-3 shadow-sm ${unsupported ? 'opacity-60' : ''}`}>
+    <div className="flex items-center gap-2 mb-2.5">
       {icon}
       <span className="text-xs font-medium text-[#1A1A1A]/70 uppercase tracking-wide">{title}</span>
       {badge !== undefined && badge > 0 && (
-        <Badge variant="outline" className="h-4 px-1 text-[10px]">{badge}</Badge>
+        <Badge variant="outline" className="h-4 px-1 text-[10px] bg-[#0077B5]/10 text-[#0077B5] border-[#0077B5]/20">{badge}</Badge>
       )}
       {unsupported && (
         <TooltipProvider delayDuration={200}>
