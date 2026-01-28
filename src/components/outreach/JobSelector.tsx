@@ -174,13 +174,13 @@ export const JobSelector: React.FC<JobSelectorProps> = ({ selectedJob, onJobChan
           </SelectItem>
           {jobs.map((job) => (
             <SelectItem key={job.id} value={job.id}>
-              <div className="flex items-center gap-2">
-                <span className="font-medium">{job.title}</span>
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="font-medium truncate max-w-[200px]">{job.title}</span>
                 {job.client?.name && (
-                  <span className="text-xs text-gray-400">@ {job.client.name}</span>
+                  <span className="text-xs text-gray-400 whitespace-nowrap flex-shrink-0">@ {job.client.name}</span>
                 )}
                 {job.skills?.length > 0 && (
-                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-100 text-purple-600">
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-100 text-purple-600 whitespace-nowrap flex-shrink-0">
                     {job.skills.length} skills
                   </span>
                 )}
