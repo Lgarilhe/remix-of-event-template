@@ -192,30 +192,30 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
         timespan?: number;
       }> = [];
       
-      // Messages filter
+      // Messages filter - timespan is REQUIRED by API, default to 3650 days (10 years) for "all time"
       if (filters.activity_messages) {
         recruitingActivity.push({
           id: 'messages',
           priority: filters.activity_messages === 'with_message' ? 'MUST_HAVE' : 'DOESNT_HAVE',
-          ...(filters.activity_messages_days !== null && { timespan: filters.activity_messages_days }),
+          timespan: filters.activity_messages_days ?? 3650, // Default 10 years for "all time"
         });
       }
       
-      // Notes filter
+      // Notes filter - timespan is REQUIRED by API
       if (filters.activity_notes) {
         recruitingActivity.push({
           id: 'notes',
           priority: filters.activity_notes === 'with_note' ? 'MUST_HAVE' : 'DOESNT_HAVE',
-          ...(filters.activity_notes_days !== null && { timespan: filters.activity_notes_days }),
+          timespan: filters.activity_notes_days ?? 3650, // Default 10 years for "all time"
         });
       }
       
       // Tags filter
       if (filters.tags.length) {
-        // Tags are sent as recruiting_activity with id='tags'
         recruitingActivity.push({
           id: 'tags',
           priority: 'MUST_HAVE',
+          timespan: 3650, // Required by API
         });
       }
       
