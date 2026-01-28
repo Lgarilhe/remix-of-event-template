@@ -406,7 +406,7 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
         <FilterSection 
           id="basic" 
           title="Recherche de base" 
-          icon={<Filter className="w-4 h-4 text-[#0077B5]" />}
+          icon={<Filter className="w-4 h-4 text-sky-500/80" />}
           badge={countBasicFilters}
           isOpen={openSections.basic}
           onToggle={() => toggleSection('basic')}
@@ -567,7 +567,7 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
         <FilterSection 
           id="position" 
           title="Poste & Compétences" 
-          icon={<Briefcase className="w-4 h-4 text-[#0077B5]" />}
+          icon={<Briefcase className="w-4 h-4 text-violet-500/80" />}
           badge={countPositionFilters}
           isOpen={openSections.position}
           onToggle={() => toggleSection('position')}
@@ -791,7 +791,7 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
         <FilterSection 
           id="experience" 
           title="Expérience & Ancienneté" 
-          icon={<Clock className="w-4 h-4 text-[#0077B5]" />}
+          icon={<Clock className="w-4 h-4 text-orange-500/80" />}
           badge={countExperienceFilters}
           isOpen={openSections.experience}
           onToggle={() => toggleSection('experience')}
@@ -943,7 +943,7 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
         <FilterSection 
           id="company" 
           title="Entreprise actuelle" 
-          icon={<Building2 className="w-4 h-4 text-[#0077B5]" />}
+          icon={<Building2 className="w-4 h-4 text-emerald-500/80" />}
           badge={countCompanyFilters}
           isOpen={openSections.company}
           onToggle={() => toggleSection('company')}
@@ -1045,7 +1045,7 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
         <FilterSection 
           id="past" 
           title="Expérience passée" 
-          icon={<History className="w-4 h-4 text-amber-600" />}
+          icon={<History className="w-4 h-4 text-amber-500/80" />}
           badge={countPastFilters}
           isOpen={openSections.past}
           onToggle={() => toggleSection('past')}
@@ -1095,7 +1095,7 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
         <FilterSection 
           id="recruiter" 
           title="Filtres avancés (Recruiter)" 
-          icon={<Target className="w-4 h-4 text-purple-500" />}
+          icon={<Target className="w-4 h-4 text-rose-500/80" />}
           badge={countRecruiterFilters}
           isOpen={openSections.recruiter}
           onToggle={() => toggleSection('recruiter')}
