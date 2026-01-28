@@ -72,6 +72,7 @@ export interface LinkedInFiltersState {
   
   // Location filter - uses LocationFilterItem for Recruiter with priority/scope
   location: LocationFilterItem[];
+  location_within_area: number | null; // Search radius in miles (Recruiter only)
   company: FilterItem[];
   industry: FilterItem[];
   school: PriorityFilterItem[]; // Now supports priority for Recruiter
@@ -146,6 +147,7 @@ export const INITIAL_FILTERS: LinkedInFiltersState = {
   api: 'recruiter',
   category: 'people',
   location: [],
+  location_within_area: null,
   company: [],
   industry: [],
   school: [],
@@ -343,6 +345,17 @@ export const LOCATION_SCOPE_OPTIONS = [
   { value: 'CURRENT', label: 'Localisation actuelle' },
   { value: 'OPEN_TO_RELOCATE_ONLY', label: 'Ouvert à la relocalisation' },
   { value: 'CURRENT_OR_OPEN_TO_RELOCATE', label: 'Actuel ou ouvert' },
+];
+
+// Location radius options in miles (Recruiter specific)
+export const LOCATION_RADIUS_OPTIONS = [
+  { value: null, label: 'Pas de limite' },
+  { value: 10, label: '10 miles (~16 km)' },
+  { value: 25, label: '25 miles (~40 km)' },
+  { value: 35, label: '35 miles (~56 km)' },
+  { value: 50, label: '50 miles (~80 km)' },
+  { value: 75, label: '75 miles (~120 km)' },
+  { value: 100, label: '100 miles (~160 km)' },
 ];
 
 // Spotlight options (Recruiter specific)

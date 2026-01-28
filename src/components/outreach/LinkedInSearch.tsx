@@ -107,6 +107,10 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
             priority: f.priority || 'MUST_HAVE',
             scope: f.scope || 'CURRENT_OR_OPEN_TO_RELOCATE',
           }));
+          // Add location radius if set
+          if (filters.location_within_area !== null) {
+            searchParams.location_within_area = filters.location_within_area;
+          }
         } else {
           // Classic and Sales Navigator use simple ID arrays
           searchParams.location = filters.location.map(f => f.id);
