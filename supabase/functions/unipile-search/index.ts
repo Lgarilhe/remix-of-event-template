@@ -53,6 +53,9 @@ interface SearchParams {
   // Recruiter specific
   hiring_project?: string;
   talent_pool?: string;
+  // Unipile schema: `spotlights` is an array of strings (LinkedIn native filter)
+  spotlights?: string[];
+  // Backward compat (older frontend used singular)
   spotlight?: string;
   
   // Recruiting activity filter (Recruiter)
@@ -195,6 +198,7 @@ async function handleSearch(
     open_to,
     hiring_project,
     talent_pool,
+    spotlights,
     spotlight,
     degree,
     company_headcount,
@@ -519,13 +523,21 @@ async function handleSearch(
       searchBody.open_to = open_to;
     }
   } else if (api === 'recruiter') {
-    // Recruiter has open_to_work boolean and spotlight for OPEN_TO_WORK
-    if (open_to_work === true) {
-      // Use spotlight instead
-      if (!spotlight) {
-        searchBody.spotlight = 'OPEN_TO_WORK';
-      }
+    // Recruiter: Open to work is a spotlight in Unipile schema: `spotlights: string[]`
+    const mergedSpotlights = Array.from(
+      new Set(
+        [
+          ...(Array.isArray(spotlights) ? spotlights : []),
+          ...(spotlight ? [spotlight] : []),
+          ...(open_to_work === true ? ['OPEN_TO_WORK'] : []),
+        ].filter(Boolean)
+      )
+    ) as string[];
+
+    if (mergedSpotlights.length) {
+      searchBody.spotlights = mergedSpotlights;
     }
+
     if (open_to?.length) {
       searchBody.open_to = open_to;
     }
@@ -535,7 +547,7 @@ async function handleSearch(
   if (api === 'recruiter') {
     if (hiring_project) searchBody.hiring_project = hiring_project;
     if (talent_pool) searchBody.talent_pool = talent_pool;
-    if (spotlight) searchBody.spotlight = spotlight;
+    // NOTE: spotlights are handled above (merged from open_to_work + spotlight + spotlights)
     
     // Recruiting activity (messages, notes, tags, etc.)
     if (params.recruiting_activity?.length) {

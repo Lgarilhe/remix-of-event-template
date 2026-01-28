@@ -466,13 +466,29 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
       }
 
       // Boolean filters
-      if (filters.open_to_work === true) searchParams.open_to_work = true;
+      // NOTE: Recruiter "Open to work" is exposed by the Unipile schema as `spotlights: string[]`.
+      // The API does NOT expect `spotlight` (singular).
       if (filters.open_to.length) searchParams.open_to = filters.open_to;
 
       // Recruiter specific
       if (filters.hiring_project) searchParams.hiring_project = filters.hiring_project;
       if (filters.talent_pool) searchParams.talent_pool = filters.talent_pool;
-      if (filters.spotlight) searchParams.spotlight = filters.spotlight;
+
+      // Spotlights (Recruiter)
+      if (filters.api === 'recruiter') {
+        const spotlights = Array.from(
+          new Set(
+            [
+              ...(filters.open_to_work === true ? ['OPEN_TO_WORK'] : []),
+              ...(filters.spotlight ? [filters.spotlight] : []),
+            ].filter(Boolean)
+          )
+        ) as string[];
+
+        if (spotlights.length) {
+          searchParams.spotlights = spotlights;
+        }
+      }
       
       // Recruiting activity (messages, notes, tags, etc.)
       const recruitingActivity: Array<{
