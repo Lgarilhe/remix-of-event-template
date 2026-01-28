@@ -628,7 +628,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
       </div>
 
       {/* Results */}
-      <div className="bg-white rounded-xl border border-[#1A1A1A]/10 flex flex-col h-[calc(100vh-140px)]">
+      <div className="bg-white rounded-xl border border-[#1A1A1A]/10 flex flex-col min-h-[500px] max-h-[calc(100vh-220px)]">
         {/* Results header with batch actions */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-[#1A1A1A]/10 shrink-0">
           <div className="flex items-center gap-4">
