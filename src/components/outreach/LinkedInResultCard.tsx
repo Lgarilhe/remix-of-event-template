@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { LinkedInProfile } from './types';
 import { JobScoreDisplay, JobMatchResult } from './JobScoreDisplay';
+import { OutreachMessageModal } from './OutreachMessageModal';
 import { Job } from '@/pages/JobSpace';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -28,6 +29,7 @@ import {
   CheckCircle2,
   AlertTriangle,
   Target,
+  PenLine,
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -50,6 +52,7 @@ export const LinkedInResultCard: React.FC<LinkedInResultCardProps> = ({
   onScoreProfile,
 }) => {
   const [isExpanded, setIsExpanded] = useState(false);
+  const [showMessageModal, setShowMessageModal] = useState(false);
   const [aiAnalysis, setAiAnalysis] = useState<{
     summary: string;
     strengths: string[];
@@ -257,6 +260,20 @@ export const LinkedInResultCard: React.FC<LinkedInResultCardProps> = ({
                           <span className="text-xs hidden sm:inline">Score</span>
                         </>
                       )}
+                    </Button>
+                  )}
+                  
+                  {/* Generate message button - only show when job is selected */}
+                  {selectedJob && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setShowMessageModal(true)}
+                      className="text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 h-8 px-2 gap-1"
+                      title="Générer un message d'approche"
+                    >
+                      <PenLine className="w-4 h-4" />
+                      <span className="text-xs hidden sm:inline">Message</span>
                     </Button>
                   )}
                   
@@ -651,6 +668,16 @@ export const LinkedInResultCard: React.FC<LinkedInResultCardProps> = ({
             </div>
           </div>
         </CollapsibleContent>
+
+        {/* Outreach message modal */}
+        {selectedJob && (
+          <OutreachMessageModal
+            open={showMessageModal}
+            onOpenChange={setShowMessageModal}
+            profile={profile}
+            job={selectedJob}
+          />
+        )}
       </div>
     </Collapsible>
   );
