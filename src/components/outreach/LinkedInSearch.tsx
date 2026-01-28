@@ -787,6 +787,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
                   onToggleSelect={() => toggleProfileSelection(profile.id)}
                   jobScore={jobScores[profile.id]}
                   onScoreProfile={() => scoreProfile(profile)}
+                  accountId={selectedAccount || undefined}
                 />
               ))}
 
