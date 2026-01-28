@@ -62,6 +62,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
   // Debounce ref for auto-search on filter change
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isInitialMount = useRef(true);
+  const hasAccountBeenSelected = useRef(false); // Track if account was already selected once
   
   // Update API mode based on selected filter
   useEffect(() => {
@@ -444,11 +445,19 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
 
   // Auto-search with 2s debounce when filters change - only if filters are not empty
   useEffect(() => {
+    // Skip initial mount
     if (isInitialMount.current) {
       isInitialMount.current = false;
       return;
     }
+    
     if (!selectedAccount) return;
+    
+    // Track when account gets selected for the first time (don't trigger search on initial account selection)
+    if (!hasAccountBeenSelected.current) {
+      hasAccountBeenSelected.current = true;
+      return;
+    }
     
     // Don't auto-search if no filters are set
     if (!hasActiveFilters) return;
