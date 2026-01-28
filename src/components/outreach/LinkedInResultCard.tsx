@@ -213,9 +213,12 @@ export const LinkedInResultCard: React.FC<LinkedInResultCardProps> = ({
     setNoConversation(false);
     
     try {
-      // Get the profile identifier to search for conversations
-      // We need to find a chat that includes this person
-      const profileIdentifier = profile.public_identifier || profile.id;
+      // Get the profile ID - Unipile uses the LinkedIn member URN or profile ID
+      // The profile.id from search results is the recruiter candidate ID format: AEMAACh9PvYB...
+      const profileId = profile.id;
+      const profileName = profile.name || `${profile.first_name} ${profile.last_name}`.trim();
+      
+      console.log('Loading messages for profile:', { profileId, profileName });
       
       // First, get all chats and find one with this attendee
       const chatsResponse = await supabase.functions.invoke('unipile-search', {
@@ -229,30 +232,61 @@ export const LinkedInResultCard: React.FC<LinkedInResultCardProps> = ({
       if (chatsResponse.error) throw chatsResponse.error;
       
       if (!chatsResponse.data?.success || !chatsResponse.data?.chats?.length) {
+        console.log('No chats found');
         setNoConversation(true);
         setMessagesLoaded(true);
         return;
       }
 
+      console.log('Chats received:', chatsResponse.data.chats.length);
+
       // Find a chat that contains this profile as attendee
-      const profileName = profile.name || `${profile.first_name} ${profile.last_name}`.trim();
-      const foundChat = chatsResponse.data.chats.find((chat: Chat) => {
-        if (!chat.attendees) return false;
-        return chat.attendees.some((attendee: { id: string; name?: string; display_name?: string }) => {
-          // Match by ID or by name
-          if (attendee.id === profileIdentifier) return true;
-          if (attendee.name && profileName && attendee.name.toLowerCase().includes(profileName.toLowerCase())) return true;
-          if (attendee.display_name && profileName && attendee.display_name.toLowerCase().includes(profileName.toLowerCase())) return true;
-          return false;
-        });
+      // Unipile returns attendee_provider_id (the LinkedIn member URN) in chats
+      // We need to match by:
+      // 1. attendee_provider_id matches profile.id
+      // 2. Name matching in the chat name field
+      const foundChat = chatsResponse.data.chats.find((chat: any) => {
+        // Match by attendee_provider_id (LinkedIn member URN)
+        if (chat.attendee_provider_id) {
+          // The profile.id from recruiter search might match attendee_provider_id
+          if (chat.attendee_provider_id === profileId) return true;
+          
+          // Also check if the profile has a member_urn
+          if (profile.member_urn && chat.attendee_provider_id.includes(profile.member_urn)) return true;
+        }
+        
+        // Match by name in the chat (for inmail, the subject or name field)
+        if (chat.name && profileName) {
+          const chatNameLower = chat.name.toLowerCase();
+          const profileNameLower = profileName.toLowerCase();
+          const firstName = (profile.first_name || profileName.split(' ')[0] || '').toLowerCase();
+          
+          // Check if the chat name contains the profile's first name or full name
+          if (chatNameLower.includes(profileNameLower)) return true;
+          if (firstName.length > 2 && chatNameLower.includes(firstName)) return true;
+        }
+
+        // Also check attendees array if it exists
+        if (chat.attendees?.length) {
+          return chat.attendees.some((attendee: any) => {
+            if (attendee.id === profileId) return true;
+            if (attendee.name && profileName && attendee.name.toLowerCase().includes(profileName.toLowerCase())) return true;
+            if (attendee.display_name && profileName && attendee.display_name.toLowerCase().includes(profileName.toLowerCase())) return true;
+            return false;
+          });
+        }
+        
+        return false;
       });
 
       if (!foundChat) {
+        console.log('No matching chat found for profile:', profileName);
         setNoConversation(true);
         setMessagesLoaded(true);
         return;
       }
 
+      console.log('Found chat:', foundChat.id);
       setChatId(foundChat.id);
 
       // Get messages from this chat
@@ -268,6 +302,7 @@ export const LinkedInResultCard: React.FC<LinkedInResultCardProps> = ({
       if (messagesResponse.error) throw messagesResponse.error;
       
       if (messagesResponse.data?.success && messagesResponse.data?.messages) {
+        console.log('Messages loaded:', messagesResponse.data.messages.length);
         setMessages(messagesResponse.data.messages);
       }
       
