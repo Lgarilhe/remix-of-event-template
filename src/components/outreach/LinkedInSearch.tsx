@@ -697,9 +697,9 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
   }, [selectedJob, selectedProfiles, results, buildProfileData]);
 
   return (
-    <div className="grid lg:grid-cols-[320px_1fr] gap-6">
+    <div className="grid lg:grid-cols-[320px_1fr] gap-6 items-start">
       {/* Filters sidebar */}
-      <div className="space-y-4">
+      <div className="space-y-4 sticky top-24">
         {/* Reconnection alert */}
         {needsReconnection && (
           <Alert variant="destructive" className="bg-amber-50 border-amber-200">
@@ -902,7 +902,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
       </div>
 
       {/* Results */}
-      <div className="bg-white rounded-xl border border-[#1A1A1A]/10 flex flex-col min-h-[700px] max-h-[calc(100vh-60px)]">
+      <div className="bg-white rounded-xl border border-[#1A1A1A]/10 flex flex-col h-[calc(100vh-120px)] sticky top-24">
         {/* Results header with batch actions */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-[#1A1A1A]/10 shrink-0">
           <div className="flex items-center gap-4">
