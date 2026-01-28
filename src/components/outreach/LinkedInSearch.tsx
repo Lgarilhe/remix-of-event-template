@@ -733,9 +733,21 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
         {/* Account selector */}
         <div className="bg-white rounded-lg border border-[#1A1A1A]/10 p-4 space-y-4">
           <div>
-            <label className="text-sm font-medium text-[#1A1A1A] mb-2 block">
-              Compte LinkedIn
-            </label>
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-sm font-medium text-[#1A1A1A]">
+                Compte LinkedIn
+              </label>
+              {/* Compact quota display on hover */}
+              <QuotaDisplay
+                searchResultsFetched={quota.quotas.searchResultsFetched}
+                profileVisits={quota.quotas.profileVisits}
+                messagesSent={quota.quotas.messagesSent}
+                invitationsSent={quota.quotas.invitationsSent}
+                inmailsSent={quota.quotas.inmailsSent}
+                apiMode={quota.apiMode}
+                compact={true}
+              />
+            </div>
             <Select value={selectedAccount || ''} onValueChange={onAccountChange}>
               <SelectTrigger>
                 <SelectValue placeholder="Sélectionner un compte" />
@@ -857,6 +869,12 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
           )}
         </div>
 
+        {/* Job Selector for scoring - moved to top */}
+        <JobSelector 
+          selectedJob={selectedJob}
+          onJobChange={setSelectedJob}
+        />
+
         {/* Search input */}
         <div className="bg-white rounded-lg border border-[#1A1A1A]/10 p-4">
           <label className="text-sm font-medium text-[#1A1A1A] mb-2 block">
@@ -879,21 +897,6 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
           accountId={selectedAccount}
         />
 
-        {/* Job Selector for scoring */}
-        <JobSelector 
-          selectedJob={selectedJob}
-          onJobChange={setSelectedJob}
-        />
-
-        {/* Quota Display */}
-        <QuotaDisplay
-          searchResultsFetched={quota.quotas.searchResultsFetched}
-          profileVisits={quota.quotas.profileVisits}
-          messagesSent={quota.quotas.messagesSent}
-          invitationsSent={quota.quotas.invitationsSent}
-          inmailsSent={quota.quotas.inmailsSent}
-          apiMode={quota.apiMode}
-        />
 
         {/* Action buttons */}
         <div className="flex gap-2">
