@@ -113,8 +113,9 @@ export const LinkedInResultCard: React.FC<LinkedInResultCardProps> = ({
   // Get skills
   const skills = profile.skills?.slice(0, 8) || [];
   
-  // Get education
-  const education = profile.education?.slice(0, 2) || [];
+  // Get education - all for display
+  const education = profile.education || [];
+  const educationPreview = education.slice(0, 2);
   
   // Connection count
   const connectionsCount = profile.connections_count;
@@ -124,23 +125,56 @@ export const LinkedInResultCard: React.FC<LinkedInResultCardProps> = ({
   const isLikelyToRespond = interests.includes('LIKELY_TO_RESPOND');
   const isActiveTalent = interests.includes('ACTIVE_TALENT');
 
-  // Calculate total experience years
-  const calculateTotalExperience = () => {
-    let totalMonths = 0;
-    workExperience.forEach(exp => {
-      const tenure = getTenureDisplay(exp.start, exp.end);
-      if (exp.start?.year) {
-        const startDate = new Date(exp.start.year, (exp.start.month || 1) - 1);
-        const endDate = exp.end?.year ? new Date(exp.end.year, (exp.end.month || 12) - 1) : new Date();
-        totalMonths += (endDate.getFullYear() - startDate.getFullYear()) * 12 + (endDate.getMonth() - startDate.getMonth());
-      }
-    });
+  // Calculate experience based on last relevant diploma date
+  // Relevant diplomas: Bachelor's, Master's, MBA, PhD, Engineering, etc.
+  const calculateExperienceFromDiploma = () => {
+    if (!education || education.length === 0) return null;
     
-    const years = Math.floor(totalMonths / 12);
-    return years > 0 ? `${years}+ ans d'exp.` : null;
+    // List of relevant degree keywords (case insensitive)
+    const relevantDegreeKeywords = [
+      'bachelor', 'licence', 'bac+3', 'bac +3',
+      'master', 'msc', 'm.sc', 'bac+5', 'bac +5', 'maîtrise',
+      'mba',
+      'ingénieur', 'engineer', 'engineering',
+      'phd', 'doctorat', 'doctorate', 'bac+8', 'bac +8',
+      'diplôme', 'degree', 'graduate',
+      'grande école', 'grande ecole'
+    ];
+    
+    // Find the last relevant diploma with an end date
+    const relevantEducation = education
+      .filter((edu: any) => {
+        if (!edu.end?.year) return false;
+        const degree = (edu.degree || '').toLowerCase();
+        const school = (edu.school || '').toLowerCase();
+        const field = (edu.field_of_study || '').toLowerCase();
+        const combined = `${degree} ${school} ${field}`;
+        return relevantDegreeKeywords.some(keyword => combined.includes(keyword));
+      })
+      .sort((a: any, b: any) => (b.end?.year || 0) - (a.end?.year || 0));
+    
+    // If no relevant diploma found, try to use any education with an end date
+    const diplomaToUse = relevantEducation[0] || 
+      education.filter((edu: any) => edu.end?.year).sort((a: any, b: any) => (b.end?.year || 0) - (a.end?.year || 0))[0];
+    
+    if (!diplomaToUse?.end?.year) return null;
+    
+    const diplomaYear = diplomaToUse.end.year;
+    const currentYear = new Date().getFullYear();
+    const yearsOfExperience = currentYear - diplomaYear;
+    
+    if (yearsOfExperience <= 0) return null;
+    return {
+      years: yearsOfExperience,
+      diplomaYear,
+      diplomaName: diplomaToUse.degree || diplomaToUse.school,
+    };
   };
 
-  const totalExperience = calculateTotalExperience();
+  const experienceFromDiploma = calculateExperienceFromDiploma();
+  const totalExperience = experienceFromDiploma 
+    ? `${experienceFromDiploma.years} an${experienceFromDiploma.years > 1 ? 's' : ''} d'exp.`
+    : null;
 
   // AI Analysis function
   const handleAiAnalysis = async () => {
@@ -488,6 +522,39 @@ export const LinkedInResultCard: React.FC<LinkedInResultCardProps> = ({
                     {(otherCurrentJobs.length + pastJobs.length) > 2 && (
                       <span className="text-[10px] text-[#0077B5] font-medium">
                         +{otherCurrentJobs.length + pastJobs.length - 2} autres expériences
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Education preview - show in compact view */}
+              {educationPreview.length > 0 && (
+                <div className="mt-3 pt-3 border-t border-[#1A1A1A]/5">
+                  <div className="flex items-center gap-2 mb-2">
+                    <GraduationCap className="w-3.5 h-3.5 text-amber-500" />
+                    <span className="text-[10px] font-semibold text-[#1A1A1A]/40 uppercase tracking-wider">
+                      Formation
+                    </span>
+                  </div>
+                  <div className="space-y-1.5">
+                    {educationPreview.map((edu: any, index: number) => (
+                      <div key={index} className="flex items-center gap-2 text-xs">
+                        <div className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
+                        <span className="text-[#1A1A1A]/70 truncate">
+                          <span className="font-medium">{edu.degree || edu.school}</span>
+                          {edu.degree && edu.school && (
+                            <span className="text-[#1A1A1A]/40"> - {edu.school}</span>
+                          )}
+                          {edu.end?.year && (
+                            <span className="text-[#1A1A1A]/30 ml-1">({edu.end.year})</span>
+                          )}
+                        </span>
+                      </div>
+                    ))}
+                    {education.length > 2 && (
+                      <span className="text-[10px] text-amber-600 font-medium">
+                        +{education.length - 2} autres formations
                       </span>
                     )}
                   </div>
