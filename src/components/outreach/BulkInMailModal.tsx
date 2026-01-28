@@ -12,28 +12,38 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
-import { Progress } from '@/components/ui/progress';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { 
   Mail, 
   Clock, 
   CheckCircle, 
   XCircle, 
-  AlertTriangle,
   Loader2,
   Users,
   Calendar,
-  Info
+  Info,
+  Sparkles,
+  PenLine,
+  ChevronLeft,
+  ChevronRight,
+  RefreshCw,
+  Send,
+  Edit2,
+  Check,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { Job } from '@/pages/JobSpace';
+import { LinkedInProfile } from './types';
 
 interface Recipient {
   id: string;
   name: string;
   headline?: string;
   profile_id: string;
+  profile?: LinkedInProfile;
 }
 
 interface BulkInMailModalProps {
@@ -41,7 +51,17 @@ interface BulkInMailModalProps {
   onClose: () => void;
   recipients: Recipient[];
   accountId: string;
+  selectedJob?: Job | null;
 }
+
+interface GeneratedMessage {
+  subject: string;
+  message: string;
+  personalizationPoints: string[];
+  isEdited: boolean;
+}
+
+type Tone = 'professional' | 'casual' | 'enthusiastic';
 
 interface QueueStats {
   pending: number;
@@ -68,16 +88,57 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
   onClose,
   recipients,
   accountId,
+  selectedJob,
 }) => {
-  const [subject, setSubject] = useState('');
-  const [message, setMessage] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
+  // Tab state: 'compose' or 'queue'
+  const [activeTab, setActiveTab] = useState<'compose' | 'queue'>('compose');
+  
+  // AI generation state
+  const [generatedMessages, setGeneratedMessages] = useState<Record<string, GeneratedMessage>>({});
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [generatingIndex, setGeneratingIndex] = useState(0);
+  const [tone, setTone] = useState<Tone>('professional');
+  const [senderName, setSenderName] = useState(() => {
+    return localStorage.getItem('outreach_sender_name') || '';
+  });
+  
+  // Current message editing
+  const [currentRecipientIndex, setCurrentRecipientIndex] = useState(0);
+  const [editingSubject, setEditingSubject] = useState('');
+  const [editingMessage, setEditingMessage] = useState('');
+  
+  // Queue state
+  const [isQueueing, setIsQueueing] = useState(false);
   const [queueStats, setQueueStats] = useState<QueueStats | null>(null);
   const [queueItems, setQueueItems] = useState<QueueItem[]>([]);
-  const [showQueue, setShowQueue] = useState(false);
 
   // Get user's timezone
   const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  
+  // Current recipient
+  const currentRecipient = recipients[currentRecipientIndex];
+  const currentMessage = currentRecipient ? generatedMessages[currentRecipient.id] : null;
+  
+  // Count how many messages are ready
+  const readyCount = Object.keys(generatedMessages).length;
+  const allGenerated = readyCount === recipients.length;
+
+  // Save sender name to localStorage
+  const handleSenderNameChange = (name: string) => {
+    setSenderName(name);
+    localStorage.setItem('outreach_sender_name', name);
+  };
+
+  // Update editing fields when switching recipients
+  useEffect(() => {
+    if (currentMessage) {
+      setEditingSubject(currentMessage.subject);
+      setEditingMessage(currentMessage.message);
+    } else {
+      setEditingSubject('');
+      setEditingMessage('');
+    }
+  }, [currentRecipientIndex, currentMessage]);
 
   // Fetch queue status
   const fetchQueueStatus = async () => {
@@ -102,48 +163,166 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
     }
   }, [isOpen]);
 
-  // Format scheduled time in user's timezone
-  const formatScheduledTime = (isoString: string | null) => {
-    if (!isoString) return 'Non planifié';
+  // Build profile data for AI generation
+  const buildProfileData = (recipient: Recipient) => {
+    const profile = recipient.profile;
+    if (!profile) {
+      return {
+        name: recipient.name,
+        headline: recipient.headline,
+      };
+    }
+    
+    const workExperience = profile.work_experience || [];
+    const currentJob = workExperience.find(exp => !exp.end) || workExperience[0];
+    const pastJobs = workExperience.filter(exp => exp.end).slice(0, 3);
+    
+    return {
+      name: recipient.name,
+      headline: recipient.headline || profile.headline,
+      currentRole: currentJob?.role,
+      currentCompany: currentJob?.company,
+      location: profile.location,
+      skills: profile.skills?.map((s: any) => s.name || s).slice(0, 10) || [],
+      pastPositions: pastJobs.map(p => `${p.role} chez ${p.company}`),
+    };
+  };
+
+  // Generate message for a single recipient
+  const generateMessageForRecipient = async (recipient: Recipient) => {
+    if (!selectedJob) return null;
+    
     try {
-      const date = new Date(isoString);
-      return date.toLocaleString('fr-FR', {
-        timeZone: userTimezone,
-        day: '2-digit',
-        month: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
+      const profileData = buildProfileData(recipient);
+      
+      const { data, error } = await supabase.functions.invoke('generate-outreach-message', {
+        body: { 
+          profile: profileData, 
+          job: {
+            title: selectedJob.title,
+            client: selectedJob.client,
+            skills: selectedJob.skills || [],
+            description: selectedJob.description,
+            location: selectedJob.location,
+            remote: selectedJob.remote,
+          },
+          tone,
+          senderName: senderName.trim() || undefined,
+        }
       });
-    } catch {
-      return isoString;
+
+      if (error) throw error;
+      
+      return {
+        subject: data?.subject || `Opportunité ${selectedJob.title}`,
+        message: data?.message || '',
+        personalizationPoints: data?.personalization_points || [],
+        isEdited: false,
+      };
+    } catch (err) {
+      console.error('Generate message error:', err);
+      return null;
     }
   };
 
-  // Handle queue submission
-  const handleQueueInMails = async () => {
-    if (!subject.trim()) {
-      toast.error('Veuillez entrer un sujet');
+  // Generate all messages
+  const handleGenerateAll = async () => {
+    if (!selectedJob) {
+      toast.error('Sélectionnez un poste pour générer les messages');
       return;
     }
-    if (!message.trim()) {
-      toast.error('Veuillez entrer un message');
-      return;
+    
+    setIsGenerating(true);
+    setGeneratingIndex(0);
+    
+    const newMessages: Record<string, GeneratedMessage> = {};
+    
+    for (let i = 0; i < recipients.length; i++) {
+      setGeneratingIndex(i);
+      const recipient = recipients[i];
+      const message = await generateMessageForRecipient(recipient);
+      
+      if (message) {
+        newMessages[recipient.id] = message;
+        // Update state progressively for UI feedback
+        setGeneratedMessages(prev => ({ ...prev, [recipient.id]: message }));
+      }
     }
-    if (recipients.length === 0) {
-      toast.error('Aucun destinataire sélectionné');
-      return;
-    }
+    
+    setIsGenerating(false);
+    toast.success(`${Object.keys(newMessages).length} messages générés !`);
+  };
 
-    setIsLoading(true);
+  // Regenerate current message
+  const handleRegenerateMessage = async () => {
+    if (!currentRecipient) return;
+    
+    setIsGenerating(true);
+    const message = await generateMessageForRecipient(currentRecipient);
+    
+    if (message) {
+      setGeneratedMessages(prev => ({ ...prev, [currentRecipient.id]: message }));
+      setEditingSubject(message.subject);
+      setEditingMessage(message.message);
+    }
+    
+    setIsGenerating(false);
+  };
+
+  // Save edited message
+  const handleSaveEdit = () => {
+    if (!currentRecipient) return;
+    
+    setGeneratedMessages(prev => ({
+      ...prev,
+      [currentRecipient.id]: {
+        ...prev[currentRecipient.id],
+        subject: editingSubject,
+        message: editingMessage,
+        isEdited: true,
+      }
+    }));
+    
+    toast.success('Message sauvegardé');
+  };
+
+  // Navigate to previous/next recipient
+  const goToRecipient = (direction: 'prev' | 'next') => {
+    // Auto-save if edited
+    if (currentMessage && (
+      editingSubject !== currentMessage.subject || 
+      editingMessage !== currentMessage.message
+    )) {
+      handleSaveEdit();
+    }
+    
+    if (direction === 'prev' && currentRecipientIndex > 0) {
+      setCurrentRecipientIndex(i => i - 1);
+    } else if (direction === 'next' && currentRecipientIndex < recipients.length - 1) {
+      setCurrentRecipientIndex(i => i + 1);
+    }
+  };
+
+  // Queue all messages
+  const handleQueueAll = async () => {
+    if (readyCount === 0) {
+      toast.error('Générez d\'abord les messages');
+      return;
+    }
+    
+    setIsQueueing(true);
+    
     try {
-      const items = recipients.map(r => ({
-        account_id: accountId,
-        recipient_profile_id: r.profile_id,
-        recipient_name: r.name,
-        recipient_headline: r.headline,
-        subject: subject.trim(),
-        message: message.trim(),
-      }));
+      const items = recipients
+        .filter(r => generatedMessages[r.id])
+        .map(r => ({
+          account_id: accountId,
+          recipient_profile_id: r.profile_id,
+          recipient_name: r.name,
+          recipient_headline: r.headline,
+          subject: generatedMessages[r.id].subject,
+          message: generatedMessages[r.id].message,
+        }));
 
       const { data, error } = await supabase.functions.invoke('process-inmail-queue', {
         body: {
@@ -157,15 +336,14 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
       if (!data?.success) throw new Error(data?.error || 'Erreur lors de la mise en queue');
 
       toast.success(`${data.queued} InMails planifiés pour envoi`);
-      setSubject('');
-      setMessage('');
+      setGeneratedMessages({});
+      setActiveTab('queue');
       fetchQueueStatus();
-      setShowQueue(true);
     } catch (err) {
       console.error('Error queueing InMails:', err);
       toast.error(err instanceof Error ? err.message : 'Erreur lors de la planification');
     } finally {
-      setIsLoading(false);
+      setIsQueueing(false);
     }
   };
 
@@ -194,6 +372,23 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
     }
   };
 
+  // Format scheduled time
+  const formatScheduledTime = (isoString: string | null) => {
+    if (!isoString) return 'Non planifié';
+    try {
+      const date = new Date(isoString);
+      return date.toLocaleString('fr-FR', {
+        timeZone: userTimezone,
+        day: '2-digit',
+        month: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+    } catch {
+      return isoString;
+    }
+  };
+
   const getStatusBadge = (status: string) => {
     switch (status) {
       case 'pending':
@@ -214,172 +409,385 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
 
   const totalInQueue = queueStats ? 
     queueStats.pending + queueStats.scheduled + queueStats.sending : 0;
-  const completedPercent = queueStats && (queueStats.sent + queueStats.failed) > 0 ?
-    Math.round((queueStats.sent / (queueStats.sent + queueStats.failed)) * 100) : 0;
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
+      <DialogContent className="max-w-3xl max-h-[90vh] overflow-hidden flex flex-col">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Mail className="w-5 h-5 text-[#0077B5]" />
-            Envoi InMails en masse
+            InMails personnalisés
           </DialogTitle>
           <DialogDescription>
-            Les InMails seront envoyés de façon espacée (2-5 min) pendant les heures ouvrables (8h-19h)
+            Génération IA de messages personnalisés pour chaque candidat
           </DialogDescription>
         </DialogHeader>
 
-        <div className="flex-1 overflow-hidden flex flex-col gap-4">
-          {/* Queue Stats */}
-          {queueStats && (
-            <div className="bg-muted/50 rounded-lg p-4">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-sm font-medium">File d'attente</span>
-                <Button 
-                  variant="ghost" 
-                  size="sm" 
-                  onClick={() => setShowQueue(!showQueue)}
-                >
-                  {showQueue ? 'Masquer' : 'Voir détails'}
-                </Button>
-              </div>
-              <div className="grid grid-cols-5 gap-2 text-center">
-                <div>
-                  <div className="text-lg font-bold text-blue-600">{queueStats.scheduled}</div>
-                  <div className="text-xs text-muted-foreground">Planifiés</div>
-                </div>
-                <div>
-                  <div className="text-lg font-bold text-amber-600">{queueStats.sending}</div>
-                  <div className="text-xs text-muted-foreground">En cours</div>
-                </div>
-                <div>
-                  <div className="text-lg font-bold text-green-600">{queueStats.sent}</div>
-                  <div className="text-xs text-muted-foreground">Envoyés</div>
-                </div>
-                <div>
-                  <div className="text-lg font-bold text-red-600">{queueStats.failed}</div>
-                  <div className="text-xs text-muted-foreground">Échoués</div>
-                </div>
-                <div>
-                  <div className="text-lg font-bold text-gray-600">{queueStats.cancelled}</div>
-                  <div className="text-xs text-muted-foreground">Annulés</div>
-                </div>
-              </div>
-            </div>
-          )}
+        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'compose' | 'queue')} className="flex-1 overflow-hidden flex flex-col">
+          <TabsList className="w-full bg-muted/50">
+            <TabsTrigger value="compose" className="flex-1 gap-2">
+              <PenLine className="w-4 h-4" />
+              Composer ({readyCount}/{recipients.length})
+            </TabsTrigger>
+            <TabsTrigger value="queue" className="flex-1 gap-2">
+              <Clock className="w-4 h-4" />
+              File d'attente {totalInQueue > 0 && `(${totalInQueue})`}
+            </TabsTrigger>
+          </TabsList>
 
-          {/* Queue Details */}
-          {showQueue && queueItems.length > 0 && (
-            <ScrollArea className="h-48 border rounded-lg">
-              <div className="p-2 space-y-2">
-                {queueItems.slice(0, 20).map(item => (
-                  <div key={item.id} className="flex items-center justify-between p-2 bg-white rounded border">
-                    <div className="flex-1 min-w-0">
-                      <div className="font-medium text-sm truncate">{item.recipient_name || 'Inconnu'}</div>
-                      <div className="text-xs text-muted-foreground truncate">{item.subject}</div>
-                      {item.scheduled_at && ['pending', 'scheduled'].includes(item.status) && (
-                        <div className="text-xs text-blue-600 flex items-center gap-1 mt-1">
-                          <Calendar className="w-3 h-3" />
-                          {formatScheduledTime(item.scheduled_at)}
-                        </div>
+          {/* Compose Tab */}
+          <TabsContent value="compose" className="flex-1 overflow-hidden flex flex-col gap-4 mt-4">
+            {!selectedJob ? (
+              // No job selected
+              <div className="flex-1 flex items-center justify-center">
+                <div className="text-center p-8">
+                  <Sparkles className="w-12 h-12 text-muted-foreground/30 mx-auto mb-4" />
+                  <h3 className="font-semibold text-lg mb-2">Sélectionnez un poste</h3>
+                  <p className="text-muted-foreground text-sm">
+                    Pour générer des messages personnalisés, sélectionnez d'abord un poste dans le sélecteur de jobs.
+                  </p>
+                </div>
+              </div>
+            ) : !allGenerated ? (
+              // Generation setup
+              <div className="space-y-4">
+                {/* Job context */}
+                <div className="flex flex-wrap gap-2 p-3 bg-purple-50 rounded-lg">
+                  <Badge variant="outline" className="bg-white text-purple-700 border-purple-200">
+                    {selectedJob.title}
+                  </Badge>
+                  {selectedJob.client?.name && (
+                    <Badge variant="outline" className="bg-white text-blue-700 border-blue-200">
+                      {selectedJob.client.name}
+                    </Badge>
+                  )}
+                </div>
+
+                {/* Recipients info */}
+                <div className="flex items-center gap-2 p-3 bg-[#0077B5]/10 rounded-lg">
+                  <Users className="w-5 h-5 text-[#0077B5]" />
+                  <span className="text-sm font-medium">{recipients.length} candidat(s) sélectionné(s)</span>
+                </div>
+
+                {/* Sender name */}
+                <div>
+                  <Label htmlFor="senderName">Ton prénom (pour la signature)</Label>
+                  <Input
+                    id="senderName"
+                    value={senderName}
+                    onChange={(e) => handleSenderNameChange(e.target.value)}
+                    placeholder="Ex: Marc"
+                    className="max-w-[200px] mt-1"
+                  />
+                </div>
+
+                {/* Tone selector */}
+                <div>
+                  <Label className="mb-2 block">Ton des messages</Label>
+                  <div className="flex gap-2">
+                    {[
+                      { value: 'professional', label: 'Professionnel', emoji: '👔' },
+                      { value: 'casual', label: 'Décontracté', emoji: '😊' },
+                      { value: 'enthusiastic', label: 'Enthousiaste', emoji: '🚀' },
+                    ].map((t) => (
+                      <Button
+                        key={t.value}
+                        variant={tone === t.value ? 'default' : 'outline'}
+                        size="sm"
+                        onClick={() => setTone(t.value as Tone)}
+                        className={tone === t.value ? 'bg-[#0077B5] hover:bg-[#005E93]' : ''}
+                      >
+                        {t.emoji} {t.label}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Business hours info */}
+                <div className="flex items-start gap-2 p-3 bg-amber-50 rounded-lg text-amber-800">
+                  <Info className="w-5 h-5 shrink-0 mt-0.5" />
+                  <div className="text-sm">
+                    <strong>Envoi intelligent :</strong> Les InMails seront envoyés entre 8h et 19h ({userTimezone}) 
+                    avec un délai de 2-5 minutes entre chaque envoi.
+                  </div>
+                </div>
+
+                {/* Generate button */}
+                <Button
+                  onClick={handleGenerateAll}
+                  disabled={isGenerating}
+                  className="w-full bg-gradient-to-r from-purple-600 to-[#0077B5] hover:from-purple-700 hover:to-[#005E93]"
+                  size="lg"
+                >
+                  {isGenerating ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Génération {generatingIndex + 1}/{recipients.length}...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="w-4 h-4 mr-2" />
+                      Générer {recipients.length} messages IA
+                    </>
+                  )}
+                </Button>
+
+                {/* Progress indicator */}
+                {isGenerating && (
+                  <div className="w-full bg-gray-200 rounded-full h-2">
+                    <div 
+                      className="bg-gradient-to-r from-purple-600 to-[#0077B5] h-2 rounded-full transition-all"
+                      style={{ width: `${((generatingIndex + 1) / recipients.length) * 100}%` }}
+                    />
+                  </div>
+                )}
+              </div>
+            ) : (
+              // Message editing view
+              <div className="flex-1 overflow-hidden flex flex-col gap-4">
+                {/* Navigation header */}
+                <div className="flex items-center justify-between bg-muted/50 rounded-lg p-2">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => goToRecipient('prev')}
+                    disabled={currentRecipientIndex === 0}
+                  >
+                    <ChevronLeft className="w-4 h-4 mr-1" />
+                    Précédent
+                  </Button>
+                  <div className="text-sm font-medium">
+                    {currentRecipientIndex + 1} / {recipients.length}
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => goToRecipient('next')}
+                    disabled={currentRecipientIndex === recipients.length - 1}
+                  >
+                    Suivant
+                    <ChevronRight className="w-4 h-4 ml-1" />
+                  </Button>
+                </div>
+
+                {/* Current recipient info */}
+                {currentRecipient && (
+                  <div className="flex items-center justify-between p-3 bg-[#0077B5]/10 rounded-lg">
+                    <div>
+                      <div className="font-medium text-[#1A1A1A]">{currentRecipient.name}</div>
+                      <div className="text-sm text-muted-foreground truncate max-w-[400px]">
+                        {currentRecipient.headline}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {currentMessage?.isEdited && (
+                        <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200">
+                          <Edit2 className="w-3 h-3 mr-1" />
+                          Modifié
+                        </Badge>
                       )}
-                      {item.error_message && (
-                        <div className="text-xs text-red-600 mt-1">{item.error_message}</div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={handleRegenerateMessage}
+                        disabled={isGenerating}
+                      >
+                        <RefreshCw className={cn("w-4 h-4", isGenerating && "animate-spin")} />
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Message editor */}
+                <div className="flex-1 overflow-auto space-y-4">
+                  <div>
+                    <Label htmlFor="subject">Objet</Label>
+                    <Input
+                      id="subject"
+                      value={editingSubject}
+                      onChange={(e) => setEditingSubject(e.target.value)}
+                      placeholder="Objet du message..."
+                      className="mt-1"
+                    />
+                  </div>
+
+                  <div className="flex-1">
+                    <Label htmlFor="message">Message</Label>
+                    <Textarea
+                      id="message"
+                      value={editingMessage}
+                      onChange={(e) => setEditingMessage(e.target.value)}
+                      placeholder="Le message d'approche..."
+                      className="min-h-[200px] mt-1"
+                    />
+                    <div className="flex justify-between items-center mt-1">
+                      <p className="text-xs text-muted-foreground">
+                        {editingMessage.split(/\s+/).filter(Boolean).length} mots
+                      </p>
+                      {currentMessage && (
+                        editingSubject !== currentMessage.subject || 
+                        editingMessage !== currentMessage.message
+                      ) && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={handleSaveEdit}
+                          className="text-green-600 hover:text-green-700"
+                        >
+                          <Check className="w-4 h-4 mr-1" />
+                          Sauvegarder
+                        </Button>
                       )}
                     </div>
-                    {getStatusBadge(item.status)}
                   </div>
-                ))}
-              </div>
-            </ScrollArea>
-          )}
 
-          {/* New InMail Form */}
-          {!showQueue && (
-            <>
-              {/* Recipients info */}
-              <div className="flex items-center gap-2 p-3 bg-[#0077B5]/10 rounded-lg">
-                <Users className="w-5 h-5 text-[#0077B5]" />
-                <span className="text-sm font-medium">{recipients.length} destinataire(s) sélectionné(s)</span>
-              </div>
+                  {/* Personalization points */}
+                  {currentMessage?.personalizationPoints && currentMessage.personalizationPoints.length > 0 && (
+                    <div className="bg-amber-50 rounded-lg p-3 border border-amber-200">
+                      <div className="flex items-center gap-2 text-amber-700 font-medium text-sm mb-2">
+                        <Sparkles className="w-4 h-4" />
+                        Points de personnalisation
+                      </div>
+                      <ul className="space-y-1">
+                        {currentMessage.personalizationPoints.map((point, i) => (
+                          <li key={i} className="text-xs text-amber-800 flex items-start gap-2">
+                            <span className="text-amber-500">•</span>
+                            {point}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
 
-              {/* Business hours info */}
-              <div className="flex items-start gap-2 p-3 bg-amber-50 rounded-lg text-amber-800">
-                <Info className="w-5 h-5 shrink-0 mt-0.5" />
-                <div className="text-sm">
-                  <strong>Envoi intelligent :</strong> Les InMails seront envoyés entre 8h et 19h ({userTimezone}) 
-                  avec un délai aléatoire de 2-5 minutes entre chaque envoi pour simuler une activité humaine.
+                {/* Quick navigation dots */}
+                <div className="flex justify-center gap-1 py-2">
+                  {recipients.slice(0, 20).map((r, i) => (
+                    <button
+                      key={r.id}
+                      onClick={() => {
+                        if (currentMessage && (
+                          editingSubject !== currentMessage.subject || 
+                          editingMessage !== currentMessage.message
+                        )) {
+                          handleSaveEdit();
+                        }
+                        setCurrentRecipientIndex(i);
+                      }}
+                      className={cn(
+                        "w-2 h-2 rounded-full transition-all",
+                        i === currentRecipientIndex 
+                          ? "bg-[#0077B5] scale-125" 
+                          : generatedMessages[r.id] 
+                            ? "bg-green-400 hover:bg-green-500"
+                            : "bg-gray-300 hover:bg-gray-400"
+                      )}
+                    />
+                  ))}
+                  {recipients.length > 20 && (
+                    <span className="text-xs text-muted-foreground ml-2">+{recipients.length - 20}</span>
+                  )}
                 </div>
               </div>
+            )}
+          </TabsContent>
 
-              {/* Subject */}
-              <div className="space-y-2">
-                <Label htmlFor="subject">Sujet</Label>
-                <Input
-                  id="subject"
-                  value={subject}
-                  onChange={(e) => setSubject(e.target.value)}
-                  placeholder="Ex: Opportunité chez [Entreprise]"
-                />
+          {/* Queue Tab */}
+          <TabsContent value="queue" className="flex-1 overflow-hidden flex flex-col gap-4 mt-4">
+            {/* Queue Stats */}
+            {queueStats && (
+              <div className="bg-muted/50 rounded-lg p-4">
+                <div className="grid grid-cols-5 gap-2 text-center">
+                  <div>
+                    <div className="text-lg font-bold text-blue-600">{queueStats.scheduled}</div>
+                    <div className="text-xs text-muted-foreground">Planifiés</div>
+                  </div>
+                  <div>
+                    <div className="text-lg font-bold text-amber-600">{queueStats.sending}</div>
+                    <div className="text-xs text-muted-foreground">En cours</div>
+                  </div>
+                  <div>
+                    <div className="text-lg font-bold text-green-600">{queueStats.sent}</div>
+                    <div className="text-xs text-muted-foreground">Envoyés</div>
+                  </div>
+                  <div>
+                    <div className="text-lg font-bold text-red-600">{queueStats.failed}</div>
+                    <div className="text-xs text-muted-foreground">Échoués</div>
+                  </div>
+                  <div>
+                    <div className="text-lg font-bold text-gray-600">{queueStats.cancelled}</div>
+                    <div className="text-xs text-muted-foreground">Annulés</div>
+                  </div>
+                </div>
               </div>
+            )}
 
-              {/* Message */}
+            {/* Queue items */}
+            <ScrollArea className="flex-1">
               <div className="space-y-2">
-                <Label htmlFor="message">Message</Label>
-                <Textarea
-                  id="message"
-                  value={message}
-                  onChange={(e) => setMessage(e.target.value)}
-                  placeholder="Votre message..."
-                  rows={6}
-                />
-                <p className="text-xs text-muted-foreground">
-                  Astuce: Personnalisez le message pour de meilleurs résultats
-                </p>
-              </div>
-            </>
-          )}
-        </div>
-
-        <DialogFooter className="flex gap-2">
-          {showQueue && totalInQueue > 0 && (
-            <Button 
-              variant="outline" 
-              onClick={handleCancelPending}
-              className="text-red-600 border-red-200 hover:bg-red-50"
-            >
-              Annuler les envois en attente
-            </Button>
-          )}
-          
-          {showQueue ? (
-            <Button onClick={() => setShowQueue(false)}>
-              Nouveau message
-            </Button>
-          ) : (
-            <>
-              <Button variant="outline" onClick={onClose}>
-                Annuler
-              </Button>
-              <Button 
-                onClick={handleQueueInMails} 
-                disabled={isLoading || recipients.length === 0}
-                className="bg-[#0077B5] hover:bg-[#005E93]"
-              >
-                {isLoading ? (
-                  <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Planification...
-                  </>
+                {queueItems.length === 0 ? (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <Clock className="w-8 h-8 mx-auto mb-2 opacity-30" />
+                    <p>Aucun InMail en file d'attente</p>
+                  </div>
                 ) : (
-                  <>
-                    <Clock className="w-4 h-4 mr-2" />
-                    Planifier {recipients.length} InMail(s)
-                  </>
+                  queueItems.map(item => (
+                    <div key={item.id} className="flex items-center justify-between p-3 bg-white rounded-lg border">
+                      <div className="flex-1 min-w-0">
+                        <div className="font-medium text-sm truncate">{item.recipient_name || 'Inconnu'}</div>
+                        <div className="text-xs text-muted-foreground truncate">{item.subject}</div>
+                        {item.scheduled_at && ['pending', 'scheduled'].includes(item.status) && (
+                          <div className="text-xs text-blue-600 flex items-center gap-1 mt-1">
+                            <Calendar className="w-3 h-3" />
+                            {formatScheduledTime(item.scheduled_at)}
+                          </div>
+                        )}
+                        {item.error_message && (
+                          <div className="text-xs text-red-600 mt-1">{item.error_message}</div>
+                        )}
+                      </div>
+                      {getStatusBadge(item.status)}
+                    </div>
+                  ))
                 )}
+              </div>
+            </ScrollArea>
+
+            {totalInQueue > 0 && (
+              <Button 
+                variant="outline" 
+                onClick={handleCancelPending}
+                className="text-red-600 border-red-200 hover:bg-red-50"
+              >
+                Annuler les envois en attente
               </Button>
-            </>
+            )}
+          </TabsContent>
+        </Tabs>
+
+        <DialogFooter className="flex gap-2 pt-4 border-t">
+          <Button variant="outline" onClick={onClose}>
+            Fermer
+          </Button>
+          
+          {activeTab === 'compose' && allGenerated && (
+            <Button 
+              onClick={handleQueueAll} 
+              disabled={isQueueing || readyCount === 0}
+              className="bg-[#0077B5] hover:bg-[#005E93]"
+            >
+              {isQueueing ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Planification...
+                </>
+              ) : (
+                <>
+                  <Send className="w-4 h-4 mr-2" />
+                  Planifier {readyCount} InMail(s)
+                </>
+              )}
+            </Button>
           )}
         </DialogFooter>
       </DialogContent>

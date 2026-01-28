@@ -895,9 +895,11 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
             name: p.name || `${p.first_name || ''} ${p.last_name || ''}`.trim(),
             headline: p.headline,
             profile_id: p.id,
+            profile: p,
           }))
         }
         accountId={selectedAccount || ''}
+        selectedJob={selectedJob}
       />
     </div>
   );
