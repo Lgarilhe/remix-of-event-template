@@ -6,6 +6,7 @@ import { LinkedInResultCard } from './LinkedInResultCard';
 import { JobSelector, BatchScoreButton } from './JobSelector';
 import { JobMatchResult } from './JobScoreDisplay';
 import { QuotaDisplay } from './QuotaDisplay';
+import { BulkInMailModal } from './BulkInMailModal';
 import { useUnipileQuota } from '@/hooks/useUnipileQuota';
 import { Job } from '@/pages/JobSpace';
 import {
@@ -23,7 +24,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Search, Loader2, ChevronRight, AlertTriangle, Lock, Users, Sparkles } from 'lucide-react';
+import { Search, Loader2, ChevronRight, AlertTriangle, Lock, Users, Sparkles, Mail } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface LinkedInSearchProps {
@@ -53,6 +54,9 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
   const [jobScores, setJobScores] = useState<Record<string, JobMatchResult>>({});
   const [scoringInProgress, setScoringInProgress] = useState(false);
   const [sortByScore, setSortByScore] = useState(false);
+  
+  // Bulk InMail modal state
+  const [showBulkInMailModal, setShowBulkInMailModal] = useState(false);
   
   // Update API mode based on selected filter
   useEffect(() => {
@@ -751,13 +755,28 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
               </Button>
             )}
             
-            {selectedJob && selectedProfiles.size > 0 && (
-              <BatchScoreButton
-                selectedCount={selectedProfiles.size}
-                onScore={handleBatchScore}
-                loading={scoringInProgress}
-                disabled={!selectedJob}
-              />
+            {selectedProfiles.size > 0 && (
+              <>
+                {selectedJob && (
+                  <BatchScoreButton
+                    selectedCount={selectedProfiles.size}
+                    onScore={handleBatchScore}
+                    loading={scoringInProgress}
+                    disabled={!selectedJob}
+                  />
+                )}
+                
+                {/* Bulk InMail button */}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowBulkInMailModal(true)}
+                  className="border-[#0077B5] text-[#0077B5] hover:bg-[#0077B5]/10"
+                >
+                  <Mail className="w-3.5 h-3.5 mr-1.5" />
+                  InMail ({selectedProfiles.size})
+                </Button>
+              </>
             )}
             
             {/* Compact quota display */}
@@ -864,6 +883,22 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
           )}
         </ScrollArea>
       </div>
+      
+      {/* Bulk InMail Modal */}
+      <BulkInMailModal
+        isOpen={showBulkInMailModal}
+        onClose={() => setShowBulkInMailModal(false)}
+        recipients={results
+          .filter(p => selectedProfiles.has(p.id))
+          .map(p => ({
+            id: p.id,
+            name: p.name || `${p.first_name || ''} ${p.last_name || ''}`.trim(),
+            headline: p.headline,
+            profile_id: p.id,
+          }))
+        }
+        accountId={selectedAccount || ''}
+      />
     </div>
   );
 };
