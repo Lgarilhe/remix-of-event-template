@@ -24,7 +24,8 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Search, Loader2, ChevronRight, AlertTriangle, Lock, Users, Sparkles, Mail } from 'lucide-react';
+import { Search, Loader2, ChevronRight, AlertTriangle, Lock, Users, Sparkles, Mail, GitBranch } from 'lucide-react';
+import { SequenceEnrollButton } from './SequenceEnrollButton';
 import { toast } from 'sonner';
 
 interface LinkedInSearchProps {
@@ -776,6 +777,19 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
                   <Mail className="w-3.5 h-3.5 mr-1.5" />
                   InMail ({selectedProfiles.size})
                 </Button>
+                
+                {/* Sequence enrollment button */}
+                {selectedAccount && (
+                  <SequenceEnrollButton
+                    selectedProfiles={results.filter(p => selectedProfiles.has(p.id))}
+                    accountId={selectedAccount}
+                    selectedJob={selectedJob}
+                    onSuccess={() => {
+                      setSelectedProfiles(new Set());
+                      toast.success('Candidats inscrits dans la séquence');
+                    }}
+                  />
+                )}
               </>
             )}
             
