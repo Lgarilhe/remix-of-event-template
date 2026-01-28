@@ -312,7 +312,7 @@ export const LinkedInResultCard: React.FC<LinkedInResultCardProps> = ({ profile 
                   </div>
 
                   {/* Summary */}
-                  <p className="text-sm text-[#1A1A1A]/80 font-medium mb-3">{aiAnalysis.summary}</p>
+                  <p className="text-sm text-[#1A1A1A]/80 font-medium mb-3">{aiAnalysis.summary || 'Analyse en cours...'}</p>
 
                   {/* Strengths & Concerns grid */}
                   <div className="grid grid-cols-2 gap-3">
@@ -322,12 +322,15 @@ export const LinkedInResultCard: React.FC<LinkedInResultCardProps> = ({ profile 
                         <CheckCircle2 className="w-3 h-3" />
                         Points forts
                       </div>
-                      {aiAnalysis.strengths.map((strength, i) => (
+                      {(aiAnalysis.strengths || []).map((strength, i) => (
                         <div key={i} className="flex items-start gap-1.5 text-xs text-green-800 bg-green-100/50 px-2 py-1 rounded">
                           <span className="text-green-500 mt-0.5">✓</span>
                           <span>{strength}</span>
                         </div>
                       ))}
+                      {(!aiAnalysis.strengths || aiAnalysis.strengths.length === 0) && (
+                        <p className="text-xs text-green-600/60 italic">Aucun point fort identifié</p>
+                      )}
                     </div>
 
                     {/* Concerns */}
@@ -336,21 +339,26 @@ export const LinkedInResultCard: React.FC<LinkedInResultCardProps> = ({ profile 
                         <AlertTriangle className="w-3 h-3" />
                         À vérifier
                       </div>
-                      {aiAnalysis.concerns.map((concern, i) => (
+                      {(aiAnalysis.concerns || []).map((concern, i) => (
                         <div key={i} className="flex items-start gap-1.5 text-xs text-amber-800 bg-amber-100/50 px-2 py-1 rounded">
                           <span className="text-amber-500 mt-0.5">!</span>
                           <span>{concern}</span>
                         </div>
                       ))}
+                      {(!aiAnalysis.concerns || aiAnalysis.concerns.length === 0) && (
+                        <p className="text-xs text-amber-600/60 italic">Aucun point à vérifier</p>
+                      )}
                     </div>
                   </div>
 
                   {/* Recommendation */}
-                  <div className="mt-3 pt-2 border-t border-purple-200/50">
-                    <p className="text-xs text-purple-700 italic">
-                      💡 {aiAnalysis.recommendation}
-                    </p>
-                  </div>
+                  {aiAnalysis.recommendation && (
+                    <div className="mt-3 pt-2 border-t border-purple-200/50">
+                      <p className="text-xs text-purple-700 italic">
+                        💡 {aiAnalysis.recommendation}
+                      </p>
+                    </div>
+                  )}
                 </div>
               )}
 
