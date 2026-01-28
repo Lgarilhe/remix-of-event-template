@@ -3,7 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { LinkedInAccount } from '@/pages/Outreach';
 import { LinkedInFilters } from './LinkedInFilters';
 import { LinkedInResultCard } from './LinkedInResultCard';
-import { JobSelector, BatchScoreButton } from './JobSelector';
+import { JobSelector, BatchScoreButton, GeneratedFilters } from './JobSelector';
 import { JobMatchResult } from './JobScoreDisplay';
 import { QuotaDisplay } from './QuotaDisplay';
 import { BulkInMailModal } from './BulkInMailModal';
@@ -68,6 +68,34 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
   const hasAccountBeenSelected = useRef(false); // Track if account was already selected once
   const scrollAreaRef = useRef<HTMLDivElement>(null); // Ref for scrolling to top on pagination
   const shouldScrollToTop = useRef(false); // Flag to scroll after pagination load completes
+  
+  // Handler for AI-generated filter auto-fill
+  const handleAutoFillFilters = useCallback((generatedFilters: GeneratedFilters) => {
+    setFilters(prev => ({
+      ...prev,
+      // Keywords
+      keywords: generatedFilters.keywords || prev.keywords,
+      // Role filters (for Recruiter mode)
+      role: generatedFilters.role?.length > 0 ? generatedFilters.role.map(r => ({
+        keywords: r.keywords,
+        priority: r.priority as 'MUST_HAVE' | 'DOESNT_HAVE',
+        scope: r.scope as 'CURRENT' | 'PAST' | 'CURRENT_OR_PAST',
+      })) : prev.role,
+      // Seniority
+      seniority: generatedFilters.seniority?.length > 0 ? generatedFilters.seniority : prev.seniority,
+      // Years of experience
+      years_of_experience_min: generatedFilters.years_of_experience_min ?? prev.years_of_experience_min,
+      years_of_experience_max: generatedFilters.years_of_experience_max ?? prev.years_of_experience_max,
+    }));
+    
+    // Log what was applied
+    console.log('[AutoFill] Applied filters:', {
+      keywords: generatedFilters.keywords,
+      roles: generatedFilters.role?.length,
+      seniority: generatedFilters.seniority,
+      xp: `${generatedFilters.years_of_experience_min}-${generatedFilters.years_of_experience_max}`,
+    });
+  }, []);
   
   // Update API mode based on selected filter
   useEffect(() => {
@@ -873,6 +901,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
         <JobSelector 
           selectedJob={selectedJob}
           onJobChange={setSelectedJob}
+          onAutoFillFilters={handleAutoFillFilters}
         />
 
         {/* Search input */}

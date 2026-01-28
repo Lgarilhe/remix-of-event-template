@@ -1,19 +1,33 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Job } from '@/pages/JobSpace';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
-import { Loader2, Target, Sparkles, X } from 'lucide-react';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { Loader2, Target, Sparkles, X, Wand2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface JobSelectorProps {
   selectedJob: Job | null;
   onJobChange: (job: Job | null) => void;
+  onAutoFillFilters?: (filters: GeneratedFilters) => void;
 }
 
-export const JobSelector: React.FC<JobSelectorProps> = ({ selectedJob, onJobChange }) => {
+export interface GeneratedFilters {
+  keywords: string;
+  role: Array<{ keywords: string; priority: string; scope: string }>;
+  seniority: string[];
+  years_of_experience_min: number | null;
+  years_of_experience_max: number | null;
+  skills_keywords: string[];
+  industry_keywords: string[];
+  location_keywords: string[];
+}
+
+export const JobSelector: React.FC<JobSelectorProps> = ({ selectedJob, onJobChange, onAutoFillFilters }) => {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(false);
+  const [autoFillLoading, setAutoFillLoading] = useState(false);
 
   useEffect(() => {
     const fetchJobs = async () => {
@@ -47,6 +61,37 @@ export const JobSelector: React.FC<JobSelectorProps> = ({ selectedJob, onJobChan
     }
   }, [jobs, onJobChange]);
 
+  const handleAutoFillFilters = useCallback(async () => {
+    if (!selectedJob || !onAutoFillFilters) return;
+
+    setAutoFillLoading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('generate-search-filters', {
+        body: { job: selectedJob },
+      });
+
+      if (error) throw error;
+      
+      if (data?.success && data?.filters) {
+        onAutoFillFilters(data.filters);
+        toast.success('Filtres générés par l\'IA !');
+      } else {
+        throw new Error(data?.error || 'Erreur lors de la génération');
+      }
+    } catch (err: any) {
+      console.error('Error generating filters:', err);
+      if (err?.message?.includes('429') || err?.status === 429) {
+        toast.error('Limite IA atteinte, réessayez plus tard');
+      } else if (err?.message?.includes('402') || err?.status === 402) {
+        toast.error('Crédits IA épuisés');
+      } else {
+        toast.error('Erreur lors de la génération des filtres');
+      }
+    } finally {
+      setAutoFillLoading(false);
+    }
+  }, [selectedJob, onAutoFillFilters]);
+
   return (
     <div className="bg-gradient-to-r from-purple-50 to-indigo-50 rounded-lg border border-purple-200/50 p-3 space-y-2">
       <div className="flex items-center gap-2">
@@ -54,16 +99,44 @@ export const JobSelector: React.FC<JobSelectorProps> = ({ selectedJob, onJobChan
         <label className="text-sm font-medium text-purple-800">
           Scoring Job
         </label>
-        {selectedJob && (
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => onJobChange(null)}
-            className="h-5 w-5 p-0 ml-auto text-purple-400 hover:text-purple-600 hover:bg-purple-100"
-          >
-            <X className="w-3 h-3" />
-          </Button>
-        )}
+        <div className="ml-auto flex items-center gap-1">
+          {/* Auto-fill button */}
+          {selectedJob && onAutoFillFilters && (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleAutoFillFilters}
+                    disabled={autoFillLoading}
+                    className="h-6 px-2 text-purple-600 hover:text-purple-800 hover:bg-purple-100"
+                  >
+                    {autoFillLoading ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <Wand2 className="w-3.5 h-3.5" />
+                    )}
+                    <span className="ml-1 text-xs">Auto-filtres</span>
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">
+                  <p className="text-xs">L'IA génère automatiquement les filtres de recherche basés sur ce poste</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
+          {selectedJob && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => onJobChange(null)}
+              className="h-5 w-5 p-0 text-purple-400 hover:text-purple-600 hover:bg-purple-100"
+            >
+              <X className="w-3 h-3" />
+            </Button>
+          )}
+        </div>
       </div>
       
       <Select 
