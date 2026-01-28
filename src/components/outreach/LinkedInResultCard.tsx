@@ -48,6 +48,7 @@ interface LinkedInResultCardProps {
   jobScore?: JobMatchResult;
   onScoreProfile?: () => void;
   accountId?: string;
+  onMessageSent?: () => void;
 }
 
 interface ChatMessage {
@@ -74,6 +75,7 @@ export const LinkedInResultCard: React.FC<LinkedInResultCardProps> = ({
   jobScore,
   onScoreProfile,
   accountId,
+  onMessageSent,
 }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const [showMessageModal, setShowMessageModal] = useState(false);
@@ -311,6 +313,9 @@ export const LinkedInResultCard: React.FC<LinkedInResultCardProps> = ({
       setMessages(prev => [...prev, newMessage]);
       setReplyText('');
       toast.success('Message envoyé !');
+      
+      // Notify parent to track quota
+      onMessageSent?.();
     } catch (error) {
       console.error('Error sending message:', error);
       toast.error("Erreur lors de l'envoi du message");

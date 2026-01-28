@@ -598,6 +598,26 @@ async function handleSearch(
     console.error('Search error:', JSON.stringify(data, null, 2));
     console.error('Request body was:', JSON.stringify(searchBody, null, 2));
     
+    // Handle rate limiting (429) and server errors (500)
+    // Per Unipile docs: "Exceeding LinkedIn's limits will result in an HTTP 429 or 500 error"
+    if (response.status === 429 || response.status === 500) {
+      const isRateLimit = response.status === 429 || 
+        (data.detail && data.detail.toLowerCase().includes('limit')) ||
+        (data.detail && data.detail.toLowerCase().includes('quota'));
+      
+      if (isRateLimit) {
+        return new Response(
+          JSON.stringify({ 
+            success: false, 
+            error: 'Limite LinkedIn atteinte. Espacez vos requêtes et réessayez plus tard.',
+            errorType: 'RATE_LIMIT',
+            retryAfter: 60, // Suggest retry after 60 seconds
+          }),
+          { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+    }
+    
     // Try to extract more useful error info
     let errorMessage = 'Erreur de recherche';
     if (data.detail) {

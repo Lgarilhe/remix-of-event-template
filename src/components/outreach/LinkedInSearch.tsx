@@ -1,10 +1,12 @@
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { LinkedInAccount } from '@/pages/Outreach';
 import { LinkedInFilters } from './LinkedInFilters';
 import { LinkedInResultCard } from './LinkedInResultCard';
 import { JobSelector, BatchScoreButton } from './JobSelector';
 import { JobMatchResult } from './JobScoreDisplay';
+import { QuotaDisplay } from './QuotaDisplay';
+import { useUnipileQuota } from '@/hooks/useUnipileQuota';
 import { Job } from '@/pages/JobSpace';
 import {
   LinkedInFiltersState,
@@ -42,12 +44,22 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
   const [total, setTotal] = useState<number | null>(null);
   const [hasSearched, setHasSearched] = useState(false);
   
+  // Quota tracking
+  const quota = useUnipileQuota(selectedAccount);
+  
   // Job scoring state
   const [selectedJob, setSelectedJob] = useState<Job | null>(null);
   const [selectedProfiles, setSelectedProfiles] = useState<Set<string>>(new Set());
   const [jobScores, setJobScores] = useState<Record<string, JobMatchResult>>({});
   const [scoringInProgress, setScoringInProgress] = useState(false);
   const [sortByScore, setSortByScore] = useState(false);
+  
+  // Update premium status based on account subscriptions
+  useEffect(() => {
+    const selectedAccountData = accounts.find(a => a.id === selectedAccount);
+    const isPremium = !!(selectedAccountData?.subscriptions?.recruiter || selectedAccountData?.subscriptions?.sales_navigator);
+    quota.setPremiumAccount(isPremium);
+  }, [selectedAccount, accounts]);
 
   // Sort results by score if enabled
   const sortedResults = useMemo(() => {
@@ -82,6 +94,12 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
   const handleSearch = useCallback(async (newSearch = true) => {
     if (!selectedAccount) {
       toast.error('Sélectionnez un compte LinkedIn');
+      return;
+    }
+
+    // Check quota before searching
+    if (!quota.canPerformAction('searchResultsFetched', 25)) {
+      toast.error('Quota de recherche journalier atteint. Réessayez demain.');
       return;
     }
 
@@ -300,6 +318,14 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
       if (!response.data?.success) throw new Error(response.data?.error);
 
       const newResults = response.data.results || [];
+
+      // Track quota usage
+      quota.recordAction('searchResultsFetched', newResults.length);
+      
+      // Warn if near limit
+      if (quota.isNearLimit('searchResultsFetched')) {
+        toast.warning('Attention: vous approchez de la limite quotidienne de résultats de recherche');
+      }
 
       if (newSearch) {
         setResults(newResults);
@@ -641,6 +667,16 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
           onJobChange={setSelectedJob}
         />
 
+        {/* Quota Display */}
+        <QuotaDisplay
+          searchResultsFetched={quota.quotas.searchResultsFetched}
+          profileVisits={quota.quotas.profileVisits}
+          messagesSent={quota.quotas.messagesSent}
+          invitationsSent={quota.quotas.invitationsSent}
+          inmailsSent={quota.quotas.inmailsSent}
+          isPremium={quota.isPremiumAccount}
+        />
+
         {/* Action buttons */}
         <div className="flex gap-2">
           <Button
@@ -726,6 +762,17 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
               />
             )}
             
+            {/* Compact quota display */}
+            <QuotaDisplay
+              searchResultsFetched={quota.quotas.searchResultsFetched}
+              profileVisits={quota.quotas.profileVisits}
+              messagesSent={quota.quotas.messagesSent}
+              invitationsSent={quota.quotas.invitationsSent}
+              inmailsSent={quota.quotas.inmailsSent}
+              isPremium={quota.isPremiumAccount}
+              compact
+            />
+            
             {hasSearched && (
               <div className="flex items-center gap-2 text-xs text-[#1A1A1A]/50">
                 <span className="hidden md:inline">Mode:</span>
@@ -788,6 +835,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
                   jobScore={jobScores[profile.id]}
                   onScoreProfile={() => scoreProfile(profile)}
                   accountId={selectedAccount || undefined}
+                  onMessageSent={() => quota.recordAction('messagesSent')}
                 />
               ))}
 
