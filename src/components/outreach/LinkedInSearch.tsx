@@ -309,9 +309,17 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
       // Role - with keywords, priority, scope
       // NOTE: The backend ignores `seniority` for PEOPLE searches (Unipile limitation),
       // so we approximate seniority by injecting title keywords into the Recruiter `role` filter.
-      // Important UX rule: if user selects multiple seniority levels, we combine them with OR.
-      const seniorityDerivedRole: Array<{ keywords: string; priority: 'MUST_HAVE' | 'DOESNT_HAVE'; scope: 'CURRENT' | 'PAST' | 'CURRENT_OR_PAST' }> = [];
+      // IMPORTANT: Multiple MUST_HAVE role filters are AND'ed by LinkedIn, returning 0 results!
+      // We must COMBINE seniority keywords into an existing role filter, not add a separate one.
+      
+      // Start with user-defined roles
+      let allRoles = filters.role.map(r => ({
+        keywords: r.keywords,
+        priority: r.priority as 'MUST_HAVE' | 'DOESNT_HAVE',
+        scope: r.scope as 'CURRENT' | 'PAST' | 'CURRENT_OR_PAST',
+      }));
 
+      // If seniority is selected and we're in recruiter mode, we need to handle it carefully
       if (filters.api === 'recruiter' && filters.seniority.length) {
         const titlesByLevel: Record<string, string[]> = {
           '1': ['Intern', 'Internship', 'Stagiaire', 'Apprentice', 'Trainee', 'Graduate'],
@@ -326,30 +334,31 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
           '10': ['Owner', 'Founder', 'Co-Founder', 'Fondateur', 'Propriétaire', 'Entrepreneur'],
         };
 
-        const mergedTitles = Array.from(
+        const seniorityKeywords = Array.from(
           new Set(
             filters.seniority.flatMap((level) => titlesByLevel[level] ?? [])
           )
-        );
+        ).join(' OR ');
 
-        if (mergedTitles.length) {
-          seniorityDerivedRole.push({
-            keywords: mergedTitles.join(' OR '),
-            priority: 'MUST_HAVE',
-            scope: 'CURRENT',
-          });
+        if (seniorityKeywords) {
+          // If there's already a MUST_HAVE role filter, DON'T add seniority as separate filter
+          // Instead, we rely on years_of_experience to filter seniority
+          // Only add seniority keywords if there's NO existing role filter
+          const hasMustHaveRole = allRoles.some(r => r.priority === 'MUST_HAVE');
+          
+          if (!hasMustHaveRole) {
+            // No existing role filter, we can add seniority as a role filter
+            allRoles.push({
+              keywords: seniorityKeywords,
+              priority: 'MUST_HAVE',
+              scope: 'CURRENT',
+            });
+          }
+          // If there's already a MUST_HAVE role filter (e.g., from AI auto-fill),
+          // we skip adding seniority keywords to avoid AND conflict
+          // The years_of_experience filter will handle seniority filtering instead
         }
       }
-
-      // Combine user-defined roles with seniority-derived role approximation
-      const allRoles = [
-        ...filters.role.map(r => ({
-          keywords: r.keywords,
-          priority: r.priority as 'MUST_HAVE' | 'DOESNT_HAVE',
-          scope: r.scope as 'CURRENT' | 'PAST' | 'CURRENT_OR_PAST',
-        })),
-        ...seniorityDerivedRole,
-      ];
       
       if (allRoles.length) {
         searchParams.role = allRoles;
