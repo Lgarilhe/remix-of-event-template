@@ -53,6 +53,13 @@ interface SearchParams {
   talent_pool?: string;
   spotlight?: string;
   
+  // Recruiting activity filter (Recruiter)
+  recruiting_activity?: Array<{
+    id: 'messages' | 'tags' | 'notes' | 'projects' | 'resumes' | 'reviews';
+    priority: 'CAN_HAVE' | 'MUST_HAVE' | 'DOESNT_HAVE';
+    timespan?: number; // Days since today
+  }>;
+  
   // Degree filter (Recruiter)
   degree?: Array<{ id: string; priority: string }>;
   
@@ -404,6 +411,20 @@ async function handleSearch(
     if (hiring_project) searchBody.hiring_project = hiring_project;
     if (talent_pool) searchBody.talent_pool = talent_pool;
     if (spotlight) searchBody.spotlight = spotlight;
+    
+    // Recruiting activity (messages, notes, tags, etc.)
+    if (params.recruiting_activity?.length) {
+      searchBody.recruiting_activity = params.recruiting_activity.map(activity => {
+        const item: Record<string, unknown> = {
+          id: activity.id,
+          priority: activity.priority,
+        };
+        if (activity.timespan !== undefined && activity.timespan !== null) {
+          item.timespan = activity.timespan;
+        }
+        return item;
+      });
+    }
   }
 
   // Company headcount - different format per API

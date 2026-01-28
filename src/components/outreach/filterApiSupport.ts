@@ -103,8 +103,8 @@ export const FILTER_API_SUPPORT: Record<LinkedInApiType, Record<FilterKey, Filte
     past_company: { supported: true },
     past_job_title: { supported: true }, // With priority
     advanced_keywords: { supported: false, tooltip: "Utilisez les filtres de rôle et titre de poste en mode Recruiter" },
-    activity: { supported: false, tooltip: "Les filtres d'activité (messages/notes) ne sont pas encore supportés par l'API. Utilisez l'interface LinkedIn Recruiter directement" },
-    tags: { supported: false, tooltip: "Les tags ne sont pas encore supportés par l'API. Utilisez l'interface LinkedIn Recruiter directement" },
+    activity: { supported: true }, // recruiting_activity with id, priority, timespan
+    tags: { supported: true }, // Via recruiting_activity with id='tags'
   },
   sales_navigator: {
     keywords: { supported: true },
