@@ -228,16 +228,19 @@ async function handleSearch(
     }
   }
 
-  // Location - different format per API:
-  // - Classic: simple array of IDs
-  // - Sales Navigator: { include: [...], exclude: [...] }
-  // - Recruiter: { include: [...] } object format
+  // Location - different format and name per API:
+  // - Classic: "location" as simple array of IDs
+  // - Recruiter: "geo" with { include: [...] } format
+  // - Sales Navigator: "location" with { include: [...], exclude: [...] }
   if (location?.length) {
-    if (api === 'classic') {
-      searchBody.location = location;
-    } else {
-      // Both Recruiter and Sales Navigator use include/exclude structure
+    if (api === 'recruiter') {
+      // Recruiter uses "geo" parameter with include object
+      searchBody.geo = { include: location };
+    } else if (api === 'sales_navigator') {
       searchBody.location = { include: location };
+    } else {
+      // Classic uses simple array
+      searchBody.location = location;
     }
   }
 
