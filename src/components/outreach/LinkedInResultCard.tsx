@@ -22,6 +22,9 @@ import {
   Bot,
   Loader2,
   TrendingUp,
+  CheckCircle2,
+  AlertTriangle,
+  Target,
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -32,7 +35,13 @@ interface LinkedInResultCardProps {
 
 export const LinkedInResultCard: React.FC<LinkedInResultCardProps> = ({ profile }) => {
   const [isExpanded, setIsExpanded] = useState(false);
-  const [aiAnalysis, setAiAnalysis] = useState<string | null>(null);
+  const [aiAnalysis, setAiAnalysis] = useState<{
+    summary: string;
+    strengths: string[];
+    concerns: string[];
+    fit_score: number;
+    recommendation: string;
+  } | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
 
   // Handle both API formats
@@ -284,12 +293,64 @@ export const LinkedInResultCard: React.FC<LinkedInResultCardProps> = ({ profile 
 
               {/* AI Analysis panel */}
               {aiAnalysis && (
-                <div className="mt-3 p-3 bg-gradient-to-r from-purple-50 to-blue-50 rounded-lg border border-purple-100">
-                  <div className="flex items-center gap-2 mb-2">
-                    <Bot className="w-4 h-4 text-purple-600" />
-                    <span className="text-xs font-semibold text-purple-700">Analyse IA</span>
+                <div className="mt-3 p-3 bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-50 rounded-lg border border-purple-200/50">
+                  {/* Header with score */}
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <Bot className="w-4 h-4 text-purple-600" />
+                      <span className="text-xs font-semibold text-purple-700">Analyse IA</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <Target className="w-3.5 h-3.5 text-purple-500" />
+                      <span className={`text-sm font-bold ${
+                        aiAnalysis.fit_score >= 70 ? 'text-green-600' : 
+                        aiAnalysis.fit_score >= 50 ? 'text-amber-600' : 'text-red-500'
+                      }`}>
+                        {aiAnalysis.fit_score}/100
+                      </span>
+                    </div>
                   </div>
-                  <p className="text-sm text-[#1A1A1A]/80 leading-relaxed">{aiAnalysis}</p>
+
+                  {/* Summary */}
+                  <p className="text-sm text-[#1A1A1A]/80 font-medium mb-3">{aiAnalysis.summary}</p>
+
+                  {/* Strengths & Concerns grid */}
+                  <div className="grid grid-cols-2 gap-3">
+                    {/* Strengths */}
+                    <div className="space-y-1.5">
+                      <div className="flex items-center gap-1 text-[10px] font-semibold text-green-700 uppercase tracking-wider">
+                        <CheckCircle2 className="w-3 h-3" />
+                        Points forts
+                      </div>
+                      {aiAnalysis.strengths.map((strength, i) => (
+                        <div key={i} className="flex items-start gap-1.5 text-xs text-green-800 bg-green-100/50 px-2 py-1 rounded">
+                          <span className="text-green-500 mt-0.5">✓</span>
+                          <span>{strength}</span>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Concerns */}
+                    <div className="space-y-1.5">
+                      <div className="flex items-center gap-1 text-[10px] font-semibold text-amber-700 uppercase tracking-wider">
+                        <AlertTriangle className="w-3 h-3" />
+                        À vérifier
+                      </div>
+                      {aiAnalysis.concerns.map((concern, i) => (
+                        <div key={i} className="flex items-start gap-1.5 text-xs text-amber-800 bg-amber-100/50 px-2 py-1 rounded">
+                          <span className="text-amber-500 mt-0.5">!</span>
+                          <span>{concern}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Recommendation */}
+                  <div className="mt-3 pt-2 border-t border-purple-200/50">
+                    <p className="text-xs text-purple-700 italic">
+                      💡 {aiAnalysis.recommendation}
+                    </p>
+                  </div>
                 </div>
               )}
 
