@@ -34,7 +34,9 @@ import {
   X,
   Target,
   PenLine,
+  Send,
 } from 'lucide-react';
+import { Textarea } from '@/components/ui/textarea';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
@@ -91,6 +93,10 @@ export const LinkedInResultCard: React.FC<LinkedInResultCardProps> = ({
   const [messagesLoaded, setMessagesLoaded] = useState(false);
   const [chatId, setChatId] = useState<string | null>(null);
   const [noConversation, setNoConversation] = useState(false);
+  
+  // Reply state
+  const [replyText, setReplyText] = useState('');
+  const [isSending, setIsSending] = useState(false);
 
   // Handle both API formats
   const firstName = profile.first_name || profile.name?.split(' ')[0] || '';
@@ -270,6 +276,46 @@ export const LinkedInResultCard: React.FC<LinkedInResultCardProps> = ({
       toast.error("Erreur lors du chargement des messages");
     } finally {
       setMessagesLoading(false);
+    }
+  };
+
+  // Send reply message
+  const handleSendReply = async () => {
+    if (!chatId || !replyText.trim() || isSending) return;
+    
+    setIsSending(true);
+    try {
+      const response = await supabase.functions.invoke('unipile-search', {
+        body: {
+          action: 'send_message',
+          account_id: accountId,
+          chat_id: chatId,
+          text: replyText.trim(),
+        },
+      });
+
+      if (response.error) throw response.error;
+      
+      if (!response.data?.success) {
+        throw new Error(response.data?.error || "Erreur lors de l'envoi");
+      }
+
+      // Add the sent message to the list
+      const newMessage: ChatMessage = {
+        id: response.data.message?.id || Date.now().toString(),
+        text: replyText.trim(),
+        is_sender: true,
+        timestamp: new Date().toISOString(),
+      };
+      
+      setMessages(prev => [...prev, newMessage]);
+      setReplyText('');
+      toast.success('Message envoyé !');
+    } catch (error) {
+      console.error('Error sending message:', error);
+      toast.error("Erreur lors de l'envoi du message");
+    } finally {
+      setIsSending(false);
     }
   };
 
@@ -1017,6 +1063,41 @@ export const LinkedInResultCard: React.FC<LinkedInResultCardProps> = ({
                         </div>
                       ))}
                     </div>
+                    
+                    {/* Reply input */}
+                    {chatId && (
+                      <div className="pt-3 border-t border-[#1A1A1A]/10">
+                        <div className="flex gap-2">
+                          <Textarea
+                            value={replyText}
+                            onChange={(e) => setReplyText(e.target.value)}
+                            placeholder="Écrire un message..."
+                            className="min-h-[60px] max-h-[120px] resize-none text-sm"
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' && !e.shiftKey) {
+                                e.preventDefault();
+                                handleSendReply();
+                              }
+                            }}
+                          />
+                          <Button
+                            onClick={handleSendReply}
+                            disabled={!replyText.trim() || isSending}
+                            size="icon"
+                            className="h-auto min-h-[60px] w-12 bg-[#0077B5] hover:bg-[#005E93]"
+                          >
+                            {isSending ? (
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                            ) : (
+                              <Send className="w-4 h-4" />
+                            )}
+                          </Button>
+                        </div>
+                        <p className="text-[10px] text-[#1A1A1A]/40 mt-1">
+                          Appuyez sur Entrée pour envoyer, Shift+Entrée pour un retour à la ligne
+                        </p>
+                      </div>
+                    )}
                   </div>
                 )}
               </TabsContent>
