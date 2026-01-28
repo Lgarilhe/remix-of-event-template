@@ -47,15 +47,15 @@ serve(async (req) => {
     }
 
     const toneInstructions = {
-      professional: "Ton professionnel et formel, mais chaleureux. Vouvoiement.",
-      casual: "Ton décontracté et amical, tutoiement possible si le profil semble jeune/startup.",
-      enthusiastic: "Ton enthousiaste et engageant, montre de l'excitation pour le profil."
+      professional: "Vouvoiement, ton direct et respectueux. Pas de flatterie excessive.",
+      casual: "Tutoiement naturel, comme un message à un ancien collègue. Décontracté mais pro.",
+      enthusiastic: "Tutoiement, ton dynamique mais pas surjoué. Montre un intérêt sincère."
     };
 
-    const prompt = `Génère un message d'approche LinkedIn personnalisé pour recruter ce candidat.
+    const prompt = `Tu es un recruteur tech expérimenté qui écrit des messages LinkedIn. Tu dois écrire EXACTEMENT comme un humain, pas comme une IA.
 
 PROFIL DU CANDIDAT:
-- Nom: ${profile.name}
+- Prénom: ${profile.name?.split(' ')[0] || 'Candidat'}
 - Titre: ${profile.headline || 'Non spécifié'}
 - Poste actuel: ${profile.currentRole || 'Non spécifié'} chez ${profile.currentCompany || 'Non spécifié'}
 - Localisation: ${profile.location || 'Non spécifié'}
@@ -70,14 +70,28 @@ POSTE À POURVOIR:
 - Télétravail: ${job.remote || 'Non spécifié'}
 ${job.description ? `- Contexte: ${job.description.slice(0, 200)}...` : ''}
 
-INSTRUCTIONS:
-- ${toneInstructions[tone]}
-- Le message doit faire entre 100 et 200 mots maximum
-- Personnalise en mentionnant un élément spécifique du profil (compétence, entreprise, parcours)
-- Explique brièvement pourquoi le profil match avec l'opportunité
-- Inclus un call-to-action clair (proposition d'échange, appel)
-- Ne mentionne PAS de salaire
-- Sois authentique, évite les phrases génériques
+RÈGLES ABSOLUES - MESSAGE HUMAIN:
+1. ${toneInstructions[tone]}
+2. INTERDIT: "j'ai parcouru ton profil", "ton riche parcours", "m'a particulièrement sauté aux yeux", "ultra-", "majeurs", "relever des défis", "au plaisir"
+3. INTERDIT: superlatifs (exceptionnel, remarquable, impressionnant, passionnant, incroyable)
+4. INTERDIT: expressions corporate (synergies, opportunité unique, environnement dynamique, défis stimulants)
+5. Écris des phrases COURTES. Pas de subordonnées complexes.
+6. Commence direct, pas de "Bonjour, je me permets de..."
+7. UN SEUL point de personnalisation, pas trois.
+8. Maximum 80-120 mots. Court = humain.
+9. Call-to-action simple: "Dispo pour en parler ?" ou "Un café virtuel cette semaine ?"
+10. Signe avec juste le prénom, pas "[Ton Prénom]"
+
+EXEMPLE DE BON MESSAGE (casual):
+"Salut Thomas,
+
+Je recrute pour un poste de dev Go chez Numspot, le cloud souverain français. Vu ton expérience Terraform chez Webedia, je pense que ça pourrait matcher.
+
+C'est du dev infra, stack Go/K8s, équipe de 8 personnes. Full remote possible.
+
+Dispo pour un call de 15 min cette semaine ?
+
+Marc"
 
 Réponds UNIQUEMENT en JSON valide:
 {
@@ -97,12 +111,12 @@ Réponds UNIQUEMENT en JSON valide:
         messages: [
           { 
             role: "system", 
-            content: "Tu es un expert en recrutement tech et en copywriting. Tu rédiges des messages d'approche LinkedIn qui convertissent. Tu réponds TOUJOURS en JSON valide, sans markdown." 
+            content: "Tu es un recruteur tech senior. Tu écris des messages LinkedIn courts, directs, humains. JAMAIS de superlatifs, JAMAIS de tournures IA. Tu parles comme un vrai humain pressé mais sympa. Tu réponds TOUJOURS en JSON valide, sans markdown ni code blocks." 
           },
           { role: "user", content: prompt }
         ],
-        max_tokens: 500,
-        temperature: 0.7,
+        max_tokens: 400,
+        temperature: 0.8,
       }),
     });
 
