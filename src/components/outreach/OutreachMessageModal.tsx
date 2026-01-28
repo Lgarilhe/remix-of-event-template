@@ -45,6 +45,15 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
   const [copied, setCopied] = useState(false);
   const [tone, setTone] = useState<Tone>('professional');
   const [hasGenerated, setHasGenerated] = useState(false);
+  const [senderName, setSenderName] = useState(() => {
+    return localStorage.getItem('outreach_sender_name') || '';
+  });
+
+  // Save sender name to localStorage
+  const handleSenderNameChange = (name: string) => {
+    setSenderName(name);
+    localStorage.setItem('outreach_sender_name', name);
+  };
 
   // Build profile data
   const buildProfileData = () => {
@@ -80,6 +89,7 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
             remote: job.remote,
           },
           tone,
+          senderName: senderName.trim() || undefined,
         }
       });
 
@@ -128,6 +138,19 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
                 {job.client.name}
               </Badge>
             )}
+          </div>
+
+          {/* Sender name */}
+          <div>
+            <label className="text-sm font-medium text-[#1A1A1A] mb-1 block">
+              Ton prénom (pour la signature)
+            </label>
+            <Input
+              value={senderName}
+              onChange={(e) => handleSenderNameChange(e.target.value)}
+              placeholder="Ex: Marc"
+              className="max-w-[200px]"
+            />
           </div>
 
           {/* Tone selector */}
