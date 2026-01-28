@@ -22,6 +22,20 @@ export interface GeneratedFilters {
   skills_keywords: string[];
   industry_keywords: string[];
   location_keywords: string[];
+  // New fields for advanced rules
+  location_within_area: number | null;
+  company_keywords: Array<{ 
+    keywords: string; 
+    priority: 'CAN_HAVE' | 'MUST_HAVE' | 'DOESNT_HAVE'; 
+    scope: 'CURRENT' | 'PAST' | 'CURRENT_OR_PAST' | 'PAST_NOT_CURRENT';
+  }>;
+  school: Array<{ 
+    id: string; 
+    name: string; 
+    priority: 'CAN_HAVE' | 'MUST_HAVE' | 'DOESNT_HAVE';
+  }>;
+  spotlight: string;
+  open_to_work: boolean;
 }
 
 export const JobSelector: React.FC<JobSelectorProps> = ({ selectedJob, onJobChange, onAutoFillFilters }) => {

@@ -86,6 +86,28 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
       // Years of experience
       years_of_experience_min: generatedFilters.years_of_experience_min ?? prev.years_of_experience_min,
       years_of_experience_max: generatedFilters.years_of_experience_max ?? prev.years_of_experience_max,
+      // Company keywords exclusions (e.g., exclude client company)
+      company_keywords: generatedFilters.company_keywords?.length > 0 
+        ? generatedFilters.company_keywords.map(c => ({
+            keywords: c.keywords,
+            priority: c.priority as 'CAN_HAVE' | 'MUST_HAVE' | 'DOESNT_HAVE',
+            scope: c.scope as 'CURRENT' | 'PAST' | 'CURRENT_OR_PAST' | 'PAST_NOT_CURRENT',
+          }))
+        : prev.company_keywords,
+      // School filters with CAN_HAVE priority (TOP schools)
+      school: generatedFilters.school?.length > 0
+        ? generatedFilters.school.map(s => ({
+            id: s.id,
+            name: s.name,
+            priority: s.priority as 'CAN_HAVE' | 'MUST_HAVE' | 'DOESNT_HAVE',
+          }))
+        : prev.school,
+      // Location radius based on remote policy
+      location_within_area: generatedFilters.location_within_area ?? prev.location_within_area,
+      // Spotlight for Open to Work (cast to proper type)
+      spotlight: (generatedFilters.spotlight || prev.spotlight) as typeof prev.spotlight,
+      // Open to work flag
+      open_to_work: generatedFilters.open_to_work ?? prev.open_to_work,
     }));
     
     // Log what was applied
@@ -94,6 +116,11 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
       roles: generatedFilters.role?.length,
       seniority: generatedFilters.seniority,
       xp: `${generatedFilters.years_of_experience_min}-${generatedFilters.years_of_experience_max}`,
+      companyExclusions: generatedFilters.company_keywords?.length,
+      schools: generatedFilters.school?.length,
+      locationRadius: generatedFilters.location_within_area,
+      spotlight: generatedFilters.spotlight,
+      openToWork: generatedFilters.open_to_work,
     });
   }, []);
   
