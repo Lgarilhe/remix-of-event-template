@@ -420,7 +420,10 @@ async function handleSearch(
   }
 
   // Seniority (all APIs but different values)
+  // Recruiter API expects seniority as array of level values
+  // According to Unipile docs, seniority values should be: Entry, Mid, Senior, Manager, Director, VP, CXO, Partner, Owner
   if (seniority?.length) {
+    console.log('Seniority filter received:', seniority);
     searchBody.seniority = seniority;
   }
 
