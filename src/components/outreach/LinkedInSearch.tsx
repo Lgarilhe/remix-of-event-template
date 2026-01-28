@@ -47,6 +47,18 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
   const [selectedProfiles, setSelectedProfiles] = useState<Set<string>>(new Set());
   const [jobScores, setJobScores] = useState<Record<string, JobMatchResult>>({});
   const [scoringInProgress, setScoringInProgress] = useState(false);
+  const [sortByScore, setSortByScore] = useState(false);
+
+  // Sort results by score if enabled
+  const sortedResults = useMemo(() => {
+    if (!sortByScore || Object.keys(jobScores).length === 0) return results;
+    
+    return [...results].sort((a, b) => {
+      const scoreA = jobScores[a.id]?.match_score ?? -1;
+      const scoreB = jobScores[b.id]?.match_score ?? -1;
+      return scoreB - scoreA; // Descending order
+    });
+  }, [results, jobScores, sortByScore]);
 
   // Check if selected account needs reconnection or has subscription issues
   const selectedAccountData = useMemo(() => 
@@ -422,6 +434,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
           }
         });
         setJobScores(prev => ({ ...prev, ...newScores }));
+        setSortByScore(true); // Auto-enable sorting after batch score
         toast.success(`${data.results.length} profils scorés avec succès`);
       }
     } catch (err) {
@@ -664,8 +677,21 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
             )}
           </div>
           
-          {/* Batch score button + filter summary */}
+          {/* Batch score button + sort toggle + filter summary */}
           <div className="flex items-center gap-3">
+            {/* Sort by score toggle */}
+            {Object.keys(jobScores).length > 0 && (
+              <Button
+                variant={sortByScore ? "default" : "outline"}
+                size="sm"
+                onClick={() => setSortByScore(!sortByScore)}
+                className={sortByScore ? "bg-[#0077B5] hover:bg-[#005E93]" : ""}
+              >
+                <Sparkles className="w-3.5 h-3.5 mr-1.5" />
+                Tri par score
+              </Button>
+            )}
+            
             {selectedJob && selectedProfiles.size > 0 && (
               <BatchScoreButton
                 selectedCount={selectedProfiles.size}
@@ -727,7 +753,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
               )}
 
               {/* Profile cards */}
-              {results.map((profile, index) => (
+              {sortedResults.map((profile, index) => (
                 <LinkedInResultCard 
                   key={profile.id || `profile-${index}`} 
                   profile={profile}
