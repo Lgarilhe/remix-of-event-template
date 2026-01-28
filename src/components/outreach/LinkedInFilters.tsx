@@ -411,6 +411,7 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
           isOpen={openSections.basic}
           onToggle={() => toggleSection('basic')}
           activeFiltersPreview={basicFiltersPreview}
+          bgColorClass="bg-sky-50/40"
         >
           {/* Location - with priority and scope for Recruiter */}
           <FilterGroup title="Localisation" icon={<MapPin className="w-3.5 h-3.5 text-[#0077B5]" />} badge={filters.location.length}>
@@ -572,6 +573,7 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
           isOpen={openSections.position}
           onToggle={() => toggleSection('position')}
           activeFiltersPreview={positionFiltersPreview}
+          bgColorClass="bg-violet-50/40"
         >
           {/* Job Title with priority */}
           <FilterGroup 
@@ -796,6 +798,7 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
           isOpen={openSections.experience}
           onToggle={() => toggleSection('experience')}
           activeFiltersPreview={experienceFiltersPreview}
+          bgColorClass="bg-orange-50/40"
         >
           {/* Years of Experience */}
           <FilterGroup 
@@ -948,6 +951,7 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
           isOpen={openSections.company}
           onToggle={() => toggleSection('company')}
           activeFiltersPreview={companyFiltersPreview}
+          bgColorClass="bg-emerald-50/40"
         >
           {/* Company - with dual mode for Recruiter */}
           <FilterGroup 
@@ -1050,6 +1054,7 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
           isOpen={openSections.past}
           onToggle={() => toggleSection('past')}
           activeFiltersPreview={pastFiltersPreview}
+          bgColorClass="bg-amber-50/40"
         >
           {/* Past Company */}
           <FilterGroup title="Ancienne entreprise" icon={<Building2 className="w-3.5 h-3.5 text-amber-600" />} badge={filters.past_company.length}>
@@ -1100,6 +1105,7 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
           isOpen={openSections.recruiter}
           onToggle={() => toggleSection('recruiter')}
           activeFiltersPreview={recruiterFiltersPreview}
+          bgColorClass="bg-rose-50/40"
         >
           {/* Open to Work */}
           <FilterGroup 
