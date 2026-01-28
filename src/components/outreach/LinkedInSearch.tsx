@@ -185,17 +185,38 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
       
       // Degree (Recruiter) - Doc: { include: string[], exclude: string[] }
       if (filters.degree.length && filters.api === 'recruiter') {
-        const includeIds = filters.degree
-          .filter(d => d.priority !== 'DOESNT_HAVE')
-          .map(d => d.id);
-        const excludeIds = filters.degree
-          .filter(d => d.priority === 'DOESNT_HAVE')
-          .map(d => d.id);
-        
-        searchParams.degree = {
-          ...(includeIds.length > 0 && { include: includeIds }),
-          ...(excludeIds.length > 0 && { exclude: excludeIds }),
+        const sanitiseDegreeIds = (ids: string[]) => {
+          const kept = ids.filter((id) => {
+            const n = Number(id);
+            // Legacy UI used placeholder IDs 1-6; real IDs are returned by DEGREE parameters (e.g. 500 for Master)
+            return Number.isFinite(n) && n > 10;
+          });
+          if (kept.length !== ids.length) {
+            console.warn('[Outreach] Degree IDs dropped (likely legacy placeholders). Please reselect degree from autocomplete.', {
+              dropped: ids.filter((id) => !kept.includes(id)),
+              kept,
+            });
+          }
+          return kept;
         };
+
+        const includeIds = sanitiseDegreeIds(
+          filters.degree
+          .filter(d => d.priority !== 'DOESNT_HAVE')
+          .map(d => d.id)
+        );
+        const excludeIds = sanitiseDegreeIds(
+          filters.degree
+          .filter(d => d.priority === 'DOESNT_HAVE')
+          .map(d => d.id)
+        );
+        
+        if (includeIds.length > 0 || excludeIds.length > 0) {
+          searchParams.degree = {
+            ...(includeIds.length > 0 && { include: includeIds }),
+            ...(excludeIds.length > 0 && { exclude: excludeIds }),
+          };
+        }
       }
       
       // Groups (Sales Navigator)
