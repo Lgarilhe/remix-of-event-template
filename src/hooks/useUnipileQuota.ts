@@ -33,12 +33,25 @@ export const LINKEDIN_LIMITS = {
     recruiter: 100,
     sales_navigator: 80,
   },
-  // InMail daily limits (conservative to preserve monthly credits)
-  // Recruiter: 150 credits/month, Sales Nav: 50/month, Classic: 0
+  // InMail daily limits
+  // Recruiter: 1000/day technical limit (but 150 credits/month, 200 first week)
+  // Sales Nav: 50/month credits
   INMAIL_DAILY: {
     classic: 0,
-    recruiter: 50,
-    sales_navigator: 15,
+    recruiter: 1000,
+    sales_navigator: 50,
+  },
+  // InMail monthly credits (for tracking)
+  INMAIL_MONTHLY: {
+    classic: 0,
+    recruiter: 150,
+    sales_navigator: 50,
+  },
+  // Open Profile messages per month (Recruiter)
+  OPEN_PROFILE_MONTHLY: {
+    classic: 0,
+    recruiter: 1000,
+    sales_navigator: 0,
   },
   // Messages to connections per day
   MESSAGES: {
