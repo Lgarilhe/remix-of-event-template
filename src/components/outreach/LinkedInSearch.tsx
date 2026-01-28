@@ -538,26 +538,23 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
     }
   }, []);
 
-  // Scroll to top when loading finishes after pagination
-  useEffect(() => {
-    if (!loading && shouldScrollToTop.current) {
-      scrollToTop();
-      shouldScrollToTop.current = false;
-    }
-  }, [loading, scrollToTop]);
+  // Scroll to top when loading finishes after pagination (removed - now scroll immediately)
+  // useEffect removed since we scroll immediately
 
   // Pagination handlers
   const handleNextPage = useCallback(() => {
     if (!cursor) return;
-    shouldScrollToTop.current = true; // Flag to scroll after load
+    // Scroll immediately for instant feedback
+    scrollToTop();
     setCursors(prev => [...prev, cursor]);
     setCurrentPage(prev => prev + 1);
     handleSearch(false, cursor);
-  }, [cursor, handleSearch]);
+  }, [cursor, handleSearch, scrollToTop]);
 
   const handlePreviousPage = useCallback(() => {
     if (currentPage <= 1) return;
-    shouldScrollToTop.current = true; // Flag to scroll after load
+    // Scroll immediately for instant feedback
+    scrollToTop();
     const newPage = currentPage - 1;
     setCurrentPage(newPage);
     
@@ -571,7 +568,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
       setCursors(prev => prev.slice(0, newPage - 1));
       handleSearch(false, previousCursor);
     }
-  }, [currentPage, cursors, handleSearch]);
+  }, [currentPage, cursors, handleSearch, scrollToTop]);
 
   // Reset pagination when filters change
   useEffect(() => {
@@ -1039,6 +1036,32 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
             <div className="flex flex-col items-center justify-center py-20">
               <Loader2 className="w-10 h-10 animate-spin text-[#0077B5] mb-4" />
               <p className="text-sm text-[#1A1A1A]/50">Recherche en cours...</p>
+            </div>
+          ) : loading && results.length > 0 ? (
+            // Loading new page - show skeleton cards
+            <div className="p-4 space-y-3">
+              <div className="bg-gradient-to-r from-[#0077B5]/5 to-transparent rounded-lg p-3 mb-4 flex items-center gap-3 animate-pulse">
+                <div className="w-10 h-10 rounded-full bg-[#0077B5]/10" />
+                <div className="flex-1 space-y-2">
+                  <div className="h-4 bg-[#1A1A1A]/10 rounded w-48" />
+                  <div className="h-3 bg-[#1A1A1A]/5 rounded w-32" />
+                </div>
+              </div>
+              {[...Array(5)].map((_, i) => (
+                <div key={i} className="bg-white rounded-lg border border-[#1A1A1A]/10 p-4 animate-pulse">
+                  <div className="flex gap-4">
+                    <div className="w-14 h-14 rounded-full bg-[#1A1A1A]/10" />
+                    <div className="flex-1 space-y-2">
+                      <div className="h-5 bg-[#1A1A1A]/10 rounded w-40" />
+                      <div className="h-4 bg-[#1A1A1A]/5 rounded w-64" />
+                      <div className="h-3 bg-[#1A1A1A]/5 rounded w-32" />
+                    </div>
+                  </div>
+                </div>
+              ))}
+              <div className="flex justify-center pt-4">
+                <Loader2 className="w-6 h-6 animate-spin text-[#0077B5]" />
+              </div>
             </div>
           ) : results.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-[#1A1A1A]/40 px-8">
