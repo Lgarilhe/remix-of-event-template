@@ -20,6 +20,7 @@ interface SearchParams {
   location?: string[];
   location_within_area?: number; // Search radius in miles (Recruiter only)
   company?: { include?: string[]; exclude?: string[] } | string[];
+  company_keywords?: Array<{ keywords: string; priority: string; scope: string }>; // Keywords-based (Recruiter only)
   industry?: { include?: string[]; exclude?: string[] } | string[];
   school?: string[] | Array<{ id: string; priority: string }>;
   
@@ -164,6 +165,7 @@ async function handleSearch(
     location,
     location_within_area,
     company,
+    company_keywords,
     industry,
     school,
     job_title,
@@ -282,6 +284,29 @@ async function handleSearch(
       }
     } else if (company.include?.length || company.exclude?.length) {
       searchBody.company = company;
+    }
+  }
+
+  // Company keywords filter (Recruiter only) - keywords-based with priority and scope
+  if (api === 'recruiter' && company_keywords?.length) {
+    // If we already have ID-based company filter, we need to merge or prioritize
+    // According to the API doc, company can be an array of objects with keywords, priority, scope
+    // So we can add keyword-based companies to the company array
+    const keywordCompanies = company_keywords.map(c => ({
+      keywords: c.keywords,
+      priority: c.priority,
+      scope: c.scope,
+    }));
+    
+    // If company is already set as an object with include, we need to handle this differently
+    // The API allows mixing ID-based and keyword-based in the company array
+    if (searchBody.company && typeof searchBody.company === 'object' && 'include' in searchBody.company) {
+      // According to API docs, company for recruiter can be an array mixing ID objects and keyword objects
+      // Transform to array format: [{ id: "..." }, { keywords: "...", priority: "...", scope: "..." }]
+      const idCompanies = ((searchBody.company as { include?: string[] }).include || []).map(id => ({ id }));
+      searchBody.company = [...idCompanies, ...keywordCompanies];
+    } else {
+      searchBody.company = keywordCompanies;
     }
   }
 

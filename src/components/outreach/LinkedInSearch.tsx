@@ -134,9 +134,18 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
         searchParams.industry = { include: filters.industry.map(f => f.id) };
       }
       
-      // Company - structure with include
+      // Company - ID-based with include structure
       if (filters.company.length) {
         searchParams.company = { include: filters.company.map(f => f.id) };
+      }
+      
+      // Company keywords (Recruiter only) - keywords-based with priority/scope
+      if (filters.api === 'recruiter' && filters.company_keywords.length) {
+        searchParams.company_keywords = filters.company_keywords.map(c => ({
+          keywords: c.keywords,
+          priority: c.priority,
+          scope: c.scope,
+        }));
       }
       
       // Function/Department

@@ -62,6 +62,16 @@ export type ActivityNoteType = 'with_note' | 'without_note' | null;
 // Backward compatibility
 export type ActivityType = 'with_message' | 'without_message' | 'with_note' | 'without_note';
 
+// Company keyword filter (Recruiter specific)
+export type CompanyPriority = 'CAN_HAVE' | 'MUST_HAVE' | 'DOESNT_HAVE';
+export type CompanyScope = 'CURRENT_OR_PAST' | 'CURRENT' | 'PAST' | 'PAST_NOT_CURRENT';
+
+export interface CompanyKeywordFilter {
+  keywords: string;
+  priority: CompanyPriority;
+  scope: CompanyScope;
+}
+
 export interface LinkedInFiltersState {
   // Basic search
   keywords: string;
@@ -73,7 +83,11 @@ export interface LinkedInFiltersState {
   // Location filter - uses LocationFilterItem for Recruiter with priority/scope
   location: LocationFilterItem[];
   location_within_area: number | null; // Search radius in miles (Recruiter only)
+  
+  // Company filters - ID-based (all APIs) and Keywords-based (Recruiter only)
   company: FilterItem[];
+  company_keywords: CompanyKeywordFilter[]; // Keywords with priority/scope (Recruiter only)
+  
   industry: FilterItem[];
   school: PriorityFilterItem[]; // Now supports priority for Recruiter
   
@@ -149,6 +163,7 @@ export const INITIAL_FILTERS: LinkedInFiltersState = {
   location: [],
   location_within_area: null,
   company: [],
+  company_keywords: [],
   industry: [],
   school: [],
   job_title: [],
