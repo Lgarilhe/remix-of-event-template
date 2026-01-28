@@ -3,6 +3,9 @@ import { supabase } from '@/integrations/supabase/client';
 import { LinkedInAccount } from '@/pages/Outreach';
 import { LinkedInFilters } from './LinkedInFilters';
 import { LinkedInResultCard } from './LinkedInResultCard';
+import { JobSelector, BatchScoreButton } from './JobSelector';
+import { JobMatchResult } from './JobScoreDisplay';
+import { Job } from '@/pages/JobSpace';
 import {
   LinkedInFiltersState,
   LinkedInProfile,
@@ -17,7 +20,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { Search, Loader2, ChevronRight, AlertTriangle, Lock, Users } from 'lucide-react';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Search, Loader2, ChevronRight, AlertTriangle, Lock, Users, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface LinkedInSearchProps {
@@ -37,6 +41,12 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
   const [cursor, setCursor] = useState<string | null>(null);
   const [total, setTotal] = useState<number | null>(null);
   const [hasSearched, setHasSearched] = useState(false);
+  
+  // Job scoring state
+  const [selectedJob, setSelectedJob] = useState<Job | null>(null);
+  const [selectedProfiles, setSelectedProfiles] = useState<Set<string>>(new Set());
+  const [jobScores, setJobScores] = useState<Record<string, JobMatchResult>>({});
+  const [scoringInProgress, setScoringInProgress] = useState(false);
 
   // Check if selected account needs reconnection or has subscription issues
   const selectedAccountData = useMemo(() => 
@@ -281,7 +291,146 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
     setHasSearched(false);
     setCursor(null);
     setTotal(null);
+    setSelectedProfiles(new Set());
+    setJobScores({});
   };
+
+  // Toggle profile selection for batch scoring
+  const toggleProfileSelection = useCallback((profileId: string) => {
+    setSelectedProfiles(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(profileId)) {
+        newSet.delete(profileId);
+      } else {
+        newSet.add(profileId);
+      }
+      return newSet;
+    });
+  }, []);
+
+  // Select/deselect all visible profiles
+  const toggleSelectAll = useCallback(() => {
+    if (selectedProfiles.size === results.length) {
+      setSelectedProfiles(new Set());
+    } else {
+      setSelectedProfiles(new Set(results.map(p => p.id)));
+    }
+  }, [results, selectedProfiles.size]);
+
+  // Build profile data for scoring
+  const buildProfileData = useCallback((profile: LinkedInProfile) => {
+    const workExperience = profile.work_experience || [];
+    const currentJob = workExperience.find(exp => !exp.end) || workExperience[0];
+    const pastJobs = workExperience.filter(exp => exp.end).slice(0, 5);
+    
+    return {
+      name: profile.name || `${profile.first_name || ''} ${profile.last_name || ''}`.trim(),
+      headline: profile.headline,
+      currentRole: currentJob?.role,
+      currentCompany: currentJob?.company,
+      location: profile.location,
+      skills: profile.skills?.map((s: any) => s.name || s).slice(0, 15) || [],
+      pastPositions: pastJobs.map(p => `${p.role} chez ${p.company}`),
+      education: profile.education?.map((e: any) => `${e.degree || ''} - ${e.school}`) || [],
+    };
+  }, []);
+
+  // Score a single profile against selected job
+  const scoreProfile = useCallback(async (profile: LinkedInProfile) => {
+    if (!selectedJob) {
+      toast.error('Sélectionnez un poste pour le scoring');
+      return;
+    }
+
+    try {
+      const profileData = buildProfileData(profile);
+      
+      const { data, error } = await supabase.functions.invoke('score-profile-job', {
+        body: { 
+          profile: profileData, 
+          job: {
+            id: selectedJob.id,
+            title: selectedJob.title,
+            client: selectedJob.client,
+            skills: selectedJob.skills || [],
+            requirements: selectedJob.requirements,
+            description: selectedJob.description,
+            seniority: selectedJob.seniority,
+            location: selectedJob.location,
+            remote: selectedJob.remote,
+            xpMin: selectedJob.xpMin,
+            xpMax: selectedJob.xpMax,
+          }
+        }
+      });
+
+      if (error) throw error;
+      if (data?.result) {
+        setJobScores(prev => ({ ...prev, [profile.id]: data.result }));
+      }
+    } catch (err) {
+      console.error('Score error:', err);
+      toast.error('Erreur lors du scoring');
+    }
+  }, [selectedJob, buildProfileData]);
+
+  // Batch score selected profiles
+  const handleBatchScore = useCallback(async () => {
+    if (!selectedJob) {
+      toast.error('Sélectionnez un poste pour le scoring');
+      return;
+    }
+
+    if (selectedProfiles.size === 0) {
+      toast.error('Sélectionnez au moins un profil');
+      return;
+    }
+
+    setScoringInProgress(true);
+    const profilesToScore = results.filter(p => selectedProfiles.has(p.id));
+    
+    try {
+      const profilesData = profilesToScore.map(buildProfileData);
+      
+      const { data, error } = await supabase.functions.invoke('score-profile-job', {
+        body: { 
+          profiles: profilesData, 
+          job: {
+            id: selectedJob.id,
+            title: selectedJob.title,
+            client: selectedJob.client,
+            skills: selectedJob.skills || [],
+            requirements: selectedJob.requirements,
+            description: selectedJob.description,
+            seniority: selectedJob.seniority,
+            location: selectedJob.location,
+            remote: selectedJob.remote,
+            xpMin: selectedJob.xpMin,
+            xpMax: selectedJob.xpMax,
+          }
+        }
+      });
+
+      if (error) throw error;
+      
+      if (data?.results) {
+        const newScores: Record<string, JobMatchResult> = {};
+        data.results.forEach((result: JobMatchResult, index: number) => {
+          const profile = profilesToScore[index];
+          if (profile) {
+            newScores[profile.id] = result;
+          }
+        });
+        setJobScores(prev => ({ ...prev, ...newScores }));
+        toast.success(`${data.results.length} profils scorés avec succès`);
+      }
+    } catch (err) {
+      console.error('Batch score error:', err);
+      toast.error('Erreur lors du scoring par lot');
+    } finally {
+      setScoringInProgress(false);
+    }
+  }, [selectedJob, selectedProfiles, results, buildProfileData]);
 
   return (
     <div className="grid lg:grid-cols-[320px_1fr] gap-6">
@@ -448,6 +597,12 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
           accountId={selectedAccount}
         />
 
+        {/* Job Selector for scoring */}
+        <JobSelector 
+          selectedJob={selectedJob}
+          onJobChange={setSelectedJob}
+        />
+
         {/* Action buttons */}
         <div className="flex gap-2">
           <Button
@@ -474,9 +629,23 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
 
       {/* Results */}
       <div className="bg-white rounded-xl border border-[#1A1A1A]/10 flex flex-col h-[calc(100vh-140px)]">
-        {/* Results header */}
+        {/* Results header with batch actions */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-[#1A1A1A]/10 shrink-0">
           <div className="flex items-center gap-4">
+            {/* Select all checkbox when job is selected */}
+            {selectedJob && results.length > 0 && (
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  checked={selectedProfiles.size === results.length && results.length > 0}
+                  onCheckedChange={toggleSelectAll}
+                  id="select-all"
+                />
+                <label htmlFor="select-all" className="text-xs text-[#1A1A1A]/60 cursor-pointer">
+                  Tout
+                </label>
+              </div>
+            )}
+            
             <div className="text-base font-semibold text-[#1A1A1A]">
               {hasSearched ? (
                 total !== null ? (
@@ -495,15 +664,26 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
             )}
           </div>
           
-          {/* Filter summary */}
-          {hasSearched && (
-            <div className="flex items-center gap-2 text-xs text-[#1A1A1A]/50">
-              <span className="hidden md:inline">Mode:</span>
-              <span className="font-medium text-[#0077B5]">
-                {filters.api === 'recruiter' ? 'Recruiter' : filters.api === 'sales_navigator' ? 'Sales Nav' : 'Classic'}
-              </span>
-            </div>
-          )}
+          {/* Batch score button + filter summary */}
+          <div className="flex items-center gap-3">
+            {selectedJob && selectedProfiles.size > 0 && (
+              <BatchScoreButton
+                selectedCount={selectedProfiles.size}
+                onScore={handleBatchScore}
+                loading={scoringInProgress}
+                disabled={!selectedJob}
+              />
+            )}
+            
+            {hasSearched && (
+              <div className="flex items-center gap-2 text-xs text-[#1A1A1A]/50">
+                <span className="hidden md:inline">Mode:</span>
+                <span className="font-medium text-[#0077B5]">
+                  {filters.api === 'recruiter' ? 'Recruiter' : filters.api === 'sales_navigator' ? 'Sales Nav' : 'Classic'}
+                </span>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Results list */}
@@ -548,7 +728,15 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
 
               {/* Profile cards */}
               {results.map((profile, index) => (
-                <LinkedInResultCard key={profile.id || `profile-${index}`} profile={profile} />
+                <LinkedInResultCard 
+                  key={profile.id || `profile-${index}`} 
+                  profile={profile}
+                  selectedJob={selectedJob}
+                  isSelected={selectedProfiles.has(profile.id)}
+                  onToggleSelect={() => toggleProfileSelection(profile.id)}
+                  jobScore={jobScores[profile.id]}
+                  onScoreProfile={() => scoreProfile(profile)}
+                />
               ))}
 
               {/* Load more */}

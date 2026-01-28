@@ -1,7 +1,10 @@
 import React, { useState } from 'react';
 import { LinkedInProfile } from './types';
+import { JobScoreDisplay, JobMatchResult } from './JobScoreDisplay';
+import { Job } from '@/pages/JobSpace';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { 
@@ -31,9 +34,21 @@ import { toast } from 'sonner';
 
 interface LinkedInResultCardProps {
   profile: LinkedInProfile;
+  selectedJob?: Job | null;
+  isSelected?: boolean;
+  onToggleSelect?: () => void;
+  jobScore?: JobMatchResult;
+  onScoreProfile?: () => void;
 }
 
-export const LinkedInResultCard: React.FC<LinkedInResultCardProps> = ({ profile }) => {
+export const LinkedInResultCard: React.FC<LinkedInResultCardProps> = ({ 
+  profile,
+  selectedJob,
+  isSelected = false,
+  onToggleSelect,
+  jobScore,
+  onScoreProfile,
+}) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const [aiAnalysis, setAiAnalysis] = useState<{
     summary: string;
@@ -43,6 +58,7 @@ export const LinkedInResultCard: React.FC<LinkedInResultCardProps> = ({ profile 
     recommendation: string;
   } | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [isScoring, setIsScoring] = useState(false);
 
   // Handle both API formats
   const firstName = profile.first_name || profile.name?.split(' ')[0] || '';
@@ -160,6 +176,17 @@ export const LinkedInResultCard: React.FC<LinkedInResultCardProps> = ({ profile 
         {/* Main card content */}
         <div className="p-4">
           <div className="flex items-start gap-4">
+            {/* Checkbox for batch selection */}
+            {selectedJob && onToggleSelect && (
+              <div className="pt-3">
+                <Checkbox
+                  checked={isSelected}
+                  onCheckedChange={onToggleSelect}
+                  className="border-purple-300 data-[state=checked]:bg-purple-600 data-[state=checked]:border-purple-600"
+                />
+              </div>
+            )}
+            
             {/* Avatar */}
             <div className="relative">
               <Avatar className="w-14 h-14 border-2 border-white shadow-md">
@@ -212,6 +239,27 @@ export const LinkedInResultCard: React.FC<LinkedInResultCardProps> = ({ profile 
 
                 {/* Actions */}
                 <div className="flex items-center gap-1 shrink-0">
+                  {/* Job score button */}
+                  {selectedJob && onScoreProfile && !jobScore && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={onScoreProfile}
+                      disabled={isScoring}
+                      className="text-purple-600 hover:text-purple-700 hover:bg-purple-50 h-8 px-2 gap-1"
+                      title={`Scorer pour ${selectedJob.title}`}
+                    >
+                      {isScoring ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <>
+                          <Target className="w-4 h-4" />
+                          <span className="text-xs hidden sm:inline">Score</span>
+                        </>
+                      )}
+                    </Button>
+                  )}
+                  
                   <Button
                     variant="ghost"
                     size="sm"
@@ -290,6 +338,17 @@ export const LinkedInResultCard: React.FC<LinkedInResultCardProps> = ({ profile 
                   </span>
                 )}
               </div>
+
+              {/* Job Score Display */}
+              {jobScore && (
+                <div className="mt-3">
+                  <JobScoreDisplay 
+                    result={jobScore} 
+                    jobTitle={selectedJob?.title}
+                    compact={!isExpanded}
+                  />
+                </div>
+              )}
 
               {/* AI Analysis panel */}
               {aiAnalysis && (
