@@ -9,6 +9,9 @@ import {
   FilterPriority,
   FilterScope,
   LocationScope,
+  CompanyKeywordFilter,
+  CompanyPriority,
+  CompanyScope,
   ActivityMessageType,
   ActivityNoteType,
   SENIORITY_LEVELS,
@@ -39,6 +42,7 @@ import {
   ParameterOption,
   MultiSelectDropdown,
 } from './FilterComponents';
+import { CompanyFilter } from './CompanyFilter';
 import { isFilterSupported, getFilterTooltip, FilterKey } from './filterApiSupport';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -301,13 +305,29 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
     });
   }, [filters, onChange]);
 
+  // Company keyword handlers
+  const handleAddCompanyKeyword = useCallback((company: CompanyKeywordFilter) => {
+    onChange({ ...filters, company_keywords: [...filters.company_keywords, company] });
+  }, [filters, onChange]);
+
+  const handleRemoveCompanyKeyword = useCallback((index: number) => {
+    onChange({ ...filters, company_keywords: filters.company_keywords.filter((_, i) => i !== index) });
+  }, [filters, onChange]);
+
+  const handleUpdateCompanyKeyword = useCallback((index: number, updates: Partial<CompanyKeywordFilter>) => {
+    onChange({
+      ...filters,
+      company_keywords: filters.company_keywords.map((c, i) => (i === index ? { ...c, ...updates } : c)),
+    });
+  }, [filters, onChange]);
+
   // Count active filters
   const countBasicFilters = filters.location.length + filters.school.length + filters.profile_language.length + filters.network_distance.length + filters.groups.length;
   const countPositionFilters = filters.job_title.length + filters.role.length + filters.skills.length + filters.seniority.length + filters.function.length + filters.degree.length;
   const countExperienceFilters = (filters.years_of_experience_min !== null ? 1 : 0) + (filters.years_of_experience_max !== null ? 1 : 0) + 
     (filters.tenure_at_company_min !== null ? 1 : 0) + (filters.tenure_at_company_max !== null ? 1 : 0) +
     (filters.tenure_at_role_min !== null ? 1 : 0) + (filters.tenure_at_role_max !== null ? 1 : 0);
-  const countCompanyFilters = filters.company.length + filters.industry.length + filters.company_headcount.length + filters.company_type.length + filters.company_location.length;
+  const countCompanyFilters = filters.company.length + filters.company_keywords.length + filters.industry.length + filters.company_headcount.length + filters.company_type.length + filters.company_location.length;
   const countPastFilters = filters.past_company.length + filters.past_job_title.length;
   const countRecruiterFilters = (filters.spotlight ? 1 : 0) + (filters.hiring_project ? 1 : 0) + (filters.talent_pool ? 1 : 0) + 
     (filters.open_to_work === true ? 1 : 0) + filters.open_to.length + 
@@ -342,6 +362,7 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
   
   const companyFiltersPreview = [
     ...filters.company.map(f => f.name),
+    ...filters.company_keywords.map(c => c.keywords),
     ...filters.industry.map(f => f.name),
     ...filters.company_headcount.map(h => COMPANY_HEADCOUNT_OPTIONS.find(ch => ch.value === h)?.label || h),
     ...filters.company_type.map(t => COMPANY_TYPE_OPTIONS.find(ct => ct.value === t)?.label || t),
@@ -933,17 +954,25 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
           onToggle={() => toggleSection('company')}
           activeFiltersPreview={companyFiltersPreview}
         >
-          {/* Company */}
-          <FilterGroup title="Nom de l'entreprise" icon={<Building2 className="w-3.5 h-3.5 text-[#0077B5]" />} badge={filters.company.length}>
-            <SelectedBadges items={filters.company} onRemove={(id) => handleRemoveSimpleFilter('company', id)} />
-            <AutocompleteInput
-              filterKey="company"
-              placeholder="Rechercher une entreprise..."
-              value={searchInputs['company'] || ''}
+          {/* Company - with dual mode for Recruiter */}
+          <FilterGroup 
+            title="Nom de l'entreprise" 
+            icon={<Building2 className="w-3.5 h-3.5 text-[#0077B5]" />} 
+            badge={filters.company.length + filters.company_keywords.length}
+          >
+            <CompanyFilter
+              idCompanies={filters.company}
+              onAddIdCompany={(item) => handleAddSimpleFilter('company', item)}
+              onRemoveIdCompany={(id) => handleRemoveSimpleFilter('company', id)}
+              keywordCompanies={filters.company_keywords}
+              onAddKeywordCompany={handleAddCompanyKeyword}
+              onRemoveKeywordCompany={handleRemoveCompanyKeyword}
+              onUpdateKeywordCompany={handleUpdateCompanyKeyword}
+              searchValue={searchInputs['company'] || ''}
+              onSearchChange={(val) => handleSearchInput('company', val)}
               options={parameterOptions['company'] || []}
               loading={loadingParams === 'company'}
-              onInputChange={(val) => handleSearchInput('company', val)}
-              onSelect={(item) => handleAddSimpleFilter('company', item)}
+              isRecruiter={filters.api === 'recruiter'}
             />
           </FilterGroup>
 
