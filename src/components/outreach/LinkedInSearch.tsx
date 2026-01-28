@@ -24,7 +24,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Search, Loader2, ChevronRight, AlertTriangle, Lock, Users, Sparkles, Mail, GitBranch } from 'lucide-react';
+import { Search, Loader2, ChevronRight, ChevronLeft, AlertTriangle, Lock, Users, Sparkles, Mail, GitBranch } from 'lucide-react';
 import { SequenceEnrollButton } from './SequenceEnrollButton';
 import { toast } from 'sonner';
 
@@ -43,7 +43,10 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
   const [results, setResults] = useState<LinkedInProfile[]>([]);
   const [loading, setLoading] = useState(false);
   const [cursor, setCursor] = useState<string | null>(null);
+  const [cursors, setCursors] = useState<string[]>([]); // Stack of cursors for pagination
+  const [currentPage, setCurrentPage] = useState(1);
   const [total, setTotal] = useState<number | null>(null);
+  const RESULTS_PER_PAGE = 20;
   const [hasSearched, setHasSearched] = useState(false);
   
   // Quota tracking
@@ -102,14 +105,14 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
     }
   }, [subscriptions, filters.api]);
 
-  const handleSearch = useCallback(async (newSearch = true) => {
+  const handleSearch = useCallback(async (newSearch = true, paginationCursor?: string | null) => {
     if (!selectedAccount) {
       toast.error('Sélectionnez un compte LinkedIn');
       return;
     }
 
     // Check quota before searching
-    if (!quota.canPerformAction('searchResultsFetched', 25)) {
+    if (!quota.canPerformAction('searchResultsFetched', RESULTS_PER_PAGE)) {
       toast.error('Quota de recherche journalier atteint. Réessayez demain.');
       return;
     }
@@ -121,7 +124,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
         account_id: selectedAccount,
         api: filters.api,
         category: filters.category,
-        limit: 25,
+        limit: RESULTS_PER_PAGE,
       };
 
       // Keywords
@@ -391,9 +394,9 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
         }));
       }
 
-      // Pagination
-      if (!newSearch && cursor) {
-        searchParams.cursor = cursor;
+      // Pagination - use provided cursor for page navigation
+      if (!newSearch && paginationCursor) {
+        searchParams.cursor = paginationCursor;
       }
 
       console.log('Search params:', searchParams);
@@ -419,13 +422,12 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
         toast.warning('Attention: vous approchez de la limite quotidienne de résultats de recherche');
       }
 
-      if (newSearch) {
-        setResults(displayedResults);
-      } else {
-        setResults(prev => [...prev, ...displayedResults]);
-      }
+      // Replace results (pagination mode, not append)
+      setResults(displayedResults);
 
-      setCursor(response.data.cursor || null);
+      // Store current cursor for next page navigation
+      const newCursor = response.data.cursor || null;
+      setCursor(newCursor);
       setTotal(response.data.total || null);
       setHasSearched(true);
 
@@ -438,7 +440,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
     } finally {
       setLoading(false);
     }
-  }, [selectedAccount, filters, cursor]);
+  }, [selectedAccount, filters]);
 
   // Check if filters have any active search criteria
   const hasActiveFilters = useMemo(() => {
@@ -517,10 +519,44 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
     setResults([]);
     setHasSearched(false);
     setCursor(null);
+    setCursors([]);
+    setCurrentPage(1);
     setTotal(null);
     setSelectedProfiles(new Set());
     setJobScores({});
   };
+
+  // Pagination handlers
+  const handleNextPage = useCallback(() => {
+    if (!cursor) return;
+    // Store current cursor before navigating
+    setCursors(prev => [...prev, cursor]);
+    setCurrentPage(prev => prev + 1);
+    handleSearch(false, cursor);
+  }, [cursor, handleSearch]);
+
+  const handlePreviousPage = useCallback(() => {
+    if (currentPage <= 1) return;
+    const newPage = currentPage - 1;
+    setCurrentPage(newPage);
+    
+    if (newPage === 1) {
+      // Go back to first page
+      setCursors([]);
+      handleSearch(true);
+    } else {
+      // Use stored cursor for previous page
+      const previousCursor = cursors[newPage - 2]; // -2 because page 1 has no cursor
+      setCursors(prev => prev.slice(0, newPage - 1));
+      handleSearch(false, previousCursor);
+    }
+  }, [currentPage, cursors, handleSearch]);
+
+  // Reset pagination when filters change
+  useEffect(() => {
+    setCursors([]);
+    setCurrentPage(1);
+  }, [filtersJson]);
 
   // Toggle profile selection for batch scoring
   const toggleProfileSelection = useCallback((profileId: string) => {
@@ -895,9 +931,9 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
                 <span>Résultats de recherche</span>
               )}
             </div>
-            {hasSearched && total !== null && total > results.length && (
+            {hasSearched && total !== null && (
               <span className="text-xs text-[#1A1A1A]/40 bg-[#1A1A1A]/5 px-2 py-1 rounded">
-                {results.length} affichés
+                Page {currentPage} • {results.length}/{RESULTS_PER_PAGE}
               </span>
             )}
           </div>
@@ -1084,25 +1120,40 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
                 />
               ))}
 
-              {/* Load more */}
-              {cursor && (
-                <div className="pt-6 pb-4 text-center">
-                  <Button
-                    variant="outline"
-                    onClick={() => handleSearch(false)}
-                    disabled={loading}
-                    className="px-8"
-                  >
-                    {loading ? (
-                      <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                    ) : (
-                      <ChevronRight className="w-4 h-4 mr-2" />
-                    )}
-                    Charger plus de profils
-                  </Button>
+              {/* Pagination */}
+              {hasSearched && (results.length > 0 || currentPage > 1) && (
+                <div className="pt-6 pb-4 flex flex-col items-center gap-3">
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handlePreviousPage}
+                      disabled={loading || currentPage <= 1}
+                      className="gap-1"
+                    >
+                      <ChevronLeft className="w-4 h-4" />
+                      Précédent
+                    </Button>
+                    
+                    <span className="px-4 py-2 text-sm font-medium text-[#1A1A1A] bg-[#1A1A1A]/5 rounded-md min-w-[80px] text-center">
+                      Page {currentPage}
+                    </span>
+                    
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleNextPage}
+                      disabled={loading || !cursor}
+                      className="gap-1"
+                    >
+                      Suivant
+                      <ChevronRight className="w-4 h-4" />
+                    </Button>
+                  </div>
+                  
                   {total !== null && (
-                    <p className="text-xs text-[#1A1A1A]/40 mt-2">
-                      {results.length} sur {total.toLocaleString()} affichés
+                    <p className="text-xs text-[#1A1A1A]/40">
+                      {RESULTS_PER_PAGE * (currentPage - 1) + 1} - {Math.min(RESULTS_PER_PAGE * currentPage, total)} sur {total.toLocaleString()} profils
                     </p>
                   )}
                 </div>
