@@ -6,6 +6,9 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 };
 
+const UNIPILE_API_KEY = Deno.env.get('UNIPILE_API_KEY');
+const UNIPILE_DSN = Deno.env.get('UNIPILE_DSN');
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -90,7 +93,8 @@ serve(async (req) => {
               step.action_type,
               enrollment,
               step,
-              exec
+              exec,
+              supabase
             );
 
             if (executeResult.success) {
@@ -199,7 +203,7 @@ serve(async (req) => {
 });
 
 async function checkStepCondition(
-  supabase: any,
+  _supabase: unknown,
   conditionType: string,
   accountId: string,
   profileId: string
@@ -207,46 +211,144 @@ async function checkStepCondition(
   switch (conditionType) {
     case 'always':
       return true;
-    case 'if_connected':
-      // TODO: Check connection status via Unipile API
-      return true;
-    case 'if_not_connected':
-      // TODO: Check connection status via Unipile API
-      return true;
-    case 'if_no_response':
-      // TODO: Check message history via Unipile API
-      return true;
+
+    case 'if_connected': {
+      // Check if connected (1st degree) via Unipile API
+      const profile = await getProfileInfo(accountId, profileId);
+      return profile?.network_distance === 'FIRST_DEGREE';
+    }
+
+    case 'if_not_connected': {
+      // Check if NOT connected via Unipile API
+      const profile = await getProfileInfo(accountId, profileId);
+      return profile?.network_distance !== 'FIRST_DEGREE';
+    }
+
+    case 'if_no_response': {
+      // Check if no response received via Unipile API
+      const hasReply = await checkHasProspectReplied(accountId, profileId);
+      return !hasReply;
+    }
+
+    case 'wait_until_connected': {
+      // Only proceed if connected
+      const profile = await getProfileInfo(accountId, profileId);
+      return profile?.network_distance === 'FIRST_DEGREE';
+    }
+
     default:
       return true;
   }
 }
 
+// Helper: Get profile info from Unipile
+async function getProfileInfo(accountId: string, profileId: string): Promise<{
+  network_distance?: string;
+} | null> {
+  try {
+    const response = await fetch(
+      `${UNIPILE_DSN}/api/v1/users/${profileId}?account_id=${accountId}`,
+      { headers: { 'X-API-KEY': UNIPILE_API_KEY! } }
+    );
+    if (!response.ok) return null;
+    return await response.json();
+  } catch {
+    return null;
+  }
+}
+
+// Helper: Check if prospect has replied
+async function checkHasProspectReplied(accountId: string, profileId: string): Promise<boolean> {
+  try {
+    // Get chats with this attendee
+    const chatsResponse = await fetch(
+      `${UNIPILE_DSN}/api/v1/chat_attendees/${profileId}/chats?account_id=${accountId}`,
+      { headers: { 'X-API-KEY': UNIPILE_API_KEY! } }
+    );
+    
+    if (!chatsResponse.ok) return false;
+    
+    const chatsData = await chatsResponse.json();
+    const chats = chatsData.items || [];
+    
+    if (chats.length === 0) return false;
+
+    // Check messages in each chat
+    for (const chat of chats) {
+      const messagesResponse = await fetch(
+        `${UNIPILE_DSN}/api/v1/chats/${chat.id}/messages?limit=20`,
+        { headers: { 'X-API-KEY': UNIPILE_API_KEY! } }
+      );
+      
+      if (!messagesResponse.ok) continue;
+      
+      const messagesData = await messagesResponse.json();
+      const messages = messagesData.items || [];
+      
+      // Find messages from the prospect (not from self)
+      const prospectMessages = messages.filter((m: { is_sender_self?: boolean; sender_attendee_id?: string }) => 
+        !m.is_sender_self && m.sender_attendee_id !== 'self'
+      );
+      
+      if (prospectMessages.length > 0) {
+        return true;
+      }
+    }
+    
+    return false;
+  } catch {
+    return false;
+  }
+}
+
+// deno-lint-ignore no-explicit-any
 async function executeStepAction(
   actionType: string,
-  enrollment: any,
-  step: any,
-  execution: any
+  enrollment: Record<string, unknown>,
+  step: Record<string, unknown>,
+  execution: Record<string, unknown>,
+  supabase: any
 ): Promise<{ success: boolean; error?: string; subject?: string; message?: string }> {
-  const UNIPILE_API_KEY = Deno.env.get('UNIPILE_API_KEY');
-  const UNIPILE_DSN = Deno.env.get('UNIPILE_DSN');
-
   try {
-    switch (actionType) {
-      case 'profile_visit':
-        // Visit profile via Unipile
-        const visitResponse = await fetch(`${UNIPILE_DSN}/api/v1/users/${enrollment.profile_id}`, {
-          headers: { 'X-API-KEY': UNIPILE_API_KEY! },
-        });
-        return { success: visitResponse.ok };
+    const accountId = enrollment.account_id as string;
+    const profileId = enrollment.profile_id as string;
+    const messageText = (execution.final_message || step.message_template || '') as string;
+    const subjectText = (step.subject_template || '') as string;
 
+    switch (actionType) {
+      case 'profile_visit': {
+        // Visit profile via Unipile
+        const visitResponse = await fetch(
+          `${UNIPILE_DSN}/api/v1/users/${profileId}?account_id=${accountId}`,
+          { headers: { 'X-API-KEY': UNIPILE_API_KEY! } }
+        );
+        
+        // Log analytics
+        if (visitResponse.ok) {
+          await logAnalytics(supabase, enrollment.sequence_id as string, 'profile_visits');
+        }
+        
+        return { success: visitResponse.ok };
+      }
+
+      case 'smart_message':
       case 'inmail':
-      case 'message':
-        // Send message via Unipile
-        const messageBody = {
-          account_id: enrollment.account_id,
-          attendee_provider_id: enrollment.profile_id,
-          text: execution.final_message || step.message_template,
+      case 'message': {
+        // Auto-detect: check connection status to decide InMail vs Direct message
+        const profile = await getProfileInfo(accountId, profileId);
+        const isConnected = profile?.network_distance === 'FIRST_DEGREE';
+        
+        // Build message body - Unipile API format
+        const messageBody: Record<string, unknown> = {
+          account_id: accountId,
+          attendees: [{ provider_id: profileId }],
+          text: messageText,
         };
+        
+        // Add subject for InMail (only if not connected)
+        if (!isConnected && subjectText) {
+          messageBody.subject = subjectText;
+        }
         
         const msgResponse = await fetch(`${UNIPILE_DSN}/api/v1/chats`, {
           method: 'POST',
@@ -257,18 +359,27 @@ async function executeStepAction(
           body: JSON.stringify(messageBody),
         });
         
+        if (msgResponse.ok) {
+          await logAnalytics(supabase, enrollment.sequence_id as string, 'messages_sent');
+        }
+        
         return { 
           success: msgResponse.ok,
-          message: execution.final_message || step.message_template,
+          message: messageText,
+          subject: !isConnected ? subjectText : undefined,
         };
+      }
 
-      case 'connection_request':
+      case 'connection_request': {
         // Send connection request via Unipile
-        const connectBody = {
-          account_id: enrollment.account_id,
-          provider_id: enrollment.profile_id,
-          message: step.message_template,
+        const connectBody: Record<string, unknown> = {
+          account_id: accountId,
+          provider_id: profileId,
         };
+        
+        if (messageText) {
+          connectBody.message = messageText;
+        }
         
         const connectResponse = await fetch(`${UNIPILE_DSN}/api/v1/users/invite`, {
           method: 'POST',
@@ -279,13 +390,62 @@ async function executeStepAction(
           body: JSON.stringify(connectBody),
         });
         
+        if (connectResponse.ok) {
+          await logAnalytics(supabase, enrollment.sequence_id as string, 'invites_sent');
+          
+          // Update enrollment connection status to pending
+          await supabase
+            .from('sequence_enrollments')
+            .update({ connection_status: 'pending_invite' })
+            .eq('id', enrollment.id);
+        }
+        
         return { success: connectResponse.ok };
+      }
 
       default:
         return { success: false, error: `Unknown action type: ${actionType}` };
     }
   } catch (err) {
     return { success: false, error: err instanceof Error ? err.message : 'Execution failed' };
+  }
+}
+
+// Helper: Log analytics
+// deno-lint-ignore no-explicit-any
+async function logAnalytics(
+  supabase: any,
+  sequenceId: string,
+  field: 'invites_sent' | 'invites_accepted' | 'messages_sent' | 'replies_received' | 'profile_visits'
+) {
+  const today = new Date().toISOString().split('T')[0];
+  
+  try {
+    // Try to get existing record
+    const { data: existing } = await supabase
+      .from('sequence_analytics')
+      .select('*')
+      .eq('sequence_id', sequenceId)
+      .eq('date', today)
+      .maybeSingle();
+    
+    if (existing) {
+      // Update existing - increment the field
+      const currentValue = existing[field] || 0;
+      await supabase
+        .from('sequence_analytics')
+        .update({ [field]: currentValue + 1 })
+        .eq('id', existing.id);
+    } else {
+      // Insert new
+      await supabase.from('sequence_analytics').insert({
+        sequence_id: sequenceId,
+        date: today,
+        [field]: 1,
+      });
+    }
+  } catch (err) {
+    console.error('Failed to log analytics:', err);
   }
 }
 
@@ -340,6 +500,5 @@ async function scheduleNextStep(supabase: any, enrollment: any, currentStepOrder
 }
 
 async function checkForReply(accountId: string, profileId: string): Promise<boolean> {
-  // TODO: Implement reply detection via Unipile API
-  return false;
+  return await checkHasProspectReplied(accountId, profileId);
 }

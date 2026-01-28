@@ -34,8 +34,8 @@ import { cn } from '@/lib/utils';
 export interface SequenceStep {
   id: string;
   order: number;
-  actionType: 'inmail' | 'connection_request' | 'profile_visit' | 'message';
-  conditionType: 'always' | 'if_connected' | 'if_not_connected' | 'if_no_response';
+  actionType: 'inmail' | 'connection_request' | 'profile_visit' | 'message' | 'smart_message';
+  conditionType: 'always' | 'if_connected' | 'if_not_connected' | 'if_no_response' | 'wait_until_connected';
   delayDays: number;
   delayHours: number;
   preferredHourStart: number;
@@ -44,6 +44,8 @@ export interface SequenceStep {
   messageTemplate?: string;
   useAiPersonalization: boolean;
   aiTone?: 'professional' | 'casual' | 'enthusiastic';
+  timeoutDays?: number;
+  waitForEvent?: string;
 }
 
 export interface Sequence {
@@ -62,10 +64,11 @@ interface SequenceBuilderProps {
 }
 
 const ACTION_TYPES = [
-  { value: 'inmail', label: 'InMail', icon: Mail, color: 'text-blue-600 bg-blue-100' },
-  { value: 'connection_request', label: 'Demande connexion', icon: UserPlus, color: 'text-green-600 bg-green-100' },
-  { value: 'profile_visit', label: 'Visite profil', icon: Eye, color: 'text-purple-600 bg-purple-100' },
-  { value: 'message', label: 'Message direct', icon: MessageSquare, color: 'text-orange-600 bg-orange-100' },
+  { value: 'smart_message', label: 'Message intelligent', icon: Sparkles, color: 'text-violet-600 bg-violet-100', description: 'Auto-détecte InMail ou Direct selon le niveau de connexion' },
+  { value: 'inmail', label: 'InMail', icon: Mail, color: 'text-blue-600 bg-blue-100', description: 'Envoie un InMail LinkedIn' },
+  { value: 'connection_request', label: 'Demande connexion', icon: UserPlus, color: 'text-green-600 bg-green-100', description: 'Envoie une demande de connexion' },
+  { value: 'profile_visit', label: 'Visite profil', icon: Eye, color: 'text-purple-600 bg-purple-100', description: 'Visite le profil LinkedIn' },
+  { value: 'message', label: 'Message direct', icon: MessageSquare, color: 'text-orange-600 bg-orange-100', description: 'Message direct (si connecté)' },
 ];
 
 const CONDITION_TYPES = [
@@ -73,19 +76,22 @@ const CONDITION_TYPES = [
   { value: 'if_connected', label: 'Si connecté', description: 'Uniquement si la demande de connexion a été acceptée' },
   { value: 'if_not_connected', label: 'Si non connecté', description: 'Uniquement si pas encore connecté (1er niveau)' },
   { value: 'if_no_response', label: 'Si pas de réponse', description: 'Uniquement si aucune réponse reçue' },
+  { value: 'wait_until_connected', label: 'Attendre connexion', description: 'Pause jusqu\'à ce que la demande soit acceptée' },
 ];
 
 const createEmptyStep = (order: number): SequenceStep => ({
   id: crypto.randomUUID(),
   order,
-  actionType: 'inmail',
+  actionType: order === 0 ? 'profile_visit' : 'smart_message',
   conditionType: 'always',
-  delayDays: order === 0 ? 0 : 3,
+  delayDays: order === 0 ? 0 : 2,
   delayHours: 0,
   preferredHourStart: 9,
   preferredHourEnd: 12,
   useAiPersonalization: true,
   aiTone: 'professional',
+  timeoutDays: undefined,
+  waitForEvent: undefined,
 });
 
 export const SequenceBuilder: React.FC<SequenceBuilderProps> = ({
@@ -164,7 +170,7 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = ({
   };
 
   const getActionConfig = (type: string) => ACTION_TYPES.find(a => a.value === type) || ACTION_TYPES[0];
-  const needsMessage = (type: string) => ['inmail', 'connection_request', 'message'].includes(type);
+  const needsMessage = (type: string) => ['inmail', 'connection_request', 'message', 'smart_message'].includes(type);
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
