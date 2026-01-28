@@ -265,16 +265,62 @@ export type Database = {
         }
         Relationships: []
       }
+      sequence_analytics: {
+        Row: {
+          created_at: string | null
+          date: string
+          id: string
+          invites_accepted: number | null
+          invites_sent: number | null
+          messages_sent: number | null
+          profile_visits: number | null
+          replies_received: number | null
+          sequence_id: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          date: string
+          id?: string
+          invites_accepted?: number | null
+          invites_sent?: number | null
+          messages_sent?: number | null
+          profile_visits?: number | null
+          replies_received?: number | null
+          sequence_id?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          date?: string
+          id?: string
+          invites_accepted?: number | null
+          invites_sent?: number | null
+          messages_sent?: number | null
+          profile_visits?: number | null
+          replies_received?: number | null
+          sequence_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sequence_analytics_sequence_id_fkey"
+            columns: ["sequence_id"]
+            isOneToOne: false
+            referencedRelation: "outreach_sequences"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       sequence_enrollments: {
         Row: {
           account_id: string
           completed_at: string | null
+          connection_status: string | null
           created_at: string
           created_by: string
           current_step_order: number
           id: string
           job_id: string | null
           job_title: string | null
+          last_check_at: string | null
           profile_headline: string | null
           profile_id: string
           profile_name: string | null
@@ -288,12 +334,14 @@ export type Database = {
         Insert: {
           account_id: string
           completed_at?: string | null
+          connection_status?: string | null
           created_at?: string
           created_by: string
           current_step_order?: number
           id?: string
           job_id?: string | null
           job_title?: string | null
+          last_check_at?: string | null
           profile_headline?: string | null
           profile_id: string
           profile_name?: string | null
@@ -307,12 +355,14 @@ export type Database = {
         Update: {
           account_id?: string
           completed_at?: string | null
+          connection_status?: string | null
           created_at?: string
           created_by?: string
           current_step_order?: number
           id?: string
           job_id?: string | null
           job_title?: string | null
+          last_check_at?: string | null
           profile_headline?: string | null
           profile_id?: string
           profile_name?: string | null
@@ -411,7 +461,9 @@ export type Database = {
           sequence_id: string
           step_order: number
           subject_template: string | null
+          timeout_days: number | null
           use_ai_personalization: boolean
+          wait_for_event: string | null
         }
         Insert: {
           action_type: string
@@ -427,7 +479,9 @@ export type Database = {
           sequence_id: string
           step_order: number
           subject_template?: string | null
+          timeout_days?: number | null
           use_ai_personalization?: boolean
+          wait_for_event?: string | null
         }
         Update: {
           action_type?: string
@@ -443,7 +497,9 @@ export type Database = {
           sequence_id?: string
           step_order?: number
           subject_template?: string | null
+          timeout_days?: number | null
           use_ai_personalization?: boolean
+          wait_for_event?: string | null
         }
         Relationships: [
           {
