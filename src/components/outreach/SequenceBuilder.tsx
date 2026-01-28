@@ -156,7 +156,7 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-2xl max-h-[85vh] overflow-hidden flex flex-col bg-white">
+      <DialogContent className="max-w-xl max-h-[85vh] overflow-hidden flex flex-col bg-white">
         <DialogHeader>
           <DialogTitle>
             {initialSequence ? 'Modifier la séquence' : 'Nouvelle séquence'}
