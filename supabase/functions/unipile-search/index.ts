@@ -419,12 +419,20 @@ async function handleSearch(
     }));
   }
 
-  // Seniority - ONLY for Classic and Sales Navigator (NOT Recruiter people search)
-  // Recruiter API does NOT support seniority filter for people search
-  // Use years_of_experience instead for Recruiter
-  if (seniority?.length && api !== 'recruiter') {
-    console.log('Seniority filter applied (non-recruiter):', seniority);
-    searchBody.seniority = seniority;
+  // Seniority - format differs by API
+  // Recruiter uses object format: { include: [], exclude: [] }
+  // Classic/Sales Navigator uses array format: []
+  if (seniority?.length) {
+    console.log('Seniority filter received:', seniority, 'API:', api);
+    if (api === 'recruiter') {
+      // Recruiter expects { include: [...], exclude: [...] }
+      searchBody.seniority = {
+        include: seniority,
+      };
+    } else {
+      // Classic and Sales Navigator expect simple array
+      searchBody.seniority = seniority;
+    }
   }
 
   // Network distance (all APIs)
