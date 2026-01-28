@@ -71,8 +71,8 @@ export const FilterSection: React.FC<FilterSectionProps> = ({
         </div>
       )}
     </CollapsibleTrigger>
-    <CollapsibleContent className="px-4 pb-4">
-      <div className="space-y-4">
+    <CollapsibleContent className="px-3 pb-3">
+      <div className="space-y-2">
         {children}
       </div>
     </CollapsibleContent>
@@ -97,10 +97,10 @@ export const FilterGroup: React.FC<FilterGroupProps> = ({
   unsupported = false,
   unsupportedTooltip,
 }) => (
-  <div className={`rounded-lg border border-[#1A1A1A]/8 bg-gradient-to-b from-gray-50/80 to-white p-3 shadow-sm ${unsupported ? 'opacity-60' : ''}`}>
-    <div className="flex items-center gap-2 mb-2.5">
+  <div className={`rounded-md border border-[#1A1A1A]/6 bg-gradient-to-b from-gray-50/60 to-white p-2 shadow-sm ${unsupported ? 'opacity-60' : ''}`}>
+    <div className="flex items-center gap-1.5 mb-1.5">
       {icon}
-      <span className="text-xs font-medium text-[#1A1A1A]/70 uppercase tracking-wide">{title}</span>
+      <span className="text-[11px] font-medium text-[#1A1A1A]/70 uppercase tracking-wide">{title}</span>
       {badge !== undefined && badge > 0 && (
         <Badge variant="outline" className="h-4 px-1 text-[10px] bg-[#0077B5]/10 text-[#0077B5] border-[#0077B5]/20">{badge}</Badge>
       )}
