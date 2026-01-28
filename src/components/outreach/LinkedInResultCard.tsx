@@ -45,6 +45,23 @@ interface LinkedInResultCardProps {
   onToggleSelect?: () => void;
   jobScore?: JobMatchResult;
   onScoreProfile?: () => void;
+  accountId?: string;
+}
+
+interface ChatMessage {
+  id: string;
+  text: string;
+  sender_id?: string;
+  timestamp?: string;
+  is_sender?: boolean;
+  attachments?: Array<{ type: string; url?: string; name?: string }>;
+}
+
+interface Chat {
+  id: string;
+  attendees?: Array<{ id: string; name?: string; display_name?: string }>;
+  last_message?: { text?: string; timestamp?: string };
+  unread_count?: number;
 }
 
 export const LinkedInResultCard: React.FC<LinkedInResultCardProps> = ({ 
@@ -54,6 +71,7 @@ export const LinkedInResultCard: React.FC<LinkedInResultCardProps> = ({
   onToggleSelect,
   jobScore,
   onScoreProfile,
+  accountId,
 }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const [showMessageModal, setShowMessageModal] = useState(false);
@@ -66,6 +84,13 @@ export const LinkedInResultCard: React.FC<LinkedInResultCardProps> = ({
   } | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isScoring, setIsScoring] = useState(false);
+  
+  // Message history state
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [messagesLoading, setMessagesLoading] = useState(false);
+  const [messagesLoaded, setMessagesLoaded] = useState(false);
+  const [chatId, setChatId] = useState<string | null>(null);
+  const [noConversation, setNoConversation] = useState(false);
 
   // Handle both API formats
   const firstName = profile.first_name || profile.name?.split(' ')[0] || '';
@@ -180,6 +205,81 @@ export const LinkedInResultCard: React.FC<LinkedInResultCardProps> = ({
     ? `${experienceFromDiploma.years} an${experienceFromDiploma.years > 1 ? 's' : ''} d'exp.`
     : null;
 
+  // Load message history
+  const loadMessages = async () => {
+    if (!accountId || messagesLoaded || messagesLoading) return;
+    
+    setMessagesLoading(true);
+    setNoConversation(false);
+    
+    try {
+      // Get the profile identifier to search for conversations
+      // We need to find a chat that includes this person
+      const profileIdentifier = profile.public_identifier || profile.id;
+      
+      // First, get all chats and find one with this attendee
+      const chatsResponse = await supabase.functions.invoke('unipile-search', {
+        body: {
+          action: 'get_chats',
+          account_id: accountId,
+          limit: 100,
+        },
+      });
+
+      if (chatsResponse.error) throw chatsResponse.error;
+      
+      if (!chatsResponse.data?.success || !chatsResponse.data?.chats?.length) {
+        setNoConversation(true);
+        setMessagesLoaded(true);
+        return;
+      }
+
+      // Find a chat that contains this profile as attendee
+      const profileName = profile.name || `${profile.first_name} ${profile.last_name}`.trim();
+      const foundChat = chatsResponse.data.chats.find((chat: Chat) => {
+        if (!chat.attendees) return false;
+        return chat.attendees.some((attendee: { id: string; name?: string; display_name?: string }) => {
+          // Match by ID or by name
+          if (attendee.id === profileIdentifier) return true;
+          if (attendee.name && profileName && attendee.name.toLowerCase().includes(profileName.toLowerCase())) return true;
+          if (attendee.display_name && profileName && attendee.display_name.toLowerCase().includes(profileName.toLowerCase())) return true;
+          return false;
+        });
+      });
+
+      if (!foundChat) {
+        setNoConversation(true);
+        setMessagesLoaded(true);
+        return;
+      }
+
+      setChatId(foundChat.id);
+
+      // Get messages from this chat
+      const messagesResponse = await supabase.functions.invoke('unipile-search', {
+        body: {
+          action: 'get_messages',
+          account_id: accountId,
+          chat_id: foundChat.id,
+          limit: 50,
+        },
+      });
+
+      if (messagesResponse.error) throw messagesResponse.error;
+      
+      if (messagesResponse.data?.success && messagesResponse.data?.messages) {
+        setMessages(messagesResponse.data.messages);
+      }
+      
+      setMessagesLoaded(true);
+    } catch (error) {
+      console.error('Error loading messages:', error);
+      toast.error("Erreur lors du chargement des messages");
+    } finally {
+      setMessagesLoading(false);
+    }
+  };
+
   // AI Analysis function
   const handleAiAnalysis = async () => {
     if (aiAnalysis) {
@@ -211,6 +311,24 @@ export const LinkedInResultCard: React.FC<LinkedInResultCardProps> = ({
       toast.error("Erreur lors de l'analyse IA");
     } finally {
       setIsAnalyzing(false);
+    }
+  };
+
+  // Format message timestamp
+  const formatMessageTime = (timestamp?: string) => {
+    if (!timestamp) return '';
+    const date = new Date(timestamp);
+    const now = new Date();
+    const diffDays = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24));
+    
+    if (diffDays === 0) {
+      return date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+    } else if (diffDays === 1) {
+      return 'Hier';
+    } else if (diffDays < 7) {
+      return date.toLocaleDateString('fr-FR', { weekday: 'short' });
+    } else {
+      return date.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
     }
   };
 
@@ -814,21 +932,100 @@ export const LinkedInResultCard: React.FC<LinkedInResultCardProps> = ({
 
               {/* Messages Tab */}
               <TabsContent value="messages" className="mt-4">
-                <div className="text-center py-8 text-[#1A1A1A]/40 bg-[#1A1A1A]/3 rounded-lg">
-                  <MessageSquare className="w-10 h-10 mx-auto mb-3 opacity-50" />
-                  <p className="text-sm font-medium mb-1">Historique des messages</p>
-                  <p className="text-xs text-[#1A1A1A]/50 mb-4">
-                    Consultez l'historique des échanges avec ce candidat
-                  </p>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="text-[#0077B5] border-[#0077B5]/30 hover:bg-[#0077B5]/10"
-                  >
-                    <MessageSquare className="w-4 h-4 mr-2" />
-                    Charger l'historique
-                  </Button>
-                </div>
+                {!accountId ? (
+                  <div className="text-center py-8 text-[#1A1A1A]/40 bg-[#1A1A1A]/3 rounded-lg">
+                    <MessageSquare className="w-10 h-10 mx-auto mb-3 opacity-50" />
+                    <p className="text-sm font-medium mb-1">Compte non disponible</p>
+                    <p className="text-xs text-[#1A1A1A]/50">
+                      Sélectionnez un compte LinkedIn pour voir l'historique des messages
+                    </p>
+                  </div>
+                ) : messagesLoading ? (
+                  <div className="text-center py-8">
+                    <Loader2 className="w-8 h-8 animate-spin mx-auto mb-3 text-[#0077B5]" />
+                    <p className="text-sm text-[#1A1A1A]/60">Chargement des messages...</p>
+                  </div>
+                ) : !messagesLoaded ? (
+                  <div className="text-center py-8 text-[#1A1A1A]/40 bg-[#1A1A1A]/3 rounded-lg">
+                    <MessageSquare className="w-10 h-10 mx-auto mb-3 opacity-50" />
+                    <p className="text-sm font-medium mb-1">Historique des messages</p>
+                    <p className="text-xs text-[#1A1A1A]/50 mb-4">
+                      Consultez l'historique des échanges avec ce candidat
+                    </p>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={loadMessages}
+                      className="text-[#0077B5] border-[#0077B5]/30 hover:bg-[#0077B5]/10"
+                    >
+                      <MessageSquare className="w-4 h-4 mr-2" />
+                      Charger l'historique
+                    </Button>
+                  </div>
+                ) : noConversation ? (
+                  <div className="text-center py-8 text-[#1A1A1A]/40 bg-amber-50/50 rounded-lg border border-amber-200">
+                    <MessageSquare className="w-10 h-10 mx-auto mb-3 text-amber-400" />
+                    <p className="text-sm font-medium mb-1 text-amber-700">Aucune conversation</p>
+                    <p className="text-xs text-amber-600/70">
+                      Vous n'avez pas encore échangé avec ce candidat
+                    </p>
+                  </div>
+                ) : messages.length === 0 ? (
+                  <div className="text-center py-8 text-[#1A1A1A]/40 bg-[#1A1A1A]/3 rounded-lg">
+                    <MessageSquare className="w-10 h-10 mx-auto mb-3 opacity-50" />
+                    <p className="text-sm font-medium mb-1">Conversation vide</p>
+                    <p className="text-xs text-[#1A1A1A]/50">
+                      La conversation existe mais aucun message n'a été trouvé
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-3 max-h-96 overflow-y-auto">
+                    {/* Messages header */}
+                    <div className="flex items-center justify-between pb-2 border-b border-[#1A1A1A]/10">
+                      <span className="text-xs font-medium text-[#1A1A1A]/60">
+                        {messages.length} message{messages.length > 1 ? 's' : ''}
+                      </span>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          setMessagesLoaded(false);
+                          setMessages([]);
+                        }}
+                        className="text-xs h-6 px-2 text-[#1A1A1A]/40 hover:text-[#1A1A1A]"
+                      >
+                        Actualiser
+                      </Button>
+                    </div>
+                    
+                    {/* Message list - reversed for chronological order */}
+                    <div className="space-y-2">
+                      {[...messages].reverse().map((msg, index) => (
+                        <div 
+                          key={msg.id || index}
+                          className={`flex ${msg.is_sender ? 'justify-end' : 'justify-start'}`}
+                        >
+                          <div className={`max-w-[80%] rounded-lg px-3 py-2 ${
+                            msg.is_sender 
+                              ? 'bg-[#0077B5] text-white' 
+                              : 'bg-[#1A1A1A]/5 text-[#1A1A1A]'
+                          }`}>
+                            <p className="text-sm whitespace-pre-wrap break-words">
+                              {msg.text || '(Message sans texte)'}
+                            </p>
+                            {msg.timestamp && (
+                              <p className={`text-[10px] mt-1 ${
+                                msg.is_sender ? 'text-white/60' : 'text-[#1A1A1A]/40'
+                              }`}>
+                                {formatMessageTime(msg.timestamp)}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </TabsContent>
 
               {/* Posts Tab */}

@@ -131,6 +131,14 @@ Deno.serve(async (req) => {
         return await handleGetProfile(baseUrl, apiKey, account_id, params);
       }
 
+      case 'get_chats': {
+        return await handleGetChats(baseUrl, apiKey, account_id, params);
+      }
+
+      case 'get_messages': {
+        return await handleGetMessages(baseUrl, apiKey, account_id, params);
+      }
+
       default:
         return new Response(
           JSON.stringify({ success: false, error: 'Action non reconnue' }),
@@ -724,6 +732,121 @@ async function handleGetProfile(
 
   return new Response(
     JSON.stringify({ success: true, profile: data }),
+    { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+  );
+}
+
+/**
+ * Handle Get Chats - List conversations for an account
+ * Optionally filter by attendee (LinkedIn profile ID)
+ */
+async function handleGetChats(
+  baseUrl: string,
+  apiKey: string,
+  accountId: string,
+  params: Record<string, unknown>
+): Promise<Response> {
+  const { attendee_id, limit = 50, cursor } = params;
+
+  const queryParams = new URLSearchParams();
+  queryParams.set('account_id', accountId);
+  queryParams.set('limit', String(limit));
+  
+  if (attendee_id) {
+    queryParams.set('attendee_id', String(attendee_id));
+  }
+  if (cursor) {
+    queryParams.set('cursor', String(cursor));
+  }
+
+  const url = `${baseUrl}/chats?${queryParams.toString()}`;
+  console.log('Get chats URL:', url);
+
+  const response = await fetch(url, {
+    headers: {
+      'X-API-KEY': apiKey,
+      'Accept': 'application/json',
+    },
+  });
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    console.error('Chats error:', data);
+    return new Response(
+      JSON.stringify({ 
+        success: false, 
+        error: data.detail || data.message || 'Erreur de récupération des conversations',
+        chats: [] 
+      }),
+      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  }
+
+  return new Response(
+    JSON.stringify({ 
+      success: true, 
+      chats: data.items || [],
+      cursor: data.cursor,
+    }),
+    { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+  );
+}
+
+/**
+ * Handle Get Messages - Get message history from a specific chat
+ */
+async function handleGetMessages(
+  baseUrl: string,
+  apiKey: string,
+  accountId: string,
+  params: Record<string, unknown>
+): Promise<Response> {
+  const { chat_id, limit = 50, cursor } = params;
+
+  if (!chat_id) {
+    return new Response(
+      JSON.stringify({ success: false, error: 'Chat ID requis' }),
+      { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  }
+
+  const queryParams = new URLSearchParams();
+  if (cursor) {
+    queryParams.set('cursor', String(cursor));
+  }
+  queryParams.set('limit', String(limit));
+
+  const url = `${baseUrl}/chats/${chat_id}/messages?${queryParams.toString()}`;
+  console.log('Get messages URL:', url);
+
+  const response = await fetch(url, {
+    headers: {
+      'X-API-KEY': apiKey,
+      'Accept': 'application/json',
+    },
+  });
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    console.error('Messages error:', data);
+    return new Response(
+      JSON.stringify({ 
+        success: false, 
+        error: data.detail || data.message || 'Erreur de récupération des messages',
+        messages: [] 
+      }),
+      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  }
+
+  return new Response(
+    JSON.stringify({ 
+      success: true, 
+      messages: data.items || [],
+      cursor: data.cursor,
+    }),
     { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
   );
 }
