@@ -1,29 +1,57 @@
 import { useState, useCallback, useEffect } from 'react';
 
 /**
+ * LinkedIn API modes
+ */
+export type LinkedInApiMode = 'classic' | 'recruiter' | 'sales_navigator';
+
+/**
  * Unipile/LinkedIn API Quota Limits per account per day
  * Based on: https://developer.unipile.com/docs/provider-limits-and-restrictions
+ * 
+ * Limits vary by subscription type:
+ * - Classic: Basic LinkedIn limits
+ * - Recruiter: Higher limits for recruiting activities
+ * - Sales Navigator: Higher limits for sales activities
  */
 export const LINKEDIN_LIMITS = {
-  // Profile visits/retrieval: ~1000/day for Recruiter, ~100/day for standard
-  PROFILE_VISITS_STANDARD: 100,
-  PROFILE_VISITS_RECRUITER: 1000,
-  // Search results fetched: 1000/day standard, 2500/day for Recruiter/Sales Nav
-  SEARCH_RESULTS_STANDARD: 1000,
-  SEARCH_RESULTS_PREMIUM: 2500,
-  // Connection requests (invitations): 80-100/day for paid accounts
-  INVITATIONS_PAID: 80,
-  INVITATIONS_FREE: 5,
-  // InMail: 150 credits/month for Recruiter, 30 for Lite
-  // Technical daily max ~1000 but limited by monthly credits
-  INMAIL_DAILY_RECRUITER: 50, // Conservative daily limit to preserve monthly credits
-  INMAIL_DAILY_LITE: 10,
-  INMAIL_MONTHLY_RECRUITER: 150,
-  INMAIL_MONTHLY_LITE: 30,
-  // Messages to connections: ~100/day
-  MESSAGES: 100,
-  // Other actions (comments, likes, etc.): ~100/day
-  OTHER_ACTIONS: 100,
+  // Profile visits/retrieval per day
+  PROFILE_VISITS: {
+    classic: 100,
+    recruiter: 1000,
+    sales_navigator: 500,
+  },
+  // Search results fetched per day
+  SEARCH_RESULTS: {
+    classic: 1000,
+    recruiter: 2500,
+    sales_navigator: 2500,
+  },
+  // Connection requests (invitations) per day
+  INVITATIONS: {
+    classic: 5,
+    recruiter: 100,
+    sales_navigator: 80,
+  },
+  // InMail daily limits (conservative to preserve monthly credits)
+  // Recruiter: 150 credits/month, Sales Nav: 50/month, Classic: 0
+  INMAIL_DAILY: {
+    classic: 0,
+    recruiter: 50,
+    sales_navigator: 15,
+  },
+  // Messages to connections per day
+  MESSAGES: {
+    classic: 100,
+    recruiter: 150,
+    sales_navigator: 150,
+  },
+  // Other actions (comments, likes, etc.) per day
+  OTHER_ACTIONS: {
+    classic: 100,
+    recruiter: 150,
+    sales_navigator: 150,
+  },
   // Min delay between actions (ms) - random between min and max
   MIN_DELAY_MS: 1000,
   MAX_DELAY_MS: 3000,
@@ -54,8 +82,9 @@ interface UseUnipileQuotaReturn {
   resetQuotas: () => void;
   isNearLimit: (type: keyof Omit<QuotaState, 'lastReset'>) => boolean;
   getRandomDelay: () => number;
-  isPremiumAccount: boolean;
-  setPremiumAccount: (isPremium: boolean) => void;
+  apiMode: LinkedInApiMode;
+  setApiMode: (mode: LinkedInApiMode) => void;
+  getLimitForType: (type: keyof Omit<QuotaState, 'lastReset'>) => number;
 }
 
 const STORAGE_KEY = 'unipile_quota_state';
@@ -70,20 +99,20 @@ const getInitialState = (): QuotaState => ({
   lastReset: new Date().toISOString().split('T')[0],
 });
 
-const getLimitForType = (type: keyof Omit<QuotaState, 'lastReset'>, isPremium: boolean): number => {
+const getLimitForApiMode = (type: keyof Omit<QuotaState, 'lastReset'>, apiMode: LinkedInApiMode): number => {
   switch (type) {
     case 'searchResultsFetched':
-      return isPremium ? LINKEDIN_LIMITS.SEARCH_RESULTS_PREMIUM : LINKEDIN_LIMITS.SEARCH_RESULTS_STANDARD;
+      return LINKEDIN_LIMITS.SEARCH_RESULTS[apiMode];
     case 'profileVisits':
-      return isPremium ? LINKEDIN_LIMITS.PROFILE_VISITS_RECRUITER : LINKEDIN_LIMITS.PROFILE_VISITS_STANDARD;
+      return LINKEDIN_LIMITS.PROFILE_VISITS[apiMode];
     case 'messagesSent':
-      return LINKEDIN_LIMITS.MESSAGES;
+      return LINKEDIN_LIMITS.MESSAGES[apiMode];
     case 'invitationsSent':
-      return isPremium ? LINKEDIN_LIMITS.INVITATIONS_PAID : LINKEDIN_LIMITS.INVITATIONS_FREE;
+      return LINKEDIN_LIMITS.INVITATIONS[apiMode];
     case 'inmailsSent':
-      return isPremium ? LINKEDIN_LIMITS.INMAIL_DAILY_RECRUITER : LINKEDIN_LIMITS.INMAIL_DAILY_LITE;
+      return LINKEDIN_LIMITS.INMAIL_DAILY[apiMode];
     case 'otherActions':
-      return LINKEDIN_LIMITS.OTHER_ACTIONS;
+      return LINKEDIN_LIMITS.OTHER_ACTIONS[apiMode];
     default:
       return 100;
   }
@@ -110,7 +139,7 @@ export const useUnipileQuota = (accountId?: string | null): UseUnipileQuotaRetur
     return getInitialState();
   });
   
-  const [isPremiumAccount, setPremiumAccount] = useState(false);
+  const [apiMode, setApiMode] = useState<LinkedInApiMode>('classic');
 
   // Persist to localStorage whenever quotas change
   useEffect(() => {
@@ -129,14 +158,18 @@ export const useUnipileQuota = (accountId?: string | null): UseUnipileQuotaRetur
     }
   }, [quotas.lastReset]);
 
+  const getLimitForType = useCallback((type: keyof Omit<QuotaState, 'lastReset'>): number => {
+    return getLimitForApiMode(type, apiMode);
+  }, [apiMode]);
+
   const getQuotaUsage = useCallback((type: keyof Omit<QuotaState, 'lastReset'>): QuotaUsage => {
     const current = quotas[type];
-    const limit = getLimitForType(type, isPremiumAccount);
+    const limit = getLimitForType(type);
     const remaining = Math.max(0, limit - current);
     const percentUsed = Math.min(100, (current / limit) * 100);
     
     return { current, limit, remaining, percentUsed };
-  }, [quotas, isPremiumAccount]);
+  }, [quotas, getLimitForType]);
 
   const canPerformAction = useCallback((type: keyof Omit<QuotaState, 'lastReset'>, count = 1): boolean => {
     const { remaining } = getQuotaUsage(type);
@@ -174,7 +207,8 @@ export const useUnipileQuota = (accountId?: string | null): UseUnipileQuotaRetur
     resetQuotas,
     isNearLimit,
     getRandomDelay,
-    isPremiumAccount,
-    setPremiumAccount,
+    apiMode,
+    setApiMode,
+    getLimitForType,
   };
 };
