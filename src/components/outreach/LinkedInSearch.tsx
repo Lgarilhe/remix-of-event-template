@@ -184,6 +184,44 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
       if (filters.hiring_project) searchParams.hiring_project = filters.hiring_project;
       if (filters.talent_pool) searchParams.talent_pool = filters.talent_pool;
       if (filters.spotlight) searchParams.spotlight = filters.spotlight;
+      
+      // Recruiting activity (messages, notes, tags, etc.)
+      const recruitingActivity: Array<{
+        id: 'messages' | 'tags' | 'notes' | 'projects' | 'resumes' | 'reviews';
+        priority: 'CAN_HAVE' | 'MUST_HAVE' | 'DOESNT_HAVE';
+        timespan?: number;
+      }> = [];
+      
+      // Messages filter
+      if (filters.activity_messages) {
+        recruitingActivity.push({
+          id: 'messages',
+          priority: filters.activity_messages === 'with_message' ? 'MUST_HAVE' : 'DOESNT_HAVE',
+          ...(filters.activity_messages_days !== null && { timespan: filters.activity_messages_days }),
+        });
+      }
+      
+      // Notes filter
+      if (filters.activity_notes) {
+        recruitingActivity.push({
+          id: 'notes',
+          priority: filters.activity_notes === 'with_note' ? 'MUST_HAVE' : 'DOESNT_HAVE',
+          ...(filters.activity_notes_days !== null && { timespan: filters.activity_notes_days }),
+        });
+      }
+      
+      // Tags filter
+      if (filters.tags.length) {
+        // Tags are sent as recruiting_activity with id='tags'
+        recruitingActivity.push({
+          id: 'tags',
+          priority: 'MUST_HAVE',
+        });
+      }
+      
+      if (recruitingActivity.length) {
+        searchParams.recruiting_activity = recruitingActivity;
+      }
 
       // Company filters (Sales Navigator)
       if (filters.company_headcount.length) searchParams.company_headcount = filters.company_headcount;
