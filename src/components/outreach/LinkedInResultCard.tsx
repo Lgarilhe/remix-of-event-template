@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { LinkedInProfile } from './types';
-import { JobScoreDisplay, JobMatchResult } from './JobScoreDisplay';
+import { JobScoreDisplay, JobMatchResult, SalaryBadge } from './JobScoreDisplay';
 import { OutreachMessageModal } from './OutreachMessageModal';
 import { Job } from '@/pages/JobSpace';
 import { Badge } from '@/components/ui/badge';
@@ -442,6 +442,10 @@ export const LinkedInResultCard: React.FC<LinkedInResultCardProps> = ({
                         <Sparkles className="w-3 h-3 mr-0.5" />
                         Réactif
                       </Badge>
+                    )}
+                    {/* Salary adequacy badge from job scoring */}
+                    {jobScore?.salary_analysis && (
+                      <SalaryBadge analysis={jobScore.salary_analysis} />
                     )}
                   </div>
                   
