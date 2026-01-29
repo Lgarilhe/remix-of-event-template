@@ -43,10 +43,10 @@ function isWithinBusinessHours(timezone: string): boolean {
   }
 }
 
-// Get a random delay between 2-5 minutes in milliseconds
+// Get a random delay between 1-2 minutes in milliseconds
 function getRandomDelay(): number {
-  const minMinutes = 2;
-  const maxMinutes = 5;
+  const minMinutes = 1;
+  const maxMinutes = 2;
   const minMs = minMinutes * 60 * 1000;
   const maxMs = maxMinutes * 60 * 1000;
   return Math.floor(Math.random() * (maxMs - minMs) + minMs);
