@@ -333,6 +333,18 @@ export const MessagesInbox: React.FC<MessagesInboxProps> = ({
   const getChatDisplayName = (chat: Chat) => {
     // First try attendees array - this is the actual contact name
     const attendee = chat.attendees?.[0];
+    
+    // Debug log to understand what data we're getting
+    if (!attendee?.name && !attendee?.display_name) {
+      console.log('Chat missing attendee name:', {
+        chatId: chat.id,
+        attendees: chat.attendees,
+        name: chat.name,
+        subject: chat.subject,
+        attendee_provider_id: chat.attendee_provider_id,
+      });
+    }
+    
     if (attendee) {
       // Try different name formats from Unipile API
       if (attendee.display_name) return attendee.display_name;
@@ -347,14 +359,25 @@ export const MessagesInbox: React.FC<MessagesInboxProps> = ({
           return cleanId.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
         }
       }
+      // Try profile URL to extract identifier
+      if (attendee.profile_url) {
+        const match = attendee.profile_url.match(/\/in\/([^\/]+)/);
+        if (match && match[1]) {
+          const cleanId = match[1].replace(/-\d+$/, '').replace(/-/g, ' ');
+          if (cleanId.length > 2 && !/^[A-Z]{20,}$/i.test(cleanId)) {
+            return cleanId.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+          }
+        }
+      }
     }
     // Then try chat name (for group chats or InMail subjects)
     if (chat.name) return chat.name;
     // Try subject for InMails
     if (chat.subject) return chat.subject;
-    // Last resort - show provider ID hint if available
-    if (chat.attendee_provider_id) {
-      return `Profil LinkedIn`;
+    // Show timestamp as identifier if available
+    if (chat.timestamp) {
+      const date = new Date(chat.timestamp);
+      return `Conversation du ${date.toLocaleDateString('fr-FR')}`;
     }
     return 'Conversation';
   };
