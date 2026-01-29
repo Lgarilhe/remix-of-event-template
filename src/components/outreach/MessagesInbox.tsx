@@ -94,6 +94,8 @@ interface SequenceEnrollmentInfo {
   job_title: string | null;
   job_id: string | null;
   status: string;
+  replied_at: string | null;
+  current_step_order: number;
 }
 
 export const MessagesInbox: React.FC<MessagesInboxProps> = ({
@@ -120,7 +122,7 @@ export const MessagesInbox: React.FC<MessagesInboxProps> = ({
     try {
       const { data, error } = await supabase
         .from('sequence_enrollments')
-        .select('profile_id, job_title, job_id, status')
+        .select('profile_id, job_title, job_id, status, replied_at, current_step_order')
         .order('created_at', { ascending: false });
       
       if (error) throw error;
@@ -390,21 +392,32 @@ export const MessagesInbox: React.FC<MessagesInboxProps> = ({
   const getChatStatusInfo = (chat: Chat): { text: string; icon: React.ReactNode; color: string } | null => {
     const jobInfo = getChatJobInfo(chat);
     
-    // If we have a job linked, show it as priority
+    // Priority 1: Check if we have unread messages (they sent something, we need to reply)
+    if (hasUnread(chat)) {
+      // Show job info alongside if available
+      const suffix = jobInfo?.job_title ? ` · ${jobInfo.job_title}` : '';
+      return {
+        text: `À répondre${suffix}`,
+        icon: <Reply className="w-3 h-3" />,
+        color: 'text-amber-600'
+      };
+    }
+    
+    // Priority 2: Check if we're in an active sequence waiting for their reply
+    if (jobInfo && jobInfo.status === 'active' && !jobInfo.replied_at && jobInfo.current_step_order > 0) {
+      return {
+        text: `En attente · ${jobInfo.job_title || 'Séquence'}`,
+        icon: <Hourglass className="w-3 h-3" />,
+        color: 'text-blue-600'
+      };
+    }
+    
+    // Priority 3: Just show job info if available
     if (jobInfo?.job_title) {
       return {
         text: jobInfo.job_title,
         icon: <Briefcase className="w-3 h-3" />,
         color: 'text-violet-600'
-      };
-    }
-    
-    // Otherwise show response status based on unread
-    if (hasUnread(chat)) {
-      return {
-        text: 'À répondre',
-        icon: <Reply className="w-3 h-3" />,
-        color: 'text-amber-600'
       };
     }
     
