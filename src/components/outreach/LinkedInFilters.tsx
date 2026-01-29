@@ -42,6 +42,7 @@ import {
   MultiSelectDropdown,
 } from './FilterComponents';
 import { CompanyFilter } from './CompanyFilter';
+import { TOP_SCHOOLS } from './topSchools';
 import { isFilterSupported, getFilterTooltip, FilterKey } from './filterApiSupport';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -490,6 +491,60 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
             unsupported={!isFilterSupported(filters.api, 'school')}
             unsupportedTooltip={getFilterTooltip(filters.api, 'school')}
           >
+            {/* Quick add TOP 15 schools button */}
+            <div className="flex items-center gap-2 mb-2">
+              <Select
+                onValueChange={(priority: FilterPriority) => {
+                  // Add all TOP 15 schools with the selected priority
+                  const existingIds = new Set(filters.school.map(s => s.id));
+                  const newSchools = TOP_SCHOOLS
+                    .filter(s => !existingIds.has(s.id))
+                    .map(s => ({ id: s.id, name: s.name, priority }));
+                  
+                  if (newSchools.length > 0) {
+                    onChange({ ...filters, school: [...filters.school, ...newSchools] });
+                  }
+                }}
+              >
+                <SelectTrigger className="h-8 text-xs bg-gradient-to-r from-amber-50 to-orange-50 border-amber-200 hover:border-amber-300 w-auto gap-2">
+                  <Sparkles className="w-3.5 h-3.5 text-amber-600" />
+                  <span className="text-amber-800 font-medium">TOP 15 Écoles</span>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="MUST_HAVE" className="text-xs">
+                    <span className="flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-red-500" />
+                      Must-have (obligatoire)
+                    </span>
+                  </SelectItem>
+                  <SelectItem value="CAN_HAVE" className="text-xs">
+                    <span className="flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-green-500" />
+                      Should-have (valorisé)
+                    </span>
+                  </SelectItem>
+                  <SelectItem value="DOESNT_HAVE" className="text-xs">
+                    <span className="flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-gray-400" />
+                      Exclure ces écoles
+                    </span>
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+              
+              {filters.school.length > 0 && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => onChange({ ...filters, school: [] })}
+                  className="h-8 text-xs text-muted-foreground hover:text-destructive"
+                >
+                  <X className="w-3 h-3 mr-1" />
+                  Tout effacer
+                </Button>
+              )}
+            </div>
+
             {filters.api === 'recruiter' ? (
               <>
                 <PriorityBadges
@@ -499,7 +554,7 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
                 />
                 <AutocompleteInput
                   filterKey="school"
-                  placeholder="Rechercher une école..."
+                  placeholder="Ou rechercher une école..."
                   value={searchInputs['school'] || ''}
                   options={parameterOptions['school'] || []}
                   loading={loadingParams === 'school'}
@@ -513,7 +568,7 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
                 <SelectedBadges items={filters.school} onRemove={(id) => handleRemovePriorityFilter('school', id)} />
                 <AutocompleteInput
                   filterKey="school"
-                  placeholder="Rechercher une école..."
+                  placeholder="Ou rechercher une école..."
                   value={searchInputs['school'] || ''}
                   options={parameterOptions['school'] || []}
                   loading={loadingParams === 'school'}
