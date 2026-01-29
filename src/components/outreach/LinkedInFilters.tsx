@@ -405,8 +405,52 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
     ...filters.tags,
   ];
 
+  // Check if there are any AI-generated filters to reset
+  const hasAiFilters = filters.role.length > 0 || 
+    filters.company_keywords.length > 0 || 
+    filters.school.length > 0 ||
+    filters.keywords.length > 0;
+
+  // Reset all AI-generated filters
+  const handleResetAiFilters = useCallback(() => {
+    onChange({
+      ...filters,
+      keywords: '',
+      role: [],
+      company_keywords: [],
+      school: [],
+      seniority: [],
+      calculated_experience_min: null,
+      calculated_experience_max: null,
+      years_of_experience_min: null,
+      years_of_experience_max: null,
+      location_within_area: null,
+      spotlight: '',
+      open_to_work: null,
+    });
+    toast.success('Filtres IA réinitialisés');
+  }, [filters, onChange]);
+
   return (
     <div className="h-[calc(100vh-220px)] bg-white rounded-xl border border-[#1A1A1A]/10 overflow-y-auto">
+      {/* Reset AI Filters Button */}
+      {hasAiFilters && (
+        <div className="sticky top-0 z-10 bg-amber-50/90 backdrop-blur-sm border-b border-amber-200 px-4 py-2 flex items-center justify-between">
+          <div className="flex items-center gap-2 text-sm text-amber-700">
+            <Sparkles className="w-4 h-4" />
+            <span>Filtres générés par l'IA actifs</span>
+          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleResetAiFilters}
+            className="text-amber-700 hover:text-amber-900 hover:bg-amber-100 gap-1.5"
+          >
+            <X className="w-3.5 h-3.5" />
+            Réinitialiser
+          </Button>
+        </div>
+      )}
       <div>
         {/* ===== BASIC / GEOGRAPHIC FILTERS ===== */}
         <FilterSection 
