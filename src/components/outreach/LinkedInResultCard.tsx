@@ -9,6 +9,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { 
   ExternalLink, 
   UserPlus, 
@@ -390,14 +391,28 @@ export const LinkedInResultCard: React.FC<LinkedInResultCardProps> = ({
         {/* Main card content */}
         <div className="p-4">
           <div className="flex items-start gap-4">
-            {/* Checkbox for batch selection */}
+            {/* Checkbox for batch selection - disabled for low score candidates */}
             {selectedJob && onToggleSelect && (
               <div className="pt-3">
-                <Checkbox
-                  checked={isSelected}
-                  onCheckedChange={onToggleSelect}
-                  className="border-purple-300 data-[state=checked]:bg-purple-600 data-[state=checked]:border-purple-600"
-                />
+                {/* Disable selection for "peu adapté" candidates (score < 40 / recommendation: skip) */}
+                {jobScore?.recommendation === 'skip' ? (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <div className="w-4 h-4 rounded border border-red-300 bg-red-50 flex items-center justify-center cursor-not-allowed">
+                        <X className="w-3 h-3 text-red-400" />
+                      </div>
+                    </TooltipTrigger>
+                    <TooltipContent side="right" className="max-w-xs">
+                      <p className="text-xs">Profil peu adapté (score &lt; 40%) — sélection désactivée</p>
+                    </TooltipContent>
+                  </Tooltip>
+                ) : (
+                  <Checkbox
+                    checked={isSelected}
+                    onCheckedChange={onToggleSelect}
+                    className="border-purple-300 data-[state=checked]:bg-purple-600 data-[state=checked]:border-purple-600"
+                  />
+                )}
               </div>
             )}
             
