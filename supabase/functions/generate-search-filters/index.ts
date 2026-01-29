@@ -365,14 +365,23 @@ ${transversal.context ? `Contexte: ${transversal.context}` : ''}` : ''}
     // === RÈGLE 5: Valoriser les candidats Open to Work ===
     const openToWork = parsed.suggest_open_to_work !== false; // Default true
 
-    // === RÈGLE 6: Élargir PROGRAMMATIQUEMENT la plage d'expérience ===
-    // -2 ans sur le min (pas trop junior), +5 ans sur le max (ouvert aux seniors)
+    // === RÈGLE 6: Élargir PROGRAMMATIQUEMENT la plage d'expérience (PROPORTIONNEL) ===
+    // Plus le niveau est senior, plus on élargit la plage
+    // Junior (0-2 ans) → 0-3 ans | Senior (10 ans) → 7-15 ans
     const rawXpMin = parsed.years_experience_min ?? job.xpMin ?? null;
     const rawXpMax = parsed.years_experience_max ?? job.xpMax ?? null;
     
-    // Élargir de -2 ans en bas, +5 ans en haut, minimum 0
-    const widenedXpMin = rawXpMin !== null ? Math.max(0, rawXpMin - 2) : null;
-    const widenedXpMax = rawXpMax !== null ? rawXpMax + 5 : null;
+    // Réduction proportionnelle sur le min: ~25% avec min 1 an, max 3 ans
+    const minReduction = rawXpMin !== null 
+      ? Math.min(3, Math.max(1, Math.round(rawXpMin * 0.25))) 
+      : 0;
+    // Addition proportionnelle sur le max: ~50% avec min 1 an, max 7 ans
+    const maxAddition = rawXpMax !== null 
+      ? Math.min(7, Math.max(1, Math.round(rawXpMax * 0.5))) 
+      : 0;
+    
+    const widenedXpMin = rawXpMin !== null ? Math.max(0, rawXpMin - minReduction) : null;
+    const widenedXpMax = rawXpMax !== null ? rawXpMax + maxAddition : null;
     
     // S'assurer que min <= max
     const finalXpMin = (widenedXpMin !== null && widenedXpMax !== null && widenedXpMin > widenedXpMax) 
