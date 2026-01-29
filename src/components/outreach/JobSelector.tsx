@@ -1,12 +1,15 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Job } from '@/pages/JobSpace';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { Loader2, Target, Sparkles, X, Wand2, Search } from 'lucide-react';
+import { Loader2, Target, X, Wand2, Search, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
+import { useQuery } from '@tanstack/react-query';
+import { Skeleton } from '@/components/ui/skeleton';
+
 interface JobSelectorProps {
   selectedJob: Job | null;
   onJobChange: (job: Job | null) => void;
@@ -22,7 +25,6 @@ export interface GeneratedFilters {
   skills_keywords: string[];
   industry_keywords: string[];
   location_keywords: string[];
-  // New fields for advanced rules
   location_within_area: number | null;
   company_keywords: Array<{ 
     keywords: string; 
@@ -38,9 +40,28 @@ export interface GeneratedFilters {
   open_to_work: boolean;
 }
 
+// Custom hook to fetch and cache jobs
+export const useJobs = () => {
+  return useQuery({
+    queryKey: ['notion-jobs-all'],
+    queryFn: async () => {
+      const { data, error } = await supabase.functions.invoke('fetch-notion-jobs', {
+        body: { all: true },
+      });
+      
+      if (error) throw error;
+      if (!data?.success) throw new Error('Failed to fetch jobs');
+      
+      return (data.jobs || []) as Job[];
+    },
+    staleTime: 5 * 60 * 1000, // Cache for 5 minutes
+    gcTime: 10 * 60 * 1000, // Keep in cache for 10 minutes
+    refetchOnWindowFocus: false,
+  });
+};
+
 export const JobSelector: React.FC<JobSelectorProps> = ({ selectedJob, onJobChange, onAutoFillFilters }) => {
-  const [jobs, setJobs] = useState<Job[]>([]);
-  const [loading, setLoading] = useState(false);
+  const { data: jobs = [], isLoading: loading } = useJobs();
   const [autoFillLoading, setAutoFillLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -54,29 +75,6 @@ export const JobSelector: React.FC<JobSelectorProps> = ({ selectedJob, onJobChan
       job.skills?.some(skill => skill.toLowerCase().includes(query))
     );
   }, [jobs, searchQuery]);
-
-  useEffect(() => {
-    const fetchJobs = async () => {
-      setLoading(true);
-      try {
-        const { data, error } = await supabase.functions.invoke('fetch-notion-jobs', {
-          body: { all: true },
-        });
-        
-        if (error) throw error;
-        if (data?.success) {
-          setJobs(data.jobs || []);
-        }
-      } catch (err) {
-        console.error('Error fetching jobs:', err);
-        toast.error('Erreur lors du chargement des postes');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchJobs();
-  }, []);
 
   const handleChange = useCallback((jobId: string) => {
     if (jobId === 'none') {
@@ -117,6 +115,19 @@ export const JobSelector: React.FC<JobSelectorProps> = ({ selectedJob, onJobChan
       setAutoFillLoading(false);
     }
   }, [selectedJob, onAutoFillFilters]);
+
+  // Show skeleton while loading
+  if (loading) {
+    return (
+      <div className="bg-gradient-to-r from-purple-50 to-indigo-50 rounded-lg border border-purple-200/50 p-3 space-y-2">
+        <div className="flex items-center gap-2">
+          <Target className="w-4 h-4 text-purple-600" />
+          <span className="text-sm font-medium text-purple-800">Scoring Job</span>
+        </div>
+        <Skeleton className="h-10 w-full bg-purple-100/50" />
+      </div>
+    );
+  }
 
   return (
     <div className="bg-gradient-to-r from-purple-50 to-indigo-50 rounded-lg border border-purple-200/50 p-3 space-y-2">
@@ -168,17 +179,9 @@ export const JobSelector: React.FC<JobSelectorProps> = ({ selectedJob, onJobChan
       <Select 
         value={selectedJob?.id || 'none'} 
         onValueChange={handleChange}
-        disabled={loading}
       >
         <SelectTrigger className="w-full bg-white border-purple-200 focus:ring-purple-500">
-          {loading ? (
-            <div className="flex items-center gap-2">
-              <Loader2 className="w-3 h-3 animate-spin" />
-              <span className="text-gray-400">Chargement...</span>
-            </div>
-          ) : (
-            <SelectValue placeholder="Sélectionner un poste pour le scoring" />
-          )}
+          <SelectValue placeholder="Sélectionner un poste pour le scoring" />
         </SelectTrigger>
         <SelectContent className="bg-white max-h-[400px] z-50">
           {/* Search input inside dropdown */}
