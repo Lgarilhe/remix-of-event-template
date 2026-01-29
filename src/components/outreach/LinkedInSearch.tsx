@@ -1234,6 +1234,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
             <FilterAssistantModal
               currentFilters={filters}
               onApplyFilters={(update) => setFilters(prev => ({ ...prev, ...update }))}
+              accountId={selectedAccount || undefined}
             />
           </div>
         </div>
