@@ -97,6 +97,7 @@ serve(async (req: Request) => {
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
     const unipileApiKey = Deno.env.get("UNIPILE_API_KEY");
     const unipileDsn = Deno.env.get("UNIPILE_DSN");
 
@@ -104,9 +105,38 @@ serve(async (req: Request) => {
       throw new Error("Missing Unipile configuration");
     }
 
+    // Service role client for database operations
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     const { action, items, user_timezone, item_ids } = await req.json();
+
+    // Helper function to validate user from auth header
+    const validateUser = async () => {
+      const authHeader = req.headers.get("authorization");
+      if (!authHeader) {
+        throw new Error("Missing authorization header");
+      }
+
+      const token = authHeader.replace("Bearer ", "");
+      
+      // Create a client with the user's token to validate them
+      const userClient = createClient(supabaseUrl, supabaseAnonKey, {
+        global: {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        },
+      });
+      
+      const { data: { user }, error: authError } = await userClient.auth.getUser();
+      
+      if (authError || !user) {
+        console.error("Auth error:", authError);
+        throw new Error("Authentication failed");
+      }
+      
+      return user;
+    };
 
     // Action: queue - Add items to the queue
     if (action === "queue") {
@@ -114,18 +144,7 @@ serve(async (req: Request) => {
         throw new Error("No items to queue");
       }
 
-      // Get user from auth header
-      const authHeader = req.headers.get("authorization");
-      if (!authHeader) {
-        throw new Error("Missing authorization header");
-      }
-
-      const token = authHeader.replace("Bearer ", "");
-      const { data: { user }, error: authError } = await supabase.auth.getUser(token);
-      
-      if (authError || !user) {
-        throw new Error("Authentication failed");
-      }
+      const user = await validateUser();
 
       const timezone = user_timezone || "Europe/Paris";
       const now = new Date();
@@ -354,17 +373,7 @@ serve(async (req: Request) => {
 
     // Action: status - Get queue status for current user
     if (action === "status") {
-      const authHeader = req.headers.get("authorization");
-      if (!authHeader) {
-        throw new Error("Missing authorization header");
-      }
-
-      const token = authHeader.replace("Bearer ", "");
-      const { data: { user }, error: authError } = await supabase.auth.getUser(token);
-      
-      if (authError || !user) {
-        throw new Error("Authentication failed");
-      }
+      const user = await validateUser();
 
       const { data: queueItems, error: fetchError } = await supabase
         .from("inmail_queue")
@@ -402,17 +411,7 @@ serve(async (req: Request) => {
 
     // Action: cancel - Cancel pending items
     if (action === "cancel") {
-      const authHeader = req.headers.get("authorization");
-      if (!authHeader) {
-        throw new Error("Missing authorization header");
-      }
-
-      const token = authHeader.replace("Bearer ", "");
-      const { data: { user }, error: authError } = await supabase.auth.getUser(token);
-      
-      if (authError || !user) {
-        throw new Error("Authentication failed");
-      }
+      const user = await validateUser();
 
       const { data, error } = await supabase
         .from("inmail_queue")
