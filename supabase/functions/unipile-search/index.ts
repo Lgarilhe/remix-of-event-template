@@ -835,6 +835,7 @@ async function handleGetProfile(
  * API Docs: 
  * - List all chats: GET /chats?account_id={account_id}
  * - List chats by attendee: GET /chat_attendees/{attendee_id}/chats?account_id={account_id}
+ * - Get chat details with attendees: GET /chats/{chat_id}
  */
 async function handleGetChats(
   baseUrl: string,
@@ -884,10 +885,44 @@ async function handleGetChats(
     );
   }
 
+  const chats = data.items || [];
+  
+  // Enrich chats with attendee details by fetching each chat's full info
+  // The list endpoint doesn't include attendees array, but the individual chat endpoint does
+  const enrichedChats = await Promise.all(
+    chats.slice(0, 30).map(async (chat: Record<string, unknown>) => {
+      try {
+        // Get individual chat details which includes attendees
+        const chatDetailResponse = await fetch(`${baseUrl}/chats/${chat.id}`, {
+          headers: {
+            'X-API-KEY': apiKey,
+            'Accept': 'application/json',
+          },
+        });
+        
+        if (chatDetailResponse.ok) {
+          const chatDetail = await chatDetailResponse.json();
+          return {
+            ...chat,
+            attendees: chatDetail.attendees || [],
+            last_message: chatDetail.last_message || null,
+          };
+        }
+        return chat;
+      } catch (error) {
+        console.error('Error enriching chat:', chat.id, error);
+        return chat;
+      }
+    })
+  );
+
+  // Add non-enriched chats (beyond first 30)
+  const allChats = [...enrichedChats, ...chats.slice(30)];
+
   return new Response(
     JSON.stringify({ 
       success: true, 
-      chats: data.items || [],
+      chats: allChats,
       cursor: data.cursor,
     }),
     { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }

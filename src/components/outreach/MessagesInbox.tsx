@@ -32,8 +32,11 @@ interface MessagesInboxProps {
 
 interface ChatAttendee {
   name?: string;
+  display_name?: string;
   profile_picture_url?: string;
+  profile_url?: string;
   attendee_provider_id?: string;
+  provider_id?: string;
   headline?: string;
 }
 
@@ -42,11 +45,14 @@ interface Chat {
   account_id: string;
   account_type?: string;
   name?: string;
+  subject?: string;
   timestamp?: string;
   unread_count?: number;
   attendees?: ChatAttendee[];
+  attendee_provider_id?: string; // Single attendee ID from list endpoint
   last_message?: {
     text?: string;
+    text_content?: string;
     sender_id?: string;
     timestamp?: string;
   };
@@ -55,7 +61,12 @@ interface Chat {
 interface Message {
   id: string;
   text?: string;
+  text_content?: string;
   sender_id?: string;
+  sender?: {
+    name?: string;
+    attendee_id?: string;
+  };
   timestamp?: string;
   is_sender?: boolean;
   read?: boolean;
@@ -254,9 +265,20 @@ export const MessagesInbox: React.FC<MessagesInboxProps> = ({
 
   // Get display name for chat
   const getChatDisplayName = (chat: Chat) => {
+    // First try subject (for InMails)
+    if (chat.subject) return chat.subject;
+    // Then try chat name
     if (chat.name) return chat.name;
-    const attendee = chat.attendees?.find(a => a.name);
-    return attendee?.name || 'Conversation';
+    // Then try attendees array
+    const attendee = chat.attendees?.find(a => a.name || a.display_name);
+    if (attendee) return attendee.display_name || attendee.name;
+    return 'Conversation';
+  };
+
+  // Get headline for chat
+  const getChatHeadline = (chat: Chat) => {
+    const attendee = chat.attendees?.find(a => a.headline);
+    return attendee?.headline;
   };
 
   // Get avatar for chat
@@ -269,6 +291,17 @@ export const MessagesInbox: React.FC<MessagesInboxProps> = ({
   const getInitials = (name?: string) => {
     if (!name) return 'U';
     return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
+  };
+
+  // Get message text (handles different API response formats)
+  const getMessageText = (msg: Message) => {
+    return msg.text || msg.text_content || '';
+  };
+
+  // Get last message text
+  const getLastMessageText = (chat: Chat) => {
+    if (!chat.last_message) return 'Pas de message';
+    return chat.last_message.text || chat.last_message.text_content || 'Pas de message';
   };
 
   // Handle keyboard shortcut for sending
@@ -369,8 +402,13 @@ export const MessagesInbox: React.FC<MessagesInboxProps> = ({
                         {formatChatTime(chat.timestamp)}
                       </span>
                     </div>
+                    {getChatHeadline(chat) && (
+                      <p className="text-[10px] text-muted-foreground truncate">
+                        {getChatHeadline(chat)}
+                      </p>
+                    )}
                     <p className="text-xs text-muted-foreground truncate mt-0.5">
-                      {chat.last_message?.text || 'Pas de message'}
+                      {getLastMessageText(chat)}
                     </p>
                     {chat.unread_count && chat.unread_count > 0 && (
                       <Badge className="mt-1 h-5 bg-[#0077B5] text-white text-[10px]">
@@ -412,9 +450,9 @@ export const MessagesInbox: React.FC<MessagesInboxProps> = ({
                 <h4 className="font-medium text-[#1A1A1A] truncate">
                   {getChatDisplayName(selectedChat)}
                 </h4>
-                {selectedChat.attendees?.[0]?.headline && (
+                {getChatHeadline(selectedChat) && (
                   <p className="text-xs text-muted-foreground truncate">
-                    {selectedChat.attendees[0].headline}
+                    {getChatHeadline(selectedChat)}
                   </p>
                 )}
               </div>
@@ -455,7 +493,7 @@ export const MessagesInbox: React.FC<MessagesInboxProps> = ({
                         )}
                       >
                         <p className="text-sm whitespace-pre-wrap break-words">
-                          {msg.text}
+                          {getMessageText(msg)}
                         </p>
                         <div className={cn(
                           "flex items-center gap-1 mt-1",
