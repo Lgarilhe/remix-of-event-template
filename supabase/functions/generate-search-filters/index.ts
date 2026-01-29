@@ -5,6 +5,15 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+interface TransversalCriteria {
+  must: string;
+  should: string;
+  niceToHave: string;
+  context: string;
+  domain: string;
+  level: string;
+}
+
 interface Job {
   id: string;
   title: string;
@@ -21,6 +30,13 @@ interface Job {
   requirements?: string;
   sourcingCriteria?: string;
   remotePolicy?: string; // "full", "hybrid", "onsite"
+  remote?: string; // Alternative field name for remote policy
+  // Job-specific scoring criteria
+  mustHave?: string;
+  shouldHave?: string;
+  niceToHave?: string;
+  // Company-wide transversal criteria (resolved from linked Notion pages)
+  transversalCriteria?: TransversalCriteria | null;
 }
 
 interface CompanyKeywordFilter {
@@ -153,6 +169,10 @@ Retourne UNIQUEMENT un objet JSON valide avec les champs suivants:
 
 Réponds UNIQUEMENT avec le JSON, sans markdown ni explication.`;
 
+    // Build comprehensive job context with all scoring criteria
+    const transversal = job.transversalCriteria;
+    const remotePolicy = job.remotePolicy || job.remote || '';
+    
     const jobContext = `
 Titre du poste: ${job.title}
 ${job.client?.name ? `Client: ${job.client.name}` : ''}
@@ -162,10 +182,22 @@ ${job.seniority ? `Séniorité: ${job.seniority}` : ''}
 ${job.xpMin !== undefined ? `Expérience min: ${job.xpMin} ans` : ''}
 ${job.xpMax !== undefined ? `Expérience max: ${job.xpMax} ans` : ''}
 ${job.skills?.length ? `Compétences requises: ${job.skills.join(', ')}` : ''}
-${job.description ? `Description: ${job.description.substring(0, 500)}` : ''}
-${job.requirements ? `Prérequis: ${job.requirements.substring(0, 300)}` : ''}
+${remotePolicy ? `Politique remote: ${remotePolicy}` : ''}
+${job.description ? `Description: ${job.description.substring(0, 800)}` : ''}
 ${job.sourcingCriteria ? `Critères de sourcing: ${job.sourcingCriteria}` : ''}
-${job.remotePolicy ? `Politique remote: ${job.remotePolicy}` : ''}
+
+=== CRITÈRES DU POSTE (pour scoring) ===
+${job.mustHave ? `🔴 MUST-HAVE (obligatoire): ${job.mustHave}` : ''}
+${job.shouldHave ? `🟡 SHOULD-HAVE (souhaité): ${job.shouldHave}` : ''}
+${job.niceToHave ? `🟢 NICE-TO-HAVE (bonus): ${job.niceToHave}` : ''}
+
+${transversal ? `=== CRITÈRES TRANSVERSES (entreprise) ===
+${transversal.domain ? `Domaine: ${transversal.domain}` : ''}
+${transversal.level ? `Niveau: ${transversal.level}` : ''}
+${transversal.must ? `🔴 Must transverse: ${transversal.must}` : ''}
+${transversal.should ? `🟡 Should transverse: ${transversal.should}` : ''}
+${transversal.niceToHave ? `🟢 Nice-to-have transverse: ${transversal.niceToHave}` : ''}
+${transversal.context ? `Contexte: ${transversal.context}` : ''}` : ''}
 `.trim();
 
     console.log("[generate-search-filters] Calling AI with job:", job.title);
@@ -287,13 +319,13 @@ ${job.remotePolicy ? `Politique remote: ${job.remotePolicy}` : ''}
 
     // === RÈGLE 4: Adapter le rayon de recherche selon la politique remote ===
     let locationRadius: number | null = 50; // Default 50 miles (~80km)
-    const remotePolicy = job.remotePolicy?.toLowerCase() || '';
+    const remotePolicyForRadius = (job.remotePolicy || job.remote || '').toLowerCase();
     
-    if (remotePolicy.includes('full') || remotePolicy.includes('100%') || remotePolicy.includes('remote')) {
+    if (remotePolicyForRadius.includes('full') || remotePolicyForRadius.includes('100%') || remotePolicyForRadius.includes('remote')) {
       locationRadius = null; // Pas de limite = recherche nationale
-    } else if (remotePolicy.includes('hybrid') || remotePolicy.includes('hybride')) {
+    } else if (remotePolicyForRadius.includes('hybrid') || remotePolicyForRadius.includes('hybride')) {
       locationRadius = 75; // ~120km pour hybrid
-    } else if (remotePolicy.includes('onsite') || remotePolicy.includes('présentiel')) {
+    } else if (remotePolicyForRadius.includes('onsite') || remotePolicyForRadius.includes('présentiel')) {
       locationRadius = 35; // ~56km pour présentiel
     }
 
