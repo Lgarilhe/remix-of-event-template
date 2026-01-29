@@ -9,6 +9,7 @@ import { QuotaDisplay } from './QuotaDisplay';
 import { BulkInMailModal } from './BulkInMailModal';
 import { useUnipileQuota } from '@/hooks/useUnipileQuota';
 import { Job } from '@/pages/JobSpace';
+import { filterByCalculatedExperience } from './calculateExperience';
 import {
   LinkedInFiltersState,
   LinkedInProfile,
@@ -88,9 +89,12 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
       })) : prev.role,
       // Seniority
       seniority: generatedFilters.seniority?.length > 0 ? generatedFilters.seniority : prev.seniority,
-      // Years of experience
-      years_of_experience_min: generatedFilters.years_of_experience_min ?? prev.years_of_experience_min,
-      years_of_experience_max: generatedFilters.years_of_experience_max ?? prev.years_of_experience_max,
+      // Years of experience - use calculated experience filter (client-side, more reliable)
+      calculated_experience_min: generatedFilters.years_of_experience_min ?? prev.calculated_experience_min,
+      calculated_experience_max: generatedFilters.years_of_experience_max ?? prev.calculated_experience_max,
+      // Keep LinkedIn API filter cleared since we use calculated
+      years_of_experience_min: null,
+      years_of_experience_max: null,
       // Company keywords exclusions (e.g., exclude client company)
       company_keywords: generatedFilters.company_keywords?.length > 0 
         ? generatedFilters.company_keywords.map(c => ({
@@ -174,7 +178,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
       keywords: generatedFilters.keywords,
       roles: generatedFilters.role?.length,
       seniority: generatedFilters.seniority,
-      xp: `${generatedFilters.years_of_experience_min}-${generatedFilters.years_of_experience_max}`,
+      calculatedXp: `${generatedFilters.years_of_experience_min}-${generatedFilters.years_of_experience_max}`,
       companyExclusions: generatedFilters.company_keywords?.length,
       schools: generatedFilters.school?.length,
       locationKeywords: generatedFilters.location_keywords,
@@ -192,26 +196,37 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
   // Serialize filters to JSON for stable dependency tracking (for debounce)
   const filtersJson = useMemo(() => JSON.stringify(filters), [filters]);
 
-  // Sort results by score if enabled
-  const sortedResults = useMemo(() => {
-    if (!sortByScore || Object.keys(jobScores).length === 0) return results;
+  // Apply client-side filters (calculated experience) and sort by score if enabled
+  const filteredAndSortedResults = useMemo(() => {
+    // First, apply calculated experience filter
+    let filtered = filterByCalculatedExperience(
+      results,
+      filters.calculated_experience_min,
+      filters.calculated_experience_max
+    );
     
-    return [...results].sort((a, b) => {
-      const scoreA = jobScores[a.id]?.match_score ?? -1;
-      const scoreB = jobScores[b.id]?.match_score ?? -1;
-      return scoreB - scoreA; // Descending order
-    });
-  }, [results, jobScores, sortByScore]);
+    // Then sort by score if enabled
+    if (sortByScore && Object.keys(jobScores).length > 0) {
+      filtered = [...filtered].sort((a, b) => {
+        const scoreA = jobScores[a.id]?.match_score ?? -1;
+        const scoreB = jobScores[b.id]?.match_score ?? -1;
+        return scoreB - scoreA; // Descending order
+      });
+    }
+    
+    return filtered;
+  }, [results, jobScores, sortByScore, filters.calculated_experience_min, filters.calculated_experience_max]);
 
   // Calculate selectable profiles (exclude "peu adapté" with recommendation: skip)
+  // Use filtered results so client-side filters apply
   const selectableProfiles = useMemo(() => {
-    return results.filter(p => {
+    return filteredAndSortedResults.filter(p => {
       const score = jobScores[p.id];
       // If no score yet, allow selection
       // If scored and recommendation is 'skip', exclude
       return !score || score.recommendation !== 'skip';
     });
-  }, [results, jobScores]);
+  }, [filteredAndSortedResults, jobScores]);
 
   // Check if all selectable profiles are selected
   const allSelectableSelected = useMemo(() => {
@@ -1467,7 +1482,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
               )}
 
               {/* Profile cards */}
-              {sortedResults.map((profile, index) => (
+              {filteredAndSortedResults.map((profile, index) => (
                 <LinkedInResultCard 
                   key={profile.id || `profile-${index}`} 
                   profile={profile}

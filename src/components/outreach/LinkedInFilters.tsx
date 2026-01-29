@@ -327,6 +327,7 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
   const countBasicFilters = filters.location.length + filters.school.length + filters.profile_language.length + filters.network_distance.length + filters.groups.length;
   const countPositionFilters = filters.job_title.length + filters.role.length + filters.skills.length + filters.seniority.length + filters.function.length + filters.degree.length;
   const countExperienceFilters = (filters.years_of_experience_min !== null ? 1 : 0) + (filters.years_of_experience_max !== null ? 1 : 0) + 
+    (filters.calculated_experience_min !== null ? 1 : 0) + (filters.calculated_experience_max !== null ? 1 : 0) +
     (filters.tenure_at_company_min !== null ? 1 : 0) + (filters.tenure_at_company_max !== null ? 1 : 0) +
     (filters.tenure_at_role_min !== null ? 1 : 0) + (filters.tenure_at_role_max !== null ? 1 : 0);
   const countCompanyFilters = filters.company.length + filters.company_keywords.length + filters.industry.length + filters.company_headcount.length + filters.company_type.length + filters.company_location.length;
@@ -354,8 +355,11 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
   ];
   
   const experienceFiltersPreview = [
+    ...(filters.calculated_experience_min !== null || filters.calculated_experience_max !== null 
+      ? [`Exp (calculée): ${filters.calculated_experience_min ?? 0}-${filters.calculated_experience_max ?? '∞'} ans`] 
+      : []),
     ...(filters.years_of_experience_min !== null || filters.years_of_experience_max !== null 
-      ? [`Exp: ${filters.years_of_experience_min ?? 0}-${filters.years_of_experience_max ?? '∞'} ans`] 
+      ? [`Exp (LinkedIn): ${filters.years_of_experience_min ?? 0}-${filters.years_of_experience_max ?? '∞'} ans`] 
       : []),
     ...(filters.tenure_at_company_min !== null || filters.tenure_at_company_max !== null 
       ? [`Ancienneté: ${filters.tenure_at_company_min ?? 0}-${filters.tenure_at_company_max ?? '∞'} ans`] 
@@ -792,48 +796,101 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
           activeFiltersPreview={experienceFiltersPreview}
           bgColorClass="bg-orange-50/40"
         >
-          {/* Years of Experience */}
+          {/* Calculated Experience (Client-side filter based on education) */}
           <FilterGroup 
-            title="Années d'expérience totale" 
+            title="Expérience calculée (depuis diplôme)"
+            badge={(filters.calculated_experience_min !== null || filters.calculated_experience_max !== null) ? 1 : 0}
+          >
+            <div className="space-y-2">
+              <p className="text-[10px] text-muted-foreground">
+                ✨ Filtre plus fiable basé sur l'année de fin d'études
+              </p>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <Label className="text-[10px] text-muted-foreground uppercase">Min (ans)</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    max={50}
+                    value={filters.calculated_experience_min ?? ''}
+                    onChange={(e) =>
+                      onChange({
+                        ...filters,
+                        calculated_experience_min: e.target.value ? parseInt(e.target.value) : null,
+                      })
+                    }
+                    placeholder="0"
+                    className="text-sm h-8"
+                  />
+                </div>
+                <div>
+                  <Label className="text-[10px] text-muted-foreground uppercase">Max (ans)</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    max={50}
+                    value={filters.calculated_experience_max ?? ''}
+                    onChange={(e) =>
+                      onChange({
+                        ...filters,
+                        calculated_experience_max: e.target.value ? parseInt(e.target.value) : null,
+                      })
+                    }
+                    placeholder="50"
+                    className="text-sm h-8"
+                  />
+                </div>
+              </div>
+            </div>
+          </FilterGroup>
+
+          {/* Years of Experience (LinkedIn API - may not work reliably) */}
+          <FilterGroup 
+            title="Années d'expérience (LinkedIn API)" 
             unsupported={!isFilterSupported(filters.api, 'years_of_experience')}
             unsupportedTooltip={getFilterTooltip(filters.api, 'years_of_experience')}
           >
-            <div className={`grid grid-cols-2 gap-2 ${!isFilterSupported(filters.api, 'years_of_experience') ? 'opacity-50 pointer-events-none' : ''}`}>
-              <div>
-                <Label className="text-[10px] text-muted-foreground uppercase">Min</Label>
-                <Input
-                  type="number"
-                  min={0}
-                  max={50}
-                  value={filters.years_of_experience_min ?? ''}
-                  onChange={(e) =>
-                    onChange({
-                      ...filters,
-                      years_of_experience_min: e.target.value ? parseInt(e.target.value) : null,
-                    })
-                  }
-                  placeholder="0"
-                  className="text-sm h-8"
-                  disabled={!isFilterSupported(filters.api, 'years_of_experience')}
-                />
-              </div>
-              <div>
-                <Label className="text-[10px] text-muted-foreground uppercase">Max</Label>
-                <Input
-                  type="number"
-                  min={0}
-                  max={50}
-                  value={filters.years_of_experience_max ?? ''}
-                  onChange={(e) =>
-                    onChange({
-                      ...filters,
-                      years_of_experience_max: e.target.value ? parseInt(e.target.value) : null,
-                    })
-                  }
-                  placeholder="50"
-                  className="text-sm h-8"
-                  disabled={!isFilterSupported(filters.api, 'years_of_experience')}
-                />
+            <div className="space-y-2">
+              <p className="text-[10px] text-muted-foreground">
+                ⚠️ Filtre LinkedIn (peut être peu fiable)
+              </p>
+              <div className={`grid grid-cols-2 gap-2 ${!isFilterSupported(filters.api, 'years_of_experience') ? 'opacity-50 pointer-events-none' : ''}`}>
+                <div>
+                  <Label className="text-[10px] text-muted-foreground uppercase">Min</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    max={50}
+                    value={filters.years_of_experience_min ?? ''}
+                    onChange={(e) =>
+                      onChange({
+                        ...filters,
+                        years_of_experience_min: e.target.value ? parseInt(e.target.value) : null,
+                      })
+                    }
+                    placeholder="0"
+                    className="text-sm h-8"
+                    disabled={!isFilterSupported(filters.api, 'years_of_experience')}
+                  />
+                </div>
+                <div>
+                  <Label className="text-[10px] text-muted-foreground uppercase">Max</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    max={50}
+                    value={filters.years_of_experience_max ?? ''}
+                    onChange={(e) =>
+                      onChange({
+                        ...filters,
+                        years_of_experience_max: e.target.value ? parseInt(e.target.value) : null,
+                      })
+                    }
+                    placeholder="50"
+                    className="text-sm h-8"
+                    disabled={!isFilterSupported(filters.api, 'years_of_experience')}
+                  />
+                </div>
               </div>
             </div>
           </FilterGroup>
