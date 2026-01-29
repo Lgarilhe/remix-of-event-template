@@ -11,6 +11,31 @@ interface Message {
   timestamp?: string;
 }
 
+interface JobData {
+  id: string;
+  title: string;
+  client?: { name: string; sector: string } | null;
+  skills: string[];
+  seniority?: string;
+  location?: string;
+  remote?: string;
+  salaryMin?: number;
+  salaryMax?: number;
+  tjmMin?: number;
+  tjmMax?: number;
+  contractType?: string;
+}
+
+interface ProfileData {
+  name: string;
+  headline?: string;
+  currentRole?: string;
+  currentCompany?: string;
+  location?: string;
+  skills?: string[];
+  pastPositions?: string[];
+}
+
 interface AnalysisContext {
   recipientName: string;
   recipientHeadline?: string;
@@ -19,6 +44,21 @@ interface AnalysisContext {
     title: string;
     company?: string;
   };
+  // Profile data for job matching
+  profileData?: ProfileData;
+  // Jobs to match against
+  availableJobs?: JobData[];
+}
+
+interface JobMatch {
+  jobId: string;
+  jobTitle: string;
+  clientName?: string;
+  matchScore: number;
+  matchingSkills: string[];
+  missingSkills: string[];
+  recommendation: 'go' | 'maybe' | 'skip';
+  summary: string;
 }
 
 interface AnalysisResult {
@@ -51,6 +91,9 @@ interface AnalysisResult {
     type: 'quick' | 'standard' | 'detailed';
     intent_match: string;
   }>;
+
+  // Job recommendations
+  jobMatches?: JobMatch[];
 }
 
 serve(async (req) => {
@@ -92,11 +135,36 @@ serve(async (req) => {
             suggestedActions: [],
             suggestedTags: [],
             summary: "Aucun message du candidat à analyser",
-            replySuggestions: []
+            replySuggestions: [],
+            jobMatches: []
           }
         }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
+    }
+
+    // Build job matching section if profile and jobs are provided
+    let jobMatchingPrompt = "";
+    if (context.profileData && context.availableJobs && context.availableJobs.length > 0) {
+      const profileSkills = (context.profileData.skills || []).join(', ') || 'Non spécifiées';
+      const jobsList = context.availableJobs.slice(0, 10).map((job, i) => 
+        `${i + 1}. ${job.title}${job.client?.name ? ` chez ${job.client.name}` : ''} - Skills: ${job.skills?.join(', ') || 'Non spécifiés'} - ${job.remote || ''} ${job.location || ''}`
+      ).join('\n');
+      
+      jobMatchingPrompt = `
+
+MATCHING AVEC LES POSTES:
+Profil du candidat:
+- Nom: ${context.profileData.name}
+- Titre: ${context.profileData.headline || 'Non spécifié'}
+- Poste actuel: ${context.profileData.currentRole || 'Non spécifié'} chez ${context.profileData.currentCompany || 'Non spécifié'}
+- Compétences: ${profileSkills}
+- Localisation: ${context.profileData.location || 'Non spécifiée'}
+
+Postes disponibles:
+${jobsList}
+
+Pour chaque poste pertinent (max 3), évalue le match:`;
     }
 
     const prompt = `Tu es un expert en recrutement tech. Analyse cette conversation LinkedIn pour déterminer l'intention et le sentiment du candidat, et suggère des actions de nurturing.
@@ -138,6 +206,7 @@ ANALYSE REQUISE:
 6. RÉSUMÉ: Une phrase résumant la situation
 
 7. SUGGESTIONS DE RÉPONSE: 3 réponses adaptées à l'intention détectée
+${jobMatchingPrompt}
 
 RÉPONDS UNIQUEMENT EN JSON VALIDE:
 {
@@ -162,7 +231,19 @@ RÉPONDS UNIQUEMENT EN JSON VALIDE:
       "type": "quick|standard|detailed",
       "intent_match": "Description de pourquoi cette réponse est adaptée"
     }
-  ]
+  ]${jobMatchingPrompt ? `,
+  "jobMatches": [
+    {
+      "jobId": "ID du poste",
+      "jobTitle": "Titre du poste",
+      "clientName": "Nom du client",
+      "matchScore": 0-100,
+      "matchingSkills": ["skill1", "skill2"],
+      "missingSkills": ["skill3"],
+      "recommendation": "go|maybe|skip",
+      "summary": "Pourquoi ce poste est pertinent/pas pertinent"
+    }
+  ]` : ''}
 }`;
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
@@ -176,12 +257,12 @@ RÉPONDS UNIQUEMENT EN JSON VALIDE:
         messages: [
           { 
             role: "system", 
-            content: "Tu es un assistant expert en recrutement tech. Tu analyses les conversations candidat pour suggérer des actions de nurturing. Tu réponds TOUJOURS en JSON valide, sans markdown ni commentaires." 
+            content: "Tu es un assistant expert en recrutement tech. Tu analyses les conversations candidat pour suggérer des actions de nurturing et matcher avec des postes. Tu réponds TOUJOURS en JSON valide, sans markdown ni commentaires." 
           },
           { role: "user", content: prompt }
         ],
-        max_tokens: 1000,
-        temperature: 0.3, // Lower temperature for more consistent analysis
+        max_tokens: 1500,
+        temperature: 0.3,
       }),
     });
 
@@ -233,6 +314,18 @@ RÉPONDS UNIQUEMENT EN JSON VALIDE:
         summary: analysis.summary || "Analyse en cours",
         replySuggestions: Array.isArray(analysis.replySuggestions) 
           ? analysis.replySuggestions.slice(0, 3) 
+          : [],
+        jobMatches: Array.isArray(analysis.jobMatches) 
+          ? analysis.jobMatches.slice(0, 3).map(jm => ({
+              jobId: jm.jobId || '',
+              jobTitle: jm.jobTitle || '',
+              clientName: jm.clientName,
+              matchScore: Math.min(100, Math.max(0, jm.matchScore || 0)),
+              matchingSkills: Array.isArray(jm.matchingSkills) ? jm.matchingSkills : [],
+              missingSkills: Array.isArray(jm.missingSkills) ? jm.missingSkills : [],
+              recommendation: ['go', 'maybe', 'skip'].includes(jm.recommendation) ? jm.recommendation : 'maybe',
+              summary: jm.summary || ''
+            }))
           : []
       };
       
@@ -265,7 +358,8 @@ RÉPONDS UNIQUEMENT EN JSON VALIDE:
               { text: "Merci pour ton retour !", type: "quick", intent_match: "Réponse générique" },
               { text: "Super, on se cale un call cette semaine ?", type: "standard", intent_match: "Proposition de call" },
               { text: "Merci pour ces infos. Je reste dispo si tu as des questions.", type: "detailed", intent_match: "Suivi" }
-            ]
+            ],
+            jobMatches: []
           }
         }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }

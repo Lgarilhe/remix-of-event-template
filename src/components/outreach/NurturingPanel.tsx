@@ -45,6 +45,31 @@ interface Message {
   timestamp?: string;
 }
 
+interface JobData {
+  id: string;
+  title: string;
+  client?: { name: string; sector: string } | null;
+  skills: string[];
+  seniority?: string;
+  location?: string;
+  remote?: string;
+  salaryMin?: number;
+  salaryMax?: number;
+  tjmMin?: number;
+  tjmMax?: number;
+  contractType?: string;
+}
+
+interface ProfileData {
+  name: string;
+  headline?: string;
+  currentRole?: string;
+  currentCompany?: string;
+  location?: string;
+  skills?: string[];
+  pastPositions?: string[];
+}
+
 interface AnalysisContext {
   recipientName: string;
   recipientHeadline?: string;
@@ -53,6 +78,8 @@ interface AnalysisContext {
     title: string;
     company?: string;
   };
+  profileData?: ProfileData;
+  availableJobs?: JobData[];
 }
 
 interface SuggestedAction {
@@ -69,6 +96,17 @@ interface ReplySuggestion {
   intent_match: string;
 }
 
+interface JobMatch {
+  jobId: string;
+  jobTitle: string;
+  clientName?: string;
+  matchScore: number;
+  matchingSkills: string[];
+  missingSkills: string[];
+  recommendation: 'go' | 'maybe' | 'skip';
+  summary: string;
+}
+
 interface AnalysisResult {
   intent: 'interested' | 'not_interested' | 'needs_info' | 'wants_call' | 'timing_issue' | 'already_placed' | 'neutral';
   intentConfidence: number;
@@ -78,12 +116,14 @@ interface AnalysisResult {
   suggestedTags: string[];
   summary: string;
   replySuggestions: ReplySuggestion[];
+  jobMatches?: JobMatch[];
 }
 
 interface NurturingPanelProps {
   context: AnalysisContext;
   onSuggestionSelect: (text: string) => void;
   onSuggestionSend: (text: string) => void;
+  onJobSelect?: (jobId: string, jobTitle: string) => void;
   sending?: boolean;
   className?: string;
 }
@@ -163,6 +203,7 @@ export const NurturingPanel: React.FC<NurturingPanelProps> = ({
   context,
   onSuggestionSelect,
   onSuggestionSend,
+  onJobSelect,
   sending = false,
   className,
 }) => {
@@ -171,6 +212,7 @@ export const NurturingPanel: React.FC<NurturingPanelProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [isExpanded, setIsExpanded] = useState(true);
   const [actionsExpanded, setActionsExpanded] = useState(false);
+  const [jobsExpanded, setJobsExpanded] = useState(true);
   
   // Track if we've analyzed the current messages
   const [lastAnalyzedHash, setLastAnalyzedHash] = useState<string>('');
@@ -284,19 +326,27 @@ export const NurturingPanel: React.FC<NurturingPanelProps> = ({
             <div className="flex items-center gap-2">
               {loading && <Loader2 className="w-4 h-4 animate-spin text-violet-500" />}
               {!loading && analysis && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-6 w-6 p-0"
+                <span
+                  role="button"
+                  tabIndex={0}
+                  className="h-6 w-6 p-0 flex items-center justify-center rounded hover:bg-violet-100 cursor-pointer"
                   onClick={(e) => {
                     e.stopPropagation();
                     setAnalysis(null);
                     setLastAnalyzedHash('');
                     setTimeout(() => analyzeResponse(), 100);
                   }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.stopPropagation();
+                      setAnalysis(null);
+                      setLastAnalyzedHash('');
+                      setTimeout(() => analyzeResponse(), 100);
+                    }
+                  }}
                 >
                   <RefreshCw className="w-3 h-3" />
-                </Button>
+                </span>
               )}
               {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
             </div>
@@ -466,6 +516,82 @@ export const NurturingPanel: React.FC<NurturingPanelProps> = ({
                             >
                               {action.priority === 'high' ? 'Urgent' : action.priority === 'medium' ? 'Moyen' : 'Bas'}
                             </Badge>
+                          </button>
+                        ))}
+                      </div>
+                    </CollapsibleContent>
+                  </Collapsible>
+                )}
+
+                {/* Job Matches */}
+                {analysis.jobMatches && analysis.jobMatches.length > 0 && (
+                  <Collapsible open={jobsExpanded} onOpenChange={setJobsExpanded}>
+                    <CollapsibleTrigger asChild>
+                      <button className="w-full flex items-center justify-between py-1.5 text-xs font-medium text-emerald-700 hover:text-emerald-800">
+                        <div className="flex items-center gap-2">
+                          <Briefcase className="w-3.5 h-3.5" />
+                          <span>Postes recommandés ({analysis.jobMatches.length})</span>
+                        </div>
+                        {jobsExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                      </button>
+                    </CollapsibleTrigger>
+                    <CollapsibleContent>
+                      <div className="space-y-1.5 pt-1">
+                        {analysis.jobMatches.map((job, i) => (
+                          <button
+                            key={i}
+                            className={cn(
+                              "w-full flex items-start gap-3 p-2.5 rounded-lg border text-left hover:shadow-sm transition-all",
+                              job.recommendation === 'go' && "bg-emerald-50 border-emerald-200 hover:border-emerald-300",
+                              job.recommendation === 'maybe' && "bg-amber-50 border-amber-200 hover:border-amber-300",
+                              job.recommendation === 'skip' && "bg-gray-50 border-gray-200 hover:border-gray-300"
+                            )}
+                            onClick={() => onJobSelect?.(job.jobId, job.jobTitle)}
+                          >
+                            {/* Score badge */}
+                            <div className={cn(
+                              "w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-sm shrink-0",
+                              job.matchScore >= 75 && "bg-emerald-500",
+                              job.matchScore >= 50 && job.matchScore < 75 && "bg-amber-500",
+                              job.matchScore < 50 && "bg-gray-400"
+                            )}>
+                              {job.matchScore}%
+                            </div>
+                            
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2">
+                                <p className="text-sm font-medium text-[#1A1A1A] truncate">{job.jobTitle}</p>
+                                <Badge 
+                                  variant="secondary" 
+                                  className={cn(
+                                    "text-[9px] h-4 shrink-0",
+                                    job.recommendation === 'go' && "bg-emerald-100 text-emerald-700",
+                                    job.recommendation === 'maybe' && "bg-amber-100 text-amber-700",
+                                    job.recommendation === 'skip' && "bg-gray-100 text-gray-600"
+                                  )}
+                                >
+                                  {job.recommendation === 'go' ? '✓ Match' : job.recommendation === 'maybe' ? '? À voir' : '✗ Pas adapté'}
+                                </Badge>
+                              </div>
+                              {job.clientName && (
+                                <p className="text-[10px] text-muted-foreground mt-0.5">chez {job.clientName}</p>
+                              )}
+                              <p className="text-[10px] text-muted-foreground mt-1 line-clamp-2">{job.summary}</p>
+                              
+                              {/* Skills badges */}
+                              <div className="flex flex-wrap gap-1 mt-1.5">
+                                {job.matchingSkills.slice(0, 3).map((skill, si) => (
+                                  <span key={si} className="text-[9px] px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700">
+                                    ✓ {skill}
+                                  </span>
+                                ))}
+                                {job.missingSkills.slice(0, 2).map((skill, si) => (
+                                  <span key={si} className="text-[9px] px-1.5 py-0.5 rounded bg-red-50 text-red-600">
+                                    ✗ {skill}
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
                           </button>
                         ))}
                       </div>
