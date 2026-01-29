@@ -147,8 +147,9 @@ serve(async (req) => {
     let jobMatchingPrompt = "";
     if (context.profileData && context.availableJobs && context.availableJobs.length > 0) {
       const profileSkills = (context.profileData.skills || []).join(', ') || 'Non spécifiées';
-      const jobsList = context.availableJobs.slice(0, 10).map((job, i) => 
-        `${i + 1}. ${job.title}${job.client?.name ? ` chez ${job.client.name}` : ''} - Skills: ${job.skills?.join(', ') || 'Non spécifiés'} - ${job.remote || ''} ${job.location || ''}`
+      // Include the actual job ID in the list so the AI returns the real UUID
+      const jobsList = context.availableJobs.slice(0, 10).map((job) => 
+        `- ID: "${job.id}" | ${job.title}${job.client?.name ? ` chez ${job.client.name}` : ''} | Skills: ${job.skills?.join(', ') || 'Non spécifiés'} | ${job.remote || ''} ${job.location || ''}`
       ).join('\n');
       
       jobMatchingPrompt = `
@@ -161,10 +162,10 @@ Profil du candidat:
 - Compétences: ${profileSkills}
 - Localisation: ${context.profileData.location || 'Non spécifiée'}
 
-Postes disponibles:
+Postes disponibles (IMPORTANT: utilise EXACTEMENT l'ID fourni dans le champ jobId):
 ${jobsList}
 
-Pour chaque poste pertinent (max 3), évalue le match:`;
+Pour chaque poste pertinent (max 3), évalue le match. IMPORTANT: Le jobId doit être EXACTEMENT l'ID UUID fourni ci-dessus, pas un numéro séquentiel.`;
     }
 
     const prompt = `Tu es un expert en recrutement tech. Analyse cette conversation LinkedIn pour déterminer l'intention et le sentiment du candidat, et suggère des actions de nurturing.
@@ -234,7 +235,7 @@ RÉPONDS UNIQUEMENT EN JSON VALIDE:
   ]${jobMatchingPrompt ? `,
   "jobMatches": [
     {
-      "jobId": "ID du poste",
+      "jobId": "UUID EXACT du poste (ex: 053aca21-fe31-4a0b-a6f1-9baba60a1b8d)",
       "jobTitle": "Titre du poste",
       "clientName": "Nom du client",
       "matchScore": 0-100,
