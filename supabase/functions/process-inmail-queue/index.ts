@@ -241,26 +241,25 @@ serve(async (req: Request) => {
 
         try {
           // Send InMail via Unipile - Use startNewChat with inmail option
+          // API requires multipart/form-data format for LinkedIn options
+          const formData = new FormData();
+          formData.append("account_id", item.account_id);
+          formData.append("text", item.message);
+          formData.append("attendees_ids", item.recipient_profile_id);
+          // LinkedIn Recruiter specific options
+          formData.append("linkedin[api]", "recruiter");
+          formData.append("linkedin[inmail]", "true");
+          formData.append("linkedin[subject]", item.subject);
+
           const response = await fetch(
             `https://${unipileDsn}/api/v1/chats`,
             {
               method: "POST",
               headers: {
                 "X-API-KEY": unipileApiKey,
-                "Content-Type": "application/json",
+                "accept": "application/json",
               },
-              body: JSON.stringify({
-                account_id: item.account_id,
-                text: item.message,
-                attendees_ids: [item.recipient_profile_id],
-                options: {
-                  linkedin: {
-                    api: "recruiter",
-                    inmail: true,
-                    subject: item.subject,
-                  },
-                },
-              }),
+              body: formData,
             }
           );
 
