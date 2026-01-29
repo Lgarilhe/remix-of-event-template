@@ -135,6 +135,7 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
   
   // Count how many messages are ready
   const readyCount = Object.keys(generatedMessages).length;
+  const hasGeneratedMessages = readyCount > 0 && !isGenerating;
   const allGenerated = readyCount === recipients.length;
 
   // Save sender name to localStorage
@@ -492,7 +493,7 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
                   </p>
                 </div>
               </div>
-            ) : !allGenerated ? (
+            ) : !hasGeneratedMessages ? (
               // Generation setup
               <div className="space-y-4">
                 {/* Job context */}
