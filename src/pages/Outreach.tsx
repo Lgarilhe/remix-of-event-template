@@ -6,6 +6,7 @@ import { LinkedInAccountManager } from '@/components/outreach/LinkedInAccountMan
 import { LinkedInSearch } from '@/components/outreach/LinkedInSearch';
 import { SequencesList } from '@/components/outreach/SequencesList';
 import { MessagesInbox } from '@/components/outreach/MessagesInbox';
+import { InMailQueueStatus } from '@/components/outreach/InMailQueueStatus';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Search, Users, Settings, GitBranch, MessageSquare } from 'lucide-react';
 import { toast } from 'sonner';
@@ -87,13 +88,20 @@ export default function Outreach() {
         <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8">
           {/* Header */}
           <div className="mb-8">
-            <div className="flex items-center gap-3 mb-2">
-              <Search className="w-8 h-8 text-[#0077B5]" />
-              <h1 className="text-3xl font-bold text-[#1A1A1A]">Outreach LinkedIn</h1>
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="flex items-center gap-3 mb-2">
+                  <Search className="w-8 h-8 text-[#0077B5]" />
+                  <h1 className="text-3xl font-bold text-[#1A1A1A]">Outreach LinkedIn</h1>
+                </div>
+                <p className="text-[#1A1A1A]/60">
+                  Recherchez des candidats sur LinkedIn avec les filtres Recruiter avancés
+                </p>
+              </div>
+              
+              {/* InMail Queue Status Button */}
+              <InMailQueueStatus />
             </div>
-            <p className="text-[#1A1A1A]/60">
-              Recherchez des candidats sur LinkedIn avec les filtres Recruiter avancés
-            </p>
           </div>
 
           <Tabs value={activeTab} onValueChange={setActiveTab}>
