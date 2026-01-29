@@ -365,6 +365,25 @@ ${transversal.context ? `Contexte: ${transversal.context}` : ''}` : ''}
     // === RÈGLE 5: Valoriser les candidats Open to Work ===
     const openToWork = parsed.suggest_open_to_work !== false; // Default true
 
+    // === RÈGLE 6: Élargir PROGRAMMATIQUEMENT la plage d'expérience ±3 ans ===
+    // On ne fait pas confiance à l'IA pour élargir, on le fait nous-mêmes
+    const rawXpMin = parsed.years_experience_min ?? job.xpMin ?? null;
+    const rawXpMax = parsed.years_experience_max ?? job.xpMax ?? null;
+    
+    // Élargir de 3 ans de chaque côté, minimum 0
+    const widenedXpMin = rawXpMin !== null ? Math.max(0, rawXpMin - 3) : null;
+    const widenedXpMax = rawXpMax !== null ? rawXpMax + 3 : null;
+    
+    // S'assurer que min <= max
+    const finalXpMin = (widenedXpMin !== null && widenedXpMax !== null && widenedXpMin > widenedXpMax) 
+      ? widenedXpMax 
+      : widenedXpMin;
+    const finalXpMax = (widenedXpMin !== null && widenedXpMax !== null && widenedXpMin > widenedXpMax) 
+      ? widenedXpMin 
+      : widenedXpMax;
+
+    console.log(`[generate-search-filters] XP: raw=${rawXpMin}-${rawXpMax} → widened=${finalXpMin}-${finalXpMax}`);
+
     const filters: GeneratedFilters = {
       keywords: parsed.keywords || job.title,
       // Single role filter with all titles combined via OR
@@ -374,8 +393,8 @@ ${transversal.context ? `Contexte: ${transversal.context}` : ''}` : ''}
         scope: "CURRENT",
       }],
       seniority: parsed.seniority_levels || [],
-      years_of_experience_min: parsed.years_experience_min ?? job.xpMin ?? null,
-      years_of_experience_max: parsed.years_experience_max ?? job.xpMax ?? null,
+      years_of_experience_min: finalXpMin,
+      years_of_experience_max: finalXpMax,
       skills_keywords: allSkillsKeywords, // Now includes certifications and domain expertise
       industry_keywords: parsed.industry_keywords || [],
       location_keywords: parsed.location_hint ? [parsed.location_hint] : (job.location ? [job.location] : []),
