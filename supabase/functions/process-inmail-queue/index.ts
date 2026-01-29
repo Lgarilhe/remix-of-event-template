@@ -105,7 +105,7 @@ serve(async (req: Request) => {
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    const { action, items, user_timezone } = await req.json();
+    const { action, items, user_timezone, item_ids } = await req.json();
 
     // Action: queue - Add items to the queue
     if (action === "queue") {
@@ -361,8 +361,6 @@ serve(async (req: Request) => {
 
     // Action: cancel - Cancel pending items
     if (action === "cancel") {
-      const { item_ids } = await req.json();
-      
       const authHeader = req.headers.get("authorization");
       if (!authHeader) {
         throw new Error("Missing authorization header");
