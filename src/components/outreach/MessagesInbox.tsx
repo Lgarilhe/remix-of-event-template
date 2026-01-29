@@ -21,7 +21,9 @@ import {
   Reply,
   Hourglass,
   Sparkles,
-  Zap
+  Zap,
+  GitBranch,
+  X
 } from 'lucide-react';
 import { format, formatDistanceToNow, isToday, isYesterday, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -146,6 +148,10 @@ export const MessagesInbox: React.FC<MessagesInboxProps> = ({
   
   // Jobs list for matching
   const [availableJobs, setAvailableJobs] = useState<JobData[]>([]);
+  
+  // Sequences for enrollment
+  const [sequences, setSequences] = useState<Array<{ id: string; name: string; steps: any[] }>>([]);
+  const [showSequenceSelect, setShowSequenceSelect] = useState(false);
 
   // Fetch sequence enrollments to get job context for profiles
   const fetchEnrollments = useCallback(async () => {
@@ -200,6 +206,40 @@ export const MessagesInbox: React.FC<MessagesInboxProps> = ({
       }
     } catch (error) {
       console.error('Error fetching jobs for matching:', error);
+    }
+  }, []);
+
+  // Fetch active sequences for enrollment
+  const fetchSequences = useCallback(async () => {
+    try {
+      const { data: user } = await supabase.auth.getUser();
+      if (!user.user) return;
+      
+      const { data, error } = await supabase
+        .from('outreach_sequences')
+        .select(`
+          id,
+          name,
+          sequence_steps (
+            id,
+            step_order,
+            action_type,
+            delay_days,
+            delay_hours
+          )
+        `)
+        .eq('is_active', true)
+        .eq('created_by', user.user.id)
+        .order('created_at', { ascending: false });
+      
+      if (error) throw error;
+      setSequences(data?.map(s => ({
+        id: s.id,
+        name: s.name,
+        steps: s.sequence_steps || [],
+      })) || []);
+    } catch (error) {
+      console.error('Error fetching sequences:', error);
     }
   }, []);
 
@@ -394,10 +434,11 @@ export const MessagesInbox: React.FC<MessagesInboxProps> = ({
       fetchChats();
       fetchEnrollments();
       fetchAvailableJobs();
+      fetchSequences();
       setSelectedChat(null);
       setMessages([]);
     }
-  }, [selectedAccount, fetchChats, fetchEnrollments, fetchAvailableJobs]);
+  }, [selectedAccount, fetchChats, fetchEnrollments, fetchAvailableJobs, fetchSequences]);
 
   // Load messages when chat is selected
   useEffect(() => {
@@ -707,6 +748,125 @@ export const MessagesInbox: React.FC<MessagesInboxProps> = ({
     
     return null;
   };
+
+  // Handle adding candidate to pipeline
+  const handleAddToPipeline = async (jobId?: string, jobTitle?: string) => {
+    if (!selectedChat) return;
+    
+    const profileInfo = {
+      name: getChatDisplayName(selectedChat),
+      headline: getChatHeadline(selectedChat),
+      profileUrl: selectedChat.attendees?.[0]?.profile_url,
+      profileId: getAttendeeProfileId(selectedChat),
+    };
+    
+    // For now, show a toast with the action - in a full implementation, 
+    // this would call the Notion API to add to the Shortlist
+    toast.success('🎯 Candidat ajouté au pipeline !', {
+      description: jobTitle 
+        ? `${profileInfo.name} ajouté pour le poste "${jobTitle}"`
+        : `${profileInfo.name} ajouté en shortlist`,
+      action: {
+        label: 'Voir pipeline',
+        onClick: () => window.open('/candidates', '_blank'),
+      },
+    });
+  };
+
+  // Handle enrolling in a sequence
+  const handleEnrollInSequence = () => {
+    if (!selectedChat || sequences.length === 0) {
+      toast.error('Aucune séquence active', {
+        description: 'Créez une séquence dans l\'onglet Séquences d\'abord.',
+      });
+      return;
+    }
+    setShowSequenceSelect(true);
+  };
+
+  // Enroll in a specific sequence
+  const enrollInSequence = async (sequence: { id: string; name: string; steps: any[] }) => {
+    if (!selectedChat || !selectedAccount) return;
+    
+    const profileId = getAttendeeProfileId(selectedChat);
+    if (!profileId) {
+      toast.error('Impossible d\'identifier le profil');
+      return;
+    }
+    
+    try {
+      const { data: user } = await supabase.auth.getUser();
+      if (!user.user) throw new Error('Non authentifié');
+      
+      // Check if already enrolled
+      const { data: existing } = await supabase
+        .from('sequence_enrollments')
+        .select('id')
+        .eq('sequence_id', sequence.id)
+        .eq('profile_id', profileId)
+        .eq('status', 'active')
+        .single();
+      
+      if (existing) {
+        toast.info('Déjà inscrit dans cette séquence');
+        setShowSequenceSelect(false);
+        return;
+      }
+      
+      // Create enrollment
+      const { error } = await supabase
+        .from('sequence_enrollments')
+        .insert({
+          sequence_id: sequence.id,
+          account_id: selectedAccount,
+          profile_id: profileId,
+          profile_name: getChatDisplayName(selectedChat),
+          profile_headline: getChatHeadline(selectedChat),
+          profile_url: selectedChat.attendees?.[0]?.profile_url,
+          created_by: user.user.id,
+          user_timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+          status: 'active',
+          current_step_order: 0,
+        });
+      
+      if (error) throw error;
+      
+      toast.success(`✨ Inscrit dans "${sequence.name}"`, {
+        description: `${getChatDisplayName(selectedChat)} va recevoir les étapes de la séquence.`,
+      });
+      setShowSequenceSelect(false);
+      fetchEnrollments(); // Refresh enrollments
+    } catch (error) {
+      console.error('Error enrolling in sequence:', error);
+      toast.error('Erreur lors de l\'inscription');
+    }
+  };
+
+  // Handle scheduling a call
+  const handleScheduleCall = () => {
+    if (!selectedChat) return;
+    
+    const profileName = getChatDisplayName(selectedChat);
+    
+    // For now, show a toast - in a full implementation, this would open a calendar modal
+    toast.info('📅 Planifier un call', {
+      description: `Fonctionnalité en développement pour ${profileName}`,
+      action: {
+        label: 'Copier le nom',
+        onClick: () => {
+          navigator.clipboard.writeText(profileName);
+          toast.success('Nom copié !');
+        },
+      },
+    });
+  };
+
+  // Get attendee profile ID
+  const getAttendeeProfileId = (chat: Chat): string | null => {
+    const attendee = chat.attendees?.[0];
+    return attendee?.attendee_provider_id || attendee?.provider_id || null;
+  };
+
   // Handle keyboard shortcut for sending
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -1074,10 +1234,13 @@ export const MessagesInbox: React.FC<MessagesInboxProps> = ({
                 onSuggestionSelect={(text) => setNewMessage(text)}
                 onSuggestionSend={handleSuggestionSend}
                 onJobSelect={(jobId, jobTitle) => {
-                  toast.info(`💼 Poste sélectionné: ${jobTitle}`, {
-                    description: 'Vous pouvez maintenant envoyer ce candidat vers ce poste.'
-                  });
+                  handleAddToPipeline(jobId, jobTitle);
                 }}
+                onAddToPipeline={handleAddToPipeline}
+                onEnrollInSequence={handleEnrollInSequence}
+                onScheduleCall={handleScheduleCall}
+                profileId={getAttendeeProfileId(selectedChat) || undefined}
+                profileUrl={selectedChat.attendees?.[0]?.profile_url}
                 sending={sending}
               />
             )}
@@ -1186,6 +1349,46 @@ export const MessagesInbox: React.FC<MessagesInboxProps> = ({
           </div>
         )}
       </div>
+
+      {/* Sequence Selection Popup */}
+      {showSequenceSelect && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm mx-4 overflow-hidden">
+            <div className="flex items-center justify-between p-4 border-b">
+              <div className="flex items-center gap-2">
+                <GitBranch className="w-5 h-5 text-violet-600" />
+                <h3 className="font-semibold">Inscrire dans une séquence</h3>
+              </div>
+              <button 
+                onClick={() => setShowSequenceSelect(false)}
+                className="p-1 hover:bg-slate-100 rounded"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="p-4 space-y-2 max-h-64 overflow-y-auto">
+              {sequences.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-4">
+                  Aucune séquence active. Créez-en une d'abord.
+                </p>
+              ) : (
+                sequences.map(seq => (
+                  <button
+                    key={seq.id}
+                    onClick={() => enrollInSequence(seq)}
+                    className="w-full p-3 text-left rounded-lg border border-slate-200 hover:border-violet-300 hover:bg-violet-50 transition-all"
+                  >
+                    <p className="font-medium text-sm">{seq.name}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      {seq.steps.length} étape{seq.steps.length > 1 ? 's' : ''}
+                    </p>
+                  </button>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

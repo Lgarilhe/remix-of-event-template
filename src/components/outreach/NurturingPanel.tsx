@@ -10,9 +10,6 @@ import {
   TrendingUp, 
   TrendingDown,
   Minus,
-  Heart,
-  ThumbsUp,
-  ThumbsDown,
   Phone,
   Calendar,
   Tag,
@@ -24,12 +21,16 @@ import {
   ChevronUp,
   Zap,
   Clock,
-  UserCheck,
-  UserX,
-  HelpCircle,
   Briefcase,
   Send,
-  RefreshCw
+  RefreshCw,
+  ThumbsUp,
+  ThumbsDown,
+  HelpCircle,
+  UserPlus,
+  Users,
+  CalendarPlus,
+  ArrowRight
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
@@ -119,11 +120,26 @@ interface AnalysisResult {
   jobMatches?: JobMatch[];
 }
 
+interface SmartAction {
+  id: string;
+  label: string;
+  description: string;
+  icon: React.ReactNode;
+  color: string;
+  bgColor: string;
+  onClick: () => void;
+}
+
 interface NurturingPanelProps {
   context: AnalysisContext;
   onSuggestionSelect: (text: string) => void;
   onSuggestionSend: (text: string) => void;
   onJobSelect?: (jobId: string, jobTitle: string) => void;
+  onAddToPipeline?: (jobId?: string, jobTitle?: string) => void;
+  onEnrollInSequence?: () => void;
+  onScheduleCall?: () => void;
+  profileId?: string;
+  profileUrl?: string;
   sending?: boolean;
   className?: string;
 }
@@ -204,6 +220,11 @@ export const NurturingPanel: React.FC<NurturingPanelProps> = ({
   onSuggestionSelect,
   onSuggestionSend,
   onJobSelect,
+  onAddToPipeline,
+  onEnrollInSequence,
+  onScheduleCall,
+  profileId,
+  profileUrl,
   sending = false,
   className,
 }) => {
@@ -471,6 +492,74 @@ export const NurturingPanel: React.FC<NurturingPanelProps> = ({
                         </div>
                       ))}
                     </div>
+                  </div>
+                )}
+
+                {/* Smart Actions - Quick actionable buttons */}
+                {(onAddToPipeline || onEnrollInSequence || onScheduleCall) && (
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <Zap className="w-3.5 h-3.5 text-amber-500" />
+                      <span className="text-xs font-medium text-amber-700">Actions rapides</span>
+                    </div>
+                    <div className="grid grid-cols-3 gap-2">
+                      {onAddToPipeline && (
+                        <button
+                          onClick={() => {
+                            // If there's a recommended job with high match, use it
+                            const topJob = analysis?.jobMatches?.find(j => j.recommendation === 'go');
+                            onAddToPipeline(topJob?.jobId, topJob?.jobTitle);
+                          }}
+                          className="flex flex-col items-center gap-1.5 p-2.5 rounded-lg border border-blue-200 bg-blue-50 hover:bg-blue-100 hover:border-blue-300 transition-all group"
+                        >
+                          <div className="w-8 h-8 rounded-full bg-blue-100 group-hover:bg-blue-200 flex items-center justify-center transition-colors">
+                            <UserPlus className="w-4 h-4 text-blue-600" />
+                          </div>
+                          <span className="text-[10px] font-medium text-blue-700 text-center leading-tight">Ajouter au pipeline</span>
+                        </button>
+                      )}
+                      
+                      {onEnrollInSequence && (
+                        <button
+                          onClick={onEnrollInSequence}
+                          className="flex flex-col items-center gap-1.5 p-2.5 rounded-lg border border-violet-200 bg-violet-50 hover:bg-violet-100 hover:border-violet-300 transition-all group"
+                        >
+                          <div className="w-8 h-8 rounded-full bg-violet-100 group-hover:bg-violet-200 flex items-center justify-center transition-colors">
+                            <GitBranch className="w-4 h-4 text-violet-600" />
+                          </div>
+                          <span className="text-[10px] font-medium text-violet-700 text-center leading-tight">Séquence</span>
+                        </button>
+                      )}
+                      
+                      {onScheduleCall && (
+                        <button
+                          onClick={onScheduleCall}
+                          className="flex flex-col items-center gap-1.5 p-2.5 rounded-lg border border-emerald-200 bg-emerald-50 hover:bg-emerald-100 hover:border-emerald-300 transition-all group"
+                        >
+                          <div className="w-8 h-8 rounded-full bg-emerald-100 group-hover:bg-emerald-200 flex items-center justify-center transition-colors">
+                            <CalendarPlus className="w-4 h-4 text-emerald-600" />
+                          </div>
+                          <span className="text-[10px] font-medium text-emerald-700 text-center leading-tight">Planifier call</span>
+                        </button>
+                      )}
+                    </div>
+                    
+                    {/* Context-aware suggestion based on intent */}
+                    {analysis && (
+                      <div className="mt-2 p-2 rounded-lg bg-slate-50 border border-slate-200">
+                        <p className="text-[10px] text-slate-600 flex items-center gap-1">
+                          <Sparkles className="w-3 h-3 text-amber-500" />
+                          <span className="font-medium">Suggestion :</span>
+                          {analysis.intent === 'interested' && " Ce candidat semble intéressé, ajoutez-le au pipeline !"}
+                          {analysis.intent === 'wants_call' && " Il veut un call, planifiez un rendez-vous."}
+                          {analysis.intent === 'timing_issue' && " Le timing n'est pas bon, inscrivez-le dans une séquence de nurturing."}
+                          {analysis.intent === 'needs_info' && " Il demande des infos, répondez avec les détails du poste."}
+                          {analysis.intent === 'not_interested' && " Pas intéressé pour le moment, gardez le contact via une séquence."}
+                          {analysis.intent === 'already_placed' && " Déjà en poste, ajoutez un rappel pour le recontacter plus tard."}
+                          {analysis.intent === 'neutral' && " Continuez la conversation pour mieux qualifier ce candidat."}
+                        </p>
+                      </div>
+                    )}
                   </div>
                 )}
 
