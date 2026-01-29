@@ -1,6 +1,5 @@
-// TOP 15 French schools for quick filter selection
-// These are the most prestigious engineering and business schools in France
-// IDs resolved via LinkedIn Recruiter API
+// TOP French Engineering Schools for quick filter selection
+// IDs resolved via LinkedIn Recruiter API (Unipile)
 
 export interface TopSchool {
   id: string;
@@ -10,21 +9,26 @@ export interface TopSchool {
 
 // Reference: LinkedIn School IDs (resolved via Unipile API)
 export const TOP_SCHOOLS: TopSchool[] = [
-  // TOP Engineering / Tech
+  // Grandes Écoles d'Ingénieurs
   { id: "14034", name: "École Polytechnique", category: 'engineering' },
   { id: "14803", name: "CentraleSupélec", category: 'engineering' },
-  { id: "15092675", name: "Mines Paris - PSL", category: 'engineering' },
-  { id: "27158163", name: "ENSTA Paris", category: 'engineering' },
-  { id: "163637", name: "Télécom Paris", category: 'engineering' },
+  { id: "12442", name: "Centrale Lyon", category: 'engineering' },
+  { id: "163631", name: "Centrale Lille", category: 'engineering' },
+  { id: "12429", name: "Centrale Nantes", category: 'engineering' },
   { id: "24772587", name: "École des Ponts ParisTech", category: 'engineering' },
-  { id: "479301", name: "ENSAE Paris", category: 'engineering' },
-  { id: "1280025", name: "Télécom SudParis", category: 'engineering' },
+  { id: "163637", name: "Télécom Paris", category: 'engineering' },
+  { id: "27158163", name: "ENSTA Paris", category: 'engineering' },
+  { id: "15092675", name: "Mines Paris - PSL", category: 'engineering' },
+  { id: "12463", name: "IMT Atlantique", category: 'engineering' },
+  { id: "12444", name: "Grenoble INP - Ensimag", category: 'engineering' },
+  { id: "12451", name: "ISEP", category: 'engineering' },
+  { id: "12437", name: "Arts et Métiers", category: 'engineering' },
+  { id: "12443", name: "INP-ENSEEIHT", category: 'engineering' },
+  { id: "12467", name: "UTC - Université de Technologie de Compiègne", category: 'engineering' },
+  { id: "12446", name: "ISAE-SUPAERO", category: 'engineering' },
   
-  // TOP Business / Commerce  
-  { id: "285669", name: "HEC Paris", category: 'business' },
-  { id: "15105510", name: "ESSEC Business School", category: 'business' },
-  { id: "15106487", name: "ESCP Business School", category: 'business' },
-  { id: "1223185", name: "emlyon business school", category: 'business' },
+  // École Tech / Atypique
+  { id: "12440", name: "EPITA", category: 'atypical' },
 ];
 
 // Group by category for UI display
