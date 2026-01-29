@@ -161,7 +161,7 @@ export const MessagesInbox: React.FC<MessagesInboxProps> = ({
         body: { 
           action: 'get_chats', 
           account_id: selectedAccount,
-          limit: 100,
+          limit: 250, // Max limit to get all recent conversations (Classic + Recruiter)
         },
       });
 
