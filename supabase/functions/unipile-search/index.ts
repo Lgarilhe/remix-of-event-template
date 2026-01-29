@@ -843,12 +843,13 @@ async function handleGetChats(
   accountId: string,
   params: Record<string, unknown>
 ): Promise<Response> {
-  const { attendee_provider_id, limit = 100, cursor } = params;
+  const { attendee_provider_id, limit = 250, cursor } = params;
 
   const queryParams = new URLSearchParams();
   queryParams.set('account_id', accountId);
-  // Request more chats to ensure we get all recent conversations
-  queryParams.set('limit', String(Math.min(Number(limit), 200)));
+  // Request max chats (250 is the API limit) to ensure we get all recent conversations
+  // including both LinkedIn Classic and LinkedIn Recruiter messages
+  queryParams.set('limit', String(Math.min(Number(limit), 250)));
   
   if (cursor) {
     queryParams.set('cursor', String(cursor));
@@ -887,6 +888,16 @@ async function handleGetChats(
   }
 
   const chats = data.items || [];
+  
+  // Log folder distribution for debugging
+  const folderCounts: Record<string, number> = {};
+  chats.forEach((chat: Record<string, unknown>) => {
+    const folders = (chat.folder as string[]) || [];
+    folders.forEach((f: string) => {
+      folderCounts[f] = (folderCounts[f] || 0) + 1;
+    });
+  });
+  console.log('Chats fetched:', chats.length, '| Folder distribution:', JSON.stringify(folderCounts));
   
   // Cache for attendee info to avoid duplicate fetches
   const attendeeCache = new Map<string, Record<string, unknown>>();
