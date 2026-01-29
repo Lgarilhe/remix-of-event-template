@@ -6,8 +6,10 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Linkedin, Loader2, Trash2, CheckCircle, AlertCircle, Key, Cookie, RefreshCw } from 'lucide-react';
+import { Linkedin, Loader2, Trash2, CheckCircle, AlertCircle, Key, Cookie, RefreshCw, Building2, Info } from 'lucide-react';
 import { toast } from 'sonner';
+import { Badge } from '@/components/ui/badge';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 interface LinkedInAccountManagerProps {
   accounts: LinkedInAccount[];
@@ -242,23 +244,39 @@ export const LinkedInAccountManager: React.FC<LinkedInAccountManagerProps> = ({
                     </div>
                     <div>
                       <p className="font-medium text-[#1A1A1A]">{account.name || account.identifier}</p>
-                      <div className="flex items-center gap-1 text-xs">
-                        {account.status === 'OK' ? (
-                          <>
-                            <CheckCircle className="w-3 h-3 text-green-500" />
-                            <span className="text-green-600">Connecté</span>
-                          </>
-                        ) : account.status === 'CREDENTIALS' ? (
-                          <>
-                            <AlertCircle className="w-3 h-3 text-orange-500" />
-                            <span className="text-orange-600">Reconnexion requise</span>
-                          </>
-                        ) : (
-                          <>
-                            <AlertCircle className="w-3 h-3 text-yellow-500" />
-                            <span className="text-yellow-600">{account.status}</span>
-                          </>
-                        )}
+                      <div className="flex items-center gap-2 mt-1">
+                        <div className="flex items-center gap-1 text-xs">
+                          {account.status === 'OK' ? (
+                            <>
+                              <CheckCircle className="w-3 h-3 text-green-500" />
+                              <span className="text-green-600">Connecté</span>
+                            </>
+                          ) : account.status === 'CREDENTIALS' ? (
+                            <>
+                              <AlertCircle className="w-3 h-3 text-orange-500" />
+                              <span className="text-orange-600">Reconnexion requise</span>
+                            </>
+                          ) : (
+                            <>
+                              <AlertCircle className="w-3 h-3 text-yellow-500" />
+                              <span className="text-yellow-600">{account.status}</span>
+                            </>
+                          )}
+                        </div>
+                        {/* Subscription badges */}
+                        <div className="flex items-center gap-1">
+                          {account.subscriptions?.recruiter && (
+                            <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4 bg-purple-100 text-purple-700">
+                              <Building2 className="w-2.5 h-2.5 mr-0.5" />
+                              Recruiter
+                            </Badge>
+                          )}
+                          {account.subscriptions?.sales_navigator && (
+                            <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4 bg-blue-100 text-blue-700">
+                              Sales Nav
+                            </Badge>
+                          )}
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -380,6 +398,27 @@ export const LinkedInAccountManager: React.FC<LinkedInAccountManagerProps> = ({
                     <li>Copiez la valeur du cookie "li_at"</li>
                   </ol>
                 </div>
+                
+                {/* Multi-contract tip */}
+                <TooltipProvider>
+                  <div className="p-3 bg-purple-50 border border-purple-200 rounded-lg text-xs text-purple-700">
+                    <div className="flex items-start gap-2">
+                      <Info className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                      <div>
+                        <p className="font-medium mb-1">Plusieurs contrats Recruiter ?</p>
+                        <p className="text-purple-600">
+                          Si vous avez accès à plusieurs sièges Recruiter (ex: votre entreprise + un client), 
+                          connectez chaque contrat séparément :
+                        </p>
+                        <ol className="list-decimal list-inside mt-1 space-y-0.5 text-purple-600">
+                          <li>Ouvrez LinkedIn Recruiter et sélectionnez le contrat souhaité</li>
+                          <li>Récupérez le cookie li_at correspondant</li>
+                          <li>Connectez-le ici (chaque contrat = une connexion)</li>
+                        </ol>
+                      </div>
+                    </div>
+                  </div>
+                </TooltipProvider>
                 
                 <div className="space-y-2">
                   <Label htmlFor="li-at">Cookie li_at *</Label>
