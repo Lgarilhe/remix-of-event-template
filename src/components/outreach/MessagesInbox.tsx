@@ -31,6 +31,7 @@ import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { NurturingPanel } from './NurturingPanel';
+import { AddToPipelineModal } from './AddToPipelineModal';
 
 interface MessagesInboxProps {
   accounts: LinkedInAccount[];
@@ -152,6 +153,10 @@ export const MessagesInbox: React.FC<MessagesInboxProps> = ({
   // Sequences for enrollment
   const [sequences, setSequences] = useState<Array<{ id: string; name: string; steps: any[] }>>([]);
   const [showSequenceSelect, setShowSequenceSelect] = useState(false);
+  
+  // Pipeline modal state
+  const [showPipelineModal, setShowPipelineModal] = useState(false);
+  const [pipelinePreSelectedJobId, setPipelinePreSelectedJobId] = useState<string | undefined>();
 
   // Fetch sequence enrollments to get job context for profiles
   const fetchEnrollments = useCallback(async () => {
@@ -749,68 +754,23 @@ export const MessagesInbox: React.FC<MessagesInboxProps> = ({
     return null;
   };
 
-  // Handle adding candidate to pipeline
-  const handleAddToPipeline = async (jobId?: string, jobTitle?: string) => {
+  // Handle adding candidate to pipeline - now opens the modal
+  const handleAddToPipeline = (jobId?: string, _jobTitle?: string) => {
     if (!selectedChat) return;
-    
-    const profileInfo = {
+    // Pre-select the job if one was suggested by AI
+    setPipelinePreSelectedJobId(jobId);
+    setShowPipelineModal(true);
+  };
+
+  // Get current candidate profile for the modal
+  const getCurrentCandidateProfile = () => {
+    if (!selectedChat) return null;
+    return {
       name: getChatDisplayName(selectedChat),
       headline: getChatHeadline(selectedChat),
-      profileUrl: selectedChat.attendees?.[0]?.profile_url,
-      profileId: getAttendeeProfileId(selectedChat),
+      linkedinUrl: selectedChat.attendees?.[0]?.profile_url,
+      linkedinId: getAttendeeProfileId(selectedChat),
     };
-    
-    try {
-      toast.loading('Ajout au pipeline...', { id: 'add-to-pipeline' });
-      
-      const response = await supabase.functions.invoke('add-to-shortlist', {
-        body: {
-          name: profileInfo.name,
-          headline: profileInfo.headline,
-          linkedinUrl: profileInfo.profileUrl,
-          linkedinId: profileInfo.profileId,
-          jobId: jobId,
-          jobTitle: jobTitle,
-          source: 'linkedin_inbox',
-        },
-      });
-
-      if (response.error) throw response.error;
-      
-      if (!response.data?.success) {
-        throw new Error(response.data?.error || 'Erreur inconnue');
-      }
-
-      if (response.data?.alreadyExists) {
-        toast.success('✅ Candidat déjà dans le pipeline', {
-          id: 'add-to-pipeline',
-          description: jobTitle 
-            ? `${profileInfo.name} est déjà shortlisté pour "${jobTitle}"`
-            : `${profileInfo.name} est déjà dans la shortlist`,
-          action: {
-            label: 'Voir pipeline',
-            onClick: () => window.open('/candidates', '_blank'),
-          },
-        });
-      } else {
-        toast.success('🎯 Candidat ajouté au pipeline !', {
-          id: 'add-to-pipeline',
-          description: jobTitle 
-            ? `${profileInfo.name} ajouté pour le poste "${jobTitle}"`
-            : `${profileInfo.name} ajouté en shortlist (Pressenti)`,
-          action: {
-            label: 'Voir pipeline',
-            onClick: () => window.open('/candidates', '_blank'),
-          },
-        });
-      }
-    } catch (error) {
-      console.error('Error adding to pipeline:', error);
-      toast.error('Erreur lors de l\'ajout au pipeline', {
-        id: 'add-to-pipeline',
-        description: error instanceof Error ? error.message : 'Erreur inconnue',
-      });
-    }
   };
 
   // Handle enrolling in a sequence
@@ -1428,6 +1388,20 @@ export const MessagesInbox: React.FC<MessagesInboxProps> = ({
             </div>
           </div>
         </div>
+      )}
+
+      {/* Add to Pipeline Modal */}
+      {getCurrentCandidateProfile() && (
+        <AddToPipelineModal
+          open={showPipelineModal}
+          onOpenChange={setShowPipelineModal}
+          candidate={getCurrentCandidateProfile()!}
+          preSelectedJobId={pipelinePreSelectedJobId}
+          onSuccess={() => {
+            setShowPipelineModal(false);
+            setPipelinePreSelectedJobId(undefined);
+          }}
+        />
       )}
     </div>
   );

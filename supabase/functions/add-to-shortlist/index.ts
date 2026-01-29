@@ -15,9 +15,15 @@ interface AddToShortlistData {
   headline?: string;
   linkedinUrl?: string;
   linkedinId?: string;
-  // Optional job association
+  // Job association (now required for proper pipeline tracking)
   jobId?: string;
   jobTitle?: string;
+  clientName?: string;
+  // Organization context
+  entity?: string;
+  accompanyingType?: string;
+  recruiterName?: string;
+  startDate?: string;
   // Optional source info
   source?: string;
 }
@@ -190,7 +196,7 @@ serve(async (req) => {
       );
     }
 
-    // Step 4: Create Shortlist entry
+    // Step 4: Create Shortlist entry with all fields
     const shortlistTitle = data.jobTitle 
       ? `${data.name} - ${data.jobTitle}`
       : data.name;
@@ -206,7 +212,7 @@ serve(async (req) => {
         select: { name: 'Pressenti' }
       },
       'Entité': {
-        select: { name: 'Konekt' }
+        select: { name: data.entity || 'Konekt' }
       },
     };
 
@@ -214,6 +220,39 @@ serve(async (req) => {
     if (data.jobId) {
       shortlistProperties['💼 Postes'] = {
         relation: [{ id: data.jobId }]
+      };
+    }
+
+    // Add accompanying type if provided
+    if (data.accompanyingType) {
+      shortlistProperties["Type d'accompagnement"] = {
+        select: { name: data.accompanyingType }
+      };
+    }
+
+    // Add recruiter if provided
+    if (data.recruiterName) {
+      shortlistProperties['Recruteur'] = {
+        rich_text: [{ text: { content: data.recruiterName } }]
+      };
+    }
+
+    // Add client name if provided
+    if (data.clientName) {
+      shortlistProperties['Client'] = {
+        rich_text: [{ text: { content: data.clientName } }]
+      };
+    }
+
+    // Add start date if provided (as date property)
+    if (data.startDate) {
+      shortlistProperties['Date de shortlist'] = {
+        date: { start: data.startDate }
+      };
+    } else {
+      // Default to today's date
+      shortlistProperties['Date de shortlist'] = {
+        date: { start: new Date().toISOString().split('T')[0] }
       };
     }
 
