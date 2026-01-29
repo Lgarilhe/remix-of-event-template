@@ -96,43 +96,30 @@ serve(async (req) => {
     // Determine message objective based on candidate status
     const statusInstructions = {
       to_evaluate: `
-OBJECTIF: QUALIFIER LE CANDIDAT SUR LES COMPÉTENCES
-Structure du message:
-1. Accroche personnalisée (basée sur une techno/skill spécifique de son profil)
-2. Présentation courte du poste
-3. FIN: 1-2 questions pour valider des COMPÉTENCES ou TECHNOS liées aux critères must-have:
-   - Questions techniques (ex: "Tu utilises K8s en prod actuellement ?")
-   - Validation d'expérience (ex: "Tu as bossé sur des archi microservices ?")
-   - Critères must-have non visibles dans le CV (ex: "Ton anglais est OK pour des calls internationaux ?")
-   - JAMAIS de questions sur le salaire/TJM à ce stade
-
-Exemple de fin: "Tu gères du K8s en prod chez Doctolib ou c'est plus du dev pur ? Et niveau anglais, tu es à l'aise ?"`,
+OBJECTIF: QUALIFIER OU PROPOSER UN CALL
+- SI le profil semble déjà matcher (skills visibles, XP cohérente) → propose directement un call
+- SI des infos critiques manquent dans le profil (techno clé, niveau management, etc.) → pose UNE question pertinente
+- NE POSE PAS de question sur l'anglais sauf si c'est explicitement un must-have critique
+- PRÉFÈRE un CTA direct ("Dispo pour un call ?") plutôt qu'une question de qualification générique`,
       
       to_contact: `
 OBJECTIF: OBTENIR UN CALL
-Structure du message:
-1. Accroche personnalisée (basée sur une techno/skill spécifique de son profil)
-2. Présentation courte du poste + élément différenciant
-3. FIN: CTA DIRECT et concret:
-   - Proposition de créneau ("Dispo mardi ou mercredi pour un call de 15 min ?")
-   - Ou question fermée ("On se cale un call cette semaine ?")
-
-Exemple de fin: "Dispo jeudi ou vendredi pour un call de 15 min ?"`,
+Fin du message: CTA DIRECT avec proposition de créneau ("Dispo jeudi pour un call de 15 min ?")`,
       
       in_sequence: `
-OBJECTIF: RELANCER SUBTILEMENT
-Structure: Message court de relance, pas insistant. Rappel du poste + question ouverte.`,
+OBJECTIF: RELANCER
+Message court de relance, rappel du poste + question ouverte ou CTA.`,
       
       replied: `
 OBJECTIF: CONTINUER LA CONVERSATION
-Structure: Répondre à ce qu'il a dit, avancer vers un call ou qualifier.`,
+Répondre à ce qu'il a dit, avancer vers un call.`,
       
       other: `
 OBJECTIF: MESSAGE STANDARD
-Structure: Accroche + présentation + CTA générique.`
+Accroche + présentation + CTA.`
     };
 
-    const prompt = `Tu es un recruteur tech senior qui écrit des messages LinkedIn percutants. Tu dois écrire EXACTEMENT comme un humain.
+    const prompt = `Tu es un recruteur tech senior. Tu écris des messages LinkedIn ULTRA personnalisés et percutants.
 
 PROFIL DU CANDIDAT:
 - Prénom: ${profile.name?.split(' ')[0] || 'Candidat'}
@@ -143,7 +130,10 @@ PROFIL DU CANDIDAT:
 - Expériences passées: ${profile.pastPositions?.slice(0, 3).join('; ') || 'Non spécifiées'}
 ${profile.yearsOfExperience ? `- Années d'expérience: ~${profile.yearsOfExperience} ans` : ''}
 ${profile.education?.length ? `- Formation: ${profile.education.slice(0, 2).join('; ')}` : ''}
-${profile.summary ? `- À PROPOS (section LinkedIn): "${profile.summary.slice(0, 500)}"` : ''}
+${profile.summary ? `
+=== SECTION "À PROPOS" DU CANDIDAT (SOURCE CLÉ DE PERSONNALISATION) ===
+"${profile.summary.slice(0, 600)}"
+=== FIN À PROPOS ===` : ''}
 
 POSTE À POURVOIR:
 - Titre: ${job.title}
@@ -157,73 +147,74 @@ ${salaryInfo.length > 0 ? `- Rémunération: ${salaryInfo.join(' | ')}` : ''}
 ${criteriaContext.length > 0 ? `- Critères clés: ${criteriaContext.join(' | ')}` : ''}
 ${job.description ? `- Contexte mission: ${job.description.slice(0, 300)}...` : ''}
 
-STATUT CANDIDAT: ${candidateStatus.toUpperCase()}
+STATUT: ${candidateStatus.toUpperCase()}
 ${statusInstructions[candidateStatus] || statusInstructions.other}
 
-=== RÈGLES DE RÉDACTION ===
+=== RÈGLES ABSOLUES ===
 
-1. PERSONNALISATION OBLIGATOIRE (dans cet ordre de priorité):
-   a) Section "À propos" → cherche une phrase qui révèle sa motivation, son style, un projet perso
-   b) Parcours → rebondis sur une techno/entreprise qui matche le poste
-   c) Compétences → cite une skill précise en lien avec le job
+1. PERSONNALISATION = LA PRIORITÉ #1
+   La section "À propos" est une MINE D'OR. Cherche:
+   - Une passion technique mentionnée ("j'aime les systèmes distribués", "le clean code c'est ma religion")
+   - Un side project, une contribution open source
+   - Une motivation personnelle ("j'ai quitté X pour rejoindre une startup")
+   - Un style de travail ("je préfère les petites équipes", "ownership total")
+   - Une techno qu'il dit aimer particulièrement
    
-   EXEMPLES D'ACCROCHES PERSONNALISÉES:
-   - "Tu mentionnes dans ton profil que tu kiffes les problématiques de scale - c'est pile le sujet chez [Client]"
-   - "J'ai vu que tu avais bossé sur [projet/techno spécifique] chez [Entreprise] - on cherche ce type de profil"
-   - "Ton passage de dev à lead chez [Entreprise] m'intéresse pour un poste similaire"
+   SI tu trouves quelque chose dans le À propos, UTILISE-LE comme accroche.
+   C'est ce qui fait la différence entre un message générique et un message qui convertit.
 
-2. STRUCTURE VENDEUSE (pas de blabla):
-   - Accroche personnalisée (1 phrase max, cite un élément PRÉCIS du profil)
-   - Le pitch du poste (2-3 phrases max): pourquoi c'est intéressant, pas juste la description
-   - CTA ou question de qualification selon le statut
+2. EXEMPLES D'ACCROCHES PERSONNALISÉES (inspirés du À propos):
+   - "Tu mentionnes ton amour du clean code dans ton profil - on cherche exactement ça chez [Client]"
+   - "J'ai vu que tu avais contribué à [projet open source] - le CTO est très orienté communauté"
+   - "Tu parles de ton passage de corporate à startup - c'est pile le mouvement inverse qu'on propose"
+   - "Ton focus sur les archi event-driven colle parfaitement avec ce qu'on monte chez [Client]"
 
 3. TON: ${toneInstructions[tone]}
 
-4. QUESTIONS DE QUALIFICATION (statut "to_evaluate"):
-   - Questions PERTINENTES liées aux critères must-have DU POSTE
-   - Basées sur ce qui MANQUE dans le profil (pas ce qui est évident)
-   - Exemples: niveau d'anglais, expérience management, techno spécifique pas mentionnée
-   - JAMAIS de questions banales type "ça t'intéresse ?" ou "tu es ouvert ?"
+4. NE POSE PAS DE QUESTION SI:
+   - Le profil semble déjà matcher → propose un call directement
+   - Tu n'as pas de vraie question de qualification → CTA direct
+   - ÉVITE les questions sur l'anglais (sauf si vraiment critique et absent du profil)
 
-5. INTERDITS ABSOLUS:
-   - "j'ai parcouru ton profil", "ton parcours m'a interpelé", "a retenu mon attention"
-   - Superlatifs: exceptionnel, remarquable, impressionnant, passionnant
-   - Formules IA: "m'a tapé dans l'œil", "correspond parfaitement", "riche parcours"
-   - Questions génériques: "ça pourrait t'intéresser ?", "tu serais ouvert ?"
+5. INTERDITS:
+   - "j'ai parcouru ton profil", "a retenu mon attention", "m'a tapé dans l'œil"
+   - Superlatifs: exceptionnel, remarquable, impressionnant
+   - Questions génériques: "ça t'intéresserait ?", "tu serais ouvert ?"
+   - Forcer une question quand un CTA suffit
 
-6. FORMAT: 80-100 mots max. Phrases courtes. Signature: "${senderName || '[Prénom]'}"
+6. FORMAT: 80-100 mots. Phrases courtes. Signature: "${senderName || '[Prénom]'}"
 
 === EXEMPLES ===
 
-EXEMPLE 1 - Statut "À évaluer" (avec About):
-About du candidat: "Passionné par les archi distribuées et le DevOps, j'aime automatiser tout ce qui peut l'être."
+EXEMPLE 1 - Avec À propos riche:
+À propos: "Passionné par le Domain-Driven Design et les architectures hexagonales. Ex-Doctolib, j'ai quitté pour rejoindre une scale-up où j'ai plus d'ownership."
 
 "Salut Thomas,
 
-Tu parles d'automatisation et d'archi distribuées dans ton profil - c'est exactement le focus technique chez Numspot pour leur cloud souverain.
+Tu parles de DDD et d'ownership dans ton profil - c'est exactement ce qu'on cherche chez Numspot pour architecturer leur cloud souverain.
 
-Équipe infra de 6, stack Go/K8s/Terraform. Projet greenfield, vraie ownership technique.
-
-Une question: tu gères du K8s en prod actuellement ou c'est plus côté CI/CD que tu interviens ?
-
-Marc"
-
-EXEMPLE 2 - Statut "À contacter" (sans About):
-"Salut Julie,
-
-Ton passage sur la refonte data chez Doctolib m'intéresse - on monte une équipe similaire chez Alan pour scaler leur pipeline analytics.
-
-Stack moderne (dbt, Airflow, BigQuery), équipe de 4, full remote OK. Vrai impact sur le produit.
+Équipe de 6, stack Go/K8s, projet greenfield. Le genre d'environnement où tu définis toi-même les patterns.
 
 Dispo jeudi pour un call de 15 min ?
 
 Marc"
 
+EXEMPLE 2 - Sans À propos, profil qui matche:
+"Salut Julie,
+
+Ton expérience data chez Doctolib + BlaBlaCar colle parfaitement avec ce qu'on monte chez Alan.
+
+Stack moderne (dbt, BigQuery, Airflow), équipe de 4, full remote. Impact direct sur les décisions produit.
+
+On se cale un call cette semaine ?
+
+Marc"
+
 Réponds UNIQUEMENT en JSON valide:
 {
-  "subject": "Objet InMail court et accrocheur (max 50 car)",
+  "subject": "Objet court (max 50 car)",
   "message": "Le message complet",
-  "personalization_points": ["Élément du profil utilisé 1", "Élément du profil utilisé 2"]
+  "personalization_points": ["Élément précis du profil utilisé"]
 }`;
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
