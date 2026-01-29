@@ -212,12 +212,43 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
   
   // Check subscription availability for current API mode
   const subscriptions = selectedAccountData?.subscriptions;
+  
+  // Auto-select the best available API mode based on subscriptions
+  useEffect(() => {
+    if (!subscriptions) return;
+    
+    const hasPremiumLicense = subscriptions.recruiter || subscriptions.sales_navigator;
+    
+    // If user has premium license, ensure they're not on Classic mode
+    if (hasPremiumLicense && filters.api === 'classic') {
+      // Auto-switch to the available premium mode
+      if (subscriptions.recruiter) {
+        setFilters(f => ({ ...f, api: 'recruiter' }));
+      } else if (subscriptions.sales_navigator) {
+        setFilters(f => ({ ...f, api: 'sales_navigator' }));
+      }
+    }
+    // If user doesn't have the currently selected premium license, switch to available one
+    else if (filters.api === 'recruiter' && !subscriptions.recruiter && subscriptions.sales_navigator) {
+      setFilters(f => ({ ...f, api: 'sales_navigator' }));
+    } else if (filters.api === 'sales_navigator' && !subscriptions.sales_navigator && subscriptions.recruiter) {
+      setFilters(f => ({ ...f, api: 'recruiter' }));
+    }
+    // If no premium license, ensure Classic is selected
+    else if (!hasPremiumLicense && filters.api !== 'classic') {
+      setFilters(f => ({ ...f, api: 'classic' }));
+    }
+  }, [subscriptions, selectedAccount]);
+  
   const isApiModeAvailable = useMemo(() => {
     if (!subscriptions) return true; // Default to available if no subscription info
+    
+    const hasPremiumLicense = subscriptions.recruiter || subscriptions.sales_navigator;
+    
     switch (filters.api) {
       case 'recruiter': return subscriptions.recruiter;
       case 'sales_navigator': return subscriptions.sales_navigator;
-      case 'classic': return subscriptions.classic;
+      case 'classic': return !hasPremiumLicense; // Classic unavailable if premium exists
       default: return true;
     }
   }, [subscriptions, filters.api]);
@@ -1002,10 +1033,31 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
             <TooltipProvider>
               <div className="grid grid-cols-3 gap-1 p-1 bg-gray-100 rounded-lg">
                 {API_TYPE_OPTIONS.map((option) => {
-                  const isAvailable = !subscriptions || 
-                    (option.value === 'classic' && subscriptions.classic) ||
-                    (option.value === 'recruiter' && subscriptions.recruiter) ||
-                    (option.value === 'sales_navigator' && subscriptions.sales_navigator);
+                  // Check if premium licenses are available
+                  const hasPremiumLicense = subscriptions?.recruiter || subscriptions?.sales_navigator;
+                  
+                  // Determine availability:
+                  // - Classic is disabled if Recruiter OR Sales Navigator is available
+                  // - Recruiter/Sales Navigator are available based on their respective licenses
+                  let isAvailable: boolean;
+                  if (option.value === 'classic') {
+                    // Classic is only available if NO premium license exists
+                    isAvailable = !hasPremiumLicense;
+                  } else if (option.value === 'recruiter') {
+                    isAvailable = !!subscriptions?.recruiter;
+                  } else if (option.value === 'sales_navigator') {
+                    isAvailable = !!subscriptions?.sales_navigator;
+                  } else {
+                    isAvailable = true;
+                  }
+                  
+                  // Tooltip message varies by case
+                  const getTooltipMessage = () => {
+                    if (option.value === 'classic' && hasPremiumLicense) {
+                      return 'Mode Classic désactivé car vous avez une licence premium. Utilisez Recruiter ou Sales Navigator.';
+                    }
+                    return `Votre compte LinkedIn n'a pas de licence ${option.label}. Connectez un compte avec cette licence pour utiliser ce mode.`;
+                  };
                   
                   const button = (
                     <button
@@ -1036,8 +1088,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
                         </TooltipTrigger>
                         <TooltipContent side="bottom" className="max-w-[200px]">
                           <p className="text-xs">
-                            Votre compte LinkedIn n'a pas de licence {option.label}. 
-                            Connectez un compte avec cette licence pour utiliser ce mode.
+                            {getTooltipMessage()}
                           </p>
                         </TooltipContent>
                       </Tooltip>
