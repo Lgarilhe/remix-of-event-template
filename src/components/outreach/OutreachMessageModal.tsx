@@ -69,6 +69,7 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
       location: profile.location,
       skills: profile.skills?.map((s: any) => s.name || s).slice(0, 10) || [],
       pastPositions: pastJobs.map(p => `${p.role} chez ${p.company}`),
+      summary: profile.summary || '', // LinkedIn "About" section
     };
   };
 

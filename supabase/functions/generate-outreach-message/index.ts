@@ -15,6 +15,7 @@ interface ProfileData {
   pastPositions?: string[];
   education?: string[];
   yearsOfExperience?: number;
+  summary?: string; // LinkedIn "About" section
 }
 
 interface JobData {
@@ -131,7 +132,7 @@ OBJECTIF: MESSAGE STANDARD
 Structure: Accroche + présentation + CTA générique.`
     };
 
-    const prompt = `Tu es un recruteur tech expérimenté qui écrit des messages LinkedIn. Tu dois écrire EXACTEMENT comme un humain, pas comme une IA.
+    const prompt = `Tu es un recruteur tech senior qui écrit des messages LinkedIn percutants. Tu dois écrire EXACTEMENT comme un humain.
 
 PROFIL DU CANDIDAT:
 - Prénom: ${profile.name?.split(' ')[0] || 'Candidat'}
@@ -142,6 +143,7 @@ PROFIL DU CANDIDAT:
 - Expériences passées: ${profile.pastPositions?.slice(0, 3).join('; ') || 'Non spécifiées'}
 ${profile.yearsOfExperience ? `- Années d'expérience: ~${profile.yearsOfExperience} ans` : ''}
 ${profile.education?.length ? `- Formation: ${profile.education.slice(0, 2).join('; ')}` : ''}
+${profile.summary ? `- À PROPOS (section LinkedIn): "${profile.summary.slice(0, 500)}"` : ''}
 
 POSTE À POURVOIR:
 - Titre: ${job.title}
@@ -153,61 +155,65 @@ POSTE À POURVOIR:
 - Type contrat: ${job.contractType || 'Non spécifié'}
 ${salaryInfo.length > 0 ? `- Rémunération: ${salaryInfo.join(' | ')}` : ''}
 ${criteriaContext.length > 0 ? `- Critères clés: ${criteriaContext.join(' | ')}` : ''}
-${job.description ? `- Contexte: ${job.description.slice(0, 200)}...` : ''}
+${job.description ? `- Contexte mission: ${job.description.slice(0, 300)}...` : ''}
 
 STATUT CANDIDAT: ${candidateStatus.toUpperCase()}
 ${statusInstructions[candidateStatus] || statusInstructions.other}
 
-RÈGLES ABSOLUES - MESSAGE HUMAIN:
-1. ${toneInstructions[tone]}
-2. INTERDIT: "j'ai parcouru ton profil", "ton riche parcours", "m'a particulièrement sauté aux yeux", "m'a tapé dans l'œil", "a retenu mon attention", "ultra-", "majeurs", "relever des défis", "au plaisir"
-3. INTERDIT: superlatifs (exceptionnel, remarquable, impressionnant, passionnant, incroyable)
-4. INTERDIT: expressions corporate (synergies, opportunité unique, environnement dynamique, défis stimulants)
-5. INTERDIT: formules "IA" ("m'a interpelé", "a attiré mon attention", "correspond parfaitement")
-6. Écris des phrases COURTES. Pas de subordonnées complexes.
-7. Commence direct, pas de "Bonjour, je me permets de..."
+=== RÈGLES DE RÉDACTION ===
 
-RÈGLE CRITIQUE - PERSONNALISATION BASÉE SUR LES FAITS:
-8. N'INVENTE RIEN. Utilise UNIQUEMENT les informations réelles fournies:
-   - Compétences listées dans le profil → utilisables
-   - Entreprises mentionnées dans le parcours → utilisables
-   - Infos du job (client, secteur, skills requises) → utilisables
-   - NE PAS supposer des compétences non listées
-   - NE PAS inventer des détails sur le parcours
-   - NE PAS extrapoler ("tu as dû voir du scale" = interdit)
+1. PERSONNALISATION OBLIGATOIRE (dans cet ordre de priorité):
+   a) Section "À propos" → cherche une phrase qui révèle sa motivation, son style, un projet perso
+   b) Parcours → rebondis sur une techno/entreprise qui matche le poste
+   c) Compétences → cite une skill précise en lien avec le job
+   
+   EXEMPLES D'ACCROCHES PERSONNALISÉES:
+   - "Tu mentionnes dans ton profil que tu kiffes les problématiques de scale - c'est pile le sujet chez [Client]"
+   - "J'ai vu que tu avais bossé sur [projet/techno spécifique] chez [Entreprise] - on cherche ce type de profil"
+   - "Ton passage de dev à lead chez [Entreprise] m'intéresse pour un poste similaire"
 
-9. Cherche LE point de personnalisation le plus FORT parmi les VRAIES infos:
-   - Une techno du profil qui matche les skills requises du job
-   - Une entreprise passée dans le même secteur que le client
-   - Un poste précédent similaire au poste proposé
-   - Une progression visible (junior → senior, dev → lead)
+2. STRUCTURE VENDEUSE (pas de blabla):
+   - Accroche personnalisée (1 phrase max, cite un élément PRÉCIS du profil)
+   - Le pitch du poste (2-3 phrases max): pourquoi c'est intéressant, pas juste la description
+   - CTA ou question de qualification selon le statut
 
-10. ACCROCHE = Lien DIRECT et FACTUEL entre le parcours réel et le poste réel.
-   - BON: "Tu fais du [skill du profil] chez [entreprise du profil], on cherche ça pour [client du job]"
-   - MAUVAIS: "Tu as dû gérer du scale" (supposition)
-   - MAUVAIS: "Avec ton expérience cloud" (si pas explicite dans le profil)
+3. TON: ${toneInstructions[tone]}
 
-11. Maximum 80-120 mots. Court = humain.
-12. Respecte l'OBJECTIF selon le statut candidat ci-dessus.
-13. Signe avec le prénom: "${senderName || '[Prénom]'}"
+4. QUESTIONS DE QUALIFICATION (statut "to_evaluate"):
+   - Questions PERTINENTES liées aux critères must-have DU POSTE
+   - Basées sur ce qui MANQUE dans le profil (pas ce qui est évident)
+   - Exemples: niveau d'anglais, expérience management, techno spécifique pas mentionnée
+   - JAMAIS de questions banales type "ça t'intéresse ?" ou "tu es ouvert ?"
 
-EXEMPLE MESSAGE "À ÉVALUER" (casual):
+5. INTERDITS ABSOLUS:
+   - "j'ai parcouru ton profil", "ton parcours m'a interpelé", "a retenu mon attention"
+   - Superlatifs: exceptionnel, remarquable, impressionnant, passionnant
+   - Formules IA: "m'a tapé dans l'œil", "correspond parfaitement", "riche parcours"
+   - Questions génériques: "ça pourrait t'intéresser ?", "tu serais ouvert ?"
+
+6. FORMAT: 80-100 mots max. Phrases courtes. Signature: "${senderName || '[Prénom]'}"
+
+=== EXEMPLES ===
+
+EXEMPLE 1 - Statut "À évaluer" (avec About):
+About du candidat: "Passionné par les archi distribuées et le DevOps, j'aime automatiser tout ce qui peut l'être."
+
 "Salut Thomas,
 
-Tu bosses sur Go et K8s chez Datadog. On recrute un profil similaire pour Numspot, cloud souverain français.
+Tu parles d'automatisation et d'archi distribuées dans ton profil - c'est exactement le focus technique chez Numspot pour leur cloud souverain.
 
-Équipe de 8, stack Go/Terraform, full remote OK.
+Équipe infra de 6, stack Go/K8s/Terraform. Projet greenfield, vraie ownership technique.
 
-Tu fais encore du K8s en prod actuellement ? Et ton anglais est fluide pour les calls internationaux ?
+Une question: tu gères du K8s en prod actuellement ou c'est plus côté CI/CD que tu interviens ?
 
 Marc"
 
-EXEMPLE MESSAGE "À CONTACTER" (casual):
-"Salut Thomas,
+EXEMPLE 2 - Statut "À contacter" (sans About):
+"Salut Julie,
 
-Tu fais du Go/infra chez Datadog. On monte une équipe similaire chez Numspot pour leur cloud souverain.
+Ton passage sur la refonte data chez Doctolib m'intéresse - on monte une équipe similaire chez Alan pour scaler leur pipeline analytics.
 
-Équipe de 8, Go/K8s/Terraform, full remote possible.
+Stack moderne (dbt, Airflow, BigQuery), équipe de 4, full remote OK. Vrai impact sur le produit.
 
 Dispo jeudi pour un call de 15 min ?
 
@@ -215,9 +221,9 @@ Marc"
 
 Réponds UNIQUEMENT en JSON valide:
 {
-  "subject": "Objet court pour InMail (max 60 caractères)",
-  "message": "Le message d'approche complet",
-  "personalization_points": ["Point personnalisé 1", "Point personnalisé 2"]
+  "subject": "Objet InMail court et accrocheur (max 50 car)",
+  "message": "Le message complet",
+  "personalization_points": ["Élément du profil utilisé 1", "Élément du profil utilisé 2"]
 }`;
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
