@@ -38,6 +38,10 @@ interface ChatAttendee {
   attendee_provider_id?: string;
   provider_id?: string;
   headline?: string;
+  // Additional fields from Unipile API
+  first_name?: string;
+  last_name?: string;
+  public_identifier?: string;
 }
 
 interface Chat {
@@ -265,13 +269,20 @@ export const MessagesInbox: React.FC<MessagesInboxProps> = ({
 
   // Get display name for chat
   const getChatDisplayName = (chat: Chat) => {
-    // First try subject (for InMails)
-    if (chat.subject) return chat.subject;
-    // Then try chat name
+    // First try attendees array - this is the actual contact name
+    const attendee = chat.attendees?.[0];
+    if (attendee) {
+      // Try different name formats from Unipile API
+      if (attendee.display_name) return attendee.display_name;
+      if (attendee.name) return attendee.name;
+      if (attendee.first_name || attendee.last_name) {
+        return `${attendee.first_name || ''} ${attendee.last_name || ''}`.trim();
+      }
+    }
+    // Then try chat name (for group chats)
     if (chat.name) return chat.name;
-    // Then try attendees array
-    const attendee = chat.attendees?.find(a => a.name || a.display_name);
-    if (attendee) return attendee.display_name || attendee.name;
+    // Subject is typically InMail subject, not the person's name
+    // Only use as last resort or show with context
     return 'Conversation';
   };
 
