@@ -264,7 +264,8 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
     }
     
     setIsGenerating(false);
-    toast.success(`${Object.keys(newMessages).length} messages générés !`);
+    setCurrentRecipientIndex(0); // Reset to first recipient to show editor
+    toast.success(`${Object.keys(newMessages).length} messages générés ! Cliquez sur chaque message pour le visualiser et modifier.`);
   };
 
   // Regenerate current message
