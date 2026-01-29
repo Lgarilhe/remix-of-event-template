@@ -367,7 +367,8 @@ ${transversal.context ? `Contexte: ${transversal.context}` : ''}` : ''}
 
     // === RÈGLE 6: Élargir PROGRAMMATIQUEMENT la plage d'expérience (PROPORTIONNEL) ===
     // Plus le niveau est senior, plus on élargit la plage
-    // Junior (0-2 ans) → 0-3 ans | Senior (10 ans) → 7-15 ans
+    // Junior (0-2 ans) → 0-5 ans | Senior (10 ans) → 8-null (pas de max)
+    // Philosophie: être junior est bloquant, être senior ne l'est pas (le scoring gère)
     const rawXpMin = parsed.years_experience_min ?? job.xpMin ?? null;
     const rawXpMax = parsed.years_experience_max ?? job.xpMax ?? null;
     
@@ -375,13 +376,18 @@ ${transversal.context ? `Contexte: ${transversal.context}` : ''}` : ''}
     const minReduction = rawXpMin !== null 
       ? Math.min(3, Math.max(1, Math.round(rawXpMin * 0.25))) 
       : 0;
-    // Addition proportionnelle sur le max: ~50% avec min 1 an, max 7 ans
+    
+    // Pour le max: très généreux car les seniors ne sont pas un problème
+    // - Si le job demande <5 ans max → on met +3 ans
+    // - Si le job demande 5-10 ans max → on met +10 ans  
+    // - Si le job demande >10 ans max → pas de max (null)
     const maxAddition = rawXpMax !== null 
-      ? Math.min(7, Math.max(1, Math.round(rawXpMax * 0.5))) 
-      : 0;
+      ? (rawXpMax < 5 ? 3 : (rawXpMax <= 10 ? 10 : null))
+      : null;
     
     const widenedXpMin = rawXpMin !== null ? Math.max(0, rawXpMin - minReduction) : null;
-    const widenedXpMax = rawXpMax !== null ? rawXpMax + maxAddition : null;
+    // Si maxAddition est null, on ne met pas de max du tout (ouvert aux seniors)
+    const widenedXpMax = (rawXpMax !== null && maxAddition !== null) ? rawXpMax + maxAddition : null;
     
     // S'assurer que min <= max
     const finalXpMin = (widenedXpMin !== null && widenedXpMax !== null && widenedXpMin > widenedXpMax) 
