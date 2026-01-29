@@ -246,7 +246,11 @@ export const FilterAssistantModal: React.FC<FilterAssistantModalProps> = ({
     streamChat(input.trim());
   };
 
-  // Resolve school names to IDs using Unipile API
+  // Known French school keywords to help filter out foreign schools
+  const FRENCH_SCHOOL_INDICATORS = ['paris', 'france', 'lyon', 'lille', 'nantes', 'bordeaux', 'toulouse', 'marseille', 'grenoble', 'psl', 'paristech', 'saclay', 'palaiseau'];
+  const EXCLUDE_PATTERNS = ['rabat', 'maroc', 'morocco', 'casablanca', 'tunisie', 'tunisia', 'algérie', 'algeria', 'canada', 'usa', 'uk', 'belgique', 'suisse'];
+
+  // Resolve school names to IDs using Unipile API with strict French matching
   const resolveSchoolIds = useCallback(async (schoolNames: string[]): Promise<Array<{ id: string; name: string; priority: 'CAN_HAVE' }>> => {
     if (!accountId || schoolNames.length === 0) return [];
 
@@ -254,33 +258,76 @@ export const FilterAssistantModal: React.FC<FilterAssistantModalProps> = ({
 
     for (const schoolName of schoolNames) {
       try {
+        // Use more specific search terms for ambiguous names
+        let searchTerm = schoolName;
+        const lowerName = schoolName.toLowerCase();
+        
+        // Add "Paris" or "France" for ambiguous school names
+        if (lowerName === 'mines' || lowerName.includes('mines') && !lowerName.includes('paris')) {
+          searchTerm = 'Mines Paris';
+        } else if (lowerName === 'centrale' && !lowerName.includes('paris') && !lowerName.includes('lyon')) {
+          searchTerm = 'CentraleSupélec';
+        } else if (lowerName === 'ponts' || lowerName === 'les ponts') {
+          searchTerm = 'École des Ponts ParisTech';
+        }
+
         const { data, error } = await supabase.functions.invoke('unipile-search', {
           body: {
             action: 'get_parameters',
             account_id: accountId,
             type: 'SCHOOL',
             service: 'RECRUITER',
-            keywords: schoolName,
+            keywords: searchTerm,
           },
         });
 
         if (!error && data?.items?.length > 0) {
-          // Find best match
-          const exactMatch = data.items.find(
-            (it: { title: string }) => it.title.toLowerCase() === schoolName.toLowerCase()
-          );
-          const partialMatch = data.items.find(
-            (it: { title: string }) => it.title.toLowerCase().includes(schoolName.toLowerCase()) ||
-              schoolName.toLowerCase().includes(it.title.toLowerCase())
-          );
-          const match = exactMatch || partialMatch || data.items[0];
+          // Filter out non-French schools
+          const frenchSchools = data.items.filter((it: { title: string }) => {
+            const title = it.title.toLowerCase();
+            // Exclude if contains foreign location indicators
+            const isForeign = EXCLUDE_PATTERNS.some(pattern => title.includes(pattern));
+            if (isForeign) return false;
+            return true;
+          });
 
-          if (match) {
+          // Scoring-based matching
+          const scoredMatches = frenchSchools.map((it: { title: string; id: string }) => {
+            const title = it.title.toLowerCase();
+            const search = searchTerm.toLowerCase();
+            let score = 0;
+
+            // Exact match = highest score
+            if (title === search) score += 100;
+            // Title contains search term
+            else if (title.includes(search)) score += 50;
+            // Search contains title
+            else if (search.includes(title)) score += 30;
+
+            // Bonus for French indicators
+            if (FRENCH_SCHOOL_INDICATORS.some(ind => title.includes(ind))) score += 20;
+
+            // Bonus for matching key parts of school name
+            const searchParts = search.split(/[\s-]+/);
+            const titleParts = title.split(/[\s-]+/);
+            const matchingParts = searchParts.filter(p => p.length > 3 && titleParts.some(tp => tp.includes(p) || p.includes(tp)));
+            score += matchingParts.length * 10;
+
+            return { ...it, score };
+          });
+
+          // Sort by score and take best match
+          scoredMatches.sort((a: { score: number }, b: { score: number }) => b.score - a.score);
+          const bestMatch = scoredMatches[0];
+
+          if (bestMatch && bestMatch.score > 0) {
             resolved.push({
-              id: String(match.id),
-              name: match.title || schoolName,
+              id: String(bestMatch.id),
+              name: bestMatch.title || schoolName,
               priority: 'CAN_HAVE',
             });
+          } else {
+            console.warn(`No confident match for school: ${schoolName}`);
           }
         }
       } catch (e) {

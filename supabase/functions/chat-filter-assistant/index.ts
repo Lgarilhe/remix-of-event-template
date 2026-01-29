@@ -70,7 +70,24 @@ RÈGLES MÉTIER:
 - Élargir légèrement les plages d'expérience (-1/+2 ans)
 - open_to_work = false par défaut (sinon trop restrictif)
 - Pour exclure une entreprise: company_keywords avec priority: "DOESNT_HAVE"
-- IMPORTANT: Utiliser school_names pour les écoles (PAS dans keywords). Le système résoudra les IDs automatiquement.`;
+- IMPORTANT: Utiliser school_names pour les écoles (PAS dans keywords). Le système résoudra les IDs automatiquement.
+
+NOMS D'ÉCOLES PRÉCIS (toujours utiliser ces noms exacts pour éviter les confusions avec des écoles étrangères):
+- "École Polytechnique" (pas juste "Polytechnique" pour éviter Polytechnique Montréal)
+- "Mines Paris - PSL" ou "Mines ParisTech" (pas juste "Mines" pour éviter Mines de Rabat)
+- "CentraleSupélec" ou "Centrale Paris" (pas juste "Centrale")
+- "École des Ponts ParisTech" (pas juste "Les Ponts")
+- "Télécom Paris" (nom complet)
+- "ENSTA Paris" (pas juste ENSTA)
+- "ISAE-SUPAERO" (nom complet)
+- "IMT Atlantique" (nom complet)
+- "Arts et Métiers ParisTech" (nom complet)
+- "UTC Compiègne" (préciser Compiègne)
+- "ENSIMAG Grenoble" (préciser Grenoble)
+- "ENSEEIHT Toulouse" (préciser Toulouse)
+- "HEC Paris", "ESSEC Business School", "ESCP Business School" (noms complets)
+- "42 Paris" ou "École 42" (pas juste "42")
+- "Epitech" ou "Epita" (noms complets)`;
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
