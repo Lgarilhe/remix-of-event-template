@@ -167,13 +167,24 @@ RÈGLES ABSOLUES - MESSAGE HUMAIN:
 6. Écris des phrases COURTES. Pas de subordonnées complexes.
 7. Commence direct, pas de "Bonjour, je me permets de..."
 
-RÈGLE CRITIQUE - PERSONNALISATION:
-8. L'accroche DOIT mentionner une COMPÉTENCE ou TECHNO SPÉCIFIQUE du candidat qui matche avec le poste.
-   - BON: "Vu ton expérience Terraform chez Webedia" (techno précise + contexte)
-   - BON: "Tu as bossé sur du Go/gRPC chez Datadog" (stack précise, ton direct)
-   - MAUVAIS: "Ton profil m'a tapé dans l'œil" (expression IA)
-   - MAUVAIS: "Vu ce que tu fais chez Doctolib" (trop vague)
-9. Formule l'accroche de manière FACTUELLE, pas admirative. "Tu bosses sur X" plutôt que "Ton X m'a impressionné".
+RÈGLE CRITIQUE - PERSONNALISATION PUISSANTE:
+8. Cherche LE point de personnalisation le plus FORT et UNIQUE du candidat:
+   - Une techno rare qu'il maîtrise ET qui matche le poste
+   - Une entreprise similaire au client (même secteur, même taille, même techno)
+   - Un projet spécifique visible dans son parcours
+   - Une progression de carrière intéressante (ex: passage de dev à lead)
+   
+   EXEMPLES FORTS:
+   - "Tu as scalé l'infra chez Datadog, Numspot cherche exactement ce profil pour leur cloud souverain"
+   - "Ton passage de DevOps à Lead chez OVH, c'est pile le parcours qu'on cherche"
+   - "Tu as bossé sur gRPC à grande échelle chez Datadog, on monte le même type d'archi"
+   
+   EXEMPLES FAIBLES (à éviter):
+   - "Tu connais Go" (trop générique)
+   - "Tu travailles chez Doctolib" (pas de lien avec le poste)
+
+9. ACCROCHE = Lien DIRECT entre le parcours du candidat et ce que propose le job.
+   Structure: "[Ce que tu as fait] → [pourquoi ça matche avec ce poste]"
 
 10. Maximum 80-120 mots. Court = humain.
 11. Respecte l'OBJECTIF selon le statut candidat ci-dessus.
@@ -182,22 +193,22 @@ RÈGLE CRITIQUE - PERSONNALISATION:
 EXEMPLE MESSAGE "À ÉVALUER" (casual):
 "Salut Thomas,
 
-Je recrute un dev Go pour Numspot, le cloud souverain. Tu as bossé sur du Terraform et K8s chez Datadog, ça pourrait coller.
+Tu as scalé l'infra Go/K8s chez Datadog, c'est exactement ce qu'on cherche pour Numspot (cloud souverain français).
 
-Stack Go/K8s, équipe de 8, full remote possible.
+Équipe de 8, stack Go/Terraform, full remote OK.
 
-Tu gères du K8s en prod actuellement ou c'est plus du dev applicatif ? Et ton anglais est OK pour des calls avec l'équipe US ?
+Tu gères encore du K8s en prod chez Doctolib ? Et ton anglais est fluide pour les calls internationaux ?
 
 Marc"
 
 EXEMPLE MESSAGE "À CONTACTER" (casual):
 "Salut Thomas,
 
-Je recrute un dev Go pour Numspot, le cloud souverain. Tu as de l'XP Terraform et infra chez Datadog, ça matche bien avec ce qu'on cherche.
+Ton expérience infra chez Datadog colle parfaitement avec Numspot, on construit un cloud souverain et on cherche des profils qui ont vu du scale.
 
-Stack Go/K8s, équipe de 8, full remote OK.
+Équipe de 8, Go/K8s/Terraform, full remote possible.
 
-Dispo mercredi ou jeudi pour un call de 15 min ?
+Dispo jeudi pour un call de 15 min ?
 
 Marc"
 
