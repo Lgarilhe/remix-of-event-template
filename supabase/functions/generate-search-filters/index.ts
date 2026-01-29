@@ -142,30 +142,40 @@ serve(async (req) => {
     }
 
     // Build the prompt for AI
-    const systemPrompt = `Tu es un expert en recrutement LinkedIn. À partir d'une fiche de poste, tu génères des filtres de recherche LinkedIn optimaux.
+    const systemPrompt = `Tu es un expert en recrutement LinkedIn spécialisé dans le sourcing de profils tech/data. À partir d'une fiche de poste COMPLÈTE avec ses critères de scoring, tu génères des filtres de recherche LinkedIn ultra-précis.
 
 IMPORTANT: Les mots-clés de rôle seront utilisés dans une recherche booléenne. 
-- Le champ "keywords" doit contenir TOUS les titres alternatifs combinés avec OR (ex: "Data Engineer" OR "ML Engineer" OR "MLOps")
-- Le champ "role_keywords" doit contenir UN SEUL élément avec tous les titres combinés en OR (pas plusieurs éléments séparés)
+- Le champ "keywords" doit être une requête booléenne PRÉCISE combinant technologies clés ET titres (ex: "(Spark OR Databricks) AND (Data Engineer OR ML Engineer)")
+- Le champ "role_keywords" doit contenir UN SEUL élément avec tous les titres alternatifs combinés en OR
+
+STRATÉGIE DE MOTS-CLÉS:
+1. EXTRAIRE les technologies/outils MUST-HAVE des critères du poste pour les inclure dans keywords
+2. IDENTIFIER les synonymes de titres de poste (en français ET anglais)
+3. AJOUTER les certifications pertinentes si mentionnées (AWS, GCP, Azure, etc.)
+4. INCLURE le secteur/domaine si critique (fintech, healthtech, etc.)
 
 RÈGLES MÉTIER IMPORTANTES:
-1. Privilégier les startups et scale-ups, moins valoriser les ESN/SSII (sociétés de conseil)
+1. Privilégier les startups et scale-ups, moins valoriser les ESN/SSII
 2. Valoriser les candidats "Open to Work" 
-3. Pour les postes tech/data, valoriser les écoles d'ingénieur TOP (X, Centrale, Mines, etc.)
-4. Pour les postes business, valoriser les écoles de commerce TOP (HEC, ESSEC, ESCP, etc.)
-5. Valoriser également les profils atypiques (42, Epitech, Le Wagon) pour les postes tech
+3. Pour les postes tech/data, valoriser les écoles d'ingénieur TOP
+4. Pour les postes business, valoriser les écoles de commerce TOP
+5. Utiliser les critères MUST-HAVE comme filtres prioritaires
 
 Retourne UNIQUEMENT un objet JSON valide avec les champs suivants:
-- keywords: string - Mots-clés principaux combinés avec OR (ex: "Data Engineer" OR "ML Engineer")
-- role_keywords: string[] - UN SEUL élément contenant tous les titres combinés avec OR (ex: ["Data Engineer OR ML Engineer OR MLOps Engineer"])
-- seniority_levels: string[] - Niveaux hiérarchiques parmi: "1" (Entry), "2" (Associate), "3" (Mid), "4" (Senior), "5" (Manager), "6" (Director), "7" (VP), "8" (CXO), "9" (Partner), "10" (Owner)
-- years_experience_min: number | null - Années d'expérience minimum
-- years_experience_max: number | null - Années d'expérience maximum
-- skills_to_search: string[] - Compétences clés à rechercher (max 8, les plus pertinentes)
-- industry_keywords: string[] - Secteurs d'activité pertinents (max 3)
-- location_hint: string - Zone géographique suggérée
-- job_category: string - Catégorie du poste parmi: "tech", "business", "data", "product", "design", "other"
-- suggest_open_to_work: boolean - true si on doit filtrer sur les candidats Open to Work
+- keywords: string - Requête booléenne PRÉCISE avec technologies clés + titres (ex: "(Python AND (Spark OR Databricks)) AND (Data Engineer OR Ingénieur Data)")
+- role_keywords: string[] - UN SEUL élément avec titres alternatifs en OR (français + anglais)
+- seniority_levels: string[] - Niveaux parmi: "1"-"10" (Entry à Owner)
+- years_experience_min: number | null
+- years_experience_max: number | null
+- skills_to_search: string[] - Compétences TECHNIQUES clés extraites des MUST-HAVE (max 10)
+- soft_skills: string[] - Soft skills importants si mentionnés dans critères transverses (max 3)
+- certifications: string[] - Certifications mentionnées ou pertinentes (max 3)
+- industry_keywords: string[] - Secteurs pertinents (max 3)
+- domain_expertise: string[] - Domaines d'expertise métier requis (ex: "finance", "e-commerce", "SaaS")
+- location_hint: string - Zone géographique
+- job_category: string - Catégorie: "tech", "business", "data", "product", "design", "other"
+- suggest_open_to_work: boolean
+- search_rationale: string - Explication courte (1 phrase) de la stratégie de recherche choisie
 
 Réponds UNIQUEMENT avec le JSON, sans markdown ni explication.`;
 
@@ -247,6 +257,7 @@ ${transversal.context ? `Contexte: ${transversal.context}` : ''}` : ''}
       // Remove potential markdown code blocks
       const cleanJson = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
       parsed = JSON.parse(cleanJson);
+      console.log("[generate-search-filters] Search rationale:", parsed.search_rationale);
     } catch (e) {
       console.error("[generate-search-filters] Failed to parse AI response:", e);
       // Fallback to basic extraction from job
@@ -256,13 +267,23 @@ ${transversal.context ? `Contexte: ${transversal.context}` : ''}` : ''}
         seniority_levels: [],
         years_experience_min: job.xpMin ?? null,
         years_experience_max: job.xpMax ?? null,
-        skills_to_search: job.skills?.slice(0, 8) || [],
+        skills_to_search: job.skills?.slice(0, 10) || [],
+        soft_skills: [],
+        certifications: [],
         industry_keywords: job.client?.sector ? [job.client.sector] : [],
+        domain_expertise: [],
         location_hint: job.location || "",
         job_category: "other",
         suggest_open_to_work: true,
       };
     }
+
+    // Combine skills with certifications and domain expertise for more precise filtering
+    const allSkillsKeywords = [
+      ...(parsed.skills_to_search || []),
+      ...(parsed.certifications || []),
+      ...(parsed.domain_expertise || []),
+    ].slice(0, 12); // Max 12 combined
 
     // Transform to filter format
     // IMPORTANT: Role keywords should be combined into a SINGLE role filter with OR logic
@@ -343,7 +364,7 @@ ${transversal.context ? `Contexte: ${transversal.context}` : ''}` : ''}
       seniority: parsed.seniority_levels || [],
       years_of_experience_min: parsed.years_experience_min ?? job.xpMin ?? null,
       years_of_experience_max: parsed.years_experience_max ?? job.xpMax ?? null,
-      skills_keywords: parsed.skills_to_search || job.skills?.slice(0, 8) || [],
+      skills_keywords: allSkillsKeywords, // Now includes certifications and domain expertise
       industry_keywords: parsed.industry_keywords || [],
       location_keywords: parsed.location_hint ? [parsed.location_hint] : (job.location ? [job.location] : []),
       location_within_area: locationRadius,
