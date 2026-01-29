@@ -373,7 +373,7 @@ export const NurturingPanel: React.FC<NurturingPanelProps> = ({
         </CollapsibleTrigger>
 
         <CollapsibleContent>
-          <ScrollArea className="max-h-[300px]">
+          <div className="max-h-[280px] overflow-y-auto">
             <div className="px-4 pb-4 space-y-3">
             {loading && !analysis ? (
               <div className="space-y-2">
@@ -701,7 +701,7 @@ export const NurturingPanel: React.FC<NurturingPanelProps> = ({
               </div>
             ) : null}
           </div>
-          </ScrollArea>
+          </div>
         </CollapsibleContent>
       </div>
     </Collapsible>
