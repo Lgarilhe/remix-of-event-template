@@ -47,6 +47,7 @@ interface Recipient {
   name: string;
   headline?: string;
   profile_id: string;
+  network_distance?: number | string; // 1=1st degree, 2=2nd degree, 3=3rd degree
   profile?: LinkedInProfile;
 }
 
@@ -334,14 +335,34 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
     try {
       const items = recipients
         .filter(r => generatedMessages[r.id])
-        .map(r => ({
-          account_id: accountId,
-          recipient_profile_id: r.profile_id,
-          recipient_name: r.name,
-          recipient_headline: r.headline,
-          subject: generatedMessages[r.id].subject,
-          message: generatedMessages[r.id].message,
-        }));
+        .map(r => {
+          // Parse network_distance - can be number or string like "DISTANCE_2"
+          let networkDistance: number | null = null;
+          if (typeof r.network_distance === 'number') {
+            networkDistance = r.network_distance;
+          } else if (typeof r.network_distance === 'string') {
+            const match = r.network_distance.match(/(\d+)/);
+            networkDistance = match ? parseInt(match[1], 10) : null;
+          } else if (r.profile?.network_distance) {
+            // Fallback to profile data
+            if (typeof r.profile.network_distance === 'number') {
+              networkDistance = r.profile.network_distance;
+            } else if (typeof r.profile.network_distance === 'string') {
+              const match = r.profile.network_distance.match(/(\d+)/);
+              networkDistance = match ? parseInt(match[1], 10) : null;
+            }
+          }
+          
+          return {
+            account_id: accountId,
+            recipient_profile_id: r.profile_id,
+            recipient_name: r.name,
+            recipient_headline: r.headline,
+            subject: generatedMessages[r.id].subject,
+            message: generatedMessages[r.id].message,
+            network_distance: networkDistance,
+          };
+        });
 
       const { data, error } = await supabase.functions.invoke('process-inmail-queue', {
         body: {

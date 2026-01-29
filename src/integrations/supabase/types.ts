@@ -117,6 +117,7 @@ export type Database = {
           error_message: string | null
           id: string
           message: string
+          network_distance: number | null
           recipient_headline: string | null
           recipient_name: string | null
           recipient_profile_id: string
@@ -134,6 +135,7 @@ export type Database = {
           error_message?: string | null
           id?: string
           message: string
+          network_distance?: number | null
           recipient_headline?: string | null
           recipient_name?: string | null
           recipient_profile_id: string
@@ -151,6 +153,7 @@ export type Database = {
           error_message?: string | null
           id?: string
           message?: string
+          network_distance?: number | null
           recipient_headline?: string | null
           recipient_name?: string | null
           recipient_profile_id?: string
