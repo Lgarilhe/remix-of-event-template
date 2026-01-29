@@ -48,7 +48,8 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
   const [cursors, setCursors] = useState<string[]>([]); // Stack of cursors for pagination
   const [currentPage, setCurrentPage] = useState(1);
   const [total, setTotal] = useState<number | null>(null);
-  const RESULTS_PER_PAGE = 20;
+  // UX requirement: always show 10 profiles per page (no choice)
+  const RESULTS_PER_PAGE = 10;
   const [hasSearched, setHasSearched] = useState(false);
   
   // Quota tracking
@@ -196,16 +197,11 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
   // Serialize filters to JSON for stable dependency tracking (for debounce)
   const filtersJson = useMemo(() => JSON.stringify(filters), [filters]);
 
-  // Apply client-side filters (calculated experience) and sort by score if enabled
+  // Sort by score if enabled (experience filtering is handled during fetch to guarantee 10 results/page)
   const filteredAndSortedResults = useMemo(() => {
-    // First, apply calculated experience filter
-    let filtered = filterByCalculatedExperience(
-      results,
-      filters.calculated_experience_min,
-      filters.calculated_experience_max
-    );
-    
-    // Then sort by score if enabled
+    let filtered = results;
+
+    // Sort by score if enabled
     if (sortByScore && Object.keys(jobScores).length > 0) {
       filtered = [...filtered].sort((a, b) => {
         const scoreA = jobScores[a.id]?.match_score ?? -1;
@@ -298,33 +294,33 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
 
     setLoading(true);
     try {
-      const searchParams: Record<string, unknown> = {
+      // Base params - pagination/limit are injected per fetch iteration
+      const baseParams: Record<string, unknown> = {
         action: 'search',
         account_id: selectedAccount,
         api: filters.api,
         category: filters.category,
-        limit: RESULTS_PER_PAGE,
       };
 
       // Keywords
-      if (filters.keywords) searchParams.keywords = filters.keywords;
+      if (filters.keywords) baseParams.keywords = filters.keywords;
 
       // Location - Recruiter uses full objects with priority/scope, others use IDs
       if (filters.location.length) {
         if (filters.api === 'recruiter') {
           // Send full location objects with priority and scope
-          searchParams.location = filters.location.map(f => ({
+          baseParams.location = filters.location.map(f => ({
             id: f.id,
             priority: f.priority || 'MUST_HAVE',
             scope: f.scope || 'CURRENT_OR_OPEN_TO_RELOCATE',
           }));
           // Add location radius if set
           if (filters.location_within_area !== null) {
-            searchParams.location_within_area = filters.location_within_area;
+            baseParams.location_within_area = filters.location_within_area;
           }
         } else {
           // Classic and Sales Navigator use simple ID arrays
-          searchParams.location = filters.location.map(f => f.id);
+          baseParams.location = filters.location.map(f => f.id);
         }
       }
       
@@ -338,28 +334,28 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
 
       if (effectiveSchool.length) {
         if (filters.api === 'recruiter') {
-          searchParams.school = effectiveSchool.map(f => ({
+          baseParams.school = effectiveSchool.map(f => ({
             id: f.id,
             priority: f.priority || 'MUST_HAVE',
           }));
         } else {
-          searchParams.school = effectiveSchool.map(f => f.id);
+          baseParams.school = effectiveSchool.map(f => f.id);
         }
       }
       
       // Industry - structure with include for Recruiter/Sales Nav
       if (filters.industry.length) {
-        searchParams.industry = { include: filters.industry.map(f => f.id) };
+        baseParams.industry = { include: filters.industry.map(f => f.id) };
       }
       
       // Company - ID-based with include structure
       if (filters.company.length) {
-        searchParams.company = { include: filters.company.map(f => f.id) };
+        baseParams.company = { include: filters.company.map(f => f.id) };
       }
       
       // Company keywords (Recruiter only) - keywords-based with priority/scope
       if (filters.api === 'recruiter' && filters.company_keywords.length) {
-        searchParams.company_keywords = filters.company_keywords.map(c => ({
+        baseParams.company_keywords = filters.company_keywords.map(c => ({
           keywords: c.keywords,
           priority: c.priority,
           scope: c.scope,
@@ -369,7 +365,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
       // Function/Department
       if (filters.function.length) {
         // Doc (Unipile): function = array of strings (IDs) (type DEPARTMENT)
-        searchParams.function = filters.function.map((f) => f.id);
+        baseParams.function = filters.function.map((f) => f.id);
       }
       
       // Degree (Recruiter) - Doc: { include: string[], exclude: string[] }
@@ -401,7 +397,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
         );
         
         if (includeIds.length > 0 || excludeIds.length > 0) {
-          searchParams.degree = {
+          baseParams.degree = {
             ...(includeIds.length > 0 && { include: includeIds }),
             ...(excludeIds.length > 0 && { exclude: excludeIds }),
           };
@@ -410,18 +406,18 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
       
       // Groups (Sales Navigator)
       if (filters.groups.length && filters.api === 'sales_navigator') {
-        searchParams.groups = filters.groups.map(f => f.id);
+        baseParams.groups = filters.groups.map(f => f.id);
       }
       
       // Company location (Sales Navigator)
       if (filters.company_location.length && filters.api === 'sales_navigator') {
-        searchParams.company_location = { include: filters.company_location.map(f => f.id) };
+        baseParams.company_location = { include: filters.company_location.map(f => f.id) };
       }
 
       // Job title - use current_job_title for Recruiter API with priority
       if (filters.job_title.length) {
         // Recruiter uses current_job_title, edge function handles the mapping
-        searchParams.job_title = filters.job_title.map(item => ({
+        baseParams.job_title = filters.job_title.map(item => ({
           id: item.id,
           priority: item.priority,
         }));
@@ -429,7 +425,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
 
       // Skills - with priority
       if (filters.skills.length) {
-        searchParams.skills = filters.skills.map(item => ({
+        baseParams.skills = filters.skills.map(item => ({
           id: item.id,
           priority: item.priority,
         }));
@@ -490,10 +486,10 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
       }
       
       if (allRoles.length) {
-        searchParams.role = allRoles;
+        baseParams.role = allRoles;
       }
-      if (filters.network_distance.length) searchParams.network_distance = filters.network_distance;
-      if (filters.profile_language.length) searchParams.profile_language = filters.profile_language;
+      if (filters.network_distance.length) baseParams.network_distance = filters.network_distance;
+      if (filters.profile_language.length) baseParams.profile_language = filters.profile_language;
 
       // Years of experience (Recruiter) / Tenure (Sales Navigator)
       // Only use explicit years_of_experience filters (seniority now mapped to role/title keywords)
@@ -506,7 +502,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
           if (explicitMin !== null) yearsExp.min = explicitMin;
           if (explicitMax !== null) yearsExp.max = explicitMax;
           if (Object.keys(yearsExp).length) {
-            searchParams.years_of_experience = yearsExp;
+            baseParams.years_of_experience = yearsExp;
           }
         } else if (filters.api === 'sales_navigator') {
           // Sales Navigator uses `tenure` ranges
@@ -514,7 +510,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
           if (explicitMin !== null) tenure.min = explicitMin;
           if (explicitMax !== null) tenure.max = explicitMax;
           if (Object.keys(tenure).length) {
-            searchParams.tenure = [tenure];
+            baseParams.tenure = [tenure];
           }
         }
       }
@@ -524,17 +520,17 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
         const tenure: Record<string, number> = {};
         if (filters.tenure_at_company_min !== null) tenure.min = filters.tenure_at_company_min;
         if (filters.tenure_at_company_max !== null) tenure.max = filters.tenure_at_company_max;
-        searchParams.tenure = [tenure];
+        baseParams.tenure = [tenure];
       }
 
       // Boolean filters
       // NOTE: Recruiter "Open to work" is exposed by the Unipile schema as `spotlights: string[]`.
       // The API does NOT expect `spotlight` (singular).
-      if (filters.open_to.length) searchParams.open_to = filters.open_to;
+      if (filters.open_to.length) baseParams.open_to = filters.open_to;
 
       // Recruiter specific
-      if (filters.hiring_project) searchParams.hiring_project = filters.hiring_project;
-      if (filters.talent_pool) searchParams.talent_pool = filters.talent_pool;
+      if (filters.hiring_project) baseParams.hiring_project = filters.hiring_project;
+      if (filters.talent_pool) baseParams.talent_pool = filters.talent_pool;
 
       // Spotlights (Recruiter)
       if (filters.api === 'recruiter') {
@@ -548,7 +544,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
         ) as string[];
 
         if (spotlights.length) {
-          searchParams.spotlights = spotlights;
+          baseParams.spotlights = spotlights;
         }
       }
       
@@ -587,77 +583,114 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
       }
       
       if (recruitingActivity.length) {
-        searchParams.recruiting_activity = recruitingActivity;
+        baseParams.recruiting_activity = recruitingActivity;
       }
 
       // Company filters (Sales Navigator)
-      if (filters.company_headcount.length) searchParams.company_headcount = filters.company_headcount;
-      if (filters.company_type.length) searchParams.company_type = filters.company_type;
+      if (filters.company_headcount.length) baseParams.company_headcount = filters.company_headcount;
+      if (filters.company_type.length) baseParams.company_type = filters.company_type;
 
       // Past filters
       if (filters.past_company.length) {
-        searchParams.past_company = { include: filters.past_company.map(f => f.id) };
+        baseParams.past_company = { include: filters.past_company.map(f => f.id) };
       }
       if (filters.past_job_title.length) {
-        searchParams.past_job_title = filters.past_job_title.map(item => ({
+        baseParams.past_job_title = filters.past_job_title.map(item => ({
           id: item.id,
           priority: item.priority,
         }));
       }
 
-      // Pagination - use provided cursor for page navigation
-      if (!newSearch && paginationCursor) {
-        searchParams.cursor = paginationCursor;
-      }
+      // Always return exactly RESULTS_PER_PAGE profiles after XP filtering.
+      // We fetch iteratively using the cursor until we have enough results.
+      const desiredCount = RESULTS_PER_PAGE;
+      const maxFetchIterations = 6;
+      const collected: LinkedInProfile[] = [];
+      const seen = new Set<string>();
 
-      console.log('Search params:', searchParams);
+      let nextCursor: string | null = (!newSearch && paginationCursor) ? paginationCursor : null;
+      let lastCursorFromApi: string | null = null;
+      let fetchedTotal: number | null = null;
 
-      const response = await supabase.functions.invoke('unipile-search', {
-        body: searchParams,
-      });
+      for (let i = 0; i < maxFetchIterations && collected.length < desiredCount; i++) {
+        const remaining = desiredCount - collected.length;
 
-      if (response.error) throw response.error;
-      if (!response.data?.success) throw new Error(response.data?.error);
+        // quota check per batch (avoid over-fetching)
+        if (!quota.canPerformAction('searchResultsFetched', remaining)) {
+          break;
+        }
 
-      const newResults = response.data.results || [];
-      
-      // Debug: Log first result structure to see available fields for messaging
-      if (newResults.length > 0) {
-        const firstResult = newResults[0];
-        console.log('[LinkedInSearch] First result structure:', {
-          id: firstResult.id,
-          member_urn: firstResult.member_urn,
-          recruiter_candidate_id: firstResult.recruiter_candidate_id,
-          public_identifier: firstResult.public_identifier,
-          profile_url: firstResult.profile_url,
-          name: firstResult.name,
-          // Log all keys to see what's available
-          availableKeys: Object.keys(firstResult),
+        const params: Record<string, unknown> = {
+          ...baseParams,
+          limit: remaining,
+          ...(nextCursor ? { cursor: nextCursor } : {}),
+        };
+
+        console.log('[LinkedInSearch] Search params (batch):', params);
+
+        const response = await supabase.functions.invoke('unipile-search', {
+          body: params,
         });
+
+        if (response.error) throw response.error;
+        if (!response.data?.success) throw new Error(response.data?.error);
+
+        const batch: LinkedInProfile[] = response.data.results || [];
+        const batchCursor: string | null = response.data.cursor || null;
+        fetchedTotal = fetchedTotal ?? (response.data.total || null);
+
+        quota.recordAction('searchResultsFetched', batch.length);
+
+        // Debug: Log first result structure to see available fields for messaging
+        if (batch.length > 0 && i === 0) {
+          const firstResult: any = batch[0];
+          console.log('[LinkedInSearch] First result structure:', {
+            id: firstResult.id,
+            member_urn: firstResult.member_urn,
+            recruiter_candidate_id: firstResult.recruiter_candidate_id,
+            public_identifier: firstResult.public_identifier,
+            profile_url: firstResult.profile_url,
+            name: firstResult.name,
+            availableKeys: Object.keys(firstResult),
+          });
+        }
+
+        // Apply calculated XP filter on the batch to guarantee 10 displayed profiles
+        const filteredBatch = filterByCalculatedExperience(
+          batch,
+          filters.calculated_experience_min,
+          filters.calculated_experience_max
+        );
+
+        for (const p of filteredBatch) {
+          if (!p?.id) continue;
+          if (seen.has(p.id)) continue;
+          seen.add(p.id);
+          collected.push(p);
+          if (collected.length >= desiredCount) break;
+        }
+
+        lastCursorFromApi = batchCursor;
+        nextCursor = batchCursor;
+
+        // No more pages
+        if (!batchCursor || batch.length === 0) break;
       }
 
-      // Don't apply client-side skill filtering - trust the API to filter correctly
-      // The API already applies skill filters on the server side with proper matching logic
-      const displayedResults = newResults;
-
-      // Track quota usage
-      quota.recordAction('searchResultsFetched', newResults.length);
-      
       // Warn if near limit
       if (quota.isNearLimit('searchResultsFetched')) {
         toast.warning('Attention: vous approchez de la limite quotidienne de résultats de recherche');
       }
 
       // Replace results (pagination mode, not append)
-      setResults(displayedResults);
+      setResults(collected);
 
       // Store current cursor for next page navigation
-      const newCursor = response.data.cursor || null;
-      setCursor(newCursor);
-      setTotal(response.data.total || null);
+      setCursor(lastCursorFromApi);
+      setTotal(fetchedTotal);
       setHasSearched(true);
-
-      if (newResults.length === 0 && newSearch) {
+      
+      if (collected.length === 0 && newSearch) {
         toast.info('Aucun résultat trouvé');
       }
     } catch (error) {
