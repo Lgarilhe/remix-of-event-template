@@ -340,11 +340,22 @@ export const MessagesInbox: React.FC<MessagesInboxProps> = ({
       if (attendee.first_name || attendee.last_name) {
         return `${attendee.first_name || ''} ${attendee.last_name || ''}`.trim();
       }
+      // Try to extract from public_identifier (e.g., john-doe-12345 -> John Doe)
+      if (attendee.public_identifier) {
+        const cleanId = attendee.public_identifier.replace(/-\d+$/, '').replace(/-/g, ' ');
+        if (cleanId.length > 2) {
+          return cleanId.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+        }
+      }
     }
-    // Then try chat name (for group chats)
+    // Then try chat name (for group chats or InMail subjects)
     if (chat.name) return chat.name;
-    // Subject is typically InMail subject, not the person's name
-    // Only use as last resort or show with context
+    // Try subject for InMails
+    if (chat.subject) return chat.subject;
+    // Last resort - show provider ID hint if available
+    if (chat.attendee_provider_id) {
+      return `Profil LinkedIn`;
+    }
     return 'Conversation';
   };
 
