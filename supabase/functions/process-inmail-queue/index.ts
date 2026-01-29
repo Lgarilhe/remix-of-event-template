@@ -246,10 +246,32 @@ serve(async (req: Request) => {
           // 1st degree = direct message, 2nd/3rd degree = InMail
           const isFirstDegree = item.network_distance === 1;
           
+          // Validate profile ID format
+          // Unipile expects provider_id in URN format for Recruiter: AE... or ACo... etc.
+          // If it's a numeric ID, it's likely a Recruiter-internal member ID that won't work
+          const profileId = item.recipient_profile_id;
+          const isValidUrn = profileId && (
+            profileId.startsWith('AE') || 
+            profileId.startsWith('ACo') || 
+            profileId.startsWith('ACw') || 
+            profileId.startsWith('ADo')
+          );
+          
+          console.log(`Profile ID validation for ${item.recipient_name}:`, {
+            profileId,
+            isValidUrn,
+            networkDistance: item.network_distance,
+            isFirstDegree,
+          });
+          
+          if (!isValidUrn) {
+            console.warn(`Invalid profile ID format for ${item.recipient_name}: ${profileId}. Expected URN format (AE..., ACo..., etc.)`);
+          }
+          
           const formData = new FormData();
           formData.append("account_id", item.account_id);
           formData.append("text", item.message);
-          formData.append("attendees_ids", item.recipient_profile_id);
+          formData.append("attendees_ids", profileId);
           
           if (isFirstDegree) {
             // Direct message for 1st degree connections - no InMail needed
@@ -263,6 +285,13 @@ serve(async (req: Request) => {
             formData.append("linkedin[inmail]", "true");
             formData.append("linkedin[subject]", item.subject);
           }
+
+          console.log(`Sending to Unipile:`, {
+            account_id: item.account_id,
+            attendees_ids: profileId,
+            isInMail: !isFirstDegree,
+            subject: !isFirstDegree ? item.subject : undefined,
+          });
 
           const response = await fetch(
             `https://${unipileDsn}/api/v1/chats`,

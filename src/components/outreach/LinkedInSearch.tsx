@@ -558,6 +558,21 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
       if (!response.data?.success) throw new Error(response.data?.error);
 
       const newResults = response.data.results || [];
+      
+      // Debug: Log first result structure to see available fields for messaging
+      if (newResults.length > 0) {
+        const firstResult = newResults[0];
+        console.log('[LinkedInSearch] First result structure:', {
+          id: firstResult.id,
+          member_urn: firstResult.member_urn,
+          recruiter_candidate_id: firstResult.recruiter_candidate_id,
+          public_identifier: firstResult.public_identifier,
+          profile_url: firstResult.profile_url,
+          name: firstResult.name,
+          // Log all keys to see what's available
+          availableKeys: Object.keys(firstResult),
+        });
+      }
 
       // Don't apply client-side skill filtering - trust the API to filter correctly
       // The API already applies skill filters on the server side with proper matching logic
