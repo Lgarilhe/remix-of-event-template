@@ -13,6 +13,8 @@ interface ProfileData {
   location?: string;
   skills?: string[];
   pastPositions?: string[];
+  education?: string[];
+  yearsOfExperience?: number;
 }
 
 interface JobData {
@@ -22,7 +24,28 @@ interface JobData {
   description?: string;
   location?: string;
   remote?: string;
+  seniority?: string;
+  xpMin?: number;
+  xpMax?: number;
+  salaryMin?: number;
+  salaryMax?: number;
+  tjmMin?: number;
+  tjmMax?: number;
+  contractType?: string;
+  // Scoring criteria
+  mustHave?: string;
+  shouldHave?: string;
+  niceToHave?: string;
+  transversalCriteria?: {
+    must?: string;
+    should?: string;
+    niceToHave?: string;
+    context?: string;
+  };
 }
+
+// Candidate status determines the message objective
+type CandidateStatus = 'to_evaluate' | 'to_contact' | 'in_sequence' | 'replied' | 'other';
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -30,11 +53,12 @@ serve(async (req) => {
   }
 
   try {
-    const { profile, job, tone = "professional", senderName } = await req.json() as {
+    const { profile, job, tone = "professional", senderName, candidateStatus = "to_evaluate" } = await req.json() as {
       profile: ProfileData;
       job: JobData;
       tone?: "professional" | "casual" | "enthusiastic";
       senderName?: string;
+      candidateStatus?: CandidateStatus;
     };
     
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
@@ -53,6 +77,60 @@ serve(async (req) => {
       enthusiastic: "Tutoiement, ton dynamique mais pas surjoué. Montre un intérêt sincère."
     };
 
+    // Build salary info for the prompt
+    const salaryInfo: string[] = [];
+    if (job.salaryMin || job.salaryMax) {
+      salaryInfo.push(`Salaire: ${job.salaryMin || '?'}k€ - ${job.salaryMax || '?'}k€`);
+    }
+    if (job.tjmMin || job.tjmMax) {
+      salaryInfo.push(`TJM: ${job.tjmMin || '?'}€ - ${job.tjmMax || '?'}€/jour`);
+    }
+
+    // Build criteria context
+    const criteriaContext: string[] = [];
+    if (job.mustHave) criteriaContext.push(`Must-have: ${job.mustHave}`);
+    if (job.shouldHave) criteriaContext.push(`Should-have: ${job.shouldHave}`);
+    if (job.transversalCriteria?.must) criteriaContext.push(`Critères transverses: ${job.transversalCriteria.must}`);
+
+    // Determine message objective based on candidate status
+    const statusInstructions = {
+      to_evaluate: `
+OBJECTIF: QUALIFIER LE CANDIDAT
+Structure du message:
+1. Accroche personnalisée (basée sur son profil/expérience)
+2. Présentation courte du poste
+3. FIN: 1-2 questions de qualification pour collecter des infos:
+   - Prétentions salariales / TJM attendu
+   - Disponibilité / préavis
+   - Préférence remote/présentiel
+   - Critères must-have à valider (ex: niveau d'anglais si requis)
+
+Exemple de fin: "Pour voir si ça peut matcher: tu vises quoi en TJM ? Et tu serais dispo quand ?"`,
+      
+      to_contact: `
+OBJECTIF: OBTENIR UN CALL
+Structure du message:
+1. Accroche personnalisée (basée sur son profil/expérience)
+2. Présentation courte du poste + élément différenciant
+3. FIN: CTA DIRECT et concret:
+   - Proposition de créneau ("Dispo mardi ou mercredi pour un call de 15 min ?")
+   - Ou question fermée ("On se cale un call cette semaine ?")
+
+Exemple de fin: "Dispo jeudi ou vendredi pour un call de 15 min ?"`,
+      
+      in_sequence: `
+OBJECTIF: RELANCER SUBTILEMENT
+Structure: Message court de relance, pas insistant. Rappel du poste + question ouverte.`,
+      
+      replied: `
+OBJECTIF: CONTINUER LA CONVERSATION
+Structure: Répondre à ce qu'il a dit, avancer vers un call ou qualifier.`,
+      
+      other: `
+OBJECTIF: MESSAGE STANDARD
+Structure: Accroche + présentation + CTA générique.`
+    };
+
     const prompt = `Tu es un recruteur tech expérimenté qui écrit des messages LinkedIn. Tu dois écrire EXACTEMENT comme un humain, pas comme une IA.
 
 PROFIL DU CANDIDAT:
@@ -62,14 +140,23 @@ PROFIL DU CANDIDAT:
 - Localisation: ${profile.location || 'Non spécifié'}
 - Compétences: ${profile.skills?.join(', ') || 'Non spécifiées'}
 - Expériences passées: ${profile.pastPositions?.slice(0, 3).join('; ') || 'Non spécifiées'}
+${profile.yearsOfExperience ? `- Années d'expérience: ~${profile.yearsOfExperience} ans` : ''}
+${profile.education?.length ? `- Formation: ${profile.education.slice(0, 2).join('; ')}` : ''}
 
 POSTE À POURVOIR:
 - Titre: ${job.title}
 - Client: ${job.client?.name || 'Client confidentiel'} (${job.client?.sector || 'Tech'})
 - Compétences requises: ${job.skills?.join(', ') || 'Non spécifiées'}
+- Séniorité: ${job.seniority || 'Non spécifié'} | XP: ${job.xpMin || '?'}-${job.xpMax || '?'} ans
 - Localisation: ${job.location || 'Non spécifié'}
 - Télétravail: ${job.remote || 'Non spécifié'}
+- Type contrat: ${job.contractType || 'Non spécifié'}
+${salaryInfo.length > 0 ? `- Rémunération: ${salaryInfo.join(' | ')}` : ''}
+${criteriaContext.length > 0 ? `- Critères clés: ${criteriaContext.join(' | ')}` : ''}
 ${job.description ? `- Contexte: ${job.description.slice(0, 200)}...` : ''}
+
+STATUT CANDIDAT: ${candidateStatus.toUpperCase()}
+${statusInstructions[candidateStatus] || statusInstructions.other}
 
 RÈGLES ABSOLUES - MESSAGE HUMAIN:
 1. ${toneInstructions[tone]}
@@ -80,18 +167,28 @@ RÈGLES ABSOLUES - MESSAGE HUMAIN:
 6. Commence direct, pas de "Bonjour, je me permets de..."
 7. UN SEUL point de personnalisation, pas trois.
 8. Maximum 80-120 mots. Court = humain.
-9. Call-to-action simple: "Dispo pour en parler ?" ou "Un café virtuel cette semaine ?"
+9. Respecte l'OBJECTIF selon le statut candidat ci-dessus.
 10. Signe avec le prénom: "${senderName || '[Prénom]'}"
 
-
-EXEMPLE DE BON MESSAGE (casual):
+EXEMPLE MESSAGE "À ÉVALUER" (casual):
 "Salut Thomas,
 
-Je recrute pour un poste de dev Go chez Numspot, le cloud souverain français. Vu ton expérience Terraform chez Webedia, je pense que ça pourrait matcher.
+Je recrute un dev Go pour Numspot, le cloud souverain. Vu ton XP Terraform chez Webedia, ça pourrait matcher.
 
-C'est du dev infra, stack Go/K8s, équipe de 8 personnes. Full remote possible.
+Stack Go/K8s, équipe de 8, full remote possible.
 
-Dispo pour un call de 15 min cette semaine ?
+Pour voir si c'est pertinent: tu vises quoi en package ? Et tu serais dispo quand ?
+
+Marc"
+
+EXEMPLE MESSAGE "À CONTACTER" (casual):
+"Salut Thomas,
+
+Je recrute un dev Go pour Numspot, le cloud souverain. Vu ton XP Terraform chez Webedia, je pense que ça peut coller.
+
+Stack Go/K8s, équipe de 8, full remote OK. Package 65-75k selon profil.
+
+Dispo mercredi ou jeudi pour un call de 15 min ?
 
 Marc"
 
