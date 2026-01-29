@@ -19,7 +19,9 @@ import {
   Check,
   Briefcase,
   Reply,
-  Hourglass
+  Hourglass,
+  Sparkles,
+  Zap
 } from 'lucide-react';
 import { format, formatDistanceToNow, isToday, isYesterday, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -119,6 +121,11 @@ export const MessagesInbox: React.FC<MessagesInboxProps> = ({
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const [enrollmentsMap, setEnrollmentsMap] = useState<Map<string, SequenceEnrollmentInfo>>(new Map());
   const [showUnreadOnly, setShowUnreadOnly] = useState(false);
+  
+  // Reply suggestions state
+  const [replySuggestions, setReplySuggestions] = useState<Array<{ text: string; type: string }>>([]);
+  const [loadingSuggestions, setLoadingSuggestions] = useState(false);
+  const [suggestionsLoaded, setSuggestionsLoaded] = useState(false);
 
   // Fetch sequence enrollments to get job context for profiles
   const fetchEnrollments = useCallback(async () => {
@@ -293,6 +300,9 @@ export const MessagesInbox: React.FC<MessagesInboxProps> = ({
   useEffect(() => {
     if (selectedChat) {
       fetchMessages(selectedChat.id);
+      // Reset suggestions when chat changes
+      setReplySuggestions([]);
+      setSuggestionsLoaded(false);
     }
   }, [selectedChat, fetchMessages]);
 
@@ -302,6 +312,96 @@ export const MessagesInbox: React.FC<MessagesInboxProps> = ({
       messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }
   }, [messages, loadingMessages]);
+
+  // Fetch AI reply suggestions
+  const fetchReplySuggestions = useCallback(async () => {
+    if (!selectedChat || messages.length === 0 || loadingSuggestions || suggestionsLoaded) return;
+    
+    setLoadingSuggestions(true);
+    try {
+      const recipientName = getChatDisplayName(selectedChat);
+      const recipientHeadline = getChatHeadline(selectedChat);
+      const jobInfo = getChatJobInfo(selectedChat);
+      
+      const response = await supabase.functions.invoke('generate-reply-suggestions', {
+        body: {
+          context: {
+            recipientName,
+            recipientHeadline,
+            messages: messages.slice(-10).map(m => ({
+              text: getMessageText(m),
+              is_sender: m.is_sender,
+              timestamp: m.timestamp,
+            })),
+            jobContext: jobInfo ? {
+              title: jobInfo.job_title || 'Poste non spécifié',
+            } : undefined,
+          },
+        },
+      });
+
+      if (response.error) throw response.error;
+      
+      if (response.data?.success && response.data?.suggestions) {
+        setReplySuggestions(response.data.suggestions);
+      }
+      setSuggestionsLoaded(true);
+    } catch (error) {
+      console.error('Error fetching suggestions:', error);
+      // Don't show error toast, just silently fail
+      setSuggestionsLoaded(true);
+    } finally {
+      setLoadingSuggestions(false);
+    }
+  }, [selectedChat, messages, loadingSuggestions, suggestionsLoaded]);
+
+  // Handle suggestion click
+  const handleSuggestionClick = (text: string) => {
+    setNewMessage(text);
+  };
+
+  // Send suggestion directly
+  const handleSuggestionSend = async (text: string) => {
+    if (!selectedAccount || !selectedChat || sending) return;
+    
+    setSending(true);
+    try {
+      const response = await supabase.functions.invoke('unipile-search', {
+        body: { 
+          action: 'send_message', 
+          account_id: selectedAccount,
+          chat_id: selectedChat.id,
+          text: text.trim(),
+        },
+      });
+
+      if (response.error) throw response.error;
+      if (!response.data?.success) throw new Error(response.data?.error);
+
+      // Add the message optimistically
+      const sentMessage: Message = {
+        id: Date.now().toString(),
+        text: text.trim(),
+        timestamp: new Date().toISOString(),
+        is_sender: true,
+      };
+      setMessages(prev => [...prev, sentMessage]);
+      setReplySuggestions([]);
+      setSuggestionsLoaded(false);
+      
+      // Scroll to bottom
+      setTimeout(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+      }, 100);
+
+      toast.success('Message envoyé');
+    } catch (error) {
+      console.error('Error sending message:', error);
+      toast.error("Erreur lors de l'envoi du message");
+    } finally {
+      setSending(false);
+    }
+  };
 
   // Format timestamp for display
   const formatMessageTime = (timestamp?: string) => {
@@ -801,8 +901,73 @@ export const MessagesInbox: React.FC<MessagesInboxProps> = ({
               )}
             </ScrollArea>
 
+            {/* Reply Suggestions */}
+            <div className="px-3 pt-2 border-t border-[#1A1A1A]/10">
+              {/* Generate suggestions button */}
+              {!suggestionsLoaded && messages.length > 0 && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={fetchReplySuggestions}
+                  disabled={loadingSuggestions}
+                  className="w-full h-8 text-xs gap-2 text-[#0077B5] hover:text-[#005E93] hover:bg-[#0077B5]/5 mb-2"
+                >
+                  {loadingSuggestions ? (
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                  ) : (
+                    <Sparkles className="w-3 h-3" />
+                  )}
+                  {loadingSuggestions ? 'Génération en cours...' : 'Proposer des réponses IA'}
+                </Button>
+              )}
+              
+              {/* Suggestions chips */}
+              {replySuggestions.length > 0 && (
+                <div className="flex flex-col gap-1.5 mb-2">
+                  <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                    <Sparkles className="w-3 h-3 text-[#0077B5]" />
+                    <span>Réponses suggérées</span>
+                    <button 
+                      onClick={() => { setReplySuggestions([]); setSuggestionsLoaded(false); }}
+                      className="ml-auto text-muted-foreground hover:text-foreground"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                  {replySuggestions.map((suggestion, idx) => (
+                    <div
+                      key={idx}
+                      className="group flex items-start gap-2 p-2 bg-[#0077B5]/5 hover:bg-[#0077B5]/10 rounded-lg cursor-pointer transition-colors"
+                      onClick={() => handleSuggestionClick(suggestion.text)}
+                    >
+                      <p className="flex-1 text-xs text-[#1A1A1A] line-clamp-2">
+                        {suggestion.text}
+                      </p>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleSuggestionSend(suggestion.text);
+                        }}
+                        disabled={sending}
+                        title="Envoyer directement"
+                      >
+                        {sending ? (
+                          <Loader2 className="w-3 h-3 animate-spin" />
+                        ) : (
+                          <Zap className="w-3 h-3 text-[#0077B5]" />
+                        )}
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
             {/* Message Input */}
-            <div className="p-3 border-t border-[#1A1A1A]/10">
+            <div className="px-3 pb-3">
               <div className="flex items-end gap-2">
                 <Input
                   placeholder="Écrivez un message..."
