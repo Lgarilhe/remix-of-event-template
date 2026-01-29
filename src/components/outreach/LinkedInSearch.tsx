@@ -325,8 +325,14 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
       }
       
       // School - Recruiter uses priority format, others use simple ID array
-      // IMPORTANT: On the Unipile Recruiter endpoint, "school" behaves like a HARD filter.
-      // So we only send non-CAN_HAVE items; CAN_HAVE stays as a signal in the UI.
+      // IMPORTANT: On the Unipile Recruiter endpoint, multiple school filters with MUST_HAVE
+      // are AND'ed together, meaning candidates must have attended ALL schools = 0 results!
+      // 
+      // Strategy:
+      // - CAN_HAVE: UI-only signal, not sent to API
+      // - MUST_HAVE / SHOULD_HAVE: Keep only ONE filter with CAN_HAVE priority to create OR logic
+      //   (LinkedIn will return candidates from ANY of the listed schools)
+      // - DOESNT_HAVE: Exclusions can be sent as-is
       const effectiveSchool =
         filters.api === 'recruiter'
           ? filters.school.filter((f) => (f.priority || 'MUST_HAVE') !== 'CAN_HAVE')
@@ -334,10 +340,26 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
 
       if (effectiveSchool.length) {
         if (filters.api === 'recruiter') {
-          baseParams.school = effectiveSchool.map(f => ({
-            id: f.id,
-            priority: f.priority || 'MUST_HAVE',
-          }));
+          // Group by intent: schools to include vs exclude
+          const includeSchools = effectiveSchool.filter(f => f.priority !== 'DOESNT_HAVE');
+          const excludeSchools = effectiveSchool.filter(f => f.priority === 'DOESNT_HAVE');
+          
+          // For include schools: send them all with CAN_HAVE to create OR logic
+          // This way LinkedIn returns candidates who attended ANY of these schools
+          const schoolFilters = [
+            ...includeSchools.map(f => ({
+              id: f.id,
+              priority: 'CAN_HAVE' as const, // OR logic between schools
+            })),
+            ...excludeSchools.map(f => ({
+              id: f.id,
+              priority: 'DOESNT_HAVE' as const,
+            })),
+          ];
+          
+          if (schoolFilters.length > 0) {
+            baseParams.school = schoolFilters;
+          }
         } else {
           baseParams.school = effectiveSchool.map(f => f.id);
         }
