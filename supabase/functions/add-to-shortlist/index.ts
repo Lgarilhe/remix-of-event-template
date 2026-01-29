@@ -196,7 +196,8 @@ serve(async (req) => {
       );
     }
 
-    // Step 4: Create Shortlist entry with all fields
+    // Step 4: Create Shortlist entry with validated fields only
+    // Note: Only using properties that exist in the Notion Shortlist database
     const shortlistTitle = data.jobTitle 
       ? `${data.name} - ${data.jobTitle}`
       : data.name;
@@ -223,38 +224,14 @@ serve(async (req) => {
       };
     }
 
-    // Add accompanying type if provided
-    if (data.accompanyingType) {
-      shortlistProperties["Type d'accompagnement"] = {
-        select: { name: data.accompanyingType }
-      };
-    }
-
-    // Add recruiter if provided
-    if (data.recruiterName) {
-      shortlistProperties['Recruteur'] = {
-        rich_text: [{ text: { content: data.recruiterName } }]
-      };
-    }
-
-    // Add client name if provided
-    if (data.clientName) {
-      shortlistProperties['Client'] = {
-        rich_text: [{ text: { content: data.clientName } }]
-      };
-    }
-
-    // Add start date if provided (as date property)
-    if (data.startDate) {
-      shortlistProperties['Date de shortlist'] = {
-        date: { start: data.startDate }
-      };
-    } else {
-      // Default to today's date
-      shortlistProperties['Date de shortlist'] = {
-        date: { start: new Date().toISOString().split('T')[0] }
-      };
-    }
+    // Note: The following properties were removed because they don't exist 
+    // or have different types in the Notion Shortlist database:
+    // - "Type d'accompagnement" (doesn't exist)
+    // - "Recruteur" (requires people type, not text)
+    // - "Client" (requires relation type, not text) 
+    // - "Date de shortlist" (doesn't exist)
+    // 
+    // To add these fields, create them in Notion first with the correct types
 
     console.log('Creating shortlist entry...');
     const shortlistResult = await createNotionPage(SHORTLIST_DATABASE_ID, shortlistProperties);
