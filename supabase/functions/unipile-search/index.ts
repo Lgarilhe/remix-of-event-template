@@ -843,51 +843,106 @@ async function handleGetChats(
   accountId: string,
   params: Record<string, unknown>
 ): Promise<Response> {
-  const { attendee_provider_id, limit = 250, cursor } = params;
-
-  const queryParams = new URLSearchParams();
-  queryParams.set('account_id', accountId);
-  // Request max chats (250 is the API limit) to ensure we get all recent conversations
-  // including both LinkedIn Classic and LinkedIn Recruiter messages
-  queryParams.set('limit', String(Math.min(Number(limit), 250)));
-  
-  if (cursor) {
-    queryParams.set('cursor', String(cursor));
-  }
+  const { attendee_provider_id, limit = 100, cursor, folder } = params;
 
   // If we have an attendee_provider_id, use the dedicated endpoint
-  // This is more efficient than listing all chats and filtering client-side
-  let url: string;
   if (attendee_provider_id) {
-    url = `${baseUrl}/chat_attendees/${encodeURIComponent(String(attendee_provider_id))}/chats?${queryParams.toString()}`;
+    const queryParams = new URLSearchParams();
+    queryParams.set('account_id', accountId);
+    queryParams.set('limit', String(Math.min(Number(limit), 250)));
+    if (cursor) queryParams.set('cursor', String(cursor));
+    
+    const url = `${baseUrl}/chat_attendees/${encodeURIComponent(String(attendee_provider_id))}/chats?${queryParams.toString()}`;
     console.log('Get chats by attendee URL:', url);
-  } else {
-    url = `${baseUrl}/chats?${queryParams.toString()}`;
-    console.log('Get all chats URL:', url, '| Account:', accountId);
-  }
-
-  const response = await fetch(url, {
-    headers: {
-      'X-API-KEY': apiKey,
-      'Accept': 'application/json',
-    },
-  });
-
-  const data = await response.json();
-
-  if (!response.ok) {
-    console.error('Chats error:', data);
+    
+    const response = await fetch(url, {
+      headers: { 'X-API-KEY': apiKey, 'Accept': 'application/json' },
+    });
+    
+    const data = await response.json();
+    if (!response.ok) {
+      console.error('Chats error:', data);
+      return new Response(
+        JSON.stringify({ success: false, error: data.detail || data.message || 'Erreur', chats: [] }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+    
+    // Return directly for attendee-based queries (simpler case)
+    const attendeeChats = data.items || [];
+    console.log('Chats fetched by attendee:', attendeeChats.length);
+    
+    // Quick enrichment for attendee-based query
+    const enrichedAttendeeChats = attendeeChats.map((chat: Record<string, unknown>) => ({
+      ...chat,
+      attendees: chat.attendees || [],
+    }));
+    
     return new Response(
-      JSON.stringify({ 
-        success: false, 
-        error: data.detail || data.message || 'Erreur de récupération des conversations',
-        chats: [] 
-      }),
-      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      JSON.stringify({ success: true, chats: enrichedAttendeeChats, cursor: data.cursor }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
 
-  const chats = data.items || [];
+  // For inbox: fetch BOTH LinkedIn Classic AND Recruiter folders in parallel
+  // The API returns different conversations based on the folder parameter
+  const folders = ['INBOX_LINKEDIN_CLASSIC', 'INBOX_LINKEDIN_RECRUITER'];
+  
+  console.log('Fetching chats from folders:', folders, '| Account:', accountId);
+  
+  const fetchFromFolder = async (folderName: string) => {
+    const queryParams = new URLSearchParams();
+    queryParams.set('account_id', accountId);
+    queryParams.set('limit', String(Math.min(Number(limit), 125))); // Split limit between folders
+    queryParams.set('folder', folderName);
+    if (cursor) queryParams.set('cursor', String(cursor));
+    
+    const url = `${baseUrl}/chats?${queryParams.toString()}`;
+    console.log(`Fetching folder ${folderName}:`, url);
+    
+    try {
+      const response = await fetch(url, {
+        headers: { 'X-API-KEY': apiKey, 'Accept': 'application/json' },
+      });
+      
+      const data = await response.json();
+      if (!response.ok) {
+        console.error(`Error fetching ${folderName}:`, data);
+        return [];
+      }
+      
+      const items = data.items || [];
+      console.log(`Folder ${folderName}: ${items.length} chats`);
+      return items;
+    } catch (error) {
+      console.error(`Exception fetching ${folderName}:`, error);
+      return [];
+    }
+  };
+  
+  // Fetch both folders in parallel
+  const [classicChats, recruiterChats] = await Promise.all([
+    fetchFromFolder('INBOX_LINKEDIN_CLASSIC'),
+    fetchFromFolder('INBOX_LINKEDIN_RECRUITER'),
+  ]);
+  
+  // Merge and dedupe by chat ID, then sort by timestamp (most recent first)
+  const chatMap = new Map<string, Record<string, unknown>>();
+  
+  [...classicChats, ...recruiterChats].forEach((chat: Record<string, unknown>) => {
+    const chatId = chat.id as string;
+    if (!chatMap.has(chatId)) {
+      chatMap.set(chatId, chat);
+    }
+  });
+  
+  const chats = Array.from(chatMap.values()).sort((a, b) => {
+    const timeA = new Date(a.timestamp as string).getTime();
+    const timeB = new Date(b.timestamp as string).getTime();
+    return timeB - timeA; // Most recent first
+  });
+  
+  console.log(`Total merged chats: ${chats.length} (Classic: ${classicChats.length}, Recruiter: ${recruiterChats.length})`);
   
   // Log folder distribution for debugging
   const folderCounts: Record<string, number> = {};
@@ -974,7 +1029,8 @@ async function handleGetChats(
     JSON.stringify({ 
       success: true, 
       chats: enrichedChats,
-      cursor: data.cursor,
+      // No cursor for merged results - pagination would need separate handling
+      cursor: null,
     }),
     { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
   );
