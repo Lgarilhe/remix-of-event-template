@@ -334,17 +334,6 @@ export const MessagesInbox: React.FC<MessagesInboxProps> = ({
     // First try attendees array - this is the actual contact name
     const attendee = chat.attendees?.[0];
     
-    // Debug log to understand what data we're getting
-    if (!attendee?.name && !attendee?.display_name) {
-      console.log('Chat missing attendee name:', {
-        chatId: chat.id,
-        attendees: chat.attendees,
-        name: chat.name,
-        subject: chat.subject,
-        attendee_provider_id: chat.attendee_provider_id,
-      });
-    }
-    
     if (attendee) {
       // Try different name formats from Unipile API
       if (attendee.display_name) return attendee.display_name;
