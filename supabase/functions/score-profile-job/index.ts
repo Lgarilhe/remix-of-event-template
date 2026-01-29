@@ -35,6 +35,17 @@ interface JobData {
   tjmMin?: number;
   tjmMax?: number;
   contractType?: string; // CDI, Freelance, etc.
+  // Scoring criteria from job
+  mustHave?: string;
+  shouldHave?: string;
+  niceToHave?: string;
+  // Transversal criteria (company-wide requirements)
+  transversalCriteria?: {
+    must?: string;
+    should?: string;
+    niceToHave?: string;
+    context?: string;
+  };
 }
 
 serve(async (req) => {
@@ -110,6 +121,42 @@ serve(async (req) => {
           const salaryInfo = formatSalaryInfo(job);
           const hasSalaryInfo = job.salaryMin || job.salaryMax || job.tjmMin || job.tjmMax;
 
+          // Build criteria sections for prompt
+          const buildCriteriaSection = () => {
+            const sections: string[] = [];
+            
+            // Job-specific criteria
+            if (job.mustHave || job.requirements) {
+              sections.push(`🔴 CRITÈRES ÉLIMINATOIRES (MUST-HAVE) DU POSTE:\n${job.mustHave || job.requirements}`);
+            }
+            if (job.shouldHave) {
+              sections.push(`🟡 CRITÈRES IMPORTANTS (SHOULD-HAVE) DU POSTE:\n${job.shouldHave}`);
+            }
+            if (job.niceToHave) {
+              sections.push(`🟢 CRITÈRES BONUS (NICE-TO-HAVE) DU POSTE:\n${job.niceToHave}`);
+            }
+            
+            // Transversal criteria (company-wide)
+            if (job.transversalCriteria) {
+              if (job.transversalCriteria.must) {
+                sections.push(`🔴 CRITÈRES TRANSVERSES ÉLIMINATOIRES:\n${job.transversalCriteria.must}`);
+              }
+              if (job.transversalCriteria.should) {
+                sections.push(`🟡 CRITÈRES TRANSVERSES IMPORTANTS:\n${job.transversalCriteria.should}`);
+              }
+              if (job.transversalCriteria.niceToHave) {
+                sections.push(`🟢 CRITÈRES TRANSVERSES BONUS:\n${job.transversalCriteria.niceToHave}`);
+              }
+              if (job.transversalCriteria.context) {
+                sections.push(`📋 CONTEXTE ENTREPRISE/CULTURE:\n${job.transversalCriteria.context}`);
+              }
+            }
+            
+            return sections.length > 0 ? sections.join('\n\n') : 'Aucun critère spécifique défini';
+          };
+
+          const criteriaSection = buildCriteriaSection();
+
           const prompt = `Évalue la compatibilité entre ce profil et cette offre d'emploi, Y COMPRIS l'adéquation salaire/expérience.
 
 PROFIL:
@@ -131,7 +178,9 @@ OFFRE D'EMPLOI:
 - Télétravail: ${job.remote || 'Non spécifié'}
 - Expérience requise: ${job.xpMin || '?'}-${job.xpMax || '?'} ans
 ${salaryInfo}
-${job.requirements ? `- Exigences: ${job.requirements.slice(0, 300)}` : ''}
+
+CRITÈRES D'ÉVALUATION:
+${criteriaSection}
 
 ANALYSE PRÉ-CALCULÉE:
 - Skills matchés: ${matchingSkills.join(', ') || 'Aucun'}
@@ -173,10 +222,18 @@ Réponds UNIQUEMENT en JSON valide:
   }
 }
 
-Règles:
-- match_score: 0-100, basé sur les compétences, l'expérience et la cohérence du parcours
+Règles de scoring:
+- match_score: 0-100, PONDÉRÉ selon les critères:
+  * Critères MUST-HAVE (éliminatoires): Si non respectés → score max 40
+  * Critères SHOULD-HAVE: Impact de ±20 points
+  * Critères NICE-TO-HAVE: Impact de ±10 points bonus
+  * Critères transverses: Même logique que les critères poste
 - matching_skills: liste des compétences du profil qui correspondent au poste (max 6)
-- missing_skills: compétences clés manquantes (max 4)
+- missing_skills: compétences clés manquantes par rapport aux MUST-HAVE (max 4)
+- recommendation: 
+  * "go": tous les MUST respectés + majorité des SHOULD
+  * "maybe": MUST partiellement respectés OU SHOULD insuffisants
+  * "skip": MUST non respectés
 - salary_analysis.status: 
   * "adequate": salaire proposé cohérent avec le profil (±15%)
   * "too_low": salaire trop bas pour ce niveau d'expérience/compétences (candidat surqualifié)
@@ -197,11 +254,11 @@ Règles:
               messages: [
                 { 
                   role: "system", 
-                  content: "Tu es un expert en recrutement tech avec une connaissance approfondie des grilles salariales du marché français (Paris et régions). Tu évalues la compatibilité entre profils et offres en incluant l'adéquation salaire/expérience. Tu réponds TOUJOURS en JSON valide, sans markdown." 
+                  content: "Tu es un expert en recrutement tech avec une connaissance approfondie des grilles salariales du marché français (Paris et régions). Tu évalues la compatibilité entre profils et offres en analysant les critères MUST-HAVE (éliminatoires), SHOULD-HAVE (importants) et NICE-TO-HAVE (bonus), ainsi que les critères transverses de l'entreprise. Tu réponds TOUJOURS en JSON valide, sans markdown." 
                 },
                 { role: "user", content: prompt }
               ],
-              max_tokens: 600,
+              max_tokens: 800,
               temperature: 0.2,
             }),
           });

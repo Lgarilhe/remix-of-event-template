@@ -457,6 +457,11 @@ serve(async (req) => {
         entity: getPropertyValue(job.properties['Entité']),
         description: getPropertyValue(job.properties['RAG — Synthèse']) || '',
         interviewProcess: getPropertyValue(job.properties['Process']) || '',
+        // Scoring criteria from job
+        mustHave: getPropertyValue(job.properties['🔴 Must-have poste']) || '',
+        shouldHave: getPropertyValue(job.properties['🟡 Should-have poste']) || '',
+        niceToHave: getPropertyValue(job.properties['🟢 Nice-to-have poste']) || '',
+        // Keep requirements for backward compatibility
         requirements: getPropertyValue(job.properties['🔴 Must-have poste']) || '',
         openingDate: getPropertyValue(job.properties['Date d\'ouverture']),
         startDate: getPropertyValue(job.properties['Date de démarrage espérée']),
@@ -468,6 +473,8 @@ serve(async (req) => {
         tjm: getPropertyValue(job.properties['TJM']),
         accompagnement: getPropertyValue(job.properties['Type d\'accompagnement']) || [],
         jobUrl: getPropertyValue(job.properties['userDefined:URL']),
+        // Transversal criteria relation IDs (to be resolved separately if needed)
+        transversalCriteriaIds: getPropertyValue(job.properties['Critères Transverses Numspot']) || [],
         // Candidate counts by stage
         candidateCounts: counts,
       };
