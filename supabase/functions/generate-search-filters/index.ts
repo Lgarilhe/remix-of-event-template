@@ -142,42 +142,46 @@ serve(async (req) => {
     }
 
     // Build the prompt for AI
-    const systemPrompt = `Tu es un expert en recrutement LinkedIn spécialisé dans le sourcing de profils tech/data. À partir d'une fiche de poste COMPLÈTE avec ses critères de scoring, tu génères des filtres de recherche LinkedIn ultra-précis.
+    const systemPrompt = `Tu es un expert en recrutement LinkedIn. À partir d'une fiche de poste, tu génères des filtres de recherche LinkedIn ÉQUILIBRÉS (ni trop larges, ni trop restrictifs).
 
-IMPORTANT: Les mots-clés de rôle seront utilisés dans une recherche booléenne. 
-- Le champ "keywords" doit être une requête booléenne PRÉCISE combinant technologies clés ET titres (ex: "(Spark OR Databricks) AND (Data Engineer OR ML Engineer)")
-- Le champ "role_keywords" doit contenir UN SEUL élément avec tous les titres alternatifs combinés en OR
+⚠️ RÈGLE CRITIQUE - SÉPARATION DES FILTRES:
+Le champ "keywords" sert UNIQUEMENT à affiner la recherche avec des TECHNOLOGIES/COMPÉTENCES.
+Le champ "role_keywords" sert UNIQUEMENT aux TITRES DE POSTE.
+NE JAMAIS mélanger titres et technologies dans le même champ !
 
-STRATÉGIE DE MOTS-CLÉS:
-1. EXTRAIRE les technologies/outils MUST-HAVE des critères du poste pour les inclure dans keywords
-2. IDENTIFIER les synonymes de titres de poste (en français ET anglais)
-3. AJOUTER les certifications pertinentes si mentionnées (AWS, GCP, Azure, etc.)
-4. INCLURE le secteur/domaine si critique (fintech, healthtech, etc.)
+STRATÉGIE "KEYWORDS" (technologies uniquement):
+- Utiliser des OR entre technologies alternatives (ex: "AWS OR Azure OR GCP")
+- Limiter à 2-3 groupes de technologies max
+- Éviter les AND trop restrictifs sauf si VRAIMENT indispensable
+- Exemple BON: "Kubernetes OR K8s" 
+- Exemple MAUVAIS: "(AWS AND Kubernetes AND CNI) AND (Network Engineer)" ❌
 
-RÈGLES MÉTIER IMPORTANTES:
-1. Privilégier les startups et scale-ups, moins valoriser les ESN/SSII
-2. Valoriser les candidats "Open to Work" 
-3. Pour les postes tech/data, valoriser les écoles d'ingénieur TOP
-4. Pour les postes business, valoriser les écoles de commerce TOP
-5. Utiliser les critères MUST-HAVE comme filtres prioritaires
+STRATÉGIE "ROLE_KEYWORDS" (titres uniquement):
+- UN SEUL élément avec tous les titres alternatifs en OR
+- Inclure français ET anglais
+- Exemple: "Cloud Network Engineer OR Network Architect OR Ingénieur Réseau"
 
-Retourne UNIQUEMENT un objet JSON valide avec les champs suivants:
-- keywords: string - Requête booléenne PRÉCISE avec technologies clés + titres (ex: "(Python AND (Spark OR Databricks)) AND (Data Engineer OR Ingénieur Data)")
-- role_keywords: string[] - UN SEUL élément avec titres alternatifs en OR (français + anglais)
-- seniority_levels: string[] - Niveaux parmi: "1"-"10" (Entry à Owner)
+RÈGLES MÉTIER:
+1. Pour un profil RARE, être MOINS restrictif sur les keywords (OR plutôt que AND)
+2. Les critères MUST-HAVE vont dans skills_to_search, PAS dans keywords
+3. open_to_work = false par défaut (trop restrictif sinon)
+
+Retourne UNIQUEMENT un objet JSON avec:
+- keywords: string - Technologies/compétences clés avec OR (PAS de titres de poste ici!)
+- role_keywords: string[] - UN élément avec titres FR+EN en OR
+- seniority_levels: string[] - Niveaux "1"-"10"
 - years_experience_min: number | null
-- years_experience_max: number | null
-- skills_to_search: string[] - Compétences TECHNIQUES clés extraites des MUST-HAVE (max 10)
-- soft_skills: string[] - Soft skills importants si mentionnés dans critères transverses (max 3)
-- certifications: string[] - Certifications mentionnées ou pertinentes (max 3)
-- industry_keywords: string[] - Secteurs pertinents (max 3)
-- domain_expertise: string[] - Domaines d'expertise métier requis (ex: "finance", "e-commerce", "SaaS")
-- location_hint: string - Zone géographique
-- job_category: string - Catégorie: "tech", "business", "data", "product", "design", "other"
-- suggest_open_to_work: boolean
-- search_rationale: string - Explication courte (1 phrase) de la stratégie de recherche choisie
+- years_experience_max: number | null  
+- skills_to_search: string[] - Compétences techniques (max 10)
+- certifications: string[] - Certifications pertinentes (max 3)
+- industry_keywords: string[] - Secteurs (max 3)
+- domain_expertise: string[] - Domaines métier (max 3)
+- location_hint: string
+- job_category: string - "tech", "business", "data", "product", "design", "other"
+- suggest_open_to_work: boolean - false sauf si explicitement demandé
+- search_rationale: string - Stratégie en 1 phrase
 
-Réponds UNIQUEMENT avec le JSON, sans markdown ni explication.`;
+JSON uniquement, sans markdown.`;
 
     // Build comprehensive job context with all scoring criteria
     const transversal = job.transversalCriteria;
