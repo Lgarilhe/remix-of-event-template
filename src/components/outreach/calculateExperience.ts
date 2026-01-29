@@ -73,18 +73,22 @@ export function calculateExperienceFromEducation(profile: LinkedInProfile): numb
 /**
  * Filter profiles based on calculated experience range.
  * 
+ * IMPORTANT: Only the MINIMUM is strictly enforced (too junior = blocking).
+ * The MAXIMUM is NOT enforced - senior profiles are allowed through and
+ * evaluated by the AI scoring system instead of being excluded.
+ * 
  * @param profiles Array of LinkedIn profiles
  * @param minYears Minimum years of experience (inclusive), null for no minimum
- * @param maxYears Maximum years of experience (inclusive), null for no maximum
- * @returns Filtered profiles that match the experience criteria
+ * @param maxYears Maximum years of experience - IGNORED (kept for API compatibility)
+ * @returns Filtered profiles that match the minimum experience criteria
  */
 export function filterByCalculatedExperience(
   profiles: LinkedInProfile[],
   minYears: number | null,
-  maxYears: number | null
+  maxYears: number | null // Intentionally ignored - seniors are evaluated by scoring, not excluded
 ): LinkedInProfile[] {
-  // If no filter set, return all profiles
-  if (minYears === null && maxYears === null) {
+  // If no minimum filter set, return all profiles
+  if (minYears === null) {
     return profiles;
   }
 
@@ -96,13 +100,9 @@ export function filterByCalculatedExperience(
       return true;
     }
 
-    // Check minimum
-    if (minYears !== null && experience < minYears) {
-      return false;
-    }
-
-    // Check maximum
-    if (maxYears !== null && experience > maxYears) {
+    // Only check minimum - too junior is blocking
+    // Maximum is NOT checked - senior profiles pass through to scoring
+    if (experience < minYears) {
       return false;
     }
 
