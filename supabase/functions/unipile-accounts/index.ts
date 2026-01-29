@@ -292,6 +292,79 @@ Deno.serve(async (req) => {
         );
       }
 
+      case 'list_recruiter_contracts': {
+        // List Recruiter contracts available for the account
+        // Unfortunately, LinkedIn doesn't expose contracts via standard Voyager API
+        // We'll try to get account details which may contain contract info
+        const { account_id } = params;
+        
+        if (!account_id) {
+          return new Response(
+            JSON.stringify({ success: false, error: 'Account ID requis' }),
+            { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
+        // Get full account details which may contain contract information
+        const accountResponse = await fetch(`${baseUrl}/accounts/${account_id}`, {
+          headers: {
+            'X-API-KEY': apiKey,
+            'Accept': 'application/json',
+          },
+        });
+
+        if (!accountResponse.ok) {
+          const errorData = await accountResponse.json();
+          return new Response(
+            JSON.stringify({ 
+              success: false, 
+              error: 'Impossible de récupérer les détails du compte',
+              details: errorData,
+            }),
+            { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
+        const accountData = await accountResponse.json();
+        console.log('Account details:', JSON.stringify(accountData).slice(0, 2000));
+
+        // Extract any contract/seat information from connection_params
+        const connectionParams = accountData.connection_params || {};
+        const imParams = connectionParams.im || {};
+        const premiumFeatures = imParams.premiumFeatures || [];
+        
+        // Check for recruiter seats/contracts in the raw data
+        const recruiterInfo = {
+          has_recruiter: premiumFeatures.some((f: string) => 
+            f.toLowerCase().includes('recruiter')
+          ),
+          has_sales_navigator: premiumFeatures.some((f: string) => 
+            f.toLowerCase().includes('sales') || f.toLowerCase().includes('navigator')
+          ),
+          premium_features: premiumFeatures,
+          raw_connection_params: connectionParams,
+        };
+
+        // The Unipile API doesn't currently expose multiple Recruiter contracts
+        // This would need to be requested from Unipile support as a feature
+        return new Response(
+          JSON.stringify({ 
+            success: true, 
+            message: 'Multi-contract Recruiter n\'est pas encore supporté par l\'API Unipile. Contactez le support Unipile pour demander cette fonctionnalité.',
+            recruiter_info: recruiterInfo,
+            account: {
+              id: accountData.id,
+              name: accountData.name,
+              type: accountData.type,
+              status: accountData.sources?.[0]?.status || 'UNKNOWN',
+            },
+            // Contracts would go here if supported
+            contracts: [],
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
       default:
         return new Response(
           JSON.stringify({ success: false, error: 'Action non reconnue' }),
