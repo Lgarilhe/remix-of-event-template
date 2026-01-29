@@ -16,12 +16,16 @@ import {
   User,
   Clock,
   CheckCheck,
-  Check
+  Check,
+  Briefcase,
+  Reply,
+  Hourglass
 } from 'lucide-react';
 import { format, formatDistanceToNow, isToday, isYesterday, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { Badge } from '@/components/ui/badge';
 
 interface MessagesInboxProps {
   accounts: LinkedInAccount[];
@@ -85,6 +89,13 @@ interface Message {
   delivered?: boolean;
 }
 
+interface SequenceEnrollmentInfo {
+  profile_id: string;
+  job_title: string | null;
+  job_id: string | null;
+  status: string;
+}
+
 export const MessagesInbox: React.FC<MessagesInboxProps> = ({
   accounts,
   selectedAccount,
@@ -102,6 +113,31 @@ export const MessagesInbox: React.FC<MessagesInboxProps> = ({
   const [hasMore, setHasMore] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const [enrollmentsMap, setEnrollmentsMap] = useState<Map<string, SequenceEnrollmentInfo>>(new Map());
+
+  // Fetch sequence enrollments to get job context for profiles
+  const fetchEnrollments = useCallback(async () => {
+    try {
+      const { data, error } = await supabase
+        .from('sequence_enrollments')
+        .select('profile_id, job_title, job_id, status')
+        .order('created_at', { ascending: false });
+      
+      if (error) throw error;
+      
+      // Create a map from profile_id to enrollment info
+      const map = new Map<string, SequenceEnrollmentInfo>();
+      data?.forEach(enrollment => {
+        // Only keep the most recent enrollment per profile
+        if (!map.has(enrollment.profile_id)) {
+          map.set(enrollment.profile_id, enrollment);
+        }
+      });
+      setEnrollmentsMap(map);
+    } catch (error) {
+      console.error('Error fetching enrollments:', error);
+    }
+  }, []);
 
   // Fetch all chats for the selected account
   const fetchChats = useCallback(async (showToast = false) => {
@@ -226,14 +262,15 @@ export const MessagesInbox: React.FC<MessagesInboxProps> = ({
     }
   }, [searchQuery, chats]);
 
-  // Load chats when account changes
+  // Load chats and enrollments when account changes
   useEffect(() => {
     if (selectedAccount) {
       fetchChats();
+      fetchEnrollments();
       setSelectedChat(null);
       setMessages([]);
     }
-  }, [selectedAccount, fetchChats]);
+  }, [selectedAccount, fetchChats, fetchEnrollments]);
 
   // Load messages when chat is selected
   useEffect(() => {
@@ -336,10 +373,43 @@ export const MessagesInbox: React.FC<MessagesInboxProps> = ({
     return msg.text || msg.text_content || '';
   };
 
-  // Get last message text
-  const getLastMessageText = (chat: Chat) => {
-    if (!chat.last_message) return 'Pas de message';
-    return chat.last_message.text || chat.last_message.text_content || 'Pas de message';
+  // Get the profile_id from chat attendee (for matching with sequence enrollments)
+  const getChatProfileId = (chat: Chat): string | null => {
+    const attendee = chat.attendees?.[0];
+    return attendee?.provider_id || attendee?.attendee_provider_id || chat.attendee_provider_id || null;
+  };
+
+  // Get job info for a chat if the profile is in a sequence
+  const getChatJobInfo = (chat: Chat): SequenceEnrollmentInfo | null => {
+    const profileId = getChatProfileId(chat);
+    if (!profileId) return null;
+    return enrollmentsMap.get(profileId) || null;
+  };
+
+  // Get conversation status text and icon for chat preview
+  const getChatStatusInfo = (chat: Chat): { text: string; icon: React.ReactNode; color: string } | null => {
+    const jobInfo = getChatJobInfo(chat);
+    
+    // If we have a job linked, show it as priority
+    if (jobInfo?.job_title) {
+      return {
+        text: jobInfo.job_title,
+        icon: <Briefcase className="w-3 h-3" />,
+        color: 'text-violet-600'
+      };
+    }
+    
+    // Otherwise show response status based on unread
+    if (hasUnread(chat)) {
+      return {
+        text: 'À répondre',
+        icon: <Reply className="w-3 h-3" />,
+        color: 'text-amber-600'
+      };
+    }
+    
+    // No useful info to show
+    return null;
   };
 
   // Handle keyboard shortcut for sending
@@ -465,14 +535,19 @@ export const MessagesInbox: React.FC<MessagesInboxProps> = ({
                       </p>
                     )}
                     
-                    {/* Last message preview */}
-                    <p className={cn(
-                      "text-xs truncate mt-0.5",
-                      hasUnread(chat) ? "text-[#1A1A1A] font-medium" : "text-muted-foreground"
-                    )}>
-                      {chat.last_message?.is_sender && <span className="text-[#0077B5]">Vous: </span>}
-                      {getLastMessageText(chat)}
-                    </p>
+                    {/* Status info: Job reference or response status */}
+                    {(() => {
+                      const statusInfo = getChatStatusInfo(chat);
+                      if (statusInfo) {
+                        return (
+                          <p className={cn("text-xs truncate mt-0.5 flex items-center gap-1", statusInfo.color)}>
+                            {statusInfo.icon}
+                            <span>{statusInfo.text}</span>
+                          </p>
+                        );
+                      }
+                      return null;
+                    })()}
                   </div>
                 </button>
               ))}
