@@ -164,19 +164,8 @@ serve(async (req) => {
         candidatProperties['URL Linkedin'] = { url: data.linkedinUrl };
       }
 
-      // Add headline as notes or description if available
-      if (data.headline) {
-        candidatProperties['Notes'] = {
-          rich_text: [{ text: { content: data.headline } }]
-        };
-      }
-
-      // Add relation to job if provided
-      if (data.jobId) {
-        candidatProperties['💼 Postes'] = {
-          relation: [{ id: data.jobId }]
-        };
-      }
+      // Note: We don't add headline as it requires a specific Notion property
+      // The headline is stored in the shortlist entry title instead
 
       console.log('Creating new candidate...');
       const candidatResult = await createNotionPage(CANDIDATS_DATABASE_ID, candidatProperties);
