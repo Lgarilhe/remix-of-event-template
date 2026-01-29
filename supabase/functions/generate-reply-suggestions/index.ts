@@ -11,6 +11,47 @@ interface Message {
   timestamp?: string;
 }
 
+interface ProfileData {
+  name: string;
+  headline?: string;
+  currentRole?: string;
+  currentCompany?: string;
+  location?: string;
+  skills?: string[];
+  pastPositions?: string[];
+  education?: string[];
+  yearsOfExperience?: number;
+}
+
+interface JobData {
+  id: string;
+  title: string;
+  client?: { name: string; sector: string } | null;
+  skills: string[];
+  requirements?: string;
+  description?: string;
+  seniority?: string;
+  location?: string;
+  remote?: string;
+  xpMin?: number;
+  xpMax?: number;
+  salaryMin?: number;
+  salaryMax?: number;
+  tjmMin?: number;
+  tjmMax?: number;
+  contractType?: string;
+  // Scoring criteria
+  mustHave?: string;
+  shouldHave?: string;
+  niceToHave?: string;
+  transversalCriteria?: {
+    must?: string;
+    should?: string;
+    niceToHave?: string;
+    context?: string;
+  };
+}
+
 interface ChatContext {
   recipientName: string;
   recipientHeadline?: string;
@@ -19,7 +60,105 @@ interface ChatContext {
     title: string;
     company?: string;
   };
+  // Enhanced context
+  profileData?: ProfileData;
+  jobData?: JobData;
+  // Detected intent from analyze-response (optional)
+  detectedIntent?: 'interested' | 'not_interested' | 'needs_info' | 'wants_call' | 'timing_issue' | 'already_placed' | 'neutral';
 }
+
+// Format salary info for display
+const formatSalaryInfo = (job: JobData): string => {
+  const parts: string[] = [];
+  
+  if (job.salaryMin || job.salaryMax) {
+    if (job.salaryMin && job.salaryMax) {
+      parts.push(`Salaire: ${job.salaryMin}k€ - ${job.salaryMax}k€ brut/an`);
+    } else if (job.salaryMin) {
+      parts.push(`Salaire minimum: ${job.salaryMin}k€ brut/an`);
+    } else if (job.salaryMax) {
+      parts.push(`Salaire maximum: ${job.salaryMax}k€ brut/an`);
+    }
+  }
+  
+  if (job.tjmMin || job.tjmMax) {
+    if (job.tjmMin && job.tjmMax) {
+      parts.push(`TJM: ${job.tjmMin}€ - ${job.tjmMax}€/jour`);
+    } else if (job.tjmMin) {
+      parts.push(`TJM minimum: ${job.tjmMin}€/jour`);
+    } else if (job.tjmMax) {
+      parts.push(`TJM maximum: ${job.tjmMax}€/jour`);
+    }
+  }
+  
+  if (job.contractType) {
+    parts.push(`Type de contrat: ${job.contractType}`);
+  }
+  
+  return parts.length > 0 ? parts.join(' | ') : 'Rémunération: à discuter';
+};
+
+// Build criteria context for the prompt
+const buildCriteriaContext = (job: JobData): string => {
+  const sections: string[] = [];
+  
+  if (job.mustHave) {
+    sections.push(`- Critères MUST-HAVE: ${job.mustHave}`);
+  }
+  if (job.shouldHave) {
+    sections.push(`- Critères SHOULD-HAVE: ${job.shouldHave}`);
+  }
+  if (job.niceToHave) {
+    sections.push(`- Critères NICE-TO-HAVE: ${job.niceToHave}`);
+  }
+  
+  if (job.transversalCriteria) {
+    if (job.transversalCriteria.must) {
+      sections.push(`- Critères transverses MUST: ${job.transversalCriteria.must}`);
+    }
+    if (job.transversalCriteria.should) {
+      sections.push(`- Critères transverses SHOULD: ${job.transversalCriteria.should}`);
+    }
+    if (job.transversalCriteria.context) {
+      sections.push(`- Contexte entreprise: ${job.transversalCriteria.context}`);
+    }
+  }
+  
+  return sections.length > 0 ? sections.join('\n') : '';
+};
+
+// Determine what info might be missing based on the conversation
+const determineInfoToRequest = (messages: Message[], job?: JobData): string[] => {
+  const conversationText = messages.map(m => m.text.toLowerCase()).join(' ');
+  const infoToRequest: string[] = [];
+  
+  // Check what hasn't been discussed
+  if (!conversationText.includes('salaire') && !conversationText.includes('rémunération') && !conversationText.includes('tjm') && !conversationText.includes('€')) {
+    infoToRequest.push('prétentions salariales');
+  }
+  if (!conversationText.includes('dispo') && !conversationText.includes('préavis') && !conversationText.includes('disponibilité')) {
+    infoToRequest.push('disponibilité');
+  }
+  if (!conversationText.includes('remote') && !conversationText.includes('télétravail') && !conversationText.includes('présentiel')) {
+    infoToRequest.push('préférences télétravail');
+  }
+  if (!conversationText.includes('freelance') && !conversationText.includes('cdi') && !conversationText.includes('contrat')) {
+    infoToRequest.push('type de contrat recherché');
+  }
+  
+  // If job has specific must-have criteria, check if they've been validated
+  if (job?.mustHave) {
+    const mustHaveKeywords = job.mustHave.toLowerCase();
+    if (mustHaveKeywords.includes('anglais') && !conversationText.includes('anglais')) {
+      infoToRequest.push("niveau d'anglais");
+    }
+    if (mustHaveKeywords.includes('expérience') && !conversationText.includes('ans') && !conversationText.includes('expérience')) {
+      infoToRequest.push("années d'expérience détaillées");
+    }
+  }
+  
+  return infoToRequest.slice(0, 3); // Max 3 items to ask
+};
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -47,34 +186,100 @@ serve(async (req) => {
 
     // Detect the last message sender and content
     const lastMessage = context.messages[context.messages.length - 1];
-    const needsResponse = !lastMessage.is_sender; // They sent the last message
+    const needsResponse = !lastMessage.is_sender;
+
+    // Build enhanced profile context
+    let profileContext = `- Nom: ${context.recipientName}`;
+    if (context.recipientHeadline) {
+      profileContext += `\n- Headline: ${context.recipientHeadline}`;
+    }
+    if (context.profileData) {
+      const p = context.profileData;
+      if (p.currentRole) profileContext += `\n- Poste actuel: ${p.currentRole}${p.currentCompany ? ` chez ${p.currentCompany}` : ''}`;
+      if (p.location) profileContext += `\n- Localisation: ${p.location}`;
+      if (p.skills?.length) profileContext += `\n- Compétences: ${p.skills.slice(0, 8).join(', ')}`;
+      if (p.yearsOfExperience) profileContext += `\n- Expérience: ~${p.yearsOfExperience} ans`;
+      if (p.pastPositions?.length) profileContext += `\n- Expériences passées: ${p.pastPositions.slice(0, 3).join('; ')}`;
+    }
+
+    // Build enhanced job context
+    let jobContext = '';
+    if (context.jobData) {
+      const j = context.jobData;
+      jobContext = `\nPOSTE DISCUTÉ:
+- Titre: ${j.title}${j.client?.name ? ` chez ${j.client.name}` : ''}
+- ${formatSalaryInfo(j)}
+- Localisation: ${j.location || 'Non spécifié'} | Remote: ${j.remote || 'Non spécifié'}
+- Séniorité: ${j.seniority || 'Non spécifié'} | XP: ${j.xpMin || '?'}-${j.xpMax || '?'} ans
+- Skills: ${j.skills?.join(', ') || 'Non spécifiés'}`;
+      
+      const criteria = buildCriteriaContext(j);
+      if (criteria) {
+        jobContext += `\n\nCRITÈRES DE SÉLECTION:\n${criteria}`;
+      }
+    } else if (context.jobContext) {
+      jobContext = `\nPOSTE DISCUTÉ: ${context.jobContext.title}${context.jobContext.company ? ` chez ${context.jobContext.company}` : ''}`;
+    }
+
+    // Determine info to request if needed
+    const infoToRequest = determineInfoToRequest(context.messages, context.jobData);
+    const needsInfoContext = infoToRequest.length > 0 
+      ? `\n\nINFOS MANQUANTES À CLARIFIER: ${infoToRequest.join(', ')}`
+      : '';
+
+    // Adjust prompt based on detected intent
+    let intentGuidance = '';
+    if (context.detectedIntent) {
+      switch (context.detectedIntent) {
+        case 'needs_info':
+          intentGuidance = `\n\nATTENTION: Le candidat demande des infos. Génère des réponses qui:
+1. Répondent précisément à sa question (salaire, missions, équipe, etc.)
+2. Utilisent les données du poste ci-dessus (salaire, remote, critères)
+3. Demandent en retour les infos manquantes: ${infoToRequest.join(', ') || 'disponibilité, prétentions'}`;
+          break;
+        case 'interested':
+          intentGuidance = '\n\nLe candidat est INTÉRESSÉ. Propose un call ou un entretien rapidement.';
+          break;
+        case 'wants_call':
+          intentGuidance = '\n\nLe candidat veut un CALL. Propose des créneaux concrets cette semaine.';
+          break;
+        case 'timing_issue':
+          intentGuidance = '\n\nLe candidat a un PROBLÈME DE TIMING. Propose de le recontacter plus tard et garde le lien.';
+          break;
+        case 'not_interested':
+          intentGuidance = '\n\nLe candidat DÉCLINE. Reste courtois, propose de garder le contact pour le futur.';
+          break;
+      }
+    }
 
     const prompt = `Tu es un recruteur tech expérimenté. Génère 3 suggestions de réponses courtes et naturelles pour cette conversation LinkedIn.
 
-CONTEXTE:
-- Correspondant: ${context.recipientName}${context.recipientHeadline ? ` (${context.recipientHeadline})` : ''}
-${context.jobContext ? `- Poste discuté: ${context.jobContext.title}${context.jobContext.company ? ` chez ${context.jobContext.company}` : ''}` : ''}
+PROFIL DU CANDIDAT:
+${profileContext}
+${jobContext}
+${needsInfoContext}
 
 CONVERSATION:
 ${conversationHistory}
 
 ${needsResponse ? "Le candidat vient d'envoyer un message, je dois répondre." : "J'ai envoyé le dernier message, je veux relancer ou remercier."}
+${intentGuidance}
 
 RÈGLES POUR LES SUGGESTIONS:
-1. Maximum 50 mots par suggestion
+1. Maximum 60 mots par suggestion
 2. Ton naturel, comme un vrai humain
-3. Pas de superlatifs (exceptionnel, incroyable...)
-4. Pas de formules corporate
-5. Varier les options: une courte, une moyenne, une plus détaillée
-6. Si c'est une relance, rester léger et non insistant
-7. Adapter au contexte: si candidat intéressé → proposer un call, si questions → y répondre
+3. INTERDIT: superlatifs (exceptionnel, incroyable), formules corporate, emojis excessifs
+4. Varier les options: une courte, une moyenne, une plus détaillée
+5. Si le candidat demande des infos → UTILISE les données du poste pour répondre précisément
+6. Si des infos manquent → inclure UNE question de qualification dans la réponse détaillée
+7. Personnalise avec les skills/expériences du candidat si pertinent
 
 Réponds UNIQUEMENT en JSON valide:
 {
   "suggestions": [
-    { "text": "Suggestion courte", "type": "quick" },
-    { "text": "Suggestion moyenne", "type": "standard" },
-    { "text": "Suggestion plus complète", "type": "detailed" }
+    { "text": "Suggestion courte (~15 mots)", "type": "quick" },
+    { "text": "Suggestion moyenne (~30 mots)", "type": "standard" },
+    { "text": "Suggestion complète (~50 mots) avec question de qualification", "type": "detailed" }
   ]
 }`;
 
@@ -89,11 +294,11 @@ Réponds UNIQUEMENT en JSON valide:
         messages: [
           { 
             role: "system", 
-            content: "Tu es un assistant recruteur. Tu génères des réponses courtes, naturelles et professionnelles pour des conversations LinkedIn. Tu réponds TOUJOURS en JSON valide, sans markdown." 
+            content: "Tu es un assistant recruteur tech. Tu génères des réponses courtes, naturelles et professionnelles pour des conversations LinkedIn. Tu utilises les données du poste (salaire, critères, remote) pour répondre précisément aux questions des candidats. Tu réponds TOUJOURS en JSON valide, sans markdown." 
           },
           { role: "user", content: prompt }
         ],
-        max_tokens: 300,
+        max_tokens: 400,
         temperature: 0.7,
       }),
     });
@@ -125,7 +330,11 @@ Réponds UNIQUEMENT en JSON valide:
     try {
       const result = JSON.parse(content);
       return new Response(
-        JSON.stringify({ success: true, suggestions: result.suggestions || [] }),
+        JSON.stringify({ 
+          success: true, 
+          suggestions: result.suggestions || [],
+          infoToRequest: infoToRequest.length > 0 ? infoToRequest : undefined
+        }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     } catch (parseError) {

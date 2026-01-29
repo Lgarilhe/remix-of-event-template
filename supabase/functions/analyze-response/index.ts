@@ -16,14 +16,28 @@ interface JobData {
   title: string;
   client?: { name: string; sector: string } | null;
   skills: string[];
+  requirements?: string;
+  description?: string;
   seniority?: string;
   location?: string;
   remote?: string;
+  xpMin?: number;
+  xpMax?: number;
   salaryMin?: number;
   salaryMax?: number;
   tjmMin?: number;
   tjmMax?: number;
   contractType?: string;
+  // Scoring criteria
+  mustHave?: string;
+  shouldHave?: string;
+  niceToHave?: string;
+  transversalCriteria?: {
+    must?: string;
+    should?: string;
+    niceToHave?: string;
+    context?: string;
+  };
 }
 
 interface ProfileData {
@@ -34,6 +48,8 @@ interface ProfileData {
   location?: string;
   skills?: string[];
   pastPositions?: string[];
+  education?: string[];
+  yearsOfExperience?: number;
 }
 
 interface AnalysisContext {
@@ -48,6 +64,8 @@ interface AnalysisContext {
   profileData?: ProfileData;
   // Jobs to match against
   availableJobs?: JobData[];
+  // Current job being discussed (with full criteria)
+  currentJobData?: JobData;
 }
 
 interface JobMatch {
@@ -143,6 +161,62 @@ serve(async (req) => {
       );
     }
 
+    // Build current job context with full criteria if available
+    let currentJobContext = "";
+    if (context.currentJobData) {
+      const job = context.currentJobData;
+      const salaryInfo = [];
+      if (job.salaryMin || job.salaryMax) {
+        salaryInfo.push(`Salaire: ${job.salaryMin || '?'}k€ - ${job.salaryMax || '?'}k€`);
+      }
+      if (job.tjmMin || job.tjmMax) {
+        salaryInfo.push(`TJM: ${job.tjmMin || '?'}€ - ${job.tjmMax || '?'}€/jour`);
+      }
+      
+      currentJobContext = `
+POSTE EN COURS DE DISCUSSION (DÉTAILS COMPLETS):
+- Titre: ${job.title}${job.client?.name ? ` chez ${job.client.name}` : ''}
+- Rémunération: ${salaryInfo.length > 0 ? salaryInfo.join(' | ') : 'À discuter'}
+- Type de contrat: ${job.contractType || 'Non spécifié'}
+- Localisation: ${job.location || 'Non spécifié'} | Remote: ${job.remote || 'Non spécifié'}
+- Séniorité: ${job.seniority || 'Non spécifié'} | XP: ${job.xpMin || '?'}-${job.xpMax || '?'} ans
+- Skills requis: ${job.skills?.join(', ') || 'Non spécifiés'}
+${job.mustHave ? `- 🔴 MUST-HAVE: ${job.mustHave}` : ''}
+${job.shouldHave ? `- 🟡 SHOULD-HAVE: ${job.shouldHave}` : ''}
+${job.niceToHave ? `- 🟢 NICE-TO-HAVE: ${job.niceToHave}` : ''}
+${job.transversalCriteria?.must ? `- 🔴 Critères transverses MUST: ${job.transversalCriteria.must}` : ''}
+${job.transversalCriteria?.should ? `- 🟡 Critères transverses SHOULD: ${job.transversalCriteria.should}` : ''}
+${job.transversalCriteria?.context ? `- Contexte entreprise: ${job.transversalCriteria.context}` : ''}
+${job.description ? `- Description: ${job.description.slice(0, 300)}...` : ''}
+
+UTILISE CES INFOS pour:
+1. Répondre précisément aux questions du candidat (salaire, remote, etc.)
+2. Identifier les infos manquantes à collecter (disponibilité, prétentions, critères must-have non validés)
+3. Formuler des réponses qui qualifient le candidat sur les critères importants`;
+    }
+
+    // Determine what info to collect based on conversation and job criteria
+    const conversationText = context.messages.map(m => m.text.toLowerCase()).join(' ');
+    const infoToCollect: string[] = [];
+    
+    if (!conversationText.includes('dispo') && !conversationText.includes('préavis')) {
+      infoToCollect.push('disponibilité');
+    }
+    if (!conversationText.includes('salaire') && !conversationText.includes('€') && !conversationText.includes('tjm')) {
+      infoToCollect.push('prétentions salariales');
+    }
+    if (!conversationText.includes('remote') && !conversationText.includes('télétravail')) {
+      infoToCollect.push('préférences télétravail');
+    }
+    
+    // Check must-have criteria from job
+    if (context.currentJobData?.mustHave) {
+      const mustHave = context.currentJobData.mustHave.toLowerCase();
+      if (mustHave.includes('anglais') && !conversationText.includes('anglais')) {
+        infoToCollect.push("niveau d'anglais");
+      }
+    }
+
     // Build job matching section if profile and jobs are provided
     let jobMatchingPrompt = "";
     if (context.profileData && context.availableJobs && context.availableJobs.length > 0) {
@@ -161,6 +235,8 @@ Profil du candidat:
 - Poste actuel: ${context.profileData.currentRole || 'Non spécifié'} chez ${context.profileData.currentCompany || 'Non spécifié'}
 - Compétences: ${profileSkills}
 - Localisation: ${context.profileData.location || 'Non spécifiée'}
+${context.profileData.yearsOfExperience ? `- Expérience: ~${context.profileData.yearsOfExperience} ans` : ''}
+${context.profileData.education?.length ? `- Formation: ${context.profileData.education.slice(0, 2).join('; ')}` : ''}
 
 Postes disponibles (IMPORTANT: utilise EXACTEMENT l'ID fourni dans le champ jobId):
 ${jobsList}
@@ -173,12 +249,15 @@ Pour chaque poste pertinent (max 3), évalue le match. IMPORTANT: Le jobId doit 
 CONTEXTE:
 - Candidat: ${context.recipientName}${context.recipientHeadline ? ` (${context.recipientHeadline})` : ''}
 ${context.jobContext ? `- Poste discuté: ${context.jobContext.title}${context.jobContext.company ? ` chez ${context.jobContext.company}` : ''}` : ''}
+${currentJobContext}
 
 CONVERSATION:
 ${conversationHistory}
 
 DERNIER MESSAGE DU CANDIDAT À ANALYSER:
 "${lastCandidateMessage.text}"
+
+${infoToCollect.length > 0 ? `INFOS À COLLECTER (non encore abordées): ${infoToCollect.join(', ')}` : ''}
 
 ANALYSE REQUISE:
 
@@ -206,7 +285,11 @@ ANALYSE REQUISE:
 
 6. RÉSUMÉ: Une phrase résumant la situation
 
-7. SUGGESTIONS DE RÉPONSE: 3 réponses adaptées à l'intention détectée
+7. SUGGESTIONS DE RÉPONSE - TRÈS IMPORTANT:
+- Si l'intention est "needs_info": RÉPONDS PRÉCISÉMENT avec les données du poste (salaire, remote, etc.) ET pose une question de qualification en retour
+- Si des infos sont à collecter: inclure UNE question sur ces infos dans la réponse détaillée
+- Utilise les critères MUST-HAVE pour formuler des questions de qualification pertinentes
+- 3 réponses: quick (15 mots), standard (30 mots), detailed (50 mots + question qualification)
 ${jobMatchingPrompt}
 
 RÉPONDS UNIQUEMENT EN JSON VALIDE:
@@ -226,9 +309,10 @@ RÉPONDS UNIQUEMENT EN JSON VALIDE:
   ],
   "suggestedTags": ["tag1", "tag2"],
   "summary": "Résumé en une phrase",
+  "infoToCollect": ${JSON.stringify(infoToCollect)},
   "replySuggestions": [
     {
-      "text": "Texte de la réponse suggérée",
+      "text": "Texte de la réponse suggérée (UTILISE les données du poste si dispo)",
       "type": "quick|standard|detailed",
       "intent_match": "Description de pourquoi cette réponse est adaptée"
     }
@@ -246,7 +330,6 @@ RÉPONDS UNIQUEMENT EN JSON VALIDE:
     }
   ]` : ''}
 }`;
-
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: {
