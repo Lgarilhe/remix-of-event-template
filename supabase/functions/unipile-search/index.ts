@@ -890,76 +890,78 @@ async function handleGetChats(
   // Cache for attendee info to avoid duplicate fetches
   const attendeeCache = new Map<string, Record<string, unknown>>();
   
-  // Enrich chats with attendee details
-  // The list endpoint returns attendee_provider_id but not the full attendee info
-  // We need to fetch /chat_attendees/{id} for each unique attendee to get name/picture
-  const enrichedChats = await Promise.all(
-    chats.slice(0, 30).map(async (chat: Record<string, unknown>) => {
-      try {
-        const attendeeProviderId = chat.attendee_provider_id as string | undefined;
-        
-        // First try to get chat details which might include attendees
-        const chatDetailResponse = await fetch(`${baseUrl}/chats/${chat.id}`, {
+  // Enrich chats with attendee details (name/picture) for ALL returned chats.
+  // The list endpoint returns attendee_provider_id but not the full attendee info,
+  // so we fetch /chat_attendees/{id} (cached by attendee_provider_id).
+  // NOTE: We do this in small batches to avoid flooding the upstream API.
+  const enrichChat = async (chat: Record<string, unknown>) => {
+    try {
+      // If upstream already provided attendees, keep them.
+      const providedAttendees = (chat.attendees as Record<string, unknown>[] | undefined) || [];
+      if (providedAttendees.length > 0) {
+        return {
+          ...chat,
+          attendees: providedAttendees,
+        };
+      }
+
+      const attendeeProviderId = chat.attendee_provider_id as string | undefined;
+      if (!attendeeProviderId) {
+        return {
+          ...chat,
+          attendees: [],
+        };
+      }
+
+      if (attendeeCache.has(attendeeProviderId)) {
+        return {
+          ...chat,
+          attendees: [attendeeCache.get(attendeeProviderId)!],
+        };
+      }
+
+      const attendeeResponse = await fetch(
+        `${baseUrl}/chat_attendees/${encodeURIComponent(attendeeProviderId)}`,
+        {
           headers: {
             'X-API-KEY': apiKey,
             'Accept': 'application/json',
           },
-        });
-        
-        let attendees: Record<string, unknown>[] = [];
-        let lastMessage: Record<string, unknown> | null = null;
-        
-        if (chatDetailResponse.ok) {
-          const chatDetail = await chatDetailResponse.json();
-          attendees = chatDetail.attendees || [];
-          lastMessage = chatDetail.last_message || null;
         }
-        
-        // If we still don't have attendee details, try fetching by attendee_provider_id
-        if (attendees.length === 0 && attendeeProviderId) {
-          // Check cache first
-          if (attendeeCache.has(attendeeProviderId)) {
-            attendees = [attendeeCache.get(attendeeProviderId)!];
-          } else {
-            try {
-              // Fetch attendee info from the chat_attendees endpoint
-              const attendeeResponse = await fetch(`${baseUrl}/chat_attendees/${encodeURIComponent(attendeeProviderId)}`, {
-                headers: {
-                  'X-API-KEY': apiKey,
-                  'Accept': 'application/json',
-                },
-              });
-              
-              if (attendeeResponse.ok) {
-                const attendeeInfo = await attendeeResponse.json();
-                attendeeCache.set(attendeeProviderId, attendeeInfo);
-                attendees = [attendeeInfo];
-              }
-            } catch (attendeeError) {
-              console.error('Error fetching attendee:', attendeeProviderId, attendeeError);
-            }
-          }
-        }
-        
+      );
+
+      if (attendeeResponse.ok) {
+        const attendeeInfo = await attendeeResponse.json();
+        attendeeCache.set(attendeeProviderId, attendeeInfo);
         return {
           ...chat,
-          attendees,
-          last_message: lastMessage,
+          attendees: [attendeeInfo],
         };
-      } catch (error) {
-        console.error('Error enriching chat:', chat.id, error);
-        return chat;
       }
-    })
-  );
 
-  // Add non-enriched chats (beyond first 30)
-  const allChats = [...enrichedChats, ...chats.slice(30)];
+      // Fallback: return chat without attendees
+      return {
+        ...chat,
+        attendees: [],
+      };
+    } catch (error) {
+      console.error('Error enriching chat:', chat.id, error);
+      return chat;
+    }
+  };
+
+  const enrichedChats: Record<string, unknown>[] = [];
+  const BATCH_SIZE = 10;
+  for (let i = 0; i < chats.length; i += BATCH_SIZE) {
+    const batch = chats.slice(i, i + BATCH_SIZE);
+    const enrichedBatch = await Promise.all(batch.map(enrichChat));
+    enrichedChats.push(...enrichedBatch);
+  }
 
   return new Response(
     JSON.stringify({ 
       success: true, 
-      chats: allChats,
+      chats: enrichedChats,
       cursor: data.cursor,
     }),
     { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
