@@ -1438,6 +1438,8 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
             headline: p.headline,
             // For Recruiter InMails, use recruiter_candidate_id or member_urn, fallback to id
             profile_id: p.recruiter_candidate_id || p.member_urn || p.id,
+            // Pass network distance for smart message routing (1=DM, 2/3=InMail)
+            network_distance: p.network_distance,
             profile: p,
           }))
         }

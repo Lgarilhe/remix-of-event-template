@@ -18,6 +18,7 @@ interface InMailQueueItem {
   scheduled_at: string | null;
   user_timezone: string;
   created_by: string;
+  network_distance: number | null; // 1=1st degree, 2=2nd degree, 3=3rd degree
 }
 
 // Check if current time is within business hours (8h-19h) for the given timezone
@@ -175,6 +176,7 @@ serve(async (req: Request) => {
           scheduled_at: scheduledAt.toISOString(),
           user_timezone: timezone,
           created_by: user.id,
+          network_distance: item.network_distance || null,
         };
       });
 
@@ -240,16 +242,27 @@ serve(async (req: Request) => {
           .eq("id", item.id);
 
         try {
-          // Send InMail via Unipile - Use startNewChat with inmail option
-          // API requires multipart/form-data format for LinkedIn options
+          // Determine message type based on network distance
+          // 1st degree = direct message, 2nd/3rd degree = InMail
+          const isFirstDegree = item.network_distance === 1;
+          
           const formData = new FormData();
           formData.append("account_id", item.account_id);
           formData.append("text", item.message);
           formData.append("attendees_ids", item.recipient_profile_id);
-          // LinkedIn Recruiter specific options
-          formData.append("linkedin[api]", "recruiter");
-          formData.append("linkedin[inmail]", "true");
-          formData.append("linkedin[subject]", item.subject);
+          
+          if (isFirstDegree) {
+            // Direct message for 1st degree connections - no InMail needed
+            console.log(`Sending direct message to ${item.recipient_name} (1st degree)`);
+            formData.append("linkedin[api]", "recruiter");
+            // No inmail flag = regular message
+          } else {
+            // InMail for 2nd/3rd degree connections
+            console.log(`Sending InMail to ${item.recipient_name} (${item.network_distance || 'unknown'} degree)`);
+            formData.append("linkedin[api]", "recruiter");
+            formData.append("linkedin[inmail]", "true");
+            formData.append("linkedin[subject]", item.subject);
+          }
 
           const response = await fetch(
             `https://${unipileDsn}/api/v1/chats`,
