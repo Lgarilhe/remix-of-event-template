@@ -33,14 +33,18 @@ interface ChatAttendee {
   name?: string;
   display_name?: string;
   profile_picture_url?: string;
+  picture_url?: string; // Unipile uses this field name
   profile_url?: string;
   attendee_provider_id?: string;
   provider_id?: string;
   headline?: string;
-  // Additional fields from Unipile API
+  occupation?: string; // Unipile uses this for headline
   first_name?: string;
   last_name?: string;
   public_identifier?: string;
+  specifics?: {
+    occupation?: string;
+  };
 }
 
 interface Chat {
@@ -300,23 +304,25 @@ export const MessagesInbox: React.FC<MessagesInboxProps> = ({
 
   // Get headline for chat
   const getChatHeadline = (chat: Chat) => {
-    const attendee = chat.attendees?.find(a => a.headline);
-    return attendee?.headline;
+    const attendee = chat.attendees?.[0];
+    // Unipile stores occupation in specifics.occupation
+    return attendee?.headline || attendee?.occupation || attendee?.specifics?.occupation;
   };
 
-  // Get avatar for chat
+  // Get avatar for chat - Unipile uses picture_url
   const getChatAvatar = (chat: Chat) => {
-    const attendee = chat.attendees?.find(a => a.profile_picture_url);
-    return attendee?.profile_picture_url;
+    const attendee = chat.attendees?.find(a => a.picture_url || a.profile_picture_url);
+    return attendee?.picture_url || attendee?.profile_picture_url;
   };
 
-  // Check if chat has unread messages
-  const hasUnread = (chat: Chat) => {
-    return (chat.unread_count && chat.unread_count > 0) || (chat.unread && chat.unread > 0);
+  // Check if chat has unread messages - MUST return boolean to avoid React rendering "0"
+  const hasUnread = (chat: Chat): boolean => {
+    const count = chat.unread_count ?? chat.unread ?? 0;
+    return count > 0;
   };
 
-  const getUnreadCount = (chat: Chat) => {
-    return chat.unread_count || chat.unread || 0;
+  const getUnreadCount = (chat: Chat): number => {
+    return chat.unread_count ?? chat.unread ?? 0;
   };
 
   // Get initials for fallback avatar
