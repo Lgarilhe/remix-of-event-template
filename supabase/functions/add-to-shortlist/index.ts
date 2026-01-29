@@ -19,11 +19,9 @@ interface AddToShortlistData {
   jobId?: string;
   jobTitle?: string;
   clientName?: string;
+  clientId?: string; // Notion page ID of the client for relation
   // Organization context
   entity?: string;
-  accompanyingType?: string;
-  recruiterName?: string;
-  startDate?: string;
   // Optional source info
   source?: string;
 }
@@ -224,14 +222,12 @@ serve(async (req) => {
       };
     }
 
-    // Note: The following properties were removed because they don't exist 
-    // or have different types in the Notion Shortlist database:
-    // - "Type d'accompagnement" (doesn't exist)
-    // - "Recruteur" (requires people type, not text)
-    // - "Client" (requires relation type, not text) 
-    // - "Date de shortlist" (doesn't exist)
-    // 
-    // To add these fields, create them in Notion first with the correct types
+    // Add client relation if provided (using client's Notion page ID)
+    if (data.clientId) {
+      shortlistProperties['Client'] = {
+        relation: [{ id: data.clientId }]
+      };
+    }
 
     console.log('Creating shortlist entry...');
     const shortlistResult = await createNotionPage(SHORTLIST_DATABASE_ID, shortlistProperties);

@@ -24,8 +24,6 @@ import {
 import { 
   Briefcase, 
   Building2, 
-  User, 
-  Calendar,
   Loader2,
   Search,
   MapPin,
@@ -38,15 +36,13 @@ import { cn } from '@/lib/utils';
 interface JobData {
   id: string;
   title: string;
-  client?: { name: string; sector: string } | null;
+  client?: { id: string; name: string; sector: string } | null;
   skills: string[];
   seniority?: string;
   location?: string;
   remote?: string;
   contractType?: string;
   entity?: string;
-  recruiterName?: string;
-  accompanyingType?: string;
 }
 
 interface CandidateProfile {
@@ -65,7 +61,6 @@ interface AddToPipelineModalProps {
 }
 
 const ENTITIES = ['Konekt', 'Skalr', 'Autre'];
-const ACCOMPANYING_TYPES = ['RPO', 'Chasse', 'Portage', 'Freelance', 'Autre'];
 
 export const AddToPipelineModal: React.FC<AddToPipelineModalProps> = ({
   open,
@@ -82,16 +77,11 @@ export const AddToPipelineModal: React.FC<AddToPipelineModalProps> = ({
   
   // Form fields
   const [entity, setEntity] = useState('Konekt');
-  const [accompanyingType, setAccompanyingType] = useState('');
-  const [recruiterName, setRecruiterName] = useState('');
-  const [startDate, setStartDate] = useState('');
 
   // Fetch jobs when modal opens
   useEffect(() => {
     if (open) {
       fetchJobs();
-      // Get current user name for recruiter
-      fetchCurrentUser();
     }
   }, [open]);
 
@@ -101,12 +91,6 @@ export const AddToPipelineModal: React.FC<AddToPipelineModalProps> = ({
       const job = jobs.find(j => j.id === preSelectedJobId);
       if (job) {
         setSelectedJob(job);
-        // Auto-set accompanying type based on contract type
-        if (job.contractType?.toLowerCase().includes('freelance')) {
-          setAccompanyingType('Freelance');
-        } else if (job.contractType?.toLowerCase().includes('cdi') || job.contractType?.toLowerCase().includes('cdd')) {
-          setAccompanyingType('Chasse');
-        }
       }
     }
   }, [preSelectedJobId, jobs]);
@@ -131,8 +115,6 @@ export const AddToPipelineModal: React.FC<AddToPipelineModalProps> = ({
           remote: job.remote,
           contractType: job.contractType,
           entity: job.entity,
-          recruiterName: job.recruiterName,
-          accompanyingType: job.accompanyingType,
         })));
       }
     } catch (error) {
@@ -143,26 +125,6 @@ export const AddToPipelineModal: React.FC<AddToPipelineModalProps> = ({
     }
   };
 
-  const fetchCurrentUser = async () => {
-    try {
-      const { data: user } = await supabase.auth.getUser();
-      if (user.user) {
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('display_name')
-          .eq('user_id', user.user.id)
-          .single();
-        
-        if (profile?.display_name) {
-          setRecruiterName(profile.display_name);
-        } else {
-          setRecruiterName(user.user.email?.split('@')[0] || '');
-        }
-      }
-    } catch (error) {
-      console.error('Error fetching user:', error);
-    }
-  };
 
   const filteredJobs = jobs.filter(job => {
     if (!searchQuery.trim()) return true;
@@ -192,10 +154,8 @@ export const AddToPipelineModal: React.FC<AddToPipelineModalProps> = ({
           jobId: selectedJob.id,
           jobTitle: selectedJob.title,
           clientName: selectedJob.client?.name,
+          clientId: selectedJob.client?.id,
           entity: entity,
-          accompanyingType: accompanyingType,
-          recruiterName: recruiterName,
-          startDate: startDate || undefined,
           source: 'linkedin_inbox',
         },
       });
@@ -238,12 +198,6 @@ export const AddToPipelineModal: React.FC<AddToPipelineModalProps> = ({
 
   const handleJobSelect = (job: JobData) => {
     setSelectedJob(job);
-    // Auto-fill accompanying type based on job's contract type
-    if (job.contractType?.toLowerCase().includes('freelance')) {
-      setAccompanyingType('Freelance');
-    } else if (job.contractType?.toLowerCase().includes('cdi') || job.contractType?.toLowerCase().includes('cdd')) {
-      setAccompanyingType('Chasse');
-    }
     // Auto-fill entity if job has one
     if (job.entity) {
       setEntity(job.entity);
@@ -342,71 +296,22 @@ export const AddToPipelineModal: React.FC<AddToPipelineModalProps> = ({
             </ScrollArea>
           </div>
 
-          {/* Additional Fields */}
-          <div className="grid grid-cols-2 gap-3">
-            {/* Entity */}
-            <div className="space-y-1.5">
-              <Label className="text-xs flex items-center gap-1">
-                <Building2 className="w-3 h-3" />
-                Entité
-              </Label>
-              <Select value={entity} onValueChange={setEntity}>
-                <SelectTrigger className="h-9">
-                  <SelectValue placeholder="Sélectionner" />
-                </SelectTrigger>
-                <SelectContent>
-                  {ENTITIES.map((e) => (
-                    <SelectItem key={e} value={e}>{e}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Accompanying Type */}
-            <div className="space-y-1.5">
-              <Label className="text-xs flex items-center gap-1">
-                <Briefcase className="w-3 h-3" />
-                Type d'accompagnement
-              </Label>
-              <Select value={accompanyingType} onValueChange={setAccompanyingType}>
-                <SelectTrigger className="h-9">
-                  <SelectValue placeholder="Sélectionner" />
-                </SelectTrigger>
-                <SelectContent>
-                  {ACCOMPANYING_TYPES.map((t) => (
-                    <SelectItem key={t} value={t}>{t}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Recruiter */}
-            <div className="space-y-1.5">
-              <Label className="text-xs flex items-center gap-1">
-                <User className="w-3 h-3" />
-                Recruteur
-              </Label>
-              <Input
-                value={recruiterName}
-                onChange={(e) => setRecruiterName(e.target.value)}
-                placeholder="Nom du recruteur"
-                className="h-9"
-              />
-            </div>
-
-            {/* Start Date */}
-            <div className="space-y-1.5">
-              <Label className="text-xs flex items-center gap-1">
-                <Calendar className="w-3 h-3" />
-                Date de shortlist
-              </Label>
-              <Input
-                type="date"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-                className="h-9"
-              />
-            </div>
+          {/* Entity Selection - Simple single field */}
+          <div className="space-y-1.5">
+            <Label className="text-sm flex items-center gap-1">
+              <Building2 className="w-4 h-4" />
+              Entité
+            </Label>
+            <Select value={entity} onValueChange={setEntity}>
+              <SelectTrigger className="h-9">
+                <SelectValue placeholder="Sélectionner" />
+              </SelectTrigger>
+              <SelectContent>
+                {ENTITIES.map((e) => (
+                  <SelectItem key={e} value={e}>{e}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
         </div>
 
