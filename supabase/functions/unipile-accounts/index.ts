@@ -245,6 +245,53 @@ Deno.serve(async (req) => {
         );
       }
 
+      case 'inmail_balance': {
+        // Get InMail balance for an account
+        // https://developer.unipile.com/reference/linkedincontroller_getinmailbalance
+        const { account_id } = params;
+        
+        if (!account_id) {
+          return new Response(
+            JSON.stringify({ success: false, error: 'Account ID requis' }),
+            { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
+        const response = await fetch(`${baseUrl}/linkedin/inmail_balance?account_id=${account_id}`, {
+          headers: {
+            'X-API-KEY': apiKey,
+            'Accept': 'application/json',
+          },
+        });
+
+        const data = await response.json();
+        console.log('InMail balance response:', response.status, JSON.stringify(data));
+
+        if (!response.ok) {
+          return new Response(
+            JSON.stringify({ 
+              success: false, 
+              error: data.message || data.detail || 'Erreur lors de la récupération du solde InMail',
+              status: response.status,
+            }),
+            { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
+        // The API returns: { object: "LinkedinInmailBalance", premium?: number, recruiter?: number, sales_navigator?: number }
+        return new Response(
+          JSON.stringify({ 
+            success: true, 
+            balance: {
+              premium: data.premium ?? null,
+              recruiter: data.recruiter ?? null,
+              sales_navigator: data.sales_navigator ?? null,
+            }
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
       default:
         return new Response(
           JSON.stringify({ success: false, error: 'Action non reconnue' }),
