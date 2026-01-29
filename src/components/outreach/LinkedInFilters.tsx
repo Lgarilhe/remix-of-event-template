@@ -849,7 +849,26 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
             <MultiSelectDropdown
               options={SENIORITY_LEVELS.map(l => ({ value: l.value, label: l.label }))}
               selected={filters.seniority}
-              onChange={(selected) => onChange({ ...filters, seniority: selected as string[] })}
+              onChange={(selected) => {
+                const newSeniority = selected as string[];
+                // If seniority is being cleared/reduced, also clear AI-generated role filters
+                // that may have been created from previous seniority mappings
+                // (role filters with MUST_HAVE priority and CURRENT scope are likely from seniority mapping)
+                if (newSeniority.length < filters.seniority.length) {
+                  // Clear role filters that look like seniority-generated ones
+                  const cleanedRoles = filters.role.filter(r => {
+                    // Keep role filters that are not typical seniority keywords
+                    const seniorityKeywordsPattern = /\b(CEO|CTO|CFO|COO|CMO|CIO|CHRO|Chief|President|VP|Vice|Director|Directeur|Manager|Senior|Sr\.|Lead|Principal|Staff|Junior|Intern|Stagiaire|Trainee|Graduate|Associate|Partner|Owner|Founder|Co-Founder|Fondateur|Entrepreneur)\b/i;
+                    const isSeniorityGenerated = r.priority === 'MUST_HAVE' && 
+                                                  r.scope === 'CURRENT' && 
+                                                  seniorityKeywordsPattern.test(r.keywords);
+                    return !isSeniorityGenerated;
+                  });
+                  onChange({ ...filters, seniority: newSeniority, role: cleanedRoles });
+                } else {
+                  onChange({ ...filters, seniority: newSeniority });
+                }
+              }}
               placeholder="Sélectionner les niveaux..."
               disabled={!isFilterSupported(filters.api, 'seniority')}
             />
