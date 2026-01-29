@@ -365,14 +365,14 @@ ${transversal.context ? `Contexte: ${transversal.context}` : ''}` : ''}
     // === RÈGLE 5: Valoriser les candidats Open to Work ===
     const openToWork = parsed.suggest_open_to_work !== false; // Default true
 
-    // === RÈGLE 6: Élargir PROGRAMMATIQUEMENT la plage d'expérience ±3 ans ===
-    // On ne fait pas confiance à l'IA pour élargir, on le fait nous-mêmes
+    // === RÈGLE 6: Élargir PROGRAMMATIQUEMENT la plage d'expérience ===
+    // -2 ans sur le min (pas trop junior), +5 ans sur le max (ouvert aux seniors)
     const rawXpMin = parsed.years_experience_min ?? job.xpMin ?? null;
     const rawXpMax = parsed.years_experience_max ?? job.xpMax ?? null;
     
-    // Élargir de 3 ans de chaque côté, minimum 0
-    const widenedXpMin = rawXpMin !== null ? Math.max(0, rawXpMin - 3) : null;
-    const widenedXpMax = rawXpMax !== null ? rawXpMax + 3 : null;
+    // Élargir de -2 ans en bas, +5 ans en haut, minimum 0
+    const widenedXpMin = rawXpMin !== null ? Math.max(0, rawXpMin - 2) : null;
+    const widenedXpMax = rawXpMax !== null ? rawXpMax + 5 : null;
     
     // S'assurer que min <= max
     const finalXpMin = (widenedXpMin !== null && widenedXpMax !== null && widenedXpMin > widenedXpMax) 
