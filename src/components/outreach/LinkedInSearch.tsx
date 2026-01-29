@@ -1451,8 +1451,9 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
             id: p.id,
             name: p.name || `${p.first_name || ''} ${p.last_name || ''}`.trim(),
             headline: p.headline,
-            // For Recruiter InMails, use recruiter_candidate_id or member_urn, fallback to id
-            profile_id: p.recruiter_candidate_id || p.member_urn || p.id,
+            // For Recruiter InMails, use the main 'id' field which contains the LinkedIn URN (AEM..., ACo..., etc.)
+            // DO NOT use recruiter_candidate_id which is a numeric internal ID that causes 422 errors
+            profile_id: p.id,
             // Pass network distance for smart message routing (1=DM, 2/3=InMail)
             network_distance: p.network_distance,
             profile: p,
