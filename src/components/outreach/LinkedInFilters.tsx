@@ -494,7 +494,9 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
             {/* Quick add TOP 15 schools button */}
             <div className="flex items-center gap-2 mb-2">
               <Select
+                value=""
                 onValueChange={(priority: FilterPriority) => {
+                  if (!priority) return;
                   // Add all TOP 15 schools with the selected priority
                   const existingIds = new Set(filters.school.map(s => s.id));
                   const newSchools = TOP_SCHOOLS
@@ -510,20 +512,20 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
                   <Sparkles className="w-3.5 h-3.5 text-amber-600" />
                   <span className="text-amber-800 font-medium">TOP 15 Écoles</span>
                 </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="MUST_HAVE" className="text-xs">
+                <SelectContent className="bg-popover border shadow-lg z-50">
+                  <SelectItem value="MUST_HAVE" className="text-xs cursor-pointer">
                     <span className="flex items-center gap-2">
                       <span className="w-2 h-2 rounded-full bg-red-500" />
                       Must-have (obligatoire)
                     </span>
                   </SelectItem>
-                  <SelectItem value="CAN_HAVE" className="text-xs">
+                  <SelectItem value="CAN_HAVE" className="text-xs cursor-pointer">
                     <span className="flex items-center gap-2">
                       <span className="w-2 h-2 rounded-full bg-green-500" />
                       Should-have (valorisé)
                     </span>
                   </SelectItem>
-                  <SelectItem value="DOESNT_HAVE" className="text-xs">
+                  <SelectItem value="DOESNT_HAVE" className="text-xs cursor-pointer">
                     <span className="flex items-center gap-2">
                       <span className="w-2 h-2 rounded-full bg-gray-400" />
                       Exclure ces écoles
