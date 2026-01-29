@@ -39,7 +39,7 @@ import {
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { Job } from '@/pages/JobSpace';
-import { useUnipileQuota, LINKEDIN_LIMITS } from '@/hooks/useUnipileQuota';
+import { useInMailBalance } from '@/hooks/useInMailBalance';
 import { LinkedInProfile } from './types';
 
 interface Recipient {
@@ -116,10 +116,14 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
   const [queueStats, setQueueStats] = useState<QueueStats | null>(null);
   const [queueItems, setQueueItems] = useState<QueueItem[]>([]);
 
-  // Quota management - use recruiter mode for InMails
-  const { getQuotaUsage, canPerformAction, recordAction, isNearLimit } = useUnipileQuota(accountId);
-  const inmailQuota = getQuotaUsage('inmailsSent');
-  const monthlyCredits = LINKEDIN_LIMITS.INMAIL_MONTHLY.recruiter; // 150 credits/month
+  // InMail balance from real API
+  const { balance, isLoading: isLoadingBalance, error: balanceError, refetch: refetchBalance, hasCredits, getCredits } = useInMailBalance(accountId);
+  
+  // Recruiter credits (primary for InMails)
+  const recruiterCredits = getCredits('recruiter');
+  const creditsNeeded = recipients.length;
+  const hasEnoughCredits = hasCredits('recruiter', creditsNeeded);
+  const isNearLimit = recruiterCredits > 0 && recruiterCredits <= 20; // Warning when less than 20 credits
 
   // Get user's timezone
   const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -131,11 +135,6 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
   // Count how many messages are ready
   const readyCount = Object.keys(generatedMessages).length;
   const allGenerated = readyCount === recipients.length;
-  
-  // Check if we have enough credits
-  const hasEnoughCredits = canPerformAction('inmailsSent', recipients.length);
-  const creditsNeeded = recipients.length;
-  const creditsRemaining = inmailQuota.remaining;
 
   // Save sender name to localStorage
   const handleSenderNameChange = (name: string) => {
@@ -326,7 +325,7 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
     
     // Check credit availability before queueing
     if (!hasEnoughCredits) {
-      toast.error(`Crédits InMail insuffisants (${creditsRemaining} restants, ${creditsNeeded} requis)`);
+      toast.error(`Crédits InMail insuffisants (${recruiterCredits} restants, ${creditsNeeded} requis)`);
       return;
     }
     
@@ -355,8 +354,8 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
       if (error) throw error;
       if (!data?.success) throw new Error(data?.error || 'Erreur lors de la mise en queue');
 
-      // Record the InMails usage in quota tracker
-      recordAction('inmailsSent', items.length);
+      // Refetch balance after queueing to update credits display
+      refetchBalance();
       
       toast.success(`${data.queued} InMails planifiés pour envoi`);
       setGeneratedMessages({});
@@ -492,12 +491,12 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
                   <span className="text-sm font-medium">{recipients.length} candidat(s) sélectionné(s)</span>
                 </div>
 
-                {/* InMail Credits Quota Display */}
+                {/* InMail Credits Display - Real API Data */}
                 <div className={cn(
                   "p-3 rounded-lg border",
                   !hasEnoughCredits 
                     ? "bg-red-50 border-red-200" 
-                    : isNearLimit('inmailsSent')
+                    : isNearLimit
                     ? "bg-amber-50 border-amber-200"
                     : "bg-green-50 border-green-200"
                 )}>
@@ -505,41 +504,63 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
                     <div className="flex items-center gap-2">
                       <Mail className={cn(
                         "w-4 h-4",
-                        !hasEnoughCredits ? "text-red-600" : isNearLimit('inmailsSent') ? "text-amber-600" : "text-green-600"
+                        !hasEnoughCredits ? "text-red-600" : isNearLimit ? "text-amber-600" : "text-green-600"
                       )} />
-                      <span className="text-sm font-medium">Crédits InMail (aujourd'hui)</span>
+                      <span className="text-sm font-medium">Crédits InMail Recruiter</span>
+                      {isLoadingBalance && <Loader2 className="w-3 h-3 animate-spin text-muted-foreground" />}
                     </div>
-                    <span className={cn(
-                      "text-sm font-bold",
-                      !hasEnoughCredits ? "text-red-600" : isNearLimit('inmailsSent') ? "text-amber-600" : "text-green-600"
-                    )}>
-                      {creditsRemaining} / {inmailQuota.limit} restants
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className={cn(
+                        "text-sm font-bold",
+                        !hasEnoughCredits ? "text-red-600" : isNearLimit ? "text-amber-600" : "text-green-600"
+                      )}>
+                        {recruiterCredits} crédit{recruiterCredits !== 1 ? 's' : ''} disponible{recruiterCredits !== 1 ? 's' : ''}
+                      </span>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6"
+                        onClick={() => refetchBalance()}
+                        disabled={isLoadingBalance}
+                      >
+                        <RefreshCw className={cn("h-3 w-3", isLoadingBalance && "animate-spin")} />
+                      </Button>
+                    </div>
                   </div>
-                  <Progress 
-                    value={inmailQuota.percentUsed} 
-                    className={cn(
-                      "h-2",
-                      !hasEnoughCredits ? "[&>div]:bg-red-500" : isNearLimit('inmailsSent') ? "[&>div]:bg-amber-500" : "[&>div]:bg-green-500"
-                    )}
-                  />
+                  
+                  {balanceError && (
+                    <p className="text-xs text-amber-600 mb-2">
+                      ⚠️ Impossible de récupérer le solde: {balanceError}
+                    </p>
+                  )}
+                  
+                  {balance && (
+                    <div className="flex gap-2 flex-wrap text-xs text-muted-foreground">
+                      {balance.premium !== null && (
+                        <Badge variant="outline" className="text-xs">Premium: {balance.premium}</Badge>
+                      )}
+                      {balance.recruiter !== null && (
+                        <Badge variant="outline" className="text-xs bg-purple-50">Recruiter: {balance.recruiter}</Badge>
+                      )}
+                      {balance.sales_navigator !== null && (
+                        <Badge variant="outline" className="text-xs">Sales Nav: {balance.sales_navigator}</Badge>
+                      )}
+                    </div>
+                  )}
+                  
                   {!hasEnoughCredits && (
                     <Alert variant="destructive" className="mt-2 py-2">
                       <AlertTriangle className="w-4 h-4" />
                       <AlertDescription className="text-xs">
-                        Crédits insuffisants : vous avez besoin de {creditsNeeded} crédits mais il n'en reste que {creditsRemaining}.
-                        Réduisez le nombre de candidats ou attendez demain.
+                        Crédits insuffisants : vous avez besoin de {creditsNeeded} crédit{creditsNeeded !== 1 ? 's' : ''} mais il n'en reste que {recruiterCredits}.
                       </AlertDescription>
                     </Alert>
                   )}
-                  {hasEnoughCredits && isNearLimit('inmailsSent') && (
-                    <p className="text-xs text-amber-700 mt-1">
-                      ⚠️ Vous approchez de la limite quotidienne
+                  {hasEnoughCredits && isNearLimit && (
+                    <p className="text-xs text-amber-700 mt-2">
+                      ⚠️ Crédits bientôt épuisés
                     </p>
                   )}
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Limite mensuelle Recruiter : ~{monthlyCredits} crédits/mois
-                  </p>
                 </div>
 
                 {/* Sender name */}
