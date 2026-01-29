@@ -165,15 +165,23 @@ RÈGLES ABSOLUES - MESSAGE HUMAIN:
 4. INTERDIT: expressions corporate (synergies, opportunité unique, environnement dynamique, défis stimulants)
 5. Écris des phrases COURTES. Pas de subordonnées complexes.
 6. Commence direct, pas de "Bonjour, je me permets de..."
-7. UN SEUL point de personnalisation, pas trois.
-8. Maximum 80-120 mots. Court = humain.
-9. Respecte l'OBJECTIF selon le statut candidat ci-dessus.
-10. Signe avec le prénom: "${senderName || '[Prénom]'}"
+
+RÈGLE CRITIQUE - PERSONNALISATION:
+7. L'accroche DOIT mentionner une COMPÉTENCE ou TECHNO SPÉCIFIQUE du candidat qui matche avec le poste.
+   - BON: "Vu ton expérience Terraform chez Webedia" (techno précise + contexte)
+   - BON: "Ton passage sur la stack Go/gRPC chez Datadog" (stack précise)
+   - MAUVAIS: "Vu ce que tu fais chez Doctolib" (trop vague)
+   - MAUVAIS: "Ton profil m'a intéressé" (générique)
+8. Identifie LE skill le plus pertinent du profil par rapport au poste et utilise-le.
+
+9. Maximum 80-120 mots. Court = humain.
+10. Respecte l'OBJECTIF selon le statut candidat ci-dessus.
+11. Signe avec le prénom: "${senderName || '[Prénom]'}"
 
 EXEMPLE MESSAGE "À ÉVALUER" (casual):
 "Salut Thomas,
 
-Je recrute un dev Go pour Numspot, le cloud souverain. Vu ton XP Terraform chez Webedia, ça pourrait matcher.
+Je recrute un dev Go pour Numspot, le cloud souverain. Vu ton expérience Terraform et K8s chez Datadog, ça pourrait vraiment matcher.
 
 Stack Go/K8s, équipe de 8, full remote possible.
 
