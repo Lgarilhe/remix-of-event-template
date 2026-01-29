@@ -203,6 +203,22 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
     });
   }, [results, jobScores, sortByScore]);
 
+  // Calculate selectable profiles (exclude "peu adapté" with recommendation: skip)
+  const selectableProfiles = useMemo(() => {
+    return results.filter(p => {
+      const score = jobScores[p.id];
+      // If no score yet, allow selection
+      // If scored and recommendation is 'skip', exclude
+      return !score || score.recommendation !== 'skip';
+    });
+  }, [results, jobScores]);
+
+  // Check if all selectable profiles are selected
+  const allSelectableSelected = useMemo(() => {
+    if (selectableProfiles.length === 0) return false;
+    return selectableProfiles.every(p => selectedProfiles.has(p.id));
+  }, [selectableProfiles, selectedProfiles]);
+
   // Check if selected account needs reconnection or has subscription issues
   const selectedAccountData = useMemo(() => 
     accounts.find(a => a.id === selectedAccount),
@@ -782,14 +798,26 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
     });
   }, []);
 
-  // Select/deselect all visible profiles
+  // Select/deselect all visible profiles (excluding "peu adapté" candidates with score < 40)
   const toggleSelectAll = useCallback(() => {
-    if (selectedProfiles.size === results.length) {
+    // Get selectable profiles (exclude those with recommendation: 'skip')
+    const selectableProfiles = results.filter(p => {
+      const score = jobScores[p.id];
+      // If no score yet, allow selection
+      // If scored and recommendation is 'skip', exclude
+      return !score || score.recommendation !== 'skip';
+    });
+    
+    const currentlySelected = selectableProfiles.filter(p => selectedProfiles.has(p.id));
+    
+    if (currentlySelected.length === selectableProfiles.length && selectableProfiles.length > 0) {
+      // All selectable are selected, deselect all
       setSelectedProfiles(new Set());
     } else {
-      setSelectedProfiles(new Set(results.map(p => p.id)));
+      // Select all selectable profiles
+      setSelectedProfiles(new Set(selectableProfiles.map(p => p.id)));
     }
-  }, [results, selectedProfiles.size]);
+  }, [results, selectedProfiles, jobScores]);
 
   // Build profile data for scoring
   const buildProfileData = useCallback((profile: LinkedInProfile) => {
@@ -1182,12 +1210,16 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
             {selectedJob && results.length > 0 && (
               <div className="flex items-center gap-2">
                 <Checkbox
-                  checked={selectedProfiles.size === results.length && results.length > 0}
+                  checked={allSelectableSelected && selectableProfiles.length > 0}
                   onCheckedChange={toggleSelectAll}
                   id="select-all"
                 />
                 <label htmlFor="select-all" className="text-xs text-[#1A1A1A]/60 cursor-pointer">
-                  Tout
+                  Tout {selectableProfiles.length < results.length && (
+                    <span className="text-[10px] text-amber-600">
+                      ({selectableProfiles.length}/{results.length})
+                    </span>
+                  )}
                 </label>
               </div>
             )}
