@@ -1,12 +1,12 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Job } from '@/pages/JobSpace';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { Loader2, Target, Sparkles, X, Wand2 } from 'lucide-react';
+import { Loader2, Target, Sparkles, X, Wand2, Search } from 'lucide-react';
 import { toast } from 'sonner';
-
 interface JobSelectorProps {
   selectedJob: Job | null;
   onJobChange: (job: Job | null) => void;
@@ -42,6 +42,18 @@ export const JobSelector: React.FC<JobSelectorProps> = ({ selectedJob, onJobChan
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(false);
   const [autoFillLoading, setAutoFillLoading] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+
+  // Filter jobs based on search query
+  const filteredJobs = useMemo(() => {
+    if (!searchQuery.trim()) return jobs;
+    const query = searchQuery.toLowerCase();
+    return jobs.filter(job => 
+      job.title.toLowerCase().includes(query) ||
+      job.client?.name?.toLowerCase().includes(query) ||
+      job.skills?.some(skill => skill.toLowerCase().includes(query))
+    );
+  }, [jobs, searchQuery]);
 
   useEffect(() => {
     const fetchJobs = async () => {
@@ -168,11 +180,33 @@ export const JobSelector: React.FC<JobSelectorProps> = ({ selectedJob, onJobChan
             <SelectValue placeholder="Sélectionner un poste pour le scoring" />
           )}
         </SelectTrigger>
-        <SelectContent className="bg-white max-h-[300px] z-50">
+        <SelectContent className="bg-white max-h-[400px] z-50">
+          {/* Search input inside dropdown */}
+          <div className="p-2 border-b border-gray-100 sticky top-0 bg-white z-10">
+            <div className="relative">
+              <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+              <Input
+                placeholder="Rechercher un poste..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-8 h-8 text-sm"
+                onClick={(e) => e.stopPropagation()}
+                onKeyDown={(e) => e.stopPropagation()}
+              />
+            </div>
+          </div>
+          
           <SelectItem value="none">
             <span className="text-gray-400">Pas de scoring job</span>
           </SelectItem>
-          {jobs.map((job) => (
+          
+          {filteredJobs.length === 0 && searchQuery && (
+            <div className="p-3 text-center text-sm text-gray-500">
+              Aucun poste trouvé pour "{searchQuery}"
+            </div>
+          )}
+          
+          {filteredJobs.map((job) => (
             <SelectItem key={job.id} value={job.id}>
               <div className="flex items-center gap-2 min-w-0">
                 <span className="font-medium truncate max-w-[200px]">{job.title}</span>
