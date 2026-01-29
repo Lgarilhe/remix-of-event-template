@@ -240,9 +240,9 @@ serve(async (req: Request) => {
           .eq("id", item.id);
 
         try {
-          // Send InMail via Unipile
+          // Send InMail via Unipile - Use startNewChat with inmail option
           const response = await fetch(
-            `https://${unipileDsn}/api/v1/users/${item.recipient_profile_id}/inmail`,
+            `https://${unipileDsn}/api/v1/chats`,
             {
               method: "POST",
               headers: {
@@ -251,8 +251,15 @@ serve(async (req: Request) => {
               },
               body: JSON.stringify({
                 account_id: item.account_id,
-                subject: item.subject,
-                message: item.message,
+                text: item.message,
+                attendees_ids: [item.recipient_profile_id],
+                options: {
+                  linkedin: {
+                    api: "recruiter",
+                    inmail: true,
+                    subject: item.subject,
+                  },
+                },
               }),
             }
           );
