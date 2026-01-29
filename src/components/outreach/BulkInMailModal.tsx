@@ -15,6 +15,8 @@ import { Label } from '@/components/ui/label';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Progress } from '@/components/ui/progress';
 import { 
   Mail, 
   Clock, 
@@ -32,10 +34,12 @@ import {
   Send,
   Edit2,
   Check,
+  AlertTriangle,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { Job } from '@/pages/JobSpace';
+import { useUnipileQuota, LINKEDIN_LIMITS } from '@/hooks/useUnipileQuota';
 import { LinkedInProfile } from './types';
 
 interface Recipient {
@@ -112,6 +116,11 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
   const [queueStats, setQueueStats] = useState<QueueStats | null>(null);
   const [queueItems, setQueueItems] = useState<QueueItem[]>([]);
 
+  // Quota management - use recruiter mode for InMails
+  const { getQuotaUsage, canPerformAction, recordAction, isNearLimit } = useUnipileQuota(accountId);
+  const inmailQuota = getQuotaUsage('inmailsSent');
+  const monthlyCredits = LINKEDIN_LIMITS.INMAIL_MONTHLY.recruiter; // 150 credits/month
+
   // Get user's timezone
   const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
   
@@ -122,6 +131,11 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
   // Count how many messages are ready
   const readyCount = Object.keys(generatedMessages).length;
   const allGenerated = readyCount === recipients.length;
+  
+  // Check if we have enough credits
+  const hasEnoughCredits = canPerformAction('inmailsSent', recipients.length);
+  const creditsNeeded = recipients.length;
+  const creditsRemaining = inmailQuota.remaining;
 
   // Save sender name to localStorage
   const handleSenderNameChange = (name: string) => {
@@ -310,6 +324,12 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
       return;
     }
     
+    // Check credit availability before queueing
+    if (!hasEnoughCredits) {
+      toast.error(`Crédits InMail insuffisants (${creditsRemaining} restants, ${creditsNeeded} requis)`);
+      return;
+    }
+    
     setIsQueueing(true);
     
     try {
@@ -335,6 +355,9 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
       if (error) throw error;
       if (!data?.success) throw new Error(data?.error || 'Erreur lors de la mise en queue');
 
+      // Record the InMails usage in quota tracker
+      recordAction('inmailsSent', items.length);
+      
       toast.success(`${data.queued} InMails planifiés pour envoi`);
       setGeneratedMessages({});
       setActiveTab('queue');
@@ -469,6 +492,56 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
                   <span className="text-sm font-medium">{recipients.length} candidat(s) sélectionné(s)</span>
                 </div>
 
+                {/* InMail Credits Quota Display */}
+                <div className={cn(
+                  "p-3 rounded-lg border",
+                  !hasEnoughCredits 
+                    ? "bg-red-50 border-red-200" 
+                    : isNearLimit('inmailsSent')
+                    ? "bg-amber-50 border-amber-200"
+                    : "bg-green-50 border-green-200"
+                )}>
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <Mail className={cn(
+                        "w-4 h-4",
+                        !hasEnoughCredits ? "text-red-600" : isNearLimit('inmailsSent') ? "text-amber-600" : "text-green-600"
+                      )} />
+                      <span className="text-sm font-medium">Crédits InMail (aujourd'hui)</span>
+                    </div>
+                    <span className={cn(
+                      "text-sm font-bold",
+                      !hasEnoughCredits ? "text-red-600" : isNearLimit('inmailsSent') ? "text-amber-600" : "text-green-600"
+                    )}>
+                      {creditsRemaining} / {inmailQuota.limit} restants
+                    </span>
+                  </div>
+                  <Progress 
+                    value={inmailQuota.percentUsed} 
+                    className={cn(
+                      "h-2",
+                      !hasEnoughCredits ? "[&>div]:bg-red-500" : isNearLimit('inmailsSent') ? "[&>div]:bg-amber-500" : "[&>div]:bg-green-500"
+                    )}
+                  />
+                  {!hasEnoughCredits && (
+                    <Alert variant="destructive" className="mt-2 py-2">
+                      <AlertTriangle className="w-4 h-4" />
+                      <AlertDescription className="text-xs">
+                        Crédits insuffisants : vous avez besoin de {creditsNeeded} crédits mais il n'en reste que {creditsRemaining}.
+                        Réduisez le nombre de candidats ou attendez demain.
+                      </AlertDescription>
+                    </Alert>
+                  )}
+                  {hasEnoughCredits && isNearLimit('inmailsSent') && (
+                    <p className="text-xs text-amber-700 mt-1">
+                      ⚠️ Vous approchez de la limite quotidienne
+                    </p>
+                  )}
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Limite mensuelle Recruiter : ~{monthlyCredits} crédits/mois
+                  </p>
+                </div>
+
                 {/* Sender name */}
                 <div>
                   <Label htmlFor="senderName">Ton prénom (pour la signature)</Label>
@@ -515,14 +588,24 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
                 {/* Generate button */}
                 <Button
                   onClick={handleGenerateAll}
-                  disabled={isGenerating}
-                  className="w-full bg-gradient-to-r from-purple-600 to-[#0077B5] hover:from-purple-700 hover:to-[#005E93]"
+                  disabled={isGenerating || !hasEnoughCredits}
+                  className={cn(
+                    "w-full",
+                    !hasEnoughCredits 
+                      ? "bg-gray-400 cursor-not-allowed"
+                      : "bg-gradient-to-r from-purple-600 to-[#0077B5] hover:from-purple-700 hover:to-[#005E93]"
+                  )}
                   size="lg"
                 >
                   {isGenerating ? (
                     <>
                       <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                       Génération {generatingIndex + 1}/{recipients.length}...
+                    </>
+                  ) : !hasEnoughCredits ? (
+                    <>
+                      <AlertTriangle className="w-4 h-4 mr-2" />
+                      Crédits insuffisants
                     </>
                   ) : (
                     <>
