@@ -161,6 +161,14 @@ STRATÉGIE "ROLE_KEYWORDS" (titres uniquement):
 - Inclure français ET anglais
 - Exemple: "Cloud Network Engineer OR Network Architect OR Ingénieur Réseau"
 
+⚠️ RÈGLE EXPÉRIENCE - PLAGES LARGES:
+- TOUJOURS élargir la plage d'expérience de ±2-3 ans par rapport au besoin strict
+- Si le poste demande 7-8 ans → retourner 5-10 ans
+- Si le poste demande 5 ans min → retourner 3 ans min
+- Si le poste demande 10 ans max → retourner 12 ans max
+- Objectif: ne PAS exclure des profils légèrement hors critères qui pourraient convenir
+- Le filtrage fin se fera par scoring IA, pas par les filtres de recherche
+
 RÈGLES MÉTIER:
 1. Pour un profil RARE, être MOINS restrictif sur les keywords (OR plutôt que AND)
 2. Les critères MUST-HAVE vont dans skills_to_search, PAS dans keywords
@@ -170,8 +178,8 @@ Retourne UNIQUEMENT un objet JSON avec:
 - keywords: string - Technologies/compétences clés avec OR (PAS de titres de poste ici!)
 - role_keywords: string[] - UN élément avec titres FR+EN en OR
 - seniority_levels: string[] - Niveaux "1"-"10"
-- years_experience_min: number | null
-- years_experience_max: number | null  
+- years_experience_min: number | null - TOUJOURS élargir de -2 ans vs le besoin strict
+- years_experience_max: number | null - TOUJOURS élargir de +2 ans vs le besoin strict
 - skills_to_search: string[] - Compétences techniques (max 10)
 - certifications: string[] - Certifications pertinentes (max 3)
 - industry_keywords: string[] - Secteurs (max 3)
