@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { LinkedInAccount } from '@/pages/Outreach';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -28,6 +28,7 @@ import { fr } from 'date-fns/locale';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
+import { NurturingPanel } from './NurturingPanel';
 
 interface MessagesInboxProps {
   accounts: LinkedInAccount[];
@@ -993,7 +994,28 @@ export const MessagesInbox: React.FC<MessagesInboxProps> = ({
               )}
             </ScrollArea>
 
-            {/* Reply Suggestions */}
+            {/* AI Nurturing Panel - Show when there are messages */}
+            {messages.length > 0 && selectedChat && (
+              <NurturingPanel
+                context={{
+                  recipientName: getChatDisplayName(selectedChat),
+                  recipientHeadline: getChatHeadline(selectedChat),
+                  messages: messages.map(m => ({
+                    text: getMessageText(m),
+                    is_sender: !!m.is_sender,
+                    timestamp: m.timestamp,
+                  })),
+                  jobContext: getChatJobInfo(selectedChat) ? {
+                    title: getChatJobInfo(selectedChat)?.job_title || 'Poste non spécifié',
+                  } : undefined,
+                }}
+                onSuggestionSelect={(text) => setNewMessage(text)}
+                onSuggestionSend={handleSuggestionSend}
+                sending={sending}
+              />
+            )}
+
+            {/* Legacy Reply Suggestions - Keep for backward compatibility */}
             <div className="px-3 pt-2 border-t border-[#1A1A1A]/10">
               {/* Generate suggestions button */}
               {!suggestionsLoaded && messages.length > 0 && (
