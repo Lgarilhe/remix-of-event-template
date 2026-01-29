@@ -48,7 +48,7 @@ export const JobSelector: React.FC<JobSelectorProps> = ({ selectedJob, onJobChan
       setLoading(true);
       try {
         const { data, error } = await supabase.functions.invoke('fetch-notion-jobs', {
-          body: {},
+          body: { all: true },
         });
         
         if (error) throw error;
