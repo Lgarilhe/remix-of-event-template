@@ -29,6 +29,7 @@ export default function Outreach() {
   const [selectedAccount, setSelectedAccount] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('search');
+  const [unreadMessageCount, setUnreadMessageCount] = useState(0);
 
   // Fetch connected accounts
   const fetchAccounts = async () => {
@@ -104,6 +105,11 @@ export default function Outreach() {
               <TabsTrigger value="messages" className="gap-2 data-[state=active]:bg-[#0077B5] data-[state=active]:text-white">
                 <MessageSquare className="w-4 h-4" />
                 Messages
+                {unreadMessageCount > 0 && (
+                  <span className="ml-1 px-1.5 py-0.5 text-[10px] font-bold bg-red-500 text-white rounded-full min-w-[18px] text-center">
+                    {unreadMessageCount > 99 ? '99+' : unreadMessageCount}
+                  </span>
+                )}
               </TabsTrigger>
               <TabsTrigger value="sequences" className="gap-2 data-[state=active]:bg-[#0077B5] data-[state=active]:text-white">
                 <GitBranch className="w-4 h-4" />
@@ -146,6 +152,7 @@ export default function Outreach() {
                 accounts={accounts}
                 selectedAccount={selectedAccount}
                 onAccountChange={setSelectedAccount}
+                onUnreadCountChange={setUnreadMessageCount}
               />
             </TabsContent>
 

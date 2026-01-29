@@ -31,6 +31,7 @@ interface MessagesInboxProps {
   accounts: LinkedInAccount[];
   selectedAccount: string | null;
   onAccountChange: (accountId: string | null) => void;
+  onUnreadCountChange?: (count: number) => void;
 }
 
 interface ChatAttendee {
@@ -101,6 +102,7 @@ interface SequenceEnrollmentInfo {
 export const MessagesInbox: React.FC<MessagesInboxProps> = ({
   accounts,
   selectedAccount,
+  onUnreadCountChange,
 }) => {
   const [chats, setChats] = useState<Chat[]>([]);
   const [filteredChats, setFilteredChats] = useState<Chat[]>([]);
@@ -116,6 +118,7 @@ export const MessagesInbox: React.FC<MessagesInboxProps> = ({
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const [enrollmentsMap, setEnrollmentsMap] = useState<Map<string, SequenceEnrollmentInfo>>(new Map());
+  const [showUnreadOnly, setShowUnreadOnly] = useState(false);
 
   // Fetch sequence enrollments to get job context for profiles
   const fetchEnrollments = useCallback(async () => {
@@ -248,21 +251,33 @@ export const MessagesInbox: React.FC<MessagesInboxProps> = ({
     }
   };
 
-  // Filter chats based on search query
+  // Filter chats based on search query and unread filter
   useEffect(() => {
-    if (!searchQuery.trim()) {
-      setFilteredChats(chats);
-    } else {
-      const query = searchQuery.toLowerCase();
-      setFilteredChats(
-        chats.filter(chat => {
-          const chatName = chat.name?.toLowerCase() || '';
-          const attendeeNames = chat.attendees?.map(a => a.name?.toLowerCase()).join(' ') || '';
-          return chatName.includes(query) || attendeeNames.includes(query);
-        })
-      );
+    let result = chats;
+    
+    // Apply unread filter first
+    if (showUnreadOnly) {
+      result = result.filter(chat => hasUnread(chat));
     }
-  }, [searchQuery, chats]);
+    
+    // Then apply search filter
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      result = result.filter(chat => {
+        const chatName = chat.name?.toLowerCase() || '';
+        const attendeeNames = chat.attendees?.map(a => a.name?.toLowerCase()).join(' ') || '';
+        return chatName.includes(query) || attendeeNames.includes(query);
+      });
+    }
+    
+    setFilteredChats(result);
+  }, [searchQuery, chats, showUnreadOnly]);
+
+  // Calculate and report total unread count
+  useEffect(() => {
+    const totalUnread = chats.reduce((acc, chat) => acc + getUnreadCount(chat), 0);
+    onUnreadCountChange?.(totalUnread);
+  }, [chats, onUnreadCountChange]);
 
   // Load chats and enrollments when account changes
   useEffect(() => {
@@ -474,6 +489,27 @@ export const MessagesInbox: React.FC<MessagesInboxProps> = ({
               className="pl-9 h-9"
             />
           </div>
+          {/* Unread filter toggle */}
+          <Button
+            variant={showUnreadOnly ? "default" : "outline"}
+            size="sm"
+            className={cn(
+              "w-full h-8 text-xs gap-2",
+              showUnreadOnly && "bg-[#0077B5] hover:bg-[#005E93]"
+            )}
+            onClick={() => setShowUnreadOnly(!showUnreadOnly)}
+          >
+            <Reply className="w-3 h-3" />
+            Non lus uniquement
+            {chats.filter(c => hasUnread(c)).length > 0 && (
+              <Badge variant="secondary" className={cn(
+                "ml-auto h-5 px-1.5 text-[10px]",
+                showUnreadOnly && "bg-white/20 text-white"
+              )}>
+                {chats.filter(c => hasUnread(c)).length}
+              </Badge>
+            )}
+          </Button>
         </div>
 
         {/* Chat List */}
