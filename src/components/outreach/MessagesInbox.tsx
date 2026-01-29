@@ -102,6 +102,21 @@ interface SequenceEnrollmentInfo {
   current_step_order: number;
 }
 
+interface JobData {
+  id: string;
+  title: string;
+  client?: { name: string; sector: string } | null;
+  skills: string[];
+  seniority?: string;
+  location?: string;
+  remote?: string;
+  salaryMin?: number;
+  salaryMax?: number;
+  tjmMin?: number;
+  tjmMax?: number;
+  contractType?: string;
+}
+
 export const MessagesInbox: React.FC<MessagesInboxProps> = ({
   accounts,
   selectedAccount,
@@ -128,6 +143,9 @@ export const MessagesInbox: React.FC<MessagesInboxProps> = ({
   const [replySuggestions, setReplySuggestions] = useState<Array<{ text: string; type: string }>>([]);
   const [loadingSuggestions, setLoadingSuggestions] = useState(false);
   const [suggestionsLoaded, setSuggestionsLoaded] = useState(false);
+  
+  // Jobs list for matching
+  const [availableJobs, setAvailableJobs] = useState<JobData[]>([]);
 
   // Fetch sequence enrollments to get job context for profiles
   const fetchEnrollments = useCallback(async () => {
@@ -150,6 +168,38 @@ export const MessagesInbox: React.FC<MessagesInboxProps> = ({
       setEnrollmentsMap(map);
     } catch (error) {
       console.error('Error fetching enrollments:', error);
+    }
+  }, []);
+
+  // Fetch available jobs from Notion
+  const fetchAvailableJobs = useCallback(async () => {
+    try {
+      const response = await supabase.functions.invoke('fetch-notion-jobs', {
+        body: { status: 'Publié' },
+      });
+      
+      if (response.error) throw response.error;
+      
+      if (response.data?.jobs) {
+        // Transform Notion jobs to our JobData format
+        const jobs: JobData[] = response.data.jobs.slice(0, 20).map((job: any) => ({
+          id: job.id,
+          title: job.title || 'Poste',
+          client: job.client,
+          skills: job.skills || [],
+          seniority: job.seniority,
+          location: job.location,
+          remote: job.remote,
+          salaryMin: job.salaryMin,
+          salaryMax: job.salaryMax,
+          tjmMin: job.tjmMin,
+          tjmMax: job.tjmMax,
+          contractType: job.contractType,
+        }));
+        setAvailableJobs(jobs);
+      }
+    } catch (error) {
+      console.error('Error fetching jobs for matching:', error);
     }
   }, []);
 
@@ -343,10 +393,11 @@ export const MessagesInbox: React.FC<MessagesInboxProps> = ({
     if (selectedAccount) {
       fetchChats();
       fetchEnrollments();
+      fetchAvailableJobs();
       setSelectedChat(null);
       setMessages([]);
     }
-  }, [selectedAccount, fetchChats, fetchEnrollments]);
+  }, [selectedAccount, fetchChats, fetchEnrollments, fetchAvailableJobs]);
 
   // Load messages when chat is selected
   useEffect(() => {
@@ -1008,9 +1059,25 @@ export const MessagesInbox: React.FC<MessagesInboxProps> = ({
                   jobContext: getChatJobInfo(selectedChat) ? {
                     title: getChatJobInfo(selectedChat)?.job_title || 'Poste non spécifié',
                   } : undefined,
+                  // Pass profile data extracted from chat for job matching
+                  profileData: {
+                    name: getChatDisplayName(selectedChat),
+                    headline: getChatHeadline(selectedChat),
+                    currentRole: getChatHeadline(selectedChat)?.split(' at ')[0] || getChatHeadline(selectedChat)?.split(' chez ')[0],
+                    currentCompany: getChatHeadline(selectedChat)?.split(' at ')[1] || getChatHeadline(selectedChat)?.split(' chez ')[1],
+                    // Extract skills from headline if possible
+                    skills: getChatHeadline(selectedChat)?.split(/[|,·]/).map(s => s.trim()).filter(Boolean) || [],
+                  },
+                  // Pass available jobs for matching
+                  availableJobs: availableJobs,
                 }}
                 onSuggestionSelect={(text) => setNewMessage(text)}
                 onSuggestionSend={handleSuggestionSend}
+                onJobSelect={(jobId, jobTitle) => {
+                  toast.info(`💼 Poste sélectionné: ${jobTitle}`, {
+                    description: 'Vous pouvez maintenant envoyer ce candidat vers ce poste.'
+                  });
+                }}
                 sending={sending}
               />
             )}
