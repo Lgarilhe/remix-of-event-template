@@ -1235,6 +1235,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
               currentFilters={filters}
               onApplyFilters={(update) => setFilters(prev => ({ ...prev, ...update }))}
               accountId={selectedAccount || undefined}
+              selectedJob={selectedJob}
             />
           </div>
         </div>
