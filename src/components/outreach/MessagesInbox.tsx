@@ -440,6 +440,44 @@ export const MessagesInbox: React.FC<MessagesInboxProps> = ({
     return null;
   };
 
+  // Get message source type (Classic, Recruiter, or InMail)
+  const getMessageSourceType = (chat: Chat): { label: string; color: string } | null => {
+    const folders = chat.folder || [];
+    
+    // Check for InMail first
+    if (chat.content_type === 'inmail') {
+      return { label: 'InMail', color: 'bg-purple-100 text-purple-700 border-purple-200' };
+    }
+    
+    // Check folder names for Recruiter
+    const hasRecruiter = folders.some(f => 
+      f.toLowerCase().includes('recruiter') || 
+      f.toLowerCase().includes('talent')
+    );
+    if (hasRecruiter) {
+      return { label: 'Recruiter', color: 'bg-amber-100 text-amber-700 border-amber-200' };
+    }
+    
+    // Check for Sales Navigator
+    const hasSalesNav = folders.some(f => 
+      f.toLowerCase().includes('sales') || 
+      f.toLowerCase().includes('navigator')
+    );
+    if (hasSalesNav) {
+      return { label: 'Sales Nav', color: 'bg-blue-100 text-blue-700 border-blue-200' };
+    }
+    
+    // Default to Classic for regular LinkedIn messages
+    const hasClassic = folders.some(f => 
+      f.toLowerCase().includes('classic') || 
+      f.toLowerCase().includes('inbox')
+    );
+    if (hasClassic || folders.length > 0) {
+      return { label: 'Classic', color: 'bg-slate-100 text-slate-600 border-slate-200' };
+    }
+    
+    return null;
+  };
   // Handle keyboard shortcut for sending
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -562,12 +600,29 @@ export const MessagesInbox: React.FC<MessagesInboxProps> = ({
                   
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between gap-2">
-                      <span className={cn(
-                        "text-sm truncate",
-                        hasUnread(chat) ? "font-semibold text-[#1A1A1A]" : "font-medium text-[#1A1A1A]"
-                      )}>
-                        {getChatDisplayName(chat)}
-                      </span>
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <span className={cn(
+                          "text-sm truncate",
+                          hasUnread(chat) ? "font-semibold text-[#1A1A1A]" : "font-medium text-[#1A1A1A]"
+                        )}>
+                          {getChatDisplayName(chat)}
+                        </span>
+                        {/* Source type badge */}
+                        {(() => {
+                          const sourceType = getMessageSourceType(chat);
+                          if (sourceType) {
+                            return (
+                              <span className={cn(
+                                "shrink-0 px-1.5 py-0.5 text-[9px] font-medium rounded border",
+                                sourceType.color
+                              )}>
+                                {sourceType.label}
+                              </span>
+                            );
+                          }
+                          return null;
+                        })()}
+                      </div>
                       <span className="text-[10px] text-muted-foreground shrink-0">
                         {formatChatTime(chat.timestamp)}
                       </span>
