@@ -887,12 +887,18 @@ async function handleGetChats(
 
   const chats = data.items || [];
   
-  // Enrich chats with attendee details by fetching each chat's full info
-  // The list endpoint doesn't include attendees array, but the individual chat endpoint does
+  // Cache for attendee info to avoid duplicate fetches
+  const attendeeCache = new Map<string, Record<string, unknown>>();
+  
+  // Enrich chats with attendee details
+  // The list endpoint returns attendee_provider_id but not the full attendee info
+  // We need to fetch /chat_attendees/{id} for each unique attendee to get name/picture
   const enrichedChats = await Promise.all(
     chats.slice(0, 30).map(async (chat: Record<string, unknown>) => {
       try {
-        // Get individual chat details which includes attendees
+        const attendeeProviderId = chat.attendee_provider_id as string | undefined;
+        
+        // First try to get chat details which might include attendees
         const chatDetailResponse = await fetch(`${baseUrl}/chats/${chat.id}`, {
           headers: {
             'X-API-KEY': apiKey,
@@ -900,15 +906,46 @@ async function handleGetChats(
           },
         });
         
+        let attendees: Record<string, unknown>[] = [];
+        let lastMessage: Record<string, unknown> | null = null;
+        
         if (chatDetailResponse.ok) {
           const chatDetail = await chatDetailResponse.json();
-          return {
-            ...chat,
-            attendees: chatDetail.attendees || [],
-            last_message: chatDetail.last_message || null,
-          };
+          attendees = chatDetail.attendees || [];
+          lastMessage = chatDetail.last_message || null;
         }
-        return chat;
+        
+        // If we still don't have attendee details, try fetching by attendee_provider_id
+        if (attendees.length === 0 && attendeeProviderId) {
+          // Check cache first
+          if (attendeeCache.has(attendeeProviderId)) {
+            attendees = [attendeeCache.get(attendeeProviderId)!];
+          } else {
+            try {
+              // Fetch attendee info from the chat_attendees endpoint
+              const attendeeResponse = await fetch(`${baseUrl}/chat_attendees/${encodeURIComponent(attendeeProviderId)}`, {
+                headers: {
+                  'X-API-KEY': apiKey,
+                  'Accept': 'application/json',
+                },
+              });
+              
+              if (attendeeResponse.ok) {
+                const attendeeInfo = await attendeeResponse.json();
+                attendeeCache.set(attendeeProviderId, attendeeInfo);
+                attendees = [attendeeInfo];
+              }
+            } catch (attendeeError) {
+              console.error('Error fetching attendee:', attendeeProviderId, attendeeError);
+            }
+          }
+        }
+        
+        return {
+          ...chat,
+          attendees,
+          last_message: lastMessage,
+        };
       } catch (error) {
         console.error('Error enriching chat:', chat.id, error);
         return chat;
