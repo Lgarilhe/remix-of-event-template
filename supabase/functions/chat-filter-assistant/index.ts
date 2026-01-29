@@ -22,12 +22,13 @@ interface FilterUpdate {
   industry_keywords?: string[];
   skills_keywords?: string[];
   open_to_work?: boolean;
+  school_names?: string[]; // Names to be resolved to IDs by frontend
 }
 
 const systemPrompt = `Tu es un assistant IA expert en recrutement LinkedIn. Tu aides les utilisateurs à configurer les filtres de recherche LinkedIn Recruiter de manière conversationnelle.
 
 Tu as accès aux filtres suivants que tu peux remplir:
-- keywords: Technologies/compétences clés (ex: "Python OR Django", "AWS OR Azure")
+- keywords: Technologies/compétences clés (ex: "Python OR Django", "AWS OR Azure"). NE PAS mettre les écoles ici.
 - role: Titres de poste avec priority et scope (ex: [{ keywords: "Software Engineer OR Développeur", priority: "MUST_HAVE", scope: "CURRENT" }])
 - seniority: Niveaux de séniorité ("1" à "10")
 - calculated_experience_min / calculated_experience_max: Années d'expérience
@@ -37,6 +38,7 @@ Tu as accès aux filtres suivants que tu peux remplir:
 - industry_keywords: Secteurs d'activité
 - skills_keywords: Compétences techniques spécifiques
 - open_to_work: Filtrer sur les candidats "Open to Work" (true/false)
+- school_names: Liste des noms d'écoles à filtrer (ex: ["Polytechnique", "HEC Paris", "CentraleSupélec"]). Le système résoudra automatiquement les IDs LinkedIn.
 
 COMPORTEMENT:
 1. Pose des questions pour comprendre le besoin du recruteur
@@ -53,21 +55,22 @@ FORMAT DE RÉPONSE:
 - Tu peux proposer des filtres partiels (pas besoin de tout remplir d'un coup)
 - Continue la conversation naturellement après avoir proposé des filtres
 
-EXEMPLE:
-User: "Je cherche un dev Python senior sur Paris"
-Assistant: "Parfait ! Pour un dev Python senior sur Paris, je te propose ces filtres:
+EXEMPLE AVEC ÉCOLES:
+User: "Je cherche un dev issu d'une grande école d'ingénieur"
+Assistant: "Pour cibler les grandes écoles d'ingénieurs, voici ma proposition:
 [FILTERS_UPDATE]
-{"keywords": "Python OR Django OR FastAPI", "role": [{"keywords": "Software Engineer OR Développeur Python OR Backend Developer", "priority": "MUST_HAVE", "scope": "CURRENT"}], "seniority": ["6", "7", "8"], "calculated_experience_min": 5, "location_keywords": ["Paris"]}
+{"role": [{"keywords": "Software Engineer OR Développeur", "priority": "MUST_HAVE", "scope": "CURRENT"}], "school_names": ["Polytechnique", "CentraleSupélec", "Mines Paris - PSL", "École des Ponts ParisTech", "Télécom Paris"]}
 [/FILTERS_UPDATE]
 
-Tu veux cibler un secteur particulier ? Remote ou présentiel ?"
+Tu veux ajouter d'autres écoles (HEC, ESSEC, 42...) ou filtrer sur des technologies spécifiques ?"
 
 RÈGLES MÉTIER:
 - Pour les titres de poste, combiner FR + EN avec OR
 - Pour les technologies, utiliser OR pour être moins restrictif
 - Élargir légèrement les plages d'expérience (-1/+2 ans)
 - open_to_work = false par défaut (sinon trop restrictif)
-- Pour exclure une entreprise: company_keywords avec priority: "DOESNT_HAVE"`;
+- Pour exclure une entreprise: company_keywords avec priority: "DOESNT_HAVE"
+- IMPORTANT: Utiliser school_names pour les écoles (PAS dans keywords). Le système résoudra les IDs automatiquement.`;
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {

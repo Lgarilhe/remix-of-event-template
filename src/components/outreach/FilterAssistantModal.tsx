@@ -3,10 +3,11 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { MessageSquare, Send, Loader2, Sparkles, Check, X } from 'lucide-react';
+import { MessageSquare, Send, Loader2, Sparkles, Check, X, GraduationCap } from 'lucide-react';
 import { toast } from 'sonner';
 import ReactMarkdown from 'react-markdown';
 import { LinkedInFiltersState } from './types';
+import { supabase } from '@/integrations/supabase/client';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -26,11 +27,13 @@ interface FilterUpdate {
   industry_keywords?: string[];
   skills_keywords?: string[];
   open_to_work?: boolean;
+  school_names?: string[];
 }
 
 interface FilterAssistantModalProps {
   onApplyFilters: (update: Partial<LinkedInFiltersState>) => void;
   currentFilters: LinkedInFiltersState;
+  accountId?: string;
 }
 
 const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat-filter-assistant`;
@@ -38,6 +41,7 @@ const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat-filter-
 export const FilterAssistantModal: React.FC<FilterAssistantModalProps> = ({
   onApplyFilters,
   currentFilters,
+  accountId,
 }) => {
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([
@@ -189,8 +193,53 @@ export const FilterAssistantModal: React.FC<FilterAssistantModalProps> = ({
     streamChat(input.trim());
   };
 
+  // Resolve school names to IDs using Unipile API
+  const resolveSchoolIds = useCallback(async (schoolNames: string[]): Promise<Array<{ id: string; name: string; priority: 'CAN_HAVE' }>> => {
+    if (!accountId || schoolNames.length === 0) return [];
+
+    const resolved: Array<{ id: string; name: string; priority: 'CAN_HAVE' }> = [];
+
+    for (const schoolName of schoolNames) {
+      try {
+        const { data, error } = await supabase.functions.invoke('unipile-search', {
+          body: {
+            action: 'get_parameters',
+            account_id: accountId,
+            type: 'SCHOOL',
+            service: 'RECRUITER',
+            keywords: schoolName,
+          },
+        });
+
+        if (!error && data?.items?.length > 0) {
+          // Find best match
+          const exactMatch = data.items.find(
+            (it: { title: string }) => it.title.toLowerCase() === schoolName.toLowerCase()
+          );
+          const partialMatch = data.items.find(
+            (it: { title: string }) => it.title.toLowerCase().includes(schoolName.toLowerCase()) ||
+              schoolName.toLowerCase().includes(it.title.toLowerCase())
+          );
+          const match = exactMatch || partialMatch || data.items[0];
+
+          if (match) {
+            resolved.push({
+              id: String(match.id),
+              name: match.title || schoolName,
+              priority: 'CAN_HAVE',
+            });
+          }
+        }
+      } catch (e) {
+        console.error(`Failed to resolve school: ${schoolName}`, e);
+      }
+    }
+
+    return resolved;
+  }, [accountId]);
+
   // Apply filter update to parent
-  const handleApplyFilters = useCallback((filterUpdate: FilterUpdate) => {
+  const handleApplyFilters = useCallback(async (filterUpdate: FilterUpdate) => {
     const update: Partial<LinkedInFiltersState> = {};
 
     if (filterUpdate.keywords) {
@@ -233,9 +282,21 @@ export const FilterAssistantModal: React.FC<FilterAssistantModalProps> = ({
       update.open_to_work = filterUpdate.open_to_work;
     }
 
+    // Resolve school names to IDs
+    if (filterUpdate.school_names?.length) {
+      toast.info(`Résolution des ${filterUpdate.school_names.length} écoles...`);
+      const resolvedSchools = await resolveSchoolIds(filterUpdate.school_names);
+      if (resolvedSchools.length > 0) {
+        update.school = resolvedSchools;
+        toast.success(`${resolvedSchools.length}/${filterUpdate.school_names.length} écoles résolues`);
+      } else {
+        toast.warning('Aucune école n\'a pu être résolue');
+      }
+    }
+
     onApplyFilters(update);
     toast.success('Filtres appliqués !');
-  }, [onApplyFilters]);
+  }, [onApplyFilters, resolveSchoolIds]);
 
   // Render a single message
   const renderMessage = (message: Message, index: number) => {
@@ -297,6 +358,12 @@ export const FilterAssistantModal: React.FC<FilterAssistantModalProps> = ({
                 {message.filterUpdate.location_keywords?.length && (
                   <span className="text-[10px] px-2 py-1 bg-amber-100 text-amber-700 rounded-full">
                     📍 {message.filterUpdate.location_keywords.join(', ')}
+                  </span>
+                )}
+                {message.filterUpdate.school_names?.length && (
+                  <span className="text-[10px] px-2 py-1 bg-indigo-100 text-indigo-700 rounded-full flex items-center gap-1">
+                    <GraduationCap className="w-3 h-3" />
+                    {message.filterUpdate.school_names.length} écoles
                   </span>
                 )}
               </div>
