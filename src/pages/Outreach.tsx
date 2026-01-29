@@ -5,8 +5,9 @@ import { SEOHead } from '@/components/SEOHead';
 import { LinkedInAccountManager } from '@/components/outreach/LinkedInAccountManager';
 import { LinkedInSearch } from '@/components/outreach/LinkedInSearch';
 import { SequencesList } from '@/components/outreach/SequencesList';
+import { MessagesInbox } from '@/components/outreach/MessagesInbox';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Search, Users, Settings, GitBranch } from 'lucide-react';
+import { Search, Users, Settings, GitBranch, MessageSquare } from 'lucide-react';
 import { toast } from 'sonner';
 
 export interface LinkedInAccountSubscriptions {
@@ -100,6 +101,10 @@ export default function Outreach() {
                 <Search className="w-4 h-4" />
                 Recherche
               </TabsTrigger>
+              <TabsTrigger value="messages" className="gap-2 data-[state=active]:bg-[#0077B5] data-[state=active]:text-white">
+                <MessageSquare className="w-4 h-4" />
+                Messages
+              </TabsTrigger>
               <TabsTrigger value="sequences" className="gap-2 data-[state=active]:bg-[#0077B5] data-[state=active]:text-white">
                 <GitBranch className="w-4 h-4" />
                 Séquences
@@ -134,6 +139,14 @@ export default function Outreach() {
                   onAccountChange={setSelectedAccount}
                 />
               )}
+            </TabsContent>
+
+            <TabsContent value="messages" className="mt-0">
+              <MessagesInbox
+                accounts={accounts}
+                selectedAccount={selectedAccount}
+                onAccountChange={setSelectedAccount}
+              />
             </TabsContent>
 
             <TabsContent value="sequences" className="mt-0">
