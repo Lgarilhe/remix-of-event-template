@@ -358,11 +358,18 @@ serve(async (req) => {
       throw new Error('NOTION_API_KEY is not configured');
     }
 
-    // Parse pagination parameters
+    // Parse pagination parameters from query string or body
     const url = new URL(req.url);
-    const page = parseInt(url.searchParams.get('page') || '1', 10);
-    const limit = parseInt(url.searchParams.get('limit') || '20', 10);
-    const skipPagination = url.searchParams.get('all') === 'true';
+    let body: any = {};
+    try {
+      body = await req.json();
+    } catch {
+      // No body or invalid JSON, use defaults
+    }
+    
+    const page = parseInt(url.searchParams.get('page') || body.page || '1', 10);
+    const limit = parseInt(url.searchParams.get('limit') || body.limit || '20', 10);
+    const skipPagination = url.searchParams.get('all') === 'true' || body.all === true;
 
     // Fetch jobs from Notion - only active ones (Publié status)
     const jobsData = await fetchNotionDatabase(POSTES_DATABASE_ID, {
