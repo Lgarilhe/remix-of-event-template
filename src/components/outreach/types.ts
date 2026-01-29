@@ -111,9 +111,14 @@ export interface LinkedInFiltersState {
   // Languages
   profile_language: string[];
   
-  // Numeric ranges
+  // Numeric ranges (API-based - may not work reliably)
   years_of_experience_min: number | null;
   years_of_experience_max: number | null;
+  
+  // CLIENT-SIDE experience filter (calculated from education end date)
+  // This is more reliable than LinkedIn's years_of_experience
+  calculated_experience_min: number | null;
+  calculated_experience_max: number | null;
   
   // Tenure filters (Sales Navigator/Recruiter)
   tenure_at_company_min: number | null;
@@ -176,6 +181,8 @@ export const INITIAL_FILTERS: LinkedInFiltersState = {
   profile_language: [],
   years_of_experience_min: null,
   years_of_experience_max: null,
+  calculated_experience_min: null,
+  calculated_experience_max: null,
   tenure_at_company_min: null,
   tenure_at_company_max: null,
   tenure_at_role_min: null,
