@@ -79,6 +79,7 @@ import {
   UsersRound,
   Network,
 } from 'lucide-react';
+import { toast } from 'sonner';
 
 interface LinkedInFiltersProps {
   filters: LinkedInFiltersState;
@@ -497,15 +498,72 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
                 value=""
                 onValueChange={(priority: FilterPriority) => {
                   if (!priority) return;
-                  // Add all TOP 15 schools with the selected priority
-                  const existingIds = new Set(filters.school.map(s => s.id));
-                  const newSchools = TOP_SCHOOLS
-                    .filter(s => !existingIds.has(s.id))
-                    .map(s => ({ id: s.id, name: s.name, priority }));
-                  
-                  if (newSchools.length > 0) {
+                  void (async () => {
+                    // Add all TOP 15 schools with the selected priority
+                    // NOTE: Recruiter API uses different SCHOOL IDs than public LinkedIn school IDs.
+                    // Our hardcoded IDs are not valid for Recruiter search parameters.
+
+                    // Non-recruiter fallback: keep previous behavior (uses hardcoded IDs)
+                    if (filters.api !== 'recruiter') {
+                      const existingIds = new Set(filters.school.map((s) => s.id));
+                      const newSchools = TOP_SCHOOLS
+                        .filter((s) => !existingIds.has(s.id))
+                        .map((s) => ({ id: s.id, name: s.name, priority }));
+
+                      if (newSchools.length > 0) {
+                        onChange({ ...filters, school: [...filters.school, ...newSchools] });
+                      }
+                      return;
+                    }
+
+                    if (!accountId) {
+                      toast.error("Sélectionne d'abord un compte LinkedIn pour résoudre les écoles");
+                      return;
+                    }
+
+                    const existingIds = new Set(filters.school.map((s) => s.id));
+                    toast.info('Résolution des IDs des TOP écoles…');
+
+                    const resolved = await Promise.all(
+                      TOP_SCHOOLS.map(async (school) => {
+                        const { data, error } = await supabase.functions.invoke('unipile-search', {
+                          body: {
+                            action: 'get_parameters',
+                            account_id: accountId,
+                            type: 'SCHOOL',
+                            service: 'RECRUITER',
+                            keywords: school.name,
+                            limit: 10,
+                          },
+                        });
+
+                        if (error || !data?.success || !Array.isArray(data?.items) || data.items.length === 0) {
+                          return null;
+                        }
+
+                        const target = school.name.trim().toLowerCase();
+                        const match =
+                          data.items.find((it: any) => String(it.title || '').trim().toLowerCase() === target) ||
+                          data.items.find((it: any) => String(it.title || '').trim().toLowerCase().includes(target)) ||
+                          data.items[0];
+
+                        if (!match?.id) return null;
+                        return { id: String(match.id), name: school.name };
+                      })
+                    );
+
+                    const newSchools = resolved
+                      .filter((x): x is { id: string; name: string } => Boolean(x))
+                      .filter((s) => !existingIds.has(s.id))
+                      .map((s) => ({ id: s.id, name: s.name, priority }));
+
+                    if (newSchools.length === 0) {
+                      toast.message('Aucune nouvelle école ajoutée (déjà présentes ou introuvables)');
+                      return;
+                    }
+
                     onChange({ ...filters, school: [...filters.school, ...newSchools] });
-                  }
+                  })();
                 }}
               >
                 <SelectTrigger className="h-8 text-xs bg-gradient-to-r from-amber-50 to-orange-50 border-amber-200 hover:border-amber-300 w-auto gap-2">
