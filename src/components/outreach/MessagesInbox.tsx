@@ -258,6 +258,39 @@ export const MessagesInbox: React.FC<MessagesInboxProps> = ({
     }
   };
 
+  // Build a robust searchable string for a chat (Unipile fields differ across Classic/Recruiter/InMail)
+  const buildChatSearchText = (chat: Chat): string => {
+    const attendeeText = (chat.attendees || [])
+      .map(a => {
+        const fullName = `${a.first_name || ''} ${a.last_name || ''}`.trim();
+        return [
+          a.display_name,
+          a.name,
+          fullName,
+          a.public_identifier,
+          a.profile_url,
+          a.headline,
+          a.occupation,
+          a.specifics?.occupation,
+        ]
+          .filter(Boolean)
+          .join(' ');
+      })
+      .filter(Boolean)
+      .join(' ');
+
+    return [
+      chat.name,
+      chat.subject,
+      chat.last_message?.text,
+      chat.last_message?.text_content,
+      attendeeText,
+    ]
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase();
+  };
+
   // Filter chats based on search query and unread filter
   useEffect(() => {
     let result = chats;
@@ -270,11 +303,7 @@ export const MessagesInbox: React.FC<MessagesInboxProps> = ({
     // Then apply search filter
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
-      result = result.filter(chat => {
-        const chatName = chat.name?.toLowerCase() || '';
-        const attendeeNames = chat.attendees?.map(a => a.name?.toLowerCase()).join(' ') || '';
-        return chatName.includes(query) || attendeeNames.includes(query);
-      });
+      result = result.filter(chat => buildChatSearchText(chat).includes(query));
     }
     
     setFilteredChats(result);
@@ -566,17 +595,20 @@ export const MessagesInbox: React.FC<MessagesInboxProps> = ({
   // Get message source type (Classic, Recruiter, or InMail)
   const getMessageSourceType = (chat: Chat): { label: string; color: string } | null => {
     const folders = chat.folder || [];
+
+    const hasRecruiter = folders.some(f =>
+      f.toLowerCase().includes('recruiter') ||
+      f.toLowerCase().includes('talent')
+    );
     
     // Check for InMail first
     if (chat.content_type === 'inmail') {
-      return { label: 'InMail', color: 'bg-purple-100 text-purple-700 border-purple-200' };
+      return hasRecruiter
+        ? { label: 'InMail Recruiter', color: 'bg-purple-100 text-purple-700 border-purple-200' }
+        : { label: 'InMail', color: 'bg-purple-100 text-purple-700 border-purple-200' };
     }
     
     // Check folder names for Recruiter
-    const hasRecruiter = folders.some(f => 
-      f.toLowerCase().includes('recruiter') || 
-      f.toLowerCase().includes('talent')
-    );
     if (hasRecruiter) {
       return { label: 'Recruiter', color: 'bg-amber-100 text-amber-700 border-amber-200' };
     }
