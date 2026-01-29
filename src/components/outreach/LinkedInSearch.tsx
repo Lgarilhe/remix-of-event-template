@@ -4,6 +4,7 @@ import { LinkedInAccount } from '@/pages/Outreach';
 import { LinkedInFilters } from './LinkedInFilters';
 import { LinkedInResultCard } from './LinkedInResultCard';
 import { JobSelector, BatchScoreButton, GeneratedFilters } from './JobSelector';
+import { FilterAssistantModal } from './FilterAssistantModal';
 import { JobMatchResult } from './JobScoreDisplay';
 import { QuotaDisplay } from './QuotaDisplay';
 import { BulkInMailModal } from './BulkInMailModal';
@@ -1217,12 +1218,25 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
           )}
         </div>
 
-        {/* Job Selector for scoring - moved to top */}
-        <JobSelector 
-          selectedJob={selectedJob}
-          onJobChange={setSelectedJob}
-          onAutoFillFilters={handleAutoFillFilters}
-        />
+        {/* Job Selector for scoring + AI Assistant */}
+        <div className="space-y-3">
+          <JobSelector 
+            selectedJob={selectedJob}
+            onJobChange={setSelectedJob}
+            onAutoFillFilters={handleAutoFillFilters}
+          />
+          
+          {/* AI Filter Assistant - conversational */}
+          <div className="flex items-center justify-between bg-gradient-to-r from-indigo-50 to-purple-50 rounded-lg border border-indigo-200/50 p-3">
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-indigo-700">💬 Décris le profil et je remplis les filtres</span>
+            </div>
+            <FilterAssistantModal
+              currentFilters={filters}
+              onApplyFilters={(update) => setFilters(prev => ({ ...prev, ...update }))}
+            />
+          </div>
+        </div>
 
         {/* Search input */}
         <div className="bg-white rounded-lg border border-[#1A1A1A]/10 p-4">
