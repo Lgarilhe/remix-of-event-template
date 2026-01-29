@@ -5,7 +5,6 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
-import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { 
   Search, 
@@ -52,13 +51,17 @@ interface Chat {
   subject?: string;
   timestamp?: string;
   unread_count?: number;
+  unread?: number; // Alternative field name
   attendees?: ChatAttendee[];
-  attendee_provider_id?: string; // Single attendee ID from list endpoint
+  attendee_provider_id?: string;
+  folder?: string[];
+  content_type?: string; // 'inmail' for InMails
   last_message?: {
     text?: string;
     text_content?: string;
     sender_id?: string;
     timestamp?: string;
+    is_sender?: boolean;
   };
 }
 
@@ -74,6 +77,7 @@ interface Message {
   timestamp?: string;
   is_sender?: boolean;
   read?: boolean;
+  seen?: number; // Unipile uses 0/1
   delivered?: boolean;
 }
 
@@ -286,6 +290,14 @@ export const MessagesInbox: React.FC<MessagesInboxProps> = ({
     return 'Conversation';
   };
 
+  // Get headline for chat - show subject for InMails
+  const getChatSubject = (chat: Chat) => {
+    if (chat.content_type === 'inmail' && chat.subject) {
+      return chat.subject;
+    }
+    return null;
+  };
+
   // Get headline for chat
   const getChatHeadline = (chat: Chat) => {
     const attendee = chat.attendees?.find(a => a.headline);
@@ -296,6 +308,15 @@ export const MessagesInbox: React.FC<MessagesInboxProps> = ({
   const getChatAvatar = (chat: Chat) => {
     const attendee = chat.attendees?.find(a => a.profile_picture_url);
     return attendee?.profile_picture_url;
+  };
+
+  // Check if chat has unread messages
+  const hasUnread = (chat: Chat) => {
+    return (chat.unread_count && chat.unread_count > 0) || (chat.unread && chat.unread > 0);
+  };
+
+  const getUnreadCount = (chat: Chat) => {
+    return chat.unread_count || chat.unread || 0;
   };
 
   // Get initials for fallback avatar
@@ -395,37 +416,57 @@ export const MessagesInbox: React.FC<MessagesInboxProps> = ({
                   onClick={() => setSelectedChat(chat)}
                   className={cn(
                     "w-full p-3 flex items-start gap-3 text-left hover:bg-[#1A1A1A]/3 transition-colors",
-                    selectedChat?.id === chat.id && "bg-[#0077B5]/5"
+                    selectedChat?.id === chat.id && "bg-[#0077B5]/5",
+                    hasUnread(chat) && "bg-[#0077B5]/3"
                   )}
                 >
-                  <Avatar className="w-12 h-12 shrink-0">
-                    <AvatarImage src={getChatAvatar(chat)} />
-                    <AvatarFallback className="bg-[#0077B5]/10 text-[#0077B5]">
-                      {getInitials(getChatDisplayName(chat))}
-                    </AvatarFallback>
-                  </Avatar>
+                  {/* Avatar with unread indicator */}
+                  <div className="relative shrink-0">
+                    <Avatar className="w-12 h-12">
+                      <AvatarImage src={getChatAvatar(chat)} />
+                      <AvatarFallback className="bg-[#0077B5]/10 text-[#0077B5] font-medium">
+                        {getInitials(getChatDisplayName(chat))}
+                      </AvatarFallback>
+                    </Avatar>
+                    {hasUnread(chat) && (
+                      <span className="absolute -top-0.5 -right-0.5 w-4 h-4 bg-[#0077B5] rounded-full flex items-center justify-center text-[9px] text-white font-bold">
+                        {getUnreadCount(chat)}
+                      </span>
+                    )}
+                  </div>
+                  
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between gap-2">
-                      <span className="font-medium text-sm text-[#1A1A1A] truncate">
+                      <span className={cn(
+                        "text-sm truncate",
+                        hasUnread(chat) ? "font-semibold text-[#1A1A1A]" : "font-medium text-[#1A1A1A]"
+                      )}>
                         {getChatDisplayName(chat)}
                       </span>
                       <span className="text-[10px] text-muted-foreground shrink-0">
                         {formatChatTime(chat.timestamp)}
                       </span>
                     </div>
-                    {getChatHeadline(chat) && (
+                    
+                    {/* Show headline or InMail subject */}
+                    {(getChatHeadline(chat) || getChatSubject(chat)) && (
                       <p className="text-[10px] text-muted-foreground truncate">
-                        {getChatHeadline(chat)}
+                        {getChatSubject(chat) ? (
+                          <span className="italic">📧 {getChatSubject(chat)}</span>
+                        ) : (
+                          getChatHeadline(chat)
+                        )}
                       </p>
                     )}
-                    <p className="text-xs text-muted-foreground truncate mt-0.5">
+                    
+                    {/* Last message preview */}
+                    <p className={cn(
+                      "text-xs truncate mt-0.5",
+                      hasUnread(chat) ? "text-[#1A1A1A] font-medium" : "text-muted-foreground"
+                    )}>
+                      {chat.last_message?.is_sender && <span className="text-[#0077B5]">Vous: </span>}
                       {getLastMessageText(chat)}
                     </p>
-                    {chat.unread_count && chat.unread_count > 0 && (
-                      <Badge className="mt-1 h-5 bg-[#0077B5] text-white text-[10px]">
-                        {chat.unread_count} nouveau{chat.unread_count > 1 ? 'x' : ''}
-                      </Badge>
-                    )}
                   </div>
                 </button>
               ))}
@@ -453,7 +494,7 @@ export const MessagesInbox: React.FC<MessagesInboxProps> = ({
               </Button>
               <Avatar className="w-10 h-10">
                 <AvatarImage src={getChatAvatar(selectedChat)} />
-                <AvatarFallback className="bg-[#0077B5]/10 text-[#0077B5]">
+                <AvatarFallback className="bg-[#0077B5]/10 text-[#0077B5] font-medium">
                   {getInitials(getChatDisplayName(selectedChat))}
                 </AvatarFallback>
               </Avatar>
@@ -466,7 +507,25 @@ export const MessagesInbox: React.FC<MessagesInboxProps> = ({
                     {getChatHeadline(selectedChat)}
                   </p>
                 )}
+                {getChatSubject(selectedChat) && (
+                  <p className="text-[10px] text-[#0077B5] truncate flex items-center gap-1">
+                    <span>📧</span> {getChatSubject(selectedChat)}
+                  </p>
+                )}
               </div>
+              
+              {/* Link to LinkedIn profile */}
+              {selectedChat.attendees?.[0]?.profile_url && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 text-xs"
+                  onClick={() => window.open(selectedChat.attendees?.[0]?.profile_url, '_blank')}
+                >
+                  <User className="w-3 h-3 mr-1" />
+                  Profil
+                </Button>
+              )}
             </div>
 
             {/* Messages Area */}
@@ -517,11 +576,13 @@ export const MessagesInbox: React.FC<MessagesInboxProps> = ({
                             {formatMessageTime(msg.timestamp)}
                           </span>
                           {msg.is_sender && (
-                            msg.read ? (
+                            (msg.read || msg.seen === 1) ? (
                               <CheckCheck className="w-3 h-3 text-white/70" />
                             ) : msg.delivered ? (
                               <Check className="w-3 h-3 text-white/70" />
-                            ) : null
+                            ) : (
+                              <Clock className="w-3 h-3 text-white/50" />
+                            )
                           )}
                         </div>
                       </div>
