@@ -95,22 +95,22 @@ serve(async (req) => {
     // Determine message objective based on candidate status
     const statusInstructions = {
       to_evaluate: `
-OBJECTIF: QUALIFIER LE CANDIDAT
+OBJECTIF: QUALIFIER LE CANDIDAT SUR LES COMPÉTENCES
 Structure du message:
-1. Accroche personnalisée (basée sur son profil/expérience)
+1. Accroche personnalisée (basée sur une techno/skill spécifique de son profil)
 2. Présentation courte du poste
-3. FIN: 1-2 questions de qualification pour collecter des infos:
-   - Prétentions salariales / TJM attendu
-   - Disponibilité / préavis
-   - Préférence remote/présentiel
-   - Critères must-have à valider (ex: niveau d'anglais si requis)
+3. FIN: 1-2 questions pour valider des COMPÉTENCES ou TECHNOS liées aux critères must-have:
+   - Questions techniques (ex: "Tu utilises K8s en prod actuellement ?")
+   - Validation d'expérience (ex: "Tu as bossé sur des archi microservices ?")
+   - Critères must-have non visibles dans le CV (ex: "Ton anglais est OK pour des calls internationaux ?")
+   - JAMAIS de questions sur le salaire/TJM à ce stade
 
-Exemple de fin: "Pour voir si ça peut matcher: tu vises quoi en TJM ? Et tu serais dispo quand ?"`,
+Exemple de fin: "Tu gères du K8s en prod chez Doctolib ou c'est plus du dev pur ? Et niveau anglais, tu es à l'aise ?"`,
       
       to_contact: `
 OBJECTIF: OBTENIR UN CALL
 Structure du message:
-1. Accroche personnalisée (basée sur son profil/expérience)
+1. Accroche personnalisée (basée sur une techno/skill spécifique de son profil)
 2. Présentation courte du poste + élément différenciant
 3. FIN: CTA DIRECT et concret:
    - Proposition de créneau ("Dispo mardi ou mercredi pour un call de 15 min ?")
@@ -160,41 +160,42 @@ ${statusInstructions[candidateStatus] || statusInstructions.other}
 
 RÈGLES ABSOLUES - MESSAGE HUMAIN:
 1. ${toneInstructions[tone]}
-2. INTERDIT: "j'ai parcouru ton profil", "ton riche parcours", "m'a particulièrement sauté aux yeux", "ultra-", "majeurs", "relever des défis", "au plaisir"
+2. INTERDIT: "j'ai parcouru ton profil", "ton riche parcours", "m'a particulièrement sauté aux yeux", "m'a tapé dans l'œil", "a retenu mon attention", "ultra-", "majeurs", "relever des défis", "au plaisir"
 3. INTERDIT: superlatifs (exceptionnel, remarquable, impressionnant, passionnant, incroyable)
 4. INTERDIT: expressions corporate (synergies, opportunité unique, environnement dynamique, défis stimulants)
-5. Écris des phrases COURTES. Pas de subordonnées complexes.
-6. Commence direct, pas de "Bonjour, je me permets de..."
+5. INTERDIT: formules "IA" ("m'a interpelé", "a attiré mon attention", "correspond parfaitement")
+6. Écris des phrases COURTES. Pas de subordonnées complexes.
+7. Commence direct, pas de "Bonjour, je me permets de..."
 
 RÈGLE CRITIQUE - PERSONNALISATION:
-7. L'accroche DOIT mentionner une COMPÉTENCE ou TECHNO SPÉCIFIQUE du candidat qui matche avec le poste.
+8. L'accroche DOIT mentionner une COMPÉTENCE ou TECHNO SPÉCIFIQUE du candidat qui matche avec le poste.
    - BON: "Vu ton expérience Terraform chez Webedia" (techno précise + contexte)
-   - BON: "Ton passage sur la stack Go/gRPC chez Datadog" (stack précise)
+   - BON: "Tu as bossé sur du Go/gRPC chez Datadog" (stack précise, ton direct)
+   - MAUVAIS: "Ton profil m'a tapé dans l'œil" (expression IA)
    - MAUVAIS: "Vu ce que tu fais chez Doctolib" (trop vague)
-   - MAUVAIS: "Ton profil m'a intéressé" (générique)
-8. Identifie LE skill le plus pertinent du profil par rapport au poste et utilise-le.
+9. Formule l'accroche de manière FACTUELLE, pas admirative. "Tu bosses sur X" plutôt que "Ton X m'a impressionné".
 
-9. Maximum 80-120 mots. Court = humain.
-10. Respecte l'OBJECTIF selon le statut candidat ci-dessus.
-11. Signe avec le prénom: "${senderName || '[Prénom]'}"
+10. Maximum 80-120 mots. Court = humain.
+11. Respecte l'OBJECTIF selon le statut candidat ci-dessus.
+12. Signe avec le prénom: "${senderName || '[Prénom]'}"
 
 EXEMPLE MESSAGE "À ÉVALUER" (casual):
 "Salut Thomas,
 
-Je recrute un dev Go pour Numspot, le cloud souverain. Vu ton expérience Terraform et K8s chez Datadog, ça pourrait vraiment matcher.
+Je recrute un dev Go pour Numspot, le cloud souverain. Tu as bossé sur du Terraform et K8s chez Datadog, ça pourrait coller.
 
 Stack Go/K8s, équipe de 8, full remote possible.
 
-Pour voir si c'est pertinent: tu vises quoi en package ? Et tu serais dispo quand ?
+Tu gères du K8s en prod actuellement ou c'est plus du dev applicatif ? Et ton anglais est OK pour des calls avec l'équipe US ?
 
 Marc"
 
 EXEMPLE MESSAGE "À CONTACTER" (casual):
 "Salut Thomas,
 
-Je recrute un dev Go pour Numspot, le cloud souverain. Vu ton XP Terraform chez Webedia, je pense que ça peut coller.
+Je recrute un dev Go pour Numspot, le cloud souverain. Tu as de l'XP Terraform et infra chez Datadog, ça matche bien avec ce qu'on cherche.
 
-Stack Go/K8s, équipe de 8, full remote OK. Package 65-75k selon profil.
+Stack Go/K8s, équipe de 8, full remote OK.
 
 Dispo mercredi ou jeudi pour un call de 15 min ?
 
