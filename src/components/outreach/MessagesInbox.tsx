@@ -760,17 +760,57 @@ export const MessagesInbox: React.FC<MessagesInboxProps> = ({
       profileId: getAttendeeProfileId(selectedChat),
     };
     
-    // For now, show a toast with the action - in a full implementation, 
-    // this would call the Notion API to add to the Shortlist
-    toast.success('🎯 Candidat ajouté au pipeline !', {
-      description: jobTitle 
-        ? `${profileInfo.name} ajouté pour le poste "${jobTitle}"`
-        : `${profileInfo.name} ajouté en shortlist`,
-      action: {
-        label: 'Voir pipeline',
-        onClick: () => window.open('/candidates', '_blank'),
-      },
-    });
+    try {
+      toast.loading('Ajout au pipeline...', { id: 'add-to-pipeline' });
+      
+      const response = await supabase.functions.invoke('add-to-shortlist', {
+        body: {
+          name: profileInfo.name,
+          headline: profileInfo.headline,
+          linkedinUrl: profileInfo.profileUrl,
+          linkedinId: profileInfo.profileId,
+          jobId: jobId,
+          jobTitle: jobTitle,
+          source: 'linkedin_inbox',
+        },
+      });
+
+      if (response.error) throw response.error;
+      
+      if (!response.data?.success) {
+        throw new Error(response.data?.error || 'Erreur inconnue');
+      }
+
+      if (response.data?.alreadyExists) {
+        toast.success('✅ Candidat déjà dans le pipeline', {
+          id: 'add-to-pipeline',
+          description: jobTitle 
+            ? `${profileInfo.name} est déjà shortlisté pour "${jobTitle}"`
+            : `${profileInfo.name} est déjà dans la shortlist`,
+          action: {
+            label: 'Voir pipeline',
+            onClick: () => window.open('/candidates', '_blank'),
+          },
+        });
+      } else {
+        toast.success('🎯 Candidat ajouté au pipeline !', {
+          id: 'add-to-pipeline',
+          description: jobTitle 
+            ? `${profileInfo.name} ajouté pour le poste "${jobTitle}"`
+            : `${profileInfo.name} ajouté en shortlist (Pressenti)`,
+          action: {
+            label: 'Voir pipeline',
+            onClick: () => window.open('/candidates', '_blank'),
+          },
+        });
+      }
+    } catch (error) {
+      console.error('Error adding to pipeline:', error);
+      toast.error('Erreur lors de l\'ajout au pipeline', {
+        id: 'add-to-pipeline',
+        description: error instanceof Error ? error.message : 'Erreur inconnue',
+      });
+    }
   };
 
   // Handle enrolling in a sequence
