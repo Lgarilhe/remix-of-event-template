@@ -167,44 +167,45 @@ RÈGLES ABSOLUES - MESSAGE HUMAIN:
 6. Écris des phrases COURTES. Pas de subordonnées complexes.
 7. Commence direct, pas de "Bonjour, je me permets de..."
 
-RÈGLE CRITIQUE - PERSONNALISATION PUISSANTE:
-8. Cherche LE point de personnalisation le plus FORT et UNIQUE du candidat:
-   - Une techno rare qu'il maîtrise ET qui matche le poste
-   - Une entreprise similaire au client (même secteur, même taille, même techno)
-   - Un projet spécifique visible dans son parcours
-   - Une progression de carrière intéressante (ex: passage de dev à lead)
-   
-   EXEMPLES FORTS:
-   - "Tu as scalé l'infra chez Datadog, Numspot cherche exactement ce profil pour leur cloud souverain"
-   - "Ton passage de DevOps à Lead chez OVH, c'est pile le parcours qu'on cherche"
-   - "Tu as bossé sur gRPC à grande échelle chez Datadog, on monte le même type d'archi"
-   
-   EXEMPLES FAIBLES (à éviter):
-   - "Tu connais Go" (trop générique)
-   - "Tu travailles chez Doctolib" (pas de lien avec le poste)
+RÈGLE CRITIQUE - PERSONNALISATION BASÉE SUR LES FAITS:
+8. N'INVENTE RIEN. Utilise UNIQUEMENT les informations réelles fournies:
+   - Compétences listées dans le profil → utilisables
+   - Entreprises mentionnées dans le parcours → utilisables
+   - Infos du job (client, secteur, skills requises) → utilisables
+   - NE PAS supposer des compétences non listées
+   - NE PAS inventer des détails sur le parcours
+   - NE PAS extrapoler ("tu as dû voir du scale" = interdit)
 
-9. ACCROCHE = Lien DIRECT entre le parcours du candidat et ce que propose le job.
-   Structure: "[Ce que tu as fait] → [pourquoi ça matche avec ce poste]"
+9. Cherche LE point de personnalisation le plus FORT parmi les VRAIES infos:
+   - Une techno du profil qui matche les skills requises du job
+   - Une entreprise passée dans le même secteur que le client
+   - Un poste précédent similaire au poste proposé
+   - Une progression visible (junior → senior, dev → lead)
 
-10. Maximum 80-120 mots. Court = humain.
-11. Respecte l'OBJECTIF selon le statut candidat ci-dessus.
-12. Signe avec le prénom: "${senderName || '[Prénom]'}"
+10. ACCROCHE = Lien DIRECT et FACTUEL entre le parcours réel et le poste réel.
+   - BON: "Tu fais du [skill du profil] chez [entreprise du profil], on cherche ça pour [client du job]"
+   - MAUVAIS: "Tu as dû gérer du scale" (supposition)
+   - MAUVAIS: "Avec ton expérience cloud" (si pas explicite dans le profil)
+
+11. Maximum 80-120 mots. Court = humain.
+12. Respecte l'OBJECTIF selon le statut candidat ci-dessus.
+13. Signe avec le prénom: "${senderName || '[Prénom]'}"
 
 EXEMPLE MESSAGE "À ÉVALUER" (casual):
 "Salut Thomas,
 
-Tu as scalé l'infra Go/K8s chez Datadog, c'est exactement ce qu'on cherche pour Numspot (cloud souverain français).
+Tu bosses sur Go et K8s chez Datadog. On recrute un profil similaire pour Numspot, cloud souverain français.
 
 Équipe de 8, stack Go/Terraform, full remote OK.
 
-Tu gères encore du K8s en prod chez Doctolib ? Et ton anglais est fluide pour les calls internationaux ?
+Tu fais encore du K8s en prod actuellement ? Et ton anglais est fluide pour les calls internationaux ?
 
 Marc"
 
 EXEMPLE MESSAGE "À CONTACTER" (casual):
 "Salut Thomas,
 
-Ton expérience infra chez Datadog colle parfaitement avec Numspot, on construit un cloud souverain et on cherche des profils qui ont vu du scale.
+Tu fais du Go/infra chez Datadog. On monte une équipe similaire chez Numspot pour leur cloud souverain.
 
 Équipe de 8, Go/K8s/Terraform, full remote possible.
 
