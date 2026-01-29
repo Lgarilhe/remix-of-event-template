@@ -296,6 +296,103 @@ async function fetchCompanyDetails(companyIds: string[]): Promise<Map<string, an
   return companies;
 }
 
+// Fetch transversal criteria from linked Notion pages
+interface TransversalCriteria {
+  must: string;
+  should: string;
+  niceToHave: string;
+  context: string;
+  domain: string;
+  level: string;
+}
+
+async function fetchTransversalCriteria(criteriaIds: string[]): Promise<Map<string, TransversalCriteria>> {
+  const criteriaMap = new Map<string, TransversalCriteria>();
+  
+  if (criteriaIds.length === 0) return criteriaMap;
+  
+  // Batch fetch all unique criteria IDs
+  const uniqueIds = [...new Set(criteriaIds)];
+  
+  await Promise.all(uniqueIds.map(async (id) => {
+    try {
+      const response = await fetch(`https://api.notion.com/v1/pages/${id}`, {
+        headers: {
+          'Authorization': `Bearer ${NOTION_API_KEY}`,
+          'Notion-Version': '2022-06-28',
+        },
+      });
+      
+      if (response.ok) {
+        const page = await response.json();
+        
+        criteriaMap.set(id, {
+          must: getPropertyValue(page.properties['Critères Must']) || '',
+          should: getPropertyValue(page.properties['Critères Should']) || '',
+          niceToHave: getPropertyValue(page.properties['Critères Nice to have']) || '',
+          context: getPropertyValue(page.properties['Contexte']) || '',
+          domain: getPropertyValue(page.properties['Domaine']) || '',
+          level: getPropertyValue(page.properties['Niveau']) || '',
+        });
+      }
+    } catch (error) {
+      console.error(`Failed to fetch transversal criteria ${id}:`, error);
+    }
+  }));
+  
+  return criteriaMap;
+}
+
+// Merge multiple transversal criteria into one object
+function mergeTransversalCriteria(
+  criteriaIds: string[], 
+  criteriaMap: Map<string, TransversalCriteria>
+): TransversalCriteria | null {
+  if (criteriaIds.length === 0) return null;
+  
+  const merged: TransversalCriteria = {
+    must: '',
+    should: '',
+    niceToHave: '',
+    context: '',
+    domain: '',
+    level: '',
+  };
+  
+  const mustParts: string[] = [];
+  const shouldParts: string[] = [];
+  const niceToHaveParts: string[] = [];
+  const contextParts: string[] = [];
+  const domains: string[] = [];
+  const levels: string[] = [];
+  
+  for (const id of criteriaIds) {
+    const criteria = criteriaMap.get(id);
+    if (criteria) {
+      if (criteria.must) mustParts.push(criteria.must);
+      if (criteria.should) shouldParts.push(criteria.should);
+      if (criteria.niceToHave) niceToHaveParts.push(criteria.niceToHave);
+      if (criteria.context) contextParts.push(criteria.context);
+      if (criteria.domain) domains.push(criteria.domain);
+      if (criteria.level) levels.push(criteria.level);
+    }
+  }
+  
+  merged.must = mustParts.join('\n\n');
+  merged.should = shouldParts.join('\n\n');
+  merged.niceToHave = niceToHaveParts.join('\n\n');
+  merged.context = contextParts.join('\n\n');
+  merged.domain = [...new Set(domains)].join(', ');
+  merged.level = [...new Set(levels)].join(', ');
+  
+  // Return null if all fields are empty
+  if (!merged.must && !merged.should && !merged.niceToHave && !merged.context) {
+    return null;
+  }
+  
+  return merged;
+}
+
 async function fetchCandidateCounts(jobIds: string[]): Promise<Map<string, CandidateCounts>> {
   const countsMap = new Map<string, CandidateCounts>();
   
@@ -380,8 +477,9 @@ serve(async (req) => {
     });
     const jobs: NotionPage[] = jobsData.results;
 
-    // Collect all company IDs and job IDs
+    // Collect all company IDs, job IDs, and transversal criteria IDs
     const companyIds = new Set<string>();
+    const transversalCriteriaIds = new Set<string>();
     const jobIds: string[] = [];
     
     jobs.forEach((job) => {
@@ -390,13 +488,19 @@ serve(async (req) => {
       if (clientRelation?.type === 'relation') {
         clientRelation.relation?.forEach(r => companyIds.add(r.id));
       }
+      // Collect transversal criteria IDs
+      const criteriaRelation = job.properties['Critères Transverses Numspot'];
+      if (criteriaRelation?.type === 'relation') {
+        criteriaRelation.relation?.forEach(r => transversalCriteriaIds.add(r.id));
+      }
     });
 
-    // Fetch company details, candidate counts, and cached skills in parallel
-    const [companies, candidateCounts, cachedSkills] = await Promise.all([
+    // Fetch company details, candidate counts, cached skills, and transversal criteria in parallel
+    const [companies, candidateCounts, cachedSkills, transversalCriteriaMap] = await Promise.all([
       fetchCompanyDetails(Array.from(companyIds)),
       fetchCandidateCounts(jobIds),
-      getCachedSkills(jobIds)
+      getCachedSkills(jobIds),
+      fetchTransversalCriteria(Array.from(transversalCriteriaIds))
     ]);
 
     // Find jobs that need AI skill extraction (not in cache)
@@ -441,6 +545,10 @@ serve(async (req) => {
       const aiSkills = allSkillsMap.get(job.id) || [];
       const skills = notionSkills.length > 0 ? notionSkills : aiSkills;
 
+      // Resolve transversal criteria from linked pages
+      const criteriaIds = getPropertyValue(job.properties['Critères Transverses Numspot']) || [];
+      const transversalCriteria = mergeTransversalCriteria(criteriaIds, transversalCriteriaMap);
+
       return {
         id: job.id,
         title: getTitleFromProperties(job.properties),
@@ -473,8 +581,8 @@ serve(async (req) => {
         tjm: getPropertyValue(job.properties['TJM']),
         accompagnement: getPropertyValue(job.properties['Type d\'accompagnement']) || [],
         jobUrl: getPropertyValue(job.properties['userDefined:URL']),
-        // Transversal criteria relation IDs (to be resolved separately if needed)
-        transversalCriteriaIds: getPropertyValue(job.properties['Critères Transverses Numspot']) || [],
+        // Resolved transversal criteria (company-wide requirements)
+        transversalCriteria: transversalCriteria,
         // Candidate counts by stage
         candidateCounts: counts,
       };
