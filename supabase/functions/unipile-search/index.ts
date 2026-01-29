@@ -843,11 +843,12 @@ async function handleGetChats(
   accountId: string,
   params: Record<string, unknown>
 ): Promise<Response> {
-  const { attendee_provider_id, limit = 50, cursor } = params;
+  const { attendee_provider_id, limit = 100, cursor } = params;
 
   const queryParams = new URLSearchParams();
   queryParams.set('account_id', accountId);
-  queryParams.set('limit', String(limit));
+  // Request more chats to ensure we get all recent conversations
+  queryParams.set('limit', String(Math.min(Number(limit), 200)));
   
   if (cursor) {
     queryParams.set('cursor', String(cursor));
@@ -861,7 +862,7 @@ async function handleGetChats(
     console.log('Get chats by attendee URL:', url);
   } else {
     url = `${baseUrl}/chats?${queryParams.toString()}`;
-    console.log('Get all chats URL:', url);
+    console.log('Get all chats URL:', url, '| Account:', accountId);
   }
 
   const response = await fetch(url, {
