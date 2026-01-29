@@ -1436,7 +1436,8 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
             id: p.id,
             name: p.name || `${p.first_name || ''} ${p.last_name || ''}`.trim(),
             headline: p.headline,
-            profile_id: p.id,
+            // For Recruiter InMails, use recruiter_candidate_id or member_urn, fallback to id
+            profile_id: p.recruiter_candidate_id || p.member_urn || p.id,
             profile: p,
           }))
         }
