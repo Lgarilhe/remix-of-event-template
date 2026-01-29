@@ -231,11 +231,16 @@ Deno.serve(async (req) => {
           },
         });
 
-        if (!response.ok) {
+      if (!response.ok) {
           const data = await response.json();
+          // Always return 200 to avoid Supabase client interpreting upstream errors as function errors
           return new Response(
-            JSON.stringify({ success: false, error: data.message || 'Erreur de déconnexion' }),
-            { status: response.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            JSON.stringify({ 
+              success: false, 
+              error: data.message || 'Erreur de déconnexion',
+              status: response.status,
+            }),
+            { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
           );
         }
 
