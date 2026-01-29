@@ -121,6 +121,7 @@ export const MessagesInbox: React.FC<MessagesInboxProps> = ({
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const [enrollmentsMap, setEnrollmentsMap] = useState<Map<string, SequenceEnrollmentInfo>>(new Map());
   const [showUnreadOnly, setShowUnreadOnly] = useState(false);
+  const [sourceFilter, setSourceFilter] = useState<'all' | 'classic' | 'recruiter'>('all');
   
   // Reply suggestions state
   const [replySuggestions, setReplySuggestions] = useState<Array<{ text: string; type: string }>>([]);
@@ -291,11 +292,32 @@ export const MessagesInbox: React.FC<MessagesInboxProps> = ({
       .toLowerCase();
   };
 
-  // Filter chats based on search query and unread filter
+  // Helper to check if chat is from Recruiter folder
+  const isRecruiterChat = (chat: Chat): boolean => {
+    const folders = chat.folder || [];
+    return folders.some(f => f.toLowerCase().includes('recruiter'));
+  };
+  
+  // Helper to check if chat is from Classic folder only
+  const isClassicChat = (chat: Chat): boolean => {
+    const folders = chat.folder || [];
+    const hasRecruiter = folders.some(f => f.toLowerCase().includes('recruiter'));
+    const hasClassic = folders.some(f => f.toLowerCase().includes('classic'));
+    return hasClassic && !hasRecruiter;
+  };
+
+  // Filter chats based on search query, unread filter, and source filter
   useEffect(() => {
     let result = chats;
     
-    // Apply unread filter first
+    // Apply source filter first
+    if (sourceFilter === 'recruiter') {
+      result = result.filter(chat => isRecruiterChat(chat));
+    } else if (sourceFilter === 'classic') {
+      result = result.filter(chat => isClassicChat(chat));
+    }
+    
+    // Apply unread filter
     if (showUnreadOnly) {
       result = result.filter(chat => hasUnread(chat));
     }
@@ -307,7 +329,7 @@ export const MessagesInbox: React.FC<MessagesInboxProps> = ({
     }
     
     setFilteredChats(result);
-  }, [searchQuery, chats, showUnreadOnly]);
+  }, [searchQuery, chats, showUnreadOnly, sourceFilter]);
 
   // Calculate and report total unread count
   useEffect(() => {
@@ -682,12 +704,50 @@ export const MessagesInbox: React.FC<MessagesInboxProps> = ({
               className="pl-9 h-9"
             />
           </div>
+          
+          {/* Source filter tabs with counts */}
+          <div className="flex gap-1">
+            <Button
+              variant={sourceFilter === 'all' ? "default" : "outline"}
+              size="sm"
+              className={cn(
+                "flex-1 h-7 text-[10px] px-2",
+                sourceFilter === 'all' && "bg-[#0077B5] hover:bg-[#005E93]"
+              )}
+              onClick={() => setSourceFilter('all')}
+            >
+              Tous ({chats.length})
+            </Button>
+            <Button
+              variant={sourceFilter === 'classic' ? "default" : "outline"}
+              size="sm"
+              className={cn(
+                "flex-1 h-7 text-[10px] px-2",
+                sourceFilter === 'classic' && "bg-slate-600 hover:bg-slate-700"
+              )}
+              onClick={() => setSourceFilter('classic')}
+            >
+              Classic ({chats.filter(c => isClassicChat(c)).length})
+            </Button>
+            <Button
+              variant={sourceFilter === 'recruiter' ? "default" : "outline"}
+              size="sm"
+              className={cn(
+                "flex-1 h-7 text-[10px] px-2",
+                sourceFilter === 'recruiter' && "bg-amber-600 hover:bg-amber-700"
+              )}
+              onClick={() => setSourceFilter('recruiter')}
+            >
+              Recruiter ({chats.filter(c => isRecruiterChat(c)).length})
+            </Button>
+          </div>
+          
           {/* Unread filter toggle */}
           <Button
             variant={showUnreadOnly ? "default" : "outline"}
             size="sm"
             className={cn(
-              "w-full h-8 text-xs gap-2",
+              "w-full h-7 text-[10px] gap-2",
               showUnreadOnly && "bg-[#0077B5] hover:bg-[#005E93]"
             )}
             onClick={() => setShowUnreadOnly(!showUnreadOnly)}
