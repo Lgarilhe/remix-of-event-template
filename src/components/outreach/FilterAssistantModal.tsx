@@ -3,11 +3,12 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { MessageSquare, Send, Loader2, Sparkles, Check, X, GraduationCap } from 'lucide-react';
+import { MessageSquare, Send, Loader2, Sparkles, Check, X, GraduationCap, Briefcase } from 'lucide-react';
 import { toast } from 'sonner';
 import ReactMarkdown from 'react-markdown';
 import { LinkedInFiltersState } from './types';
 import { supabase } from '@/integrations/supabase/client';
+import { Job } from '@/pages/JobSpace';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -34,6 +35,7 @@ interface FilterAssistantModalProps {
   onApplyFilters: (update: Partial<LinkedInFiltersState>) => void;
   currentFilters: LinkedInFiltersState;
   accountId?: string;
+  selectedJob?: Job | null;
 }
 
 const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat-filter-assistant`;
@@ -42,18 +44,40 @@ export const FilterAssistantModal: React.FC<FilterAssistantModalProps> = ({
   onApplyFilters,
   currentFilters,
   accountId,
+  selectedJob,
 }) => {
   const [open, setOpen] = useState(false);
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      role: 'assistant',
-      content: "Salut ! 👋 Décris-moi le profil que tu recherches et je remplirai les filtres automatiquement. Par exemple : \"Je cherche un dev fullstack React/Node senior sur Paris en remote\"",
-    },
-  ]);
+  const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const hasInitializedWithJob = useRef<string | null>(null);
+
+  // Generate initial message based on whether a job is selected
+  const getInitialMessage = useCallback((job?: Job | null): Message => {
+    if (job) {
+      return {
+        role: 'assistant',
+        content: `🎯 Job sélectionné : **${job.title}** chez ${job.client?.name || 'N/A'}\n\nJe vais analyser la fiche de poste pour te proposer des filtres optimisés. Dis-moi "go" ou pose-moi des questions sur les critères !`,
+      };
+    }
+    return {
+      role: 'assistant',
+      content: "Salut ! 👋 Décris-moi le profil que tu recherches et je remplirai les filtres automatiquement. Par exemple : \"Je cherche un dev fullstack React/Node senior sur Paris en remote\"",
+    };
+  }, []);
+
+  // Initialize messages when modal opens or job changes
+  useEffect(() => {
+    if (open) {
+      const jobId = selectedJob?.id || null;
+      if (hasInitializedWithJob.current !== jobId) {
+        hasInitializedWithJob.current = jobId;
+        setMessages([getInitialMessage(selectedJob)]);
+      }
+    }
+  }, [open, selectedJob, getInitialMessage]);
 
   // Auto-scroll to bottom when messages change
   useEffect(() => {
@@ -88,6 +112,22 @@ export const FilterAssistantModal: React.FC<FilterAssistantModalProps> = ({
     }
   }, []);
 
+  // Build job context for AI
+  const buildJobContext = useCallback((job: Job): string => {
+    const parts: string[] = [];
+    parts.push(`## Fiche de poste: ${job.title}`);
+    if (job.client?.name) parts.push(`**Client**: ${job.client.name} (${job.client.sector || 'N/A'})`);
+    if (job.location) parts.push(`**Localisation**: ${job.location}`);
+    if (job.remote) parts.push(`**Remote**: ${job.remote}`);
+    if (job.xpMin || job.xpMax) parts.push(`**Expérience**: ${job.xpMin || 0}-${job.xpMax || '?'} ans`);
+    if (job.seniority) parts.push(`**Séniorité**: ${job.seniority}`);
+    if (job.skills?.length) parts.push(`**Compétences**: ${job.skills.join(', ')}`);
+    if (job.requirements) parts.push(`**Critères/Requirements**:\n${job.requirements}`);
+    if (job.sourcingCriteria) parts.push(`**Critères de sourcing**:\n${job.sourcingCriteria}`);
+    if (job.description) parts.push(`**Description**:\n${job.description.substring(0, 1500)}...`);
+    return parts.join('\n');
+  }, []);
+
   // Stream chat with the AI
   const streamChat = useCallback(async (userMessage: string) => {
     const userMsg: Message = { role: 'user', content: userMessage };
@@ -97,6 +137,19 @@ export const FilterAssistantModal: React.FC<FilterAssistantModalProps> = ({
 
     let assistantContent = '';
 
+    // Build messages array with job context if available
+    const chatMessages = [...messages, userMsg].map(m => ({ role: m.role, content: m.content }));
+    
+    // Add job context as a system-like user message at the start if job is selected
+    if (selectedJob && messages.length === 1) {
+      // First user message with a job selected - prepend job context
+      const jobContext = buildJobContext(selectedJob);
+      chatMessages.splice(1, 0, { 
+        role: 'user' as const, 
+        content: `[CONTEXTE JOB]\n${jobContext}\n[/CONTEXTE JOB]\n\nAnalyse cette fiche de poste et propose-moi les filtres LinkedIn Recruiter optimaux. Pense à inclure les écoles cibles si mentionnées dans les critères.`
+      });
+    }
+
     try {
       const resp = await fetch(CHAT_URL, {
         method: 'POST',
@@ -105,7 +158,7 @@ export const FilterAssistantModal: React.FC<FilterAssistantModalProps> = ({
           Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
         },
         body: JSON.stringify({
-          messages: [...messages, userMsg].map(m => ({ role: m.role, content: m.content })),
+          messages: chatMessages,
         }),
       });
 
@@ -185,7 +238,7 @@ export const FilterAssistantModal: React.FC<FilterAssistantModalProps> = ({
     } finally {
       setIsLoading(false);
     }
-  }, [messages, parseFilterUpdates]);
+  }, [messages, parseFilterUpdates, selectedJob, buildJobContext]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -402,20 +455,33 @@ export const FilterAssistantModal: React.FC<FilterAssistantModalProps> = ({
         <Button
           variant="outline"
           size="sm"
-          className="gap-2 bg-gradient-to-r from-purple-50 to-indigo-50 border-purple-200 hover:border-purple-300 text-purple-700"
+          className={`gap-2 ${selectedJob 
+            ? 'bg-gradient-to-r from-green-50 to-emerald-50 border-green-300 hover:border-green-400 text-green-700' 
+            : 'bg-gradient-to-r from-purple-50 to-indigo-50 border-purple-200 hover:border-purple-300 text-purple-700'}`}
         >
-          <MessageSquare className="w-4 h-4" />
-          <span className="hidden sm:inline">Assistant IA</span>
+          {selectedJob ? <Briefcase className="w-4 h-4" /> : <MessageSquare className="w-4 h-4" />}
+          <span className="hidden sm:inline">{selectedJob ? 'IA + Job' : 'Assistant IA'}</span>
         </Button>
       </DialogTrigger>
 
       <DialogContent className="sm:max-w-[500px] h-[600px] flex flex-col p-0 gap-0">
         <DialogHeader className="p-4 pb-2 border-b">
           <DialogTitle className="flex items-center gap-2 text-lg">
-            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-500 to-indigo-600 flex items-center justify-center">
+            <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
+              selectedJob 
+                ? 'bg-gradient-to-br from-green-500 to-emerald-600' 
+                : 'bg-gradient-to-br from-purple-500 to-indigo-600'
+            }`}>
               <Sparkles className="w-4 h-4 text-white" />
             </div>
-            Assistant Filtres IA
+            <div className="flex flex-col">
+              <span>Assistant Filtres IA</span>
+              {selectedJob && (
+                <span className="text-xs font-normal text-muted-foreground">
+                  📋 {selectedJob.title.substring(0, 30)}{selectedJob.title.length > 30 ? '...' : ''}
+                </span>
+              )}
+            </div>
           </DialogTitle>
         </DialogHeader>
 
