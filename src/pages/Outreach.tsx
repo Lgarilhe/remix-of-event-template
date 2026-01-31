@@ -10,6 +10,7 @@ import { InMailQueueStatus } from '@/components/outreach/InMailQueueStatus';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Search, Users, Settings, GitBranch, MessageSquare } from 'lucide-react';
 import { toast } from 'sonner';
+import { useRegisterCopilotContext } from '@/contexts/CopilotContext';
 
 export interface LinkedInAccountSubscriptions {
   classic: boolean;
@@ -26,6 +27,9 @@ export interface LinkedInAccount {
 }
 
 export default function Outreach() {
+  // Register this page with Copilot for context awareness
+  useRegisterCopilotContext('outreach');
+  
   const [accounts, setAccounts] = useState<LinkedInAccount[]>([]);
   const [selectedAccount, setSelectedAccount] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
