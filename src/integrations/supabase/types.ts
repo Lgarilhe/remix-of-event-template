@@ -292,6 +292,24 @@ export type Database = {
         }
         Relationships: []
       }
+      notion_api_cache: {
+        Row: {
+          cache_key: string
+          payload: Json
+          updated_at: string
+        }
+        Insert: {
+          cache_key: string
+          payload: Json
+          updated_at?: string
+        }
+        Update: {
+          cache_key?: string
+          payload?: Json
+          updated_at?: string
+        }
+        Relationships: []
+      }
       outreach_sequences: {
         Row: {
           created_at: string
