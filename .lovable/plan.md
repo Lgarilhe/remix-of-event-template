@@ -1,324 +1,327 @@
 
-# Plan d'Optimisation du Système de Séquences
 
-## Contexte et Objectif
+# Plan : Copilot MCP-Powered avec RAG
 
-L'objectif est d'optimiser le système de séquences d'outreach actuel en exploitant pleinement les capacités de l'API Unipile et en s'inspirant des meilleures pratiques de Lemlist pour créer des workflows conditionnels intelligents.
+## Vision
 
----
+Créer un **assistant IA contextuel unifié** (Copilot) qui :
+1. **Se connecte aux outils externes via MCP** (Notion déjà connecté, extensible à d'autres)
+2. **Fonctionne en mode RAG** (Retrieval Augmented Generation) pour une compréhension profonde
+3. **Agit sur l'ensemble du système** avec une intelligence contextuelle
 
-## Analyse de l'Existant
-
-### Ce qui est implémenté actuellement
-
-1. **Structure de données** : Tables `outreach_sequences`, `sequence_steps`, `sequence_enrollments`, `sequence_step_executions`
-2. **Types d'actions** : InMail, demande connexion, visite profil, message direct
-3. **Conditions basiques** : always, if_connected, if_not_connected, if_no_response
-4. **Edge function** : `process-sequences` avec les conditions non implémentées (TODO)
-
-### Lacunes identifiées
-
-1. Les conditions `if_connected`, `if_not_connected`, `if_no_response` retournent toujours `true` (non implémentées)
-2. Pas de détection automatique du niveau de connexion (1er, 2ème, 3ème degré)
-3. Pas de vérification si une invitation a été acceptée
-4. Pas de détection des réponses reçues
-5. Pas de webhooks pour les événements en temps réel
-6. Interface de création de séquences basique sans visualisation du workflow
+Ce Copilot remplacera les 6+ features IA éparpillées actuelles par un point d'entrée unique, accessible partout.
 
 ---
 
-## Fonctionnalités Unipile Disponibles (à exploiter)
+## État Actuel - Inventaire IA à Unifier
 
-D'après la documentation Unipile, voici les endpoints clés pour les séquences :
+### Edge Functions IA Existantes
 
-| Endpoint | Utilité |
-|----------|---------|
-| `GET /users/{id}` | Récupère le profil avec `network_distance` (FIRST_DEGREE, SECOND_DEGREE, THIRD_DEGREE) et `is_relationship` |
-| `GET /users/invite/sent` | Liste les invitations envoyées en attente |
-| `POST /users/invite` | Envoie une demande de connexion |
-| `GET /chat_attendees/{id}/chats` | Vérifie si une conversation existe avec un profil |
-| `GET /chats/{id}/messages` | Récupère les messages pour détecter les réponses |
-| `POST /chats` | Crée une nouvelle conversation (message direct) |
-| `POST /chats/{id}/messages` | Envoie un message dans une conversation existante |
-| Webhooks | Notifications en temps réel (nouveau message, statut compte) |
+| Fonction | Rôle | Contexte utilisé |
+|----------|------|------------------|
+| `chat-filter-assistant` | Génère les filtres LinkedIn | Job sélectionné, filtres actuels |
+| `generate-outreach-message` | Rédige les messages d'approche | Profil candidat, job, ton |
+| `analyze-response` | Analyse l'intent des réponses | Conversation, profil, jobs dispo |
+| `score-profile-job` | Score compatibilité profil/poste | Profil complet, critères job |
+| `generate-reply-suggestions` | Suggestions de réponses | Conversation en cours |
+| `analyze-linkedin-profile` | Analyse un profil LinkedIn | Données profil brutes |
 
----
+### Composants UI IA Actuels
 
-## Fonctionnalités Lemlist à Répliquer
+| Composant | Localisation | Actions |
+|-----------|--------------|---------|
+| `FilterAssistantModal` | Outreach | Chat filtres LinkedIn |
+| `OutreachMessageModal` | Outreach | Génère messages |
+| `NurturingPanel` | Messages | Analyse intent + suggestions |
+| `JobScoreDisplay` | Résultats | Affiche score IA |
 
-D'après l'analyse des templates Lemlist, voici les patterns de séquences les plus efficaces :
+### Sources de Données MCP Disponibles
 
-### Conditions Avancées
-
-1. **Attendre acceptation LinkedIn** : Pause jusqu'à ce que l'invitation soit acceptée
-2. **Branchement multicanal** : Si le prospect a un profil LinkedIn, utiliser LinkedIn + email, sinon email seul
-3. **Timeout conditionnel** : Si l'invitation n'est pas acceptée sous X jours, passer à une autre branche
-4. **Réaction aux interactions** : Envoyer un message si le prospect visite un lien ou ouvre un email
-5. **Détection de réponse** : Stopper la séquence dès qu'une réponse est reçue
-
-### Visualisation Workflow
-
-Lemlist propose un éditeur visuel type "arbre de décision" avec des branches conditionnelles.
+| Source | Statut | Données |
+|--------|--------|---------|
+| **Notion** | Connecté | Jobs, Candidats, Shortlist, Critères Transverses |
+| (Autres) | Extensible | Slack, Google Drive, Linear... |
 
 ---
 
-## Plan d'Implémentation
-
-### Phase 1 : Implémenter les Vérifications de Statut Unipile
-
-**Fichiers à modifier/créer :**
-
-1. **`supabase/functions/process-sequences/index.ts`**
-
-   Implémenter les fonctions de vérification réelles :
-
-   ```text
-   checkStepCondition():
-   - if_connected: GET /users/{profile_id} → vérifier network_distance === "FIRST_DEGREE"
-   - if_not_connected: network_distance !== "FIRST_DEGREE"
-   - if_no_response: GET /chat_attendees/{profile_id}/chats → vérifier si messages reçus du prospect
-   
-   checkForReply():
-   - GET /chat_attendees/{profile_id}/chats
-   - Pour chaque chat: GET /chats/{id}/messages
-   - Vérifier si un message du prospect existe après le dernier message envoyé
-   ```
-
-2. **Nouvelle fonction `check-invitation-status`**
-
-   Endpoint pour vérifier le statut des invitations en attente :
-   - `GET /users/invite/sent` pour lister les invitations envoyées
-   - Comparer avec les enrollments actifs pour détecter les acceptations
-
----
-
-### Phase 2 : Enrichir les Types de Conditions
-
-**Nouvelles conditions à ajouter :**
-
-| Condition | Description | Logique |
-|-----------|-------------|---------|
-| `wait_until_connected` | Pause la séquence jusqu'à acceptation (max X jours) | Bloquer step jusqu'à network_distance === FIRST_DEGREE |
-| `if_invitation_pending` | Si invitation en attente | Vérifier dans /users/invite/sent |
-| `if_replied_positive` | Si réponse positive détectée | Analyse IA du contenu de la réponse |
-| `if_opened_message` | Si le message a été lu | Vérifier read receipts via API |
-| `timeout_branch` | Branchement après X jours sans action | Logique de timeout avec branche alternative |
-
-**Modification schema DB :**
-
-```sql
-ALTER TABLE sequence_steps ADD COLUMN timeout_days integer DEFAULT NULL;
-ALTER TABLE sequence_steps ADD COLUMN timeout_branch_step_id uuid DEFAULT NULL;
-ALTER TABLE sequence_steps ADD COLUMN wait_for_event text DEFAULT NULL;
--- Valeurs possibles: 'connection_accepted', 'message_read', 'reply_received'
-```
-
----
-
-### Phase 3 : Branchement Conditionnel (Workflow Arbre)
-
-**Nouveau concept : Branches de séquence**
-
-Modifier la structure pour supporter des branches :
-
-```sql
-CREATE TABLE sequence_branches (
-  id uuid PRIMARY KEY,
-  sequence_id uuid REFERENCES outreach_sequences(id),
-  name text NOT NULL,
-  parent_step_id uuid REFERENCES sequence_steps(id), -- Point de branchement
-  branch_condition text NOT NULL, -- 'default', 'on_accept', 'on_timeout', 'on_reply'
-  created_at timestamptz DEFAULT now()
-);
-
-ALTER TABLE sequence_steps ADD COLUMN branch_id uuid REFERENCES sequence_branches(id);
-```
-
-**Logique de branchement :**
+## Architecture du Copilot MCP
 
 ```text
-Étape 1: Demande connexion
-  ├── [Si acceptée sous 4 jours] → Branche A: Message direct
-  └── [Timeout 4 jours] → Branche B: InMail de relance
+┌──────────────────────────────────────────────────────────────────────────┐
+│                          FRONTEND                                        │
+│  ┌────────────────────────────────────────────────────────────────────┐  │
+│  │                     CopilotProvider (Context)                      │  │
+│  │  • currentPage: 'outreach' | 'ats' | 'candidates' | 'messages'     │  │
+│  │  • selectedItems: candidat(s), job(s), conversation                │  │
+│  │  • conversationHistory: messages du Copilot                        │  │
+│  └─────────────────────────────────────────────────────────────────────┘ │
+│                                    │                                     │
+│                                    ▼                                     │
+│  ┌────────────────────────────────────────────────────────────────────┐  │
+│  │                    CopilotPanel (UI)                               │  │
+│  │  • Panneau latéral flottant (toggle Cmd+K)                         │  │
+│  │  • Chat conversationnel streaming                                  │  │
+│  │  • Actions contextuelles automatiques                              │  │
+│  │  • Suggestions proactives                                          │  │
+│  └─────────────────────────────────────────────────────────────────────┘ │
+└────────────────────────────────────│────────────────────────────────────┘
+                                     │
+                                     ▼
+┌──────────────────────────────────────────────────────────────────────────┐
+│                    EDGE FUNCTION: copilot                                │
+│  ┌────────────────────────────────────────────────────────────────────┐  │
+│  │                    Context Builder (RAG)                           │  │
+│  │  • Récupère les données pertinentes via MCP                        │  │
+│  │  • Enrichit le prompt avec le contexte métier                      │  │
+│  │  • Vectorise et cherche les infos similaires                       │  │
+│  └─────────────────────────────────────────────────────────────────────┘ │
+│                                    │                                     │
+│                                    ▼                                     │
+│  ┌────────────────────────────────────────────────────────────────────┐  │
+│  │                    Action Router                                   │  │
+│  │  • Détecte l'intention utilisateur                                 │  │
+│  │  • Route vers le bon "skill" (filtres, message, scoring...)        │  │
+│  │  • Exécute les actions (update Notion, envoi message...)           │  │
+│  └─────────────────────────────────────────────────────────────────────┘ │
+│                                    │                                     │
+│                                    ▼                                     │
+│  ┌────────────────────────────────────────────────────────────────────┐  │
+│  │                    MCP Connectors Layer                            │  │
+│  │  ┌──────────────────┐  ┌──────────────────┐  ┌──────────────────┐  │  │
+│  │  │     Notion       │  │   Unipile        │  │   (Extensible)   │  │  │
+│  │  │  Jobs, Candidats │  │  LinkedIn API    │  │   Slack, etc.    │  │  │
+│  │  │  Shortlist       │  │  Messages        │  │                  │  │  │
+│  │  └──────────────────┘  └──────────────────┘  └──────────────────┘  │  │
+│  └─────────────────────────────────────────────────────────────────────┘ │
+└──────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-### Phase 4 : Intelligence Automatique
+## Fonctionnalités du Copilot
 
-**1. Choix automatique InMail vs Message :**
+### 1. Mode Conversationnel Unifié
 
-Avant d'exécuter une étape de type "message", vérifier automatiquement :
-- Si `network_distance === "FIRST_DEGREE"` → Envoyer un message direct via `/chats`
-- Sinon → Envoyer un InMail
+L'utilisateur parle naturellement, le Copilot comprend et agit :
 
-**2. Détection du type de message optimal :**
+| Demande Utilisateur | Réponse du Copilot |
+|---------------------|---------------------|
+| "Configure les filtres pour le poste Numspot" | Analyse le job Notion, propose filtres LinkedIn |
+| "Rédige un message pour ce candidat" | Récupère profil + job actif, génère message personnalisé |
+| "Évalue ces 3 profils pour le poste X" | Score batch avec critères Must/Should/Nice |
+| "Résume les réponses de la journée" | Agrège les messages, détecte les intents |
+| "Mets Jean dans le pipeline Numspot" | Crée l'entrée Shortlist dans Notion |
+| "Quels candidats ont répondu positivement ?" | Filtre les conversations avec intent 'interested' |
 
-- Vérifier si le prospect a des crédits InMail disponibles (profil premium)
-- Adapter le type de contact en fonction
+### 2. Conscience Contextuelle (RAG)
 
-**3. Scheduling intelligent :**
+Le Copilot sait automatiquement :
+- **Page active** : Outreach, ATS, Candidates, Messages
+- **Éléments sélectionnés** : Profil(s), Job, Conversation
+- **Historique récent** : Dernières actions, derniers messages
+- **Données Notion** : Jobs actifs, critères de scoring, pipeline
 
-- Analyser les patterns d'activité du prospect (heures de réponse)
-- Ajuster les horaires d'envoi en fonction
+### 3. Actions Automatiques
+
+Le Copilot peut **exécuter** des actions, pas seulement suggérer :
+- Appliquer des filtres LinkedIn
+- Envoyer un InMail (avec confirmation)
+- Créer/Mettre à jour des entrées Notion
+- Changer le stage d'un candidat
+- Planifier un rappel
+
+### 4. Suggestions Proactives
+
+Le Copilot apparait avec des suggestions contextuelles :
+- **Page Outreach vide** : "Veux-tu que je configure les filtres pour [Job actif] ?"
+- **Nouveau message reçu** : Badge avec intent détecté + actions suggérées
+- **Profil consulté** : "Score: 85% pour [Job]. Tu veux rédiger un message ?"
 
 ---
 
-### Phase 5 : Interface Utilisateur Améliorée
+## Implémentation Technique
 
-**1. Éditeur Visuel de Séquence (type flowchart)**
+### Phase 1 : Infrastructure Frontend
+
+**Fichiers à créer :**
 
 ```text
-Composants à créer :
-- SequenceFlowEditor.tsx : Éditeur visuel avec nœuds et connexions
-- StepNode.tsx : Composant nœud pour chaque étape
-- ConditionNode.tsx : Composant pour les branchements conditionnels
-- ConnectionLine.tsx : Lignes de connexion entre nœuds
+src/contexts/CopilotContext.tsx
+  - État global du Copilot (page, sélection, conversation)
+  - Hook useRegisterCopilotContext() pour injection depuis les pages
+
+src/components/copilot/CopilotPanel.tsx
+  - Panneau latéral avec chat streaming
+  - Rendu markdown des réponses
+  - Actions rapides contextuelles
+
+src/components/copilot/CopilotTrigger.tsx
+  - Bouton flottant (icône IA)
+  - Raccourci clavier Cmd+K
+  - Badge de notification
+
+src/components/copilot/CopilotMessage.tsx
+  - Affichage des messages (user/assistant)
+  - Rendu des actions suggérées
+  - Boutons d'action inline
+
+src/hooks/useCopilot.ts
+  - useAskCopilot() : envoyer une question
+  - useCopilotActions() : exécuter une action
+  - useCopilotContext() : lire le contexte
 ```
 
-Utiliser une bibliothèque comme `reactflow` ou `elkjs` pour le rendu.
+### Phase 2 : Edge Function Unifiée
 
-**2. Preview de séquence :**
+**Fichier à créer :**
 
-Afficher une timeline visuelle du parcours prévu pour un candidat :
 ```text
-J+0: Visite profil
-J+1: Demande connexion
-     └── [Si acceptée] J+2: Message de bienvenue
-     └── [Timeout 4j] J+5: InMail de relance
-J+7: Follow-up si pas de réponse
+supabase/functions/copilot/index.ts
 ```
 
-**3. Dashboard de suivi enrichi :**
-
-- Taux d'acceptation des invitations par séquence
-- Temps moyen avant réponse
-- Étapes les plus efficaces
-- Funnel de conversion visuel
-
----
-
-### Phase 6 : Webhooks et Temps Réel
-
-**Configuration des webhooks Unipile :**
-
-1. Créer un endpoint `supabase/functions/unipile-webhook/index.ts` pour recevoir :
-   - `new_message` : Nouvelle message reçu
-   - `account_status` : Changement de statut du compte
-
-2. À la réception d'un webhook :
-   - Identifier l'enrollment concerné
-   - Mettre à jour le statut (replied, connected, etc.)
-   - Déclencher le branchement approprié
-
----
-
-## Résumé des Modifications
-
-### Fichiers à Modifier
-
-| Fichier | Modifications |
-|---------|--------------|
-| `supabase/functions/process-sequences/index.ts` | Implémenter checkStepCondition() et checkForReply() avec les vraies API Unipile |
-| `src/components/outreach/SequenceBuilder.tsx` | Ajouter nouvelles conditions et UI timeout/branches |
-| `src/components/outreach/SequencesList.tsx` | Afficher stats détaillées par séquence |
-
-### Nouveaux Fichiers à Créer
-
-| Fichier | Description |
-|---------|-------------|
-| `supabase/functions/check-invitation-status/index.ts` | Vérifier statut invitations périodiquement |
-| `supabase/functions/unipile-webhook/index.ts` | Recevoir webhooks Unipile |
-| `src/components/outreach/SequenceFlowEditor.tsx` | Éditeur visuel de séquence |
-| `src/components/outreach/SequenceAnalytics.tsx` | Dashboard analytics détaillé |
-
-### Migration Base de Données
-
-```sql
--- Nouvelles colonnes pour sequence_steps
-ALTER TABLE sequence_steps ADD COLUMN timeout_days integer;
-ALTER TABLE sequence_steps ADD COLUMN wait_for_event text;
-
--- Nouvelles colonnes pour sequence_enrollments  
-ALTER TABLE sequence_enrollments ADD COLUMN last_check_at timestamptz;
-ALTER TABLE sequence_enrollments ADD COLUMN connection_status text DEFAULT 'unknown';
--- Valeurs: 'unknown', 'pending_invite', 'connected', 'not_connected'
-
--- Table pour les statistiques
-CREATE TABLE sequence_analytics (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  sequence_id uuid REFERENCES outreach_sequences(id),
-  date date NOT NULL,
-  invites_sent integer DEFAULT 0,
-  invites_accepted integer DEFAULT 0,
-  messages_sent integer DEFAULT 0,
-  replies_received integer DEFAULT 0,
-  created_at timestamptz DEFAULT now()
-);
-```
-
----
-
-## Ordre de Priorité Recommandé
-
-1. **Priorité Haute** : Implémenter les vérifications Unipile réelles (Phase 1)
-2. **Priorité Haute** : Détecter les réponses et stopper les séquences (Phase 1)
-3. **Priorité Moyenne** : Ajouter la condition wait_until_connected (Phase 2)
-4. **Priorité Moyenne** : Intelligence InMail vs Message auto (Phase 4)
-5. **Priorité Basse** : Branchement conditionnel complet (Phase 3)
-6. **Priorité Basse** : Éditeur visuel flowchart (Phase 5)
-7. **Optionnel** : Webhooks temps réel (Phase 6)
-
----
-
-## Section Technique
-
-### Endpoints Unipile à Utiliser
+Structure de la fonction :
 
 ```typescript
-// Vérifier niveau de connexion
-GET /users/{profile_id}?account_id={account_id}
-// Réponse inclut: network_distance, is_relationship
-
-// Lister invitations envoyées
-GET /users/invite/sent?account_id={account_id}
-
-// Vérifier conversations existantes
-GET /chat_attendees/{profile_id}/chats?account_id={account_id}
-
-// Récupérer messages d'un chat
-GET /chats/{chat_id}/messages?limit=10
-
-// Envoyer message direct (1er niveau)
-POST /chats avec { account_id, attendees: [{ provider_id }], text }
-
-// Envoyer InMail (2ème/3ème niveau)
-POST /chats avec { account_id, attendees: [{ provider_id }], text, subject }
-// Note: L'API Unipile gère automatiquement le type selon la relation
-```
-
-### Logique de Détection de Réponse
-
-```typescript
-async function hasProspectReplied(accountId: string, profileId: string, sinceDate: Date): Promise<boolean> {
-  // 1. Trouver le chat avec ce profil
-  const chats = await fetch(`/chat_attendees/${profileId}/chats?account_id=${accountId}`);
+// Schéma de requête
+interface CopilotRequest {
+  // Message utilisateur
+  message: string;
   
-  if (!chats.items?.length) return false;
+  // Contexte frontend
+  context: {
+    page: 'outreach' | 'ats' | 'candidates' | 'messages';
+    selectedJobId?: string;
+    selectedProfiles?: ProfileData[];
+    activeConversation?: Message[];
+    currentFilters?: LinkedInFiltersState;
+  };
   
-  // 2. Vérifier les messages récents
-  for (const chat of chats.items) {
-    const messages = await fetch(`/chats/${chat.id}/messages?limit=20`);
-    
-    // 3. Chercher un message du prospect après notre dernier envoi
-    const prospectMessages = messages.items.filter(m => 
-      m.sender_attendee_id !== 'self' && 
-      new Date(m.created_at) > sinceDate
-    );
-    
-    if (prospectMessages.length > 0) return true;
-  }
+  // Historique conversation Copilot
+  history: { role: 'user' | 'assistant'; content: string }[];
   
-  return false;
+  // Options
+  action?: 'chat' | 'execute'; // chat = répondre, execute = agir
+}
+
+// Schéma de réponse
+interface CopilotResponse {
+  message: string; // Réponse texte
+  actions?: CopilotAction[]; // Actions suggérées
+  data?: any; // Données structurées (filtres, message généré, etc.)
+  executed?: { // Si action exécutée
+    type: string;
+    result: any;
+  };
 }
 ```
+
+### Phase 3 : Intégration MCP pour RAG
+
+Le Copilot utilisera les outils Notion MCP déjà connectés :
+
+```text
+Capacités MCP Notion disponibles :
+- notion-search : Recherche sémantique dans les bases
+- notion-fetch : Récupère les détails d'une page/DB
+- notion-create-pages : Crée des entrées (Shortlist, etc.)
+- notion-update-page : Met à jour un candidat/job
+```
+
+**Logique RAG dans l'edge function :**
+
+1. **Détection d'intention** : L'IA analyse la demande utilisateur
+2. **Récupération contexte** : 
+   - Si job mentionné → fetch depuis Notion via API
+   - Si candidat mentionné → récupère profil + historique
+   - Si critères → enrichit avec transversal criteria
+3. **Génération réponse** : Prompt enrichi avec tout le contexte
+4. **Exécution optionnelle** : Si action confirmée, appelle l'API appropriée
+
+### Phase 4 : Migration Progressive
+
+1. **Ajouter CopilotProvider** dans `App.tsx`
+2. **Injecter contexte** depuis chaque page via `useRegisterCopilotContext`
+3. **Remplacer progressivement** les anciens boutons par des raccourcis Copilot
+4. **Garder les anciennes modales** comme fallback pendant la transition
+
+### Phase 5 : Suppression du Legacy
+
+Une fois le Copilot stable :
+- Supprimer `FilterAssistantModal.tsx`
+- Supprimer `OutreachMessageModal.tsx`  
+- Simplifier `NurturingPanel.tsx` (affichage seul, pas de génération)
+- Retirer les boutons IA éparpillés
+
+---
+
+## Interface Utilisateur
+
+```text
+┌─────────────────────────────────────────────────────────────────────────┐
+│  Outreach > Recherche LinkedIn          [Filtres] [Job: Numspot ▼] 🤖  │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                      ┌─────────────────┐│
+│  Résultats de recherche...                           │     Copilot     ││
+│                                                      │                 ││
+│  ┌─────────────────────┐                             │ "Tu es sur la   ││
+│  │ Profil 1 ☑          │                             │ page Outreach   ││
+│  └─────────────────────┘                             │ avec 3 profils  ││
+│  ┌─────────────────────┐                             │ sélectionnés"   ││
+│  │ Profil 2 ☑          │                             │                 ││
+│  └─────────────────────┘                             │ ┌─────────────┐ ││
+│  ┌─────────────────────┐                             │ │📝 Rédiger   │ ││
+│  │ Profil 3 ☑          │                             │ │   message   │ ││
+│  └─────────────────────┘                             │ └─────────────┘ ││
+│                                                      │ ┌─────────────┐ ││
+│                                                      │ │📊 Évaluer   │ ││
+│                                                      │ │   profils   │ ││
+│                                                      │ └─────────────┘ ││
+│                                                      │                 ││
+│                                                      │ ┌─────────────┐ ││
+│                                                      │ │ Demande...  │ ││
+│                                                      │ └─────────────┘ ││
+│                                                      │ [    Envoyer  ] ││
+│                                                      └─────────────────┘│
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Extensibilité MCP
+
+Le Copilot est conçu pour être **extensible** à d'autres outils MCP :
+
+| Outil | Cas d'usage |
+|-------|-------------|
+| **Slack** | "Préviens l'équipe qu'on a trouvé un candidat chaud" |
+| **Google Calendar** | "Planifie un call avec Jean jeudi à 14h" |
+| **Linear** | "Crée une tâche de suivi pour ce candidat" |
+| **Airtable** | Alternative/complément à Notion |
+
+L'architecture MCP permet d'ajouter des connecteurs sans modifier le code du Copilot.
+
+---
+
+## Estimation
+
+| Phase | Description | Complexité | Messages estimés |
+|-------|-------------|------------|------------------|
+| 1 | Infrastructure frontend (Context, Panel, Trigger) | Moyenne | 2-3 |
+| 2 | Edge function unifiée + routing | Moyenne-Haute | 2-3 |
+| 3 | Intégration RAG avec Notion MCP | Moyenne | 2 |
+| 4 | Migration progressive des pages | Facile | 2-3 |
+| 5 | Nettoyage legacy | Facile | 1 |
+
+**Total estimé : 9-12 messages**
+
+---
+
+## Avantages de cette Approche
+
+1. **UX unifiée** — Un seul point d'entrée IA, accessible partout (Cmd+K)
+2. **Contexte partagé** — Le Copilot sait toujours où tu es et ce que tu fais
+3. **RAG natif** — Enrichissement automatique avec les données Notion
+4. **Actions directes** — Pas seulement des suggestions, mais des exécutions
+5. **Extensible MCP** — Ajout de nouveaux outils sans refonte
+6. **Maintenance simplifiée** — Une seule edge function au lieu de 6+
+
