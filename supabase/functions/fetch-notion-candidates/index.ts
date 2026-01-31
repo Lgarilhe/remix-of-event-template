@@ -8,6 +8,74 @@ const corsHeaders = {
 const NOTION_API_KEY = Deno.env.get("NOTION_API_KEY");
 const CANDIDATS_DATABASE_ID = "2787e1816fb4812b8ebddfcb3ab95510";
 const SHORTLIST_DATABASE_ID = "2787e1816fb4811986a7e6075bc63a23";
+const NOTION_VERSION = '2022-06-28';
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+// Notion API has a low per-integration request rate; enforce a global pacing
+// to prevent bursts (especially when resolving relations).
+let notionRequestChain: Promise<unknown> = Promise.resolve();
+let lastNotionRequestAt = 0;
+const NOTION_MIN_INTERVAL_MS = 350; // ~3 req/s max
+
+async function pacedFetch(url: string, init: RequestInit): Promise<Response> {
+  const run = notionRequestChain.then(async () => {
+    const now = Date.now();
+    const waitMs = Math.max(0, NOTION_MIN_INTERVAL_MS - (now - lastNotionRequestAt));
+    if (waitMs) await sleep(waitMs);
+    lastNotionRequestAt = Date.now();
+    return await fetch(url, init);
+  });
+
+  // Keep chain alive even if a request fails
+  notionRequestChain = run.then(() => undefined).catch(() => undefined);
+  return await run;
+}
+
+function getRetryAfterMs(response: Response): number | null {
+  const retryAfter = response.headers.get('retry-after');
+  if (!retryAfter) return null;
+  const seconds = Number(retryAfter);
+  if (Number.isFinite(seconds) && seconds >= 0) return Math.round(seconds * 1000);
+  return null;
+}
+
+async function notionFetch(url: string, init: RequestInit, opts?: { maxRetries?: number; minDelayMs?: number }) {
+  const maxRetries = opts?.maxRetries ?? 6;
+  const minDelayMs = opts?.minDelayMs ?? 350;
+
+  let attempt = 0;
+  while (true) {
+    const response = await pacedFetch(url, init);
+
+    // Notion rate-limit / transient upstream issues
+    if ([429, 503, 502].includes(response.status) && attempt < maxRetries) {
+      await response.text(); // consume body to avoid resource leaks
+      const retryAfterMs = getRetryAfterMs(response);
+      const backoff = Math.min(8000, minDelayMs * Math.pow(2, attempt));
+      const waitMs = retryAfterMs ?? backoff;
+      await sleep(waitMs);
+      attempt += 1;
+      continue;
+    }
+
+    return response;
+  }
+}
+
+async function mapWithConcurrency<T, R>(items: T[], concurrency: number, mapper: (item: T, index: number) => Promise<R>): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let nextIndex = 0;
+  const workers = Array.from({ length: Math.max(1, Math.min(concurrency, items.length)) }, async () => {
+    while (true) {
+      const current = nextIndex++;
+      if (current >= items.length) return;
+      results[current] = await mapper(items[current], current);
+    }
+  });
+  await Promise.all(workers);
+  return results;
+}
 
 interface NotionRichText {
   plain_text: string;
@@ -95,11 +163,11 @@ async function queryNotionDatabase(databaseId: string, filter?: Record<string, u
     body.filter = filter;
   }
 
-  const response = await fetch(`https://api.notion.com/v1/databases/${databaseId}/query`, {
+  const response = await notionFetch(`https://api.notion.com/v1/databases/${databaseId}/query`, {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${NOTION_API_KEY}`,
-      'Notion-Version': '2022-06-28',
+      'Notion-Version': NOTION_VERSION,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify(body),
@@ -115,11 +183,11 @@ async function queryNotionDatabase(databaseId: string, filter?: Record<string, u
 }
 
 async function getNotionPage(pageId: string) {
-  const response = await fetch(`https://api.notion.com/v1/pages/${pageId}`, {
+  const response = await notionFetch(`https://api.notion.com/v1/pages/${pageId}`, {
     method: 'GET',
     headers: {
       'Authorization': `Bearer ${NOTION_API_KEY}`,
-      'Notion-Version': '2022-06-28',
+      'Notion-Version': NOTION_VERSION,
     },
   });
 
@@ -181,10 +249,21 @@ serve(async (req) => {
       
       // Cache for positions to avoid duplicate fetches
       const positionCache: Record<string, string> = {};
+      const pageCache = new Map<string, any>();
+
+      const getNotionPageCached = async (pageId: string) => {
+        if (pageCache.has(pageId)) return pageCache.get(pageId);
+        const page = await getNotionPage(pageId);
+        pageCache.set(pageId, page);
+        return page;
+      };
       
       // Get candidate and position details for each shortlist entry
-      const shortlistWithCandidates = await Promise.all(
-        data.results.map(async (page: { id: string; properties: Record<string, NotionProperty> }) => {
+      // Important: limit concurrency to avoid Notion 429 rate limiting
+      const shortlistWithCandidates = await mapWithConcurrency(
+        data.results,
+        2,
+        async (page: { id: string; properties: Record<string, NotionProperty> }) => {
           const props = page.properties;
           const candidateIds = extractRelations(props['Candidats']);
           const positionIds = extractRelations(props['💼 Postes']);
@@ -192,7 +271,7 @@ serve(async (req) => {
           // Fetch candidate info if available
           let candidateInfo = null;
           if (candidateIds.length > 0) {
-            const candidatePage = await getNotionPage(candidateIds[0]);
+            const candidatePage = await getNotionPageCached(candidateIds[0]);
             if (candidatePage) {
               const candProps = candidatePage.properties;
               candidateInfo = {
@@ -220,7 +299,7 @@ serve(async (req) => {
             if (positionCache[posId]) {
               positions.push({ id: posId, name: positionCache[posId] });
             } else {
-              const positionPage = await getNotionPage(posId);
+              const positionPage = await getNotionPageCached(posId);
               if (positionPage) {
                 // Try multiple property names that might contain the position title
                 const posName = extractText(positionPage.properties['Intitulé du poste']) || 
@@ -263,7 +342,7 @@ serve(async (req) => {
             positions,
             candidate: candidateInfo,
           };
-        })
+        }
       );
 
       return new Response(
@@ -276,8 +355,9 @@ serve(async (req) => {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     console.error('Error fetching candidates:', errorMessage);
     return new Response(
+      // Avoid hard 500 so the client can gracefully fallback (other sources, cache, etc.)
       JSON.stringify({ success: false, error: errorMessage }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
     );
   }
 });
