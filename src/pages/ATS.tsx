@@ -61,8 +61,11 @@ export default function ATS() {
   }, []);
 
   // Trigger data fetch when user is available
-  // Note: useATSData already fetches; avoid a second immediate refetch that can
-  // amplify external API rate-limits.
+  useEffect(() => {
+    if (user) {
+      refetch();
+    }
+  }, [user, refetch]);
 
   // Get unique values for filters
   const filterOptions = useMemo(() => {
