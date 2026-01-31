@@ -13,6 +13,7 @@ import SkalrLanding from "./pages/SkalrLanding";
 import JobSpace from "./pages/JobSpace";
 import Candidates from "./pages/Candidates";
 import Outreach from "./pages/Outreach";
+import ATS from "./pages/ATS";
 import NotFound from "./pages/NotFound";
 
 const App = () => (
@@ -31,6 +32,7 @@ const App = () => (
       <Route path="/jobs" element={<JobSpace />} />
       <Route path="/candidates" element={<Candidates />} />
       <Route path="/outreach" element={<Outreach />} />
+      <Route path="/ats" element={<ATS />} />
       {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
       <Route path="*" element={<NotFound />} />
     </Routes>
