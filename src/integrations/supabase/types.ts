@@ -14,6 +14,84 @@ export type Database = {
   }
   public: {
     Tables: {
+      candidate_notes: {
+        Row: {
+          candidate_id: string
+          content: string
+          created_at: string
+          created_by: string
+          id: string
+          shortlist_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          candidate_id: string
+          content: string
+          created_at?: string
+          created_by: string
+          id?: string
+          shortlist_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          candidate_id?: string
+          content?: string
+          created_at?: string
+          created_by?: string
+          id?: string
+          shortlist_id?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      candidate_reminders: {
+        Row: {
+          candidate_id: string
+          candidate_name: string | null
+          completed_at: string | null
+          created_at: string
+          created_by: string
+          description: string | null
+          due_at: string
+          id: string
+          job_id: string | null
+          job_title: string | null
+          shortlist_id: string | null
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          candidate_id: string
+          candidate_name?: string | null
+          completed_at?: string | null
+          created_at?: string
+          created_by: string
+          description?: string | null
+          due_at: string
+          id?: string
+          job_id?: string | null
+          job_title?: string | null
+          shortlist_id?: string | null
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          candidate_id?: string
+          candidate_name?: string | null
+          completed_at?: string | null
+          created_at?: string
+          created_by?: string
+          description?: string | null
+          due_at?: string
+          id?: string
+          job_id?: string | null
+          job_title?: string | null
+          shortlist_id?: string | null
+          title?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       contact_submissions: {
         Row: {
           company: string | null
