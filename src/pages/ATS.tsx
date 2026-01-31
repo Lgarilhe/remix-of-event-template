@@ -60,12 +60,8 @@ export default function ATS() {
     return () => subscription.unsubscribe();
   }, []);
 
-  // Trigger data fetch when user is available
-  useEffect(() => {
-    if (user) {
-      refetch();
-    }
-  }, [user, refetch]);
+  // Note: useATSData() already fetches data + caches it.
+  // Avoid an extra refetch on mount (it increases Notion load and triggers rate limits).
 
   // Get unique values for filters
   const filterOptions = useMemo(() => {
