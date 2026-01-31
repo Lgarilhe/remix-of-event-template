@@ -27,11 +27,12 @@ export default function ATS() {
   const [showReminders, setShowReminders] = useState(false);
   const [selectedCandidate, setSelectedCandidate] = useState<ATSCandidate | null>(null);
   
-  // Use our optimized hook
+  // Use our optimized hook with caching
   const { 
     candidates, 
     loading, 
-    loadingState,
+    isFetching,
+    isFromCache,
     error, 
     refetch, 
     handleStageChange 
@@ -147,13 +148,6 @@ export default function ATS() {
     setSelectedCandidate(candidate);
   };
 
-  // Loading count indicator
-  const loadedSourcesCount = [
-    !loadingState.shortlist,
-    !loadingState.sequences,
-    !loadingState.inmails,
-  ].filter(Boolean).length;
-
   return (
     <div className="min-h-screen bg-[#FAFAFA]">
       <SEOHead
@@ -173,7 +167,17 @@ export default function ATS() {
                   <h1 className="text-3xl font-bold text-[#1A1A1A]">ATS</h1>
                   {loading && (
                     <span className="text-sm text-[#1A1A1A]/50 animate-pulse">
-                      Chargement ({loadedSourcesCount}/3)...
+                      Chargement...
+                    </span>
+                  )}
+                  {isFromCache && !isFetching && (
+                    <span className="text-xs text-green-600 bg-green-50 px-2 py-0.5 rounded-full">
+                      Cache
+                    </span>
+                  )}
+                  {isFetching && !loading && (
+                    <span className="text-xs text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full animate-pulse">
+                      Actualisation...
                     </span>
                   )}
                 </div>

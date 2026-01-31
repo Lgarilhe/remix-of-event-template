@@ -1,4 +1,5 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useMemo, useCallback } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
@@ -40,227 +41,188 @@ export const ATS_STAGES = [
   { key: 'Perdu', label: 'Perdu', color: 'bg-red-50 border-red-300' },
 ];
 
-interface LoadingState {
-  shortlist: boolean;
-  sequences: boolean;
-  inmails: boolean;
-  metadata: boolean;
+// Cache configuration
+const STALE_TIME = 5 * 60 * 1000; // 5 minutes - data considered fresh
+const GC_TIME = 30 * 60 * 1000; // 30 minutes - keep in cache
+
+// Fetch functions
+async function fetchShortlist(): Promise<ATSCandidate[]> {
+  const response = await supabase.functions.invoke('fetch-notion-candidates', {
+    body: {},
+  });
+
+  if (!response.data?.success || !response.data.shortlist) {
+    return [];
+  }
+
+  return response.data.shortlist.map((entry: any) => ({
+    id: `shortlist-${entry.id}`,
+    candidateId: entry.candidate?.id || entry.id,
+    name: entry.candidate?.name || entry.name || 'Sans nom',
+    email: entry.candidate?.email || null,
+    phone: entry.candidate?.phone || null,
+    linkedin: entry.candidate?.linkedin || null,
+    headline: null,
+    expertise: entry.candidate?.expertise || [],
+    stage: entry.stage || 'Pressenti',
+    entity: entry.entity || null,
+    source: 'shortlist' as const,
+    sourceId: entry.id,
+    jobId: entry.positions?.[0]?.id || null,
+    jobTitle: entry.positions?.[0]?.name || null,
+    lastActivity: entry.createdAt || null,
+    createdAt: entry.createdAt || new Date().toISOString(),
+  }));
+}
+
+async function fetchSequences(): Promise<ATSCandidate[]> {
+  const { data: enrollments, error } = await supabase
+    .from('sequence_enrollments')
+    .select(`*, outreach_sequences (id, name)`)
+    .order('created_at', { ascending: false });
+
+  if (error || !enrollments) return [];
+
+  return enrollments.map((enrollment: any) => {
+    let stage = 'Contacté';
+    if (enrollment.replied_at) {
+      stage = 'Répondu';
+    } else if (enrollment.status === 'paused') {
+      stage = 'Nouveau';
+    }
+
+    return {
+      id: `sequence-${enrollment.id}`,
+      candidateId: enrollment.profile_id,
+      name: enrollment.profile_name || 'Profil LinkedIn',
+      email: null,
+      phone: null,
+      linkedin: enrollment.profile_url || null,
+      headline: enrollment.profile_headline || null,
+      expertise: [],
+      stage,
+      entity: null,
+      source: 'sequence' as const,
+      sourceId: enrollment.id,
+      jobId: enrollment.job_id || null,
+      jobTitle: enrollment.job_title || null,
+      sequenceId: enrollment.sequence_id,
+      sequenceName: enrollment.outreach_sequences?.name || null,
+      sequenceStatus: enrollment.status,
+      connectionStatus: enrollment.connection_status,
+      lastActivity: enrollment.updated_at || enrollment.created_at,
+      createdAt: enrollment.created_at,
+    };
+  });
+}
+
+async function fetchInMails(existingProfileIds: Set<string>): Promise<ATSCandidate[]> {
+  const { data: inmails, error } = await supabase
+    .from('inmail_queue')
+    .select('*')
+    .order('created_at', { ascending: false });
+
+  if (error || !inmails) return [];
+
+  return inmails
+    .filter((inmail: any) => !existingProfileIds.has(inmail.recipient_profile_id))
+    .map((inmail: any) => ({
+      id: `inmail-${inmail.id}`,
+      candidateId: inmail.recipient_profile_id,
+      name: inmail.recipient_name || 'Profil LinkedIn',
+      email: null,
+      phone: null,
+      linkedin: null,
+      headline: inmail.recipient_headline || null,
+      expertise: [],
+      stage: inmail.status === 'sent' ? 'Contacté' : 'Nouveau',
+      entity: null,
+      source: 'inmail' as const,
+      sourceId: inmail.id,
+      jobId: null,
+      jobTitle: null,
+      lastActivity: inmail.sent_at || inmail.created_at,
+      createdAt: inmail.created_at,
+    }));
+}
+
+async function fetchMetadata(candidates: ATSCandidate[]): Promise<ATSCandidate[]> {
+  const [notesResult, remindersResult] = await Promise.all([
+    supabase.from('candidate_notes').select('candidate_id'),
+    supabase.from('candidate_reminders').select('candidate_id').is('completed_at', null),
+  ]);
+
+  const notesMap = new Map<string, number>();
+  if (notesResult.data) {
+    notesResult.data.forEach((note: any) => {
+      const count = notesMap.get(note.candidate_id) || 0;
+      notesMap.set(note.candidate_id, count + 1);
+    });
+  }
+
+  const reminderSet = new Set<string>();
+  if (remindersResult.data) {
+    remindersResult.data.forEach((r: any) => reminderSet.add(r.candidate_id));
+  }
+
+  return candidates.map(candidate => ({
+    ...candidate,
+    notesCount: notesMap.get(candidate.candidateId) || 0,
+    hasReminder: reminderSet.has(candidate.candidateId),
+  }));
+}
+
+// Main fetch function that combines all sources
+async function fetchAllCandidates(): Promise<ATSCandidate[]> {
+  // Fetch shortlist and sequences in parallel (they're independent)
+  const [shortlistCandidates, sequenceCandidates] = await Promise.all([
+    fetchShortlist(),
+    fetchSequences(),
+  ]);
+
+  // Combine for deduplication before fetching inmails
+  const combined = [...shortlistCandidates, ...sequenceCandidates];
+  const existingProfileIds = new Set(combined.map(c => c.candidateId));
+
+  // Fetch inmails (needs deduplication)
+  const inmailCandidates = await fetchInMails(existingProfileIds);
+
+  // Combine all
+  const allCandidates = [...combined, ...inmailCandidates];
+
+  // Fetch and apply metadata
+  return fetchMetadata(allCandidates);
 }
 
 export function useATSData() {
-  const [candidates, setCandidates] = useState<ATSCandidate[]>([]);
-  const [loading, setLoading] = useState<LoadingState>({
-    shortlist: true,
-    sequences: true,
-    inmails: true,
-    metadata: true,
+  const queryClient = useQueryClient();
+
+  // Main query with caching
+  const {
+    data: candidates = [],
+    isLoading: loading,
+    isFetching,
+    error,
+    refetch,
+  } = useQuery({
+    queryKey: ['ats-candidates'],
+    queryFn: fetchAllCandidates,
+    staleTime: STALE_TIME,
+    gcTime: GC_TIME,
+    refetchOnWindowFocus: false, // Don't refetch on tab focus
   });
-  const [error, setError] = useState<string | null>(null);
 
-  const isLoading = loading.shortlist || loading.sequences || loading.inmails;
-  const isFullyLoaded = !loading.shortlist && !loading.sequences && !loading.inmails && !loading.metadata;
-
-  // Fetch shortlist from Notion (slowest, so we show it first)
-  const fetchShortlist = useCallback(async () => {
-    try {
-      const response = await supabase.functions.invoke('fetch-notion-candidates', {
-        body: {},
-      });
-
-      if (response.data?.success && response.data.shortlist) {
-        const shortlistCandidates: ATSCandidate[] = response.data.shortlist.map((entry: any) => ({
-          id: `shortlist-${entry.id}`,
-          candidateId: entry.candidate?.id || entry.id,
-          name: entry.candidate?.name || entry.name || 'Sans nom',
-          email: entry.candidate?.email || null,
-          phone: entry.candidate?.phone || null,
-          linkedin: entry.candidate?.linkedin || null,
-          headline: null,
-          expertise: entry.candidate?.expertise || [],
-          stage: entry.stage || 'Pressenti',
-          entity: entry.entity || null,
-          source: 'shortlist' as const,
-          sourceId: entry.id,
-          jobId: entry.positions?.[0]?.id || null,
-          jobTitle: entry.positions?.[0]?.name || null,
-          lastActivity: entry.createdAt || null,
-          createdAt: entry.createdAt || new Date().toISOString(),
-        }));
-        
-        setCandidates(prev => [...prev, ...shortlistCandidates]);
-      }
-    } catch (err) {
-      console.error('Error fetching shortlist:', err);
-    } finally {
-      setLoading(prev => ({ ...prev, shortlist: false }));
-    }
-  }, []);
-
-  // Fetch sequence enrollments
-  const fetchSequences = useCallback(async () => {
-    try {
-      const { data: enrollments, error: enrollmentsError } = await supabase
-        .from('sequence_enrollments')
-        .select(`*, outreach_sequences (id, name)`)
-        .order('created_at', { ascending: false });
-
-      if (enrollmentsError) throw enrollmentsError;
-
-      if (enrollments) {
-        const sequenceCandidates: ATSCandidate[] = enrollments.map((enrollment: any) => {
-          let stage = 'Contacté';
-          if (enrollment.replied_at) {
-            stage = 'Répondu';
-          } else if (enrollment.status === 'paused') {
-            stage = 'Nouveau';
-          }
-
-          return {
-            id: `sequence-${enrollment.id}`,
-            candidateId: enrollment.profile_id,
-            name: enrollment.profile_name || 'Profil LinkedIn',
-            email: null,
-            phone: null,
-            linkedin: enrollment.profile_url || null,
-            headline: enrollment.profile_headline || null,
-            expertise: [],
-            stage,
-            entity: null,
-            source: 'sequence' as const,
-            sourceId: enrollment.id,
-            jobId: enrollment.job_id || null,
-            jobTitle: enrollment.job_title || null,
-            sequenceId: enrollment.sequence_id,
-            sequenceName: enrollment.outreach_sequences?.name || null,
-            sequenceStatus: enrollment.status,
-            connectionStatus: enrollment.connection_status,
-            lastActivity: enrollment.updated_at || enrollment.created_at,
-            createdAt: enrollment.created_at,
-          };
-        });
-
-        setCandidates(prev => [...prev, ...sequenceCandidates]);
-      }
-    } catch (err) {
-      console.error('Error fetching sequences:', err);
-    } finally {
-      setLoading(prev => ({ ...prev, sequences: false }));
-    }
-  }, []);
-
-  // Fetch InMail queue
-  const fetchInMails = useCallback(async () => {
-    try {
-      const { data: inmails, error: inmailsError } = await supabase
-        .from('inmail_queue')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      if (inmailsError) throw inmailsError;
-
-      if (inmails) {
-        setCandidates(prev => {
-          const existingProfileIds = new Set(prev.map(c => c.candidateId));
-          
-          const inmailCandidates: ATSCandidate[] = inmails
-            .filter((inmail: any) => !existingProfileIds.has(inmail.recipient_profile_id))
-            .map((inmail: any) => ({
-              id: `inmail-${inmail.id}`,
-              candidateId: inmail.recipient_profile_id,
-              name: inmail.recipient_name || 'Profil LinkedIn',
-              email: null,
-              phone: null,
-              linkedin: null,
-              headline: inmail.recipient_headline || null,
-              expertise: [],
-              stage: inmail.status === 'sent' ? 'Contacté' : 'Nouveau',
-              entity: null,
-              source: 'inmail' as const,
-              sourceId: inmail.id,
-              jobId: null,
-              jobTitle: null,
-              lastActivity: inmail.sent_at || inmail.created_at,
-              createdAt: inmail.created_at,
-            }));
-
-          return [...prev, ...inmailCandidates];
-        });
-      }
-    } catch (err) {
-      console.error('Error fetching inmails:', err);
-    } finally {
-      setLoading(prev => ({ ...prev, inmails: false }));
-    }
-  }, []);
-
-  // Fetch metadata (notes count and reminders) - runs after main data
-  const fetchMetadata = useCallback(async () => {
-    try {
-      const [notesResult, remindersResult] = await Promise.all([
-        supabase.from('candidate_notes').select('candidate_id'),
-        supabase.from('candidate_reminders').select('candidate_id').is('completed_at', null),
-      ]);
-
-      const notesMap = new Map<string, number>();
-      if (notesResult.data) {
-        notesResult.data.forEach((note: any) => {
-          const count = notesMap.get(note.candidate_id) || 0;
-          notesMap.set(note.candidate_id, count + 1);
-        });
-      }
-
-      const reminderSet = new Set<string>();
-      if (remindersResult.data) {
-        remindersResult.data.forEach((r: any) => reminderSet.add(r.candidate_id));
-      }
-
-      setCandidates(prev => prev.map(candidate => ({
-        ...candidate,
-        notesCount: notesMap.get(candidate.candidateId) || 0,
-        hasReminder: reminderSet.has(candidate.candidateId),
-      })));
-    } catch (err) {
-      console.error('Error fetching metadata:', err);
-    } finally {
-      setLoading(prev => ({ ...prev, metadata: false }));
-    }
-  }, []);
-
-  // Initial fetch - parallel for speed
-  const fetchAll = useCallback(async () => {
-    setCandidates([]);
-    setError(null);
-    setLoading({
-      shortlist: true,
-      sequences: true,
-      inmails: true,
-      metadata: true,
-    });
-
-    // Start all fetches in parallel
-    Promise.all([
-      fetchShortlist(),
-      fetchSequences(),
-      fetchInMails(),
-    ]).then(() => {
-      // Fetch metadata after main data is loaded
-      fetchMetadata();
-    }).catch(err => {
-      setError(err instanceof Error ? err.message : 'Failed to load data');
-    });
-  }, [fetchShortlist, fetchSequences, fetchInMails, fetchMetadata]);
-
-  // Handle stage change
+  // Handle stage change with optimistic update
   const handleStageChange = useCallback(async (candidateId: string, newStage: string) => {
     const candidate = candidates.find(c => c.id === candidateId);
     if (!candidate) return;
 
     const oldStage = candidate.stage;
 
-    // Optimistic update
-    setCandidates(prev => prev.map(c => 
-      c.id === candidateId ? { ...c, stage: newStage } : c
-    ));
+    // Optimistic update in cache
+    queryClient.setQueryData<ATSCandidate[]>(['ats-candidates'], (old) => 
+      old?.map(c => c.id === candidateId ? { ...c, stage: newStage } : c) ?? []
+    );
 
     // If shortlist, update in Notion
     if (candidate.source === 'shortlist') {
@@ -280,23 +242,26 @@ export function useATSData() {
       } catch (error) {
         console.error('Error updating stage:', error);
         toast.error('Erreur lors de la mise à jour');
-        // Revert
-        setCandidates(prev => prev.map(c => 
-          c.id === candidateId ? { ...c, stage: oldStage } : c
-        ));
+        // Revert optimistic update
+        queryClient.setQueryData<ATSCandidate[]>(['ats-candidates'], (old) => 
+          old?.map(c => c.id === candidateId ? { ...c, stage: oldStage } : c) ?? []
+        );
       }
     } else {
       toast.success(`Candidat déplacé vers "${newStage}"`);
     }
-  }, [candidates]);
+  }, [candidates, queryClient]);
+
+  // Check if data is from cache (instant load)
+  const isFromCache = !loading && !isFetching && candidates.length > 0;
 
   return {
     candidates,
-    loading: isLoading,
-    isFullyLoaded,
-    loadingState: loading,
-    error,
-    refetch: fetchAll,
+    loading,
+    isFetching, // True when background refetch is happening
+    isFromCache,
+    error: error ? (error instanceof Error ? error.message : 'Failed to load data') : null,
+    refetch: () => refetch(),
     handleStageChange,
   };
 }
