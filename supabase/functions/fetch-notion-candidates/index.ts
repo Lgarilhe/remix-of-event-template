@@ -241,7 +241,9 @@ serve(async (req) => {
     const cached = await getCache(cacheKey);
 
     // Serve from cache when fresh
-    if (cached.payload && cached.ageMs !== null && cached.ageMs < CACHE_TTL_MS) {
+    // If we stored a "rateLimited" payload, keep it for a shorter period to avoid hiding data for too long.
+    const cachedTtlMs = (cached.payload as any)?._meta?.rateLimited ? 30_000 : CACHE_TTL_MS;
+    if (cached.payload && cached.ageMs !== null && cached.ageMs < cachedTtlMs) {
       return new Response(
         JSON.stringify({ ...(cached.payload as any), cached: true }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -409,12 +411,24 @@ serve(async (req) => {
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
+
+      // No cache yet: return a non-blocking empty payload + short-lived "negative cache"
+      // so the UI doesn't crash and we avoid hammering Notion while rate-limited.
+      const isCandidates = type === 'candidates';
+      const emptyPayload = isCandidates
+        ? { success: true, candidates: [], _meta: { rateLimited: true, error: errorMessage } }
+        : { success: true, shortlist: [], _meta: { rateLimited: true, error: errorMessage } };
+      await setCache(cacheKey, emptyPayload);
+      return new Response(
+        JSON.stringify({ ...emptyPayload, cached: true, stale: true }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     } catch {
       // ignore
     }
 
     return new Response(
-      JSON.stringify({ success: false, error: errorMessage }),
+      JSON.stringify({ success: true, shortlist: [], _meta: { rateLimited: true, error: errorMessage } }),
       // IMPORTANT: keep 200 to prevent supabase-js from surfacing it as a transport error.
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
     );
