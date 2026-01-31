@@ -11,6 +11,7 @@ import { BulkInMailModal } from './BulkInMailModal';
 import { useUnipileQuota } from '@/hooks/useUnipileQuota';
 import { Job } from '@/pages/JobSpace';
 import { filterByCalculatedExperience } from './calculateExperience';
+import { useCopilotActions } from '@/hooks/useCopilotActions';
 import {
   LinkedInFiltersState,
   LinkedInProfile,
@@ -63,6 +64,9 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
   const [scoringInProgress, setScoringInProgress] = useState(false);
   const [sortByScore, setSortByScore] = useState(false);
   
+  // Copilot context sync
+  const { updateJobContext, updateProfilesContext, updateFiltersContext } = useCopilotActions();
+  
   // Bulk InMail modal state
   const [showBulkInMailModal, setShowBulkInMailModal] = useState(false);
   
@@ -76,6 +80,50 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
   useEffect(() => {
     filtersRef.current = filters;
   }, [filters]);
+  
+  // Sync selected job to Copilot context
+  useEffect(() => {
+    if (selectedJob) {
+      updateJobContext({
+        id: selectedJob.id,
+        title: selectedJob.title,
+        client: selectedJob.client?.name || '',
+        skills: selectedJob.skills,
+        requirements: selectedJob.requirements,
+        description: selectedJob.description,
+        remote: selectedJob.remote,
+        salaryMin: selectedJob.salaryMin,
+        salaryMax: selectedJob.salaryMax,
+      });
+    } else {
+      updateJobContext(null);
+    }
+  }, [selectedJob, updateJobContext]);
+  
+  // Sync selected profiles to Copilot context
+  useEffect(() => {
+    const selectedProfilesData = results
+      .filter(p => selectedProfiles.has(p.id))
+      .map(p => ({
+        id: p.id,
+        name: p.name || `${p.first_name || ''} ${p.last_name || ''}`.trim(),
+        headline: p.headline,
+        profileUrl: p.public_profile_url || p.profile_url,
+        location: p.location,
+        summary: p.summary,
+        currentCompany: p.work_experience?.[0]?.company,
+        workExperience: p.work_experience,
+        education: p.education,
+        skills: p.skills,
+        network_distance: p.network_distance,
+      }));
+    updateProfilesContext(selectedProfilesData);
+  }, [selectedProfiles, results, updateProfilesContext]);
+  
+  // Sync current filters to Copilot context
+  useEffect(() => {
+    updateFiltersContext(filters);
+  }, [filters, updateFiltersContext]);
   
   // Handler for AI-generated filter auto-fill
   const handleAutoFillFilters = useCallback((generatedFilters: GeneratedFilters) => {
