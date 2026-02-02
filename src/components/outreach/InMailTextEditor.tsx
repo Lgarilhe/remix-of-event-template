@@ -1,4 +1,4 @@
-import React, { useRef, useCallback } from 'react';
+import React, { useRef, useCallback, useEffect } from 'react';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
 import { 
@@ -42,10 +42,12 @@ interface InMailTextEditorProps {
   placeholder?: string;
   className?: string;
   minHeight?: string;
+  maxHeight?: string; // Maximum height for auto-resize
   showWordCount?: boolean;
   maxCharacters?: number;
   id?: string;
   onSend?: () => void; // Optional callback for Ctrl+Enter to send
+  autoResize?: boolean; // Enable auto-resize based on content
 }
 
 // Common emojis for professional LinkedIn messages
@@ -77,12 +79,29 @@ export const InMailTextEditor: React.FC<InMailTextEditorProps> = ({
   placeholder = 'Rédigez votre message...',
   className,
   minHeight = '200px',
+  maxHeight = '400px',
   showWordCount = true,
   maxCharacters = 1900, // LinkedIn InMail limit is around 1900-2000 chars
   id,
   onSend,
+  autoResize = true,
 }) => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Auto-resize textarea based on content
+  useEffect(() => {
+    if (!autoResize || !textareaRef.current) return;
+    
+    const textarea = textareaRef.current;
+    // Reset height to get accurate scrollHeight
+    textarea.style.height = minHeight;
+    // Set height to scrollHeight (content height)
+    const newHeight = Math.min(
+      textarea.scrollHeight,
+      parseInt(maxHeight) || 400
+    );
+    textarea.style.height = `${Math.max(newHeight, parseInt(minHeight) || 60)}px`;
+  }, [value, autoResize, minHeight, maxHeight]);
 
   // Handle keyboard shortcuts
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -292,11 +311,15 @@ export const InMailTextEditor: React.FC<InMailTextEditorProps> = ({
         onKeyDown={handleKeyDown}
         placeholder={placeholder}
         className={cn(
-          "resize-none font-sans leading-relaxed",
+          "font-sans leading-relaxed transition-all",
+          autoResize ? "resize-none" : "resize-y",
           isOverLimit && "border-red-500 focus-visible:ring-red-500",
           className
         )}
-        style={{ minHeight }}
+        style={{ 
+          minHeight,
+          maxHeight: autoResize ? maxHeight : undefined,
+        }}
       />
 
       {/* Footer with counts */}
