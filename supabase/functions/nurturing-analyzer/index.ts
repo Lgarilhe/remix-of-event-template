@@ -115,10 +115,32 @@ serve(async (req) => {
 
       // Insert opportunities into database
       if (opportunities.length > 0) {
+        // IMPORTANT:
+        // Unipile can return multiple conversations for the same attendee within the same run,
+        // which can produce duplicate (candidate_id, linkedin_account_id) rows.
+        // A single UPSERT statement cannot contain duplicates for the conflict target
+        // (it would trigger: "ON CONFLICT DO UPDATE command cannot affect row a second time").
+        // So we dedupe here and keep the highest-priority opportunity per candidate/account.
+        const dedupedMap = new Map<string, NurturingOpportunity>();
+        for (const o of opportunities) {
+          const key = `${o.candidate_id}::${o.linkedin_account_id}`;
+          const existing = dedupedMap.get(key);
+          if (!existing || o.priority_score > existing.priority_score) {
+            dedupedMap.set(key, o);
+          }
+        }
+
+        const deduped = Array.from(dedupedMap.values());
+        if (deduped.length !== opportunities.length) {
+          console.log(
+            `[nurturing-analyzer] Deduped opportunities: ${opportunities.length} -> ${deduped.length}`,
+          );
+        }
+
         const { error: insertError } = await supabase
           .from('nurturing_opportunities')
           .upsert(
-            opportunities.map(o => ({
+            deduped.map(o => ({
               ...o,
               status: 'pending',
             })),
