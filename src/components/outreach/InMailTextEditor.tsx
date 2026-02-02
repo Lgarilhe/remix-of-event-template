@@ -79,11 +79,21 @@ export const InMailTextEditor: React.FC<InMailTextEditorProps> = ({
     isInternalChange.current = false;
   }, [value]);
 
+  // Normalize HTML for LinkedIn Recruiter (convert <b> to <strong>, <i> to <em>)
+  const normalizeHTML = (html: string): string => {
+    return html
+      .replace(/<b(\s|>)/gi, '<strong$1')
+      .replace(/<\/b>/gi, '</strong>')
+      .replace(/<i(\s|>)/gi, '<em$1')
+      .replace(/<\/i>/gi, '</em>');
+  };
+
   // Handle content changes
   const handleInput = useCallback(() => {
     if (editorRef.current) {
       isInternalChange.current = true;
-      onChange(editorRef.current.innerHTML);
+      const normalizedHTML = normalizeHTML(editorRef.current.innerHTML);
+      onChange(normalizedHTML);
     }
   }, [onChange]);
 
