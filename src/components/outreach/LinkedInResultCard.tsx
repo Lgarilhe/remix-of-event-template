@@ -545,8 +545,8 @@ export const LinkedInResultCard: React.FC<LinkedInResultCardProps> = ({
                     </Button>
                   )}
                   
-                  {/* Sequence enroll button */}
-                  {accountId && (
+                  {/* Sequence enroll button - disabled for low score candidates */}
+                  {accountId && jobScore?.recommendation !== 'skip' && (
                     <SequenceEnrollButton
                       selectedProfiles={[profile]}
                       accountId={accountId}
@@ -1176,13 +1176,33 @@ export const LinkedInResultCard: React.FC<LinkedInResultCardProps> = ({
                   </a>
                 </Button>
               )}
-              <Button
-                size="sm"
-                className="flex-1 h-9 bg-[#0077B5] hover:bg-[#005E93]"
-              >
-                <MessageSquare className="w-4 h-4 mr-2" />
-                Envoyer un message
-              </Button>
+              {/* Message button - disabled for low score candidates */}
+              {jobScore?.recommendation === 'skip' ? (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      size="sm"
+                      disabled
+                      className="flex-1 h-9 bg-gray-300 cursor-not-allowed"
+                    >
+                      <MessageSquare className="w-4 h-4 mr-2" />
+                      Envoyer un message
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="top">
+                    <p className="text-xs">Profil peu adapté (score &lt; 40%) — envoi désactivé</p>
+                  </TooltipContent>
+                </Tooltip>
+              ) : (
+                <Button
+                  size="sm"
+                  className="flex-1 h-9 bg-[#0077B5] hover:bg-[#005E93]"
+                  onClick={() => setShowMessageModal(true)}
+                >
+                  <MessageSquare className="w-4 h-4 mr-2" />
+                  Envoyer un message
+                </Button>
+              )}
             </div>
           </div>
         </CollapsibleContent>

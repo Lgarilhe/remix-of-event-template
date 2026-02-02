@@ -1413,10 +1413,16 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
                   InMail ({selectedProfiles.size})
                 </Button>
                 
-                {/* Sequence enrollment button */}
+                {/* Sequence enrollment button - excludes candidates with recommendation 'skip' */}
                 {selectedAccount && (
                   <SequenceEnrollButton
-                    selectedProfiles={results.filter(p => selectedProfiles.has(p.id))}
+                    selectedProfiles={results
+                      .filter(p => selectedProfiles.has(p.id))
+                      .filter(p => {
+                        const score = jobScores[p.id];
+                        return !score || score.recommendation !== 'skip';
+                      })
+                    }
                     accountId={selectedAccount}
                     selectedJob={selectedJob}
                     onSuccess={() => {
@@ -1658,12 +1664,17 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
         </ScrollArea>
       </div>
       
-      {/* Bulk InMail Modal */}
+      {/* Bulk InMail Modal - excludes candidates with recommendation 'skip' */}
       <BulkInMailModal
         isOpen={showBulkInMailModal}
         onClose={() => setShowBulkInMailModal(false)}
         recipients={results
           .filter(p => selectedProfiles.has(p.id))
+          // Double-check: exclude candidates with recommendation 'skip' (score < 40)
+          .filter(p => {
+            const score = jobScores[p.id];
+            return !score || score.recommendation !== 'skip';
+          })
           .map(p => ({
             id: p.id,
             name: p.name || `${p.first_name || ''} ${p.last_name || ''}`.trim(),
