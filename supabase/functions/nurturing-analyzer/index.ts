@@ -355,6 +355,50 @@ serve(async (req) => {
   }
 });
 
+// Fetch a single profile's details from Unipile
+async function fetchProfileDetails(
+  profileId: string,
+  dsn: string,
+  apiKey: string
+): Promise<{ name: string | null; headline: string | null; profileUrl: string | null }> {
+  try {
+    const url = `https://${dsn}/api/v1/users/${encodeURIComponent(profileId)}`;
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: { 'X-API-KEY': apiKey, 'Accept': 'application/json' },
+    });
+
+    if (!response.ok) {
+      console.log(`[nurturing-analyzer] Profile fetch failed for ${profileId}: ${response.status}`);
+      return { name: null, headline: null, profileUrl: null };
+    }
+
+    const profile = await response.json();
+    const name = firstString(
+      profile.display_name,
+      profile.displayName,
+      profile.name,
+      profile.full_name,
+      profile.fullName,
+      profile.first_name && profile.last_name ? `${profile.first_name} ${profile.last_name}` : undefined,
+      profile.firstName && profile.lastName ? `${profile.firstName} ${profile.lastName}` : undefined,
+    );
+    const headline = firstString(
+      profile.headline,
+      profile.title,
+      profile.occupation,
+      isRecord(profile.specifics) ? (profile.specifics as AnyRecord).occupation : undefined,
+      isRecord(profile.specifics) ? (profile.specifics as AnyRecord).title : undefined,
+    );
+    const profileUrl = guessProfileUrl(profile as AnyRecord, profileId);
+
+    return { name, headline, profileUrl };
+  } catch (err) {
+    console.error(`[nurturing-analyzer] Error fetching profile ${profileId}:`, err);
+    return { name: null, headline: null, profileUrl: null };
+  }
+}
+
 // Fetch conversations from Unipile API
 async function fetchUnipileConversations(
   accountId: string,
@@ -385,8 +429,6 @@ async function fetchUnipileConversations(
       const data = await response.json();
       const chats = (data?.items || []) as Array<Record<string, unknown>>;
 
-      // IMPORTANT: the list endpoint may not include full attendees info.
-      // We try to extract minimal identifiers from the chat payload.
        for (const chatRaw of chats) {
          const chat = (isRecord(chatRaw) ? chatRaw : {}) as AnyRecord;
          const attendee = findNonSelfAttendee(chat);
@@ -464,6 +506,21 @@ async function fetchUnipileConversations(
            ),
         });
       }
+    }
+
+    // Enrich missing names by fetching profile details (batch of 10 to avoid rate limits)
+    const needsEnrichment = allConversations.filter(c => !c.attendee_name);
+    console.log(`[nurturing-analyzer] Enriching ${needsEnrichment.length} profiles with missing names`);
+    
+    const BATCH_SIZE = 10;
+    for (let i = 0; i < needsEnrichment.length; i += BATCH_SIZE) {
+      const batch = needsEnrichment.slice(i, i + BATCH_SIZE);
+      await Promise.all(batch.map(async (conv) => {
+        const details = await fetchProfileDetails(conv.attendee_id, dsn, apiKey);
+        if (details.name) conv.attendee_name = details.name;
+        if (details.headline && !conv.attendee_headline) conv.attendee_headline = details.headline;
+        if (details.profileUrl && !conv.attendee_profile_url) conv.attendee_profile_url = details.profileUrl;
+      }));
     }
 
     return allConversations;
