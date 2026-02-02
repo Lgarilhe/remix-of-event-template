@@ -265,6 +265,65 @@ async function fetchNotionDatabase(databaseId: string, filter?: any) {
   return response.json();
 }
 
+// Notion database queries return max 100 rows per call. To avoid missing items (e.g. a published job
+// that ends up beyond the first page), paginate until has_more=false.
+async function fetchNotionDatabaseAll(databaseId: string, filter?: any): Promise<{ results: NotionPage[] }> {
+  const results: NotionPage[] = [];
+  let startCursor: string | null = null;
+
+  for (let i = 0; i < 50; i++) { // safety cap: 50 * 100 = 5000 rows
+    const body: any = { page_size: 100 };
+    if (filter) body.filter = filter;
+    if (startCursor) body.start_cursor = startCursor;
+
+    const response = await fetch(`https://api.notion.com/v1/databases/${databaseId}/query`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${NOTION_API_KEY}`,
+        'Notion-Version': '2022-06-28',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`Notion API error: ${error}`);
+    }
+
+    const data = await response.json();
+    results.push(...(data?.results || []));
+
+    if (!data?.has_more) break;
+    startCursor = data?.next_cursor || null;
+    if (!startCursor) break;
+  }
+
+  return { results };
+}
+
+async function getTitlePropertyName(databaseId: string): Promise<string> {
+  const response = await fetch(`https://api.notion.com/v1/databases/${databaseId}`, {
+    headers: {
+      'Authorization': `Bearer ${NOTION_API_KEY}`,
+      'Notion-Version': '2022-06-28',
+    },
+  });
+
+  if (!response.ok) {
+    const error = await response.text();
+    throw new Error(`Notion API error (database schema): ${error}`);
+  }
+
+  const db = await response.json();
+  const props = db?.properties || {};
+  for (const [name, prop] of Object.entries(props)) {
+    if ((prop as any)?.type === 'title') return name;
+  }
+  // Fallback (should never happen)
+  return 'Name';
+}
+
 async function fetchCompanyDetails(companyIds: string[]): Promise<Map<string, any>> {
   const companies = new Map();
   
@@ -407,7 +466,7 @@ async function fetchCandidateCounts(jobIds: string[]): Promise<Map<string, Candi
     // Fetch all shortlist entries that are in active stages
     const activeStages = ['CV envoyé', 'ITW 1', 'ITW 2', 'ITW 3', 'ITW Final', 'Offre', 'Pré-qualif', 'Contacté', 'Pressenti'];
     
-    const shortlistData = await fetchNotionDatabase(SHORTLIST_DATABASE_ID, {
+    const shortlistData = await fetchNotionDatabaseAll(SHORTLIST_DATABASE_ID, {
       property: 'Etape',
       select: {
         is_not_empty: true
@@ -497,6 +556,40 @@ serve(async (req) => {
     } catch {
       // No body or invalid JSON, use defaults
     }
+
+    // DEBUG MODE: help diagnose “job not visible” by searching in Notion directly
+    // Usage: POST body { "debugTitle": "Responsable IT Corporate" }
+    if (typeof body?.debugTitle === 'string' && body.debugTitle.trim()) {
+      const debugTitle = body.debugTitle.trim();
+      const titlePropName = await getTitlePropertyName(POSTES_DATABASE_ID);
+
+      const debugData = await fetchNotionDatabase(POSTES_DATABASE_ID, {
+        property: titlePropName,
+        title: {
+          contains: debugTitle,
+        },
+      });
+
+      const matches: NotionPage[] = debugData?.results || [];
+      const mapped = matches.map((page) => ({
+        id: page.id,
+        title: getTitleFromProperties(page.properties),
+        etat: getPropertyValue(page.properties['État']),
+        hasEtat: Boolean(page.properties['État']),
+      }));
+
+      return new Response(
+        JSON.stringify({
+          success: true,
+          debug: {
+            query: debugTitle,
+            titleProperty: titlePropName,
+            matches: mapped,
+          },
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
     
     const page = parseInt(url.searchParams.get('page') || body.page || '1', 10);
     const limit = parseInt(url.searchParams.get('limit') || body.limit || '20', 10);
@@ -529,7 +622,7 @@ serve(async (req) => {
     }
 
     // Fetch jobs from Notion - only active ones (Publié status)
-    const jobsData = await fetchNotionDatabase(POSTES_DATABASE_ID, {
+    const jobsData = await fetchNotionDatabaseAll(POSTES_DATABASE_ID, {
       property: 'État',
       status: {
         equals: 'Publié'
