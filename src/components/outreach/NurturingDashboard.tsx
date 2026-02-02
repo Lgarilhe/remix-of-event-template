@@ -2,50 +2,25 @@ import React, { useState } from 'react';
 import { useNurturingOpportunities, NurturingOpportunity } from '@/hooks/useNurturingOpportunities';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Textarea } from '@/components/ui/textarea';
-import { Input } from '@/components/ui/input';
 import { 
   RefreshCw, 
-  Send, 
-  X, 
   Clock, 
   Sparkles, 
-  MessageSquare,
-  Phone,
-  Briefcase,
-  Share2,
   AlertCircle,
   CheckCircle,
-  ExternalLink,
   Zap,
   TrendingUp
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { LinkedInAccount } from '@/pages/Outreach';
+import { NurturingOpportunityCard } from './NurturingOpportunityCard';
 
 interface NurturingDashboardProps {
   accounts: LinkedInAccount[];
   selectedAccount: string | null;
 }
-
-const TRIGGER_LABELS: Record<string, { label: string; icon: React.ReactNode; color: string }> = {
-  silence: { label: 'Silence prolongé', icon: <Clock className="w-3 h-3" />, color: 'bg-orange-100 text-orange-700' },
-  new_job_match: { label: 'Nouveau job match', icon: <Briefcase className="w-3 h-3" />, color: 'bg-blue-100 text-blue-700' },
-  stage_change: { label: 'Changement étape', icon: <TrendingUp className="w-3 h-3" />, color: 'bg-purple-100 text-purple-700' },
-  intent_detected: { label: 'Intent détecté', icon: <Sparkles className="w-3 h-3" />, color: 'bg-green-100 text-green-700' },
-  scheduled_followup: { label: 'Suivi planifié', icon: <Clock className="w-3 h-3" />, color: 'bg-gray-100 text-gray-700' },
-};
-
-const ACTION_LABELS: Record<string, { label: string; icon: React.ReactNode }> = {
-  personalized_message: { label: 'Message personnalisé', icon: <MessageSquare className="w-4 h-4" /> },
-  job_alert: { label: 'Alerte job', icon: <Briefcase className="w-4 h-4" /> },
-  call_proposal: { label: 'Proposition call', icon: <Phone className="w-4 h-4" /> },
-  content_share: { label: 'Partage contenu', icon: <Share2 className="w-4 h-4" /> },
-  followup: { label: 'Relance', icon: <RefreshCw className="w-4 h-4" /> },
-};
 
 export function NurturingDashboard({ accounts, selectedAccount }: NurturingDashboardProps) {
   const { 
@@ -59,20 +34,9 @@ export function NurturingDashboard({ accounts, selectedAccount }: NurturingDashb
     stats 
   } = useNurturingOpportunities();
 
-  const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [editingMessage, setEditingMessage] = useState<{ id: string; message: string; subject: string } | null>(null);
   const [generatingId, setGeneratingId] = useState<string | null>(null);
   const [sendingId, setSendingId] = useState<string | null>(null);
   const [analyzingId, setAnalyzingId] = useState<string | null>(null);
-
-  const getCandidateDisplayName = (opp: NurturingOpportunity) => {
-    const name = (opp.candidate_name || '').trim();
-    if (name) return name;
-    const id = (opp.candidate_id || '').trim();
-    if (!id) return 'Profil LinkedIn';
-    if (id.length <= 14) return `Profil ${id}`;
-    return `Profil ${id.slice(0, 6)}…${id.slice(-4)}`;
-  };
 
   const handleLaunchAnalysis = async () => {
     const accountId = selectedAccount || accounts[0]?.id;
@@ -99,12 +63,7 @@ export function NurturingDashboard({ accounts, selectedAccount }: NurturingDashb
     try {
       const result = await generateMessage(opportunity.id);
       if (result) {
-        setEditingMessage({
-          id: opportunity.id,
-          message: result.message,
-          subject: result.subject,
-        });
-        setExpandedId(opportunity.id);
+        // The card component handles the message display
         toast.success('Message généré !');
       }
     } catch (error) {
@@ -114,18 +73,11 @@ export function NurturingDashboard({ accounts, selectedAccount }: NurturingDashb
     }
   };
 
-  const handleSend = async (opportunity: NurturingOpportunity) => {
-    if (!editingMessage || editingMessage.id !== opportunity.id) {
-      toast.error('Génère d\'abord un message');
-      return;
-    }
-
+  const handleSend = async (opportunity: NurturingOpportunity, message: string, subject: string) => {
     setSendingId(opportunity.id);
     try {
       // TODO: Actually send via Unipile API
       await updateStatus(opportunity.id, 'sent');
-      setEditingMessage(null);
-      setExpandedId(null);
       toast.success('Message envoyé !');
     } catch (error) {
       toast.error('Erreur lors de l\'envoi');
@@ -141,13 +93,6 @@ export function NurturingDashboard({ accounts, selectedAccount }: NurturingDashb
     } catch (error) {
       toast.error('Erreur');
     }
-  };
-
-  const getPriorityColor = (score: number) => {
-    if (score >= 80) return 'bg-red-500';
-    if (score >= 60) return 'bg-orange-500';
-    if (score >= 40) return 'bg-yellow-500';
-    return 'bg-gray-400';
   };
 
   if (accounts.length === 0) {
@@ -288,157 +233,18 @@ export function NurturingDashboard({ accounts, selectedAccount }: NurturingDashb
               </Button>
             </div>
           ) : (
-            <ScrollArea className="h-[500px] pr-4">
+            <ScrollArea className="h-[600px] pr-4">
               <div className="space-y-3">
                 {opportunities.map((opp) => (
-                  <div
+                  <NurturingOpportunityCard
                     key={opp.id}
-                    className={`border rounded-lg p-4 transition-all ${
-                      expandedId === opp.id ? 'ring-2 ring-[#0077B5]' : 'hover:bg-gray-50'
-                    }`}
-                  >
-                    {/* Header */}
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="flex items-start gap-3 flex-1 min-w-0">
-                        {/* Priority indicator */}
-                        <div 
-                          className={`w-2 h-12 rounded-full ${getPriorityColor(opp.priority_score)}`}
-                          title={`Priorité: ${opp.priority_score}%`}
-                        />
-                        
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <h4 className="font-medium truncate">
-                              {getCandidateDisplayName(opp)}
-                            </h4>
-                            {opp.candidate_profile_url && (
-                              <a 
-                                href={opp.candidate_profile_url} 
-                                target="_blank" 
-                                rel="noopener noreferrer"
-                                className="text-[#0077B5] hover:underline"
-                              >
-                                <ExternalLink className="w-3 h-3" />
-                              </a>
-                            )}
-                          </div>
-                          
-                          <p className="text-sm text-muted-foreground truncate">
-                            {opp.candidate_headline || opp.job_title || 'Titre indisponible'}
-                          </p>
-                          
-                          <div className="flex items-center gap-2 mt-2 flex-wrap">
-                            <Badge 
-                              variant="secondary" 
-                              className={`text-xs ${TRIGGER_LABELS[opp.trigger_type]?.color}`}
-                            >
-                              {TRIGGER_LABELS[opp.trigger_type]?.icon}
-                              <span className="ml-1">{TRIGGER_LABELS[opp.trigger_type]?.label}</span>
-                            </Badge>
-                            
-                            {opp.days_since_contact && (
-                              <Badge variant="outline" className="text-xs">
-                                <Clock className="w-3 h-3 mr-1" />
-                                {opp.days_since_contact}j
-                              </Badge>
-                            )}
-                            
-                            {opp.job_title && (
-                              <Badge variant="outline" className="text-xs">
-                                <Briefcase className="w-3 h-3 mr-1" />
-                                {opp.job_title}
-                              </Badge>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Actions */}
-                      <div className="flex items-center gap-2">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleDismiss(opp.id)}
-                          className="text-muted-foreground hover:text-red-600"
-                        >
-                          <X className="w-4 h-4" />
-                        </Button>
-                        
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleGenerateMessage(opp)}
-                          disabled={generatingId === opp.id}
-                        >
-                          {generatingId === opp.id ? (
-                            <RefreshCw className="w-4 h-4 animate-spin" />
-                          ) : (
-                            <>
-                              {ACTION_LABELS[opp.suggested_action]?.icon}
-                              <span className="ml-1 hidden sm:inline">
-                                {ACTION_LABELS[opp.suggested_action]?.label}
-                              </span>
-                            </>
-                          )}
-                        </Button>
-                      </div>
-                    </div>
-
-                    {/* Expanded: Message Editor */}
-                    {expandedId === opp.id && editingMessage?.id === opp.id && (
-                      <div className="mt-4 pt-4 border-t space-y-3">
-                        <div>
-                          <label className="text-sm font-medium">Objet</label>
-                          <Input
-                            value={editingMessage.subject}
-                            onChange={(e) => setEditingMessage({
-                              ...editingMessage,
-                              subject: e.target.value,
-                            })}
-                            className="mt-1"
-                          />
-                        </div>
-                        
-                        <div>
-                          <label className="text-sm font-medium">Message</label>
-                          <Textarea
-                            value={editingMessage.message}
-                            onChange={(e) => setEditingMessage({
-                              ...editingMessage,
-                              message: e.target.value,
-                            })}
-                            className="mt-1 min-h-[120px]"
-                          />
-                        </div>
-                        
-                        <div className="flex justify-end gap-2">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => {
-                              setExpandedId(null);
-                              setEditingMessage(null);
-                            }}
-                          >
-                            Annuler
-                          </Button>
-                          <Button
-                            size="sm"
-                            onClick={() => handleSend(opp)}
-                            disabled={sendingId === opp.id}
-                            className="bg-[#0077B5] hover:bg-[#005E93]"
-                          >
-                            {sendingId === opp.id ? (
-                              <RefreshCw className="w-4 h-4 animate-spin mr-2" />
-                            ) : (
-                              <Send className="w-4 h-4 mr-2" />
-                            )}
-                            Envoyer
-                          </Button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
+                    opportunity={opp}
+                    onDismiss={handleDismiss}
+                    onGenerateMessage={handleGenerateMessage}
+                    onSend={handleSend}
+                    isGenerating={generatingId === opp.id}
+                    isSending={sendingId === opp.id}
+                  />
                 ))}
               </div>
             </ScrollArea>
