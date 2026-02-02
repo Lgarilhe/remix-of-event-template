@@ -51,6 +51,7 @@ export function NurturingDashboard({ accounts, selectedAccount }: NurturingDashb
   const { 
     opportunities, 
     isLoading, 
+    error,
     refetch, 
     updateStatus, 
     generateMessage,
@@ -220,17 +221,45 @@ export function NurturingDashboard({ accounts, selectedAccount }: NurturingDashb
               Validez ou personnalisez les relances avant envoi
             </CardDescription>
           </div>
-          <Button 
-            variant="outline" 
-            size="sm" 
-            onClick={() => refetch()}
-            disabled={isLoading}
-          >
-            <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
-            Actualiser
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleLaunchAnalysis}
+              disabled={analyzingId !== null}
+            >
+              {analyzingId ? (
+                <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+              ) : (
+                <Zap className="w-4 h-4 mr-2" />
+              )}
+              {analyzingId ? 'Analyse en cours...' : "Lancer l'analyse"}
+            </Button>
+
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={() => refetch()}
+              disabled={isLoading}
+            >
+              <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
+              Actualiser
+            </Button>
+          </div>
         </CardHeader>
         <CardContent>
+          {error ? (
+            <div className="mb-4 rounded-lg border bg-destructive/10 px-4 py-3 text-sm text-destructive">
+              <div className="flex items-start gap-2">
+                <AlertCircle className="mt-0.5 h-4 w-4" />
+                <div>
+                  <div className="font-medium">Impossible de charger les opportunités</div>
+                  <div className="opacity-90">{error}</div>
+                </div>
+              </div>
+            </div>
+          ) : null}
+
           {isLoading ? (
             <div className="space-y-4">
               {[1, 2, 3].map(i => (
@@ -244,18 +273,9 @@ export function NurturingDashboard({ accounts, selectedAccount }: NurturingDashb
               <p className="text-sm text-muted-foreground mb-4">
                 Analysez vos conversations pour détecter des opportunités de nurturing
               </p>
-              <Button 
-                variant="outline" 
-                size="sm"
-                onClick={handleLaunchAnalysis}
-                disabled={analyzingId !== null}
-              >
-                {analyzingId ? (
-                  <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
-                ) : (
-                  <Zap className="w-4 h-4 mr-2" />
-                )}
-                {analyzingId ? 'Analyse en cours...' : 'Lancer l\'analyse'}
+              <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isLoading}>
+                <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
+                Recharger
               </Button>
             </div>
           ) : (

@@ -68,7 +68,13 @@ export function useNurturingOpportunities(): UseNurturingOpportunitiesReturn {
 
       return (data || []) as NurturingOpportunity[];
     },
-    staleTime: 1000 * 60 * 5, // 5 minutes
+    // IMPORTANT:
+    // The dashboard is action-oriented and users expect fresh results right after running
+    // an analysis. A long staleTime can keep an empty cached result "fresh" and prevent
+    // refetch on mount, making it look like nothing happened.
+    staleTime: 10_000,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: true,
   });
 
   // Analyze conversations mutation
@@ -104,7 +110,10 @@ export function useNurturingOpportunities(): UseNurturingOpportunitiesReturn {
       };
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['nurturing-opportunities'] });
+      queryClient.invalidateQueries({
+        queryKey: ['nurturing-opportunities'],
+        refetchType: 'active',
+      });
     },
   });
 
@@ -127,7 +136,10 @@ export function useNurturingOpportunities(): UseNurturingOpportunitiesReturn {
       if (error) throw error;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['nurturing-opportunities'] });
+      queryClient.invalidateQueries({
+        queryKey: ['nurturing-opportunities'],
+        refetchType: 'active',
+      });
     },
   });
 
@@ -150,7 +162,10 @@ export function useNurturingOpportunities(): UseNurturingOpportunitiesReturn {
       };
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['nurturing-opportunities'] });
+      queryClient.invalidateQueries({
+        queryKey: ['nurturing-opportunities'],
+        refetchType: 'active',
+      });
     },
   });
 
