@@ -5,9 +5,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { Loader2, Target, X, Wand2, Search, Sparkles } from 'lucide-react';
+import { Loader2, Target, X, Wand2, Search, Sparkles, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Skeleton } from '@/components/ui/skeleton';
 
 interface JobSelectorProps {
@@ -60,8 +60,39 @@ export const useJobs = () => {
   });
 };
 
+// Hook to force refresh jobs from Notion
+export const useRefreshJobs = () => {
+  const queryClient = useQueryClient();
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const refresh = useCallback(async () => {
+    setIsRefreshing(true);
+    try {
+      // Force refresh from Notion (bypass cache)
+      const { data, error } = await supabase.functions.invoke('fetch-notion-jobs', {
+        body: { all: true, refresh: true },
+      });
+      
+      if (error) throw error;
+      if (!data?.success) throw new Error('Failed to refresh jobs');
+      
+      // Update React Query cache with fresh data
+      queryClient.setQueryData(['notion-jobs-all'], data.jobs || []);
+      toast.success(`${data.jobs?.length || 0} postes synchronisés depuis Notion`);
+    } catch (err) {
+      console.error('Failed to refresh jobs:', err);
+      toast.error('Erreur lors de la synchronisation');
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, [queryClient]);
+
+  return { refresh, isRefreshing };
+};
+
 export const JobSelector: React.FC<JobSelectorProps> = ({ selectedJob, onJobChange, onAutoFillFilters }) => {
   const { data: jobs = [], isLoading: loading } = useJobs();
+  const { refresh: refreshJobs, isRefreshing } = useRefreshJobs();
   const [autoFillLoading, setAutoFillLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -137,6 +168,25 @@ export const JobSelector: React.FC<JobSelectorProps> = ({ selectedJob, onJobChan
           Scoring Job
         </label>
         <div className="ml-auto flex items-center gap-1">
+          {/* Sync from Notion button */}
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={refreshJobs}
+                  disabled={isRefreshing}
+                  className="h-6 px-2 text-purple-600 hover:text-purple-800 hover:bg-purple-100"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin' : ''}`} />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">
+                <p className="text-xs">Synchroniser avec Notion</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
           {/* Auto-fill button */}
           {selectedJob && onAutoFillFilters && (
             <TooltipProvider>

@@ -501,7 +501,7 @@ serve(async (req) => {
     const page = parseInt(url.searchParams.get('page') || body.page || '1', 10);
     const limit = parseInt(url.searchParams.get('limit') || body.limit || '20', 10);
     const skipPagination = url.searchParams.get('all') === 'true' || body.all === true;
-    const forceRefresh = url.searchParams.get('refresh') === 'true';
+    const forceRefresh = url.searchParams.get('refresh') === 'true' || body.refresh === true;
 
     // STALE-WHILE-REVALIDATE: Return cached data immediately if available
     const cached = await getJobsCache();
