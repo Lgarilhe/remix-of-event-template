@@ -1320,10 +1320,12 @@ export const MessagesInbox: React.FC<MessagesInboxProps> = ({
                     onChange={setNewMessage}
                     placeholder="Écrivez un message... (Ctrl+Entrée pour envoyer)"
                     minHeight="60px"
+                    maxHeight="200px"
                     showWordCount={false}
                     maxCharacters={1900}
                     className="text-sm"
                     onSend={sendMessage}
+                    autoResize={true}
                   />
                 </div>
                 <Button
