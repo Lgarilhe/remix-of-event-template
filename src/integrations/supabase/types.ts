@@ -310,6 +310,87 @@ export type Database = {
         }
         Relationships: []
       }
+      nurturing_opportunities: {
+        Row: {
+          analysis_context: Json | null
+          candidate_headline: string | null
+          candidate_id: string
+          candidate_name: string | null
+          candidate_profile_url: string | null
+          created_at: string
+          created_by: string
+          days_since_contact: number | null
+          detected_intent: string | null
+          expires_at: string | null
+          id: string
+          job_id: string | null
+          job_title: string | null
+          last_message_at: string | null
+          linkedin_account_id: string | null
+          priority_score: number
+          reviewed_at: string | null
+          sent_at: string | null
+          status: string
+          suggested_action: string
+          suggested_message: string | null
+          suggested_subject: string | null
+          trigger_type: string
+          updated_at: string
+        }
+        Insert: {
+          analysis_context?: Json | null
+          candidate_headline?: string | null
+          candidate_id: string
+          candidate_name?: string | null
+          candidate_profile_url?: string | null
+          created_at?: string
+          created_by: string
+          days_since_contact?: number | null
+          detected_intent?: string | null
+          expires_at?: string | null
+          id?: string
+          job_id?: string | null
+          job_title?: string | null
+          last_message_at?: string | null
+          linkedin_account_id?: string | null
+          priority_score?: number
+          reviewed_at?: string | null
+          sent_at?: string | null
+          status?: string
+          suggested_action: string
+          suggested_message?: string | null
+          suggested_subject?: string | null
+          trigger_type: string
+          updated_at?: string
+        }
+        Update: {
+          analysis_context?: Json | null
+          candidate_headline?: string | null
+          candidate_id?: string
+          candidate_name?: string | null
+          candidate_profile_url?: string | null
+          created_at?: string
+          created_by?: string
+          days_since_contact?: number | null
+          detected_intent?: string | null
+          expires_at?: string | null
+          id?: string
+          job_id?: string | null
+          job_title?: string | null
+          last_message_at?: string | null
+          linkedin_account_id?: string | null
+          priority_score?: number
+          reviewed_at?: string | null
+          sent_at?: string | null
+          status?: string
+          suggested_action?: string
+          suggested_message?: string | null
+          suggested_subject?: string | null
+          trigger_type?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       outreach_sequences: {
         Row: {
           created_at: string

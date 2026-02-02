@@ -6,9 +6,10 @@ import { LinkedInAccountManager } from '@/components/outreach/LinkedInAccountMan
 import { LinkedInSearch } from '@/components/outreach/LinkedInSearch';
 import { SequencesList } from '@/components/outreach/SequencesList';
 import { MessagesInbox } from '@/components/outreach/MessagesInbox';
+import { NurturingDashboard } from '@/components/outreach/NurturingDashboard';
 import { InMailQueueStatus } from '@/components/outreach/InMailQueueStatus';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Search, Users, Settings, GitBranch, MessageSquare } from 'lucide-react';
+import { Search, Users, Settings, GitBranch, MessageSquare, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 import { useRegisterCopilotContext } from '@/contexts/CopilotContext';
 
@@ -127,6 +128,10 @@ export default function Outreach() {
                 <GitBranch className="w-4 h-4" />
                 Séquences
               </TabsTrigger>
+              <TabsTrigger value="nurturing" className="gap-2 data-[state=active]:bg-[#0077B5] data-[state=active]:text-white">
+                <Sparkles className="w-4 h-4" />
+                Nurturing
+              </TabsTrigger>
               <TabsTrigger value="accounts" className="gap-2 data-[state=active]:bg-[#0077B5] data-[state=active]:text-white">
                 <Settings className="w-4 h-4" />
                 Comptes ({accounts.length})
@@ -175,6 +180,13 @@ export default function Outreach() {
                   selectedAccount={selectedAccount}
                 />
               </div>
+            </TabsContent>
+
+            <TabsContent value="nurturing" className="mt-0">
+              <NurturingDashboard
+                accounts={accounts}
+                selectedAccount={selectedAccount}
+              />
             </TabsContent>
 
             <TabsContent value="accounts" className="mt-0">
