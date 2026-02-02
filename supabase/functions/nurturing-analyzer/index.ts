@@ -267,20 +267,37 @@ async function fetchUnipileConversations(
       const data = await response.json();
       const chats = data.items || [];
 
+      // IMPORTANT: the list endpoint may not include full attendees info.
+      // We try to extract minimal identifiers from the chat payload.
       for (const chat of chats) {
-        // Get attendee info
         const attendee = chat.attendees?.find((a: { is_self?: boolean }) => !a.is_self);
-        if (!attendee) continue;
+
+        const attendeeId =
+          attendee?.provider_id ||
+          attendee?.id ||
+          chat.attendee_provider_id ||
+          chat.attendee_id ||
+          chat.provider_id ||
+          chat.id;
+
+        // If we can't identify the attendee, skip.
+        if (!attendeeId) continue;
+
+        const lastMessageAt =
+          chat.last_message_at ||
+          chat.timestamp ||
+          chat.updated_at ||
+          chat.created_at;
 
         allConversations.push({
           id: chat.id,
-          attendee_id: attendee.provider_id || attendee.id || chat.id,
-          attendee_name: attendee.display_name || attendee.name,
-          attendee_headline: attendee.headline,
-          attendee_profile_url: attendee.profile_url,
-          last_message_at: chat.last_message_at || chat.updated_at,
-          last_message_text: chat.last_message?.text,
-          is_unread: chat.unread_count > 0,
+          attendee_id: attendeeId,
+          attendee_name: attendee?.display_name || attendee?.name || null,
+          attendee_headline: attendee?.headline || attendee?.specifics?.occupation || null,
+          attendee_profile_url: attendee?.profile_url || null,
+          last_message_at: lastMessageAt,
+          last_message_text: chat.last_message?.text || chat.last_message_text || null,
+          is_unread: Boolean(chat.unread_count ? chat.unread_count > 0 : chat.unread),
         });
       }
     }
