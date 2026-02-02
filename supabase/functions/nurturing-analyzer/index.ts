@@ -44,6 +44,84 @@ interface NurturingOpportunity {
   created_by: string;
 }
 
+type AnyRecord = Record<string, unknown>;
+
+function isRecord(v: unknown): v is AnyRecord {
+  return Boolean(v) && typeof v === "object" && !Array.isArray(v);
+}
+
+function firstString(...candidates: unknown[]): string | null {
+  for (const c of candidates) {
+    if (typeof c === "string") {
+      const trimmed = c.trim();
+      if (trimmed.length > 0) return trimmed;
+    }
+  }
+  return null;
+}
+
+function extractArray(value: unknown): unknown[] {
+  if (Array.isArray(value)) return value;
+  if (isRecord(value)) {
+    const r = value as AnyRecord;
+    if (Array.isArray(r.items)) return r.items;
+    if (Array.isArray(r.results)) return r.results;
+    if (isRecord(r.data)) {
+      const d = r.data as AnyRecord;
+      if (Array.isArray(d.items)) return d.items;
+      if (Array.isArray(d.results)) return d.results;
+    }
+  }
+  return [];
+}
+
+function findNonSelfAttendee(chat: AnyRecord): AnyRecord | null {
+  const candidates = [
+    ...extractArray(chat.attendees),
+    ...extractArray(chat.participants),
+    ...extractArray(chat.members),
+    ...extractArray(chat.profiles),
+  ].filter(isRecord);
+
+  const nonSelf = candidates.find((a) => {
+    const rec = a as AnyRecord;
+    const isSelf = Boolean(
+      rec.is_self ?? rec.isSelf ?? rec.self ?? rec.is_me ?? rec.isMe
+    );
+    return !isSelf;
+  });
+
+  return (nonSelf as AnyRecord) || null;
+}
+
+function guessProfileUrl(attendee: AnyRecord | null, attendeeId: string | null): string | null {
+  if (!attendee) return null;
+
+  const url = firstString(
+    attendee.profile_url,
+    attendee.profileUrl,
+    attendee.public_profile_url,
+    attendee.publicProfileUrl,
+    attendee.linkedin_url,
+    attendee.linkedinUrl,
+  );
+  if (url) return url;
+
+  const publicIdentifier = firstString(
+    attendee.public_identifier,
+    attendee.publicIdentifier,
+    attendee.vanity_name,
+    attendee.vanityName,
+    attendee.slug,
+  );
+  if (publicIdentifier) return `https://www.linkedin.com/in/${publicIdentifier}`;
+
+  // Last resort: if Unipile gives a LinkedIn identifier (ACoAA...), we can't reliably
+  // reconstruct a public URL, so we keep it null.
+  void attendeeId;
+  return null;
+}
+
 // Cadence rules by stage
 const CADENCE_BY_STAGE: Record<string, { minDays: number; maxDays: number; priority: number }> = {
   'Pressenti': { minDays: 3, maxDays: 5, priority: 90 },
@@ -287,39 +365,85 @@ async function fetchUnipileConversations(
       }
 
       const data = await response.json();
-      const chats = data.items || [];
+      const chats = (data?.items || []) as Array<Record<string, unknown>>;
 
       // IMPORTANT: the list endpoint may not include full attendees info.
       // We try to extract minimal identifiers from the chat payload.
-      for (const chat of chats) {
-        const attendee = chat.attendees?.find((a: { is_self?: boolean }) => !a.is_self);
+       for (const chatRaw of chats) {
+         const chat = (isRecord(chatRaw) ? chatRaw : {}) as AnyRecord;
+         const attendee = findNonSelfAttendee(chat);
 
-        const attendeeId =
-          attendee?.provider_id ||
-          attendee?.id ||
-          chat.attendee_provider_id ||
-          chat.attendee_id ||
-          chat.provider_id ||
-          chat.id;
+         const attendeeId = firstString(
+           attendee?.provider_id,
+           attendee?.providerId,
+           attendee?.id,
+           attendee?.provider_user_id,
+           attendee?.providerUserId,
+           chat.attendee_provider_id,
+           chat.attendeeProviderId,
+           chat.attendee_id,
+           chat.attendeeId,
+           chat.provider_id,
+           chat.providerId,
+           chat.id,
+         );
 
         // If we can't identify the attendee, skip.
         if (!attendeeId) continue;
 
-        const lastMessageAt =
-          chat.last_message_at ||
-          chat.timestamp ||
-          chat.updated_at ||
-          chat.created_at;
+         const lastMessageAt = firstString(
+           chat.last_message_at,
+           chat.lastMessageAt,
+           chat.timestamp,
+           chat.updated_at,
+           chat.updatedAt,
+           chat.created_at,
+           chat.createdAt,
+         );
+
+         const lastMessageText = firstString(
+           (isRecord(chat.last_message) ? (chat.last_message as AnyRecord).text : undefined),
+           (isRecord(chat.lastMessage) ? (chat.lastMessage as AnyRecord).text : undefined),
+           chat.last_message_text,
+           chat.lastMessageText,
+           chat.snippet,
+         );
+
+         const attendeeName = firstString(
+           attendee?.display_name,
+           attendee?.displayName,
+           attendee?.name,
+           attendee?.full_name,
+           attendee?.fullName,
+           attendee?.first_name && attendee?.last_name
+             ? `${attendee.first_name} ${attendee.last_name}`
+             : undefined,
+           attendee?.firstName && attendee?.lastName
+             ? `${attendee.firstName} ${attendee.lastName}`
+             : undefined,
+         );
+
+         const attendeeHeadline = firstString(
+           attendee?.headline,
+           attendee?.title,
+           attendee?.occupation,
+           (isRecord(attendee?.specifics) ? (attendee?.specifics as AnyRecord).occupation : undefined),
+           (isRecord(attendee?.specifics) ? (attendee?.specifics as AnyRecord).title : undefined),
+         );
+
+         const attendeeProfileUrl = guessProfileUrl(attendee, attendeeId);
 
         allConversations.push({
-          id: chat.id,
-          attendee_id: attendeeId,
-          attendee_name: attendee?.display_name || attendee?.name || null,
-          attendee_headline: attendee?.headline || attendee?.specifics?.occupation || null,
-          attendee_profile_url: attendee?.profile_url || null,
-          last_message_at: lastMessageAt,
-          last_message_text: chat.last_message?.text || chat.last_message_text || null,
-          is_unread: Boolean(chat.unread_count ? chat.unread_count > 0 : chat.unread),
+           id: firstString(chat.id) || attendeeId,
+           attendee_id: attendeeId,
+           attendee_name: attendeeName || undefined,
+           attendee_headline: attendeeHeadline || undefined,
+           attendee_profile_url: attendeeProfileUrl || undefined,
+           last_message_at: lastMessageAt || new Date().toISOString(),
+           last_message_text: lastMessageText || undefined,
+           is_unread: Boolean(
+             typeof chat.unread_count === "number" ? chat.unread_count > 0 : chat.unread
+           ),
         });
       }
     }
