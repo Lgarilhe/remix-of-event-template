@@ -26,7 +26,7 @@ import {
 interface NurturingOpportunityCardProps {
   opportunity: NurturingOpportunity;
   onDismiss: (id: string) => void;
-  onGenerateMessage: (opp: NurturingOpportunity) => Promise<void>;
+  onGenerateMessage: (opp: NurturingOpportunity) => Promise<{ message: string; subject: string } | null>;
   onSend: (opp: NurturingOpportunity, message: string, subject: string) => Promise<void>;
   isGenerating: boolean;
   isSending: boolean;
@@ -150,15 +150,14 @@ export function NurturingOpportunityCard({
   };
 
   const handleGenerateClick = async () => {
-    await onGenerateMessage(opp);
-    // The parent will update suggested_message/subject, we'll pick it up
-    if (opp.suggested_message) {
+    const result = await onGenerateMessage(opp);
+    if (result) {
       setEditingMessage({
-        message: opp.suggested_message,
-        subject: opp.suggested_subject || '',
+        message: result.message,
+        subject: result.subject || '',
       });
+      setIsExpanded(true);
     }
-    setIsExpanded(true);
   };
 
   const handleSendClick = async () => {
@@ -167,17 +166,6 @@ export function NurturingOpportunityCard({
     setEditingMessage(null);
     setIsExpanded(false);
   };
-
-  // Update editing message when opportunity updates (after generation)
-  React.useEffect(() => {
-    if (opp.suggested_message && !editingMessage) {
-      setEditingMessage({
-        message: opp.suggested_message,
-        subject: opp.suggested_subject || '',
-      });
-      setIsExpanded(true);
-    }
-  }, [opp.suggested_message, opp.suggested_subject]);
 
   return (
     <div className={`border rounded-lg transition-all ${isExpanded ? 'ring-2 ring-[#0077B5] shadow-md' : 'hover:bg-gray-50'}`}>

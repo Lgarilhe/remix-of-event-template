@@ -58,16 +58,18 @@ export function NurturingDashboard({ accounts, selectedAccount }: NurturingDashb
     }
   };
 
-  const handleGenerateMessage = async (opportunity: NurturingOpportunity) => {
+  const handleGenerateMessage = async (opportunity: NurturingOpportunity): Promise<{ message: string; subject: string } | null> => {
     setGeneratingId(opportunity.id);
     try {
       const result = await generateMessage(opportunity.id);
       if (result) {
-        // The card component handles the message display
         toast.success('Message généré !');
+        return { message: result.message, subject: result.subject };
       }
+      return null;
     } catch (error) {
       toast.error('Erreur lors de la génération');
+      return null;
     } finally {
       setGeneratingId(null);
     }
