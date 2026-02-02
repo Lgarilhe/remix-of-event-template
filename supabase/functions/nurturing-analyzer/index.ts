@@ -138,6 +138,8 @@ serve(async (req) => {
   }
 
   try {
+    // IMPORTANT: A Request body can only be consumed once.
+    // We parse it exactly once here and reuse the resulting object for all actions.
     const body = await req.json();
     const { action, account_id, user_id, conversations, jobs } = body;
 
@@ -264,7 +266,7 @@ serve(async (req) => {
 
     // Action: Update opportunity status
     if (action === 'update_status') {
-      const { opportunity_id, status } = await req.json();
+      const { opportunity_id, status } = body;
       
       if (!opportunity_id || !status) {
         throw new Error("opportunity_id and status are required");
@@ -293,7 +295,7 @@ serve(async (req) => {
 
     // Action: Generate message for an opportunity
     if (action === 'generate_message') {
-      const { opportunity_id } = await req.json();
+      const { opportunity_id } = body;
       
       if (!opportunity_id || !LOVABLE_API_KEY) {
         throw new Error("opportunity_id and API key are required");
