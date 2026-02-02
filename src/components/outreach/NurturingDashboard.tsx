@@ -54,6 +54,7 @@ export function NurturingDashboard({ accounts, selectedAccount }: NurturingDashb
     refetch, 
     updateStatus, 
     generateMessage,
+    analyzeConversations,
     stats 
   } = useNurturingOpportunities();
 
@@ -61,6 +62,27 @@ export function NurturingDashboard({ accounts, selectedAccount }: NurturingDashb
   const [editingMessage, setEditingMessage] = useState<{ id: string; message: string; subject: string } | null>(null);
   const [generatingId, setGeneratingId] = useState<string | null>(null);
   const [sendingId, setSendingId] = useState<string | null>(null);
+  const [analyzingId, setAnalyzingId] = useState<string | null>(null);
+
+  const handleLaunchAnalysis = async () => {
+    const accountId = selectedAccount || accounts[0]?.id;
+    if (!accountId) {
+      toast.error('Sélectionnez un compte LinkedIn');
+      return;
+    }
+
+    setAnalyzingId(accountId);
+    try {
+      await analyzeConversations(accountId, [], []);
+      toast.success('Analyse terminée !');
+      refetch();
+    } catch (error) {
+      toast.error('Erreur lors de l\'analyse');
+      console.error('Analysis error:', error);
+    } finally {
+      setAnalyzingId(null);
+    }
+  };
 
   const handleGenerateMessage = async (opportunity: NurturingOpportunity) => {
     setGeneratingId(opportunity.id);
@@ -222,9 +244,18 @@ export function NurturingDashboard({ accounts, selectedAccount }: NurturingDashb
               <p className="text-sm text-muted-foreground mb-4">
                 Analysez vos conversations pour détecter des opportunités de nurturing
               </p>
-              <Button variant="outline" size="sm">
-                <Zap className="w-4 h-4 mr-2" />
-                Lancer l'analyse
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={handleLaunchAnalysis}
+                disabled={analyzingId !== null}
+              >
+                {analyzingId ? (
+                  <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                ) : (
+                  <Zap className="w-4 h-4 mr-2" />
+                )}
+                {analyzingId ? 'Analyse en cours...' : 'Lancer l\'analyse'}
               </Button>
             </div>
           ) : (

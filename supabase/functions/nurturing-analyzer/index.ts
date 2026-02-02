@@ -60,7 +60,8 @@ serve(async (req) => {
   }
 
   try {
-    const { action, account_id, user_id, conversations, jobs } = await req.json();
+    const body = await req.json();
+    const { action, account_id, user_id, conversations, jobs } = body;
 
     const UNIPILE_API_KEY = Deno.env.get("UNIPILE_API_KEY");
     const UNIPILE_DSN = Deno.env.get("UNIPILE_DSN");
@@ -84,10 +85,20 @@ serve(async (req) => {
         throw new Error("account_id and user_id are required");
       }
 
+      console.log(`[nurturing-analyzer] Starting analysis for account ${account_id}`);
+
+      // Fetch conversations from Unipile if not provided
+      let conversationsToAnalyze = conversations || [];
+      if (conversationsToAnalyze.length === 0) {
+        console.log('[nurturing-analyzer] Fetching conversations from Unipile...');
+        conversationsToAnalyze = await fetchUnipileConversations(account_id, UNIPILE_DSN, UNIPILE_API_KEY);
+        console.log(`[nurturing-analyzer] Fetched ${conversationsToAnalyze.length} conversations`);
+      }
+
       const opportunities: NurturingOpportunity[] = [];
 
-      // Analyze provided conversations
-      for (const conv of conversations || []) {
+      // Analyze conversations
+      for (const conv of conversationsToAnalyze) {
         const opportunity = await analyzeConversation(
           conv,
           jobs || [],
@@ -100,6 +111,8 @@ serve(async (req) => {
         }
       }
 
+      console.log(`[nurturing-analyzer] Found ${opportunities.length} opportunities`);
+
       // Insert opportunities into database
       if (opportunities.length > 0) {
         const { error: insertError } = await supabase
@@ -109,7 +122,7 @@ serve(async (req) => {
               ...o,
               status: 'pending',
             })),
-            { onConflict: 'candidate_id,trigger_type,status', ignoreDuplicates: true }
+            { onConflict: 'candidate_id,linkedin_account_id', ignoreDuplicates: false }
           );
 
         if (insertError) {
@@ -120,7 +133,7 @@ serve(async (req) => {
       return new Response(
         JSON.stringify({ 
           success: true, 
-          analyzed: conversations?.length || 0,
+          analyzed: conversationsToAnalyze.length,
           opportunities: opportunities.length 
         }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -223,6 +236,61 @@ serve(async (req) => {
     );
   }
 });
+
+// Fetch conversations from Unipile API
+async function fetchUnipileConversations(
+  accountId: string,
+  dsn: string,
+  apiKey: string
+): Promise<Conversation[]> {
+  try {
+    const baseUrl = `https://${dsn}`;
+    const folders = ['INBOX_LINKEDIN_CLASSIC', 'INBOX_LINKEDIN_RECRUITER'];
+    const allConversations: Conversation[] = [];
+
+    for (const folder of folders) {
+      const url = `${baseUrl}/api/v1/chats?account_id=${accountId}&folder=${folder}&limit=100`;
+      
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'X-API-KEY': apiKey,
+          'Accept': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        console.error(`[nurturing-analyzer] Unipile error for ${folder}: ${response.status}`);
+        continue;
+      }
+
+      const data = await response.json();
+      const chats = data.items || [];
+
+      for (const chat of chats) {
+        // Get attendee info
+        const attendee = chat.attendees?.find((a: { is_self?: boolean }) => !a.is_self);
+        if (!attendee) continue;
+
+        allConversations.push({
+          id: chat.id,
+          attendee_id: attendee.provider_id || attendee.id || chat.id,
+          attendee_name: attendee.display_name || attendee.name,
+          attendee_headline: attendee.headline,
+          attendee_profile_url: attendee.profile_url,
+          last_message_at: chat.last_message_at || chat.updated_at,
+          last_message_text: chat.last_message?.text,
+          is_unread: chat.unread_count > 0,
+        });
+      }
+    }
+
+    return allConversations;
+  } catch (error) {
+    console.error('[nurturing-analyzer] Error fetching conversations:', error);
+    return [];
+  }
+}
 
 async function analyzeConversation(
   conv: Conversation,
