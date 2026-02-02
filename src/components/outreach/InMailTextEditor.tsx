@@ -1,5 +1,4 @@
 import React, { useRef, useCallback, useEffect } from 'react';
-import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
 import { 
   Tooltip,
@@ -15,24 +14,12 @@ import {
 import { 
   WrapText, 
   Smile, 
-  ArrowRight,
+  List,
+  ListOrdered,
   Info,
-  Sparkles,
-  Target,
-  Lightbulb,
-  MessageCircle,
-  Zap,
-  CheckCircle,
-  Star,
-  ThumbsUp,
-  Briefcase,
-  MapPin,
-  Clock,
-  Phone,
-  Mail,
-  Users,
-  Award,
-  TrendingUp,
+  Bold,
+  Italic,
+  Link,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -42,12 +29,12 @@ interface InMailTextEditorProps {
   placeholder?: string;
   className?: string;
   minHeight?: string;
-  maxHeight?: string; // Maximum height for auto-resize
+  maxHeight?: string;
   showWordCount?: boolean;
   maxCharacters?: number;
   id?: string;
-  onSend?: () => void; // Optional callback for Ctrl+Enter to send
-  autoResize?: boolean; // Enable auto-resize based on content
+  onSend?: () => void;
+  autoResize?: boolean;
 }
 
 // Common emojis for professional LinkedIn messages
@@ -66,13 +53,6 @@ const EMOJI_GROUPS = [
   },
 ];
 
-// Quick insert snippets for professional messages
-const QUICK_INSERTS = [
-  { label: 'Saut de paragraphe', insert: '\n\n', icon: WrapText },
-  { label: 'Liste à puces', insert: '<ul>\n  <li></li>\n</ul>', icon: ArrowRight },
-  { label: 'Liste numérotée', insert: '<ol>\n  <li></li>\n</ol>', icon: ArrowRight },
-];
-
 export const InMailTextEditor: React.FC<InMailTextEditorProps> = ({
   value,
   onChange,
@@ -81,115 +61,106 @@ export const InMailTextEditor: React.FC<InMailTextEditorProps> = ({
   minHeight = '200px',
   maxHeight = '400px',
   showWordCount = true,
-  maxCharacters = 1900, // LinkedIn InMail limit is around 1900-2000 chars
+  maxCharacters = 1900,
   id,
   onSend,
   autoResize = true,
 }) => {
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const editorRef = useRef<HTMLDivElement>(null);
+  const isInternalChange = useRef(false);
 
-  // Auto-resize textarea based on content
+  // Sync external value changes to the editor
   useEffect(() => {
-    if (!autoResize || !textareaRef.current) return;
-    
-    const textarea = textareaRef.current;
-    // Reset height to get accurate scrollHeight
-    textarea.style.height = minHeight;
-    // Set height to scrollHeight (content height)
-    const newHeight = Math.min(
-      textarea.scrollHeight,
-      parseInt(maxHeight) || 400
-    );
-    textarea.style.height = `${Math.max(newHeight, parseInt(minHeight) || 60)}px`;
-  }, [value, autoResize, minHeight, maxHeight]);
+    if (editorRef.current && !isInternalChange.current) {
+      if (editorRef.current.innerHTML !== value) {
+        editorRef.current.innerHTML = value;
+      }
+    }
+    isInternalChange.current = false;
+  }, [value]);
+
+  // Handle content changes
+  const handleInput = useCallback(() => {
+    if (editorRef.current) {
+      isInternalChange.current = true;
+      onChange(editorRef.current.innerHTML);
+    }
+  }, [onChange]);
 
   // Handle keyboard shortcuts
-  const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+  const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
     // Ctrl+Enter or Cmd+Enter to send
     if ((e.ctrlKey || e.metaKey) && e.key === 'Enter' && onSend) {
       e.preventDefault();
       onSend();
-    }
-  }, [onSend]);
-
-  // Insert text at cursor position
-  const insertAtCursor = useCallback((textToInsert: string) => {
-    const textarea = textareaRef.current;
-    if (!textarea) {
-      onChange(value + textToInsert);
       return;
     }
 
-    const start = textarea.selectionStart;
-    const end = textarea.selectionEnd;
-    const newValue = value.substring(0, start) + textToInsert + value.substring(end);
-    
-    onChange(newValue);
-    
-    // Restore focus and set cursor position after the inserted text
-    setTimeout(() => {
-      textarea.focus();
-      const newPosition = start + textToInsert.length;
-      textarea.setSelectionRange(newPosition, newPosition);
-    }, 0);
-  }, [value, onChange]);
-
-  // Wrap selected text with HTML tags
-  const wrapSelection = useCallback((prefix: string, suffix: string) => {
-    const textarea = textareaRef.current;
-    if (!textarea) return;
-
-    const start = textarea.selectionStart;
-    const end = textarea.selectionEnd;
-    const selectedText = value.substring(start, end);
-    
-    if (selectedText) {
-      const newValue = value.substring(0, start) + prefix + selectedText + suffix + value.substring(end);
-      onChange(newValue);
-      
-      setTimeout(() => {
-        textarea.focus();
-        textarea.setSelectionRange(start + prefix.length, end + prefix.length);
-      }, 0);
-    } else {
-      // If no selection, insert tags and place cursor between them
-      const newValue = value.substring(0, start) + prefix + suffix + value.substring(end);
-      onChange(newValue);
-      
-      setTimeout(() => {
-        textarea.focus();
-        textarea.setSelectionRange(start + prefix.length, start + prefix.length);
-      }, 0);
+    // Ctrl+B for bold
+    if ((e.ctrlKey || e.metaKey) && e.key === 'b') {
+      e.preventDefault();
+      formatText('bold');
+      return;
     }
-  }, [value, onChange]);
 
-  // Insert a link tag
+    // Ctrl+I for italic
+    if ((e.ctrlKey || e.metaKey) && e.key === 'i') {
+      e.preventDefault();
+      formatText('italic');
+      return;
+    }
+  }, [onSend]);
+
+  // Apply formatting
+  const formatText = useCallback((command: string, value?: string) => {
+    editorRef.current?.focus();
+    document.execCommand(command, false, value);
+    handleInput();
+  }, [handleInput]);
+
+  // Insert HTML at cursor
+  const insertHTML = useCallback((html: string) => {
+    editorRef.current?.focus();
+    document.execCommand('insertHTML', false, html);
+    handleInput();
+  }, [handleInput]);
+
+  // Insert link
   const insertLink = useCallback(() => {
-    const textarea = textareaRef.current;
-    if (!textarea) return;
-
-    const start = textarea.selectionStart;
-    const end = textarea.selectionEnd;
-    const selectedText = value.substring(start, end);
+    const selection = window.getSelection();
+    const selectedText = selection?.toString() || '';
     
     const url = prompt('Entrez l\'URL du lien:', 'https://');
     if (!url) return;
 
-    const linkText = selectedText || 'Cliquez ici';
-    const linkHtml = `<a href="${url}">${linkText}</a>`;
-    const newValue = value.substring(0, start) + linkHtml + value.substring(end);
+    editorRef.current?.focus();
     
-    onChange(newValue);
-    
-    setTimeout(() => {
-      textarea.focus();
-      const newPosition = start + linkHtml.length;
-      textarea.setSelectionRange(newPosition, newPosition);
-    }, 0);
-  }, [value, onChange]);
+    if (selectedText) {
+      document.execCommand('createLink', false, url);
+    } else {
+      const linkText = prompt('Texte du lien:', 'Cliquez ici') || 'Cliquez ici';
+      document.execCommand('insertHTML', false, `<a href="${url}">${linkText}</a>`);
+    }
+    handleInput();
+  }, [handleInput]);
 
-  const wordCount = value.split(/\s+/).filter(Boolean).length;
-  const charCount = value.length;
+  // Insert emoji
+  const insertEmoji = useCallback((emoji: string) => {
+    editorRef.current?.focus();
+    document.execCommand('insertText', false, emoji);
+    handleInput();
+  }, [handleInput]);
+
+  // Get plain text for counting
+  const getPlainText = (html: string) => {
+    const div = document.createElement('div');
+    div.innerHTML = html;
+    return div.textContent || div.innerText || '';
+  };
+
+  const plainText = getPlainText(value);
+  const wordCount = plainText.split(/\s+/).filter(Boolean).length;
+  const charCount = plainText.length;
   const isOverLimit = maxCharacters && charCount > maxCharacters;
 
   return (
@@ -197,43 +168,75 @@ export const InMailTextEditor: React.FC<InMailTextEditorProps> = ({
       {/* Toolbar */}
       <div className="flex items-center gap-1 p-1 bg-muted/50 rounded-lg border border-border/50">
         <TooltipProvider delayDuration={200}>
-          {/* Quick inserts */}
-          {QUICK_INSERTS.map((item, i) => (
-            <Tooltip key={i}>
-              <TooltipTrigger asChild>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="h-8 w-8 p-0"
-                  onClick={() => insertAtCursor(item.insert)}
-                >
-                  <item.icon className="h-4 w-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">
-                <p>{item.label}</p>
-              </TooltipContent>
-            </Tooltip>
-          ))}
+          {/* Formatting buttons */}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-8 w-8 p-0"
+                onClick={() => formatText('bold')}
+              >
+                <Bold className="h-4 w-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">
+              <p>Gras (Ctrl+B)</p>
+            </TooltipContent>
+          </Tooltip>
+
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-8 w-8 p-0"
+                onClick={() => formatText('italic')}
+              >
+                <Italic className="h-4 w-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">
+              <p>Italique (Ctrl+I)</p>
+            </TooltipContent>
+          </Tooltip>
+
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-8 w-8 p-0"
+                onClick={insertLink}
+              >
+                <Link className="h-4 w-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">
+              <p>Insérer un lien</p>
+            </TooltipContent>
+          </Tooltip>
 
           <div className="w-px h-6 bg-border mx-1" />
 
-          {/* Text emphasis (using HTML tags for LinkedIn Recruiter) */}
+          {/* Lists */}
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
                 type="button"
                 variant="ghost"
                 size="sm"
-                className="h-8 px-2 font-bold"
-                onClick={() => wrapSelection('<strong>', '</strong>')}
+                className="h-8 w-8 p-0"
+                onClick={() => formatText('insertUnorderedList')}
               >
-                B
+                <List className="h-4 w-4" />
               </Button>
             </TooltipTrigger>
             <TooltipContent side="bottom">
-              <p>Gras (sélectionnez d'abord)</p>
+              <p>Liste à puces</p>
             </TooltipContent>
           </Tooltip>
 
@@ -243,31 +246,14 @@ export const InMailTextEditor: React.FC<InMailTextEditorProps> = ({
                 type="button"
                 variant="ghost"
                 size="sm"
-                className="h-8 px-2 italic"
-                onClick={() => wrapSelection('<em>', '</em>')}
+                className="h-8 w-8 p-0"
+                onClick={() => formatText('insertOrderedList')}
               >
-                I
+                <ListOrdered className="h-4 w-4" />
               </Button>
             </TooltipTrigger>
             <TooltipContent side="bottom">
-              <p>Italique (sélectionnez d'abord)</p>
-            </TooltipContent>
-          </Tooltip>
-
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="h-8 px-2"
-                onClick={() => insertLink()}
-              >
-                🔗
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">
-              <p>Insérer un lien (sélectionnez le texte d'abord)</p>
+              <p>Liste numérotée</p>
             </TooltipContent>
           </Tooltip>
 
@@ -298,7 +284,7 @@ export const InMailTextEditor: React.FC<InMailTextEditorProps> = ({
                           key={emoji}
                           type="button"
                           className="w-8 h-8 text-lg hover:bg-muted rounded transition-colors flex items-center justify-center"
-                          onClick={() => insertAtCursor(emoji)}
+                          onClick={() => insertEmoji(emoji)}
                         >
                           {emoji}
                         </button>
@@ -310,7 +296,7 @@ export const InMailTextEditor: React.FC<InMailTextEditorProps> = ({
             </PopoverContent>
           </Popover>
 
-          {/* Info about LinkedIn formatting */}
+          {/* Info */}
           <div className="ml-auto flex items-center">
             <Tooltip>
               <TooltipTrigger asChild>
@@ -325,11 +311,8 @@ export const InMailTextEditor: React.FC<InMailTextEditorProps> = ({
               </TooltipTrigger>
               <TooltipContent side="bottom" className="max-w-[280px]">
                 <p className="text-xs">
-                  LinkedIn Recruiter supporte les balises HTML : 
-                  <code className="mx-1">&lt;strong&gt;</code> (gras), 
-                  <code className="mx-1">&lt;em&gt;</code> (italique), 
-                  <code className="mx-1">&lt;a href&gt;</code> (liens), 
-                  <code className="mx-1">&lt;ul&gt;</code>/<code>&lt;ol&gt;</code> (listes).
+                  Éditeur WYSIWYG pour LinkedIn Recruiter. 
+                  Le formatage (gras, italique, liens, listes) sera conservé dans le message envoyé.
                 </p>
               </TooltipContent>
             </Tooltip>
@@ -337,23 +320,29 @@ export const InMailTextEditor: React.FC<InMailTextEditorProps> = ({
         </TooltipProvider>
       </div>
 
-      {/* Textarea */}
-      <Textarea
-        ref={textareaRef}
+      {/* Editable content area */}
+      <div
+        ref={editorRef}
         id={id}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
+        contentEditable
+        onInput={handleInput}
         onKeyDown={handleKeyDown}
-        placeholder={placeholder}
+        data-placeholder={placeholder}
         className={cn(
-          "font-sans leading-relaxed transition-all",
-          autoResize ? "resize-none" : "resize-y",
+          "w-full rounded-md border border-input bg-background px-3 py-2 text-sm",
+          "ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+          "font-sans leading-relaxed overflow-y-auto",
+          "empty:before:content-[attr(data-placeholder)] empty:before:text-muted-foreground empty:before:pointer-events-none",
+          "[&_a]:text-primary [&_a]:underline",
+          "[&_strong]:font-bold [&_b]:font-bold",
+          "[&_em]:italic [&_i]:italic",
+          "[&_ul]:list-disc [&_ul]:ml-4 [&_ol]:list-decimal [&_ol]:ml-4",
           isOverLimit && "border-red-500 focus-visible:ring-red-500",
           className
         )}
         style={{ 
           minHeight,
-          maxHeight: autoResize ? maxHeight : undefined,
+          maxHeight,
         }}
       />
 
