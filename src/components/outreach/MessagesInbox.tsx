@@ -119,6 +119,22 @@ interface JobData {
   tjmMin?: number;
   tjmMax?: number;
   contractType?: string;
+  // Enriched fields from Notion
+  description?: string;
+  requirements?: string;
+  mustHave?: string;
+  shouldHave?: string;
+  niceToHave?: string;
+  sourcingCriteria?: string;
+  teamInfo?: string;
+  xpMin?: number;
+  xpMax?: number;
+  transversalCriteria?: {
+    must?: string;
+    should?: string;
+    niceToHave?: string;
+    context?: string;
+  };
 }
 
 export const MessagesInbox: React.FC<MessagesInboxProps> = ({
@@ -193,8 +209,8 @@ export const MessagesInbox: React.FC<MessagesInboxProps> = ({
       if (response.error) throw response.error;
       
       if (response.data?.jobs) {
-        // Transform Notion jobs to our JobData format
-        const jobs: JobData[] = response.data.jobs.slice(0, 20).map((job: any) => ({
+        // Transform Notion jobs to our JobData format with enriched data
+        const jobs: JobData[] = response.data.jobs.slice(0, 30).map((job: any) => ({
           id: job.id,
           title: job.title || 'Poste',
           client: job.client,
@@ -204,9 +220,20 @@ export const MessagesInbox: React.FC<MessagesInboxProps> = ({
           remote: job.remote,
           salaryMin: job.salaryMin,
           salaryMax: job.salaryMax,
-          tjmMin: job.tjmMin,
+          tjmMin: job.tjmMin || job.tjm,
           tjmMax: job.tjmMax,
           contractType: job.contractType,
+          // Enriched fields for AI context
+          description: job.description,
+          requirements: job.requirements,
+          mustHave: job.mustHave,
+          shouldHave: job.shouldHave,
+          niceToHave: job.niceToHave,
+          sourcingCriteria: job.sourcingCriteria,
+          teamInfo: job.teamInfo,
+          xpMin: job.xpMin,
+          xpMax: job.xpMax,
+          transversalCriteria: job.transversalCriteria,
         }));
         setAvailableJobs(jobs);
       }
@@ -463,7 +490,7 @@ export const MessagesInbox: React.FC<MessagesInboxProps> = ({
     }
   }, [messages, loadingMessages]);
 
-  // Fetch AI reply suggestions
+  // Fetch AI reply suggestions with enriched job context
   const fetchReplySuggestions = useCallback(async () => {
     if (!selectedChat || messages.length === 0 || loadingSuggestions || suggestionsLoaded) return;
     
@@ -472,6 +499,12 @@ export const MessagesInbox: React.FC<MessagesInboxProps> = ({
       const recipientName = getChatDisplayName(selectedChat);
       const recipientHeadline = getChatHeadline(selectedChat);
       const jobInfo = getChatJobInfo(selectedChat);
+      
+      // Find the full job data with enriched Notion context
+      let enrichedJobData: JobData | undefined;
+      if (jobInfo?.job_id) {
+        enrichedJobData = availableJobs.find(j => j.id === jobInfo.job_id);
+      }
       
       const response = await supabase.functions.invoke('generate-reply-suggestions', {
         body: {
@@ -483,8 +516,35 @@ export const MessagesInbox: React.FC<MessagesInboxProps> = ({
               is_sender: m.is_sender,
               timestamp: m.timestamp,
             })),
+            // Basic job context for backwards compatibility
             jobContext: jobInfo ? {
               title: jobInfo.job_title || 'Poste non spécifié',
+              company: enrichedJobData?.client?.name,
+            } : undefined,
+            // Enriched job data with Notion context
+            jobData: enrichedJobData ? {
+              id: enrichedJobData.id,
+              title: enrichedJobData.title,
+              client: enrichedJobData.client,
+              skills: enrichedJobData.skills || [],
+              requirements: enrichedJobData.requirements,
+              description: enrichedJobData.description,
+              seniority: enrichedJobData.seniority,
+              location: enrichedJobData.location,
+              remote: enrichedJobData.remote,
+              xpMin: enrichedJobData.xpMin,
+              xpMax: enrichedJobData.xpMax,
+              salaryMin: enrichedJobData.salaryMin,
+              salaryMax: enrichedJobData.salaryMax,
+              tjmMin: enrichedJobData.tjmMin,
+              tjmMax: enrichedJobData.tjmMax,
+              contractType: enrichedJobData.contractType,
+              // Scoring criteria from Notion
+              mustHave: enrichedJobData.mustHave,
+              shouldHave: enrichedJobData.shouldHave,
+              niceToHave: enrichedJobData.niceToHave,
+              // Transversal criteria from linked Notion database
+              transversalCriteria: enrichedJobData.transversalCriteria,
             } : undefined,
           },
         },
@@ -503,7 +563,7 @@ export const MessagesInbox: React.FC<MessagesInboxProps> = ({
     } finally {
       setLoadingSuggestions(false);
     }
-  }, [selectedChat, messages, loadingSuggestions, suggestionsLoaded]);
+  }, [selectedChat, messages, loadingSuggestions, suggestionsLoaded, availableJobs]);
 
   // Handle suggestion click
   const handleSuggestionClick = (text: string) => {
