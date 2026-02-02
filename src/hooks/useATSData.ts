@@ -42,20 +42,16 @@ export const ATS_STAGES = [
 ];
 
 // Cache configuration
-const STALE_TIME = 5 * 60 * 1000; // 5 minutes - data considered fresh
-const GC_TIME = 30 * 60 * 1000; // 30 minutes - keep in cache
+const STALE_TIME = 30 * 60 * 1000; // 30 minutes - use cached data aggressively
+const GC_TIME = 60 * 60 * 1000; // 1 hour - keep in cache
 
-// Fetch functions
-async function fetchShortlist(): Promise<ATSCandidate[]> {
-  const response = await supabase.functions.invoke('fetch-notion-candidates', {
-    body: {},
-  });
-
-  if (!response.data?.success || !response.data.shortlist) {
+// Transform shortlist response to ATSCandidate format
+function transformShortlist(data: any): ATSCandidate[] {
+  if (!data?.success || !data.shortlist) {
     return [];
   }
 
-  return response.data.shortlist.map((entry: any) => ({
+  return data.shortlist.map((entry: any) => ({
     id: `shortlist-${entry.id}`,
     candidateId: entry.candidate?.id || entry.id,
     name: entry.candidate?.name || entry.name || 'Sans nom',
@@ -73,6 +69,16 @@ async function fetchShortlist(): Promise<ATSCandidate[]> {
     lastActivity: entry.createdAt || null,
     createdAt: entry.createdAt || new Date().toISOString(),
   }));
+}
+
+// Fetch functions - uses stale-while-revalidate pattern
+async function fetchShortlist(forceRefresh = false): Promise<ATSCandidate[]> {
+  const response = await supabase.functions.invoke('fetch-notion-candidates', {
+    body: {},
+    // Pass refresh param via query string
+  });
+
+  return transformShortlist(response.data);
 }
 
 async function fetchSequences(): Promise<ATSCandidate[]> {

@@ -236,18 +236,41 @@ serve(async (req) => {
 
     const url = new URL(req.url);
     const type = url.searchParams.get('type') || 'shortlist'; // 'candidates' or 'shortlist'
+    const forceRefresh = url.searchParams.get('refresh') === 'true';
 
     const cacheKey = type === 'candidates' ? 'notion:candidates:v1' : 'notion:shortlist:v1';
     const cached = await getCache(cacheKey);
 
-    // Serve from cache when fresh
-    // If we stored a "rateLimited" payload, keep it for a shorter period to avoid hiding data for too long.
-    const cachedTtlMs = (cached.payload as any)?._meta?.rateLimited ? 30_000 : CACHE_TTL_MS;
-    if (cached.payload && cached.ageMs !== null && cached.ageMs < cachedTtlMs) {
-      return new Response(
-        JSON.stringify({ ...(cached.payload as any), cached: true }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+    // STALE-WHILE-REVALIDATE pattern:
+    // If we have ANY cached data (even stale), return it immediately for instant UI
+    // The client can request a refresh in background if needed
+    const isRateLimited = (cached.payload as any)?._meta?.rateLimited;
+    const cachedTtlMs = isRateLimited ? 30_000 : CACHE_TTL_MS;
+    const isFresh = cached.payload && cached.ageMs !== null && cached.ageMs < cachedTtlMs;
+    
+    // Return cached data immediately (unless force refresh requested)
+    if (cached.payload && !forceRefresh) {
+      // If cache is fresh, just return it
+      if (isFresh) {
+        return new Response(
+          JSON.stringify({ ...(cached.payload as any), cached: true, stale: false }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      
+      // If cache is stale but exists, return it with stale flag
+      // Client can trigger background refresh
+      if (!isRateLimited) {
+        return new Response(
+          JSON.stringify({ 
+            ...(cached.payload as any), 
+            cached: true, 
+            stale: true,
+            ageMs: cached.ageMs 
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
     }
 
     if (type === 'candidates') {
