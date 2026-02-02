@@ -45,6 +45,7 @@ interface InMailTextEditorProps {
   showWordCount?: boolean;
   maxCharacters?: number;
   id?: string;
+  onSend?: () => void; // Optional callback for Ctrl+Enter to send
 }
 
 // Common emojis for professional LinkedIn messages
@@ -79,8 +80,18 @@ export const InMailTextEditor: React.FC<InMailTextEditorProps> = ({
   showWordCount = true,
   maxCharacters = 1900, // LinkedIn InMail limit is around 1900-2000 chars
   id,
+  onSend,
 }) => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Handle keyboard shortcuts
+  const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    // Ctrl+Enter or Cmd+Enter to send
+    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter' && onSend) {
+      e.preventDefault();
+      onSend();
+    }
+  }, [onSend]);
 
   // Insert text at cursor position
   const insertAtCursor = useCallback((textToInsert: string) => {
@@ -278,6 +289,7 @@ export const InMailTextEditor: React.FC<InMailTextEditorProps> = ({
         id={id}
         value={value}
         onChange={(e) => onChange(e.target.value)}
+        onKeyDown={handleKeyDown}
         placeholder={placeholder}
         className={cn(
           "resize-none font-sans leading-relaxed",

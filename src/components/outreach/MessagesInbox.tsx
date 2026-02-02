@@ -3,6 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { LinkedInAccount } from '@/pages/Outreach';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Input } from '@/components/ui/input';
+import { InMailTextEditor } from './InMailTextEditor';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -1313,18 +1314,22 @@ export const MessagesInbox: React.FC<MessagesInboxProps> = ({
             {/* Message Input */}
             <div className="px-3 pb-3">
               <div className="flex items-end gap-2">
-                <Input
-                  placeholder="Écrivez un message..."
-                  value={newMessage}
-                  onChange={(e) => setNewMessage(e.target.value)}
-                  onKeyDown={handleKeyDown}
-                  className="flex-1"
-                  disabled={sending}
-                />
+                <div className="flex-1">
+                  <InMailTextEditor
+                    value={newMessage}
+                    onChange={setNewMessage}
+                    placeholder="Écrivez un message... (Ctrl+Entrée pour envoyer)"
+                    minHeight="60px"
+                    showWordCount={false}
+                    maxCharacters={1900}
+                    className="text-sm"
+                    onSend={sendMessage}
+                  />
+                </div>
                 <Button
                   onClick={sendMessage}
                   disabled={sending || !newMessage.trim()}
-                  className="bg-[#0077B5] hover:bg-[#005E93] h-10 w-10 p-0"
+                  className="bg-[#0077B5] hover:bg-[#005E93] h-10 w-10 p-0 mb-[2px]"
                 >
                   {sending ? (
                     <Loader2 className="w-4 h-4 animate-spin" />
