@@ -9,6 +9,7 @@ import { SEOHead } from '@/components/SEOHead';
 import { Loader2, ChevronLeft, ChevronRight, ArrowUpDown, Heart } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useFavoriteJobs } from '@/hooks/useFavoriteJobs';
+import { useNotionJobs } from '@/hooks/useNotionJobs';
 import {
   Select,
   SelectContent,
@@ -96,10 +97,6 @@ const SORT_OPTIONS: { value: SortOption; label: string }[] = [
 const JobSpace = () => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
-  const [jobs, setJobs] = useState<Job[]>([]);
-  const [allJobs, setAllJobs] = useState<Job[]>([]); // For filtering
-  const [jobsLoading, setJobsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<SortOption>('priority');
   const [pagination, setPagination] = useState<PaginationInfo>({
     page: 1,
@@ -120,6 +117,9 @@ const JobSpace = () => {
     skills: [],
   });
   const navigate = useNavigate();
+  
+  // Use React Query for cached jobs data
+  const { data: allJobs = [], isLoading: jobsLoading, error: jobsError } = useNotionJobs();
   const { favorites, toggleFavorite, isFavorite, favoritesCount } = useFavoriteJobs(user?.id);
 
   useEffect(() => {
@@ -143,41 +143,17 @@ const JobSpace = () => {
     return () => subscription.unsubscribe();
   }, [navigate]);
 
+  // Update pagination when jobs load
   useEffect(() => {
-    if (user) {
-      fetchAllJobs();
+    if (allJobs.length > 0) {
+      setPagination(prev => ({
+        ...prev,
+        total: allJobs.length,
+        totalPages: Math.ceil(allJobs.length / prev.limit),
+        hasMore: allJobs.length > prev.limit,
+      }));
     }
-  }, [user]);
-
-  const fetchAllJobs = async () => {
-    setJobsLoading(true);
-    setError(null);
-    
-    try {
-      const { data, error } = await supabase.functions.invoke('fetch-notion-jobs', {
-        body: {},
-      });
-      
-      if (error) throw error;
-      
-      if (data.success) {
-        setAllJobs(data.jobs);
-        setPagination(prev => ({
-          ...prev,
-          total: data.jobs.length,
-          totalPages: Math.ceil(data.jobs.length / prev.limit),
-          hasMore: data.jobs.length > prev.limit,
-        }));
-      } else {
-        throw new Error(data.error || 'Failed to fetch jobs');
-      }
-    } catch (err: any) {
-      console.error('Error fetching jobs:', err);
-      setError(err.message);
-    } finally {
-      setJobsLoading(false);
-    }
-  };
+  }, [allJobs]);
 
   const filterJobs = useCallback((jobList: Job[]) => {
     return jobList.filter(job => {
@@ -362,15 +338,9 @@ const JobSpace = () => {
             <div className="flex items-center justify-center py-20">
               <Loader2 className="w-8 h-8 animate-spin text-[#1A1A1A]" />
             </div>
-          ) : error ? (
+          ) : jobsError ? (
             <div className="bg-red-50 border border-red-200 rounded-lg p-6 text-center">
-              <p className="text-red-600">{error}</p>
-              <button 
-                onClick={fetchAllJobs}
-                className="mt-4 px-4 py-2 bg-[#1A1A1A] text-white text-sm uppercase tracking-wide hover:bg-[#1A1A1A]/90 transition-colors"
-              >
-                Réessayer
-              </button>
+              <p className="text-red-600">{jobsError instanceof Error ? jobsError.message : 'Error loading jobs'}</p>
             </div>
           ) : (
             <>

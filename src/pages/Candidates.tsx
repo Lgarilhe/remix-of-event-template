@@ -9,6 +9,7 @@ import { CandidateList } from '@/components/candidates/CandidateList';
 import { CandidateFilters } from '@/components/candidates/CandidateFilters';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Loader2, LayoutGrid, List, Users } from 'lucide-react';
+import { useNotionShortlist, useNotionCandidates } from '@/hooks/useNotionCandidates';
 
 export interface Candidate {
   id: string;
@@ -70,11 +71,29 @@ export const PIPELINE_STAGES = [
 
 export default function Candidates() {
   const [user, setUser] = useState<User | null>(null);
-  const [shortlist, setShortlist] = useState<ShortlistEntry[]>([]);
-  const [candidates, setCandidates] = useState<Candidate[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'pipeline' | 'list'>('pipeline');
+  
+  // Use React Query for cached data
+  const { 
+    data: shortlistData = [], 
+    isLoading: shortlistLoading, 
+    error: shortlistError 
+  } = useNotionShortlist();
+  
+  const { 
+    data: candidatesData = [], 
+    isLoading: candidatesLoading 
+  } = useNotionCandidates();
+  
+  // Local state for optimistic updates
+  const [shortlist, setShortlist] = useState<ShortlistEntry[]>([]);
+  
+  // Sync shortlist data from query
+  useEffect(() => {
+    if (shortlistData.length > 0) {
+      setShortlist(shortlistData);
+    }
+  }, [shortlistData]);
   
   // Filters
   const [filters, setFilters] = useState({
@@ -96,57 +115,6 @@ export default function Candidates() {
     });
 
     return () => subscription.unsubscribe();
-  }, []);
-
-  // Fetch data
-  useEffect(() => {
-    const fetchData = async () => {
-      setLoading(true);
-      setError(null);
-
-      try {
-        // Fetch shortlist (pipeline view)
-        const shortlistResponse = await supabase.functions.invoke('fetch-notion-candidates', {
-          body: {},
-        });
-
-        if (shortlistResponse.error) throw shortlistResponse.error;
-        if (!shortlistResponse.data?.success) throw new Error(shortlistResponse.data?.error || 'Failed to fetch shortlist');
-        
-        setShortlist(shortlistResponse.data.shortlist || []);
-
-        // Fetch all candidates
-        const candidatesResponse = await supabase.functions.invoke('fetch-notion-candidates', {
-          body: {},
-        });
-        
-        // Parse type param for candidates
-        const candidatesUrl = new URL('https://dummy.com');
-        candidatesUrl.searchParams.set('type', 'candidates');
-        
-        const candidatesData = await fetch(
-          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/fetch-notion-candidates?type=candidates`,
-          {
-            headers: {
-              'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
-              'Content-Type': 'application/json',
-            },
-          }
-        ).then(r => r.json());
-
-        if (candidatesData.success) {
-          setCandidates(candidatesData.candidates || []);
-        }
-
-      } catch (err) {
-        console.error('Error fetching data:', err);
-        setError(err instanceof Error ? err.message : 'Failed to load data');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchData();
   }, []);
 
   // Get unique values for filters
@@ -259,9 +227,12 @@ export default function Candidates() {
             <div className="flex items-center gap-3 mb-2">
               <Users className="w-8 h-8 text-[#1A1A1A]" />
               <h1 className="text-3xl font-bold text-[#1A1A1A]">Candidats</h1>
+              {shortlistLoading && (
+                <span className="text-sm text-[#1A1A1A]/50 animate-pulse">Chargement...</span>
+              )}
             </div>
             <p className="text-[#1A1A1A]/60">
-              {shortlist.length} candidature{shortlist.length > 1 ? 's' : ''} • {candidates.length} candidat{candidates.length > 1 ? 's' : ''} en base
+              {shortlist.length} candidature{shortlist.length > 1 ? 's' : ''} • {candidatesData.length} candidat{candidatesData.length > 1 ? 's' : ''} en base
             </p>
           </div>
 
@@ -287,13 +258,13 @@ export default function Candidates() {
                 />
               </div>
 
-              {loading ? (
+              {shortlistLoading && shortlist.length === 0 ? (
                 <div className="flex items-center justify-center py-20">
                   <Loader2 className="w-8 h-8 animate-spin text-[#1A1A1A]/40" />
                 </div>
-              ) : error ? (
+              ) : shortlistError ? (
                 <div className="bg-red-50 border border-red-200 rounded-lg p-6 text-center">
-                  <p className="text-red-600">{error}</p>
+                  <p className="text-red-600">{shortlistError instanceof Error ? shortlistError.message : 'Error'}</p>
                 </div>
               ) : (
                 <>

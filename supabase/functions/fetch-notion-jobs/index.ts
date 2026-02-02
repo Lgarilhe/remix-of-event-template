@@ -22,7 +22,9 @@ console.log('[fetch-notion-jobs] boot', {
   hasServiceRole: Boolean(SUPABASE_SERVICE_ROLE_KEY),
 });
 
-// Cache expiry: 24 hours
+// Cache expiry for skills: 24 hours
+// Cache expiry for jobs list: 5 minutes (with stale-while-revalidate)
+const JOBS_CACHE_TTL_MS = 5 * 60 * 1000;
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 
 // Initialize Supabase client with service role for cache operations
@@ -445,6 +447,38 @@ async function fetchCandidateCounts(jobIds: string[]): Promise<Map<string, Candi
   return countsMap;
 }
 
+// Helper to get/set jobs cache
+async function getJobsCache(): Promise<{ payload: any | null; ageMs: number | null }> {
+  try {
+    const { data, error } = await supabase
+      .from('notion_api_cache')
+      .select('cache_key, payload, updated_at')
+      .eq('cache_key', 'notion:jobs:v1')
+      .maybeSingle();
+
+    if (error || !data) return { payload: null, ageMs: null };
+    const updatedAtMs = new Date(data.updated_at).getTime();
+    const ageMs = Date.now() - updatedAtMs;
+    return { payload: data.payload, ageMs };
+  } catch {
+    return { payload: null, ageMs: null };
+  }
+}
+
+async function setJobsCache(payload: unknown): Promise<void> {
+  try {
+    await supabase
+      .from('notion_api_cache')
+      .upsert({
+        cache_key: 'notion:jobs:v1',
+        payload,
+        updated_at: new Date().toISOString(),
+      });
+  } catch (e) {
+    console.error('Jobs cache write error:', e);
+  }
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -467,6 +501,32 @@ serve(async (req) => {
     const page = parseInt(url.searchParams.get('page') || body.page || '1', 10);
     const limit = parseInt(url.searchParams.get('limit') || body.limit || '20', 10);
     const skipPagination = url.searchParams.get('all') === 'true' || body.all === true;
+    const forceRefresh = url.searchParams.get('refresh') === 'true';
+
+    // STALE-WHILE-REVALIDATE: Return cached data immediately if available
+    const cached = await getJobsCache();
+    const isFresh = cached.payload && cached.ageMs !== null && cached.ageMs < JOBS_CACHE_TTL_MS;
+    
+    if (cached.payload && !forceRefresh) {
+      // If cache is fresh, just return it
+      if (isFresh) {
+        return new Response(
+          JSON.stringify({ ...cached.payload, cached: true, stale: false }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      
+      // If cache is stale but exists, return it with stale flag
+      return new Response(
+        JSON.stringify({ 
+          ...cached.payload, 
+          cached: true, 
+          stale: true,
+          ageMs: cached.ageMs 
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
     // Fetch jobs from Notion - only active ones (Publié status)
     const jobsData = await fetchNotionDatabase(POSTES_DATABASE_ID, {
@@ -596,18 +656,25 @@ serve(async (req) => {
       ? transformedJobs 
       : transformedJobs.slice(startIndex, startIndex + limit);
 
+    const responsePayload = { 
+      success: true, 
+      jobs: paginatedJobs,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages,
+        hasMore: page < totalPages,
+      }
+    };
+
+    // Cache the response (full jobs list for maximum cache efficiency)
+    if (skipPagination || page === 1) {
+      await setJobsCache({ success: true, jobs: transformedJobs, pagination: { total, totalPages: 1 } });
+    }
+
     return new Response(
-      JSON.stringify({ 
-        success: true, 
-        jobs: paginatedJobs,
-        pagination: {
-          page,
-          limit,
-          total,
-          totalPages,
-          hasMore: page < totalPages,
-        }
-      }),
+      JSON.stringify(responsePayload),
       { 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         status: 200 
