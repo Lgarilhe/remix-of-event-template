@@ -69,8 +69,8 @@ const EMOJI_GROUPS = [
 // Quick insert snippets for professional messages
 const QUICK_INSERTS = [
   { label: 'Saut de paragraphe', insert: '\n\n', icon: WrapText },
-  { label: 'Tiret liste', insert: '\n- ', icon: ArrowRight },
-  { label: 'Numéro liste', insert: '\n1. ', icon: ArrowRight },
+  { label: 'Liste à puces', insert: '<ul>\n  <li></li>\n</ul>', icon: ArrowRight },
+  { label: 'Liste numérotée', insert: '<ol>\n  <li></li>\n</ol>', icon: ArrowRight },
 ];
 
 export const InMailTextEditor: React.FC<InMailTextEditorProps> = ({
@@ -134,7 +134,7 @@ export const InMailTextEditor: React.FC<InMailTextEditorProps> = ({
     }, 0);
   }, [value, onChange]);
 
-  // Wrap selected text with characters (for emphasis simulation)
+  // Wrap selected text with HTML tags
   const wrapSelection = useCallback((prefix: string, suffix: string) => {
     const textarea = textareaRef.current;
     if (!textarea) return;
@@ -151,7 +151,41 @@ export const InMailTextEditor: React.FC<InMailTextEditorProps> = ({
         textarea.focus();
         textarea.setSelectionRange(start + prefix.length, end + prefix.length);
       }, 0);
+    } else {
+      // If no selection, insert tags and place cursor between them
+      const newValue = value.substring(0, start) + prefix + suffix + value.substring(end);
+      onChange(newValue);
+      
+      setTimeout(() => {
+        textarea.focus();
+        textarea.setSelectionRange(start + prefix.length, start + prefix.length);
+      }, 0);
     }
+  }, [value, onChange]);
+
+  // Insert a link tag
+  const insertLink = useCallback(() => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const selectedText = value.substring(start, end);
+    
+    const url = prompt('Entrez l\'URL du lien:', 'https://');
+    if (!url) return;
+
+    const linkText = selectedText || 'Cliquez ici';
+    const linkHtml = `<a href="${url}">${linkText}</a>`;
+    const newValue = value.substring(0, start) + linkHtml + value.substring(end);
+    
+    onChange(newValue);
+    
+    setTimeout(() => {
+      textarea.focus();
+      const newPosition = start + linkHtml.length;
+      textarea.setSelectionRange(newPosition, newPosition);
+    }, 0);
   }, [value, onChange]);
 
   const wordCount = value.split(/\s+/).filter(Boolean).length;
@@ -185,7 +219,7 @@ export const InMailTextEditor: React.FC<InMailTextEditorProps> = ({
 
           <div className="w-px h-6 bg-border mx-1" />
 
-          {/* Text emphasis (using Unicode) */}
+          {/* Text emphasis (using HTML tags for LinkedIn Recruiter) */}
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
@@ -193,13 +227,13 @@ export const InMailTextEditor: React.FC<InMailTextEditorProps> = ({
                 variant="ghost"
                 size="sm"
                 className="h-8 px-2 font-bold"
-                onClick={() => wrapSelection('*', '*')}
+                onClick={() => wrapSelection('<strong>', '</strong>')}
               >
-                *B*
+                B
               </Button>
             </TooltipTrigger>
             <TooltipContent side="bottom">
-              <p>Emphase avec astérisques (sélectionnez d'abord)</p>
+              <p>Gras (sélectionnez d'abord)</p>
             </TooltipContent>
           </Tooltip>
 
@@ -210,13 +244,13 @@ export const InMailTextEditor: React.FC<InMailTextEditorProps> = ({
                 variant="ghost"
                 size="sm"
                 className="h-8 px-2 italic"
-                onClick={() => wrapSelection('_', '_')}
+                onClick={() => wrapSelection('<em>', '</em>')}
               >
-                _I_
+                I
               </Button>
             </TooltipTrigger>
             <TooltipContent side="bottom">
-              <p>Emphase avec underscores (sélectionnez d'abord)</p>
+              <p>Italique (sélectionnez d'abord)</p>
             </TooltipContent>
           </Tooltip>
 
@@ -227,13 +261,13 @@ export const InMailTextEditor: React.FC<InMailTextEditorProps> = ({
                 variant="ghost"
                 size="sm"
                 className="h-8 px-2"
-                onClick={() => wrapSelection('«', '»')}
+                onClick={() => insertLink()}
               >
-                «»
+                🔗
               </Button>
             </TooltipTrigger>
             <TooltipContent side="bottom">
-              <p>Guillemets français (sélectionnez d'abord)</p>
+              <p>Insérer un lien (sélectionnez le texte d'abord)</p>
             </TooltipContent>
           </Tooltip>
 
@@ -289,12 +323,13 @@ export const InMailTextEditor: React.FC<InMailTextEditorProps> = ({
                   <Info className="h-4 w-4" />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent side="bottom" className="max-w-[250px]">
+              <TooltipContent side="bottom" className="max-w-[280px]">
                 <p className="text-xs">
-                  LinkedIn InMail supporte uniquement le texte brut. 
-                  Utilisez les sauts de ligne pour structurer votre message, 
-                  les emojis pour ajouter de la personnalité, et les caractères 
-                  comme *astérisques* ou _underscores_ pour l'emphase visuelle.
+                  LinkedIn Recruiter supporte les balises HTML : 
+                  <code className="mx-1">&lt;strong&gt;</code> (gras), 
+                  <code className="mx-1">&lt;em&gt;</code> (italique), 
+                  <code className="mx-1">&lt;a href&gt;</code> (liens), 
+                  <code className="mx-1">&lt;ul&gt;</code>/<code>&lt;ol&gt;</code> (listes).
                 </p>
               </TooltipContent>
             </Tooltip>
