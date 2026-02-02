@@ -65,6 +65,15 @@ export function NurturingDashboard({ accounts, selectedAccount }: NurturingDashb
   const [sendingId, setSendingId] = useState<string | null>(null);
   const [analyzingId, setAnalyzingId] = useState<string | null>(null);
 
+  const getCandidateDisplayName = (opp: NurturingOpportunity) => {
+    const name = (opp.candidate_name || '').trim();
+    if (name) return name;
+    const id = (opp.candidate_id || '').trim();
+    if (!id) return 'Profil LinkedIn';
+    if (id.length <= 14) return `Profil ${id}`;
+    return `Profil ${id.slice(0, 6)}…${id.slice(-4)}`;
+  };
+
   const handleLaunchAnalysis = async () => {
     const accountId = selectedAccount || accounts[0]?.id;
     if (!accountId) {
@@ -300,7 +309,7 @@ export function NurturingDashboard({ accounts, selectedAccount }: NurturingDashb
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
                             <h4 className="font-medium truncate">
-                              {opp.candidate_name || 'Candidat inconnu'}
+                              {getCandidateDisplayName(opp)}
                             </h4>
                             {opp.candidate_profile_url && (
                               <a 
@@ -315,7 +324,7 @@ export function NurturingDashboard({ accounts, selectedAccount }: NurturingDashb
                           </div>
                           
                           <p className="text-sm text-muted-foreground truncate">
-                            {opp.candidate_headline || 'Pas de titre'}
+                            {opp.candidate_headline || opp.job_title || 'Titre indisponible'}
                           </p>
                           
                           <div className="flex items-center gap-2 mt-2 flex-wrap">
