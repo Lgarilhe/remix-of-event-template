@@ -897,7 +897,7 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
             Fermer
           </Button>
           
-          {activeTab === 'compose' && allGenerated && (
+          {activeTab === 'compose' && hasGeneratedMessages && (
             <Button 
               onClick={handleQueueAll} 
               disabled={isQueueing || readyCount === 0}
