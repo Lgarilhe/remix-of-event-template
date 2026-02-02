@@ -31,7 +31,7 @@ interface UseNurturingOpportunitiesReturn {
   isLoading: boolean;
   error: string | null;
   refetch: () => void;
-  analyzeConversations: (accountId: string, conversations: unknown[], jobs: unknown[]) => Promise<void>;
+  analyzeConversations: (accountId: string, conversations: unknown[], jobs: unknown[]) => Promise<{ analyzed: number; opportunities: number }>;
   updateStatus: (id: string, status: NurturingOpportunity['status']) => Promise<void>;
   generateMessage: (id: string) => Promise<{ message: string; subject: string } | null>;
   stats: {
@@ -98,7 +98,10 @@ export function useNurturingOpportunities(): UseNurturingOpportunitiesReturn {
       if (response.error) throw response.error;
       if (!response.data?.success) throw new Error(response.data?.error || 'Analysis failed');
 
-      return response.data;
+      return {
+        analyzed: Number(response.data.analyzed || 0),
+        opportunities: Number(response.data.opportunities || 0),
+      };
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['nurturing-opportunities'] });
@@ -172,7 +175,7 @@ export function useNurturingOpportunities(): UseNurturingOpportunitiesReturn {
     conversations: unknown[],
     jobs: unknown[]
   ) => {
-    await analyzeMutation.mutateAsync({ accountId, conversations, jobs });
+    return await analyzeMutation.mutateAsync({ accountId, conversations, jobs });
   }, [analyzeMutation]);
 
   const updateStatus = useCallback(async (id: string, status: NurturingOpportunity['status']) => {

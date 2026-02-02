@@ -73,8 +73,8 @@ export function NurturingDashboard({ accounts, selectedAccount }: NurturingDashb
 
     setAnalyzingId(accountId);
     try {
-      await analyzeConversations(accountId, [], []);
-      toast.success('Analyse terminée !');
+      const result = await analyzeConversations(accountId, [], []);
+      toast.success(`Analyse terminée : ${result.analyzed} conv • ${result.opportunities} opportunités`);
       refetch();
     } catch (error) {
       toast.error('Erreur lors de l\'analyse');
