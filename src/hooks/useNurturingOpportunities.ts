@@ -32,6 +32,7 @@ interface UseNurturingOpportunitiesReturn {
   error: string | null;
   refetch: () => void;
   analyzeConversations: (accountId: string, conversations: unknown[], jobs: unknown[]) => Promise<{ analyzed: number; opportunities: number }>;
+  backfillNames: (accountId: string, limit?: number) => Promise<number>;
   updateStatus: (id: string, status: NurturingOpportunity['status']) => Promise<void>;
   generateMessage: (id: string) => Promise<{ message: string; subject: string } | null>;
   stats: {
@@ -117,6 +118,34 @@ export function useNurturingOpportunities(): UseNurturingOpportunitiesReturn {
     },
   });
 
+  // Backfill missing candidate names/headlines without re-running full analysis
+  const backfillNamesMutation = useMutation({
+    mutationFn: async ({ accountId, limit }: { accountId: string; limit?: number }) => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+
+      const response = await supabase.functions.invoke('nurturing-analyzer', {
+        body: {
+          action: 'backfill_names',
+          account_id: accountId,
+          user_id: user.id,
+          limit,
+        },
+      });
+
+      if (response.error) throw response.error;
+      if (!response.data?.success) throw new Error(response.data?.error || 'Backfill failed');
+
+      return Number(response.data.updated || 0);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ['nurturing-opportunities'],
+        refetchType: 'active',
+      });
+    },
+  });
+
   // Update status mutation
   const updateStatusMutation = useMutation({
     mutationFn: async ({ id, status }: { id: string; status: NurturingOpportunity['status'] }) => {
@@ -193,6 +222,10 @@ export function useNurturingOpportunities(): UseNurturingOpportunitiesReturn {
     return await analyzeMutation.mutateAsync({ accountId, conversations, jobs });
   }, [analyzeMutation]);
 
+  const backfillNames = useCallback(async (accountId: string, limit?: number) => {
+    return await backfillNamesMutation.mutateAsync({ accountId, limit });
+  }, [backfillNamesMutation]);
+
   const updateStatus = useCallback(async (id: string, status: NurturingOpportunity['status']) => {
     await updateStatusMutation.mutateAsync({ id, status });
   }, [updateStatusMutation]);
@@ -212,6 +245,7 @@ export function useNurturingOpportunities(): UseNurturingOpportunitiesReturn {
     error,
     refetch,
     analyzeConversations,
+    backfillNames,
     updateStatus,
     generateMessage,
     stats,
