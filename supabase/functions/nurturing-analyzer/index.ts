@@ -280,6 +280,77 @@ serve(async (req) => {
       );
     }
 
+    // Action: Backfill missing candidate names/headlines/urls for existing opportunities
+    // This is intentionally lightweight vs full re-analysis.
+    if (action === 'backfill_names') {
+      if (!UNIPILE_API_KEY || !UNIPILE_DSN) {
+        throw new Error('API keys not configured');
+      }
+
+      if (!account_id || !user_id) {
+        throw new Error('account_id and user_id are required');
+      }
+
+      const limit = typeof body.limit === 'number' ? Math.max(1, Math.min(200, body.limit)) : 50;
+
+      const { data: rows, error: fetchError } = await supabase
+        .from('nurturing_opportunities')
+        .select('id,candidate_id,candidate_name,candidate_headline,candidate_profile_url')
+        .eq('created_by', user_id)
+        .eq('status', 'pending')
+        .eq('linkedin_account_id', account_id)
+        .is('candidate_name', null)
+        .limit(limit);
+
+      if (fetchError) throw fetchError;
+
+      const toUpdate = (rows || []).filter((r) => r.candidate_id);
+      if (toUpdate.length === 0) {
+        return new Response(
+          JSON.stringify({ success: true, updated: 0 }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+        );
+      }
+
+      console.log(`[nurturing-analyzer] Backfilling names for ${toUpdate.length} opportunities`);
+
+      const BATCH_SIZE = 10;
+      let updated = 0;
+      for (let i = 0; i < toUpdate.length; i += BATCH_SIZE) {
+        const batch = toUpdate.slice(i, i + BATCH_SIZE);
+        const results = await Promise.all(
+          batch.map(async (r) => {
+            const details = await fetchProfileDetails(r.candidate_id, UNIPILE_DSN, UNIPILE_API_KEY);
+            if (!details.name && !details.headline && !details.profileUrl) return false;
+
+            const patch: Record<string, unknown> = {};
+            if (details.name) patch.candidate_name = details.name;
+            if (details.headline) patch.candidate_headline = details.headline;
+            if (details.profileUrl) patch.candidate_profile_url = details.profileUrl;
+
+            const { error: updateError } = await supabase
+              .from('nurturing_opportunities')
+              .update(patch)
+              .eq('id', r.id);
+
+            if (updateError) {
+              console.error('[nurturing-analyzer] Backfill update error:', updateError);
+              return false;
+            }
+
+            return true;
+          })
+        );
+
+        updated += results.filter(Boolean).length;
+      }
+
+      return new Response(
+        JSON.stringify({ success: true, updated }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      );
+    }
+
     // Action: Update opportunity status
     if (action === 'update_status') {
       const { opportunity_id, status } = body;
@@ -362,7 +433,10 @@ async function fetchProfileDetails(
   apiKey: string
 ): Promise<{ name: string | null; headline: string | null; profileUrl: string | null }> {
   try {
-    const url = `https://${dsn}/api/v1/users/${encodeURIComponent(profileId)}`;
+    // NOTE: In Unipile, attendee_provider_id (ACoAA..., AEMAAA...) can be resolved via /chat_attendees/{id}
+    // (same approach used in our unipile-search enrichment code). Using /users/{id} returns 400 for these IDs.
+    const baseUrl = `https://${dsn}/api/v1`;
+    const url = `${baseUrl}/chat_attendees/${encodeURIComponent(profileId)}`;
     const response = await fetch(url, {
       method: 'GET',
       headers: { 'X-API-KEY': apiKey, 'Accept': 'application/json' },

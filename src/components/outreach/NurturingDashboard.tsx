@@ -14,6 +14,7 @@ import {
   Sparkles, 
   AlertCircle,
   CheckCircle,
+  User,
   Zap,
   TrendingUp,
   Send,
@@ -58,6 +59,7 @@ export function NurturingDashboard({ accounts, selectedAccount }: NurturingDashb
     updateStatus, 
     generateMessage,
     analyzeConversations,
+    backfillNames,
     stats 
   } = useNurturingOpportunities();
 
@@ -67,6 +69,7 @@ export function NurturingDashboard({ accounts, selectedAccount }: NurturingDashb
   const [analyzingId, setAnalyzingId] = useState<string | null>(null);
   const [sendingIds, setSendingIds] = useState<Set<string>>(new Set());
   const [regeneratingId, setRegeneratingId] = useState<string | null>(null);
+  const [backfilling, setBackfilling] = useState(false);
 
   // Initialize editing messages from opportunities
   const getMessageForOpp = (opp: NurturingOpportunity) => {
@@ -94,6 +97,26 @@ export function NurturingDashboard({ accounts, selectedAccount }: NurturingDashb
       console.error('Analysis error:', error);
     } finally {
       setAnalyzingId(null);
+    }
+  };
+
+  const handleBackfillNames = async () => {
+    const accountId = selectedAccount || accounts[0]?.id;
+    if (!accountId) {
+      toast.error('Sélectionnez un compte LinkedIn');
+      return;
+    }
+
+    setBackfilling(true);
+    try {
+      const updated = await backfillNames(accountId, 100);
+      toast.success(updated > 0 ? `${updated} nom(s) mis à jour` : 'Aucun nom à mettre à jour');
+      refetch();
+    } catch (err) {
+      console.error('Backfill names error:', err);
+      toast.error('Erreur lors du rafraîchissement des noms');
+    } finally {
+      setBackfilling(false);
     }
   };
 
@@ -214,6 +237,7 @@ export function NurturingDashboard({ accounts, selectedAccount }: NurturingDashb
 
   // Count opportunities with pre-generated messages
   const withMessages = useMemo(() => opportunities.filter(o => o.suggested_message).length, [opportunities]);
+  const missingNames = useMemo(() => opportunities.filter(o => !o.candidate_name).length, [opportunities]);
 
   if (accounts.length === 0) {
     return (
@@ -265,6 +289,20 @@ export function NurturingDashboard({ accounts, selectedAccount }: NurturingDashb
               <Zap className="w-4 h-4 mr-2" />
             )}
             {analyzingId ? 'Analyse...' : 'Analyser'}
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleBackfillNames}
+            disabled={backfilling || missingNames === 0}
+            title={missingNames > 0 ? `Rafraîchir ${missingNames} nom(s)` : 'Tous les noms sont déjà présents'}
+          >
+            {backfilling ? (
+              <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+            ) : (
+              <User className="w-4 h-4 mr-2" />
+            )}
+            Noms{missingNames > 0 ? ` (${missingNames})` : ''}
           </Button>
           <Button 
             variant="ghost" 
