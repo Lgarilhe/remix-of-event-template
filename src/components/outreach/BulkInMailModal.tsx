@@ -10,7 +10,7 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
+import { InMailTextEditor } from './InMailTextEditor';
 import { Label } from '@/components/ui/label';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
@@ -746,18 +746,8 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
                   </div>
 
                   <div className="flex-1">
-                    <Label htmlFor="message">Message</Label>
-                    <Textarea
-                      id="message"
-                      value={editingMessage}
-                      onChange={(e) => setEditingMessage(e.target.value)}
-                      placeholder="Le message d'approche..."
-                      className="min-h-[200px] mt-1"
-                    />
-                    <div className="flex justify-between items-center mt-1">
-                      <p className="text-xs text-muted-foreground">
-                        {editingMessage.split(/\s+/).filter(Boolean).length} mots
-                      </p>
+                    <div className="flex items-center justify-between mb-1">
+                      <Label htmlFor="message">Message</Label>
                       {currentMessage && (
                         editingSubject !== currentMessage.subject || 
                         editingMessage !== currentMessage.message
@@ -766,13 +756,21 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
                           size="sm"
                           variant="ghost"
                           onClick={handleSaveEdit}
-                          className="text-green-600 hover:text-green-700"
+                          className="text-green-600 hover:text-green-700 h-7"
                         >
                           <Check className="w-4 h-4 mr-1" />
                           Sauvegarder
                         </Button>
                       )}
                     </div>
+                    <InMailTextEditor
+                      id="message"
+                      value={editingMessage}
+                      onChange={setEditingMessage}
+                      placeholder="Le message d'approche..."
+                      minHeight="180px"
+                      maxCharacters={1900}
+                    />
                   </div>
 
                   {/* Personalization points */}

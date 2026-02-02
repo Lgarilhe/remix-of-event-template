@@ -9,7 +9,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Textarea } from '@/components/ui/textarea';
+import { InMailTextEditor } from './InMailTextEditor';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { 
@@ -220,15 +220,13 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
                 <label className="text-sm font-medium text-[#1A1A1A] mb-1 block">
                   Message
                 </label>
-                <Textarea
+                <InMailTextEditor
                   value={message}
-                  onChange={(e) => setMessage(e.target.value)}
+                  onChange={setMessage}
                   placeholder="Le message d'approche..."
-                  className="min-h-[200px] text-sm leading-relaxed"
+                  minHeight="180px"
+                  maxCharacters={1900}
                 />
-                <p className="text-xs text-[#1A1A1A]/50 mt-1">
-                  {message.split(/\s+/).filter(Boolean).length} mots
-                </p>
               </div>
 
               {/* Personalization points */}
