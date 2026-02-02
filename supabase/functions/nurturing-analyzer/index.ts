@@ -191,6 +191,22 @@ serve(async (req) => {
         }
       }
 
+      // AUTO-GENERATE messages for all opportunities (parallel, in batches of 5)
+      console.log(`[nurturing-analyzer] Auto-generating messages for ${opportunities.length} opportunities`);
+      const BATCH_SIZE = 5;
+      for (let i = 0; i < opportunities.length; i += BATCH_SIZE) {
+        const batch = opportunities.slice(i, i + BATCH_SIZE);
+        await Promise.all(batch.map(async (opp) => {
+          try {
+            const generated = await generateNurturingMessage(opp as unknown as Record<string, unknown>, LOVABLE_API_KEY);
+            opp.suggested_message = generated.message;
+            opp.suggested_subject = generated.subject;
+          } catch (err) {
+            console.error(`[nurturing-analyzer] Failed to generate message for ${opp.candidate_id}:`, err);
+          }
+        }));
+      }
+
       console.log(`[nurturing-analyzer] Found ${opportunities.length} opportunities`);
 
       // Insert opportunities into database
