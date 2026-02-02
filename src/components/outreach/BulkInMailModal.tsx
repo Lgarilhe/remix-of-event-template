@@ -133,8 +133,9 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
   const currentRecipient = recipients[currentRecipientIndex];
   const currentMessage = currentRecipient ? generatedMessages[currentRecipient.id] : null;
   
-  // Count how many messages are ready
-  const readyCount = Object.keys(generatedMessages).length;
+  // Count how many messages are ready - only count messages for CURRENT recipients
+  const currentRecipientIds = new Set(recipients.map(r => r.id));
+  const readyCount = Object.keys(generatedMessages).filter(id => currentRecipientIds.has(id)).length;
   const hasGeneratedMessages = readyCount > 0 && !isGenerating;
   const allGenerated = readyCount === recipients.length;
 
@@ -171,6 +172,12 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
       console.error('Error fetching queue status:', err);
     }
   };
+
+  // Reset state when recipients change (new selection)
+  useEffect(() => {
+    setGeneratedMessages({});
+    setCurrentRecipientIndex(0);
+  }, [recipients.map(r => r.id).join(',')]);
 
   useEffect(() => {
     if (isOpen) {
