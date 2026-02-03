@@ -29,7 +29,13 @@ export function WebhookManager() {
       if (response.error) throw response.error;
       if (!response.data?.success) throw new Error(response.data?.error);
 
-      setWebhooks(response.data.webhooks?.items || response.data.webhooks || []);
+      // Normalize source names (Unipile API uses 'account_status' but we display 'accounts')
+      const webhooksRaw = response.data.webhooks?.items || response.data.webhooks || [];
+      const normalizedWebhooks = webhooksRaw.map((w: WebhookInfo) => ({
+        ...w,
+        source: w.source === 'account_status' ? 'accounts' : w.source,
+      }));
+      setWebhooks(normalizedWebhooks);
     } catch (error) {
       console.error('Error fetching webhooks:', error);
       toast.error('Erreur lors de la récupération des webhooks');
