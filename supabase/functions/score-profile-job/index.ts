@@ -157,91 +157,59 @@ serve(async (req) => {
 
           const criteriaSection = buildCriteriaSection();
 
-          const prompt = `Évalue la compatibilité entre ce profil et cette offre d'emploi, Y COMPRIS l'adéquation salaire/expérience.
+          const prompt = `Évalue ce profil vs ce poste. Sois FACTUEL et PRÉCIS.
 
 PROFIL:
 - Nom: ${p.name}
-- Titre: ${p.headline || 'Non spécifié'}
-- Poste actuel: ${p.currentRole || 'Non spécifié'} chez ${p.currentCompany || 'Non spécifié'}
-- Localisation: ${p.location || 'Non spécifié'}
-- Années d'expérience estimées: ${p.yearsOfExperience ? `${p.yearsOfExperience} ans` : 'À déterminer selon parcours'}
-- Compétences: ${p.skills?.join(', ') || 'Non spécifiées'}
-- Expériences: ${p.pastPositions?.join('; ') || 'Non spécifiées'}
-- Formation: ${p.education?.join('; ') || 'Non spécifiée'}
+- Titre: ${p.headline || 'N/A'}
+- Poste: ${p.currentRole || 'N/A'} @ ${p.currentCompany || 'N/A'}
+- Loc: ${p.location || 'N/A'}
+- XP: ${p.yearsOfExperience ? `~${p.yearsOfExperience} ans` : 'À estimer'}
+- Skills: ${p.skills?.slice(0, 12).join(', ') || 'N/A'}
+- Parcours: ${p.pastPositions?.slice(0, 3).join('; ') || 'N/A'}
+- Formation: ${p.education?.slice(0, 2).join('; ') || 'N/A'}
 
-OFFRE D'EMPLOI:
-- Poste: ${job.title}
-- Client: ${job.client?.name || 'Non spécifié'} (${job.client?.sector || ''})
-- Compétences requises: ${job.skills?.join(', ') || 'Non spécifiées'}
-- Séniorité: ${job.seniority || 'Non spécifié'}
-- Localisation: ${job.location || 'Non spécifié'}
-- Télétravail: ${job.remote || 'Non spécifié'}
-- Expérience requise: ${job.xpMin || '?'}-${job.xpMax || '?'} ans
+POSTE:
+- Titre: ${job.title} @ ${job.client?.name || 'Confidentiel'} (${job.client?.sector || 'Tech'})
+- Skills requis: ${job.skills?.join(', ') || 'N/A'}
+- Séniorité: ${job.seniority || 'N/A'} | XP: ${job.xpMin || '?'}-${job.xpMax || '?'} ans
+- Loc: ${job.location || 'N/A'} | Remote: ${job.remote || 'N/A'}
 ${salaryInfo}
 
-CRITÈRES D'ÉVALUATION:
+CRITÈRES:
 ${criteriaSection}
 
-ANALYSE PRÉ-CALCULÉE:
-- Skills matchés: ${matchingSkills.join(', ') || 'Aucun'}
-- Skills manquants: ${missingSkills.join(', ') || 'Aucun'}
+PRÉ-ANALYSE:
+- Match skills: ${matchingSkills.join(', ') || 'Aucun'}
+- Missing: ${missingSkills.join(', ') || 'Aucun'}
 
-${hasSalaryInfo ? `
-ANALYSE SALAIRE DEMANDÉE:
-Compare le salaire proposé avec ce que ce profil pourrait légitimement attendre sur le marché français (en fonction de son expérience, ses compétences, son poste actuel, et ses entreprises précédentes).
-` : `
-ESTIMATION SALAIRE DEMANDÉE:
-La rémunération n'est pas spécifiée sur le poste. Estime une fourchette de salaire marché pour ce type de poste (${job.title}, ${job.seniority || 'non précisé'}, ${job.location || 'France'}).
-`}
+SCORING:
+- MUST-HAVE non respecté → score MAX 40, recommendation="skip"
+- SHOULD-HAVE: ±20 points
+- NICE-TO-HAVE: ±10 points
+- Score 70+ avec MUST OK → "go"
+- Score 50-69 ou SHOULD incomplets → "maybe"
 
-Réponds UNIQUEMENT en JSON valide:
+${hasSalaryInfo ? `Compare salaire proposé vs attentes marché du profil.` : `Estime fourchette marché pour ce poste.`}
+
+JSON UNIQUEMENT:
 {
-  "match_score": 75,
-  "matching_skills": ["skill1", "skill2"],
-  "missing_skills": ["skill3"],
-  "experience_match": "compatible" | "trop_junior" | "trop_senior" | "incertain",
-  "location_match": true | false,
-  "summary": "Une phrase de synthèse (max 20 mots)",
-  "recommendation": "go" | "maybe" | "skip",
-  
+  "match_score": 0-100,
+  "matching_skills": ["max 6"],
+  "missing_skills": ["max 4, MUST-HAVE prioritaires"],
+  "experience_match": "compatible|trop_junior|trop_senior|incertain",
+  "location_match": true|false,
+  "summary": "Max 20 mots",
+  "recommendation": "go|maybe|skip",
   "salary_analysis": {
-    "status": "adequate" | "too_low" | "too_high" | "unknown",
-    "confidence": "high" | "medium" | "low",
-    "estimated_market_salary": {
-      "min": 55,
-      "max": 70,
-      "currency": "k€/an"
-    },
-    "job_salary": {
-      "min": ${job.salaryMin || 'null'},
-      "max": ${job.salaryMax || 'null'},
-      "currency": "k€/an"
-    },
+    "status": "adequate|too_low|too_high|unknown",
+    "confidence": "high|medium|low",
+    "estimated_market_salary": {"min": 55, "max": 70, "currency": "k€/an"},
+    "job_salary": {"min": ${job.salaryMin || 'null'}, "max": ${job.salaryMax || 'null'}, "currency": "k€/an"},
     "gap_percentage": 0,
-    "explanation": "Courte explication (max 25 mots)"
+    "explanation": "Max 25 mots"
   }
-}
-
-Règles de scoring:
-- match_score: 0-100, PONDÉRÉ selon les critères:
-  * Critères MUST-HAVE (éliminatoires): Si non respectés → score max 40
-  * Critères SHOULD-HAVE: Impact de ±20 points
-  * Critères NICE-TO-HAVE: Impact de ±10 points bonus
-  * Critères transverses: Même logique que les critères poste
-- matching_skills: liste des compétences du profil qui correspondent au poste (max 6)
-- missing_skills: compétences clés manquantes par rapport aux MUST-HAVE (max 4)
-- recommendation: 
-  * "go": tous les MUST respectés + majorité des SHOULD
-  * "maybe": MUST partiellement respectés OU SHOULD insuffisants
-  * "skip": MUST non respectés
-- salary_analysis.status: 
-  * "adequate": salaire proposé cohérent avec le profil (±15%)
-  * "too_low": salaire trop bas pour ce niveau d'expérience/compétences (candidat surqualifié)
-  * "too_high": salaire trop élevé pour ce niveau (candidat potentiellement junior)
-  * "unknown": pas assez d'infos pour juger
-- salary_analysis.confidence: confiance dans l'évaluation (high/medium/low)
-- salary_analysis.gap_percentage: écart en % (positif = sous-payé, négatif = sur-payé)
-- Sois objectif et factuel, base-toi sur les données du marché français tech/digital`;
+}`;
 
           const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
             method: "POST",

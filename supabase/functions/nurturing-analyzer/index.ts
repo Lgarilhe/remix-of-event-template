@@ -145,7 +145,8 @@ serve(async (req) => {
 
     const UNIPILE_API_KEY = Deno.env.get("UNIPILE_API_KEY");
     const UNIPILE_DSN = Deno.env.get("UNIPILE_DSN");
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+    const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
+    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY"); // Keep for intent analysis (lightweight)
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 
@@ -157,8 +158,8 @@ serve(async (req) => {
 
     // Action: Analyze conversations for nurturing opportunities
     if (action === 'analyze') {
-      if (!UNIPILE_API_KEY || !UNIPILE_DSN || !LOVABLE_API_KEY) {
-        throw new Error("API keys not configured");
+      if (!UNIPILE_API_KEY || !UNIPILE_DSN || !ANTHROPIC_API_KEY) {
+        throw new Error("API keys not configured (UNIPILE + ANTHROPIC required)");
       }
 
       if (!account_id || !user_id) {
@@ -177,14 +178,14 @@ serve(async (req) => {
 
       const opportunities: NurturingOpportunity[] = [];
 
-      // Analyze conversations
+      // Analyze conversations (uses lightweight Gemini for intent detection)
       for (const conv of conversationsToAnalyze) {
         const opportunity = await analyzeConversation(
           conv,
           jobs || [],
           account_id,
           user_id,
-          LOVABLE_API_KEY
+          LOVABLE_API_KEY || '' // Intent analysis uses Gemini (lightweight), fallback to empty triggers neutral
         );
         if (opportunity) {
           opportunities.push(opportunity);
@@ -198,7 +199,7 @@ serve(async (req) => {
         const batch = opportunities.slice(i, i + BATCH_SIZE);
         await Promise.all(batch.map(async (opp) => {
           try {
-            const generated = await generateNurturingMessage(opp as unknown as Record<string, unknown>, LOVABLE_API_KEY);
+            const generated = await generateNurturingMessage(opp as unknown as Record<string, unknown>, ANTHROPIC_API_KEY);
             opp.suggested_message = generated.message;
             opp.suggested_subject = generated.subject;
           } catch (err) {
@@ -384,8 +385,8 @@ serve(async (req) => {
     if (action === 'generate_message') {
       const { opportunity_id } = body;
       
-      if (!opportunity_id || !LOVABLE_API_KEY) {
-        throw new Error("opportunity_id and API key are required");
+      if (!opportunity_id || !ANTHROPIC_API_KEY) {
+        throw new Error("opportunity_id and ANTHROPIC_API_KEY are required");
       }
 
       const { data: opportunity, error } = await supabase
@@ -398,7 +399,7 @@ serve(async (req) => {
         throw new Error("Opportunity not found");
       }
 
-      const message = await generateNurturingMessage(opportunity, LOVABLE_API_KEY);
+      const message = await generateNurturingMessage(opportunity, ANTHROPIC_API_KEY);
 
       // Update opportunity with generated message
       await supabase
@@ -777,45 +778,64 @@ async function generateNurturingMessage(
     followup: "un message de relance",
   };
 
-  const prompt = `Tu es un recruteur tech expert. Rédige un message LinkedIn de nurturing.
+  const prompt = `Tu es un recruteur tech senior. Rédige un message LinkedIn de nurturing ULTRA personnalisé.
 
 CONTEXTE:
 - Candidat: ${opportunity.candidate_name || 'Non spécifié'}
 - Profil: ${opportunity.candidate_headline || 'Non spécifié'}
 - Jours depuis dernier contact: ${opportunity.days_since_contact}
-- Raison: ${triggerMessages[opportunity.trigger_type as string] || 'Suivi'}
+- Raison du contact: ${triggerMessages[opportunity.trigger_type as string] || 'Suivi'}
 - Objectif: ${actionMessages[opportunity.suggested_action as string] || 'Message de suivi'}
 ${opportunity.job_title ? `- Poste concerné: ${opportunity.job_title}` : ''}
-${opportunity.detected_intent ? `- Intent détecté: ${opportunity.detected_intent}` : ''}
+${opportunity.detected_intent ? `- Intent détecté dans sa dernière réponse: ${opportunity.detected_intent}` : ''}
 
-RÈGLES:
-- Max 100 mots
-- Ton professionnel mais chaleureux
-- Personnalisé au profil
-- Appel à l'action clair
-- PAS de phrases génériques IA
+RÈGLES ABSOLUES:
+1. MAX 80 mots - LinkedIn = court et percutant
+2. PERSONNALISE avec le headline du candidat (mentionne sa spécialité, son secteur)
+3. Si c'est une relance après silence → rappelle brièvement le contexte sans être lourd
+4. Si c'est un nouveau job match → accroche sur le FIT avec son profil
+5. Si intent "interested" → propose un call cette semaine
+6. Si intent "needs_info" → donne l'info demandée + relance
+7. CTA CLAIR à la fin (question ou proposition)
 
-Réponds en JSON:
+INTERDITS:
+- "J'espère que tu vas bien" (générique)
+- "Je me permets de te recontacter" (lourd)
+- Superlatifs (exceptionnel, incroyable)
+- Phrases IA reconnaissables
+
+EXEMPLE BON (relance silence, dev backend):
+"Salut Thomas,
+
+On avait échangé sur le poste Lead Backend chez Alan. Toujours en veille de ton côté ?
+
+Ils ont avancé sur l'équipe et cherchent maintenant quelqu'un pour structurer leur stack event-driven - pile dans ton scope vu ton XP Kafka.
+
+Dispo 15 min cette semaine ?
+
+Marc"
+
+Réponds UNIQUEMENT en JSON:
 {
-  "subject": "Objet du message (max 60 car)",
-  "message": "Corps du message"
+  "subject": "Objet du message (max 50 car, accrocheur)",
+  "message": "Corps du message (max 80 mots)"
 }`;
 
   try {
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    const response = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${apiKey}`,
+        "x-api-key": apiKey,
+        "anthropic-version": "2023-06-01",
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
+        model: "claude-sonnet-4-20250514",
+        max_tokens: 300,
+        system: "Tu es un recruteur tech senior. Tu écris des messages LinkedIn courts, directs, humains. JAMAIS de superlatifs, JAMAIS de tournures IA. Tu réponds TOUJOURS en JSON valide.",
         messages: [
-          { role: "system", content: "Tu es un recruteur tech. Réponds en JSON uniquement." },
           { role: "user", content: prompt }
         ],
-        max_tokens: 300,
-        temperature: 0.7,
       }),
     });
 
@@ -824,17 +844,17 @@ Réponds en JSON:
     }
 
     const data = await response.json();
-    let content = data.choices?.[0]?.message?.content || "";
+    let content = data.content?.[0]?.text || "";
     content = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
     
     const parsed = JSON.parse(content);
     return {
-      message: parsed.message || "Je voulais prendre de vos nouvelles. Avez-vous un moment pour échanger ?",
+      message: parsed.message || "Je voulais prendre de tes nouvelles. Dispo pour un call cette semaine ?",
       subject: parsed.subject || "Suite à notre échange",
     };
   } catch {
     return {
-      message: "Je voulais prendre de vos nouvelles. Avez-vous un moment pour échanger ?",
+      message: "Je voulais prendre de tes nouvelles. Dispo pour un call cette semaine ?",
       subject: "Suite à notre échange",
     };
   }
