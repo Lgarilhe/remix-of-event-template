@@ -21,11 +21,12 @@ export const LINKEDIN_LIMITS = {
     recruiter: 1000,
     sales_navigator: 500,
   },
-  // Search results fetched per day
+  // Search results fetched per day (Unipile recommendations to avoid detection)
+  // Note: Recruiter full has unlimited searches, but Unipile recommends 2500/day max
   SEARCH_RESULTS: {
-    classic: 3000,
-    recruiter: 3000,
-    sales_navigator: 3000,
+    classic: 1000,
+    recruiter: 2500,
+    sales_navigator: 2500,
   },
   // Connection requests (invitations) per day
   INVITATIONS: {
