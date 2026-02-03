@@ -23,6 +23,12 @@ interface VisualSequenceEditorProps {
   onStepsChange: (steps: SequenceStep[]) => void;
 }
 
+// Pending branch info when adding a step to a specific branch
+interface PendingBranch {
+  parentStepId: string;
+  branch: 'true' | 'false';
+}
+
 // ACTIONS = ce qu'on FAIT
 const ACTIONS = [
   { value: 'connection_request', label: 'Invitation LinkedIn', icon: UserPlus, color: 'bg-emerald-100 text-emerald-600', description: 'Envoyer une demande de connexion' },
@@ -48,7 +54,7 @@ const createEmptyStep = (order: number, actionType: string): SequenceStep => ({
   order,
   actionType: actionType as SequenceStep['actionType'],
   conditionType: 'always',
-  delayDays: order === 0 ? 0 : 2,
+  delayDays: order === 0 ? 0 : 0,
   delayHours: 0,
   delayMinutes: 0,
   preferredHourStart: 9,
@@ -65,22 +71,70 @@ export const VisualSequenceEditor: React.FC<VisualSequenceEditorProps> = ({
 }) => {
   const [selectedStepId, setSelectedStepId] = useState<string | null>(steps[0]?.id || null);
   const [showStepPicker, setShowStepPicker] = useState(false);
+  const [pendingBranch, setPendingBranch] = useState<PendingBranch | null>(null);
 
   const selectedStep = steps.find(s => s.id === selectedStepId);
   const selectedStepIndex = steps.findIndex(s => s.id === selectedStepId);
 
   const handleAddStep = (actionType: string) => {
     const newStep = createEmptyStep(steps.length, actionType);
-    onStepsChange([...steps, newStep]);
+    
+    if (pendingBranch) {
+      // We're adding a step to a specific branch
+      const { parentStepId, branch } = pendingBranch;
+      
+      // Add the new step to the list
+      const updatedSteps = [...steps, newStep];
+      
+      // Update the parent step to point to this new step
+      const updatedStepsWithBranch = updatedSteps.map(s => {
+        if (s.id === parentStepId) {
+          if (branch === 'true') {
+            return { ...s, ifTrueGotoStep: newStep.id };
+          } else {
+            return { ...s, ifFalseGotoStep: newStep.id };
+          }
+        }
+        return s;
+      });
+      
+      onStepsChange(updatedStepsWithBranch);
+      setPendingBranch(null);
+    } else {
+      // Normal add at the end
+      onStepsChange([...steps, newStep]);
+    }
+    
     setSelectedStepId(newStep.id);
     setShowStepPicker(false);
   };
 
+  const handleOpenStepPicker = (branchTarget?: { parentStepId: string; branch: 'true' | 'false' }) => {
+    if (branchTarget) {
+      setPendingBranch(branchTarget);
+    } else {
+      setPendingBranch(null);
+    }
+    setShowStepPicker(true);
+  };
+
   const handleRemoveStep = (stepId: string) => {
     if (steps.length <= 1) return;
+    
+    // Also clean up any references to this step in branch targets
     const newSteps = steps
       .filter(s => s.id !== stepId)
-      .map((s, idx) => ({ ...s, order: idx }));
+      .map((s, idx) => {
+        const updates: Partial<SequenceStep> = { order: idx };
+        if (s.ifTrueGotoStep === stepId) {
+          updates.ifTrueGotoStep = undefined;
+        }
+        if (s.ifFalseGotoStep === stepId) {
+          updates.ifFalseGotoStep = undefined;
+        }
+        return { ...s, ...updates };
+      });
+    
     onStepsChange(newSteps);
     if (selectedStepId === stepId) {
       setSelectedStepId(newSteps[0]?.id || null);
@@ -93,6 +147,35 @@ export const VisualSequenceEditor: React.FC<VisualSequenceEditorProps> = ({
       steps.map(s => s.id === selectedStepId ? { ...s, ...updates } : s)
     );
   };
+
+  const handleCancelStepPicker = () => {
+    setShowStepPicker(false);
+    setPendingBranch(null);
+  };
+
+  // Filter actions/triggers based on pending branch context
+  const getFilteredActions = () => {
+    if (pendingBranch?.branch === 'true') {
+      // Connected branch - show message-related actions
+      return ACTIONS.filter(a => ['message', 'smart_message', 'profile_visit'].includes(a.value));
+    }
+    if (pendingBranch?.branch === 'false') {
+      // Not connected branch - show connection actions
+      return ACTIONS.filter(a => ['connection_request', 'inmail', 'profile_visit'].includes(a.value));
+    }
+    return ACTIONS;
+  };
+
+  const getFilteredTriggers = () => {
+    if (pendingBranch) {
+      // In branch context, limit triggers
+      return TRIGGERS.filter(t => ['wait_connection', 'wait_reply'].includes(t.value));
+    }
+    return TRIGGERS;
+  };
+
+  const filteredActions = getFilteredActions();
+  const filteredTriggers = getFilteredTriggers();
 
   return (
     <div className="flex h-[450px] border rounded-lg overflow-hidden bg-white">
@@ -109,8 +192,9 @@ export const VisualSequenceEditor: React.FC<VisualSequenceEditorProps> = ({
             onStepClick={(stepId) => {
               setSelectedStepId(stepId);
               setShowStepPicker(false);
+              setPendingBranch(null);
             }}
-            onAddStep={() => setShowStepPicker(true)}
+            onAddStep={handleOpenStepPicker}
             onRemoveStep={handleRemoveStep}
             selectedStepId={selectedStepId}
           />
@@ -121,10 +205,14 @@ export const VisualSequenceEditor: React.FC<VisualSequenceEditorProps> = ({
       <div className="w-[280px] flex flex-col">
         <div className="p-2 border-b bg-white flex items-center justify-between">
           <span className="text-xs font-semibold text-muted-foreground uppercase">
-            {showStepPicker ? 'Nouvelle étape' : 'Configuration'}
+            {showStepPicker 
+              ? pendingBranch 
+                ? `Étape ${pendingBranch.branch === 'true' ? '(1er degré)' : '(2e/3e degré)'}`
+                : 'Nouvelle étape' 
+              : 'Configuration'}
           </span>
           {showStepPicker && (
-            <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={() => setShowStepPicker(false)}>
+            <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={handleCancelStepPicker}>
               <X className="w-4 h-4" />
             </Button>
           )}
@@ -133,6 +221,21 @@ export const VisualSequenceEditor: React.FC<VisualSequenceEditorProps> = ({
         <ScrollArea className="flex-1 p-3">
           {showStepPicker ? (
             <div className="space-y-4">
+              {/* Branch context indicator */}
+              {pendingBranch && (
+                <div className={cn(
+                  "p-2 rounded-lg text-xs font-medium flex items-center gap-2",
+                  pendingBranch.branch === 'true' 
+                    ? "bg-emerald-50 text-emerald-700 border border-emerald-200" 
+                    : "bg-orange-50 text-orange-700 border border-orange-200"
+                )}>
+                  <GitBranch className="w-4 h-4" />
+                  {pendingBranch.branch === 'true' 
+                    ? "Branche: Connecté (1er degré)" 
+                    : "Branche: Non connecté (2e/3e)"}
+                </div>
+              )}
+              
               {/* Actions */}
               <div>
                 <div className="flex items-center gap-2 mb-2">
@@ -140,7 +243,7 @@ export const VisualSequenceEditor: React.FC<VisualSequenceEditorProps> = ({
                   <span className="text-xs font-semibold uppercase text-muted-foreground">Actions</span>
                 </div>
                 <div className="space-y-2">
-                  {ACTIONS.map(action => (
+                  {filteredActions.map(action => (
                     <button
                       key={action.value}
                       onClick={() => handleAddStep(action.value)}
@@ -165,7 +268,7 @@ export const VisualSequenceEditor: React.FC<VisualSequenceEditorProps> = ({
                   <span className="text-xs font-semibold uppercase text-muted-foreground">Triggers</span>
                 </div>
                 <div className="space-y-2">
-                  {TRIGGERS.map(trigger => (
+                  {filteredTriggers.map(trigger => (
                     <button
                       key={trigger.value}
                       onClick={() => handleAddStep(trigger.value)}

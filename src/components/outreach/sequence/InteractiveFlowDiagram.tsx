@@ -17,10 +17,12 @@ import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { SequenceStep } from '../SequenceBuilder';
 
+export type BranchTarget = 'true' | 'false' | null;
+
 interface InteractiveFlowDiagramProps {
   steps: SequenceStep[];
   onStepClick: (stepId: string) => void;
-  onAddStep: () => void;
+  onAddStep: (branchTarget?: { parentStepId: string; branch: 'true' | 'false' }) => void;
   onRemoveStep: (stepId: string) => void;
   selectedStepId: string | null;
 }
@@ -57,7 +59,7 @@ const STEP_LABELS: Record<string, string> = {
   profile_visit: 'Visite profil',
   message: 'Message',
   smart_message: 'Smart Msg',
-  wait_connection: 'Attendre connexion',
+  wait_connection: 'Attendre',
   wait_reply: 'Attendre réponse',
   wait_profile_visit: 'Attendre visite',
   condition_branch: 'Branchement',
@@ -71,9 +73,45 @@ const StepNode: React.FC<{
   onRemove: () => void;
   isSelected: boolean;
   canRemove: boolean;
-}> = ({ step, index, onClick, onRemove, isSelected, canRemove }) => {
+  compact?: boolean;
+}> = ({ step, index, onClick, onRemove, isSelected, canRemove, compact = false }) => {
   const Icon = STEP_ICONS[step.actionType] || Mail;
   const colorClass = STEP_COLORS[step.actionType] || 'bg-gray-100 text-gray-600 border-gray-300';
+  
+  if (compact) {
+    return (
+      <div 
+        className={cn(
+          "relative group cursor-pointer transition-all",
+          isSelected && "scale-105"
+        )}
+        onClick={onClick}
+      >
+        <div
+          className={cn(
+            "flex items-center gap-2 px-3 py-2 rounded-lg border-2 transition-all",
+            colorClass,
+            isSelected && "ring-2 ring-primary ring-offset-1 shadow-md"
+          )}
+        >
+          <Icon className="w-4 h-4" />
+          <span className="text-xs font-medium">{STEP_LABELS[step.actionType]}</span>
+        </div>
+        
+        {canRemove && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onRemove();
+            }}
+            className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-md hover:bg-red-600"
+          >
+            <Trash2 className="w-2.5 h-2.5" />
+          </button>
+        )}
+      </div>
+    );
+  }
   
   return (
     <div 
@@ -108,7 +146,6 @@ const StepNode: React.FC<{
         </div>
       </div>
       
-      {/* Remove button */}
       {canRemove && (
         <button
           onClick={(e) => {
@@ -132,79 +169,86 @@ const Arrow: React.FC<{ className?: string }> = ({ className }) => (
 
 const BranchSplit: React.FC<{
   step: SequenceStep;
+  stepIndex: number;
   allSteps: SequenceStep[];
   onStepClick: (stepId: string) => void;
+  onAddBranchStep: (branch: 'true' | 'false') => void;
+  onRemoveStep: (stepId: string) => void;
   selectedStepId: string | null;
-}> = ({ step, allSteps, onStepClick, selectedStepId }) => {
+}> = ({ step, stepIndex, allSteps, onStepClick, onAddBranchStep, onRemoveStep, selectedStepId }) => {
   const trueStep = allSteps.find(s => s.id === step.ifTrueGotoStep);
   const falseStep = allSteps.find(s => s.id === step.ifFalseGotoStep);
   
+  // Find the index of true/false steps
+  const trueStepIndex = trueStep ? allSteps.findIndex(s => s.id === trueStep.id) : -1;
+  const falseStepIndex = falseStep ? allSteps.findIndex(s => s.id === falseStep.id) : -1;
+  
   return (
-    <div className="flex flex-col items-center w-full mt-2">
+    <div className="flex flex-col items-center w-full mt-3">
       {/* Branch lines */}
       <div className="flex items-center justify-center w-full gap-1">
-        <div className="flex-1 h-px bg-emerald-300 max-w-[100px]" />
-        <div className="w-2 h-2 rounded-full bg-muted-foreground" />
-        <div className="flex-1 h-px bg-orange-300 max-w-[100px]" />
+        <div className="flex-1 h-px bg-emerald-400 max-w-[80px]" />
+        <div className="w-3 h-3 rounded-full bg-indigo-500 border-2 border-white shadow" />
+        <div className="flex-1 h-px bg-orange-400 max-w-[80px]" />
       </div>
       
       {/* Two branches */}
-      <div className="flex justify-center gap-6 w-full mt-3">
-        {/* Left branch (if connected) */}
-        <div className="flex flex-col items-center">
-          <div className="flex items-center gap-1 text-xs font-medium px-2 py-1 rounded-full bg-emerald-100 text-emerald-700 mb-2">
+      <div className="flex justify-center gap-4 w-full mt-2">
+        {/* Left branch (if connected - 1er degré) */}
+        <div className="flex flex-col items-center min-w-[120px]">
+          <div className="flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-full bg-emerald-100 text-emerald-700 mb-2 shadow-sm">
             <Check className="w-3 h-3" />
             1er degré
           </div>
-          <div className="w-px h-4 bg-emerald-300" />
+          <div className="w-px h-3 bg-emerald-400" />
+          
           {trueStep ? (
-            <div 
+            <StepNode
+              step={trueStep}
+              index={trueStepIndex}
               onClick={() => onStepClick(trueStep.id)}
-              className={cn(
-                "flex items-center gap-2 px-3 py-2 rounded-lg border-2 cursor-pointer transition-all",
-                STEP_COLORS[trueStep.actionType],
-                selectedStepId === trueStep.id && "ring-2 ring-primary ring-offset-1"
-              )}
-            >
-              {(() => {
-                const Icon = STEP_ICONS[trueStep.actionType];
-                return <Icon className="w-4 h-4" />;
-              })()}
-              <span className="text-xs font-medium">{STEP_LABELS[trueStep.actionType]}</span>
-            </div>
+              onRemove={() => onRemoveStep(trueStep.id)}
+              isSelected={selectedStepId === trueStep.id}
+              canRemove={allSteps.length > 1}
+              compact
+            />
           ) : (
-            <div className="px-3 py-2 rounded-lg border-2 border-dashed border-emerald-300 text-xs text-emerald-600">
-              Étape suivante
-            </div>
+            <button
+              onClick={() => onAddBranchStep('true')}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-lg border-2 border-dashed border-emerald-300 text-emerald-600 hover:bg-emerald-50 hover:border-emerald-400 transition-colors"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span className="text-xs font-medium">Ajouter</span>
+            </button>
           )}
         </div>
         
-        {/* Right branch (if not connected) */}
-        <div className="flex flex-col items-center">
-          <div className="flex items-center gap-1 text-xs font-medium px-2 py-1 rounded-full bg-orange-100 text-orange-700 mb-2">
+        {/* Right branch (if not connected - 2e/3e degré) */}
+        <div className="flex flex-col items-center min-w-[120px]">
+          <div className="flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-full bg-orange-100 text-orange-700 mb-2 shadow-sm">
             <X className="w-3 h-3" />
             2e/3e degré
           </div>
-          <div className="w-px h-4 bg-orange-300" />
+          <div className="w-px h-3 bg-orange-400" />
+          
           {falseStep ? (
-            <div 
+            <StepNode
+              step={falseStep}
+              index={falseStepIndex}
               onClick={() => onStepClick(falseStep.id)}
-              className={cn(
-                "flex items-center gap-2 px-3 py-2 rounded-lg border-2 cursor-pointer transition-all",
-                STEP_COLORS[falseStep.actionType],
-                selectedStepId === falseStep.id && "ring-2 ring-primary ring-offset-1"
-              )}
-            >
-              {(() => {
-                const Icon = STEP_ICONS[falseStep.actionType];
-                return <Icon className="w-4 h-4" />;
-              })()}
-              <span className="text-xs font-medium">{STEP_LABELS[falseStep.actionType]}</span>
-            </div>
+              onRemove={() => onRemoveStep(falseStep.id)}
+              isSelected={selectedStepId === falseStep.id}
+              canRemove={allSteps.length > 1}
+              compact
+            />
           ) : (
-            <div className="px-3 py-2 rounded-lg border-2 border-dashed border-orange-300 text-xs text-orange-600">
-              Étape suivante
-            </div>
+            <button
+              onClick={() => onAddBranchStep('false')}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-lg border-2 border-dashed border-orange-300 text-orange-600 hover:bg-orange-50 hover:border-orange-400 transition-colors"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span className="text-xs font-medium">Ajouter</span>
+            </button>
           )}
         </div>
       </div>
@@ -230,8 +274,12 @@ export const InteractiveFlowDiagram: React.FC<InteractiveFlowDiagramProps> = ({
       if (renderedStepIds.has(step.id)) continue;
       
       // Add arrow before step (except first)
-      if (i > 0 && !renderedStepIds.has(steps[i-1]?.id)) {
-        elements.push(<Arrow key={`arrow-${step.id}`} />);
+      if (i > 0) {
+        const prevStep = steps[i-1];
+        // Don't add arrow if previous step was a branch (check_connection)
+        if (prevStep && prevStep.actionType !== 'check_connection') {
+          elements.push(<Arrow key={`arrow-${step.id}`} />);
+        }
       }
       
       // Render step node
@@ -253,8 +301,11 @@ export const InteractiveFlowDiagram: React.FC<InteractiveFlowDiagramProps> = ({
           <BranchSplit
             key={`branch-${step.id}`}
             step={step}
+            stepIndex={i}
             allSteps={steps}
             onStepClick={onStepClick}
+            onAddBranchStep={(branch) => onAddStep({ parentStepId: step.id, branch })}
+            onRemoveStep={onRemoveStep}
             selectedStepId={selectedStepId}
           />
         );
@@ -268,6 +319,11 @@ export const InteractiveFlowDiagram: React.FC<InteractiveFlowDiagramProps> = ({
     return elements;
   };
 
+  // Check if the last step is a check_connection with branches defined
+  const lastStep = steps[steps.length - 1];
+  const lastStepIsBranch = lastStep?.actionType === 'check_connection';
+  const branchesAreFilled = lastStepIsBranch && (lastStep.ifTrueGotoStep || lastStep.ifFalseGotoStep);
+
   return (
     <div className="flex flex-col items-center py-4 px-2">
       {steps.length === 0 ? (
@@ -278,7 +334,7 @@ export const InteractiveFlowDiagram: React.FC<InteractiveFlowDiagramProps> = ({
           <p className="text-sm text-muted-foreground mb-4">
             Aucune étape dans la séquence
           </p>
-          <Button onClick={onAddStep} size="sm">
+          <Button onClick={() => onAddStep()} size="sm">
             <Plus className="w-4 h-4 mr-2" />
             Ajouter une étape
           </Button>
@@ -287,17 +343,21 @@ export const InteractiveFlowDiagram: React.FC<InteractiveFlowDiagramProps> = ({
         <>
           {renderFlow()}
           
-          {/* Add step button */}
-          <Arrow />
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={onAddStep}
-            className="border-dashed border-2 hover:border-primary hover:bg-primary/5"
-          >
-            <Plus className="w-4 h-4 mr-2" />
-            Ajouter une étape
-          </Button>
+          {/* Add step button - only show if last step is not a branch or branches are not complete */}
+          {(!lastStepIsBranch || !branchesAreFilled) && !lastStepIsBranch && (
+            <>
+              <Arrow />
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => onAddStep()}
+                className="border-dashed border-2 hover:border-primary hover:bg-primary/5"
+              >
+                <Plus className="w-4 h-4 mr-2" />
+                Ajouter une étape
+              </Button>
+            </>
+          )}
         </>
       )}
     </div>
