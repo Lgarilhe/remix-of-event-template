@@ -32,7 +32,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { CreateProjectModal } from './CreateProjectModal';
-import { ProjectDetailPanel } from './ProjectDetailPanel';
+import { ProjectDetailPanelEnhanced } from './ProjectDetailPanelEnhanced';
 
 interface ProjectsListProps {
   onResumeSearch: (project: SourcingProject) => void;
@@ -293,7 +293,7 @@ export const ProjectsList: React.FC<ProjectsListProps> = ({ onResumeSearch }) =>
       />
 
       {selectedProject && (
-        <ProjectDetailPanel
+        <ProjectDetailPanelEnhanced
           project={selectedProject}
           open={!!selectedProject}
           onOpenChange={(open) => !open && setSelectedProject(null)}
