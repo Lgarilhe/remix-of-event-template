@@ -464,189 +464,152 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-3xl max-h-[90vh] overflow-hidden flex flex-col">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Mail className="w-5 h-5 text-[#0077B5]" />
-            InMails personnalisés
-          </DialogTitle>
-          <DialogDescription>
-            Génération IA de messages personnalisés pour chaque candidat
-          </DialogDescription>
-        </DialogHeader>
+      <DialogContent className="max-w-2xl max-h-[85vh] overflow-hidden flex flex-col p-0">
+        {/* Clean header */}
+        <div className="px-6 py-4 border-b bg-white shrink-0">
+          <DialogHeader className="space-y-1">
+            <DialogTitle className="flex items-center gap-2 text-lg">
+              <div className="w-8 h-8 rounded-lg bg-[#0077B5] flex items-center justify-center">
+                <Mail className="w-4 h-4 text-white" />
+              </div>
+              InMails personnalisés
+            </DialogTitle>
+            <DialogDescription className="text-sm">
+              Génération IA de messages pour {recipients.length} candidat{recipients.length > 1 ? 's' : ''}
+            </DialogDescription>
+          </DialogHeader>
+        </div>
 
         <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'compose' | 'queue')} className="flex-1 overflow-hidden flex flex-col">
-          <TabsList className="w-full bg-muted/50">
-            <TabsTrigger value="compose" className="flex-1 gap-2">
-              <PenLine className="w-4 h-4" />
-              Composer ({readyCount}/{recipients.length})
-            </TabsTrigger>
-            <TabsTrigger value="queue" className="flex-1 gap-2">
-              <Clock className="w-4 h-4" />
-              File d'attente {totalInQueue > 0 && `(${totalInQueue})`}
-            </TabsTrigger>
-          </TabsList>
+          <div className="px-6 pt-4 shrink-0">
+            <TabsList className="w-full bg-gray-100/80 p-1 h-10">
+              <TabsTrigger value="compose" className="flex-1 gap-2 text-sm data-[state=active]:bg-white data-[state=active]:shadow-sm">
+                <PenLine className="w-3.5 h-3.5" />
+                Composer ({readyCount}/{recipients.length})
+              </TabsTrigger>
+              <TabsTrigger value="queue" className="flex-1 gap-2 text-sm data-[state=active]:bg-white data-[state=active]:shadow-sm">
+                <Clock className="w-3.5 h-3.5" />
+                File d'attente {totalInQueue > 0 && `(${totalInQueue})`}
+              </TabsTrigger>
+            </TabsList>
+          </div>
 
           {/* Compose Tab */}
-          <TabsContent value="compose" className="flex-1 overflow-hidden flex flex-col gap-4 mt-4">
+          <TabsContent value="compose" className="flex-1 overflow-y-auto px-6 pb-6 mt-0">
             {!selectedJob ? (
               // No job selected
-              <div className="flex-1 flex items-center justify-center">
-                <div className="text-center p-8">
-                  <Sparkles className="w-12 h-12 text-muted-foreground/30 mx-auto mb-4" />
-                  <h3 className="font-semibold text-lg mb-2">Sélectionnez un poste</h3>
-                  <p className="text-muted-foreground text-sm">
-                    Pour générer des messages personnalisés, sélectionnez d'abord un poste dans le sélecteur de jobs.
+              <div className="flex-1 flex items-center justify-center py-12">
+                <div className="text-center">
+                  <Sparkles className="w-10 h-10 text-gray-300 mx-auto mb-3" />
+                  <h3 className="font-medium text-gray-900 mb-1">Sélectionnez un poste</h3>
+                  <p className="text-sm text-gray-500 max-w-xs">
+                    Pour générer des messages personnalisés, sélectionnez d'abord un poste.
                   </p>
                 </div>
               </div>
             ) : !hasGeneratedMessages ? (
-              // Generation setup
-              <div className="space-y-4">
-                {/* Job context */}
-                <div className="flex flex-wrap gap-2 p-3 bg-purple-50 rounded-lg">
-                  <Badge variant="outline" className="bg-white text-purple-700 border-purple-200">
-                    {selectedJob.title}
-                  </Badge>
-                  {selectedJob.client?.name && (
-                    <Badge variant="outline" className="bg-white text-blue-700 border-blue-200">
-                      {selectedJob.client.name}
-                    </Badge>
-                  )}
-                </div>
-
-                {/* Recipients info */}
-                <div className="flex items-center gap-2 p-3 bg-[#0077B5]/10 rounded-lg">
-                  <Users className="w-5 h-5 text-[#0077B5]" />
-                  <span className="text-sm font-medium">{recipients.length} candidat(s) sélectionné(s)</span>
-                </div>
-
-                {/* InMail Credits Display - Real API Data */}
-                <div className={cn(
-                  "p-3 rounded-lg border",
-                  !hasEnoughCredits 
-                    ? "bg-red-50 border-red-200" 
-                    : isNearLimit
-                    ? "bg-amber-50 border-amber-200"
-                    : "bg-green-50 border-green-200"
-                )}>
-                  <div className="flex items-center justify-between mb-2">
+              // Generation setup - clean design
+              <div className="space-y-5 pt-4">
+                {/* Context row: Job + Recipients + Credits - compact */}
+                <div className="flex items-center justify-between gap-4 pb-4 border-b border-gray-100">
+                  <div className="flex items-center gap-3 min-w-0">
                     <div className="flex items-center gap-2">
-                      <Mail className={cn(
-                        "w-4 h-4",
-                        !hasEnoughCredits ? "text-red-600" : isNearLimit ? "text-amber-600" : "text-green-600"
-                      )} />
-                      <span className="text-sm font-medium">Crédits InMail Recruiter</span>
-                      {isLoadingBalance && <Loader2 className="w-3 h-3 animate-spin text-muted-foreground" />}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className={cn(
-                        "text-sm font-bold",
-                        !hasEnoughCredits ? "text-red-600" : isNearLimit ? "text-amber-600" : "text-green-600"
-                      )}>
-                        {recruiterCredits} crédit{recruiterCredits !== 1 ? 's' : ''} disponible{recruiterCredits !== 1 ? 's' : ''}
-                      </span>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-6 w-6"
-                        onClick={() => refetchBalance()}
-                        disabled={isLoadingBalance}
-                      >
-                        <RefreshCw className={cn("h-3 w-3", isLoadingBalance && "animate-spin")} />
-                      </Button>
+                      <Badge variant="outline" className="text-xs font-medium truncate max-w-[180px]">
+                        {selectedJob.title}
+                      </Badge>
+                      {selectedJob.client?.name && (
+                        <Badge variant="secondary" className="text-xs">
+                          {selectedJob.client.name}
+                        </Badge>
+                      )}
                     </div>
                   </div>
                   
-                  {balanceError && (
-                    <p className="text-xs text-amber-600 mb-2">
-                      ⚠️ Impossible de récupérer le solde: {balanceError}
-                    </p>
-                  )}
-                  
-                  {balance && (
-                    <div className="flex gap-2 flex-wrap text-xs text-muted-foreground">
-                      {balance.premium !== null && (
-                        <Badge variant="outline" className="text-xs">Premium: {balance.premium}</Badge>
-                      )}
-                      {balance.recruiter !== null && (
-                        <Badge variant="outline" className="text-xs bg-purple-50">Recruiter: {balance.recruiter}</Badge>
-                      )}
-                      {balance.sales_navigator !== null && (
-                        <Badge variant="outline" className="text-xs">Sales Nav: {balance.sales_navigator}</Badge>
-                      )}
+                  {/* Credits indicator - compact */}
+                  <div className="flex items-center gap-2 shrink-0">
+                    <div className={cn(
+                      "flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium",
+                      !hasEnoughCredits 
+                        ? "bg-red-100 text-red-700" 
+                        : isNearLimit
+                        ? "bg-amber-100 text-amber-700"
+                        : "bg-emerald-100 text-emerald-700"
+                    )}>
+                      <Mail className="w-3 h-3" />
+                      {recruiterCredits} crédits
                     </div>
-                  )}
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7"
+                      onClick={() => refetchBalance()}
+                      disabled={isLoadingBalance}
+                    >
+                      <RefreshCw className={cn("h-3 w-3", isLoadingBalance && "animate-spin")} />
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Error message for credits if needed */}
+                {!hasEnoughCredits && (
+                  <div className="flex items-center gap-2 p-3 rounded-lg bg-red-50 text-red-700 text-sm">
+                    <AlertTriangle className="w-4 h-4 shrink-0" />
+                    <span>Crédits insuffisants ({recruiterCredits} restants, {creditsNeeded} requis)</span>
+                  </div>
+                )}
+
+                {/* Configuration section */}
+                <div className="grid grid-cols-2 gap-4">
+                  {/* Sender name */}
+                  <div>
+                    <Label htmlFor="senderName" className="text-xs font-medium text-gray-600 mb-1.5 block">
+                      Ton prénom (signature)
+                    </Label>
+                    <Input
+                      id="senderName"
+                      value={senderName}
+                      onChange={(e) => handleSenderNameChange(e.target.value)}
+                      placeholder="Ex: Marc"
+                      className="h-9"
+                    />
+                  </div>
                   
-                  {!hasEnoughCredits && (
-                    <Alert variant="destructive" className="mt-2 py-2">
-                      <AlertTriangle className="w-4 h-4" />
-                      <AlertDescription className="text-xs">
-                        Crédits insuffisants : vous avez besoin de {creditsNeeded} crédit{creditsNeeded !== 1 ? 's' : ''} mais il n'en reste que {recruiterCredits}.
-                      </AlertDescription>
-                    </Alert>
-                  )}
-                  {hasEnoughCredits && isNearLimit && (
-                    <p className="text-xs text-amber-700 mt-2">
-                      ⚠️ Crédits bientôt épuisés
-                    </p>
-                  )}
-                </div>
-
-                {/* Sender name */}
-                <div>
-                  <Label htmlFor="senderName">Ton prénom (pour la signature)</Label>
-                  <Input
-                    id="senderName"
-                    value={senderName}
-                    onChange={(e) => handleSenderNameChange(e.target.value)}
-                    placeholder="Ex: Marc"
-                    className="max-w-[200px] mt-1"
-                  />
-                </div>
-
-                {/* Tone selector */}
-                <div>
-                  <Label className="mb-2 block">Ton des messages</Label>
-                  <div className="flex gap-2">
-                    {[
-                      { value: 'professional', label: 'Professionnel', emoji: '👔' },
-                      { value: 'casual', label: 'Décontracté', emoji: '😊' },
-                      { value: 'enthusiastic', label: 'Enthousiaste', emoji: '🚀' },
-                    ].map((t) => (
-                      <Button
-                        key={t.value}
-                        variant={tone === t.value ? 'default' : 'outline'}
-                        size="sm"
-                        onClick={() => setTone(t.value as Tone)}
-                        className={tone === t.value ? 'bg-[#0077B5] hover:bg-[#005E93]' : ''}
-                      >
-                        {t.emoji} {t.label}
-                      </Button>
-                    ))}
+                  {/* Tone selector */}
+                  <div>
+                    <Label className="text-xs font-medium text-gray-600 mb-1.5 block">Ton</Label>
+                    <div className="flex gap-1.5">
+                      {[
+                        { value: 'professional', label: 'Pro', emoji: '👔' },
+                        { value: 'casual', label: 'Cool', emoji: '😊' },
+                        { value: 'enthusiastic', label: 'Wow', emoji: '🚀' },
+                      ].map((t) => (
+                        <Button
+                          key={t.value}
+                          variant={tone === t.value ? 'default' : 'outline'}
+                          size="sm"
+                          onClick={() => setTone(t.value as Tone)}
+                          className={cn(
+                            "flex-1 h-9 text-xs",
+                            tone === t.value ? 'bg-[#0077B5] hover:bg-[#005E93]' : ''
+                          )}
+                        >
+                          {t.emoji} {t.label}
+                        </Button>
+                      ))}
+                    </div>
                   </div>
                 </div>
 
-                {/* Business hours info */}
-                <div className="flex items-start gap-2 p-3 bg-amber-50 rounded-lg text-amber-800">
-                  <Info className="w-5 h-5 shrink-0 mt-0.5" />
-                  <div className="text-sm">
-                    <strong>Envoi intelligent :</strong> Les InMails seront envoyés entre 8h et 19h ({userTimezone}) 
-                    avec un délai de 2-5 minutes entre chaque envoi.
-                  </div>
-                </div>
-
-                {/* Generate button */}
+                {/* Generate button - clean */}
                 <Button
                   onClick={handleGenerateAll}
                   disabled={isGenerating || !hasEnoughCredits}
                   className={cn(
-                    "w-full",
+                    "w-full h-11",
                     !hasEnoughCredits 
-                      ? "bg-gray-400 cursor-not-allowed"
-                      : "bg-gradient-to-r from-purple-600 to-[#0077B5] hover:from-purple-700 hover:to-[#005E93]"
+                      ? "bg-gray-300 cursor-not-allowed"
+                      : "bg-[#0077B5] hover:bg-[#005E93]"
                   )}
-                  size="lg"
                 >
                   {isGenerating ? (
                     <>
@@ -654,27 +617,29 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
                       Génération {generatingIndex + 1}/{recipients.length}...
                     </>
                   ) : !hasEnoughCredits ? (
-                    <>
-                      <AlertTriangle className="w-4 h-4 mr-2" />
-                      Crédits insuffisants
-                    </>
+                    'Crédits insuffisants'
                   ) : (
                     <>
                       <Sparkles className="w-4 h-4 mr-2" />
-                      Générer {recipients.length} messages IA
+                      Générer {recipients.length} messages
                     </>
                   )}
                 </Button>
 
-                {/* Progress indicator */}
+                {/* Progress bar */}
                 {isGenerating && (
-                  <div className="w-full bg-gray-200 rounded-full h-2">
+                  <div className="w-full bg-gray-100 rounded-full h-1.5 overflow-hidden">
                     <div 
-                      className="bg-gradient-to-r from-purple-600 to-[#0077B5] h-2 rounded-full transition-all"
+                      className="bg-[#0077B5] h-full transition-all duration-300"
                       style={{ width: `${((generatingIndex + 1) / recipients.length) * 100}%` }}
                     />
                   </div>
                 )}
+
+                {/* Info text - subtle */}
+                <p className="text-xs text-gray-400 text-center">
+                  Envoi entre 8h-19h ({userTimezone.split('/')[1] || userTimezone}) • Délai 2-5 min entre chaque
+                </p>
               </div>
             ) : (
               // Message editing view
@@ -704,50 +669,51 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
                   </Button>
                 </div>
 
-                {/* Current recipient info */}
+                {/* Current recipient info - clean */}
                 {currentRecipient && (
-                  <div className="flex items-center justify-between p-3 bg-[#0077B5]/10 rounded-lg">
-                    <div>
-                      <div className="font-medium text-[#1A1A1A]">{currentRecipient.name}</div>
-                      <div className="text-sm text-muted-foreground truncate max-w-[400px]">
+                  <div className="flex items-center justify-between py-3 border-b border-gray-100">
+                    <div className="min-w-0 flex-1">
+                      <div className="font-medium text-gray-900 text-sm">{currentRecipient.name}</div>
+                      <div className="text-xs text-gray-500 truncate max-w-[350px]">
                         {currentRecipient.headline}
                       </div>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 shrink-0">
                       {currentMessage?.isEdited && (
-                        <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200">
-                          <Edit2 className="w-3 h-3 mr-1" />
-                          Modifié
-                        </Badge>
+                        <span className="text-xs text-amber-600 flex items-center gap-1">
+                          <Edit2 className="w-3 h-3" />
+                          modifié
+                        </span>
                       )}
                       <Button
                         variant="ghost"
                         size="sm"
                         onClick={handleRegenerateMessage}
                         disabled={isGenerating}
+                        className="h-8 w-8 p-0"
                       >
-                        <RefreshCw className={cn("w-4 h-4", isGenerating && "animate-spin")} />
+                        <RefreshCw className={cn("w-3.5 h-3.5", isGenerating && "animate-spin")} />
                       </Button>
                     </div>
                   </div>
                 )}
 
-                {/* Message editor */}
-                <div className="flex-1 overflow-auto space-y-4">
+                {/* Message editor - clean */}
+                <div className="flex-1 overflow-auto space-y-3 pt-3">
                   <div>
-                    <Label htmlFor="subject">Objet</Label>
+                    <Label htmlFor="subject" className="text-xs font-medium text-gray-600">Objet</Label>
                     <Input
                       id="subject"
                       value={editingSubject}
                       onChange={(e) => setEditingSubject(e.target.value)}
                       placeholder="Objet du message..."
-                      className="mt-1"
+                      className="mt-1 h-9"
                     />
                   </div>
 
                   <div className="flex-1">
                     <div className="flex items-center justify-between mb-1">
-                      <Label htmlFor="message">Message</Label>
+                      <Label htmlFor="message" className="text-xs font-medium text-gray-600">Message</Label>
                       {currentMessage && (
                         editingSubject !== currentMessage.subject || 
                         editingMessage !== currentMessage.message
@@ -756,9 +722,9 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
                           size="sm"
                           variant="ghost"
                           onClick={handleSaveEdit}
-                          className="text-green-600 hover:text-green-700 h-7"
+                          className="text-emerald-600 hover:text-emerald-700 h-7 text-xs"
                         >
-                          <Check className="w-4 h-4 mr-1" />
+                          <Check className="w-3 h-3 mr-1" />
                           Sauvegarder
                         </Button>
                       )}
@@ -768,33 +734,32 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
                       value={editingMessage}
                       onChange={setEditingMessage}
                       placeholder="Le message d'approche..."
-                      minHeight="180px"
+                      minHeight="150px"
                       maxCharacters={1900}
                     />
                   </div>
 
-                  {/* Personalization points */}
+                  {/* Personalization points - subtle */}
                   {currentMessage?.personalizationPoints && currentMessage.personalizationPoints.length > 0 && (
-                    <div className="bg-amber-50 rounded-lg p-3 border border-amber-200">
-                      <div className="flex items-center gap-2 text-amber-700 font-medium text-sm mb-2">
-                        <Sparkles className="w-4 h-4" />
+                    <div className="text-xs text-gray-500 pt-2 border-t border-gray-100">
+                      <span className="font-medium text-gray-600 flex items-center gap-1 mb-1">
+                        <Sparkles className="w-3 h-3" />
                         Points de personnalisation
-                      </div>
-                      <ul className="space-y-1">
+                      </span>
+                      <div className="flex flex-wrap gap-1">
                         {currentMessage.personalizationPoints.map((point, i) => (
-                          <li key={i} className="text-xs text-amber-800 flex items-start gap-2">
-                            <span className="text-amber-500">•</span>
+                          <span key={i} className="bg-gray-100 px-2 py-0.5 rounded text-gray-600">
                             {point}
-                          </li>
+                          </span>
                         ))}
-                      </ul>
+                      </div>
                     </div>
                   )}
                 </div>
 
                 {/* Quick navigation dots */}
-                <div className="flex justify-center gap-1 py-2">
-                  {recipients.slice(0, 20).map((r, i) => (
+                <div className="flex justify-center gap-1 py-2 border-t border-gray-100">
+                  {recipients.slice(0, 15).map((r, i) => (
                     <button
                       key={r.id}
                       onClick={() => {
@@ -811,13 +776,13 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
                         i === currentRecipientIndex 
                           ? "bg-[#0077B5] scale-125" 
                           : generatedMessages[r.id] 
-                            ? "bg-green-400 hover:bg-green-500"
-                            : "bg-gray-300 hover:bg-gray-400"
+                            ? "bg-emerald-400"
+                            : "bg-gray-200"
                       )}
                     />
                   ))}
-                  {recipients.length > 20 && (
-                    <span className="text-xs text-muted-foreground ml-2">+{recipients.length - 20}</span>
+                  {recipients.length > 15 && (
+                    <span className="text-xs text-gray-400 ml-1">+{recipients.length - 15}</span>
                   )}
                 </div>
               </div>
@@ -825,31 +790,29 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
           </TabsContent>
 
           {/* Queue Tab */}
-          <TabsContent value="queue" className="flex-1 overflow-hidden flex flex-col gap-4 mt-4">
-            {/* Queue Stats */}
+          <TabsContent value="queue" className="flex-1 overflow-hidden flex flex-col px-6 pb-6 mt-0">
+            {/* Queue Stats - compact */}
             {queueStats && (
-              <div className="bg-muted/50 rounded-lg p-4">
-                <div className="grid grid-cols-5 gap-2 text-center">
-                  <div>
-                    <div className="text-lg font-bold text-blue-600">{queueStats.scheduled}</div>
-                    <div className="text-xs text-muted-foreground">Planifiés</div>
-                  </div>
-                  <div>
-                    <div className="text-lg font-bold text-amber-600">{queueStats.sending}</div>
-                    <div className="text-xs text-muted-foreground">En cours</div>
-                  </div>
-                  <div>
-                    <div className="text-lg font-bold text-green-600">{queueStats.sent}</div>
-                    <div className="text-xs text-muted-foreground">Envoyés</div>
-                  </div>
-                  <div>
-                    <div className="text-lg font-bold text-red-600">{queueStats.failed}</div>
-                    <div className="text-xs text-muted-foreground">Échoués</div>
-                  </div>
-                  <div>
-                    <div className="text-lg font-bold text-gray-600">{queueStats.cancelled}</div>
-                    <div className="text-xs text-muted-foreground">Annulés</div>
-                  </div>
+              <div className="grid grid-cols-5 gap-2 text-center py-3 border-b border-gray-100 mb-3">
+                <div>
+                  <div className="text-lg font-semibold text-blue-600">{queueStats.scheduled}</div>
+                  <div className="text-[10px] text-gray-500 uppercase">Planifiés</div>
+                </div>
+                <div>
+                  <div className="text-lg font-semibold text-amber-500">{queueStats.sending}</div>
+                  <div className="text-[10px] text-gray-500 uppercase">En cours</div>
+                </div>
+                <div>
+                  <div className="text-lg font-semibold text-emerald-600">{queueStats.sent}</div>
+                  <div className="text-[10px] text-gray-500 uppercase">Envoyés</div>
+                </div>
+                <div>
+                  <div className="text-lg font-semibold text-red-500">{queueStats.failed}</div>
+                  <div className="text-[10px] text-gray-500 uppercase">Échoués</div>
+                </div>
+                <div>
+                  <div className="text-lg font-semibold text-gray-400">{queueStats.cancelled}</div>
+                  <div className="text-[10px] text-gray-500 uppercase">Annulés</div>
                 </div>
               </div>
             )}
@@ -858,16 +821,16 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
             <ScrollArea className="flex-1">
               <div className="space-y-2">
                 {queueItems.length === 0 ? (
-                  <div className="text-center py-8 text-muted-foreground">
-                    <Clock className="w-8 h-8 mx-auto mb-2 opacity-30" />
-                    <p>Aucun InMail en file d'attente</p>
+                  <div className="text-center py-10 text-gray-400">
+                    <Clock className="w-8 h-8 mx-auto mb-2 opacity-40" />
+                    <p className="text-sm">Aucun InMail en file d'attente</p>
                   </div>
                 ) : (
                   queueItems.map(item => (
-                    <div key={item.id} className="flex items-center justify-between p-3 bg-white rounded-lg border">
+                    <div key={item.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                       <div className="flex-1 min-w-0">
-                        <div className="font-medium text-sm truncate">{item.recipient_name || 'Inconnu'}</div>
-                        <div className="text-xs text-muted-foreground truncate">{item.subject}</div>
+                        <div className="font-medium text-sm text-gray-900 truncate">{item.recipient_name || 'Inconnu'}</div>
+                        <div className="text-xs text-gray-500 truncate">{item.subject}</div>
                         {item.scheduled_at && ['pending', 'scheduled'].includes(item.status) && (
                           <div className="text-xs text-blue-600 flex items-center gap-1 mt-1">
                             <Calendar className="w-3 h-3" />
@@ -875,7 +838,7 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
                           </div>
                         )}
                         {item.error_message && (
-                          <div className="text-xs text-red-600 mt-1">{item.error_message}</div>
+                          <div className="text-xs text-red-500 mt-1">{item.error_message}</div>
                         )}
                       </div>
                       {getStatusBadge(item.status)}
@@ -887,9 +850,10 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
 
             {totalInQueue > 0 && (
               <Button 
-                variant="outline" 
+                variant="ghost" 
+                size="sm"
                 onClick={handleCancelPending}
-                className="text-red-600 border-red-200 hover:bg-red-50"
+                className="text-red-500 hover:text-red-600 hover:bg-red-50 mt-3"
               >
                 Annuler les envois en attente
               </Button>
@@ -897,8 +861,9 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
           </TabsContent>
         </Tabs>
 
-        <DialogFooter className="flex gap-2 pt-4 border-t">
-          <Button variant="outline" onClick={onClose}>
+        {/* Footer - clean */}
+        <div className="px-6 py-4 border-t bg-gray-50 flex justify-end gap-2 shrink-0">
+          <Button variant="ghost" onClick={onClose} className="text-gray-600">
             Fermer
           </Button>
           
@@ -916,12 +881,12 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
               ) : (
                 <>
                   <Send className="w-4 h-4 mr-2" />
-                  Planifier {readyCount} InMail(s)
+                  Planifier {readyCount} InMail{readyCount > 1 ? 's' : ''}
                 </>
               )}
             </Button>
           )}
-        </DialogFooter>
+        </div>
       </DialogContent>
     </Dialog>
   );
