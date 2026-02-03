@@ -131,9 +131,15 @@ PROFIL DU CANDIDAT:
 ${profile.yearsOfExperience ? `- Années d'expérience: ~${profile.yearsOfExperience} ans` : ''}
 ${profile.education?.length ? `- Formation: ${profile.education.slice(0, 2).join('; ')}` : ''}
 ${profile.summary ? `
-=== SECTION "À PROPOS" DU CANDIDAT (SOURCE CLÉ DE PERSONNALISATION) ===
-"${profile.summary.slice(0, 600)}"
-=== FIN À PROPOS ===` : ''}
+=== SECTION "À PROPOS" DU CANDIDAT (SOURCE CLÉ DE PERSONNALISATION ET DE STYLE) ===
+"${profile.summary.slice(0, 800)}"
+=== FIN À PROPOS ===
+
+IMPORTANT - ANALYSE LE STYLE D'ÉCRITURE DU CANDIDAT:
+- Observe comment il écrit: phrases courtes ou longues ? Formel ou décontracté ?
+- Utilise-t-il des émojis, de l'humour, des expressions familières ?
+- Son ton est-il corporate, startup, créatif, technique ?
+- ADAPTE TON MESSAGE À SON STYLE pour créer une résonance naturelle` : ''}
 
 POSTE À POURVOIR:
 - Titre: ${job.title}
@@ -163,26 +169,41 @@ ${statusInstructions[candidateStatus] || statusInstructions.other}
    SI tu trouves quelque chose dans le À propos, UTILISE-LE comme accroche.
    C'est ce qui fait la différence entre un message générique et un message qui convertit.
 
-2. EXEMPLES D'ACCROCHES PERSONNALISÉES (inspirés du À propos):
+2. ADAPTATION DU STYLE AU CANDIDAT:
+   - SI le candidat écrit de façon décontractée avec des émojis → sois plus casual
+   - SI le candidat est très corporate/formel → reste pro mais pas froid
+   - SI le candidat montre de l'humour → ose une touche légère
+   - SI le candidat est très technique/précis → sois concis et factuel
+   
+   Le but: que le candidat ait l'impression de lire un message d'un pair, pas d'un robot.
+
+3. EXEMPLES D'ACCROCHES PERSONNALISÉES (inspirés du À propos):
    - "Tu mentionnes ton amour du clean code dans ton profil - on cherche exactement ça chez [Client]"
    - "J'ai vu que tu avais contribué à [projet open source] - le CTO est très orienté communauté"
    - "Tu parles de ton passage de corporate à startup - c'est pile le mouvement inverse qu'on propose"
    - "Ton focus sur les archi event-driven colle parfaitement avec ce qu'on monte chez [Client]"
 
-3. TON: ${toneInstructions[tone]}
+4. TON: ${toneInstructions[tone]}
 
-4. NE POSE PAS DE QUESTION SI:
+5. NE POSE PAS DE QUESTION SI:
    - Le profil semble déjà matcher → propose un call directement
    - Tu n'as pas de vraie question de qualification → CTA direct
    - ÉVITE les questions sur l'anglais (sauf si vraiment critique et absent du profil)
 
-5. INTERDITS:
+6. INTERDITS:
    - "j'ai parcouru ton profil", "a retenu mon attention", "m'a tapé dans l'œil"
    - Superlatifs: exceptionnel, remarquable, impressionnant
    - Questions génériques: "ça t'intéresserait ?", "tu serais ouvert ?"
    - Forcer une question quand un CTA suffit
 
-6. FORMAT: 80-100 mots. Phrases courtes. Signature: "${senderName || '[Prénom]'}"
+7. FORMAT OBLIGATOIRE:
+   - 80-100 mots maximum
+   - Phrases courtes et percutantes
+   - SAUTS DE LIGNE entre chaque paragraphe/idée (2-3 paragraphes distincts)
+   - Structure type: Accroche perso (1-2 phrases) → Pitch poste (2-3 phrases) → CTA (1 phrase)
+   - Signature: "${senderName || '[Prénom]'}"
+   
+   IMPORTANT: Utilise des sauts de ligne (\\n\\n) pour aérer le message. Jamais de bloc de texte massif.
 
 === EXEMPLES ===
 
@@ -213,8 +234,8 @@ Marc"
 Réponds UNIQUEMENT en JSON valide:
 {
   "subject": "Objet court (max 50 car)",
-  "message": "Le message complet",
-  "personalization_points": ["Élément précis du profil utilisé"]
+  "message": "Le message complet avec des \\n\\n entre les paragraphes",
+  "personalization_points": ["Élément précis du profil utilisé", "Style détecté et comment tu t'y es adapté"]
 }`;
 
     const response = await fetch("https://api.anthropic.com/v1/messages", {
