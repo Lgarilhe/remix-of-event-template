@@ -338,22 +338,22 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
     (filters.open_to_work === true ? 1 : 0) + filters.open_to.length + 
     (filters.activity_messages ? 1 : 0) + (filters.activity_notes ? 1 : 0) + filters.tags.length;
 
-  // Preview of active filters for each section
+  // Preview of active filters for each section (with fallbacks for undefined arrays from project snapshots)
   const basicFiltersPreview: string[] = [
-    ...filters.location.map(f => f.name),
-    ...filters.school.map(f => f.name),
-    ...filters.profile_language.map(l => PROFILE_LANGUAGES.find(pl => pl.value === l)?.label || l),
-    ...filters.network_distance.map(d => NETWORK_DISTANCES.find(nd => nd.value === d)?.label || String(d)),
-    ...filters.groups.map(f => f.name),
+    ...(filters.location || []).map(f => f.name),
+    ...(filters.school || []).map(f => f.name),
+    ...(filters.profile_language || []).map(l => PROFILE_LANGUAGES.find(pl => pl.value === l)?.label || l),
+    ...(filters.network_distance || []).map(d => NETWORK_DISTANCES.find(nd => nd.value === d)?.label || String(d)),
+    ...(filters.groups || []).map(f => f.name),
   ];
   
   const positionFiltersPreview = [
-    ...filters.job_title.map(f => f.name),
-    ...filters.role.map(r => r.keywords),
-    ...filters.skills.map(f => f.name),
-    ...filters.seniority.map(s => SENIORITY_LEVELS.find(sl => sl.value === s)?.label || s),
-    ...filters.function.map(f => f.name),
-    ...filters.degree.map(d => d.name),
+    ...(filters.job_title || []).map(f => f.name),
+    ...(filters.role || []).map(r => r.keywords),
+    ...(filters.skills || []).map(f => f.name),
+    ...(filters.seniority || []).map(s => SENIORITY_LEVELS.find(sl => sl.value === s)?.label || s),
+    ...(filters.function || []).map(f => f.name),
+    ...(filters.degree || []).map(d => d.name),
   ];
   
   const experienceFiltersPreview = [
@@ -369,22 +369,22 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
   ];
   
   const companyFiltersPreview = [
-    ...filters.company.map(f => f.name),
-    ...filters.company_keywords.map(c => c.keywords),
-    ...filters.industry.map(f => f.name),
-    ...filters.company_headcount.map(h => COMPANY_HEADCOUNT_OPTIONS.find(ch => ch.value === h)?.label || h),
-    ...filters.company_type.map(t => COMPANY_TYPE_OPTIONS.find(ct => ct.value === t)?.label || t),
-    ...filters.company_location.map(f => f.name),
+    ...(filters.company || []).map(f => f.name),
+    ...(filters.company_keywords || []).map(c => c.keywords),
+    ...(filters.industry || []).map(f => f.name),
+    ...(filters.company_headcount || []).map(h => COMPANY_HEADCOUNT_OPTIONS.find(ch => ch.value === h)?.label || h),
+    ...(filters.company_type || []).map(t => COMPANY_TYPE_OPTIONS.find(ct => ct.value === t)?.label || t),
+    ...(filters.company_location || []).map(f => f.name),
   ];
   
   const pastFiltersPreview = [
-    ...filters.past_company.map(f => f.name),
-    ...filters.past_job_title.map(f => f.name),
+    ...(filters.past_company || []).map(f => f.name),
+    ...(filters.past_job_title || []).map(f => f.name),
   ];
   
   const recruiterFiltersPreview = [
     ...(filters.open_to_work === true ? ['Open to Work'] : []),
-    ...filters.open_to.map(o => {
+    ...(filters.open_to || []).map(o => {
       const classicOpt = OPEN_TO_OPTIONS_CLASSIC.find(oo => oo.value === o);
       const recruiterOpt = OPEN_TO_OPTIONS_RECRUITER.find(oo => oo.value === o);
       return classicOpt?.label || recruiterOpt?.label || o;
@@ -402,7 +402,7 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
         filters.activity_notes_days ? ` (${filters.activity_notes_days}j)` : ''
       }`
     ] : []),
-    ...filters.tags,
+    ...(filters.tags || []),
   ];
 
   // Check if there are any AI-generated filters to reset
