@@ -23,9 +23,9 @@ export const LINKEDIN_LIMITS = {
   },
   // Search results fetched per day
   SEARCH_RESULTS: {
-    classic: 1000,
-    recruiter: 2500,
-    sales_navigator: 2500,
+    classic: 3000,
+    recruiter: 3000,
+    sales_navigator: 3000,
   },
   // Connection requests (invitations) per day
   INVITATIONS: {
