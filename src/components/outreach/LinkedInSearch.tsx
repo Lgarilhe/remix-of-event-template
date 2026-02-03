@@ -1669,10 +1669,10 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
 
       {/* Results */}
       <div className="bg-white rounded-xl border border-[#1A1A1A]/10 flex flex-col h-[calc(100vh-120px)] sticky top-24">
-        {/* Results header with batch actions */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-[#1A1A1A]/10 shrink-0">
-          <div className="flex items-center gap-4">
-            {/* Top search button for quick access */}
+        {/* Results header - simplified */}
+        <div className="flex items-center justify-between px-4 py-3 border-b border-[#1A1A1A]/10 shrink-0 gap-3">
+          {/* Left side: Search button + count */}
+          <div className="flex items-center gap-3 min-w-0">
             <Button
               onClick={() => handleSearchAndScore()}
               disabled={loading || scoringInProgress || !selectedAccount || !selectedJob || needsReconnection || !isApiModeAvailable}
@@ -1684,141 +1684,127 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
               ) : (
                 <Search className="w-3.5 h-3.5 mr-1.5" />
               )}
-              {loading ? 'Recherche...' : scoringInProgress ? 'Scoring...' : hasSearched && cursor ? 'Charger + scorer' : 'Rechercher & Scorer'}
+              {loading ? 'Recherche...' : scoringInProgress ? 'Scoring...' : hasSearched && cursor ? 'Charger +' : 'Rechercher'}
             </Button>
             
-            {/* Select all checkbox when job is selected */}
-            {selectedJob && results.length > 0 && (
-              <div className="flex items-center gap-2">
-                <Checkbox
-                  checked={allSelectableSelected && selectableProfiles.length > 0}
-                  onCheckedChange={toggleSelectAll}
-                  id="select-all"
-                />
-                <label htmlFor="select-all" className="text-xs text-[#1A1A1A]/60 cursor-pointer">
-                  Tout {selectableProfiles.length < filteredAndSortedResults.length && (
-                    <span className="text-[10px] text-amber-600">
-                      ({selectableProfiles.length}/{filteredAndSortedResults.length})
-                    </span>
-                  )}
-                </label>
-              </div>
-            )}
-            
-            <div className="text-base font-semibold text-[#1A1A1A]">
-              {hasSearched ? (
-                total !== null ? (
-                  <>
-                    <span>{filteredAndSortedResults.length}</span>
-                    {filteredAndSortedResults.length !== results.length && (
-                      <span className="text-[#1A1A1A]/40 font-normal">/{results.length}</span>
-                    )}
-                    <span className="font-normal text-[#1A1A1A]/60"> profil{filteredAndSortedResults.length > 1 ? 's' : ''}</span>
-                  </>
-                ) : (
-                  <span>{filteredAndSortedResults.length} profil{filteredAndSortedResults.length > 1 ? 's' : ''}</span>
-                )
-              ) : (
-                <span>Résultats de recherche</span>
-              )}
-            </div>
-            {hasSearched && total !== null && (
-              <span className="text-xs text-[#1A1A1A]/40 bg-[#1A1A1A]/5 px-2 py-1 rounded">
-                {results.length} chargés sur {total.toLocaleString()}
-              </span>
-            )}
-            
-            {/* Status filter pills (only show when job is selected) */}
-            {selectedJob && hasSearched && (
-              <div className="flex items-center gap-1.5 ml-2">
-                <Button
-                  variant={statusFilter === 'all' ? 'default' : 'ghost'}
-                  size="sm"
-                  className={`h-7 px-2.5 text-xs ${statusFilter === 'all' ? 'bg-[#0077B5]' : ''}`}
-                  onClick={() => setStatusFilter('all')}
-                >
-                  Tous
-                </Button>
-                <Button
-                  variant={statusFilter === 'untreated' ? 'default' : 'ghost'}
-                  size="sm"
-                  className={`h-7 px-2.5 text-xs ${statusFilter === 'untreated' ? 'bg-[#0077B5]' : ''}`}
-                  onClick={() => setStatusFilter('untreated')}
-                >
-                  <Eye className="w-3 h-3 mr-1" />
-                  Non traités
-                </Button>
-                <Button
-                  variant={statusFilter === 'messaged' ? 'default' : 'ghost'}
-                  size="sm"
-                  className={`h-7 px-2.5 text-xs ${statusFilter === 'messaged' ? 'bg-[#0077B5]' : ''}`}
-                  onClick={() => setStatusFilter('messaged')}
-                >
-                  <Mail className="w-3 h-3 mr-1" />
-                  Contactés
-                </Button>
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        variant={showDismissed ? 'default' : 'ghost'}
-                        size="sm"
-                        className={`h-7 px-2.5 text-xs ${showDismissed ? 'bg-red-500 hover:bg-red-600' : 'text-red-500'}`}
-                        onClick={() => setShowDismissed(!showDismissed)}
-                      >
-                        <Archive className="w-3 h-3 mr-1" />
-                        {candidateStatus.dismissedIds.size > 0 && (
-                          <span>{candidateStatus.dismissedIds.size}</span>
-                        )}
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>{showDismissed ? 'Masquer' : 'Voir'} les profils écartés pour ce poste</p>
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
+            {/* Compact profile count */}
+            {hasSearched && (
+              <div className="flex items-center gap-2 text-sm">
+                <span className="font-semibold text-[#1A1A1A]">
+                  {filteredAndSortedResults.length}
+                </span>
+                <span className="text-[#1A1A1A]/50">
+                  profil{filteredAndSortedResults.length > 1 ? 's' : ''}
+                </span>
+                {total !== null && (
+                  <span className="text-xs text-[#1A1A1A]/40">
+                    / {total.toLocaleString()}
+                  </span>
+                )}
               </div>
             )}
           </div>
           
-          {/* Batch score button + sort toggle + filter summary */}
-          <div className="flex items-center gap-3">
-            {/* Sort by score toggle */}
-            {Object.keys(jobScores).length > 0 && (
-              <Button
-                variant={sortByScore ? "default" : "outline"}
-                size="sm"
-                onClick={() => setSortByScore(!sortByScore)}
-                className={sortByScore ? "bg-[#0077B5] hover:bg-[#005E93]" : ""}
+          {/* Right side: Filters + Actions */}
+          <div className="flex items-center gap-2 shrink-0">
+            {/* Status filter dropdown (only when job selected and has results) */}
+            {selectedJob && hasSearched && results.length > 0 && (
+              <Select 
+                value={statusFilter} 
+                onValueChange={(v) => setStatusFilter(v as typeof statusFilter)}
               >
-                <Sparkles className="w-3.5 h-3.5 mr-1.5" />
-                Tri par score
-              </Button>
+                <SelectTrigger className="h-8 w-auto min-w-[110px] text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">
+                    <span className="flex items-center gap-1.5">
+                      <Users className="w-3 h-3" />
+                      Tous
+                    </span>
+                  </SelectItem>
+                  <SelectItem value="untreated">
+                    <span className="flex items-center gap-1.5">
+                      <Eye className="w-3 h-3" />
+                      Non traités
+                    </span>
+                  </SelectItem>
+                  <SelectItem value="messaged">
+                    <span className="flex items-center gap-1.5">
+                      <Mail className="w-3 h-3" />
+                      Contactés
+                    </span>
+                  </SelectItem>
+                </SelectContent>
+              </Select>
             )}
             
+            {/* Dismissed toggle */}
+            {selectedJob && candidateStatus.dismissedIds.size > 0 && (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant={showDismissed ? 'default' : 'ghost'}
+                      size="sm"
+                      className={`h-8 px-2 text-xs ${showDismissed ? 'bg-red-500 hover:bg-red-600' : 'text-red-500 hover:text-red-600'}`}
+                      onClick={() => setShowDismissed(!showDismissed)}
+                    >
+                      <Archive className="w-3.5 h-3.5" />
+                      <span className="ml-1">{candidateStatus.dismissedIds.size}</span>
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>{showDismissed ? 'Masquer' : 'Voir'} les écartés</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
+            
+            {/* Sort by score toggle */}
+            {Object.keys(jobScores).length > 0 && (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant={sortByScore ? "default" : "ghost"}
+                      size="sm"
+                      onClick={() => setSortByScore(!sortByScore)}
+                      className={`h-8 px-2 ${sortByScore ? "bg-[#0077B5] hover:bg-[#005E93]" : ""}`}
+                    >
+                      <Sparkles className="w-3.5 h-3.5" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>{sortByScore ? 'Tri par score actif' : 'Trier par score'}</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
+            
+            {/* Selection actions */}
             {selectedProfiles.size > 0 && (
-              <>
-                {selectedJob && (
-                  <BatchScoreButton
-                    selectedCount={selectedProfiles.size}
-                    onScore={handleBatchScore}
-                    loading={scoringInProgress}
-                    disabled={!selectedJob}
-                  />
-                )}
+              <div className="flex items-center gap-1.5 pl-2 border-l border-[#1A1A1A]/10">
+                <span className="text-xs text-[#1A1A1A]/50">{selectedProfiles.size} sel.</span>
                 
-                {/* Bulk InMail button */}
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setShowBulkInMailModal(true)}
-                  className="border-[#0077B5] text-[#0077B5] hover:bg-[#0077B5]/10"
-                >
-                  <Mail className="w-3.5 h-3.5 mr-1.5" />
-                  InMail ({selectedProfiles.size})
-                </Button>
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setShowBulkInMailModal(true)}
+                        className="h-8 px-2 border-[#0077B5] text-[#0077B5] hover:bg-[#0077B5]/10"
+                      >
+                        <Mail className="w-3.5 h-3.5" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Envoyer InMail groupé</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
                 
-                {/* Sequence enrollment button - excludes candidates with recommendation 'skip' */}
                 {selectedAccount && (
                   <SequenceEnrollButton
                     selectedProfiles={results
@@ -1836,26 +1822,21 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
                     }}
                   />
                 )}
-              </>
+              </div>
             )}
             
-            {/* Compact quota display */}
-            <QuotaDisplay
-              searchResultsFetched={quota.quotas.searchResultsFetched}
-              profileVisits={quota.quotas.profileVisits}
-              messagesSent={quota.quotas.messagesSent}
-              invitationsSent={quota.quotas.invitationsSent}
-              inmailsSent={quota.quotas.inmailsSent}
-              apiMode={quota.apiMode}
-              compact
-            />
-            
-            {hasSearched && (
-              <div className="flex items-center gap-2 text-xs text-[#1A1A1A]/50">
-                <span className="hidden md:inline">Mode:</span>
-                <span className="font-medium text-[#0077B5]">
-                  {filters.api === 'recruiter' ? 'Recruiter' : filters.api === 'sales_navigator' ? 'Sales Nav' : 'Classic'}
-                </span>
+            {/* Select all checkbox */}
+            {selectedJob && results.length > 0 && (
+              <div className="flex items-center gap-1.5 pl-2 border-l border-[#1A1A1A]/10">
+                <Checkbox
+                  checked={allSelectableSelected && selectableProfiles.length > 0}
+                  onCheckedChange={toggleSelectAll}
+                  id="select-all"
+                  className="h-4 w-4"
+                />
+                <label htmlFor="select-all" className="text-xs text-[#1A1A1A]/50 cursor-pointer whitespace-nowrap">
+                  Tout
+                </label>
               </div>
             )}
           </div>
