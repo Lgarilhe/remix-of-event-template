@@ -1570,28 +1570,23 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
           />
           
           {/* Filter actions: Auto-fill, AI Assistant, Favorites */}
-          <div className="flex items-center justify-between bg-gradient-to-r from-indigo-50 to-purple-50 rounded-lg border border-indigo-200/50 p-3">
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-indigo-700">🎯 Filtres automatiques</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <AutoFillFiltersButton
-                selectedJob={selectedJob}
-                accountId={selectedAccount}
-                onApplyFilters={(update) => setFilters(prev => ({ ...prev, ...update }))}
-              />
-              <FilterAssistantModal
-                currentFilters={filters}
-                onApplyFilters={(update) => setFilters(prev => ({ ...prev, ...update }))}
-                accountId={selectedAccount || undefined}
-                selectedJob={selectedJob}
-              />
-              <FilterPresetsManager
-                currentFilters={filters}
-                onApplyFilters={setFilters}
-                selectedJob={selectedJob}
-              />
-            </div>
+          <div className="flex items-center justify-end gap-2">
+            <AutoFillFiltersButton
+              selectedJob={selectedJob}
+              accountId={selectedAccount}
+              onApplyFilters={(update) => setFilters(prev => ({ ...prev, ...update }))}
+            />
+            <FilterAssistantModal
+              currentFilters={filters}
+              onApplyFilters={(update) => setFilters(prev => ({ ...prev, ...update }))}
+              accountId={selectedAccount || undefined}
+              selectedJob={selectedJob}
+            />
+            <FilterPresetsManager
+              currentFilters={filters}
+              onApplyFilters={setFilters}
+              selectedJob={selectedJob}
+            />
           </div>
         </div>
 
