@@ -1144,9 +1144,14 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
         
         if (candidatesToDismiss.length > 0) {
           await candidateStatus.batchDismiss(candidatesToDismiss);
+          // Show separate toast for dismissed count
+          toast.info(`${candidatesToDismiss.length} profil${candidatesToDismiss.length > 1 ? 's' : ''} non pertinent${candidatesToDismiss.length > 1 ? 's' : ''} masqué${candidatesToDismiss.length > 1 ? 's' : ''} (score < 40). Cliquez sur l'icône Archive pour les voir.`, {
+            duration: 5000,
+          });
         }
         
-        toast.success(`${data.results.length} profils scorés avec succès`);
+        const keptCount = data.results.length - candidatesToDismiss.length;
+        toast.success(`${data.results.length} profils scorés • ${keptCount} pertinent${keptCount > 1 ? 's' : ''} conservé${keptCount > 1 ? 's' : ''}`);
       }
     } catch (err) {
       console.error('Batch score error:', err);
