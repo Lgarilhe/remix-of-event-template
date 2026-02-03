@@ -188,7 +188,7 @@ export function useJobCandidateStatus(jobId: string | null) {
       candidates.forEach(c => newDismissed.add(c.id));
       setDismissedIds(newDismissed);
 
-      toast.success(`${candidates.length} profils archivés pour ce poste`);
+      // Note: Toast is handled by the caller (LinkedInSearch) to provide better context
     } catch (error) {
       console.error('Error batch dismissing candidates:', error);
       toast.error('Erreur lors de l\'archivage en lot');
