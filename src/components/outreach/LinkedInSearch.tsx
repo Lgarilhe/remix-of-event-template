@@ -82,12 +82,9 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
   // Bulk InMail modal state
   const [showBulkInMailModal, setShowBulkInMailModal] = useState(false);
   
-  // Debounce ref for auto-search on filter change
+  // Debounce ref kept only for cleanup (auto-search is disabled)
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const isInitialMount = useRef(true);
-  const hasAccountBeenSelected = useRef(false); // Track if account was already selected once
-  const scrollAreaRef = useRef<HTMLDivElement>(null); // Ref for scrolling to top on pagination
-  const shouldScrollToTop = useRef(false); // Flag to scroll after pagination load completes
+  const scrollAreaRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     filtersRef.current = filters;
@@ -848,39 +845,14 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
     );
   }, [filters]);
 
-  // Auto-search with 2s debounce when filters change - only if filters are not empty
+  // Auto-search DISABLED: user explicitly wants searches only when clicking "Rechercher" (or pressing Enter).
+  // This also prevents quota burn from effect re-triggers.
   useEffect(() => {
-    // Skip initial mount
-    if (isInitialMount.current) {
-      isInitialMount.current = false;
-      return;
-    }
-    
-    if (!selectedAccount) return;
-    
-    // Track when account gets selected for the first time (don't trigger search on initial account selection)
-    if (!hasAccountBeenSelected.current) {
-      hasAccountBeenSelected.current = true;
-      return;
-    }
-    
-    // Don't auto-search if no filters are set
-    if (!hasActiveFilters) return;
-
     if (searchDebounceRef.current) {
       clearTimeout(searchDebounceRef.current);
+      searchDebounceRef.current = null;
     }
-
-    searchDebounceRef.current = setTimeout(() => {
-      handleSearch(true);
-    }, 2000);
-
-    return () => {
-      if (searchDebounceRef.current) {
-        clearTimeout(searchDebounceRef.current);
-      }
-    };
-  }, [filtersJson, selectedAccount, handleSearch, hasActiveFilters]);
+  }, [filtersJson]);
 
   const handleClearFilters = () => {
     setFilters(INITIAL_FILTERS);
