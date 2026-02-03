@@ -1445,27 +1445,25 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
           </Alert>
         )}
 
-        {/* Account selector */}
-        <div className="bg-white rounded-lg border border-[#1A1A1A]/10 p-4 space-y-4">
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <label className="text-sm font-medium text-[#1A1A1A]">
-                Compte LinkedIn
-              </label>
-              {/* Compact quota display on hover */}
-              <QuotaDisplay
-                searchResultsFetched={quota.quotas.searchResultsFetched}
-                profileVisits={quota.quotas.profileVisits}
-                messagesSent={quota.quotas.messagesSent}
-                invitationsSent={quota.quotas.invitationsSent}
-                inmailsSent={quota.quotas.inmailsSent}
-                apiMode={quota.apiMode}
-                compact={true}
-              />
-            </div>
+        {/* Account selector - compact version */}
+        <div className="bg-white rounded-lg border border-[#1A1A1A]/10 p-3 space-y-2">
+          <div className="flex items-center justify-between">
+            <label className="text-xs font-medium text-[#1A1A1A]/70">Compte</label>
+            <QuotaDisplay
+              searchResultsFetched={quota.quotas.searchResultsFetched}
+              profileVisits={quota.quotas.profileVisits}
+              messagesSent={quota.quotas.messagesSent}
+              invitationsSent={quota.quotas.invitationsSent}
+              inmailsSent={quota.quotas.inmailsSent}
+              apiMode={quota.apiMode}
+              compact={true}
+            />
+          </div>
+          
+          <div className="flex items-center gap-2">
             <Select value={selectedAccount || ''} onValueChange={onAccountChange}>
-              <SelectTrigger>
-                <SelectValue placeholder="Sélectionner un compte" />
+              <SelectTrigger className="h-8 text-sm flex-1">
+                <SelectValue placeholder="Sélectionner" />
               </SelectTrigger>
               <SelectContent className="bg-white">
                 {accounts.map((account) => (
@@ -1474,14 +1472,10 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
                       <span>{account.name || account.identifier}</span>
                       <div className="flex gap-1">
                         {account.subscriptions?.recruiter && (
-                          <span className="text-[9px] px-1.5 py-0.5 rounded bg-[#0077B5]/10 text-[#0077B5] font-medium">
-                            R
-                          </span>
+                          <span className="text-[9px] px-1.5 py-0.5 rounded bg-[#0077B5]/10 text-[#0077B5] font-medium">R</span>
                         )}
                         {account.subscriptions?.sales_navigator && (
-                          <span className="text-[9px] px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 font-medium">
-                            SN
-                          </span>
+                          <span className="text-[9px] px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 font-medium">SN</span>
                         )}
                       </div>
                     </div>
@@ -1490,43 +1484,13 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
               </SelectContent>
             </Select>
             
-            {/* Show selected account licenses */}
-            {selectedAccountData?.subscriptions && (
-              <div className="flex gap-1.5 mt-2">
-                <span className="text-[10px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
-                  Classic
-                </span>
-                {selectedAccountData.subscriptions.recruiter && (
-                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#0077B5]/10 text-[#0077B5] font-medium">
-                    Recruiter
-                  </span>
-                )}
-                {selectedAccountData.subscriptions.sales_navigator && (
-                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 font-medium">
-                    Sales Nav
-                  </span>
-                )}
-              </div>
-            )}
-          </div>
-
-          {/* API Type selector */}
-          <div>
-            <label className="text-sm font-medium text-[#1A1A1A] mb-2 block">
-              Mode de recherche
-            </label>
+            {/* Mode selector inline */}
             <TooltipProvider>
-              <div className="grid grid-cols-3 gap-1 p-1 bg-gray-100 rounded-lg">
+              <div className="flex gap-0.5 p-0.5 bg-gray-100 rounded-md shrink-0">
                 {API_TYPE_OPTIONS.map((option) => {
-                  // Check if premium licenses are available
                   const hasPremiumLicense = subscriptions?.recruiter || subscriptions?.sales_navigator;
-                  
-                  // Determine availability:
-                  // - Classic is disabled if Recruiter OR Sales Navigator is available
-                  // - Recruiter/Sales Navigator are available based on their respective licenses
                   let isAvailable: boolean;
                   if (option.value === 'classic') {
-                    // Classic is only available if NO premium license exists
                     isAvailable = !hasPremiumLicense;
                   } else if (option.value === 'recruiter') {
                     isAvailable = !!subscriptions?.recruiter;
@@ -1536,13 +1500,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
                     isAvailable = true;
                   }
                   
-                  // Tooltip message varies by case
-                  const getTooltipMessage = () => {
-                    if (option.value === 'classic' && hasPremiumLicense) {
-                      return 'Mode Classic désactivé car vous avez une licence premium. Utilisez Recruiter ou Sales Navigator.';
-                    }
-                    return `Votre compte LinkedIn n'a pas de licence ${option.label}. Connectez un compte avec cette licence pour utiliser ce mode.`;
-                  };
+                  const shortLabel = option.value === 'recruiter' ? 'R' : option.value === 'sales_navigator' ? 'SN' : 'C';
                   
                   const button = (
                     <button
@@ -1550,45 +1508,44 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
                       type="button"
                       onClick={() => isAvailable && setFilters(f => ({ ...f, api: option.value as LinkedInApiType }))}
                       disabled={!isAvailable}
-                      className={`px-2 py-1.5 text-xs font-medium rounded-md transition-all relative ${
+                      className={`w-7 h-7 text-[10px] font-medium rounded transition-all ${
                         !isAvailable 
-                          ? 'text-[#1A1A1A]/30 cursor-not-allowed'
+                          ? 'text-[#1A1A1A]/20 cursor-not-allowed'
                           : filters.api === option.value
                             ? 'bg-white text-[#0077B5] shadow-sm'
-                            : 'text-[#1A1A1A]/60 hover:text-[#1A1A1A] hover:bg-white/50'
+                            : 'text-[#1A1A1A]/50 hover:text-[#1A1A1A] hover:bg-white/50'
                       }`}
                     >
-                      <span className="flex items-center justify-center gap-1">
-                        {!isAvailable && <Lock className="w-3 h-3" />}
-                        {option.label}
-                      </span>
+                      {!isAvailable ? <Lock className="w-2.5 h-2.5 mx-auto" /> : shortLabel}
                     </button>
                   );
                   
                   if (!isAvailable) {
                     return (
                       <Tooltip key={option.value}>
-                        <TooltipTrigger asChild>
-                          {button}
-                        </TooltipTrigger>
-                        <TooltipContent side="bottom" className="max-w-[200px]">
+                        <TooltipTrigger asChild>{button}</TooltipTrigger>
+                        <TooltipContent side="bottom" className="max-w-[180px]">
                           <p className="text-xs">
-                            {getTooltipMessage()}
+                            {option.value === 'classic' && hasPremiumLicense 
+                              ? 'Désactivé (licence premium active)'
+                              : `Licence ${option.label} requise`}
                           </p>
                         </TooltipContent>
                       </Tooltip>
                     );
                   }
                   
-                  return button;
+                  return (
+                    <Tooltip key={option.value}>
+                      <TooltipTrigger asChild>{button}</TooltipTrigger>
+                      <TooltipContent side="bottom">
+                        <p className="text-xs">{option.label}</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  );
                 })}
               </div>
             </TooltipProvider>
-            <p className="text-[10px] text-[#1A1A1A]/50 mt-1.5">
-              {filters.api === 'recruiter' && 'Accès aux filtres avancés de recrutement'}
-              {filters.api === 'sales_navigator' && 'Filtres orientés vente et prospection'}
-              {filters.api === 'classic' && 'Recherche LinkedIn standard'}
-            </p>
           </div>
 
           {/* License warning */}
