@@ -254,6 +254,7 @@ export type Database = {
           id: string
           job_id: string
           linkedin_profile_url: string | null
+          project_id: string | null
           recommendation: string | null
           score: number | null
           skip_reason: string | null
@@ -269,6 +270,7 @@ export type Database = {
           id?: string
           job_id: string
           linkedin_profile_url?: string | null
+          project_id?: string | null
           recommendation?: string | null
           score?: number | null
           skip_reason?: string | null
@@ -284,13 +286,22 @@ export type Database = {
           id?: string
           job_id?: string
           linkedin_profile_url?: string | null
+          project_id?: string | null
           recommendation?: string | null
           score?: number | null
           skip_reason?: string | null
           status?: string
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "job_candidate_status_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "sourcing_projects"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       job_favorites: {
         Row: {
@@ -813,6 +824,69 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      sourcing_projects: {
+        Row: {
+          client_name: string | null
+          created_at: string
+          created_by: string
+          description: string | null
+          filters_snapshot: Json
+          id: string
+          job_id: string | null
+          job_title: string | null
+          last_search_at: string | null
+          name: string
+          notes: string | null
+          stats_dismissed: number
+          stats_messaged: number
+          stats_scored: number
+          stats_shortlisted: number
+          stats_total_found: number
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          client_name?: string | null
+          created_at?: string
+          created_by: string
+          description?: string | null
+          filters_snapshot?: Json
+          id?: string
+          job_id?: string | null
+          job_title?: string | null
+          last_search_at?: string | null
+          name: string
+          notes?: string | null
+          stats_dismissed?: number
+          stats_messaged?: number
+          stats_scored?: number
+          stats_shortlisted?: number
+          stats_total_found?: number
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          client_name?: string | null
+          created_at?: string
+          created_by?: string
+          description?: string | null
+          filters_snapshot?: Json
+          id?: string
+          job_id?: string | null
+          job_title?: string | null
+          last_search_at?: string | null
+          name?: string
+          notes?: string | null
+          stats_dismissed?: number
+          stats_messaged?: number
+          stats_scored?: number
+          stats_shortlisted?: number
+          stats_total_found?: number
+          status?: string
+          updated_at?: string
+        }
+        Relationships: []
       }
       user_roles: {
         Row: {
