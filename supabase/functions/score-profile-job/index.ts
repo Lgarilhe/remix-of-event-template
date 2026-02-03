@@ -9,6 +9,7 @@ interface WorkExperienceItem {
   role: string;
   company: string;
   duration?: string;
+  durationMonths?: number;
   description?: string;
   skills?: string[];
 }
@@ -20,12 +21,49 @@ interface ProfileData {
   currentCompany?: string;
   location?: string;
   skills?: string[];
-  summary?: string;                    // NEW: LinkedIn "About" section
-  workExperience?: WorkExperienceItem[]; // NEW: Enriched work history
-  pastPositions?: string[];            // Legacy format for backward compatibility
+  summary?: string;                      // LinkedIn "About" section
+  workExperience?: WorkExperienceItem[]; // Enriched work history
+  pastPositions?: string[];              // Legacy format for backward compatibility
   education?: string[];
   yearsOfExperience?: number;
+  // NEW: Tenure analysis
+  averageTenureMonths?: number | null;   // Average time at each position
+  // NEW: Receptivity signals
+  openToWork?: boolean;                  // Actively looking
+  openProfile?: boolean;                 // Can receive free InMail
+  networkDistance?: number | null;       // 1st, 2nd, 3rd degree
 }
+
+// Skill synonyms for semantic matching
+const SKILL_SYNONYMS: Record<string, string[]> = {
+  'kubernetes': ['k8s', 'kube', 'container orchestration'],
+  'javascript': ['js', 'ecmascript', 'es6', 'es2015'],
+  'typescript': ['ts'],
+  'python': ['py', 'python3'],
+  'react': ['reactjs', 'react.js'],
+  'vue': ['vuejs', 'vue.js'],
+  'angular': ['angularjs', 'angular.js'],
+  'node': ['nodejs', 'node.js'],
+  'postgres': ['postgresql', 'psql', 'pg'],
+  'mongodb': ['mongo'],
+  'redis': ['redis cache'],
+  'elasticsearch': ['elastic', 'es'],
+  'docker': ['containers', 'containerization'],
+  'aws': ['amazon web services', 'amazon aws'],
+  'gcp': ['google cloud', 'google cloud platform'],
+  'azure': ['microsoft azure'],
+  'ci/cd': ['cicd', 'continuous integration', 'continuous deployment', 'devops'],
+  'machine learning': ['ml', 'deep learning', 'ai'],
+  'api': ['rest api', 'restful', 'graphql'],
+  'agile': ['scrum', 'kanban'],
+  'sql': ['mysql', 'mariadb', 'sqlite'],
+  'java': ['jvm', 'spring', 'spring boot'],
+  'go': ['golang'],
+  'rust': ['rustlang'],
+  'terraform': ['iac', 'infrastructure as code'],
+  'kafka': ['event streaming', 'message queue'],
+  'rabbitmq': ['message broker', 'amqp'],
+};
 
 interface JobData {
   id: string;
@@ -120,12 +158,30 @@ serve(async (req) => {
           const profileSkills = (p.skills || []).map(s => s.toLowerCase());
           const jobSkills = (job.skills || []).map(s => s.toLowerCase());
           
-          // Pre-calculate skill matches
+          // Semantic skill matching function
+          const skillsMatch = (profileSkill: string, jobSkill: string): boolean => {
+            // Direct match (partial)
+            if (profileSkill.includes(jobSkill) || jobSkill.includes(profileSkill)) {
+              return true;
+            }
+            // Check synonyms
+            for (const [canonical, synonyms] of Object.entries(SKILL_SYNONYMS)) {
+              const allVariants = [canonical, ...synonyms];
+              const profileMatches = allVariants.some(v => profileSkill.includes(v) || v.includes(profileSkill));
+              const jobMatches = allVariants.some(v => jobSkill.includes(v) || v.includes(jobSkill));
+              if (profileMatches && jobMatches) {
+                return true;
+              }
+            }
+            return false;
+          };
+          
+          // Pre-calculate skill matches with semantic matching
           const matchingSkills = jobSkills.filter(js => 
-            profileSkills.some(ps => ps.includes(js) || js.includes(ps))
+            profileSkills.some(ps => skillsMatch(ps, js))
           );
           const missingSkills = jobSkills.filter(js => 
-            !profileSkills.some(ps => ps.includes(js) || js.includes(ps))
+            !profileSkills.some(ps => skillsMatch(ps, js))
           );
 
           const salaryInfo = formatSalaryInfo(job);
@@ -186,6 +242,29 @@ serve(async (req) => {
             }).join('\n');
           };
 
+          // Build tenure analysis for job hopper detection
+          const tenureAnalysis = (): string => {
+            if (!p.averageTenureMonths) return '';
+            const avgYears = (p.averageTenureMonths / 12).toFixed(1);
+            if (p.averageTenureMonths < 18) {
+              return `⚠️ Tenure moyenne: ${avgYears} ans (RISQUE JOB HOPPER)`;
+            } else if (p.averageTenureMonths < 24) {
+              return `📊 Tenure moyenne: ${avgYears} ans (attention)`;
+            }
+            return `📊 Tenure moyenne: ${avgYears} ans (stable)`;
+          };
+          
+          // Build receptivity signals
+          const receptivitySignals = (): string => {
+            const signals: string[] = [];
+            if (p.openToWork) signals.push('✅ Open to Work');
+            if (p.openProfile) signals.push('✅ Open Profile (InMail gratuit)');
+            if (p.networkDistance === 1) signals.push('🤝 1er degré (connexion)');
+            else if (p.networkDistance === 2) signals.push('👥 2ème degré');
+            else if (p.networkDistance === 3) signals.push('🌐 3ème degré');
+            return signals.length > 0 ? signals.join(' | ') : '';
+          };
+
           const prompt = `Évalue ce profil vs ce poste. Sois FACTUEL et PRÉCIS.
 
 PROFIL:
@@ -194,6 +273,8 @@ PROFIL:
 - Poste: ${p.currentRole || 'N/A'} @ ${p.currentCompany || 'N/A'}
 - Loc: ${p.location || 'N/A'}
 - XP: ${p.yearsOfExperience ? `~${p.yearsOfExperience} ans` : 'À estimer'}
+${tenureAnalysis() ? `- ${tenureAnalysis()}` : ''}
+${receptivitySignals() ? `- 📡 Réceptivité: ${receptivitySignals()}` : ''}
 ${p.summary ? `\n📝 À PROPOS:\n"${p.summary}"` : ''}
 
 💼 EXPÉRIENCES RÉCENTES:
@@ -212,7 +293,7 @@ ${salaryInfo}
 CRITÈRES:
 ${criteriaSection}
 
-PRÉ-ANALYSE:
+PRÉ-ANALYSE (matching sémantique appliqué):
 - Match skills: ${matchingSkills.join(', ') || 'Aucun'}
 - Missing: ${missingSkills.join(', ') || 'Aucun'}
 
@@ -232,6 +313,15 @@ SCORING:
 - Risque sous-qualif: montée en compétence trop longue, autonomie insuffisante
 - Si écart XP > 5 ans (dans un sens ou l'autre) → recommendation="maybe" max
 
+📊 STABILITÉ:
+- Tenure moyenne < 18 mois = job hopper potentiel → pénalité -10 pts + mention dans reasoning
+- Tenure moyenne > 5 ans = profil stable, bonus +5 pts si cohérent avec culture
+
+📡 RÉCEPTIVITÉ (bonus pour priorisation, pas pour score):
+- Open to Work = très réceptif
+- 1er degré = 3x plus de chances de réponse
+- Open Profile = InMail gratuit possible
+
 ${hasSalaryInfo ? `Compare salaire proposé vs attentes marché du profil.` : `Estime fourchette marché pour ce poste.`}
 
 JSON UNIQUEMENT:
@@ -242,10 +332,12 @@ JSON UNIQUEMENT:
   "experience_match": "compatible|sous_qualifie|sur_qualifie|incertain",
   "experience_gap": {"years": 0, "direction": "over|under|match"},
   "qualification_risk": "none|low|medium|high",
+  "tenure_risk": "none|low|medium|high",
+  "receptivity_score": "high|medium|low",
   "location_match": true|false,
   "summary": "Max 20 mots",
   "recommendation": "go|maybe|skip",
-  "reasoning": "Max 30 mots sur qualification + insights À propos/descriptions",
+  "reasoning": "Max 40 mots: qualification + tenure + insights À propos",
   "salary_analysis": {
     "status": "adequate|too_low|too_high|unknown",
     "confidence": "high|medium|low",

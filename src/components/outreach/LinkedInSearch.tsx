@@ -1011,32 +1011,55 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
       return years > 0 ? years : null;
     };
     
-    // Helper to calculate duration string from start/end dates
-    const calculateDuration = (start?: { year?: number; month?: number }, end?: { year?: number; month?: number }): string | undefined => {
-      if (!start?.year) return undefined;
+    // Helper to calculate duration in months from start/end dates
+    const calculateDurationMonths = (start?: { year?: number; month?: number }, end?: { year?: number; month?: number }): number => {
+      if (!start?.year) return 0;
       const endYear = end?.year || new Date().getFullYear();
       const endMonth = end?.month || new Date().getMonth() + 1;
       const startYear = start.year;
       const startMonth = start.month || 1;
-      
-      const totalMonths = (endYear - startYear) * 12 + (endMonth - startMonth);
+      return (endYear - startYear) * 12 + (endMonth - startMonth);
+    };
+    
+    // Helper to format duration string
+    const formatDuration = (totalMonths: number): string => {
       const years = Math.floor(totalMonths / 12);
       const months = totalMonths % 12;
-      
       if (years === 0) return `${months} mois`;
       if (months === 0) return `${years} an${years > 1 ? 's' : ''}`;
       return `${years} an${years > 1 ? 's' : ''} ${months} mois`;
     };
     
+    // Calculate average tenure across positions (for job hopper detection)
+    const calculateAverageTenure = (): number | null => {
+      const positionsWithDates = workExperience.filter(exp => exp.start?.year);
+      if (positionsWithDates.length === 0) return null;
+      
+      const tenures = positionsWithDates.map(exp => calculateDurationMonths(exp.start, exp.end));
+      const totalMonths = tenures.reduce((sum, t) => sum + t, 0);
+      return Math.round(totalMonths / positionsWithDates.length);
+    };
+    
     // Build enriched work experience (max 3 positions, with descriptions truncated to 200 chars)
     const recentPositions = workExperience.slice(0, 3);
-    const enrichedWorkExperience = recentPositions.map(exp => ({
-      role: exp.role || '',
-      company: exp.company || '',
-      duration: calculateDuration(exp.start, exp.end),
-      description: exp.description?.slice(0, 200) || undefined,
-      skills: exp.skills?.slice(0, 5).map(s => s.name || String(s)) || undefined,
-    }));
+    const enrichedWorkExperience = recentPositions.map(exp => {
+      const durationMonths = calculateDurationMonths(exp.start, exp.end);
+      return {
+        role: exp.role || '',
+        company: exp.company || '',
+        duration: durationMonths > 0 ? formatDuration(durationMonths) : undefined,
+        durationMonths,
+        description: exp.description?.slice(0, 200) || undefined,
+        skills: exp.skills?.slice(0, 5).map(s => s.name || String(s)) || undefined,
+      };
+    });
+    
+    // Determine receptivity signals
+    const isOpenToWork = profile.open_to_work === true;
+    const isOpenProfile = profile.open_profile === true; // Can receive free InMail
+    const networkDistance = typeof profile.network_distance === 'number' 
+      ? profile.network_distance 
+      : parseInt(String(profile.network_distance), 10) || null;
     
     return {
       name: profile.name || `${profile.first_name || ''} ${profile.last_name || ''}`.trim(),
@@ -1045,9 +1068,9 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
       currentCompany: currentJob?.company,
       location: profile.location,
       skills: profile.skills?.map((s: any) => s.name || s).slice(0, 15) || [],
-      // NEW: Summary (About section) - truncated to 300 chars
+      // Summary (About section) - truncated to 300 chars
       summary: profile.summary?.slice(0, 300) || undefined,
-      // NEW: Enriched work experience with descriptions
+      // Enriched work experience with descriptions
       workExperience: enrichedWorkExperience.length > 0 ? enrichedWorkExperience : undefined,
       // Keep legacy format for backward compatibility
       pastPositions: pastJobs.map(p => `${p.role} chez ${p.company}`),
@@ -1058,6 +1081,12 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
         return `${degree} - ${school}${year}`;
       }) || [],
       yearsOfExperience: calculateYearsFromDiploma(),
+      // NEW: Tenure analysis for job hopper detection
+      averageTenureMonths: calculateAverageTenure(),
+      // NEW: Receptivity signals
+      openToWork: isOpenToWork,
+      openProfile: isOpenProfile,
+      networkDistance,
     };
   }, []);
 
