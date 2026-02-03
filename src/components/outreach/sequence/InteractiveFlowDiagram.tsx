@@ -328,23 +328,50 @@ export const InteractiveFlowDiagram: React.FC<InteractiveFlowDiagramProps> = ({
   onRemoveStep,
   selectedStepId,
 }) => {
+  // Collect all step IDs that belong to branches BEFORE rendering
+  const getBranchStepIds = (): Set<string> => {
+    const branchIds = new Set<string>();
+    
+    // Helper to recursively collect all steps in a branch chain
+    const collectBranchSteps = (stepId: string | undefined, visited: Set<string>) => {
+      if (!stepId || visited.has(stepId)) return;
+      visited.add(stepId);
+      branchIds.add(stepId);
+      
+      // If this step is also a branching step, collect its branches too
+      const step = steps.find(s => s.id === stepId);
+      if (step) {
+        if (step.ifTrueGotoStep) collectBranchSteps(step.ifTrueGotoStep, visited);
+        if (step.ifFalseGotoStep) collectBranchSteps(step.ifFalseGotoStep, visited);
+      }
+    };
+    
+    // Find all check_connection steps and collect their branch targets
+    for (const step of steps) {
+      if (step.actionType === 'check_connection') {
+        const visited = new Set<string>();
+        if (step.ifTrueGotoStep) collectBranchSteps(step.ifTrueGotoStep, visited);
+        if (step.ifFalseGotoStep) collectBranchSteps(step.ifFalseGotoStep, visited);
+      }
+    }
+    
+    return branchIds;
+  };
+  
   const renderFlow = () => {
     const elements: React.ReactNode[] = [];
-    const renderedStepIds = new Set<string>();
+    const branchStepIds = getBranchStepIds();
+    let prevStepWasBranch = false;
     
     for (let i = 0; i < steps.length; i++) {
       const step = steps[i];
       
-      // Skip if already rendered as part of a branch
-      if (renderedStepIds.has(step.id)) continue;
+      // Skip if this step belongs to a branch (rendered inside BranchSplit)
+      if (branchStepIds.has(step.id)) continue;
       
       // Add arrow before step (except first)
-      if (i > 0) {
-        const prevStep = steps[i-1];
-        // Don't add arrow if previous step was a branch (check_connection)
-        if (prevStep && prevStep.actionType !== 'check_connection') {
-          elements.push(<Arrow key={`arrow-${step.id}`} />);
-        }
+      if (elements.length > 0 && !prevStepWasBranch) {
+        elements.push(<Arrow key={`arrow-${step.id}`} />);
       }
       
       // Render step node
@@ -360,6 +387,8 @@ export const InteractiveFlowDiagram: React.FC<InteractiveFlowDiagramProps> = ({
         />
       );
       
+      prevStepWasBranch = step.actionType === 'check_connection';
+      
       // If this is a check_connection step, render branches
       if (step.actionType === 'check_connection') {
         elements.push(
@@ -374,10 +403,6 @@ export const InteractiveFlowDiagram: React.FC<InteractiveFlowDiagramProps> = ({
             selectedStepId={selectedStepId}
           />
         );
-        
-        // Mark branch targets as rendered
-        if (step.ifTrueGotoStep) renderedStepIds.add(step.ifTrueGotoStep);
-        if (step.ifFalseGotoStep) renderedStepIds.add(step.ifFalseGotoStep);
       }
     }
     
