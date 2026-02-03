@@ -66,6 +66,8 @@ export const useSourcingProjects = () => {
       if (error) throw error;
       return data as SourcingProject[];
     },
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    gcTime: 30 * 60 * 1000, // 30 minutes cache
   });
 
   // Create project mutation
@@ -200,5 +202,7 @@ export const useProjectCandidates = (projectId: string | null) => {
       return data;
     },
     enabled: !!projectId,
+    staleTime: 2 * 60 * 1000, // 2 minutes
+    gcTime: 10 * 60 * 1000, // 10 minutes cache
   });
 };
