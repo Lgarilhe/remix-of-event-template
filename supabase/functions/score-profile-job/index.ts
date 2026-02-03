@@ -288,6 +288,7 @@ POSTE:
 - Skills requis: ${job.skills?.join(', ') || 'N/A'}
 - Séniorité: ${job.seniority || 'N/A'} | XP: ${job.xpMin || '?'}-${job.xpMax || '?'} ans
 - Loc: ${job.location || 'N/A'} | Remote: ${job.remote || 'N/A'}
+- Type contrat: ${job.contractType || 'CDI (par défaut)'}
 ${salaryInfo}
 
 CRITÈRES:
@@ -297,30 +298,50 @@ PRÉ-ANALYSE (matching sémantique appliqué):
 - Match skills: ${matchingSkills.join(', ') || 'Aucun'}
 - Missing: ${missingSkills.join(', ') || 'Aucun'}
 
-SCORING:
+═══════════════════════════════════════════════════════════════
+RÈGLES DE SCORING AFFINÉES (V2)
+═══════════════════════════════════════════════════════════════
+
+📊 STABILITÉ - ANALYSE INTELLIGENTE:
+- PROMOTIONS INTERNES: Si un candidat change de rôle MAIS reste dans la MÊME entreprise → c'est UNE SEULE tenure longue (signe de progression, pas d'instabilité)
+- FREELANCE/CONSULTANT: Si le headline contient "Freelance", "Consultant", "Indépendant", "Independent" → IGNORE la tenure courte des missions. Évalue plutôt:
+  • Diversité et qualité des missions
+  • Clients prestigieux ou pertinents
+  • Expertise pointue développée
+- Job hopper = changements d'ENTREPRISE fréquents (<18 mois en moyenne), PAS de promotions internes
+
+🎯 COMPATIBILITÉ FREELANCE/CDI (CRITIQUE):
+- Si poste = CDI/permanent ET candidat = profil fortement freelance (headline "Freelance", "Indépendant", nombreuses missions courtes) → RISQUE de mismatch contractuel
+  • Pénalité -15 pts si le candidat semble préférer le freelance
+  • SAUF si le "À propos" mentionne recherche de CDI ou stabilité
+- Si poste = Freelance/Mission ET candidat = freelance → BONUS +5 pts (alignement)
+- Si poste = CDI ET candidat = salarié stable → situation idéale, pas de pénalité
+
+⚠️ QUALIFICATION - ANALYSE NUANCÉE:
+- SOUS-QUALIFIÉ: XP profil < XP min poste OU séniorité clairement insuffisante → pénalité -15 à -30 pts
+- SUR-QUALIFIÉ - DISTINGUER 2 CAS:
+  • Profil senior pour poste senior (ex: VP pour rôle C-level, CTO pour CTO) → PAS de pénalité, c'est un MATCH
+  • Profil TRÈS senior pour poste junior (ex: CEO/VP pour rôle Senior Dev, +10 ans XP pour poste 3-5 ans) → pénalité -10 à -20 pts
+- La sur-qualification n'est problématique QUE si l'écart de niveau est de 2+ niveaux hiérarchiques
+- Un VP Engineering qui postule pour un rôle CTO/CTPO = parfaitement compatible
+
+🌍 TÉLÉTRAVAIL - FIT LOCALISATION:
+- Compare la localisation du candidat avec la politique remote du poste:
+  • Poste full remote + candidat n'importe où → OK
+  • Poste hybride + candidat même ville/région → OK
+  • Poste présentiel + candidat ville différente sans mention "prêt à déménager" → pénalité -10 pts
+- Si candidat mentionne "Open to relocate" ou "Remote" dans headline → plus flexible
+
+📋 SCORING BASE:
 - MUST-HAVE non respecté → score MAX 40, recommendation="skip"
 - SHOULD-HAVE: ±20 points
 - NICE-TO-HAVE: ±10 points
 - Score 70+ avec MUST OK → "go"
 - Score 50-69 ou SHOULD incomplets → "maybe"
-- ANALYSE le "À propos" pour détecter motivations et culture fit
-- ANALYSE les descriptions de postes pour évaluer profondeur technique
 
-⚠️ QUALIFICATION (CRITIQUE):
-- SOUS-QUALIFIÉ: XP profil < XP min poste OU séniorité insuffisante → pénalité -15 à -30 pts
-- SUR-QUALIFIÉ: XP profil > XP max poste +3 ans OU titre trop senior (ex: VP pour poste Senior) → pénalité -10 à -25 pts
-- Risque sur-qualif: ennui rapide, attentes salariales décalées, départ précoce
-- Risque sous-qualif: montée en compétence trop longue, autonomie insuffisante
-- Si écart XP > 5 ans (dans un sens ou l'autre) → recommendation="maybe" max
-
-📊 STABILITÉ:
-- Tenure moyenne < 18 mois = job hopper potentiel → pénalité -10 pts + mention dans reasoning
-- Tenure moyenne > 5 ans = profil stable, bonus +5 pts si cohérent avec culture
-
-📡 RÉCEPTIVITÉ (bonus pour priorisation, pas pour score):
+📡 RÉCEPTIVITÉ (bonus priorisation, pas score):
 - Open to Work = très réceptif
 - 1er degré = 3x plus de chances de réponse
-- Open Profile = InMail gratuit possible
 
 ${hasSalaryInfo ? `Compare salaire proposé vs attentes marché du profil.` : `Estime fourchette marché pour ce poste.`}
 
@@ -333,11 +354,12 @@ JSON UNIQUEMENT:
   "experience_gap": {"years": 0, "direction": "over|under|match"},
   "qualification_risk": "none|low|medium|high",
   "tenure_risk": "none|low|medium|high",
+  "contract_fit": "aligned|mismatch_freelance_vs_cdi|mismatch_cdi_vs_freelance|unknown",
+  "location_fit": "compatible|remote_ok|relocation_needed|mismatch",
   "receptivity_score": "high|medium|low",
-  "location_match": true|false,
   "summary": "Max 20 mots",
   "recommendation": "go|maybe|skip",
-  "reasoning": "Max 40 mots: qualification + tenure + insights À propos",
+  "reasoning": "Max 50 mots: qualification + tenure + freelance fit + remote fit + insights clés",
   "salary_analysis": {
     "status": "adequate|too_low|too_high|unknown",
     "confidence": "high|medium|low",
