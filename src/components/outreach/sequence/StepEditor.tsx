@@ -203,14 +203,14 @@ export const StepEditor: React.FC<StepEditorProps> = ({
                   Si connecté (1er degré)
                 </Label>
                 <Select
-                  value={step.ifTrueGotoStep || ''}
-                  onValueChange={(value) => onUpdate({ ifTrueGotoStep: value || undefined })}
+                  value={step.ifTrueGotoStep || '__next__'}
+                  onValueChange={(value) => onUpdate({ ifTrueGotoStep: value === '__next__' ? undefined : value })}
                 >
                   <SelectTrigger className="mt-1 h-8">
                     <SelectValue placeholder="Sélectionner..." />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">Étape suivante</SelectItem>
+                    <SelectItem value="__next__">Étape suivante</SelectItem>
                     {allSteps.filter(s => s.order > step.order).map(s => {
                       const config = allStepTypes.find(a => a.value === s.actionType);
                       return (
@@ -229,14 +229,14 @@ export const StepEditor: React.FC<StepEditorProps> = ({
                   Si non connecté (2e/3e degré)
                 </Label>
                 <Select
-                  value={step.ifFalseGotoStep || ''}
-                  onValueChange={(value) => onUpdate({ ifFalseGotoStep: value || undefined })}
+                  value={step.ifFalseGotoStep || '__next__'}
+                  onValueChange={(value) => onUpdate({ ifFalseGotoStep: value === '__next__' ? undefined : value })}
                 >
                   <SelectTrigger className="mt-1 h-8">
                     <SelectValue placeholder="Sélectionner..." />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">Étape suivante</SelectItem>
+                    <SelectItem value="__next__">Étape suivante</SelectItem>
                     {allSteps.filter(s => s.order > step.order).map(s => {
                       const config = allStepTypes.find(a => a.value === s.actionType);
                       return (
