@@ -24,7 +24,9 @@ serve(async (req) => {
   }
 
   try {
-    const { action } = await req.json();
+    // Read body only once (Deno Request body can be consumed a single time)
+    const body = await req.json().catch(() => ({} as Record<string, unknown>));
+    const action = (body as { action?: string }).action;
 
     switch (action) {
       case 'list': {
@@ -119,7 +121,7 @@ serve(async (req) => {
 
       case 'delete': {
         // Delete a webhook by ID
-        const { webhook_id } = await req.json();
+        const webhook_id = (body as { webhook_id?: string }).webhook_id;
         
         if (!webhook_id) {
           throw new Error('webhook_id is required');
