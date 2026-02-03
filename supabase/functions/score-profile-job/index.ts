@@ -356,7 +356,7 @@ JSON UNIQUEMENT:
               "Content-Type": "application/json",
             },
             body: JSON.stringify({
-              model: "claude-opus-4-20250514",
+              model: "claude-3-5-opus-latest",
               max_tokens: 1024,
               messages: [
                 { role: "user", content: prompt }
