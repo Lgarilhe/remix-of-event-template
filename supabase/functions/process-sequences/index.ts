@@ -8,8 +8,12 @@ const corsHeaders = {
 
 const UNIPILE_API_KEY = Deno.env.get('UNIPILE_API_KEY');
 const UNIPILE_DSN_RAW = Deno.env.get('UNIPILE_DSN') || '';
-// Ensure DSN has https:// prefix
 const UNIPILE_DSN = UNIPILE_DSN_RAW.startsWith('http') ? UNIPILE_DSN_RAW : `https://${UNIPILE_DSN_RAW}`;
+const ANTHROPIC_API_KEY = Deno.env.get('ANTHROPIC_API_KEY');
+const NOTION_API_KEY = Deno.env.get('NOTION_API_KEY');
+
+// Quota limits per account type
+const WEEKLY_INVITE_LIMIT = 100;
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -25,7 +29,6 @@ serve(async (req) => {
 
     switch (action) {
       case 'process': {
-        // Find scheduled steps ready to execute
         const now = new Date().toISOString();
         
         const { data: executions, error: fetchError } = await supabase
@@ -44,7 +47,7 @@ serve(async (req) => {
 
         if (fetchError) throw fetchError;
 
-        const results = { processed: 0, skipped: 0, failed: 0 };
+        const results = { processed: 0, skipped: 0, failed: 0, quota_blocked: 0 };
 
         for (const exec of executions || []) {
           try {
@@ -60,6 +63,27 @@ serve(async (req) => {
               continue;
             }
 
+            // ============ QUOTA VERIFICATION ============
+            const quotaCheck = await checkQuotaForAction(
+              supabase,
+              step.action_type,
+              enrollment.account_id
+            );
+            
+            if (!quotaCheck.allowed) {
+              await supabase
+                .from('sequence_step_executions')
+                .update({ 
+                  status: 'quota_blocked', 
+                  skip_reason: quotaCheck.reason,
+                  // Reschedule for tomorrow
+                  scheduled_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+                })
+                .eq('id', exec.id);
+              results.quota_blocked++;
+              continue;
+            }
+
             // Check conditions
             const conditionResult = await checkStepCondition(
               supabase,
@@ -70,7 +94,6 @@ serve(async (req) => {
             );
 
             if (conditionResult === 'wait') {
-              // Put execution in waiting state
               await supabase
                 .from('sequence_step_executions')
                 .update({ status: 'waiting_event' })
@@ -89,8 +112,6 @@ serve(async (req) => {
                 })
                 .eq('id', exec.id);
               results.skipped++;
-              
-              // Schedule next step
               await scheduleNextStep(supabase, enrollment, step.step_order);
               continue;
             }
@@ -101,12 +122,30 @@ serve(async (req) => {
               .update({ status: 'sending' })
               .eq('id', exec.id);
 
+            // ============ AI PERSONALIZATION ============
+            let finalMessage = (exec.final_message || step.message_template || '') as string;
+            let finalSubject = (step.subject_template || '') as string;
+            
+            if (step.use_ai_personalization && needsMessage(step.action_type)) {
+              const personalizedContent = await generatePersonalizedMessage(
+                supabase,
+                enrollment,
+                step,
+                exec
+              );
+              
+              if (personalizedContent) {
+                finalMessage = personalizedContent.message;
+                finalSubject = personalizedContent.subject || finalSubject;
+              }
+            }
+
             // Execute the action
             const executeResult = await executeStepAction(
               step.action_type,
               enrollment,
               step,
-              exec,
+              { ...exec, final_message: finalMessage, final_subject: finalSubject },
               supabase
             );
 
@@ -116,20 +155,17 @@ serve(async (req) => {
                 .update({ 
                   status: 'sent', 
                   executed_at: now,
-                  final_subject: executeResult.subject,
-                  final_message: executeResult.message,
+                  final_subject: executeResult.subject || finalSubject,
+                  final_message: executeResult.message || finalMessage,
                 })
                 .eq('id', exec.id);
               
-              // Update enrollment progress
               await supabase
                 .from('sequence_enrollments')
                 .update({ current_step_order: step.step_order + 1 })
                 .eq('id', enrollment.id);
 
-              // Schedule next step
               await scheduleNextStep(supabase, enrollment, step.step_order);
-              
               results.processed++;
             } else {
               await supabase
@@ -161,7 +197,6 @@ serve(async (req) => {
       }
 
       case 'check_replies': {
-        // Check for replies to pause sequences
         const { data: activeEnrollments } = await supabase
           .from('sequence_enrollments')
           .select('*')
@@ -181,7 +216,6 @@ serve(async (req) => {
               })
               .eq('id', enrollment.id);
             
-            // Cancel pending executions
             await supabase
               .from('sequence_step_executions')
               .update({ status: 'cancelled', skip_reason: 'Reply detected' })
@@ -198,7 +232,6 @@ serve(async (req) => {
       }
 
       case 'check_timeouts': {
-        // Check for steps waiting too long and branch accordingly
         const timeoutResults = await checkTimeoutBranches(supabase);
         return new Response(JSON.stringify({ success: true, ...timeoutResults }), {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -206,7 +239,6 @@ serve(async (req) => {
       }
 
       case 'check_wait_events': {
-        // Check enrollments waiting for events (connection accepted, etc.)
         const { data: waitingExecutions } = await supabase
           .from('sequence_step_executions')
           .select(`
@@ -239,13 +271,11 @@ serve(async (req) => {
           }
 
           if (eventOccurred) {
-            // Event occurred! Execute the step
             await supabase
               .from('sequence_step_executions')
               .update({ status: 'scheduled', scheduled_at: new Date().toISOString() })
               .eq('id', exec.id);
             
-            // Update connection status if applicable
             if (step.wait_for_event === 'connection_accepted') {
               await supabase
                 .from('sequence_enrollments')
@@ -280,6 +310,380 @@ serve(async (req) => {
   }
 });
 
+// ============ QUOTA VERIFICATION ============
+
+function needsMessage(actionType: string): boolean {
+  return ['message', 'inmail', 'smart_message', 'connection_request'].includes(actionType);
+}
+
+// deno-lint-ignore no-explicit-any
+async function checkQuotaForAction(
+  supabase: any,
+  actionType: string,
+  accountId: string
+): Promise<{ allowed: boolean; reason?: string }> {
+  try {
+    switch (actionType) {
+      case 'inmail':
+      case 'smart_message': {
+        // Check InMail balance via Unipile
+        const balanceResponse = await fetch(
+          `${UNIPILE_DSN}/api/v1/linkedin/inmail_balance?account_id=${accountId}`,
+          { headers: { 'X-API-KEY': UNIPILE_API_KEY! } }
+        );
+        
+        if (!balanceResponse.ok) {
+          console.warn('Could not check InMail balance, proceeding anyway');
+          return { allowed: true };
+        }
+        
+        const balance = await balanceResponse.json();
+        const recruiterCredits = balance.recruiter_balance || 0;
+        const premiumCredits = balance.premium_balance || 0;
+        const salesNavCredits = balance.sales_navigator_balance || 0;
+        
+        const totalCredits = recruiterCredits + premiumCredits + salesNavCredits;
+        
+        if (totalCredits <= 0) {
+          return { 
+            allowed: false, 
+            reason: `Quota InMail épuisé (Recruiter: ${recruiterCredits}, Premium: ${premiumCredits}, Sales Nav: ${salesNavCredits})` 
+          };
+        }
+        
+        return { allowed: true };
+      }
+
+      case 'connection_request': {
+        // Count invitations sent this week for this account
+        const weekAgo = new Date();
+        weekAgo.setDate(weekAgo.getDate() - 7);
+        
+        const { count } = await supabase
+          .from('sequence_step_executions')
+          .select('*', { count: 'exact', head: true })
+          .eq('status', 'sent')
+          .gte('executed_at', weekAgo.toISOString())
+          .in('step_id', 
+            supabase
+              .from('sequence_steps')
+              .select('id')
+              .eq('action_type', 'connection_request')
+          );
+        
+        // Also count from analytics
+        const { data: analyticsData } = await supabase
+          .from('sequence_analytics')
+          .select('invites_sent')
+          .gte('date', weekAgo.toISOString().split('T')[0]);
+        
+        const analyticsInvites = analyticsData?.reduce(
+          (sum: number, row: { invites_sent: number }) => sum + (row.invites_sent || 0), 
+          0
+        ) || 0;
+        
+        const totalInvites = (count || 0) + analyticsInvites;
+        
+        if (totalInvites >= WEEKLY_INVITE_LIMIT) {
+          return { 
+            allowed: false, 
+            reason: `Limite hebdomadaire d'invitations atteinte (${totalInvites}/${WEEKLY_INVITE_LIMIT})` 
+          };
+        }
+        
+        return { allowed: true };
+      }
+
+      default:
+        return { allowed: true };
+    }
+  } catch (err) {
+    console.error('Quota check error:', err);
+    // Allow execution if quota check fails
+    return { allowed: true };
+  }
+}
+
+// ============ AI PERSONALIZATION ============
+
+// deno-lint-ignore no-explicit-any
+async function generatePersonalizedMessage(
+  supabase: any,
+  enrollment: Record<string, unknown>,
+  step: Record<string, unknown>,
+  execution: Record<string, unknown>
+): Promise<{ message: string; subject?: string } | null> {
+  if (!ANTHROPIC_API_KEY) {
+    console.warn('ANTHROPIC_API_KEY not configured, skipping AI personalization');
+    return null;
+  }
+
+  try {
+    // 1. Get full LinkedIn profile
+    const profileData = await getFullLinkedInProfile(
+      enrollment.account_id as string,
+      enrollment.profile_id as string
+    );
+
+    // 2. Get job context from Notion if available
+    let jobContext: Record<string, unknown> | null = null;
+    if (enrollment.job_id && NOTION_API_KEY) {
+      jobContext = await fetchNotionJobContext(enrollment.job_id as string);
+    }
+
+    // 3. Get sequence history (previous steps executed)
+    const { data: previousSteps } = await supabase
+      .from('sequence_step_executions')
+      .select('*, step:sequence_steps(*)')
+      .eq('enrollment_id', enrollment.id)
+      .eq('status', 'sent')
+      .order('step_order', { ascending: true });
+
+    // 4. Determine message type
+    const stepOrder = step.step_order as number;
+    const actionType = step.action_type as string;
+    const isFollowUp = stepOrder > 0 && (previousSteps?.length || 0) > 0;
+    const isInvitation = actionType === 'connection_request';
+
+    // 5. Build the prompt
+    const messageType = isInvitation 
+      ? 'INVITATION (max 50 caractères pour la note)' 
+      : isFollowUp 
+        ? 'RELANCE' 
+        : 'PREMIER MESSAGE';
+
+    const previousMessagesContext = previousSteps?.map((ps: Record<string, unknown>) => 
+      `Étape ${ps.step_order}: ${(ps.step as Record<string, unknown>)?.action_type} - "${ps.final_message || 'N/A'}"`
+    ).join('\n') || 'Aucun message précédent';
+
+    const prompt = buildPersonalizationPrompt({
+      profile: profileData,
+      job: jobContext,
+      messageType,
+      previousMessages: previousMessagesContext,
+      template: step.message_template as string,
+      tone: step.ai_tone as string || 'professional',
+      isInvitation,
+    });
+
+    // 6. Call Claude
+    const response = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "x-api-key": ANTHROPIC_API_KEY,
+        "anthropic-version": "2023-06-01",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "claude-sonnet-4-20250514",
+        max_tokens: 400,
+        system: `Tu es un recruteur tech senior. Tu écris des messages LinkedIn personnalisés.
+RÈGLES:
+- Messages courts (80-100 mots max, sauf invitations: 50 car max)
+- Ton humain, pas de superlatifs
+- JAMAIS de "20+", toujours "plus de 20"
+- Sauts de ligne entre paragraphes
+- Réponds UNIQUEMENT en JSON: {"subject": "...", "message": "..."}`,
+        messages: [{ role: "user", content: prompt }],
+      }),
+    });
+
+    if (!response.ok) {
+      console.error('AI personalization failed:', response.status);
+      return null;
+    }
+
+    const data = await response.json();
+    let content = data.content?.[0]?.text || "";
+    content = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+
+    try {
+      const result = JSON.parse(content);
+      return {
+        message: result.message || '',
+        subject: result.subject,
+      };
+    } catch {
+      console.error('Failed to parse AI response:', content);
+      return null;
+    }
+  } catch (err) {
+    console.error('AI personalization error:', err);
+    return null;
+  }
+}
+
+interface PersonalizationParams {
+  profile: Record<string, unknown> | null;
+  job: Record<string, unknown> | null;
+  messageType: string;
+  previousMessages: string;
+  template: string;
+  tone: string;
+  isInvitation: boolean;
+}
+
+function buildPersonalizationPrompt(params: PersonalizationParams): string {
+  const { profile, job, messageType, previousMessages, template, tone, isInvitation } = params;
+
+  const toneInstructions: Record<string, string> = {
+    professional: "Vouvoiement, ton direct et respectueux.",
+    casual: "Tutoiement naturel, décontracté mais pro.",
+    enthusiastic: "Tutoiement, ton dynamique mais pas surjoué."
+  };
+
+  let prompt = `TYPE DE MESSAGE: ${messageType}\n\n`;
+
+  // Profile context
+  if (profile) {
+    prompt += `PROFIL DU CANDIDAT:
+- Nom: ${profile.name || 'Inconnu'}
+- Titre: ${profile.headline || 'Non spécifié'}
+- Entreprise actuelle: ${profile.current_company || 'Non spécifié'}
+- Localisation: ${profile.location || 'Non spécifié'}
+${profile.summary ? `- À propos: "${(profile.summary as string).slice(0, 500)}"` : ''}
+${profile.skills ? `- Compétences: ${(profile.skills as string[]).slice(0, 10).join(', ')}` : ''}
+${profile.experiences ? `- Expériences récentes: ${JSON.stringify((profile.experiences as unknown[]).slice(0, 3))}` : ''}\n\n`;
+  }
+
+  // Job context
+  if (job) {
+    prompt += `POSTE À POURVOIR:
+- Titre: ${job.title || 'Non spécifié'}
+- Client: ${(job.client as Record<string, unknown>)?.name || 'Confidentiel'}
+- Description: ${job.description ? (job.description as string).slice(0, 300) : 'Non spécifié'}
+- Compétences: ${(job.skills as string[])?.join(', ') || 'Non spécifié'}
+- Localisation: ${job.location || 'Non spécifié'}
+- Remote: ${job.remote || 'Non spécifié'}
+${job.mustHave ? `- Must-have: ${job.mustHave}` : ''}
+${job.shouldHave ? `- Should-have: ${job.shouldHave}` : ''}\n\n`;
+  }
+
+  // Sequence history
+  prompt += `HISTORIQUE DE LA SÉQUENCE:
+${previousMessages}\n\n`;
+
+  // Template if provided
+  if (template) {
+    prompt += `TEMPLATE DE BASE (à personnaliser):
+"${template}"\n\n`;
+  }
+
+  // Instructions
+  prompt += `TON: ${toneInstructions[tone] || toneInstructions.professional}\n\n`;
+
+  if (isInvitation) {
+    prompt += `IMPORTANT: C'est une NOTE D'INVITATION LinkedIn. Maximum 50 caractères !
+Sois ultra concis. Exemple: "Votre profil Python m'intéresse - échangeons ?"`;
+  } else {
+    prompt += `Génère un message personnalisé en tenant compte:
+1. Du profil du candidat (utilise son À propos si disponible)
+2. Du poste proposé et ses critères
+3. De l'historique de la séquence (si c'est une relance, fais référence au message précédent)
+4. Du ton demandé`;
+  }
+
+  return prompt;
+}
+
+// Get full LinkedIn profile via Unipile
+async function getFullLinkedInProfile(
+  accountId: string, 
+  profileId: string
+): Promise<Record<string, unknown> | null> {
+  try {
+    const response = await fetch(
+      `${UNIPILE_DSN}/api/v1/users/${profileId}?account_id=${accountId}`,
+      { headers: { 'X-API-KEY': UNIPILE_API_KEY! } }
+    );
+    
+    if (!response.ok) return null;
+    
+    const data = await response.json();
+    
+    return {
+      name: data.first_name ? `${data.first_name} ${data.last_name || ''}`.trim() : data.name,
+      headline: data.headline,
+      current_company: data.current_company?.name || data.company_name,
+      location: data.location,
+      summary: data.summary || data.about,
+      skills: data.skills?.map((s: Record<string, unknown>) => s.name || s) || [],
+      experiences: data.positions?.map((p: Record<string, unknown>) => ({
+        title: p.title,
+        company: p.company_name,
+        duration: p.duration_str,
+      })) || [],
+      network_distance: data.network_distance,
+    };
+  } catch (err) {
+    console.error('Failed to fetch LinkedIn profile:', err);
+    return null;
+  }
+}
+
+// Fetch job context from Notion
+async function fetchNotionJobContext(jobId: string): Promise<Record<string, unknown> | null> {
+  try {
+    const response = await fetch(`https://api.notion.com/v1/pages/${jobId}`, {
+      headers: {
+        'Authorization': `Bearer ${NOTION_API_KEY}`,
+        'Notion-Version': '2022-06-28',
+      },
+    });
+
+    if (!response.ok) return null;
+
+    const page = await response.json();
+    const props = page.properties || {};
+
+    // Helper to extract property values
+    const getValue = (prop: Record<string, unknown>): unknown => {
+      if (!prop) return null;
+      switch (prop.type) {
+        case 'title':
+          return (prop.title as Array<{ plain_text: string }>)?.[0]?.plain_text || '';
+        case 'rich_text':
+          return (prop.rich_text as Array<{ plain_text: string }>)?.map(t => t.plain_text).join('') || '';
+        case 'select':
+          return (prop.select as { name: string })?.name || null;
+        case 'multi_select':
+          return (prop.multi_select as Array<{ name: string }>)?.map(s => s.name) || [];
+        case 'number':
+          return prop.number;
+        default:
+          return null;
+      }
+    };
+
+    // Find title property
+    let title = '';
+    for (const [, prop] of Object.entries(props)) {
+      if ((prop as Record<string, unknown>).type === 'title') {
+        title = getValue(prop as Record<string, unknown>) as string;
+        break;
+      }
+    }
+
+    return {
+      title,
+      description: getValue(props['Description']),
+      skills: getValue(props['Compétences']) || getValue(props['Skills']),
+      location: getValue(props['Localisation']) || getValue(props['Location']),
+      remote: getValue(props['Remote']) || getValue(props['Télétravail']),
+      mustHave: getValue(props['Must have']) || getValue(props['Critères Must']),
+      shouldHave: getValue(props['Should have']) || getValue(props['Critères Should']),
+      client: {
+        name: getValue(props['Client']) || getValue(props['Entreprise']),
+      },
+    };
+  } catch (err) {
+    console.error('Failed to fetch Notion job:', err);
+    return null;
+  }
+}
+
+// ============ EXISTING HELPERS ============
+
 async function checkStepCondition(
   _supabase: unknown,
   conditionType: string,
@@ -292,35 +696,29 @@ async function checkStepCondition(
       return true;
 
     case 'if_connected': {
-      // Check if connected (1st degree) via Unipile API
       const profile = await getProfileInfo(accountId, profileId);
       return profile?.network_distance === 'FIRST_DEGREE';
     }
 
     case 'if_not_connected': {
-      // Check if NOT connected via Unipile API
       const profile = await getProfileInfo(accountId, profileId);
       return profile?.network_distance !== 'FIRST_DEGREE';
     }
 
     case 'if_no_response': {
-      // Check if no response received via Unipile API
       const hasReply = await checkHasProspectReplied(accountId, profileId);
       return !hasReply;
     }
 
     case 'wait_until_connected': {
-      // Check if connected, if not return 'wait' to pause execution
       const profile = await getProfileInfo(accountId, profileId);
       if (profile?.network_distance === 'FIRST_DEGREE') {
         return true;
       }
-      // Not connected yet - put in waiting state
       return 'wait';
     }
 
     case 'wait_for_event': {
-      // Custom wait for specific event
       if (!waitForEvent) return true;
       
       switch (waitForEvent) {
@@ -342,7 +740,6 @@ async function checkStepCondition(
   }
 }
 
-// Helper: Get profile info from Unipile
 async function getProfileInfo(accountId: string, profileId: string): Promise<{
   network_distance?: string;
 } | null> {
@@ -358,10 +755,8 @@ async function getProfileInfo(accountId: string, profileId: string): Promise<{
   }
 }
 
-// Helper: Check if prospect has replied
 async function checkHasProspectReplied(accountId: string, profileId: string): Promise<boolean> {
   try {
-    // Get chats with this attendee
     const chatsResponse = await fetch(
       `${UNIPILE_DSN}/api/v1/chat_attendees/${profileId}/chats?account_id=${accountId}`,
       { headers: { 'X-API-KEY': UNIPILE_API_KEY! } }
@@ -374,7 +769,6 @@ async function checkHasProspectReplied(accountId: string, profileId: string): Pr
     
     if (chats.length === 0) return false;
 
-    // Check messages in each chat
     for (const chat of chats) {
       const messagesResponse = await fetch(
         `${UNIPILE_DSN}/api/v1/chats/${chat.id}/messages?limit=20`,
@@ -386,7 +780,6 @@ async function checkHasProspectReplied(accountId: string, profileId: string): Pr
       const messagesData = await messagesResponse.json();
       const messages = messagesData.items || [];
       
-      // Find messages from the prospect (not from self)
       const prospectMessages = messages.filter((m: { is_sender_self?: boolean; sender_attendee_id?: string }) => 
         !m.is_sender_self && m.sender_attendee_id !== 'self'
       );
@@ -414,11 +807,10 @@ async function executeStepAction(
     const accountId = enrollment.account_id as string;
     const profileId = enrollment.profile_id as string;
     const messageText = (execution.final_message || step.message_template || '') as string;
-    const subjectText = (step.subject_template || '') as string;
+    const subjectText = (execution.final_subject || step.subject_template || '') as string;
 
     switch (actionType) {
       case 'check_connection': {
-        // Check if connected and route accordingly
         const profile = await getProfileInfo(accountId, profileId);
         const isConnected = profile?.network_distance === 'FIRST_DEGREE';
         
@@ -426,13 +818,11 @@ async function executeStepAction(
           ? (step.if_true_goto_step as string | undefined) 
           : (step.if_false_goto_step as string | undefined);
         
-        // Update enrollment connection status
         await supabase
           .from('sequence_enrollments')
           .update({ connection_status: isConnected ? 'connected' : 'not_connected' })
           .eq('id', enrollment.id);
         
-        // Schedule next step based on branch
         if (nextStepId) {
           await scheduleNextStep(supabase, enrollment, step.step_order as number, nextStepId);
         } else {
@@ -443,13 +833,11 @@ async function executeStepAction(
       }
 
       case 'profile_visit': {
-        // Visit profile via Unipile
         const visitResponse = await fetch(
           `${UNIPILE_DSN}/api/v1/users/${profileId}?account_id=${accountId}`,
           { headers: { 'X-API-KEY': UNIPILE_API_KEY! } }
         );
         
-        // Log analytics
         if (visitResponse.ok) {
           await logAnalytics(supabase, enrollment.sequence_id as string, 'profile_visits');
         }
@@ -460,18 +848,15 @@ async function executeStepAction(
       case 'smart_message':
       case 'inmail':
       case 'message': {
-        // Auto-detect: check connection status to decide InMail vs Direct message
         const profile = await getProfileInfo(accountId, profileId);
         const isConnected = profile?.network_distance === 'FIRST_DEGREE';
         
-        // Build message body - Unipile API format
         const messageBody: Record<string, unknown> = {
           account_id: accountId,
           attendees: [{ provider_id: profileId }],
           text: messageText,
         };
         
-        // Add subject for InMail (only if not connected)
         if (!isConnected && subjectText) {
           messageBody.subject = subjectText;
         }
@@ -497,14 +882,14 @@ async function executeStepAction(
       }
 
       case 'connection_request': {
-        // Send connection request via Unipile
         const connectBody: Record<string, unknown> = {
           account_id: accountId,
           provider_id: profileId,
         };
         
         if (messageText) {
-          connectBody.message = messageText;
+          // Limit invitation note to 50 characters
+          connectBody.message = messageText.slice(0, 50);
         }
         
         const connectResponse = await fetch(`${UNIPILE_DSN}/api/v1/users/invite`, {
@@ -519,14 +904,13 @@ async function executeStepAction(
         if (connectResponse.ok) {
           await logAnalytics(supabase, enrollment.sequence_id as string, 'invites_sent');
           
-          // Update enrollment connection status to pending
           await supabase
             .from('sequence_enrollments')
             .update({ connection_status: 'pending_invite' })
             .eq('id', enrollment.id);
         }
         
-        return { success: connectResponse.ok };
+        return { success: connectResponse.ok, message: messageText?.slice(0, 50) };
       }
 
       default:
@@ -537,7 +921,6 @@ async function executeStepAction(
   }
 }
 
-// Helper: Log analytics
 // deno-lint-ignore no-explicit-any
 async function logAnalytics(
   supabase: any,
@@ -547,7 +930,6 @@ async function logAnalytics(
   const today = new Date().toISOString().split('T')[0];
   
   try {
-    // Try to get existing record
     const { data: existing } = await supabase
       .from('sequence_analytics')
       .select('*')
@@ -556,14 +938,12 @@ async function logAnalytics(
       .maybeSingle();
     
     if (existing) {
-      // Update existing - increment the field
       const currentValue = existing[field] || 0;
       await supabase
         .from('sequence_analytics')
         .update({ [field]: currentValue + 1 })
         .eq('id', existing.id);
     } else {
-      // Insert new
       await supabase.from('sequence_analytics').insert({
         sequence_id: sequenceId,
         date: today,
@@ -575,11 +955,11 @@ async function logAnalytics(
   }
 }
 
+// deno-lint-ignore no-explicit-any
 async function scheduleNextStep(supabase: any, enrollment: any, currentStepOrder: number, forceBranchStepId?: string) {
   let nextStep;
   
   if (forceBranchStepId) {
-    // Force branch to a specific step (timeout branch)
     const { data } = await supabase
       .from('sequence_steps')
       .select('*')
@@ -587,7 +967,6 @@ async function scheduleNextStep(supabase: any, enrollment: any, currentStepOrder
       .maybeSingle();
     nextStep = data;
   } else {
-    // Get next step in sequence order
     const { data } = await supabase
       .from('sequence_steps')
       .select('*')
@@ -598,7 +977,6 @@ async function scheduleNextStep(supabase: any, enrollment: any, currentStepOrder
   }
 
   if (!nextStep) {
-    // Sequence complete
     await supabase
       .from('sequence_enrollments')
       .update({ status: 'completed', completed_at: new Date().toISOString() })
@@ -606,13 +984,11 @@ async function scheduleNextStep(supabase: any, enrollment: any, currentStepOrder
     return;
   }
 
-  // Calculate next execution time
   const scheduledAt = new Date();
   scheduledAt.setMinutes(scheduledAt.getMinutes() + (nextStep.delay_minutes || 0));
   scheduledAt.setDate(scheduledAt.getDate() + (nextStep.delay_days || 0));
   scheduledAt.setHours(scheduledAt.getHours() + (nextStep.delay_hours || 0));
   
-  // Adjust to preferred window
   const preferredStart = nextStep.preferred_hour_start ?? 9;
   const preferredEnd = nextStep.preferred_hour_end ?? 18;
   
@@ -623,7 +999,6 @@ async function scheduleNextStep(supabase: any, enrollment: any, currentStepOrder
     scheduledAt.setHours(preferredStart, Math.floor(Math.random() * 30), 0);
   }
 
-  // Skip weekends
   const day = scheduledAt.getDay();
   if (day === 0) scheduledAt.setDate(scheduledAt.getDate() + 1);
   if (day === 6) scheduledAt.setDate(scheduledAt.getDate() + 2);
@@ -639,9 +1014,8 @@ async function scheduleNextStep(supabase: any, enrollment: any, currentStepOrder
     });
 }
 
-// Check wait_until_connected steps for timeout and branch
+// deno-lint-ignore no-explicit-any
 async function checkTimeoutBranches(supabase: any) {
-  // Get enrollments waiting for connection with timeout configured
   const { data: waitingExecutions } = await supabase
     .from('sequence_step_executions')
     .select(`
@@ -662,15 +1036,12 @@ async function checkTimeoutBranches(supabase: any) {
     
     if (!step?.timeout_days || !enrollment) continue;
 
-    // Check if timeout has passed
     const waitingSince = new Date(exec.created_at);
     const now = new Date();
     const daysPassed = Math.floor((now.getTime() - waitingSince.getTime()) / (1000 * 60 * 60 * 24));
 
     if (daysPassed >= step.timeout_days) {
-      // Timeout reached!
       if (step.timeout_branch_step_id) {
-        // Branch to alternative step
         await supabase
           .from('sequence_step_executions')
           .update({ 
@@ -680,11 +1051,9 @@ async function checkTimeoutBranches(supabase: any) {
           })
           .eq('id', exec.id);
 
-        // Schedule the timeout branch step
         await scheduleNextStep(supabase, enrollment, step.step_order, step.timeout_branch_step_id);
         branched++;
       } else {
-        // No branch configured, just skip and continue
         await supabase
           .from('sequence_step_executions')
           .update({ 
