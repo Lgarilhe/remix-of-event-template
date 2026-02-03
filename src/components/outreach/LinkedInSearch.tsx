@@ -979,7 +979,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
     }
   }, [results, selectedProfiles, jobScores]);
 
-  // Build profile data for scoring
+  // Build profile data for scoring - enriched with summary + detailed work experience
   const buildProfileData = useCallback((profile: LinkedInProfile) => {
     const workExperience = profile.work_experience || [];
     const currentJob = workExperience.find(exp => !exp.end) || workExperience[0];
@@ -1011,6 +1011,33 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
       return years > 0 ? years : null;
     };
     
+    // Helper to calculate duration string from start/end dates
+    const calculateDuration = (start?: { year?: number; month?: number }, end?: { year?: number; month?: number }): string | undefined => {
+      if (!start?.year) return undefined;
+      const endYear = end?.year || new Date().getFullYear();
+      const endMonth = end?.month || new Date().getMonth() + 1;
+      const startYear = start.year;
+      const startMonth = start.month || 1;
+      
+      const totalMonths = (endYear - startYear) * 12 + (endMonth - startMonth);
+      const years = Math.floor(totalMonths / 12);
+      const months = totalMonths % 12;
+      
+      if (years === 0) return `${months} mois`;
+      if (months === 0) return `${years} an${years > 1 ? 's' : ''}`;
+      return `${years} an${years > 1 ? 's' : ''} ${months} mois`;
+    };
+    
+    // Build enriched work experience (max 3 positions, with descriptions truncated to 200 chars)
+    const recentPositions = workExperience.slice(0, 3);
+    const enrichedWorkExperience = recentPositions.map(exp => ({
+      role: exp.role || '',
+      company: exp.company || '',
+      duration: calculateDuration(exp.start, exp.end),
+      description: exp.description?.slice(0, 200) || undefined,
+      skills: exp.skills?.slice(0, 5).map(s => s.name || String(s)) || undefined,
+    }));
+    
     return {
       name: profile.name || `${profile.first_name || ''} ${profile.last_name || ''}`.trim(),
       headline: profile.headline,
@@ -1018,8 +1045,18 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
       currentCompany: currentJob?.company,
       location: profile.location,
       skills: profile.skills?.map((s: any) => s.name || s).slice(0, 15) || [],
+      // NEW: Summary (About section) - truncated to 300 chars
+      summary: profile.summary?.slice(0, 300) || undefined,
+      // NEW: Enriched work experience with descriptions
+      workExperience: enrichedWorkExperience.length > 0 ? enrichedWorkExperience : undefined,
+      // Keep legacy format for backward compatibility
       pastPositions: pastJobs.map(p => `${p.role} chez ${p.company}`),
-      education: education.map((e: any) => `${e.degree || ''} - ${e.school}`) || [],
+      education: education.map((e: any) => {
+        const degree = e.degree || '';
+        const school = e.school || '';
+        const year = e.end?.year ? ` (${e.end.year})` : '';
+        return `${degree} - ${school}${year}`;
+      }) || [],
       yearsOfExperience: calculateYearsFromDiploma(),
     };
   }, []);
