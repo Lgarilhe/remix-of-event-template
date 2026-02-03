@@ -265,6 +265,12 @@ Règles de scoring:
 
           if (!response.ok) {
             console.error("AI gateway error:", response.status);
+            if (response.status === 402) {
+              throw new Error("CREDITS_EXHAUSTED");
+            }
+            if (response.status === 429) {
+              throw new Error("RATE_LIMITED");
+            }
             return {
               profile_name: p.name,
               error: `AI error: ${response.status}`,
