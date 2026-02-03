@@ -9,11 +9,13 @@ import { MessagesInbox } from '@/components/outreach/MessagesInbox';
 import { NurturingDashboard } from '@/components/outreach/NurturingDashboard';
 import { InMailQueueStatus } from '@/components/outreach/InMailQueueStatus';
 import { ProjectsList } from '@/components/outreach/projects';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Search, Users, Settings, GitBranch, MessageSquare, Sparkles, FolderOpen } from 'lucide-react';
 import { toast } from 'sonner';
 import { useRegisterCopilotContext } from '@/contexts/CopilotContext';
+import { OutreachSearchProvider } from '@/contexts/OutreachSearchContext';
 import { SourcingProject } from '@/hooks/useSourcingProjects';
+import { cn } from '@/lib/utils';
 
 export interface LinkedInAccountSubscriptions {
   classic: boolean;
@@ -150,31 +152,34 @@ export default function Outreach() {
                 Comptes ({accounts.length})
               </TabsTrigger>
             </TabsList>
+          </Tabs>
 
-            <TabsContent value="projects" className="mt-0">
-              <div className="bg-white rounded-xl border border-[#1A1A1A]/10 p-6">
-                <ProjectsList onResumeSearch={handleResumeSearch} />
+          {/* Tab panels - kept mounted to preserve state */}
+          <div className={cn("mt-0", activeTab !== 'projects' && 'hidden')}>
+            <div className="bg-white rounded-xl border border-[#1A1A1A]/10 p-6">
+              <ProjectsList onResumeSearch={handleResumeSearch} />
+            </div>
+          </div>
+
+          <div className={cn("mt-0", activeTab !== 'search' && 'hidden')}>
+            {accounts.length === 0 ? (
+              <div className="bg-white rounded-xl border border-[#1A1A1A]/10 p-12 text-center">
+                <Users className="w-16 h-16 text-[#0077B5]/30 mx-auto mb-4" />
+                <h2 className="text-xl font-semibold text-[#1A1A1A] mb-2">
+                  Connectez votre compte LinkedIn
+                </h2>
+                <p className="text-[#1A1A1A]/60 mb-6 max-w-md mx-auto">
+                  Pour rechercher des candidats, vous devez d'abord connecter un compte LinkedIn Recruiter.
+                </p>
+                <button
+                  onClick={() => setActiveTab('accounts')}
+                  className="px-6 py-2 bg-[#0077B5] text-white rounded-lg hover:bg-[#005E93] transition-colors"
+                >
+                  Connecter un compte
+                </button>
               </div>
-            </TabsContent>
-
-            <TabsContent value="search" className="mt-0">
-              {accounts.length === 0 ? (
-                <div className="bg-white rounded-xl border border-[#1A1A1A]/10 p-12 text-center">
-                  <Users className="w-16 h-16 text-[#0077B5]/30 mx-auto mb-4" />
-                  <h2 className="text-xl font-semibold text-[#1A1A1A] mb-2">
-                    Connectez votre compte LinkedIn
-                  </h2>
-                  <p className="text-[#1A1A1A]/60 mb-6 max-w-md mx-auto">
-                    Pour rechercher des candidats, vous devez d'abord connecter un compte LinkedIn Recruiter.
-                  </p>
-                  <button
-                    onClick={() => setActiveTab('accounts')}
-                    className="px-6 py-2 bg-[#0077B5] text-white rounded-lg hover:bg-[#005E93] transition-colors"
-                  >
-                    Connecter un compte
-                  </button>
-                </div>
-              ) : (
+            ) : (
+              <OutreachSearchProvider>
                 <LinkedInSearch
                   accounts={accounts}
                   selectedAccount={selectedAccount}
@@ -182,43 +187,43 @@ export default function Outreach() {
                   activeProject={activeProject}
                   onProjectChange={setActiveProject}
                 />
-              )}
-            </TabsContent>
+              </OutreachSearchProvider>
+            )}
+          </div>
 
-            <TabsContent value="messages" className="mt-0">
-              <MessagesInbox
-                accounts={accounts}
-                selectedAccount={selectedAccount}
-                onAccountChange={setSelectedAccount}
-                onUnreadCountChange={setUnreadMessageCount}
-              />
-            </TabsContent>
+          <div className={cn("mt-0", activeTab !== 'messages' && 'hidden')}>
+            <MessagesInbox
+              accounts={accounts}
+              selectedAccount={selectedAccount}
+              onAccountChange={setSelectedAccount}
+              onUnreadCountChange={setUnreadMessageCount}
+            />
+          </div>
 
-            <TabsContent value="sequences" className="mt-0">
-              <div className="bg-white rounded-xl border border-[#1A1A1A]/10 p-6">
-                <SequencesList
-                  accounts={accounts}
-                  selectedAccount={selectedAccount}
-                />
-              </div>
-            </TabsContent>
-
-            <TabsContent value="nurturing" className="mt-0">
-              <NurturingDashboard
+          <div className={cn("mt-0", activeTab !== 'sequences' && 'hidden')}>
+            <div className="bg-white rounded-xl border border-[#1A1A1A]/10 p-6">
+              <SequencesList
                 accounts={accounts}
                 selectedAccount={selectedAccount}
               />
-            </TabsContent>
+            </div>
+          </div>
 
-            <TabsContent value="accounts" className="mt-0">
-              <LinkedInAccountManager
-                accounts={accounts}
-                loading={loading}
-                onAccountConnected={handleAccountConnected}
-                onAccountDisconnected={handleAccountDisconnected}
-              />
-            </TabsContent>
-          </Tabs>
+          <div className={cn("mt-0", activeTab !== 'nurturing' && 'hidden')}>
+            <NurturingDashboard
+              accounts={accounts}
+              selectedAccount={selectedAccount}
+            />
+          </div>
+
+          <div className={cn("mt-0", activeTab !== 'accounts' && 'hidden')}>
+            <LinkedInAccountManager
+              accounts={accounts}
+              loading={loading}
+              onAccountConnected={handleAccountConnected}
+              onAccountDisconnected={handleAccountDisconnected}
+            />
+          </div>
         </div>
       </main>
     </div>
