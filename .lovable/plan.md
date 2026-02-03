@@ -1,327 +1,186 @@
 
+# Plan : Enrichir les données de scoring IA
 
-# Plan : Copilot MCP-Powered avec RAG
-
-## Vision
-
-Créer un **assistant IA contextuel unifié** (Copilot) qui :
-1. **Se connecte aux outils externes via MCP** (Notion déjà connecté, extensible à d'autres)
-2. **Fonctionne en mode RAG** (Retrieval Augmented Generation) pour une compréhension profonde
-3. **Agit sur l'ensemble du système** avec une intelligence contextuelle
-
-Ce Copilot remplacera les 6+ features IA éparpillées actuelles par un point d'entrée unique, accessible partout.
+## Objectif
+Ajouter le "À propos" (summary) et les descriptions détaillées des expériences pour améliorer la qualité du matching profil/poste.
 
 ---
 
-## État Actuel - Inventaire IA à Unifier
+## Données actuellement envoyées vs disponibles
 
-### Edge Functions IA Existantes
-
-| Fonction | Rôle | Contexte utilisé |
-|----------|------|------------------|
-| `chat-filter-assistant` | Génère les filtres LinkedIn | Job sélectionné, filtres actuels |
-| `generate-outreach-message` | Rédige les messages d'approche | Profil candidat, job, ton |
-| `analyze-response` | Analyse l'intent des réponses | Conversation, profil, jobs dispo |
-| `score-profile-job` | Score compatibilité profil/poste | Profil complet, critères job |
-| `generate-reply-suggestions` | Suggestions de réponses | Conversation en cours |
-| `analyze-linkedin-profile` | Analyse un profil LinkedIn | Données profil brutes |
-
-### Composants UI IA Actuels
-
-| Composant | Localisation | Actions |
-|-----------|--------------|---------|
-| `FilterAssistantModal` | Outreach | Chat filtres LinkedIn |
-| `OutreachMessageModal` | Outreach | Génère messages |
-| `NurturingPanel` | Messages | Analyse intent + suggestions |
-| `JobScoreDisplay` | Résultats | Affiche score IA |
-
-### Sources de Données MCP Disponibles
-
-| Source | Statut | Données |
-|--------|--------|---------|
-| **Notion** | Connecté | Jobs, Candidats, Shortlist, Critères Transverses |
-| (Autres) | Extensible | Slack, Google Drive, Linear... |
+| Donnée | Disponible dans l'API | Envoyée à l'IA |
+|--------|----------------------|----------------|
+| Nom | ✅ | ✅ |
+| Headline | ✅ | ✅ |
+| Poste actuel + Entreprise | ✅ | ✅ |
+| Localisation | ✅ | ✅ |
+| Skills (liste) | ✅ | ✅ (max 15) |
+| Années d'XP | ✅ (calculé) | ✅ |
+| **Summary / À propos** | ✅ | ❌ **Manquant** |
+| **Description des postes** | ✅ | ❌ **Manquant** |
+| **Skills par poste** | ✅ | ❌ **Manquant** |
+| **Description entreprise** | ✅ | ❌ **Manquant** |
+| Education | ✅ | ✅ (format simple) |
 
 ---
 
-## Architecture du Copilot MCP
+## Modifications prévues
+
+### 1. Frontend - `LinkedInSearch.tsx` (fonction `buildProfileData`)
+
+Enrichir les données du profil envoyées :
 
 ```text
-┌──────────────────────────────────────────────────────────────────────────┐
-│                          FRONTEND                                        │
-│  ┌────────────────────────────────────────────────────────────────────┐  │
-│  │                     CopilotProvider (Context)                      │  │
-│  │  • currentPage: 'outreach' | 'ats' | 'candidates' | 'messages'     │  │
-│  │  • selectedItems: candidat(s), job(s), conversation                │  │
-│  │  • conversationHistory: messages du Copilot                        │  │
-│  └─────────────────────────────────────────────────────────────────────┘ │
-│                                    │                                     │
-│                                    ▼                                     │
-│  ┌────────────────────────────────────────────────────────────────────┐  │
-│  │                    CopilotPanel (UI)                               │  │
-│  │  • Panneau latéral flottant (toggle Cmd+K)                         │  │
-│  │  • Chat conversationnel streaming                                  │  │
-│  │  • Actions contextuelles automatiques                              │  │
-│  │  • Suggestions proactives                                          │  │
-│  └─────────────────────────────────────────────────────────────────────┘ │
-└────────────────────────────────────│────────────────────────────────────┘
-                                     │
-                                     ▼
-┌──────────────────────────────────────────────────────────────────────────┐
-│                    EDGE FUNCTION: copilot                                │
-│  ┌────────────────────────────────────────────────────────────────────┐  │
-│  │                    Context Builder (RAG)                           │  │
-│  │  • Récupère les données pertinentes via MCP                        │  │
-│  │  • Enrichit le prompt avec le contexte métier                      │  │
-│  │  • Vectorise et cherche les infos similaires                       │  │
-│  └─────────────────────────────────────────────────────────────────────┘ │
-│                                    │                                     │
-│                                    ▼                                     │
-│  ┌────────────────────────────────────────────────────────────────────┐  │
-│  │                    Action Router                                   │  │
-│  │  • Détecte l'intention utilisateur                                 │  │
-│  │  • Route vers le bon "skill" (filtres, message, scoring...)        │  │
-│  │  • Exécute les actions (update Notion, envoi message...)           │  │
-│  └─────────────────────────────────────────────────────────────────────┘ │
-│                                    │                                     │
-│                                    ▼                                     │
-│  ┌────────────────────────────────────────────────────────────────────┐  │
-│  │                    MCP Connectors Layer                            │  │
-│  │  ┌──────────────────┐  ┌──────────────────┐  ┌──────────────────┐  │  │
-│  │  │     Notion       │  │   Unipile        │  │   (Extensible)   │  │  │
-│  │  │  Jobs, Candidats │  │  LinkedIn API    │  │   Slack, etc.    │  │  │
-│  │  │  Shortlist       │  │  Messages        │  │                  │  │  │
-│  │  └──────────────────┘  └──────────────────┘  └──────────────────┘  │  │
-│  └─────────────────────────────────────────────────────────────────────┘ │
-└──────────────────────────────────────────────────────────────────────────┘
+Avant :
+{
+  name, headline, currentRole, currentCompany, location,
+  skills: [...15 premiers],
+  pastPositions: ["Role chez Company", ...],
+  education: ["Diplôme - École", ...],
+  yearsOfExperience
+}
+
+Après :
+{
+  name, headline, currentRole, currentCompany, location,
+  skills: [...15 premiers],
+  summary: "Le contenu du À propos LinkedIn...",  // NOUVEAU
+  workExperience: [                                // NOUVEAU - enrichi
+    {
+      role: "Staff Engineer",
+      company: "Datadog",
+      duration: "2 ans",
+      description: "Développement de la plateforme...",
+      skills: ["Go", "K8s"],
+    },
+    // ... 2 autres postes
+  ],
+  education: ["Master Informatique - Polytechnique (2015)", ...],
+  yearsOfExperience
+}
 ```
 
----
+### 2. Backend - Edge Function `score-profile-job`
 
-## Fonctionnalités du Copilot
-
-### 1. Mode Conversationnel Unifié
-
-L'utilisateur parle naturellement, le Copilot comprend et agit :
-
-| Demande Utilisateur | Réponse du Copilot |
-|---------------------|---------------------|
-| "Configure les filtres pour le poste Numspot" | Analyse le job Notion, propose filtres LinkedIn |
-| "Rédige un message pour ce candidat" | Récupère profil + job actif, génère message personnalisé |
-| "Évalue ces 3 profils pour le poste X" | Score batch avec critères Must/Should/Nice |
-| "Résume les réponses de la journée" | Agrège les messages, détecte les intents |
-| "Mets Jean dans le pipeline Numspot" | Crée l'entrée Shortlist dans Notion |
-| "Quels candidats ont répondu positivement ?" | Filtre les conversations avec intent 'interested' |
-
-### 2. Conscience Contextuelle (RAG)
-
-Le Copilot sait automatiquement :
-- **Page active** : Outreach, ATS, Candidates, Messages
-- **Éléments sélectionnés** : Profil(s), Job, Conversation
-- **Historique récent** : Dernières actions, derniers messages
-- **Données Notion** : Jobs actifs, critères de scoring, pipeline
-
-### 3. Actions Automatiques
-
-Le Copilot peut **exécuter** des actions, pas seulement suggérer :
-- Appliquer des filtres LinkedIn
-- Envoyer un InMail (avec confirmation)
-- Créer/Mettre à jour des entrées Notion
-- Changer le stage d'un candidat
-- Planifier un rappel
-
-### 4. Suggestions Proactives
-
-Le Copilot apparait avec des suggestions contextuelles :
-- **Page Outreach vide** : "Veux-tu que je configure les filtres pour [Job actif] ?"
-- **Nouveau message reçu** : Badge avec intent détecté + actions suggérées
-- **Profil consulté** : "Score: 85% pour [Job]. Tu veux rédiger un message ?"
-
----
-
-## Implémentation Technique
-
-### Phase 1 : Infrastructure Frontend
-
-**Fichiers à créer :**
-
-```text
-src/contexts/CopilotContext.tsx
-  - État global du Copilot (page, sélection, conversation)
-  - Hook useRegisterCopilotContext() pour injection depuis les pages
-
-src/components/copilot/CopilotPanel.tsx
-  - Panneau latéral avec chat streaming
-  - Rendu markdown des réponses
-  - Actions rapides contextuelles
-
-src/components/copilot/CopilotTrigger.tsx
-  - Bouton flottant (icône IA)
-  - Raccourci clavier Cmd+K
-  - Badge de notification
-
-src/components/copilot/CopilotMessage.tsx
-  - Affichage des messages (user/assistant)
-  - Rendu des actions suggérées
-  - Boutons d'action inline
-
-src/hooks/useCopilot.ts
-  - useAskCopilot() : envoyer une question
-  - useCopilotActions() : exécuter une action
-  - useCopilotContext() : lire le contexte
-```
-
-### Phase 2 : Edge Function Unifiée
-
-**Fichier à créer :**
-
-```text
-supabase/functions/copilot/index.ts
-```
-
-Structure de la fonction :
-
+**Mettre à jour l'interface TypeScript :**
 ```typescript
-// Schéma de requête
-interface CopilotRequest {
-  // Message utilisateur
-  message: string;
-  
-  // Contexte frontend
-  context: {
-    page: 'outreach' | 'ats' | 'candidates' | 'messages';
-    selectedJobId?: string;
-    selectedProfiles?: ProfileData[];
-    activeConversation?: Message[];
-    currentFilters?: LinkedInFiltersState;
-  };
-  
-  // Historique conversation Copilot
-  history: { role: 'user' | 'assistant'; content: string }[];
-  
-  // Options
-  action?: 'chat' | 'execute'; // chat = répondre, execute = agir
-}
-
-// Schéma de réponse
-interface CopilotResponse {
-  message: string; // Réponse texte
-  actions?: CopilotAction[]; // Actions suggérées
-  data?: any; // Données structurées (filtres, message généré, etc.)
-  executed?: { // Si action exécutée
-    type: string;
-    result: any;
-  };
+interface ProfileData {
+  name: string;
+  headline?: string;
+  currentRole?: string;
+  currentCompany?: string;
+  location?: string;
+  skills?: string[];
+  summary?: string;           // NOUVEAU
+  workExperience?: Array<{    // NOUVEAU (remplace pastPositions)
+    role: string;
+    company: string;
+    duration?: string;
+    description?: string;
+    skills?: string[];
+  }>;
+  pastPositions?: string[];   // Garder pour rétrocompatibilité
+  education?: string[];
+  yearsOfExperience?: number;
 }
 ```
 
-### Phase 3 : Intégration MCP pour RAG
-
-Le Copilot utilisera les outils Notion MCP déjà connectés :
-
+**Adapter le prompt :**
 ```text
-Capacités MCP Notion disponibles :
-- notion-search : Recherche sémantique dans les bases
-- notion-fetch : Récupère les détails d'une page/DB
-- notion-create-pages : Crée des entrées (Shortlist, etc.)
-- notion-update-page : Met à jour un candidat/job
-```
+PROFIL:
+- Nom: Thomas Dupont
+- Titre: Lead Backend Engineer | Ex-Doctolib
+- Poste: Staff Engineer @ Datadog
+- Loc: Paris
+- XP: ~8 ans
 
-**Logique RAG dans l'edge function :**
+📝 À PROPOS:
+"Passionné par le Domain-Driven Design et les architectures distribuées.
+J'ai quitté Doctolib pour rejoindre une scale-up avec plus d'ownership..."
 
-1. **Détection d'intention** : L'IA analyse la demande utilisateur
-2. **Récupération contexte** : 
-   - Si job mentionné → fetch depuis Notion via API
-   - Si candidat mentionné → récupère profil + historique
-   - Si critères → enrichit avec transversal criteria
-3. **Génération réponse** : Prompt enrichi avec tout le contexte
-4. **Exécution optionnelle** : Si action confirmée, appelle l'API appropriée
+💼 EXPÉRIENCES RÉCENTES:
+1. Staff Engineer @ Datadog (2 ans)
+   → Refonte architecture event-driven, migration K8s
+   → Skills: Go, Kubernetes, Kafka
 
-### Phase 4 : Migration Progressive
+2. Senior Backend @ Doctolib (3 ans)
+   → Développement de l'API de prise de RDV
+   → Skills: Python, PostgreSQL, Redis
 
-1. **Ajouter CopilotProvider** dans `App.tsx`
-2. **Injecter contexte** depuis chaque page via `useRegisterCopilotContext`
-3. **Remplacer progressivement** les anciens boutons par des raccourcis Copilot
-4. **Garder les anciennes modales** comme fallback pendant la transition
+3. Backend Developer @ Criteo (2 ans)
+   → Système de recommandation temps réel
+   → Skills: Java, Spark
 
-### Phase 5 : Suppression du Legacy
-
-Une fois le Copilot stable :
-- Supprimer `FilterAssistantModal.tsx`
-- Supprimer `OutreachMessageModal.tsx`  
-- Simplifier `NurturingPanel.tsx` (affichage seul, pas de génération)
-- Retirer les boutons IA éparpillés
-
----
-
-## Interface Utilisateur
-
-```text
-┌─────────────────────────────────────────────────────────────────────────┐
-│  Outreach > Recherche LinkedIn          [Filtres] [Job: Numspot ▼] 🤖  │
-├─────────────────────────────────────────────────────────────────────────┤
-│                                                      ┌─────────────────┐│
-│  Résultats de recherche...                           │     Copilot     ││
-│                                                      │                 ││
-│  ┌─────────────────────┐                             │ "Tu es sur la   ││
-│  │ Profil 1 ☑          │                             │ page Outreach   ││
-│  └─────────────────────┘                             │ avec 3 profils  ││
-│  ┌─────────────────────┐                             │ sélectionnés"   ││
-│  │ Profil 2 ☑          │                             │                 ││
-│  └─────────────────────┘                             │ ┌─────────────┐ ││
-│  ┌─────────────────────┐                             │ │📝 Rédiger   │ ││
-│  │ Profil 3 ☑          │                             │ │   message   │ ││
-│  └─────────────────────┘                             │ └─────────────┘ ││
-│                                                      │ ┌─────────────┐ ││
-│                                                      │ │📊 Évaluer   │ ││
-│                                                      │ │   profils   │ ││
-│                                                      │ └─────────────┘ ││
-│                                                      │                 ││
-│                                                      │ ┌─────────────┐ ││
-│                                                      │ │ Demande...  │ ││
-│                                                      │ └─────────────┘ ││
-│                                                      │ [    Envoyer  ] ││
-│                                                      └─────────────────┘│
-└─────────────────────────────────────────────────────────────────────────┘
+🎓 Formation: Master Informatique - Polytechnique (2015)
+🔧 Skills: Go, Python, Kubernetes, Kafka, PostgreSQL, Redis
 ```
 
 ---
 
-## Extensibilité MCP
+## Impact sur le scoring
 
-Le Copilot est conçu pour être **extensible** à d'autres outils MCP :
+### Avec les nouvelles données, l'IA pourra :
 
-| Outil | Cas d'usage |
-|-------|-------------|
-| **Slack** | "Préviens l'équipe qu'on a trouvé un candidat chaud" |
-| **Google Calendar** | "Planifie un call avec Jean jeudi à 14h" |
-| **Linear** | "Crée une tâche de suivi pour ce candidat" |
-| **Airtable** | Alternative/complément à Notion |
+1. **Détecter les motivations** depuis le "À propos"
+   - Ex: "ownership", "scale-up" → match avec startup
+   - Ex: "impact sociétal" → match avec healthtech
 
-L'architecture MCP permet d'ajouter des connecteurs sans modifier le code du Copilot.
+2. **Évaluer la profondeur technique** depuis les descriptions
+   - Ex: "refonte architecture" → expérience design system
+   - Ex: "migration K8s" → hands-on infra
 
----
+3. **Identifier les skills implicites**
+   - Description mentionne "event-driven" → Kafka probable
+   - Description mentionne "temps réel" → streaming data
 
-## Estimation
-
-| Phase | Description | Complexité | Messages estimés |
-|-------|-------------|------------|------------------|
-| 1 | Infrastructure frontend (Context, Panel, Trigger) | Moyenne | 2-3 |
-| 2 | Edge function unifiée + routing | Moyenne-Haute | 2-3 |
-| 3 | Intégration RAG avec Notion MCP | Moyenne | 2 |
-| 4 | Migration progressive des pages | Facile | 2-3 |
-| 5 | Nettoyage legacy | Facile | 1 |
-
-**Total estimé : 9-12 messages**
+4. **Mieux juger la séniorité**
+   - Descriptions longues avec impact = senior
+   - Descriptions courtes/vagues = junior ou exécutant
 
 ---
 
-## Avantages de cette Approche
+## Gestion des tokens
 
-1. **UX unifiée** — Un seul point d'entrée IA, accessible partout (Cmd+K)
-2. **Contexte partagé** — Le Copilot sait toujours où tu es et ce que tu fais
-3. **RAG natif** — Enrichissement automatique avec les données Notion
-4. **Actions directes** — Pas seulement des suggestions, mais des exécutions
-5. **Extensible MCP** — Ajout de nouveaux outils sans refonte
-6. **Maintenance simplifiée** — Une seule edge function au lieu de 6+
+| Scénario | Tokens estimés |
+|----------|---------------|
+| Avant (données minimales) | ~400-500 tokens |
+| Après (données enrichies) | ~600-800 tokens |
+| **Surcoût** | ~+50% par profil |
 
+**Optimisation prévue :**
+- Limiter le summary à 300 caractères
+- Limiter chaque description de poste à 200 caractères
+- Maximum 3 expériences envoyées
+- Skills par poste : max 5
+
+---
+
+## Fichiers à modifier
+
+| Fichier | Modification |
+|---------|-------------|
+| `src/components/outreach/LinkedInSearch.tsx` | Enrichir `buildProfileData()` avec summary + descriptions |
+| `supabase/functions/score-profile-job/index.ts` | Mettre à jour interface + prompt |
+
+---
+
+## Résultat attendu
+
+**Avant (score parfois approximatif) :**
+```json
+{
+  "match_score": 70,
+  "summary": "Profil senior backend, skills compatibles",
+  "recommendation": "maybe"
+}
+```
+
+**Après (score plus précis et justifié) :**
+```json
+{
+  "match_score": 85,
+  "summary": "Profil DDD/archi distribuée, XP Datadog pertinente pour le contexte scale",
+  "recommendation": "go",
+  "reasoning": "Le À propos mentionne 'ownership' qui matche avec la culture startup recherchée"
+}
+```
