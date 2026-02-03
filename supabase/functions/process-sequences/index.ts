@@ -346,11 +346,19 @@ async function checkQuotaForAction(
         }
         
         const balance = await balanceResponse.json();
-        const recruiterCredits = balance.recruiter_balance || 0;
-        const premiumCredits = balance.premium_balance || 0;
-        const salesNavCredits = balance.sales_navigator_balance || 0;
+        // Unipile returns: { recruiter: number, premium: number | null, sales_navigator: number | null }
+        const recruiterCredits = balance.recruiter || balance.recruiter_balance || 0;
+        const premiumCredits = balance.premium || balance.premium_balance || 0;
+        const salesNavCredits = balance.sales_navigator || balance.sales_navigator_balance || 0;
         
         const totalCredits = recruiterCredits + premiumCredits + salesNavCredits;
+        
+        console.log(`[process-sequences] InMail balance check:`, {
+          recruiter: recruiterCredits,
+          premium: premiumCredits,
+          salesNav: salesNavCredits,
+          total: totalCredits,
+        });
         
         if (totalCredits <= 0) {
           return { 
