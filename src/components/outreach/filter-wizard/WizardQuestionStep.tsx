@@ -83,17 +83,17 @@ export const WizardQuestionStep: React.FC<WizardQuestionStepProps> = ({
   const canProceed = selectedOptions.length > 0 || customItems.length > 0 || !question.required;
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full overflow-hidden">
       {/* Question header */}
-      <div className="mb-4">
-        <h3 className="text-lg font-semibold text-gray-900">{question.title}</h3>
+      <div className="mb-3 shrink-0">
+        <h3 className="text-base font-semibold text-gray-900 leading-tight">{question.title}</h3>
         {question.description && (
-          <p className="text-sm text-muted-foreground mt-1">{question.description}</p>
+          <p className="text-sm text-gray-500 mt-1">{question.description}</p>
         )}
       </div>
 
-      {/* Options */}
-      <ScrollArea className="flex-1 pr-2">
+      {/* Options - scrollable area */}
+      <div className="flex-1 overflow-y-auto min-h-0 pr-1">
         <div className="space-y-2">
           {question.type === 'multi-select' ? (
             // Multi-select with checkboxes in a grid
@@ -101,23 +101,23 @@ export const WizardQuestionStep: React.FC<WizardQuestionStepProps> = ({
               {question.options.map((option) => (
                 <label
                   key={option.id}
-                  className={`flex items-start gap-2 p-3 rounded-lg border cursor-pointer transition-all ${
+                  className={`flex items-start gap-2 p-2.5 rounded-lg border cursor-pointer transition-all ${
                     isOptionSelected(option.id)
-                      ? 'bg-green-50 border-green-300'
-                      : 'bg-white border-gray-200 hover:border-gray-300'
+                      ? 'bg-emerald-50 border-emerald-300'
+                      : 'bg-white border-gray-200 hover:border-gray-300 hover:bg-gray-50'
                   }`}
                 >
                   <Checkbox
                     checked={isOptionSelected(option.id)}
                     onCheckedChange={() => handleOptionToggle(option.id)}
-                    className="mt-0.5 data-[state=checked]:bg-green-600 data-[state=checked]:border-green-600"
+                    className="mt-0.5 h-4 w-4 data-[state=checked]:bg-emerald-600 data-[state=checked]:border-emerald-600"
                   />
                   <div className="flex-1 min-w-0">
-                    <span className={`text-sm font-medium block ${isOptionSelected(option.id) ? 'text-green-800' : 'text-gray-700'}`}>
+                    <span className={`text-sm font-medium block leading-tight ${isOptionSelected(option.id) ? 'text-emerald-800' : 'text-gray-700'}`}>
                       {option.label}
                     </span>
                     {option.description && (
-                      <span className="text-xs text-muted-foreground block mt-0.5 truncate">
+                      <span className="text-xs text-gray-500 block mt-0.5 line-clamp-2">
                         {option.description}
                       </span>
                     )}
@@ -129,10 +129,10 @@ export const WizardQuestionStep: React.FC<WizardQuestionStepProps> = ({
               {customItems.map((item) => (
                 <div
                   key={item}
-                  className="flex items-center gap-2 p-3 rounded-lg border bg-blue-50 border-blue-300"
+                  className="flex items-center gap-2 p-2.5 rounded-lg border bg-blue-50 border-blue-300"
                 >
-                  <Checkbox checked={true} disabled className="data-[state=checked]:bg-blue-600" />
-                  <span className="text-sm font-medium text-blue-800 flex-1">{item}</span>
+                  <Checkbox checked={true} disabled className="h-4 w-4 data-[state=checked]:bg-blue-600" />
+                  <span className="text-sm font-medium text-blue-800 flex-1 truncate">{item}</span>
                   <button
                     onClick={() => handleCustomRemove(item)}
                     className="p-0.5 hover:bg-blue-200 rounded"
@@ -150,25 +150,25 @@ export const WizardQuestionStep: React.FC<WizardQuestionStepProps> = ({
                   key={option.id}
                   type="button"
                   onClick={() => handleOptionToggle(option.id)}
-                  className={`w-full text-left p-4 rounded-lg border transition-all ${
+                  className={`w-full text-left p-3 rounded-lg border transition-all ${
                     isOptionSelected(option.id)
-                      ? 'bg-green-50 border-green-400 ring-2 ring-green-200'
+                      ? 'bg-emerald-50 border-emerald-400 ring-1 ring-emerald-200'
                       : 'bg-white border-gray-200 hover:border-gray-300 hover:bg-gray-50'
                   }`}
                 >
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <div className={`font-medium ${isOptionSelected(option.id) ? 'text-green-800' : 'text-gray-900'}`}>
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex-1 min-w-0">
+                      <div className={`font-medium text-sm ${isOptionSelected(option.id) ? 'text-emerald-800' : 'text-gray-900'}`}>
                         {option.label}
                       </div>
                       {option.description && (
-                        <div className="text-sm text-muted-foreground mt-0.5">
+                        <div className="text-xs text-gray-500 mt-0.5 line-clamp-2">
                           {option.description}
                         </div>
                       )}
                     </div>
                     {isOptionSelected(option.id) && (
-                      <Check className="w-5 h-5 text-green-600 flex-shrink-0" />
+                      <Check className="w-4 h-4 text-emerald-600 flex-shrink-0" />
                     )}
                   </div>
                 </button>
@@ -178,41 +178,45 @@ export const WizardQuestionStep: React.FC<WizardQuestionStepProps> = ({
 
           {/* Custom input */}
           {question.allowCustom && (
-            <div className="flex gap-2 mt-3 pt-3 border-t">
+            <div className="flex gap-2 mt-3 pt-3 border-t border-gray-100">
               <Input
                 value={customValue}
                 onChange={(e) => setCustomValue(e.target.value)}
                 placeholder={question.customPlaceholder || 'Autre...'}
-                className="flex-1"
+                className="flex-1 h-9 text-sm"
                 onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), handleCustomAdd())}
               />
               <Button
                 type="button"
                 variant="outline"
-                size="icon"
+                size="sm"
                 onClick={handleCustomAdd}
                 disabled={!customValue.trim()}
+                className="h-9 w-9 p-0"
               >
                 <Plus className="w-4 h-4" />
               </Button>
             </div>
           )}
         </div>
-      </ScrollArea>
+      </div>
 
-      {/* Navigation */}
-      <div className="flex justify-between mt-6 pt-4 border-t">
+      {/* Navigation - fixed at bottom */}
+      <div className="flex justify-between mt-4 pt-4 border-t border-gray-100 shrink-0">
         <Button
           variant="ghost"
+          size="sm"
           onClick={onBack}
           disabled={isFirst}
+          className="text-gray-600"
         >
           ← Précédent
         </Button>
         <Button
+          size="sm"
           onClick={onNext}
           disabled={!canProceed}
-          className="bg-green-600 hover:bg-green-700"
+          className="bg-emerald-600 hover:bg-emerald-700 text-white"
         >
           {isLast ? 'Générer les filtres ✨' : 'Suivant →'}
         </Button>

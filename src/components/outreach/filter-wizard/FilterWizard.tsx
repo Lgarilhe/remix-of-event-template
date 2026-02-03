@@ -226,62 +226,67 @@ export const FilterWizard: React.FC<FilterWizardProps> = ({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[560px] h-[650px] flex flex-col p-0 gap-0">
-        <DialogHeader className="p-4 pb-3 border-b bg-gradient-to-r from-green-50 to-emerald-50">
-          <DialogTitle className="flex items-center gap-2 text-lg">
-            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center">
+      <DialogContent className="sm:max-w-[520px] max-h-[85vh] flex flex-col p-0 gap-0 overflow-hidden">
+        {/* Header */}
+        <DialogHeader className="px-5 py-4 border-b bg-gradient-to-r from-emerald-50 to-green-50 shrink-0">
+          <DialogTitle className="flex items-center gap-3 text-base">
+            <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-emerald-500 to-green-600 flex items-center justify-center shadow-sm">
               <Sparkles className="w-4 h-4 text-white" />
             </div>
-            <div className="flex flex-col">
-              <span>Configuration des filtres</span>
-              <span className="text-xs font-normal text-muted-foreground flex items-center gap-1">
+            <div className="flex flex-col gap-0.5">
+              <span className="font-semibold text-gray-900">Assistant de filtres</span>
+              <span className="text-xs font-normal text-gray-500 flex items-center gap-1.5">
                 <Briefcase className="w-3 h-3" />
-                {job.title.substring(0, 40)}{job.title.length > 40 ? '...' : ''}
-                {job.client?.name && ` • ${job.client.name}`}
+                <span className="truncate max-w-[280px]">
+                  {job.title}{job.client?.name && ` • ${job.client.name}`}
+                </span>
               </span>
             </div>
           </DialogTitle>
         </DialogHeader>
 
-        <div className="flex-1 p-4 overflow-hidden flex flex-col">
+        {/* Content */}
+        <div className="flex-1 overflow-hidden flex flex-col min-h-0">
           {isGenerating ? (
-            <div className="flex-1 flex flex-col items-center justify-center gap-4">
-              <div className="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center">
-                <Loader2 className="w-8 h-8 text-green-600 animate-spin" />
+            <div className="flex-1 flex flex-col items-center justify-center gap-4 p-6">
+              <div className="w-14 h-14 rounded-full bg-emerald-100 flex items-center justify-center">
+                <Loader2 className="w-7 h-7 text-emerald-600 animate-spin" />
               </div>
               <div className="text-center">
                 <p className="font-medium text-gray-900">Génération des filtres...</p>
-                <p className="text-sm text-muted-foreground mt-1">
+                <p className="text-sm text-gray-500 mt-1">
                   Application des paramètres optimisés
                 </p>
               </div>
             </div>
           ) : (
-            <>
+            <div className="flex-1 flex flex-col overflow-hidden p-5">
               <WizardProgress 
                 currentStep={currentStep} 
                 totalSteps={questions.length} 
               />
               
-              <WizardQuestionStep
-                question={currentQuestion}
-                answer={currentAnswer}
-                onAnswer={handleAnswer}
-                onNext={handleNext}
-                onBack={handleBack}
-                isFirst={currentStep === 0}
-                isLast={currentStep === questions.length - 1}
-              />
-            </>
+              <div className="flex-1 overflow-hidden">
+                <WizardQuestionStep
+                  question={currentQuestion}
+                  answer={currentAnswer}
+                  onAnswer={handleAnswer}
+                  onNext={handleNext}
+                  onBack={handleBack}
+                  isFirst={currentStep === 0}
+                  isLast={currentStep === questions.length - 1}
+                />
+              </div>
+            </div>
           )}
         </div>
 
-        {/* Footer with reset option */}
+        {/* Footer with reset */}
         {!isGenerating && currentStep > 0 && (
-          <div className="px-4 pb-4">
+          <div className="px-5 pb-4 shrink-0">
             <button
               onClick={handleReset}
-              className="text-xs text-muted-foreground hover:text-gray-700 underline"
+              className="text-xs text-gray-400 hover:text-gray-600 underline underline-offset-2 transition-colors"
             >
               Recommencer depuis le début
             </button>
