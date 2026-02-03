@@ -300,6 +300,39 @@ export const StepEditor: React.FC<StepEditorProps> = ({
           </div>
         )}
 
+        {/* Next Step selector for graph-based sequencing (for non-branching steps) */}
+        {step.actionType !== 'check_connection' && step.actionType !== 'condition_branch' && (
+          <div className="space-y-2">
+            <Label className="text-xs font-semibold uppercase text-muted-foreground flex items-center gap-1">
+              <Timer className="w-3 h-3" />
+              Étape suivante
+            </Label>
+            <Select
+              value={step.nextStepId || '__auto__'}
+              onValueChange={(value) => onUpdate({ nextStepId: value === '__auto__' ? undefined : value })}
+            >
+              <SelectTrigger className="h-8">
+                <SelectValue placeholder="Automatique" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__auto__">Automatique (ordre)</SelectItem>
+                <SelectItem value="__end__">Fin de séquence</SelectItem>
+                {allSteps.filter(s => s.id !== step.id).map(s => {
+                  const config = allStepTypes.find(a => a.value === s.actionType);
+                  return (
+                    <SelectItem key={s.id} value={s.id}>
+                      {s.order + 1}. {config?.label || s.actionType}
+                    </SelectItem>
+                  );
+                })}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              Vers quelle étape aller après celle-ci
+            </p>
+          </div>
+        )}
+
         {/* Message fields */}
         {needsMessage(step.actionType) && (
           <div className="space-y-3">

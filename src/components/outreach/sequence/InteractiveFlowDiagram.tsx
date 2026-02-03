@@ -167,7 +167,7 @@ const Arrow: React.FC<{ className?: string }> = ({ className }) => (
   </div>
 );
 
-// Helper to get the chain of steps in a branch (follow nextStepId if exists)
+// Helper to get the chain of steps in a branch (follow nextStepId)
 const getBranchChain = (startStepId: string | undefined, allSteps: SequenceStep[]): SequenceStep[] => {
   if (!startStepId) return [];
   
@@ -175,14 +175,14 @@ const getBranchChain = (startStepId: string | undefined, allSteps: SequenceStep[
   let currentId: string | undefined = startStepId;
   const visited = new Set<string>();
   
-  while (currentId && !visited.has(currentId)) {
+  while (currentId && currentId !== '__end__' && !visited.has(currentId)) {
     visited.add(currentId);
     const step = allSteps.find(s => s.id === currentId);
     if (step) {
       chain.push(step);
-      // For now, steps don't have a generic "nextStepId", 
-      // so we stop after the first step unless it's also a branching step
-      // We could extend this if we add a nextStepId field
+      // Follow nextStepId if defined, otherwise stop (end of branch)
+      currentId = step.nextStepId;
+    } else {
       break;
     }
   }
@@ -190,10 +190,35 @@ const getBranchChain = (startStepId: string | undefined, allSteps: SequenceStep[
   return chain;
 };
 
-// Get the last step ID in a branch chain (for adding next step)
-const getLastStepInBranch = (startStepId: string | undefined, allSteps: SequenceStep[]): string | undefined => {
-  const chain = getBranchChain(startStepId, allSteps);
-  return chain.length > 0 ? chain[chain.length - 1].id : undefined;
+// Get all step IDs that are part of any branch (directly or through nextStepId chaining)
+const getAllBranchStepIds = (allSteps: SequenceStep[]): Set<string> => {
+  const branchIds = new Set<string>();
+  
+  const collectChain = (stepId: string | undefined, visited: Set<string>) => {
+    if (!stepId || stepId === '__end__' || visited.has(stepId)) return;
+    visited.add(stepId);
+    branchIds.add(stepId);
+    
+    const step = allSteps.find(s => s.id === stepId);
+    if (step) {
+      // Follow nextStepId
+      if (step.nextStepId) collectChain(step.nextStepId, visited);
+      // Also collect sub-branches if this step is also a check_connection
+      if (step.ifTrueGotoStep) collectChain(step.ifTrueGotoStep, visited);
+      if (step.ifFalseGotoStep) collectChain(step.ifFalseGotoStep, visited);
+    }
+  };
+  
+  // Find all check_connection steps and collect their branch targets
+  for (const step of allSteps) {
+    if (step.actionType === 'check_connection') {
+      const visited = new Set<string>();
+      if (step.ifTrueGotoStep) collectChain(step.ifTrueGotoStep, visited);
+      if (step.ifFalseGotoStep) collectChain(step.ifFalseGotoStep, visited);
+    }
+  }
+  
+  return branchIds;
 };
 
 const BranchColumn: React.FC<{
@@ -328,39 +353,11 @@ export const InteractiveFlowDiagram: React.FC<InteractiveFlowDiagramProps> = ({
   onRemoveStep,
   selectedStepId,
 }) => {
-  // Collect all step IDs that belong to branches BEFORE rendering
-  const getBranchStepIds = (): Set<string> => {
-    const branchIds = new Set<string>();
-    
-    // Helper to recursively collect all steps in a branch chain
-    const collectBranchSteps = (stepId: string | undefined, visited: Set<string>) => {
-      if (!stepId || visited.has(stepId)) return;
-      visited.add(stepId);
-      branchIds.add(stepId);
-      
-      // If this step is also a branching step, collect its branches too
-      const step = steps.find(s => s.id === stepId);
-      if (step) {
-        if (step.ifTrueGotoStep) collectBranchSteps(step.ifTrueGotoStep, visited);
-        if (step.ifFalseGotoStep) collectBranchSteps(step.ifFalseGotoStep, visited);
-      }
-    };
-    
-    // Find all check_connection steps and collect their branch targets
-    for (const step of steps) {
-      if (step.actionType === 'check_connection') {
-        const visited = new Set<string>();
-        if (step.ifTrueGotoStep) collectBranchSteps(step.ifTrueGotoStep, visited);
-        if (step.ifFalseGotoStep) collectBranchSteps(step.ifFalseGotoStep, visited);
-      }
-    }
-    
-    return branchIds;
-  };
+  // Use the helper that follows nextStepId chains
+  const branchStepIds = getAllBranchStepIds(steps);
   
   const renderFlow = () => {
     const elements: React.ReactNode[] = [];
-    const branchStepIds = getBranchStepIds();
     let prevStepWasBranch = false;
     
     for (let i = 0; i < steps.length; i++) {

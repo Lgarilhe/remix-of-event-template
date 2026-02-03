@@ -83,35 +83,20 @@ export const VisualSequenceEditor: React.FC<VisualSequenceEditorProps> = ({
     if (pendingBranch) {
       const { parentStepId, branch, afterStepId } = pendingBranch;
       
-      // Add the new step to the list
-      const updatedSteps = [...steps, newStep];
-      
       if (afterStepId) {
         // We're adding after a specific step in an existing branch chain
-        // The afterStepId is the last step in the current chain, we need to link it to the new step
-        // For now, we update the parent's branch pointer to point to the first step,
-        // but we need a way to chain steps. Let's use a simple approach:
-        // We'll keep the first step in the branch as the pointer, but this requires 
-        // a more complex data structure. For simplicity, let's just replace the branch target.
-        // In a full implementation, each step would have a "nextStepId" field.
-        
-        // For now, let's just add the step and update the branch to point to it
-        // This will replace the previous step as the branch target - not ideal but works for demo
-        const updatedStepsWithBranch = updatedSteps.map(s => {
-          if (s.id === parentStepId) {
-            if (branch === 'true') {
-              return { ...s, ifTrueGotoStep: newStep.id };
-            } else {
-              return { ...s, ifFalseGotoStep: newStep.id };
-            }
+        // Set the afterStep's nextStepId to point to the new step
+        const updatedSteps = [...steps, newStep].map(s => {
+          if (s.id === afterStepId) {
+            return { ...s, nextStepId: newStep.id };
           }
           return s;
         });
         
-        onStepsChange(updatedStepsWithBranch);
+        onStepsChange(updatedSteps);
       } else {
-        // First step in the branch - update the parent step to point to this new step
-        const updatedStepsWithBranch = updatedSteps.map(s => {
+        // First step in the branch - update the parent step's branch pointer
+        const updatedSteps = [...steps, newStep].map(s => {
           if (s.id === parentStepId) {
             if (branch === 'true') {
               return { ...s, ifTrueGotoStep: newStep.id };
@@ -122,13 +107,33 @@ export const VisualSequenceEditor: React.FC<VisualSequenceEditorProps> = ({
           return s;
         });
         
-        onStepsChange(updatedStepsWithBranch);
+        onStepsChange(updatedSteps);
       }
       
       setPendingBranch(null);
     } else {
-      // Normal add at the end
-      onStepsChange([...steps, newStep]);
+      // Normal add at the end - if there's a previous step, link it
+      const lastMainStep = steps.filter(s => {
+        // Find steps that are not part of a branch
+        const isInBranch = steps.some(parent => 
+          parent.actionType === 'check_connection' && 
+          (parent.ifTrueGotoStep === s.id || parent.ifFalseGotoStep === s.id)
+        );
+        return !isInBranch && !s.nextStepId;
+      }).pop();
+      
+      if (lastMainStep && lastMainStep.actionType !== 'check_connection') {
+        // Link the last step to the new one
+        const updatedSteps = [...steps, newStep].map(s => {
+          if (s.id === lastMainStep.id) {
+            return { ...s, nextStepId: newStep.id };
+          }
+          return s;
+        });
+        onStepsChange(updatedSteps);
+      } else {
+        onStepsChange([...steps, newStep]);
+      }
     }
     
     setSelectedStepId(newStep.id);
