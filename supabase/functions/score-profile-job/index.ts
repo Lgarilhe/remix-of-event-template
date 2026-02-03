@@ -5,6 +5,14 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+interface WorkExperienceItem {
+  role: string;
+  company: string;
+  duration?: string;
+  description?: string;
+  skills?: string[];
+}
+
 interface ProfileData {
   name: string;
   headline?: string;
@@ -12,7 +20,9 @@ interface ProfileData {
   currentCompany?: string;
   location?: string;
   skills?: string[];
-  pastPositions?: string[];
+  summary?: string;                    // NEW: LinkedIn "About" section
+  workExperience?: WorkExperienceItem[]; // NEW: Enriched work history
+  pastPositions?: string[];            // Legacy format for backward compatibility
   education?: string[];
   yearsOfExperience?: number;
 }
@@ -157,6 +167,25 @@ serve(async (req) => {
 
           const criteriaSection = buildCriteriaSection();
 
+          // Build enriched work experience section for prompt
+          const buildWorkExperienceSection = (): string => {
+            if (!p.workExperience || p.workExperience.length === 0) {
+              // Fallback to legacy pastPositions format
+              return p.pastPositions?.slice(0, 3).join('; ') || 'N/A';
+            }
+            
+            return p.workExperience.slice(0, 3).map((exp, idx) => {
+              const lines = [`${idx + 1}. ${exp.role} @ ${exp.company}${exp.duration ? ` (${exp.duration})` : ''}`];
+              if (exp.description) {
+                lines.push(`   → ${exp.description}`);
+              }
+              if (exp.skills && exp.skills.length > 0) {
+                lines.push(`   → Skills: ${exp.skills.join(', ')}`);
+              }
+              return lines.join('\n');
+            }).join('\n');
+          };
+
           const prompt = `Évalue ce profil vs ce poste. Sois FACTUEL et PRÉCIS.
 
 PROFIL:
@@ -165,9 +194,13 @@ PROFIL:
 - Poste: ${p.currentRole || 'N/A'} @ ${p.currentCompany || 'N/A'}
 - Loc: ${p.location || 'N/A'}
 - XP: ${p.yearsOfExperience ? `~${p.yearsOfExperience} ans` : 'À estimer'}
-- Skills: ${p.skills?.slice(0, 12).join(', ') || 'N/A'}
-- Parcours: ${p.pastPositions?.slice(0, 3).join('; ') || 'N/A'}
-- Formation: ${p.education?.slice(0, 2).join('; ') || 'N/A'}
+${p.summary ? `\n📝 À PROPOS:\n"${p.summary}"` : ''}
+
+💼 EXPÉRIENCES RÉCENTES:
+${buildWorkExperienceSection()}
+
+🎓 Formation: ${p.education?.slice(0, 2).join('; ') || 'N/A'}
+🔧 Skills: ${p.skills?.slice(0, 12).join(', ') || 'N/A'}
 
 POSTE:
 - Titre: ${job.title} @ ${job.client?.name || 'Confidentiel'} (${job.client?.sector || 'Tech'})
@@ -189,6 +222,8 @@ SCORING:
 - NICE-TO-HAVE: ±10 points
 - Score 70+ avec MUST OK → "go"
 - Score 50-69 ou SHOULD incomplets → "maybe"
+- ANALYSE le "À propos" pour détecter motivations et culture fit
+- ANALYSE les descriptions de postes pour évaluer profondeur technique
 
 ${hasSalaryInfo ? `Compare salaire proposé vs attentes marché du profil.` : `Estime fourchette marché pour ce poste.`}
 
@@ -201,6 +236,7 @@ JSON UNIQUEMENT:
   "location_match": true|false,
   "summary": "Max 20 mots",
   "recommendation": "go|maybe|skip",
+  "reasoning": "Max 30 mots sur les insights du À propos/descriptions",
   "salary_analysis": {
     "status": "adequate|too_low|too_high|unknown",
     "confidence": "high|medium|low",
