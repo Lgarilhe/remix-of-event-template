@@ -10,7 +10,6 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Skeleton } from '@/components/ui/skeleton';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   Play,
@@ -23,18 +22,18 @@ import {
   Calendar,
   Building2,
   Save,
-  ExternalLink,
-  Target,
 } from 'lucide-react';
 import { formatDistanceToNow, format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { toast } from 'sonner';
+import { ProjectCandidatesTable } from './ProjectCandidatesTable';
 
 interface ProjectDetailPanelProps {
   project: SourcingProject;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onResumeSearch: () => void;
+  accountId?: string;
 }
 
 const statusColors = {
@@ -56,6 +55,7 @@ export const ProjectDetailPanel: React.FC<ProjectDetailPanelProps> = ({
   open,
   onOpenChange,
   onResumeSearch,
+  accountId,
 }) => {
   const { updateProject, isUpdating } = useSourcingProjects();
   const { data: candidates = [], isLoading: candidatesLoading } = useProjectCandidates(project.id);
@@ -208,78 +208,12 @@ export const ProjectDetailPanel: React.FC<ProjectDetailPanelProps> = ({
 
               {/* Candidates Tab */}
               <TabsContent value="candidates" className="h-full m-0">
-                <ScrollArea className="h-full">
-                  {candidatesLoading ? (
-                    <div className="space-y-3 pr-4">
-                      {[1, 2, 3].map(i => (
-                        <Skeleton key={i} className="h-16 w-full" />
-                      ))}
-                    </div>
-                  ) : candidates.length === 0 ? (
-                    <div className="text-center py-8 text-gray-500">
-                      <Users className="w-10 h-10 mx-auto mb-2 text-gray-300" />
-                      <p>Aucun candidat traité</p>
-                      <p className="text-sm">Lancez une recherche pour commencer</p>
-                    </div>
-                  ) : (
-                    <div className="space-y-2 pr-4">
-                      {candidates.map((candidate) => (
-                        <div
-                          key={candidate.id}
-                          className="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
-                        >
-                          <div className="flex-1 min-w-0">
-                            <p className="font-medium text-gray-900 truncate">
-                              {candidate.candidate_name || 'Candidat inconnu'}
-                            </p>
-                            <p className="text-xs text-gray-500 truncate">
-                              {candidate.candidate_headline}
-                            </p>
-                          </div>
-                          <div className="flex items-center gap-2 flex-shrink-0">
-                            {candidate.score && (
-                              <Badge 
-                                variant="outline" 
-                                className={
-                                  candidate.score >= 70 ? 'border-green-300 text-green-700' :
-                                  candidate.score >= 40 ? 'border-yellow-300 text-yellow-700' :
-                                  'border-red-300 text-red-600'
-                                }
-                              >
-                                <Target className="w-3 h-3 mr-1" />
-                                {candidate.score}
-                              </Badge>
-                            )}
-                            <Badge
-                              className={
-                                candidate.status === 'messaged' ? 'bg-green-100 text-green-700' :
-                                candidate.status === 'dismissed' ? 'bg-red-100 text-red-600' :
-                                candidate.status === 'shortlisted' ? 'bg-purple-100 text-purple-700' :
-                                'bg-gray-100 text-gray-600'
-                              }
-                            >
-                              {candidate.status === 'messaged' ? 'Contacté' :
-                               candidate.status === 'dismissed' ? 'Écarté' :
-                               candidate.status === 'shortlisted' ? 'Shortlisté' :
-                               'Non traité'}
-                            </Badge>
-                            {candidate.linkedin_profile_url && (
-                              <a
-                                href={candidate.linkedin_profile_url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-gray-400 hover:text-[#0077B5]"
-                                onClick={(e) => e.stopPropagation()}
-                              >
-                                <ExternalLink className="w-4 h-4" />
-                              </a>
-                            )}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </ScrollArea>
+                <ProjectCandidatesTable
+                  candidates={candidates}
+                  isLoading={candidatesLoading}
+                  projectId={project.id}
+                  accountId={accountId}
+                />
               </TabsContent>
 
               {/* Notes Tab */}
