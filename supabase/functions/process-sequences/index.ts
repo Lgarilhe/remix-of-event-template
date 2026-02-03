@@ -7,7 +7,9 @@ const corsHeaders = {
 };
 
 const UNIPILE_API_KEY = Deno.env.get('UNIPILE_API_KEY');
-const UNIPILE_DSN = Deno.env.get('UNIPILE_DSN');
+const UNIPILE_DSN_RAW = Deno.env.get('UNIPILE_DSN') || '';
+// Ensure DSN has https:// prefix
+const UNIPILE_DSN = UNIPILE_DSN_RAW.startsWith('http') ? UNIPILE_DSN_RAW : `https://${UNIPILE_DSN_RAW}`;
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
