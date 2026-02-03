@@ -10,13 +10,13 @@ export const WizardProgress: React.FC<WizardProgressProps> = ({
   totalSteps,
 }) => {
   return (
-    <div className="flex items-center gap-2 mb-4">
-      <span className="text-xs text-muted-foreground">
-        Question {currentStep + 1} / {totalSteps}
+    <div className="flex items-center gap-3 mb-4 shrink-0">
+      <span className="text-xs font-medium text-gray-500 whitespace-nowrap">
+        {currentStep + 1} / {totalSteps}
       </span>
-      <div className="flex-1 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+      <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
         <div
-          className="h-full bg-gradient-to-r from-green-500 to-emerald-600 transition-all duration-300"
+          className="h-full bg-gradient-to-r from-emerald-500 to-green-500 transition-all duration-300 ease-out"
           style={{ width: `${((currentStep + 1) / totalSteps) * 100}%` }}
         />
       </div>
