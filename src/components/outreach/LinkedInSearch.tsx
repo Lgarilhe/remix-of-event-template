@@ -1574,7 +1574,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
           />
           
           {/* Filter actions: Auto-fill, AI Assistant, Favorites */}
-          <div className="flex items-center justify-end gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <AutoFillFiltersButton
               selectedJob={selectedJob}
               accountId={selectedAccount}
