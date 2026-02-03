@@ -11,10 +11,27 @@ const UNIPILE_DSN = UNIPILE_DSN_RAW.startsWith('http') ? UNIPILE_DSN_RAW : `http
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL');
 const WEBHOOK_SECRET = Deno.env.get('UNIPILE_WEBHOOK_SECRET');
 
+// Unipile API uses 'account_status' not 'accounts' for the source value
+type WebhookSource = 'messaging' | 'users' | 'account_status';
+
+// Map our internal names to Unipile API source values
+const SOURCE_MAP: Record<string, WebhookSource> = {
+  messaging: 'messaging',
+  users: 'users',
+  accounts: 'account_status', // Unipile uses 'account_status' not 'accounts'
+};
+
+// Reverse map for display
+const REVERSE_SOURCE_MAP: Record<WebhookSource, string> = {
+  messaging: 'messaging',
+  users: 'users',
+  account_status: 'accounts',
+};
+
 interface WebhookConfig {
   id?: string;
   request_url: string;
-  source: 'messaging' | 'users' | 'accounts';
+  source: WebhookSource;
   headers?: Array<{ key: string; value: string }>;
 }
 
@@ -52,30 +69,35 @@ serve(async (req) => {
           headers: { 'X-API-KEY': UNIPILE_API_KEY! },
         });
 
-        let existingSources: string[] = [];
+        let existingApiSources: string[] = [];
         if (listResponse.ok) {
           const existingData = await listResponse.json();
           const existingWebhooks = existingData?.items || existingData || [];
-          existingSources = existingWebhooks.map((w: { source: string }) => w.source);
+          existingApiSources = existingWebhooks.map((w: { source: string }) => w.source);
         }
 
         // Register only missing webhooks
         const webhookUrl = `${SUPABASE_URL}/functions/v1/unipile-webhook`;
-        const allSources: Array<'messaging' | 'users' | 'accounts'> = ['messaging', 'users', 'accounts'];
-        const missingSources = allSources.filter(s => !existingSources.includes(s));
+        // Internal names we want to register
+        const allInternalSources = ['messaging', 'users', 'accounts'];
+        // Convert existing API sources back to internal names for comparison
+        const existingInternalSources = existingApiSources.map(s => REVERSE_SOURCE_MAP[s as WebhookSource] || s);
         
         const results: Array<{ source: string; success: boolean; error?: string; id?: string; skipped?: boolean }> = [];
 
         // Mark already existing as skipped
-        for (const source of allSources) {
-          if (existingSources.includes(source)) {
-            results.push({ source, success: true, skipped: true });
+        for (const internalSource of allInternalSources) {
+          if (existingInternalSources.includes(internalSource)) {
+            results.push({ source: internalSource, success: true, skipped: true });
             continue;
           }
 
+          // Convert internal source name to API source name
+          const apiSource = SOURCE_MAP[internalSource] || internalSource as WebhookSource;
+
           const config: WebhookConfig = {
             request_url: webhookUrl,
-            source,
+            source: apiSource,
             headers: WEBHOOK_SECRET 
               ? [{ key: 'Unipile-Auth', value: WEBHOOK_SECRET }]
               : undefined,
@@ -93,14 +115,14 @@ serve(async (req) => {
 
             if (!response.ok) {
               const errorText = await response.text();
-              results.push({ source, success: false, error: `${response.status}: ${errorText}` });
+              results.push({ source: internalSource, success: false, error: `${response.status}: ${errorText}` });
             } else {
               const data = await response.json();
-              results.push({ source, success: true, id: data.webhook_id || data.id });
+              results.push({ source: internalSource, success: true, id: data.webhook_id || data.id });
             }
           } catch (err) {
             results.push({ 
-              source, 
+              source: internalSource, 
               success: false, 
               error: err instanceof Error ? err.message : 'Unknown error' 
             });
