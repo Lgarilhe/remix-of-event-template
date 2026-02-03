@@ -22,7 +22,7 @@ export type BranchTarget = 'true' | 'false' | null;
 interface InteractiveFlowDiagramProps {
   steps: SequenceStep[];
   onStepClick: (stepId: string) => void;
-  onAddStep: (branchTarget?: { parentStepId: string; branch: 'true' | 'false' }) => void;
+  onAddStep: (branchTarget?: { parentStepId: string; branch: 'true' | 'false'; afterStepId?: string }) => void;
   onRemoveStep: (stepId: string) => void;
   selectedStepId: string | null;
 }
@@ -167,21 +167,122 @@ const Arrow: React.FC<{ className?: string }> = ({ className }) => (
   </div>
 );
 
+// Helper to get the chain of steps in a branch (follow nextStepId if exists)
+const getBranchChain = (startStepId: string | undefined, allSteps: SequenceStep[]): SequenceStep[] => {
+  if (!startStepId) return [];
+  
+  const chain: SequenceStep[] = [];
+  let currentId: string | undefined = startStepId;
+  const visited = new Set<string>();
+  
+  while (currentId && !visited.has(currentId)) {
+    visited.add(currentId);
+    const step = allSteps.find(s => s.id === currentId);
+    if (step) {
+      chain.push(step);
+      // For now, steps don't have a generic "nextStepId", 
+      // so we stop after the first step unless it's also a branching step
+      // We could extend this if we add a nextStepId field
+      break;
+    }
+  }
+  
+  return chain;
+};
+
+// Get the last step ID in a branch chain (for adding next step)
+const getLastStepInBranch = (startStepId: string | undefined, allSteps: SequenceStep[]): string | undefined => {
+  const chain = getBranchChain(startStepId, allSteps);
+  return chain.length > 0 ? chain[chain.length - 1].id : undefined;
+};
+
+const BranchColumn: React.FC<{
+  branchSteps: SequenceStep[];
+  allSteps: SequenceStep[];
+  branchType: 'true' | 'false';
+  parentStepId: string;
+  onStepClick: (stepId: string) => void;
+  onAddBranchStep: (branch: 'true' | 'false', afterStepId?: string) => void;
+  onRemoveStep: (stepId: string) => void;
+  selectedStepId: string | null;
+}> = ({ branchSteps, allSteps, branchType, parentStepId, onStepClick, onAddBranchStep, onRemoveStep, selectedStepId }) => {
+  const isTrue = branchType === 'true';
+  const colorClasses = isTrue 
+    ? { bg: 'bg-emerald-100', text: 'text-emerald-700', border: 'border-emerald-300', line: 'bg-emerald-400', hover: 'hover:bg-emerald-50 hover:border-emerald-400' }
+    : { bg: 'bg-orange-100', text: 'text-orange-700', border: 'border-orange-300', line: 'bg-orange-400', hover: 'hover:bg-orange-50 hover:border-orange-400' };
+  
+  const label = isTrue ? '1er degré' : '2e/3e degré';
+  const Icon = isTrue ? Check : X;
+  
+  return (
+    <div className="flex flex-col items-center min-w-[120px]">
+      <div className={cn("flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-full mb-2 shadow-sm", colorClasses.bg, colorClasses.text)}>
+        <Icon className="w-3 h-3" />
+        {label}
+      </div>
+      <div className={cn("w-px h-3", colorClasses.line)} />
+      
+      {branchSteps.length > 0 ? (
+        <>
+          {branchSteps.map((branchStep, idx) => {
+            const stepIndex = allSteps.findIndex(s => s.id === branchStep.id);
+            return (
+              <React.Fragment key={branchStep.id}>
+                {idx > 0 && (
+                  <div className={cn("w-px h-3", colorClasses.line)} />
+                )}
+                <StepNode
+                  step={branchStep}
+                  index={stepIndex}
+                  onClick={() => onStepClick(branchStep.id)}
+                  onRemove={() => onRemoveStep(branchStep.id)}
+                  isSelected={selectedStepId === branchStep.id}
+                  canRemove={allSteps.length > 1}
+                  compact
+                />
+              </React.Fragment>
+            );
+          })}
+          {/* Add more steps button after the last step in this branch */}
+          <div className={cn("w-px h-3", colorClasses.line)} />
+          <button
+            onClick={() => onAddBranchStep(branchType, branchSteps[branchSteps.length - 1]?.id)}
+            className={cn(
+              "flex items-center justify-center w-6 h-6 rounded-full border-2 border-dashed transition-colors",
+              colorClasses.border, colorClasses.text, colorClasses.hover
+            )}
+          >
+            <Plus className="w-3 h-3" />
+          </button>
+        </>
+      ) : (
+        <button
+          onClick={() => onAddBranchStep(branchType)}
+          className={cn(
+            "flex items-center gap-1.5 px-3 py-2 rounded-lg border-2 border-dashed transition-colors",
+            colorClasses.border, colorClasses.text, colorClasses.hover
+          )}
+        >
+          <Plus className="w-3.5 h-3.5" />
+          <span className="text-xs font-medium">Ajouter</span>
+        </button>
+      )}
+    </div>
+  );
+};
+
 const BranchSplit: React.FC<{
   step: SequenceStep;
   stepIndex: number;
   allSteps: SequenceStep[];
   onStepClick: (stepId: string) => void;
-  onAddBranchStep: (branch: 'true' | 'false') => void;
+  onAddBranchStep: (branch: 'true' | 'false', afterStepId?: string) => void;
   onRemoveStep: (stepId: string) => void;
   selectedStepId: string | null;
 }> = ({ step, stepIndex, allSteps, onStepClick, onAddBranchStep, onRemoveStep, selectedStepId }) => {
-  const trueStep = allSteps.find(s => s.id === step.ifTrueGotoStep);
-  const falseStep = allSteps.find(s => s.id === step.ifFalseGotoStep);
-  
-  // Find the index of true/false steps
-  const trueStepIndex = trueStep ? allSteps.findIndex(s => s.id === trueStep.id) : -1;
-  const falseStepIndex = falseStep ? allSteps.findIndex(s => s.id === falseStep.id) : -1;
+  // Get all steps in each branch
+  const trueBranchSteps = getBranchChain(step.ifTrueGotoStep, allSteps);
+  const falseBranchSteps = getBranchChain(step.ifFalseGotoStep, allSteps);
   
   return (
     <div className="flex flex-col items-center w-full mt-3">
@@ -194,63 +295,27 @@ const BranchSplit: React.FC<{
       
       {/* Two branches */}
       <div className="flex justify-center gap-4 w-full mt-2">
-        {/* Left branch (if connected - 1er degré) */}
-        <div className="flex flex-col items-center min-w-[120px]">
-          <div className="flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-full bg-emerald-100 text-emerald-700 mb-2 shadow-sm">
-            <Check className="w-3 h-3" />
-            1er degré
-          </div>
-          <div className="w-px h-3 bg-emerald-400" />
-          
-          {trueStep ? (
-            <StepNode
-              step={trueStep}
-              index={trueStepIndex}
-              onClick={() => onStepClick(trueStep.id)}
-              onRemove={() => onRemoveStep(trueStep.id)}
-              isSelected={selectedStepId === trueStep.id}
-              canRemove={allSteps.length > 1}
-              compact
-            />
-          ) : (
-            <button
-              onClick={() => onAddBranchStep('true')}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-lg border-2 border-dashed border-emerald-300 text-emerald-600 hover:bg-emerald-50 hover:border-emerald-400 transition-colors"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span className="text-xs font-medium">Ajouter</span>
-            </button>
-          )}
-        </div>
+        <BranchColumn
+          branchSteps={trueBranchSteps}
+          allSteps={allSteps}
+          branchType="true"
+          parentStepId={step.id}
+          onStepClick={onStepClick}
+          onAddBranchStep={onAddBranchStep}
+          onRemoveStep={onRemoveStep}
+          selectedStepId={selectedStepId}
+        />
         
-        {/* Right branch (if not connected - 2e/3e degré) */}
-        <div className="flex flex-col items-center min-w-[120px]">
-          <div className="flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-full bg-orange-100 text-orange-700 mb-2 shadow-sm">
-            <X className="w-3 h-3" />
-            2e/3e degré
-          </div>
-          <div className="w-px h-3 bg-orange-400" />
-          
-          {falseStep ? (
-            <StepNode
-              step={falseStep}
-              index={falseStepIndex}
-              onClick={() => onStepClick(falseStep.id)}
-              onRemove={() => onRemoveStep(falseStep.id)}
-              isSelected={selectedStepId === falseStep.id}
-              canRemove={allSteps.length > 1}
-              compact
-            />
-          ) : (
-            <button
-              onClick={() => onAddBranchStep('false')}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-lg border-2 border-dashed border-orange-300 text-orange-600 hover:bg-orange-50 hover:border-orange-400 transition-colors"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span className="text-xs font-medium">Ajouter</span>
-            </button>
-          )}
-        </div>
+        <BranchColumn
+          branchSteps={falseBranchSteps}
+          allSteps={allSteps}
+          branchType="false"
+          parentStepId={step.id}
+          onStepClick={onStepClick}
+          onAddBranchStep={onAddBranchStep}
+          onRemoveStep={onRemoveStep}
+          selectedStepId={selectedStepId}
+        />
       </div>
     </div>
   );
@@ -304,7 +369,7 @@ export const InteractiveFlowDiagram: React.FC<InteractiveFlowDiagramProps> = ({
             stepIndex={i}
             allSteps={steps}
             onStepClick={onStepClick}
-            onAddBranchStep={(branch) => onAddStep({ parentStepId: step.id, branch })}
+            onAddBranchStep={(branch, afterStepId) => onAddStep({ parentStepId: step.id, branch, afterStepId })}
             onRemoveStep={onRemoveStep}
             selectedStepId={selectedStepId}
           />
