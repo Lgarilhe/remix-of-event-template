@@ -718,93 +718,66 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
         }));
       }
 
-      // Infinite scroll: fetch small batches (25 profiles) and append
-      const desiredCount = RESULTS_PER_BATCH;
-      const maxFetchIterations = 2; // Max 2 iterations per load (50 profiles max per scroll)
-      const collected: LinkedInProfile[] = [];
+      // IMPORTANT: To avoid quota bursts, we do **one API call max per load**.
+      // That means we may display fewer than RESULTS_PER_BATCH if client-side filters exclude profiles.
       const seen = new Set<string>();
-      
-      // When appending, also track existing profile IDs to avoid duplicates
       if (appendMode) {
-        results.forEach(p => seen.add(p.id));
+        results.forEach((p) => p?.id && seen.add(p.id));
       }
-      
-      // Get dismissed IDs to exclude during fetch (optimization)
+
       const dismissedIds = candidateStatus.dismissedIds;
 
-      // Use stored cursor for append mode, null for new search
-      let nextCursor: string | null = appendMode ? cursor : null;
-      let lastCursorFromApi: string | null = null;
-      let fetchedTotal: number | null = null;
+      const params: Record<string, unknown> = {
+        ...baseParams,
+        limit: RESULTS_PER_BATCH,
+        ...(appendMode && cursor ? { cursor } : {}),
+      };
 
-      for (let i = 0; i < maxFetchIterations && collected.length < desiredCount; i++) {
-        const remaining = desiredCount - collected.length;
+      console.log('[LinkedInSearch] Search params:', params);
 
-        // quota check per batch (avoid over-fetching)
-        if (!quota.canPerformAction('searchResultsFetched', remaining)) {
-          break;
-        }
+      const response = await supabase.functions.invoke('unipile-search', {
+        body: params,
+      });
 
-        const params: Record<string, unknown> = {
-          ...baseParams,
-          limit: remaining,
-          ...(nextCursor ? { cursor: nextCursor } : {}),
-        };
+      if (response.error) throw response.error;
+      if (!response.data?.success) throw new Error(response.data?.error);
 
-        console.log('[LinkedInSearch] Search params (batch):', params);
+      const batch: LinkedInProfile[] = response.data.results || [];
+      const batchCursor: string | null = response.data.cursor || null;
+      const fetchedTotal: number | null = response.data.total || null;
 
-        const response = await supabase.functions.invoke('unipile-search', {
-          body: params,
+      quota.recordAction('searchResultsFetched', batch.length);
+
+      if (batch.length > 0 && !appendMode) {
+        const firstResult: any = batch[0];
+        console.log('[LinkedInSearch] First result structure:', {
+          id: firstResult.id,
+          member_urn: firstResult.member_urn,
+          recruiter_candidate_id: firstResult.recruiter_candidate_id,
+          public_identifier: firstResult.public_identifier,
+          profile_url: firstResult.profile_url,
+          name: firstResult.name,
+          availableKeys: Object.keys(firstResult),
         });
+      }
 
-        if (response.error) throw response.error;
-        if (!response.data?.success) throw new Error(response.data?.error);
+      const filteredBatch = filterByCalculatedExperience(
+        batch,
+        filters.calculated_experience_min,
+        filters.calculated_experience_max
+      );
 
-        const batch: LinkedInProfile[] = response.data.results || [];
-        const batchCursor: string | null = response.data.cursor || null;
-        fetchedTotal = fetchedTotal ?? (response.data.total || null);
+      const collected: LinkedInProfile[] = [];
+      for (const p of filteredBatch) {
+        if (!p?.id) continue;
+        if (seen.has(p.id)) continue;
+        if (selectedJob && !showDismissed && dismissedIds.has(p.id)) continue;
+        seen.add(p.id);
+        collected.push(p);
+      }
 
-        quota.recordAction('searchResultsFetched', batch.length);
-
-        // Debug: Log first result structure to see available fields for messaging
-        if (batch.length > 0 && i === 0 && !appendMode) {
-          const firstResult: any = batch[0];
-          console.log('[LinkedInSearch] First result structure:', {
-            id: firstResult.id,
-            member_urn: firstResult.member_urn,
-            recruiter_candidate_id: firstResult.recruiter_candidate_id,
-            public_identifier: firstResult.public_identifier,
-            profile_url: firstResult.profile_url,
-            name: firstResult.name,
-            availableKeys: Object.keys(firstResult),
-          });
-        }
-
-        // Apply calculated XP filter on the batch
-        const filteredBatch = filterByCalculatedExperience(
-          batch,
-          filters.calculated_experience_min,
-          filters.calculated_experience_max
-        );
-
-        for (const p of filteredBatch) {
-          if (!p?.id) continue;
-          if (seen.has(p.id)) continue;
-          // Skip dismissed candidates during fetch (if job selected and not showing dismissed)
-          if (selectedJob && !showDismissed && dismissedIds.has(p.id)) continue;
-          seen.add(p.id);
-          collected.push(p);
-          if (collected.length >= desiredCount) break;
-        }
-
-        lastCursorFromApi = batchCursor;
-        nextCursor = batchCursor;
-
-        // No more pages from API
-        if (!batchCursor || batch.length === 0) {
-          setHasMoreResults(false);
-          break;
-        }
+      if (!batchCursor || batch.length === 0) {
+        setHasMoreResults(false);
       }
 
       // Warn if near limit
@@ -820,8 +793,8 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
         setHasMoreResults(true); // Reset for new search
       }
 
-      // Store current cursor for next load
-      setCursor(lastCursorFromApi);
+      // Store cursor for next manual load
+      setCursor(batchCursor);
       setTotal(fetchedTotal);
       setHasSearched(true);
       
@@ -936,23 +909,8 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
     handleSearch(false, true); // appendMode = true
   }, [cursor, loadingMore, hasMoreResults, handleSearch]);
 
-  // IntersectionObserver for infinite scroll
-  useEffect(() => {
-    const trigger = loadMoreTriggerRef.current;
-    if (!trigger) return;
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries[0].isIntersecting && hasSearched && !loading && !loadingMore && hasMoreResults && cursor) {
-          handleLoadMore();
-        }
-      },
-      { threshold: 0.1 }
-    );
-
-    observer.observe(trigger);
-    return () => observer.disconnect();
-  }, [hasSearched, loading, loadingMore, hasMoreResults, cursor, handleLoadMore]);
+  // NOTE: Auto-load on scroll disabled (was consuming quota too fast).
+  // Loading is now manual via the "Charger plus de profils" button.
 
   // Reset infinite scroll when filters change
   useEffect(() => {
