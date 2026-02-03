@@ -67,52 +67,7 @@ interface GeneratedFilters {
   open_to_work: boolean;
 }
 
-// École IDs from LinkedIn - TOP schools reference
-const TOP_SCHOOLS = {
-  // TOP 10 Ingénierie / Tech
-  engineering: [
-    { id: "10245", name: "École Polytechnique" },
-    { id: "301127", name: "CentraleSupélec" },
-    { id: "12468", name: "Mines Paris - PSL" },
-    { id: "12421", name: "École normale supérieure" },
-    { id: "19099", name: "École normale supérieure Paris-Saclay" },
-    { id: "12453", name: "École des Ponts ParisTech" },
-    { id: "12462", name: "Télécom Paris" },
-    { id: "12439", name: "ENSAE Paris" },
-    { id: "12446", name: "ISAE-SUPAERO" },
-    { id: "12396", name: "Arts et Métiers" },
-  ],
-  // TOP 10 Commerce / Business
-  business: [
-    { id: "10219", name: "HEC Paris" },
-    { id: "10213", name: "ESSEC Business School" },
-    { id: "10212", name: "ESCP Business School" },
-    { id: "10214", name: "emlyon business school" },
-    { id: "10207", name: "EDHEC Business School" },
-    { id: "10199", name: "Audencia" },
-    { id: "166963", name: "SKEMA Business School" },
-    { id: "10218", name: "Grenoble Ecole de Management" },
-    { id: "2929644", name: "NEOMA Business School" },
-    { id: "2756953", name: "KEDGE Business School" },
-  ],
-  // Profils atypiques valorisés
-  atypical: [
-    { id: "10309954", name: "42" },
-    { id: "12440", name: "Epitech" },
-    { id: "5143435", name: "Le Wagon" },
-    { id: "12438", name: "EPITA" },
-  ],
-  // International TOP
-  international: [
-    { id: "10290", name: "Massachusetts Institute of Technology" },
-    { id: "10373", name: "Stanford University" },
-    { id: "12442", name: "École Polytechnique Fédérale de Lausanne" },
-    { id: "10204", name: "ETH Zurich" },
-    { id: "10453", name: "University of Cambridge" },
-    { id: "10457", name: "University of Oxford" },
-    { id: "10251", name: "Imperial College London" },
-  ],
-};
+// TOP_SCHOOLS removed - schools are now selected manually via "TOP Écoles" button
 
 // ESN companies to deprioritize
 const ESN_KEYWORDS = [
@@ -136,9 +91,9 @@ serve(async (req) => {
       );
     }
 
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) {
-      throw new Error("LOVABLE_API_KEY is not configured");
+    const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
+    if (!ANTHROPIC_API_KEY) {
+      throw new Error("ANTHROPIC_API_KEY is not configured");
     }
 
     // Build the prompt for AI
@@ -224,19 +179,20 @@ ${transversal.context ? `Contexte: ${transversal.context}` : ''}` : ''}
 
     console.log("[generate-search-filters] Calling AI with job:", job.title);
 
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    const response = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
+        "x-api-key": ANTHROPIC_API_KEY,
+        "anthropic-version": "2023-06-01",
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-3-flash-preview",
+        model: "claude-sonnet-4-5-20250929",
+        max_tokens: 2048,
+        system: systemPrompt,
         messages: [
-          { role: "system", content: systemPrompt },
           { role: "user", content: jobContext },
         ],
-        temperature: 0.3,
       }),
     });
 
@@ -259,7 +215,8 @@ ${transversal.context ? `Contexte: ${transversal.context}` : ''}` : ''}
     }
 
     const aiResult = await response.json();
-    const content = aiResult.choices?.[0]?.message?.content || "";
+    // Claude API returns content as array of blocks
+    const content = aiResult.content?.[0]?.text || "";
     
     console.log("[generate-search-filters] AI response:", content);
 
@@ -319,36 +276,9 @@ ${transversal.context ? `Contexte: ${transversal.context}` : ''}` : ''}
     // Note: On n'exclut pas les ESN car certains bons profils y sont, mais on peut les signaler
     // Pour l'instant on ne les ajoute pas en DOESNT_HAVE pour ne pas être trop restrictif
 
-    // === RÈGLE 3: Sélectionner les écoles selon la catégorie du poste ===
+    // === RÈGLE 3: Pas de filtre école automatique ===
+    // Les écoles ne sont plus auto-générées - l'utilisateur les sélectionne manuellement via le bouton "TOP Écoles"
     const schoolFilters: SchoolFilter[] = [];
-    const jobCategory = parsed.job_category || "other";
-    
-    // Toujours ajouter les écoles internationales TOP
-    TOP_SCHOOLS.international.forEach(school => {
-      schoolFilters.push({ ...school, priority: 'CAN_HAVE' });
-    });
-
-    // Ajouter les écoles selon la catégorie
-    if (jobCategory === "tech" || jobCategory === "data" || jobCategory === "product") {
-      TOP_SCHOOLS.engineering.forEach(school => {
-        schoolFilters.push({ ...school, priority: 'CAN_HAVE' });
-      });
-      TOP_SCHOOLS.atypical.forEach(school => {
-        schoolFilters.push({ ...school, priority: 'CAN_HAVE' });
-      });
-    } else if (jobCategory === "business") {
-      TOP_SCHOOLS.business.forEach(school => {
-        schoolFilters.push({ ...school, priority: 'CAN_HAVE' });
-      });
-    } else {
-      // Pour les autres catégories, ajouter un mix
-      TOP_SCHOOLS.engineering.slice(0, 5).forEach(school => {
-        schoolFilters.push({ ...school, priority: 'CAN_HAVE' });
-      });
-      TOP_SCHOOLS.business.slice(0, 5).forEach(school => {
-        schoolFilters.push({ ...school, priority: 'CAN_HAVE' });
-      });
-    }
 
     // === RÈGLE 4: Adapter le rayon de recherche selon la politique remote ===
     let locationRadius: number | null = 50; // Default 50 miles (~80km)
