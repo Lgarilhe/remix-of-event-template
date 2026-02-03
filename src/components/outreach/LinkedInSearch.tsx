@@ -1690,6 +1690,21 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
         {/* Results header with batch actions */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-[#1A1A1A]/10 shrink-0">
           <div className="flex items-center gap-4">
+            {/* Top search button for quick access */}
+            <Button
+              onClick={() => handleSearchAndScore()}
+              disabled={loading || scoringInProgress || !selectedAccount || !selectedJob || needsReconnection || !isApiModeAvailable}
+              size="sm"
+              className="bg-[#0077B5] hover:bg-[#005E93] shrink-0"
+            >
+              {loading || scoringInProgress ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" />
+              ) : (
+                <Search className="w-3.5 h-3.5 mr-1.5" />
+              )}
+              {loading ? 'Recherche...' : scoringInProgress ? 'Scoring...' : hasSearched && cursor ? 'Charger + scorer' : 'Rechercher & Scorer'}
+            </Button>
+            
             {/* Select all checkbox when job is selected */}
             {selectedJob && results.length > 0 && (
               <div className="flex items-center gap-2">
