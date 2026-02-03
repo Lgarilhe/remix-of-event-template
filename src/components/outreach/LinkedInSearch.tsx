@@ -31,7 +31,7 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
-import { Search, Loader2, ChevronRight, ChevronLeft, AlertTriangle, Lock, Users, Sparkles, Mail, GitBranch, Archive, Eye, EyeOff } from 'lucide-react';
+import { Search, Loader2, AlertTriangle, Lock, Users, Sparkles, Mail, GitBranch, Archive, Eye, EyeOff } from 'lucide-react';
 import { SequenceEnrollButton } from './SequenceEnrollButton';
 import { toast } from 'sonner';
 
@@ -50,13 +50,16 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
   const filtersRef = useRef<LinkedInFiltersState>(INITIAL_FILTERS);
   const [results, setResults] = useState<LinkedInProfile[]>([]);
   const [loading, setLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false); // For infinite scroll loading indicator
   const [cursor, setCursor] = useState<string | null>(null);
-  const [cursors, setCursors] = useState<string[]>([]); // Stack of cursors for pagination
-  const [currentPage, setCurrentPage] = useState(1);
+  const [hasMoreResults, setHasMoreResults] = useState(true); // Track if more results available
   const [total, setTotal] = useState<number | null>(null);
-  // UX requirement: 100 profiles per page for efficient bulk operations
-  const RESULTS_PER_PAGE = 100;
+  // Reduced batch size for infinite scroll - more efficient quota usage
+  const RESULTS_PER_BATCH = 25;
   const [hasSearched, setHasSearched] = useState(false);
+  
+  // Intersection observer ref for infinite scroll
+  const loadMoreTriggerRef = useRef<HTMLDivElement>(null);
   
   // Quota tracking
   const quota = useUnipileQuota(selectedAccount);
@@ -366,19 +369,25 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
     }
   }, [subscriptions, filters.api]);
 
-  const handleSearch = useCallback(async (newSearch = true, paginationCursor?: string | null) => {
+  const handleSearch = useCallback(async (newSearch = true, appendMode = false) => {
     if (!selectedAccount) {
       toast.error('Sélectionnez un compte LinkedIn');
       return;
     }
 
     // Check quota before searching
-    if (!quota.canPerformAction('searchResultsFetched', RESULTS_PER_PAGE)) {
+    if (!quota.canPerformAction('searchResultsFetched', RESULTS_PER_BATCH)) {
       toast.error('Quota de recherche journalier atteint. Réessayez demain.');
       return;
     }
 
-    setLoading(true);
+    // Set appropriate loading state
+    if (appendMode) {
+      setLoadingMore(true);
+    } else {
+      setLoading(true);
+    }
+    
     try {
       // Base params - pagination/limit are injected per fetch iteration
       const baseParams: Record<string, unknown> = {
@@ -709,18 +718,22 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
         }));
       }
 
-      // Always return exactly RESULTS_PER_PAGE profiles after XP filtering and dismissed exclusion.
-      // We fetch iteratively using the cursor until we have enough results.
-      // Reduced to 3 iterations max to save API quota (may return fewer than 100 results)
-      const desiredCount = RESULTS_PER_PAGE;
-      const maxFetchIterations = 3; // Reduced from 15 to save quota
+      // Infinite scroll: fetch small batches (25 profiles) and append
+      const desiredCount = RESULTS_PER_BATCH;
+      const maxFetchIterations = 2; // Max 2 iterations per load (50 profiles max per scroll)
       const collected: LinkedInProfile[] = [];
       const seen = new Set<string>();
+      
+      // When appending, also track existing profile IDs to avoid duplicates
+      if (appendMode) {
+        results.forEach(p => seen.add(p.id));
+      }
       
       // Get dismissed IDs to exclude during fetch (optimization)
       const dismissedIds = candidateStatus.dismissedIds;
 
-      let nextCursor: string | null = (!newSearch && paginationCursor) ? paginationCursor : null;
+      // Use stored cursor for append mode, null for new search
+      let nextCursor: string | null = appendMode ? cursor : null;
       let lastCursorFromApi: string | null = null;
       let fetchedTotal: number | null = null;
 
@@ -754,7 +767,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
         quota.recordAction('searchResultsFetched', batch.length);
 
         // Debug: Log first result structure to see available fields for messaging
-        if (batch.length > 0 && i === 0) {
+        if (batch.length > 0 && i === 0 && !appendMode) {
           const firstResult: any = batch[0];
           console.log('[LinkedInSearch] First result structure:', {
             id: firstResult.id,
@@ -767,7 +780,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
           });
         }
 
-        // Apply calculated XP filter on the batch to guarantee 10 displayed profiles
+        // Apply calculated XP filter on the batch
         const filteredBatch = filterByCalculatedExperience(
           batch,
           filters.calculated_experience_min,
@@ -787,8 +800,11 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
         lastCursorFromApi = batchCursor;
         nextCursor = batchCursor;
 
-        // No more pages
-        if (!batchCursor || batch.length === 0) break;
+        // No more pages from API
+        if (!batchCursor || batch.length === 0) {
+          setHasMoreResults(false);
+          break;
+        }
       }
 
       // Warn if near limit
@@ -796,15 +812,20 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
         toast.warning('Attention: vous approchez de la limite quotidienne de résultats de recherche');
       }
 
-      // Replace results (pagination mode, not append)
-      setResults(collected);
+      // Append or replace results based on mode
+      if (appendMode) {
+        setResults(prev => [...prev, ...collected]);
+      } else {
+        setResults(collected);
+        setHasMoreResults(true); // Reset for new search
+      }
 
-      // Store current cursor for next page navigation
+      // Store current cursor for next load
       setCursor(lastCursorFromApi);
       setTotal(fetchedTotal);
       setHasSearched(true);
       
-      if (collected.length === 0 && newSearch) {
+      if (collected.length === 0 && !appendMode) {
         toast.info('Aucun résultat trouvé');
       }
     } catch (error) {
@@ -812,8 +833,9 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
       toast.error(error instanceof Error ? error.message : 'Erreur de recherche');
     } finally {
       setLoading(false);
+      setLoadingMore(false);
     }
-  }, [selectedAccount, filters, selectedJob, showDismissed, candidateStatus.dismissedIds]);
+  }, [selectedAccount, filters, selectedJob, showDismissed, candidateStatus.dismissedIds, cursor, results]);
 
   // Check if filters have any active search criteria
   const hasActiveFilters = useMemo(() => {
@@ -892,8 +914,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
     setResults([]);
     setHasSearched(false);
     setCursor(null);
-    setCursors([]);
-    setCurrentPage(1);
+    setHasMoreResults(true);
     setTotal(null);
     setSelectedProfiles(new Set());
     setJobScores({});
@@ -909,42 +930,33 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
     }
   }, []);
 
-  // Scroll to top when loading finishes after pagination (removed - now scroll immediately)
-  // useEffect removed since we scroll immediately
+  // Infinite scroll: load more when scrolling to bottom
+  const handleLoadMore = useCallback(() => {
+    if (!cursor || loadingMore || !hasMoreResults) return;
+    handleSearch(false, true); // appendMode = true
+  }, [cursor, loadingMore, hasMoreResults, handleSearch]);
 
-  // Pagination handlers
-  const handleNextPage = useCallback(() => {
-    if (!cursor) return;
-    // Scroll immediately for instant feedback
-    scrollToTop();
-    setCursors(prev => [...prev, cursor]);
-    setCurrentPage(prev => prev + 1);
-    handleSearch(false, cursor);
-  }, [cursor, handleSearch, scrollToTop]);
-
-  const handlePreviousPage = useCallback(() => {
-    if (currentPage <= 1) return;
-    // Scroll immediately for instant feedback
-    scrollToTop();
-    const newPage = currentPage - 1;
-    setCurrentPage(newPage);
-    
-    if (newPage === 1) {
-      // Go back to first page
-      setCursors([]);
-      handleSearch(true);
-    } else {
-      // Use stored cursor for previous page
-      const previousCursor = cursors[newPage - 2]; // -2 because page 1 has no cursor
-      setCursors(prev => prev.slice(0, newPage - 1));
-      handleSearch(false, previousCursor);
-    }
-  }, [currentPage, cursors, handleSearch, scrollToTop]);
-
-  // Reset pagination when filters change
+  // IntersectionObserver for infinite scroll
   useEffect(() => {
-    setCursors([]);
-    setCurrentPage(1);
+    const trigger = loadMoreTriggerRef.current;
+    if (!trigger) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && hasSearched && !loading && !loadingMore && hasMoreResults && cursor) {
+          handleLoadMore();
+        }
+      },
+      { threshold: 0.1 }
+    );
+
+    observer.observe(trigger);
+    return () => observer.disconnect();
+  }, [hasSearched, loading, loadingMore, hasMoreResults, cursor, handleLoadMore]);
+
+  // Reset infinite scroll when filters change
+  useEffect(() => {
+    setHasMoreResults(true);
   }, [filtersJson]);
 
   // Toggle profile selection for batch scoring
@@ -1542,7 +1554,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
             </div>
             {hasSearched && total !== null && (
               <span className="text-xs text-[#1A1A1A]/40 bg-[#1A1A1A]/5 px-2 py-1 rounded">
-                Page {currentPage} • {results.length}/{RESULTS_PER_PAGE}
+                {results.length} chargés sur {total.toLocaleString()}
               </span>
             )}
             
@@ -1783,48 +1795,17 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
             <div className="p-4 space-y-3">
               {/* Results stats banner */}
               {hasSearched && total !== null && total > 0 && (
-                <div className="bg-gradient-to-r from-[#0077B5]/5 to-transparent rounded-lg p-3 mb-4 flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-[#0077B5]/10 flex items-center justify-center">
-                      <Users className="w-5 h-5 text-[#0077B5]" />
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium text-[#1A1A1A]">
-                        {total.toLocaleString()} candidats correspondent à vos critères
-                      </p>
-                      <p className="text-xs text-[#1A1A1A]/50">
-                        {RESULTS_PER_PAGE * (currentPage - 1) + 1} - {Math.min(RESULTS_PER_PAGE * currentPage, total)} affichés
-                      </p>
-                    </div>
+                <div className="bg-gradient-to-r from-[#0077B5]/5 to-transparent rounded-lg p-3 mb-4 flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-[#0077B5]/10 flex items-center justify-center">
+                    <Users className="w-5 h-5 text-[#0077B5]" />
                   </div>
-                  
-                  {/* Top pagination */}
-                  <div className="flex items-center gap-2">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={handlePreviousPage}
-                      disabled={loading || currentPage <= 1}
-                      className="gap-1 h-8"
-                    >
-                      <ChevronLeft className="w-4 h-4" />
-                      <span className="hidden sm:inline">Préc.</span>
-                    </Button>
-                    
-                    <span className="px-3 py-1.5 text-xs font-medium text-[#1A1A1A] bg-white rounded-md border border-[#1A1A1A]/10">
-                      {currentPage}
-                    </span>
-                    
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={handleNextPage}
-                      disabled={loading || !cursor}
-                      className="gap-1 h-8"
-                    >
-                      <span className="hidden sm:inline">Suiv.</span>
-                      <ChevronRight className="w-4 h-4" />
-                    </Button>
+                  <div>
+                    <p className="text-sm font-medium text-[#1A1A1A]">
+                      {total.toLocaleString()} candidats correspondent à vos critères
+                    </p>
+                    <p className="text-xs text-[#1A1A1A]/50">
+                      {results.length} profils chargés
+                    </p>
                   </div>
                 </div>
               )}
@@ -1844,44 +1825,32 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
                 />
               ))}
 
-              {/* Bottom Pagination */}
-              {hasSearched && (results.length > 0 || currentPage > 1) && (
-                <div className="pt-6 pb-4 flex flex-col items-center gap-3">
-                  <div className="flex items-center gap-2">
+              {/* Infinite scroll trigger */}
+              <div ref={loadMoreTriggerRef} className="py-4">
+                {loadingMore && (
+                  <div className="flex items-center justify-center gap-2 py-4">
+                    <Loader2 className="w-5 h-5 animate-spin text-[#0077B5]" />
+                    <span className="text-sm text-[#1A1A1A]/60">Chargement...</span>
+                  </div>
+                )}
+                {!loadingMore && hasMoreResults && cursor && (
+                  <div className="flex justify-center">
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={handlePreviousPage}
-                      disabled={loading || currentPage <= 1}
-                      className="gap-1"
+                      onClick={handleLoadMore}
+                      className="gap-2"
                     >
-                      <ChevronLeft className="w-4 h-4" />
-                      Précédent
-                    </Button>
-                    
-                    <span className="px-4 py-2 text-sm font-medium text-[#1A1A1A] bg-[#1A1A1A]/5 rounded-md min-w-[80px] text-center">
-                      Page {currentPage}
-                    </span>
-                    
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={handleNextPage}
-                      disabled={loading || !cursor}
-                      className="gap-1"
-                    >
-                      Suivant
-                      <ChevronRight className="w-4 h-4" />
+                      Charger plus de profils
                     </Button>
                   </div>
-                  
-                  {total !== null && (
-                    <p className="text-xs text-[#1A1A1A]/40">
-                      {RESULTS_PER_PAGE * (currentPage - 1) + 1} - {Math.min(RESULTS_PER_PAGE * currentPage, total)} sur {total.toLocaleString()} profils
-                    </p>
-                  )}
-                </div>
-              )}
+                )}
+                {!hasMoreResults && results.length > 0 && (
+                  <p className="text-center text-xs text-[#1A1A1A]/40 py-2">
+                    Tous les profils ont été chargés ({results.length})
+                  </p>
+                )}
+              </div>
             </div>
           )}
         </ScrollArea>
