@@ -149,9 +149,61 @@ serve(async (req) => {
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
+    // Transform Anthropic SSE format to OpenAI-compatible format
+    const reader = response.body!.getReader();
+    const encoder = new TextEncoder();
+    const decoder = new TextDecoder();
 
-    // Stream the response back
-    return new Response(response.body, {
+    const transformedStream = new ReadableStream({
+      async start(controller) {
+        let buffer = "";
+        
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) {
+            controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+            controller.close();
+            break;
+          }
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split("\n");
+          buffer = lines.pop() || "";
+
+          for (const line of lines) {
+            if (line.startsWith("data: ")) {
+              const jsonStr = line.slice(6).trim();
+              if (!jsonStr || jsonStr === "[DONE]") continue;
+
+              try {
+                const event = JSON.parse(jsonStr);
+                
+                // Extract text from Anthropic format
+                let text = "";
+                if (event.type === "content_block_delta" && event.delta?.text) {
+                  text = event.delta.text;
+                }
+
+                if (text) {
+                  // Convert to OpenAI format
+                  const openAIFormat = {
+                    choices: [{
+                      delta: { content: text },
+                      index: 0,
+                    }],
+                  };
+                  controller.enqueue(encoder.encode(`data: ${JSON.stringify(openAIFormat)}\n\n`));
+                }
+              } catch {
+                // Skip malformed JSON
+              }
+            }
+          }
+        }
+      },
+    });
+
+    return new Response(transformedStream, {
       headers: { ...corsHeaders, "Content-Type": "text/event-stream" },
     });
   } catch (error) {
