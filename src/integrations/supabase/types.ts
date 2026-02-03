@@ -244,6 +244,54 @@ export type Database = {
         }
         Relationships: []
       }
+      job_candidate_status: {
+        Row: {
+          candidate_headline: string | null
+          candidate_id: string
+          candidate_name: string | null
+          created_at: string
+          created_by: string
+          id: string
+          job_id: string
+          linkedin_profile_url: string | null
+          recommendation: string | null
+          score: number | null
+          skip_reason: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          candidate_headline?: string | null
+          candidate_id: string
+          candidate_name?: string | null
+          created_at?: string
+          created_by: string
+          id?: string
+          job_id: string
+          linkedin_profile_url?: string | null
+          recommendation?: string | null
+          score?: number | null
+          skip_reason?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          candidate_headline?: string | null
+          candidate_id?: string
+          candidate_name?: string | null
+          created_at?: string
+          created_by?: string
+          id?: string
+          job_id?: string
+          linkedin_profile_url?: string | null
+          recommendation?: string | null
+          score?: number | null
+          skip_reason?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       job_favorites: {
         Row: {
           created_at: string
