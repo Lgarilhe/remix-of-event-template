@@ -51,8 +51,11 @@ export interface SequenceStep {
   waitForEvent?: 'connection_accepted' | 'reply_received' | 'profile_visited';
   timeoutAction?: 'skip' | 'alternative_step' | 'end_sequence';
   alternativeStepIndex?: number;
+  // Branching for check_connection
   ifTrueGotoStep?: string;
   ifFalseGotoStep?: string;
+  // Generic next step for graph-based sequencing
+  nextStepId?: string;
 }
 
 export interface Sequence {
