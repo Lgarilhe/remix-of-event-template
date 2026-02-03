@@ -415,6 +415,31 @@ async function executeStepAction(
     const subjectText = (step.subject_template || '') as string;
 
     switch (actionType) {
+      case 'check_connection': {
+        // Check if connected and route accordingly
+        const profile = await getProfileInfo(accountId, profileId);
+        const isConnected = profile?.network_distance === 'FIRST_DEGREE';
+        
+        const nextStepId = isConnected 
+          ? (step.if_true_goto_step as string | undefined) 
+          : (step.if_false_goto_step as string | undefined);
+        
+        // Update enrollment connection status
+        await supabase
+          .from('sequence_enrollments')
+          .update({ connection_status: isConnected ? 'connected' : 'not_connected' })
+          .eq('id', enrollment.id);
+        
+        // Schedule next step based on branch
+        if (nextStepId) {
+          await scheduleNextStep(supabase, enrollment, step.step_order as number, nextStepId);
+        } else {
+          await scheduleNextStep(supabase, enrollment, step.step_order as number);
+        }
+        
+        return { success: true };
+      }
+
       case 'profile_visit': {
         // Visit profile via Unipile
         const visitResponse = await fetch(
@@ -581,6 +606,7 @@ async function scheduleNextStep(supabase: any, enrollment: any, currentStepOrder
 
   // Calculate next execution time
   const scheduledAt = new Date();
+  scheduledAt.setMinutes(scheduledAt.getMinutes() + (nextStep.delay_minutes || 0));
   scheduledAt.setDate(scheduledAt.getDate() + (nextStep.delay_days || 0));
   scheduledAt.setHours(scheduledAt.getHours() + (nextStep.delay_hours || 0));
   
