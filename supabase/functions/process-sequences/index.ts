@@ -23,6 +23,101 @@ console.log('[process-sequences] Config:', {
 // Quota limits per account type
 const WEEKLY_INVITE_LIMIT = 100;
 
+// ============ HUMAN ACTIVITY SIMULATION ============
+
+// Check if current time is within business hours (8h-19h) for the given timezone
+function isWithinBusinessHours(timezone: string): boolean {
+  try {
+    const now = new Date();
+    const formatter = new Intl.DateTimeFormat("en-US", {
+      timeZone: timezone,
+      hour: "numeric",
+      hour12: false,
+    });
+    const hour = parseInt(formatter.format(now), 10);
+    
+    // Also check if it's a weekend
+    const dayFormatter = new Intl.DateTimeFormat("en-US", {
+      timeZone: timezone,
+      weekday: "short",
+    });
+    const day = dayFormatter.format(now);
+    const isWeekend = day === "Sat" || day === "Sun";
+    
+    // Business hours: 8h to 19h, Monday-Friday
+    return !isWeekend && hour >= 8 && hour < 19;
+  } catch (e) {
+    console.error("Error checking business hours:", e);
+    // Default to Paris timezone if invalid
+    const now = new Date();
+    const parisHour = new Date(now.toLocaleString("en-US", { timeZone: "Europe/Paris" })).getHours();
+    const parisDay = new Date(now.toLocaleString("en-US", { timeZone: "Europe/Paris" })).getDay();
+    return parisDay !== 0 && parisDay !== 6 && parisHour >= 8 && parisHour < 19;
+  }
+}
+
+// Get a random delay between min and max minutes in milliseconds
+function getRandomDelayMs(minMinutes: number, maxMinutes: number): number {
+  const minMs = minMinutes * 60 * 1000;
+  const maxMs = maxMinutes * 60 * 1000;
+  return Math.floor(Math.random() * (maxMs - minMs) + minMs);
+}
+
+// Calculate next business hour slot if we're outside business hours
+function getNextBusinessHourSlot(timezone: string): Date {
+  const now = new Date();
+  
+  try {
+    const formatter = new Intl.DateTimeFormat("en-US", {
+      timeZone: timezone,
+      hour: "numeric",
+      hour12: false,
+    });
+    const dayFormatter = new Intl.DateTimeFormat("en-US", {
+      timeZone: timezone,
+      weekday: "short",
+    });
+    
+    let targetDate = new Date(now);
+    
+    // Check day and hour, skip to next valid slot
+    for (let i = 0; i < 7; i++) {
+      const day = dayFormatter.format(targetDate);
+      const hour = parseInt(formatter.format(targetDate), 10);
+      
+      const isWeekend = day === "Sat" || day === "Sun";
+      
+      if (isWeekend) {
+        // Skip to next day at 8h
+        targetDate.setDate(targetDate.getDate() + 1);
+        targetDate.setHours(8, Math.floor(Math.random() * 30), 0, 0);
+        continue;
+      }
+      
+      if (hour >= 19) {
+        // After hours - skip to next day at 8h
+        targetDate.setDate(targetDate.getDate() + 1);
+        targetDate.setHours(8, Math.floor(Math.random() * 30), 0, 0);
+        continue;
+      }
+      
+      if (hour < 8) {
+        // Before hours - set to 8h with random offset
+        targetDate.setHours(8, Math.floor(Math.random() * 30), 0, 0);
+      }
+      
+      // We're in a valid slot
+      break;
+    }
+    
+    return targetDate;
+  } catch (e) {
+    console.error("Error calculating next business slot:", e);
+    // Fallback: add 1 hour
+    return new Date(now.getTime() + 60 * 60 * 1000);
+  }
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -89,6 +184,24 @@ serve(async (req) => {
                 })
                 .eq('id', exec.id);
               results.quota_blocked++;
+              continue;
+            }
+
+            // ============ HUMAN ACTIVITY SIMULATION ============
+            // Check if we're within business hours for the user's timezone
+            const userTimezone = enrollment.user_timezone || 'Europe/Paris';
+            if (!isWithinBusinessHours(userTimezone)) {
+              // Reschedule for next business hour slot
+              const nextSlot = getNextBusinessHourSlot(userTimezone);
+              console.log(`[process-sequences] Outside business hours for ${userTimezone}, rescheduling to ${nextSlot.toISOString()}`);
+              
+              await supabase
+                .from('sequence_step_executions')
+                .update({ 
+                  scheduled_at: nextSlot.toISOString(),
+                })
+                .eq('id', exec.id);
+              results.skipped++;
               continue;
             }
 
@@ -1044,24 +1157,36 @@ async function scheduleNextStep(supabase: any, enrollment: any, currentStepOrder
     return;
   }
 
-  const scheduledAt = new Date();
+  // ============ SCHEDULE WITH HUMAN-LIKE RANDOMIZATION ============
+  const userTimezone = enrollment.user_timezone || 'Europe/Paris';
+  
+  let scheduledAt = new Date();
   scheduledAt.setMinutes(scheduledAt.getMinutes() + (nextStep.delay_minutes || 0));
   scheduledAt.setDate(scheduledAt.getDate() + (nextStep.delay_days || 0));
   scheduledAt.setHours(scheduledAt.getHours() + (nextStep.delay_hours || 0));
   
+  // Add random variation (+/- 0-5 minutes) to appear more human
+  const randomVariation = Math.floor(Math.random() * 10) - 5; // -5 to +5 minutes
+  scheduledAt.setMinutes(scheduledAt.getMinutes() + randomVariation);
+  
   const preferredStart = nextStep.preferred_hour_start ?? 9;
   const preferredEnd = nextStep.preferred_hour_end ?? 18;
   
+  // Adjust for business hours
   if (scheduledAt.getHours() < preferredStart) {
+    // Add random offset within first 30 min of business hours
     scheduledAt.setHours(preferredStart, Math.floor(Math.random() * 30), 0);
   } else if (scheduledAt.getHours() >= preferredEnd) {
     scheduledAt.setDate(scheduledAt.getDate() + 1);
     scheduledAt.setHours(preferredStart, Math.floor(Math.random() * 30), 0);
   }
 
+  // Skip weekends
   const day = scheduledAt.getDay();
-  if (day === 0) scheduledAt.setDate(scheduledAt.getDate() + 1);
-  if (day === 6) scheduledAt.setDate(scheduledAt.getDate() + 2);
+  if (day === 0) scheduledAt.setDate(scheduledAt.getDate() + 1); // Sunday -> Monday
+  if (day === 6) scheduledAt.setDate(scheduledAt.getDate() + 2); // Saturday -> Monday
+  
+  console.log(`[process-sequences] Scheduling next step ${nextStep.step_order} for ${scheduledAt.toISOString()} (timezone: ${userTimezone})`);
 
   await supabase
     .from('sequence_step_executions')
