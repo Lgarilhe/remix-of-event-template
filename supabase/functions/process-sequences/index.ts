@@ -916,15 +916,17 @@ async function executeStepAction(
       }
 
       case 'connection_request': {
-        // Unipile invite endpoint
-        // Doc: https://developer.unipile.com/reference/userscontroller_adduserbyidentifier
+        // Unipile invite endpoint uses JSON (not FormData)
+        // Doc: https://developer.unipile.com/docs/invite-users
         const inviteNote = messageText ? messageText.slice(0, 50) : '';
         
-        const formData = new FormData();
-        formData.append('account_id', accountId);
-        formData.append('provider_id', profileId);
+        const inviteBody: Record<string, string> = {
+          account_id: accountId,
+          provider_id: profileId,
+        };
+        
         if (inviteNote) {
-          formData.append('message', inviteNote);
+          inviteBody.message = inviteNote;
         }
         
         console.log(`[process-sequences] Sending connection request to ${profileId}`, {
@@ -937,8 +939,10 @@ async function executeStepAction(
           method: 'POST',
           headers: {
             'X-API-KEY': UNIPILE_API_KEY!,
+            'Content-Type': 'application/json',
+            'accept': 'application/json',
           },
-          body: formData,
+          body: JSON.stringify(inviteBody),
         });
         
         if (!connectResponse.ok) {
