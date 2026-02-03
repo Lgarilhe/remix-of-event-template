@@ -195,6 +195,7 @@ ${statusInstructions[candidateStatus] || statusInstructions.other}
    - Superlatifs: exceptionnel, remarquable, impressionnant
    - Questions génériques: "ça t'intéresserait ?", "tu serais ouvert ?"
    - Forcer une question quand un CTA suffit
+   - FORMAT CHIFFRES: JAMAIS de "20+", "10+", "5+" → écrire "plus de 20", "plus de 10", "plus de 5"
 
 7. FORMAT OBLIGATOIRE:
    - 80-100 mots maximum
