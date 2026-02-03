@@ -711,9 +711,9 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
 
       // Always return exactly RESULTS_PER_PAGE profiles after XP filtering and dismissed exclusion.
       // We fetch iteratively using the cursor until we have enough results.
-      // With 100 profiles target and potential filtering, we need more iterations
+      // Reduced to 3 iterations max to save API quota (may return fewer than 100 results)
       const desiredCount = RESULTS_PER_PAGE;
-      const maxFetchIterations = 15; // Increased to handle heavy filtering for 100 results
+      const maxFetchIterations = 3; // Reduced from 15 to save quota
       const collected: LinkedInProfile[] = [];
       const seen = new Set<string>();
       
