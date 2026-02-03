@@ -50,8 +50,8 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
   const [cursors, setCursors] = useState<string[]>([]); // Stack of cursors for pagination
   const [currentPage, setCurrentPage] = useState(1);
   const [total, setTotal] = useState<number | null>(null);
-  // UX requirement: always show 10 profiles per page (no choice)
-  const RESULTS_PER_PAGE = 10;
+  // UX requirement: 100 profiles per page for efficient bulk operations
+  const RESULTS_PER_PAGE = 100;
   const [hasSearched, setHasSearched] = useState(false);
   
   // Quota tracking
