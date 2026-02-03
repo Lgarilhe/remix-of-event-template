@@ -15,6 +15,7 @@ import { toast } from 'sonner';
 import { useRegisterCopilotContext } from '@/contexts/CopilotContext';
 import { OutreachSearchProvider } from '@/contexts/OutreachSearchContext';
 import { SourcingProject } from '@/hooks/useSourcingProjects';
+import { useUnreadMessageCount } from '@/hooks/useUnreadMessageCount';
 import { cn } from '@/lib/utils';
 
 export interface LinkedInAccountSubscriptions {
@@ -39,8 +40,16 @@ export default function Outreach() {
   const [selectedAccount, setSelectedAccount] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('projects');
-  const [unreadMessageCount, setUnreadMessageCount] = useState(0);
   const [activeProject, setActiveProject] = useState<SourcingProject | null>(null);
+
+  // Fetch unread count on mount (not just when Messages tab is active)
+  const { count: initialUnreadCount, refresh: refreshUnreadCount } = useUnreadMessageCount(selectedAccount);
+  const [unreadMessageCount, setUnreadMessageCount] = useState(0);
+  
+  // Sync initial count from hook
+  useEffect(() => {
+    setUnreadMessageCount(initialUnreadCount);
+  }, [initialUnreadCount]);
 
   // Handle resuming search from a project
   const handleResumeSearch = useCallback((project: SourcingProject) => {
