@@ -31,9 +31,9 @@ export const useUnreadMessageCount = (selectedAccountId: string | null): UnreadC
           try {
             const response = await supabase.functions.invoke('unipile-search', {
               body: {
-                action: 'list-chats',
+                action: 'get_chats',
                 account_id: selectedAccountId,
-                limit: 100, // Get enough to count unread
+                limit: 100,
                 folder,
               },
             });
