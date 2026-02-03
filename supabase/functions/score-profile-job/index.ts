@@ -225,6 +225,13 @@ SCORING:
 - ANALYSE le "À propos" pour détecter motivations et culture fit
 - ANALYSE les descriptions de postes pour évaluer profondeur technique
 
+⚠️ QUALIFICATION (CRITIQUE):
+- SOUS-QUALIFIÉ: XP profil < XP min poste OU séniorité insuffisante → pénalité -15 à -30 pts
+- SUR-QUALIFIÉ: XP profil > XP max poste +3 ans OU titre trop senior (ex: VP pour poste Senior) → pénalité -10 à -25 pts
+- Risque sur-qualif: ennui rapide, attentes salariales décalées, départ précoce
+- Risque sous-qualif: montée en compétence trop longue, autonomie insuffisante
+- Si écart XP > 5 ans (dans un sens ou l'autre) → recommendation="maybe" max
+
 ${hasSalaryInfo ? `Compare salaire proposé vs attentes marché du profil.` : `Estime fourchette marché pour ce poste.`}
 
 JSON UNIQUEMENT:
@@ -232,11 +239,13 @@ JSON UNIQUEMENT:
   "match_score": 0-100,
   "matching_skills": ["max 6"],
   "missing_skills": ["max 4, MUST-HAVE prioritaires"],
-  "experience_match": "compatible|trop_junior|trop_senior|incertain",
+  "experience_match": "compatible|sous_qualifie|sur_qualifie|incertain",
+  "experience_gap": {"years": 0, "direction": "over|under|match"},
+  "qualification_risk": "none|low|medium|high",
   "location_match": true|false,
   "summary": "Max 20 mots",
   "recommendation": "go|maybe|skip",
-  "reasoning": "Max 30 mots sur les insights du À propos/descriptions",
+  "reasoning": "Max 30 mots sur qualification + insights À propos/descriptions",
   "salary_analysis": {
     "status": "adequate|too_low|too_high|unknown",
     "confidence": "high|medium|low",
