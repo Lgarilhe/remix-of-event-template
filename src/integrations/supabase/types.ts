@@ -724,7 +724,10 @@ export type Database = {
           created_at: string
           delay_days: number
           delay_hours: number
+          delay_minutes: number | null
           id: string
+          if_false_goto_step: string | null
+          if_true_goto_step: string | null
           message_template: string | null
           preferred_hour_end: number | null
           preferred_hour_start: number | null
@@ -743,7 +746,10 @@ export type Database = {
           created_at?: string
           delay_days?: number
           delay_hours?: number
+          delay_minutes?: number | null
           id?: string
+          if_false_goto_step?: string | null
+          if_true_goto_step?: string | null
           message_template?: string | null
           preferred_hour_end?: number | null
           preferred_hour_start?: number | null
@@ -762,7 +768,10 @@ export type Database = {
           created_at?: string
           delay_days?: number
           delay_hours?: number
+          delay_minutes?: number | null
           id?: string
+          if_false_goto_step?: string | null
+          if_true_goto_step?: string | null
           message_template?: string | null
           preferred_hour_end?: number | null
           preferred_hour_start?: number | null
@@ -775,6 +784,20 @@ export type Database = {
           wait_for_event?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "sequence_steps_if_false_goto_step_fkey"
+            columns: ["if_false_goto_step"]
+            isOneToOne: false
+            referencedRelation: "sequence_steps"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sequence_steps_if_true_goto_step_fkey"
+            columns: ["if_true_goto_step"]
+            isOneToOne: false
+            referencedRelation: "sequence_steps"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "sequence_steps_sequence_id_fkey"
             columns: ["sequence_id"]

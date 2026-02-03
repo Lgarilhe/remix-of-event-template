@@ -165,6 +165,7 @@ export const SequencesList: React.FC<SequencesListProps> = ({
           condition_type: step.conditionType,
           delay_days: step.delayDays,
           delay_hours: step.delayHours,
+          delay_minutes: step.delayMinutes || 0,
           preferred_hour_start: step.preferredHourStart,
           preferred_hour_end: step.preferredHourEnd,
           subject_template: step.subjectTemplate,
@@ -174,6 +175,8 @@ export const SequencesList: React.FC<SequencesListProps> = ({
           timeout_days: step.timeoutDays,
           wait_for_event: step.waitForEvent,
           timeout_branch_step_id: null,
+          if_true_goto_step: step.ifTrueGotoStep || null,
+          if_false_goto_step: step.ifFalseGotoStep || null,
         }));
 
         const { error: stepsError } = await supabase
@@ -204,6 +207,7 @@ export const SequencesList: React.FC<SequencesListProps> = ({
           condition_type: step.conditionType,
           delay_days: step.delayDays,
           delay_hours: step.delayHours,
+          delay_minutes: step.delayMinutes || 0,
           preferred_hour_start: step.preferredHourStart,
           preferred_hour_end: step.preferredHourEnd,
           subject_template: step.subjectTemplate,
@@ -213,6 +217,8 @@ export const SequencesList: React.FC<SequencesListProps> = ({
           timeout_days: step.timeoutDays,
           wait_for_event: step.waitForEvent,
           timeout_branch_step_id: null,
+          if_true_goto_step: step.ifTrueGotoStep || null,
+          if_false_goto_step: step.ifFalseGotoStep || null,
         }));
 
         const { error: stepsError } = await supabase
@@ -285,6 +291,7 @@ export const SequencesList: React.FC<SequencesListProps> = ({
         conditionType: s.condition_type || 'always',
         delayDays: s.delay_days,
         delayHours: s.delay_hours,
+        delayMinutes: s.delay_minutes || 0,
         preferredHourStart: s.preferred_hour_start ?? 9,
         preferredHourEnd: s.preferred_hour_end ?? 18,
         subjectTemplate: s.subject_template,
@@ -294,6 +301,8 @@ export const SequencesList: React.FC<SequencesListProps> = ({
         timeoutDays: s.timeout_days,
         waitForEvent: s.wait_for_event,
         timeoutBranchStepId: s.timeout_branch_step_id,
+        ifTrueGotoStep: s.if_true_goto_step,
+        ifFalseGotoStep: s.if_false_goto_step,
       })),
     };
     setEditingSequence(sequence);

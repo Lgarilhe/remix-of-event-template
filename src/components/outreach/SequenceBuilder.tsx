@@ -32,10 +32,11 @@ import { cn } from '@/lib/utils';
 export interface SequenceStep {
   id: string;
   order: number;
-  actionType: 'inmail' | 'connection_request' | 'profile_visit' | 'message' | 'smart_message' | 'wait_connection' | 'wait_reply' | 'wait_profile_visit' | 'condition_branch';
+  actionType: 'inmail' | 'connection_request' | 'profile_visit' | 'message' | 'smart_message' | 'wait_connection' | 'wait_reply' | 'wait_profile_visit' | 'condition_branch' | 'check_connection';
   conditionType: 'always' | 'if_connected' | 'if_not_connected' | 'if_no_response';
   delayDays: number;
   delayHours: number;
+  delayMinutes: number;
   preferredHourStart: number;
   preferredHourEnd: number;
   subjectTemplate?: string;
@@ -46,6 +47,8 @@ export interface SequenceStep {
   waitForEvent?: 'connection_accepted' | 'reply_received' | 'profile_visited';
   timeoutAction?: 'skip' | 'alternative_step' | 'end_sequence';
   alternativeStepIndex?: number;
+  ifTrueGotoStep?: string;
+  ifFalseGotoStep?: string;
 }
 
 export interface Sequence {
@@ -74,6 +77,7 @@ const ACTIONS = [
 
 // TRIGGERS = ce qu'on ATTEND
 const TRIGGERS = [
+  { value: 'check_connection', label: 'Vérifier connexion', icon: GitBranch, color: 'bg-indigo-100 text-indigo-600', description: 'Route selon le degré', requiresPrevious: [], excludeIfPrevious: [] },
   { value: 'wait_connection', label: 'Attendre connexion', icon: Timer, color: 'bg-amber-100 text-amber-600', description: 'Pause jusqu\'à acceptation', waitEvent: 'connection_accepted', requiresPrevious: ['connection_request'], excludeIfPrevious: ['wait_connection'] },
   { value: 'wait_reply', label: 'Attendre réponse', icon: MessageSquare, color: 'bg-amber-100 text-amber-600', description: 'Pause jusqu\'à réponse', waitEvent: 'reply_received', requiresPrevious: ['inmail', 'message', 'smart_message'], excludeIfPrevious: [] },
   { value: 'wait_profile_visit', label: 'Attendre visite retour', icon: Eye, color: 'bg-amber-100 text-amber-600', description: 'Pause si visite profil', waitEvent: 'profile_visited', requiresPrevious: ['profile_visit'], excludeIfPrevious: [] },
@@ -146,6 +150,7 @@ const createEmptyStep = (order: number, actionType: string = 'connection_request
     conditionType: 'always',
     delayDays: order === 0 ? 0 : 2,
     delayHours: 0,
+    delayMinutes: 0,
     preferredHourStart: 9,
     preferredHourEnd: 18,
     useAiPersonalization: false,
@@ -339,9 +344,9 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = ({
                       <div className="px-4 pb-4 pt-2 border-t space-y-4">
                         {/* Delay (not for first step) */}
                         {index > 0 && (
-                          <div className="grid grid-cols-2 gap-4">
+                          <div className="grid grid-cols-3 gap-3">
                             <div>
-                              <Label>Délai (jours)</Label>
+                              <Label>Jours</Label>
                               <Input
                                 type="number"
                                 min={0}
@@ -351,13 +356,24 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = ({
                               />
                             </div>
                             <div>
-                              <Label>Délai (heures)</Label>
+                              <Label>Heures</Label>
                               <Input
                                 type="number"
                                 min={0}
                                 max={23}
                                 value={step.delayHours}
                                 onChange={(e) => updateStep(step.id, { delayHours: parseInt(e.target.value) || 0 })}
+                                className="mt-1.5"
+                              />
+                            </div>
+                            <div>
+                              <Label>Minutes</Label>
+                              <Input
+                                type="number"
+                                min={0}
+                                max={59}
+                                value={step.delayMinutes || 0}
+                                onChange={(e) => updateStep(step.id, { delayMinutes: parseInt(e.target.value) || 0 })}
                                 className="mt-1.5"
                               />
                             </div>
@@ -475,6 +491,62 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = ({
                           </div>
                         )}
 
+                        {/* Check connection configuration */}
+                        {step.actionType === 'check_connection' && (
+                          <div className="space-y-4 p-3 bg-indigo-50 border border-indigo-200 rounded-lg">
+                            <div className="flex items-center gap-2 text-indigo-700">
+                              <GitBranch className="w-4 h-4" />
+                              <span className="font-medium text-sm">Vérification du degré de connexion</span>
+                            </div>
+                            
+                            <div>
+                              <Label>Si connecté (1er degré) → aller à</Label>
+                              <Select
+                                value={step.ifTrueGotoStep || ''}
+                                onValueChange={(value) => updateStep(step.id, { ifTrueGotoStep: value || undefined })}
+                              >
+                                <SelectTrigger className="mt-1.5">
+                                  <SelectValue placeholder="Sélectionner une étape..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="">Étape suivante</SelectItem>
+                                  {sequence.steps.filter(s => s.order > step.order).map(s => {
+                                    const stepConfig = ALL_STEP_TYPES.find(a => a.value === s.actionType);
+                                    return (
+                                      <SelectItem key={s.id} value={s.id}>
+                                        Étape {s.order + 1}: {stepConfig?.label || s.actionType}
+                                      </SelectItem>
+                                    );
+                                  })}
+                                </SelectContent>
+                              </Select>
+                            </div>
+
+                            <div>
+                              <Label>Si non connecté (2e/3e degré) → aller à</Label>
+                              <Select
+                                value={step.ifFalseGotoStep || ''}
+                                onValueChange={(value) => updateStep(step.id, { ifFalseGotoStep: value || undefined })}
+                              >
+                                <SelectTrigger className="mt-1.5">
+                                  <SelectValue placeholder="Sélectionner une étape..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="">Étape suivante</SelectItem>
+                                  {sequence.steps.filter(s => s.order > step.order).map(s => {
+                                    const stepConfig = ALL_STEP_TYPES.find(a => a.value === s.actionType);
+                                    return (
+                                      <SelectItem key={s.id} value={s.id}>
+                                        Étape {s.order + 1}: {stepConfig?.label || s.actionType}
+                                      </SelectItem>
+                                    );
+                                  })}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          </div>
+                        )}
+
                         {/* Message fields */}
                         {needsMessage(step.actionType) && (
                           <>
@@ -526,17 +598,36 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = ({
                                   </div>
                                 )}
                                 <div>
-                                  <Label>Message</Label>
+                                  <div className="flex items-center justify-between">
+                                    <Label>Message</Label>
+                                    {step.actionType === 'connection_request' && (
+                                      <span className={cn(
+                                        "text-xs",
+                                        (step.messageTemplate?.length || 0) > 50 ? "text-red-500 font-medium" : "text-muted-foreground"
+                                      )}>
+                                        {step.messageTemplate?.length || 0}/50
+                                      </span>
+                                    )}
+                                  </div>
                                   <Textarea
                                     value={step.messageTemplate || ''}
                                     onChange={(e) => updateStep(step.id, { messageTemplate: e.target.value })}
-                                    placeholder="Bonjour {{firstName}}, ..."
-                                    rows={3}
-                                    className="mt-1.5"
+                                    placeholder={step.actionType === 'connection_request' ? "Note courte (max 50 car.)" : "Bonjour {{firstName}}, ..."}
+                                    rows={step.actionType === 'connection_request' ? 2 : 3}
+                                    className={cn(
+                                      "mt-1.5",
+                                      step.actionType === 'connection_request' && (step.messageTemplate?.length || 0) > 50 && "border-red-300 focus-visible:ring-red-300"
+                                    )}
                                   />
-                                  <p className="text-xs text-muted-foreground mt-1">
-                                    Variables: {'{{firstName}}'}, {'{{lastName}}'}, {'{{company}}'}, {'{{headline}}'}
-                                  </p>
+                                  {step.actionType === 'connection_request' ? (
+                                    <p className="text-xs text-muted-foreground mt-1">
+                                      LinkedIn limite les notes d'invitation à 50 caractères.
+                                    </p>
+                                  ) : (
+                                    <p className="text-xs text-muted-foreground mt-1">
+                                      Variables: {'{{firstName}}'}, {'{{lastName}}'}, {'{{company}}'}, {'{{headline}}'}
+                                    </p>
+                                  )}
                                 </div>
                               </>
                             )}
