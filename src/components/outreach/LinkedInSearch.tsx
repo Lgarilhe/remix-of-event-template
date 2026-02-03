@@ -9,6 +9,7 @@ import { JobMatchResult } from './JobScoreDisplay';
 import { QuotaDisplay } from './QuotaDisplay';
 import { BulkInMailModal } from './BulkInMailModal';
 import { useUnipileQuota } from '@/hooks/useUnipileQuota';
+import { useJobCandidateStatus } from '@/hooks/useJobCandidateStatus';
 import { Job } from '@/pages/JobSpace';
 import { filterByCalculatedExperience } from './calculateExperience';
 import { useCopilotActions } from '@/hooks/useCopilotActions';
@@ -27,7 +28,8 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Search, Loader2, ChevronRight, ChevronLeft, AlertTriangle, Lock, Users, Sparkles, Mail, GitBranch } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { Search, Loader2, ChevronRight, ChevronLeft, AlertTriangle, Lock, Users, Sparkles, Mail, GitBranch, Archive, Eye, EyeOff } from 'lucide-react';
 import { SequenceEnrollButton } from './SequenceEnrollButton';
 import { toast } from 'sonner';
 
@@ -64,6 +66,11 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
   const [scoringInProgress, setScoringInProgress] = useState(false);
   const [sortByScore, setSortByScore] = useState(false);
   
+  // Candidate status tracking per job (dismissed, messaged, etc.)
+  const candidateStatus = useJobCandidateStatus(selectedJob?.id || null);
+  const [showDismissed, setShowDismissed] = useState(false); // Toggle to show/hide dismissed candidates
+  const [statusFilter, setStatusFilter] = useState<'all' | 'untreated' | 'messaged' | 'dismissed'>('all');
+  
   // Copilot context sync
   const { updateJobContext, updateProfilesContext, updateFiltersContext } = useCopilotActions();
   
@@ -81,7 +88,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
     filtersRef.current = filters;
   }, [filters]);
   
-  // Sync selected job to Copilot context
+  // Sync selected job to Copilot context and reset status filter
   useEffect(() => {
     if (selectedJob) {
       updateJobContext({
@@ -95,8 +102,13 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
         salaryMin: selectedJob.salaryMin,
         salaryMax: selectedJob.salaryMax,
       });
+      // Reset status filter when job changes
+      setStatusFilter('all');
+      setShowDismissed(false);
     } else {
       updateJobContext(null);
+      setStatusFilter('all');
+      setShowDismissed(false);
     }
   }, [selectedJob, updateJobContext]);
   
@@ -246,9 +258,32 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
   // Serialize filters to JSON for stable dependency tracking (for debounce)
   const filtersJson = useMemo(() => JSON.stringify(filters), [filters]);
 
-  // Sort by score if enabled (experience filtering is handled during fetch to guarantee 10 results/page)
+  // Sort by score if enabled AND filter out dismissed candidates (unless showDismissed is true)
   const filteredAndSortedResults = useMemo(() => {
     let filtered = results;
+    
+    // Filter out dismissed candidates for this job (unless user wants to see them)
+    if (selectedJob && !showDismissed) {
+      filtered = filtered.filter(p => !candidateStatus.isDismissed(p.id));
+    }
+    
+    // Apply status filter
+    if (selectedJob && statusFilter !== 'all') {
+      filtered = filtered.filter(p => {
+        const status = candidateStatus.getStatus(p.id);
+        switch (statusFilter) {
+          case 'untreated':
+            // No status = not treated yet
+            return !status;
+          case 'messaged':
+            return status?.status === 'messaged' || status?.status === 'replied';
+          case 'dismissed':
+            return status?.status === 'dismissed';
+          default:
+            return true;
+        }
+      });
+    }
 
     // Sort by score if enabled
     if (sortByScore && Object.keys(jobScores).length > 0) {
@@ -260,7 +295,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
     }
     
     return filtered;
-  }, [results, jobScores, sortByScore, filters.calculated_experience_min, filters.calculated_experience_max]);
+  }, [results, jobScores, sortByScore, filters.calculated_experience_min, filters.calculated_experience_max, selectedJob, showDismissed, candidateStatus, statusFilter]);
 
   // Calculate selectable profiles (exclude "peu adapté" with recommendation: skip)
   // Use filtered results so client-side filters apply
@@ -672,12 +707,16 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
         }));
       }
 
-      // Always return exactly RESULTS_PER_PAGE profiles after XP filtering.
+      // Always return exactly RESULTS_PER_PAGE profiles after XP filtering and dismissed exclusion.
       // We fetch iteratively using the cursor until we have enough results.
+      // With 100 profiles target and potential filtering, we need more iterations
       const desiredCount = RESULTS_PER_PAGE;
-      const maxFetchIterations = 6;
+      const maxFetchIterations = 15; // Increased to handle heavy filtering for 100 results
       const collected: LinkedInProfile[] = [];
       const seen = new Set<string>();
+      
+      // Get dismissed IDs to exclude during fetch (optimization)
+      const dismissedIds = candidateStatus.dismissedIds;
 
       let nextCursor: string | null = (!newSearch && paginationCursor) ? paginationCursor : null;
       let lastCursorFromApi: string | null = null;
@@ -736,6 +775,8 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
         for (const p of filteredBatch) {
           if (!p?.id) continue;
           if (seen.has(p.id)) continue;
+          // Skip dismissed candidates during fetch (if job selected and not showing dismissed)
+          if (selectedJob && !showDismissed && dismissedIds.has(p.id)) continue;
           seen.add(p.id);
           collected.push(p);
           if (collected.length >= desiredCount) break;
@@ -770,7 +811,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
     } finally {
       setLoading(false);
     }
-  }, [selectedAccount, filters]);
+  }, [selectedAccount, filters, selectedJob, showDismissed, candidateStatus.dismissedIds]);
 
   // Check if filters have any active search criteria
   const hasActiveFilters = useMemo(() => {
@@ -1081,6 +1122,30 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
         });
         setJobScores(prev => ({ ...prev, ...newScores }));
         setSortByScore(true); // Auto-enable sorting after batch score
+        
+        // Auto-archive candidates with recommendation 'skip' (score < 40)
+        const candidatesToDismiss = profilesToScore
+          .filter((profile, index) => {
+            const result = data.results[index];
+            return result?.recommendation === 'skip';
+          })
+          .map((profile, index) => {
+            const result = data.results[profilesToScore.indexOf(profile)];
+            return {
+              id: profile.id,
+              name: profile.name || `${profile.first_name || ''} ${profile.last_name || ''}`.trim(),
+              headline: profile.headline,
+              profileUrl: profile.public_profile_url || profile.profile_url,
+              score: result?.match_score,
+              recommendation: result?.recommendation,
+              skipReason: result?.analysis,
+            };
+          });
+        
+        if (candidatesToDismiss.length > 0) {
+          await candidateStatus.batchDismiss(candidatesToDismiss);
+        }
+        
         toast.success(`${data.results.length} profils scorés avec succès`);
       }
     } catch (err) {
@@ -1089,7 +1154,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
     } finally {
       setScoringInProgress(false);
     }
-  }, [selectedJob, selectedProfiles, results, buildProfileData]);
+  }, [selectedJob, selectedProfiles, results, buildProfileData, candidateStatus]);
 
   return (
     <div className="grid lg:grid-cols-[320px_1fr] gap-6 items-start">
@@ -1349,9 +1414,9 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
                   id="select-all"
                 />
                 <label htmlFor="select-all" className="text-xs text-[#1A1A1A]/60 cursor-pointer">
-                  Tout {selectableProfiles.length < results.length && (
+                  Tout {selectableProfiles.length < filteredAndSortedResults.length && (
                     <span className="text-[10px] text-amber-600">
-                      ({selectableProfiles.length}/{results.length})
+                      ({selectableProfiles.length}/{filteredAndSortedResults.length})
                     </span>
                   )}
                 </label>
@@ -1361,9 +1426,15 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
             <div className="text-base font-semibold text-[#1A1A1A]">
               {hasSearched ? (
                 total !== null ? (
-                  <span>{total.toLocaleString()} profil{total > 1 ? 's' : ''}</span>
+                  <>
+                    <span>{filteredAndSortedResults.length}</span>
+                    {filteredAndSortedResults.length !== results.length && (
+                      <span className="text-[#1A1A1A]/40 font-normal">/{results.length}</span>
+                    )}
+                    <span className="font-normal text-[#1A1A1A]/60"> profil{filteredAndSortedResults.length > 1 ? 's' : ''}</span>
+                  </>
                 ) : (
-                  <span>{results.length} profil{results.length > 1 ? 's' : ''}</span>
+                  <span>{filteredAndSortedResults.length} profil{filteredAndSortedResults.length > 1 ? 's' : ''}</span>
                 )
               ) : (
                 <span>Résultats de recherche</span>
@@ -1373,6 +1444,58 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
               <span className="text-xs text-[#1A1A1A]/40 bg-[#1A1A1A]/5 px-2 py-1 rounded">
                 Page {currentPage} • {results.length}/{RESULTS_PER_PAGE}
               </span>
+            )}
+            
+            {/* Status filter pills (only show when job is selected) */}
+            {selectedJob && hasSearched && (
+              <div className="flex items-center gap-1.5 ml-2">
+                <Button
+                  variant={statusFilter === 'all' ? 'default' : 'ghost'}
+                  size="sm"
+                  className={`h-7 px-2.5 text-xs ${statusFilter === 'all' ? 'bg-[#0077B5]' : ''}`}
+                  onClick={() => setStatusFilter('all')}
+                >
+                  Tous
+                </Button>
+                <Button
+                  variant={statusFilter === 'untreated' ? 'default' : 'ghost'}
+                  size="sm"
+                  className={`h-7 px-2.5 text-xs ${statusFilter === 'untreated' ? 'bg-[#0077B5]' : ''}`}
+                  onClick={() => setStatusFilter('untreated')}
+                >
+                  <Eye className="w-3 h-3 mr-1" />
+                  Non traités
+                </Button>
+                <Button
+                  variant={statusFilter === 'messaged' ? 'default' : 'ghost'}
+                  size="sm"
+                  className={`h-7 px-2.5 text-xs ${statusFilter === 'messaged' ? 'bg-[#0077B5]' : ''}`}
+                  onClick={() => setStatusFilter('messaged')}
+                >
+                  <Mail className="w-3 h-3 mr-1" />
+                  Contactés
+                </Button>
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant={showDismissed ? 'default' : 'ghost'}
+                        size="sm"
+                        className={`h-7 px-2.5 text-xs ${showDismissed ? 'bg-red-500 hover:bg-red-600' : 'text-red-500'}`}
+                        onClick={() => setShowDismissed(!showDismissed)}
+                      >
+                        <Archive className="w-3 h-3 mr-1" />
+                        {candidateStatus.dismissedIds.size > 0 && (
+                          <span>{candidateStatus.dismissedIds.size}</span>
+                        )}
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>{showDismissed ? 'Masquer' : 'Voir'} les profils écartés pour ce poste</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </div>
             )}
           </div>
           
