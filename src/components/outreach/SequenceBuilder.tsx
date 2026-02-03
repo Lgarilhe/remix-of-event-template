@@ -530,15 +530,15 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = ({
                             <div>
                               <Label>Si connecté (1er degré) → aller à</Label>
                               <Select
-                                value={step.ifTrueGotoStep || ''}
-                                onValueChange={(value) => updateStep(step.id, { ifTrueGotoStep: value || undefined })}
+                                value={step.ifTrueGotoStep || '__next__'}
+                                onValueChange={(value) => updateStep(step.id, { ifTrueGotoStep: value === '__next__' ? undefined : value })}
                               >
                                 <SelectTrigger className="mt-1.5">
                                   <SelectValue placeholder="Sélectionner une étape..." />
                                 </SelectTrigger>
                                 <SelectContent>
-                                  <SelectItem value="">Étape suivante</SelectItem>
-                                  {sequence.steps.filter(s => s.order > step.order).map(s => {
+                                  <SelectItem value="__next__">Étape suivante</SelectItem>
+                                  {sequence.steps.filter(s => s.order > step.order && s.id).map(s => {
                                     const stepConfig = ALL_STEP_TYPES.find(a => a.value === s.actionType);
                                     return (
                                       <SelectItem key={s.id} value={s.id}>
@@ -553,15 +553,15 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = ({
                             <div>
                               <Label>Si non connecté (2e/3e degré) → aller à</Label>
                               <Select
-                                value={step.ifFalseGotoStep || ''}
-                                onValueChange={(value) => updateStep(step.id, { ifFalseGotoStep: value || undefined })}
+                                value={step.ifFalseGotoStep || '__next__'}
+                                onValueChange={(value) => updateStep(step.id, { ifFalseGotoStep: value === '__next__' ? undefined : value })}
                               >
                                 <SelectTrigger className="mt-1.5">
                                   <SelectValue placeholder="Sélectionner une étape..." />
                                 </SelectTrigger>
                                 <SelectContent>
-                                  <SelectItem value="">Étape suivante</SelectItem>
-                                  {sequence.steps.filter(s => s.order > step.order).map(s => {
+                                  <SelectItem value="__next__">Étape suivante</SelectItem>
+                                  {sequence.steps.filter(s => s.order > step.order && s.id).map(s => {
                                     const stepConfig = ALL_STEP_TYPES.find(a => a.value === s.actionType);
                                     return (
                                       <SelectItem key={s.id} value={s.id}>
