@@ -37,11 +37,15 @@ import {
   PenLine,
   Send,
   GitBranch,
+  FolderPlus,
 } from 'lucide-react';
 import { SequenceEnrollButton } from './SequenceEnrollButton';
+import { AddToProjectButton } from './projects/AddToProjectButton';
 import { Textarea } from '@/components/ui/textarea';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { SourcingProject } from '@/hooks/useSourcingProjects';
+
 
 interface LinkedInResultCardProps {
   profile: LinkedInProfile;
@@ -53,6 +57,7 @@ interface LinkedInResultCardProps {
   accountId?: string;
   onMessageSent?: () => void;
   onSequenceEnroll?: () => void;
+  activeProject?: SourcingProject | null;
 }
 
 interface ChatMessage {
@@ -81,6 +86,7 @@ export const LinkedInResultCard: React.FC<LinkedInResultCardProps> = ({
   accountId,
   onMessageSent,
   onSequenceEnroll,
+  activeProject,
 }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const [showMessageModal, setShowMessageModal] = useState(false);
@@ -555,14 +561,21 @@ export const LinkedInResultCard: React.FC<LinkedInResultCardProps> = ({
                     />
                   )}
                   
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="text-[#0077B5] border-[#0077B5]/30 hover:bg-[#0077B5] hover:text-white h-8 px-3 gap-1.5"
-                  >
-                    <UserPlus className="w-4 h-4" />
-                    <span className="hidden sm:inline text-xs">Ajouter</span>
-                  </Button>
+                  {/* Add to project button */}
+                  {selectedJob && (
+                    <AddToProjectButton
+                      candidateId={profile.id}
+                      candidateName={fullName}
+                      candidateHeadline={profile.headline}
+                      linkedinProfileUrl={profileUrl}
+                      score={jobScore?.match_score}
+                      recommendation={jobScore?.recommendation}
+                      skipReason={jobScore?.missing_skills?.join(', ')}
+                      jobId={selectedJob.id}
+                      activeProject={activeProject}
+                      compact
+                    />
+                  )}
                 </div>
               </div>
 

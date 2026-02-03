@@ -1950,6 +1950,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
                   onScoreProfile={() => scoreProfile(profile)}
                   accountId={selectedAccount || undefined}
                   onMessageSent={() => quota.recordAction('messagesSent')}
+                  activeProject={activeProject}
                 />
               ))}
 
