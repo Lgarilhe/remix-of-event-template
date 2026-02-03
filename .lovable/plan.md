@@ -1,186 +1,172 @@
 
-# Plan : Enrichir les données de scoring IA
+# Séquence conditionnelle avec branchement intelligent
 
 ## Objectif
-Ajouter le "À propos" (summary) et les descriptions détaillées des expériences pour améliorer la qualité du matching profil/poste.
 
----
-
-## Données actuellement envoyées vs disponibles
-
-| Donnée | Disponible dans l'API | Envoyée à l'IA |
-|--------|----------------------|----------------|
-| Nom | ✅ | ✅ |
-| Headline | ✅ | ✅ |
-| Poste actuel + Entreprise | ✅ | ✅ |
-| Localisation | ✅ | ✅ |
-| Skills (liste) | ✅ | ✅ (max 15) |
-| Années d'XP | ✅ (calculé) | ✅ |
-| **Summary / À propos** | ✅ | ❌ **Manquant** |
-| **Description des postes** | ✅ | ❌ **Manquant** |
-| **Skills par poste** | ✅ | ❌ **Manquant** |
-| **Description entreprise** | ✅ | ❌ **Manquant** |
-| Education | ✅ | ✅ (format simple) |
-
----
-
-## Modifications prévues
-
-### 1. Frontend - `LinkedInSearch.tsx` (fonction `buildProfileData`)
-
-Enrichir les données du profil envoyées :
+Créer des séquences de prospection avancées avec logique conditionnelle basée sur le statut de connexion LinkedIn :
 
 ```text
-Avant :
-{
-  name, headline, currentRole, currentCompany, location,
-  skills: [...15 premiers],
-  pastPositions: ["Role chez Company", ...],
-  education: ["Diplôme - École", ...],
-  yearsOfExperience
-}
-
-Après :
-{
-  name, headline, currentRole, currentCompany, location,
-  skills: [...15 premiers],
-  summary: "Le contenu du À propos LinkedIn...",  // NOUVEAU
-  workExperience: [                                // NOUVEAU - enrichi
-    {
-      role: "Staff Engineer",
-      company: "Datadog",
-      duration: "2 ans",
-      description: "Développement de la plateforme...",
-      skills: ["Go", "K8s"],
-    },
-    // ... 2 autres postes
-  ],
-  education: ["Master Informatique - Polytechnique (2015)", ...],
-  yearsOfExperience
-}
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                                                                             │
+│  1. Visite de profil                                                        │
+│         │                                                                   │
+│         ▼                                                                   │
+│  2. Attendre 2 minutes                                                      │
+│         │                                                                   │
+│         ▼                                                                   │
+│  3. Vérifier connexion                                                      │
+│         │                                                                   │
+│    ┌────┴────┐                                                              │
+│    ▼         ▼                                                              │
+│  1er degré   2e/3e degré                                                    │
+│    │            │                                                           │
+│    ▼            ▼                                                           │
+│ Message     Invitation                                                      │
+│ direct      (<50 car.)                                                      │
+│    │            │                                                           │
+│    ▼            ▼                                                           │
+│  [FIN]     Attendre 2 jours                                                 │
+│               │                                                             │
+│          ┌────┴────┐                                                        │
+│          ▼         ▼                                                        │
+│       Accepté   Non accepté                                                 │
+│          │         │                                                        │
+│          ▼         ▼                                                        │
+│       Message   InMail                                                      │
+│       direct    payant                                                      │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### 2. Backend - Edge Function `score-profile-job`
+## Ce qui existe déjà
 
-**Mettre à jour l'interface TypeScript :**
-```typescript
-interface ProfileData {
-  name: string;
-  headline?: string;
-  currentRole?: string;
-  currentCompany?: string;
-  location?: string;
-  skills?: string[];
-  summary?: string;           // NOUVEAU
-  workExperience?: Array<{    // NOUVEAU (remplace pastPositions)
-    role: string;
-    company: string;
-    duration?: string;
-    description?: string;
-    skills?: string[];
-  }>;
-  pastPositions?: string[];   // Garder pour rétrocompatibilité
-  education?: string[];
-  yearsOfExperience?: number;
-}
-```
+| Élément | État actuel |
+|---------|-------------|
+| Types d'actions | `profile_visit`, `connection_request`, `message`, `inmail`, `smart_message` |
+| Triggers | `wait_connection`, `wait_reply`, `wait_profile_visit`, `condition_branch` |
+| Conditions | `always`, `if_connected`, `if_not_connected`, `if_no_response` |
+| Délais | Jours et heures uniquement |
+| Timeout | `timeout_days` + `timeout_branch_step_id` pour branchement alternatif |
 
-**Adapter le prompt :**
-```text
-PROFIL:
-- Nom: Thomas Dupont
-- Titre: Lead Backend Engineer | Ex-Doctolib
-- Poste: Staff Engineer @ Datadog
-- Loc: Paris
-- XP: ~8 ans
+## Nouvelles fonctionnalités
 
-📝 À PROPOS:
-"Passionné par le Domain-Driven Design et les architectures distribuées.
-J'ai quitté Doctolib pour rejoindre une scale-up avec plus d'ownership..."
+### 1. Support des délais en minutes
+Pour les cas comme "attendre 2 minutes après la visite de profil".
 
-💼 EXPÉRIENCES RÉCENTES:
-1. Staff Engineer @ Datadog (2 ans)
-   → Refonte architecture event-driven, migration K8s
-   → Skills: Go, Kubernetes, Kafka
+### 2. Nouveau trigger : Vérifier connexion (`check_connection`)
+Un step qui vérifie le degré de connexion et route vers deux branches :
+- **Si connecté (1er degré)** → branche A
+- **Si non connecté** → branche B
 
-2. Senior Backend @ Doctolib (3 ans)
-   → Développement de l'API de prise de RDV
-   → Skills: Python, PostgreSQL, Redis
+### 3. Sélecteurs de branchement
+Pouvoir sélectionner "vers quelle étape aller" selon le résultat de la condition.
 
-3. Backend Developer @ Criteo (2 ans)
-   → Système de recommandation temps réel
-   → Skills: Java, Spark
-
-🎓 Formation: Master Informatique - Polytechnique (2015)
-🔧 Skills: Go, Python, Kubernetes, Kafka, PostgreSQL, Redis
-```
+### 4. Limite de caractères pour les invitations
+Compteur visuel avec limite à 50 caractères pour les notes d'invitation LinkedIn.
 
 ---
 
-## Impact sur le scoring
+## Détails techniques
 
-### Avec les nouvelles données, l'IA pourra :
+### Migration base de données
 
-1. **Détecter les motivations** depuis le "À propos"
-   - Ex: "ownership", "scale-up" → match avec startup
-   - Ex: "impact sociétal" → match avec healthtech
+Ajout de 3 colonnes à la table `sequence_steps` :
 
-2. **Évaluer la profondeur technique** depuis les descriptions
-   - Ex: "refonte architecture" → expérience design system
-   - Ex: "migration K8s" → hands-on infra
+```sql
+ALTER TABLE sequence_steps
+ADD COLUMN delay_minutes integer DEFAULT 0,
+ADD COLUMN if_true_goto_step uuid REFERENCES sequence_steps(id) ON DELETE SET NULL,
+ADD COLUMN if_false_goto_step uuid REFERENCES sequence_steps(id) ON DELETE SET NULL;
+```
 
-3. **Identifier les skills implicites**
-   - Description mentionne "event-driven" → Kafka probable
-   - Description mentionne "temps réel" → streaming data
+### Modifications Frontend
 
-4. **Mieux juger la séniorité**
-   - Descriptions longues avec impact = senior
-   - Descriptions courtes/vagues = junior ou exécutant
+**Fichier : `src/components/outreach/SequenceBuilder.tsx`**
+
+1. **Type `SequenceStep`** - Ajouter :
+   - `delayMinutes: number`
+   - `ifTrueGotoStep?: string`
+   - `ifFalseGotoStep?: string`
+
+2. **Nouveau trigger `check_connection`** dans la liste TRIGGERS :
+   ```typescript
+   { 
+     value: 'check_connection', 
+     label: 'Vérifier connexion', 
+     icon: GitBranch, 
+     color: 'bg-indigo-100 text-indigo-600', 
+     description: 'Route selon le degré', 
+     requiresPrevious: [], 
+     excludeIfPrevious: [] 
+   }
+   ```
+
+3. **Input minutes** dans la section délais (à côté de jours/heures)
+
+4. **Configuration branchement** pour `check_connection` :
+   - Dropdown "Si connecté → aller à l'étape X"
+   - Dropdown "Si non connecté → aller à l'étape Y"
+
+5. **Compteur de caractères** pour `connection_request` :
+   - Afficher "X/50" sous le champ message
+   - Rouge si > 50 caractères
+
+### Modifications Backend
+
+**Fichier : `supabase/functions/process-sequences/index.ts`**
+
+1. **Support `delay_minutes`** dans `scheduleNextStep()` :
+   ```typescript
+   scheduledAt.setMinutes(scheduledAt.getMinutes() + (nextStep.delay_minutes || 0));
+   ```
+
+2. **Handler `check_connection`** dans `executeStepAction()` :
+   ```typescript
+   case 'check_connection': {
+     const profile = await getProfileInfo(accountId, profileId);
+     const isConnected = profile?.network_distance === 'FIRST_DEGREE';
+     
+     const nextStepId = isConnected 
+       ? step.if_true_goto_step 
+       : step.if_false_goto_step;
+     
+     if (nextStepId) {
+       await scheduleNextStep(supabase, enrollment, step.step_order, nextStepId);
+     }
+     
+     return { success: true };
+   }
+   ```
+
+### Fichier : `src/components/outreach/SequencesList.tsx`
+
+Mapper les nouveaux champs lors de la sauvegarde :
+- `delay_minutes` ← `step.delayMinutes`
+- `if_true_goto_step` ← `step.ifTrueGotoStep`
+- `if_false_goto_step` ← `step.ifFalseGotoStep`
 
 ---
 
-## Gestion des tokens
+## Exemple de séquence créée
 
-| Scénario | Tokens estimés |
-|----------|---------------|
-| Avant (données minimales) | ~400-500 tokens |
-| Après (données enrichies) | ~600-800 tokens |
-| **Surcoût** | ~+50% par profil |
-
-**Optimisation prévue :**
-- Limiter le summary à 300 caractères
-- Limiter chaque description de poste à 200 caractères
-- Maximum 3 expériences envoyées
-- Skills par poste : max 5
+| Ordre | Type | Condition | Délai | Action |
+|-------|------|-----------|-------|--------|
+| 1 | profile_visit | always | 0 | Visite du profil |
+| 2 | check_connection | - | 2 min | Vérifie si connecté → 3 / sinon → 4 |
+| 3 | message | if_connected | 0 | Message direct (FIN) |
+| 4 | connection_request | if_not_connected | 0 | Invitation (<50 car.) |
+| 5 | wait_connection | - | timeout: 2j | Attendre acceptation → 6 / sinon → 7 |
+| 6 | message | if_connected | 0 | Message si accepté |
+| 7 | inmail | if_not_connected | 0 | InMail si non accepté |
 
 ---
 
 ## Fichiers à modifier
 
-| Fichier | Modification |
-|---------|-------------|
-| `src/components/outreach/LinkedInSearch.tsx` | Enrichir `buildProfileData()` avec summary + descriptions |
-| `supabase/functions/score-profile-job/index.ts` | Mettre à jour interface + prompt |
+| Fichier | Type de modification |
+|---------|---------------------|
+| Migration SQL | Nouvelle migration : `delay_minutes`, `if_true_goto_step`, `if_false_goto_step` |
+| `src/components/outreach/SequenceBuilder.tsx` | Ajouter trigger, input minutes, compteur caractères, UI branchement |
+| `src/components/outreach/SequencesList.tsx` | Mapper les nouveaux champs à la sauvegarde |
+| `supabase/functions/process-sequences/index.ts` | Handler `check_connection`, support `delay_minutes` |
 
----
-
-## Résultat attendu
-
-**Avant (score parfois approximatif) :**
-```json
-{
-  "match_score": 70,
-  "summary": "Profil senior backend, skills compatibles",
-  "recommendation": "maybe"
-}
-```
-
-**Après (score plus précis et justifié) :**
-```json
-{
-  "match_score": 85,
-  "summary": "Profil DDD/archi distribuée, XP Datadog pertinente pour le contexte scale",
-  "recommendation": "go",
-  "reasoning": "Le À propos mentionne 'ownership' qui matche avec la culture startup recherchée"
-}
-```
