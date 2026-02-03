@@ -1110,7 +1110,22 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
         }
       });
 
-      if (error) throw error;
+      if (error) {
+        // Check for specific error types from edge function
+        if (error.message?.includes('CREDITS_EXHAUSTED') || error.message?.includes('402')) {
+          toast.error('Crédits IA épuisés. Veuillez ajouter des crédits dans Settings → Workspace → Usage.', {
+            duration: 8000,
+          });
+          return;
+        }
+        if (error.message?.includes('RATE_LIMITED') || error.message?.includes('429')) {
+          toast.error('Limite de requêtes IA atteinte. Réessayez dans quelques instants.', {
+            duration: 5000,
+          });
+          return;
+        }
+        throw error;
+      }
       
       if (data?.results) {
         const newScores: Record<string, JobMatchResult> = {};
