@@ -108,10 +108,10 @@ serve(async (req) => {
       profiles?: ProfileData[];
     };
     
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+    const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
 
-    if (!LOVABLE_API_KEY) {
-      throw new Error("LOVABLE_API_KEY is not configured");
+    if (!ANTHROPIC_API_KEY) {
+      throw new Error("ANTHROPIC_API_KEY is not configured");
     }
 
     // Handle batch scoring
@@ -348,23 +348,20 @@ JSON UNIQUEMENT:
   }
 }`;
 
-          const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+          const response = await fetch("https://api.anthropic.com/v1/messages", {
             method: "POST",
             headers: {
-              Authorization: `Bearer ${LOVABLE_API_KEY}`,
+              "x-api-key": ANTHROPIC_API_KEY,
+              "anthropic-version": "2023-06-01",
               "Content-Type": "application/json",
             },
             body: JSON.stringify({
-              model: "google/gemini-3-flash-preview",
+              model: "claude-sonnet-4-20250514",
+              max_tokens: 1024,
               messages: [
-                { 
-                  role: "system", 
-                  content: "Tu es un expert en recrutement tech avec une connaissance approfondie des grilles salariales du marché français (Paris et régions). Tu évalues la compatibilité entre profils et offres en analysant les critères MUST-HAVE (éliminatoires), SHOULD-HAVE (importants) et NICE-TO-HAVE (bonus), ainsi que les critères transverses de l'entreprise. Tu réponds TOUJOURS en JSON valide, sans markdown." 
-                },
                 { role: "user", content: prompt }
               ],
-              max_tokens: 800,
-              temperature: 0.2,
+              system: "Tu es un expert en recrutement tech avec une connaissance approfondie des grilles salariales du marché français (Paris et régions). Tu évalues la compatibilité entre profils et offres en analysant les critères MUST-HAVE (éliminatoires), SHOULD-HAVE (importants) et NICE-TO-HAVE (bonus), ainsi que les critères transverses de l'entreprise. Tu réponds TOUJOURS en JSON valide, sans markdown.",
             }),
           });
 
@@ -384,7 +381,8 @@ JSON UNIQUEMENT:
           }
 
           const data = await response.json();
-          let content = data.choices?.[0]?.message?.content || "";
+          // Claude API returns content as array of blocks
+          let content = data.content?.[0]?.text || "";
           content = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
           
           try {
