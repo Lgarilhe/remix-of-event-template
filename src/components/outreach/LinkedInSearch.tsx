@@ -1275,7 +1275,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
               profileUrl: profile.public_profile_url || profile.profile_url,
               score: result?.match_score,
               recommendation: result?.recommendation,
-              skipReason: result?.analysis,
+              skipReason: result?.reasoning,
             };
           });
         
