@@ -366,9 +366,15 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
     }
   }, [subscriptions, filters.api]);
 
-  const handleSearch = useCallback(async (newSearch = true, appendMode = false) => {
+  const handleSearch = useCallback(async (newSearch = true, appendMode = false, autoScore = true) => {
     if (!selectedAccount) {
       toast.error('Sélectionnez un compte LinkedIn');
+      return;
+    }
+
+    // Job is now required for search
+    if (!selectedJob) {
+      toast.error('Sélectionnez un poste pour lancer la recherche');
       return;
     }
 
@@ -783,10 +789,16 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
       }
 
       // Append or replace results based on mode
+      let allCollected: LinkedInProfile[];
       if (appendMode) {
-        setResults(prev => [...prev, ...collected]);
+        setResults(prev => {
+          allCollected = [...prev, ...collected];
+          return allCollected;
+        });
+        allCollected = [...results, ...collected];
       } else {
         setResults(collected);
+        allCollected = collected;
         setHasMoreResults(true); // Reset for new search
       }
 
@@ -798,6 +810,12 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
       if (collected.length === 0 && !appendMode) {
         toast.info('Aucun résultat trouvé');
       }
+      
+      // Auto-score the new profiles if autoScore is enabled and we have profiles
+      if (autoScore && collected.length > 0 && selectedJob) {
+        // Return the collected profiles so we can score them
+        return collected;
+      }
     } catch (error) {
       console.error('Search error:', error);
       toast.error(error instanceof Error ? error.message : 'Erreur de recherche');
@@ -805,7 +823,8 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
       setLoading(false);
       setLoadingMore(false);
     }
-  }, [selectedAccount, filters, selectedJob, showDismissed, candidateStatus.dismissedIds, cursor, results]);
+    return [];
+  }, [selectedAccount, filters, selectedJob, showDismissed, candidateStatus.dismissedIds, cursor, results, quota]);
 
   // Check if filters have any active search criteria
   const hasActiveFilters = useMemo(() => {
@@ -875,11 +894,8 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
     }
   }, []);
 
-  // Infinite scroll: load more when scrolling to bottom
-  const handleLoadMore = useCallback(() => {
-    if (!cursor || loadingMore || !hasMoreResults) return;
-    handleSearch(false, true); // appendMode = true
-  }, [cursor, loadingMore, hasMoreResults, handleSearch]);
+  // NOTE: Auto-load on scroll disabled (was consuming quota too fast).
+  // Loading is now manual via the "Charger plus de profils" button.
 
   // NOTE: Auto-load on scroll disabled (was consuming quota too fast).
   // Loading is now manual via the "Charger plus de profils" button.
@@ -1186,6 +1202,112 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
     }
   }, [selectedJob, selectedProfiles, results, buildProfileData, candidateStatus]);
 
+  // Auto-score profiles after search (used by handleSearchAndScore)
+  const scoreProfiles = useCallback(async (profilesToScore: LinkedInProfile[]) => {
+    if (!selectedJob || profilesToScore.length === 0) return;
+    
+    setScoringInProgress(true);
+    try {
+      const profilesData = profilesToScore.map(buildProfileData);
+      
+      const { data, error } = await supabase.functions.invoke('score-profile-job', {
+        body: { 
+          profiles: profilesData, 
+          job: {
+            id: selectedJob.id,
+            title: selectedJob.title,
+            client: selectedJob.client,
+            skills: selectedJob.skills || [],
+            requirements: selectedJob.requirements,
+            description: selectedJob.description,
+            seniority: selectedJob.seniority,
+            location: selectedJob.location,
+            remote: selectedJob.remote,
+            xpMin: selectedJob.xpMin,
+            xpMax: selectedJob.xpMax,
+            salaryMin: selectedJob.salaryMin,
+            salaryMax: selectedJob.salaryMax,
+            tjmMin: selectedJob.tjm,
+            contractType: selectedJob.contractType,
+          }
+        }
+      });
+
+      if (error) {
+        if (error.message?.includes('CREDITS_EXHAUSTED') || error.message?.includes('402')) {
+          toast.error('Crédits IA épuisés. Veuillez ajouter des crédits dans Settings → Workspace → Usage.', {
+            duration: 8000,
+          });
+          return;
+        }
+        if (error.message?.includes('RATE_LIMITED') || error.message?.includes('429')) {
+          toast.error('Limite de requêtes IA atteinte. Réessayez dans quelques instants.', {
+            duration: 5000,
+          });
+          return;
+        }
+        throw error;
+      }
+      
+      if (data?.results) {
+        const newScores: Record<string, JobMatchResult> = {};
+        data.results.forEach((result: JobMatchResult, index: number) => {
+          const profile = profilesToScore[index];
+          if (profile) {
+            newScores[profile.id] = result;
+          }
+        });
+        setJobScores(prev => ({ ...prev, ...newScores }));
+        setSortByScore(true); // Auto-enable sorting after scoring
+        
+        // Auto-archive candidates with recommendation 'skip' (score < 40)
+        const candidatesToDismiss = profilesToScore
+          .filter((profile, index) => {
+            const result = data.results[index];
+            return result?.recommendation === 'skip';
+          })
+          .map((profile, index) => {
+            const result = data.results[profilesToScore.indexOf(profile)];
+            return {
+              id: profile.id,
+              name: profile.name || `${profile.first_name || ''} ${profile.last_name || ''}`.trim(),
+              headline: profile.headline,
+              profileUrl: profile.public_profile_url || profile.profile_url,
+              score: result?.match_score,
+              recommendation: result?.recommendation,
+              skipReason: result?.analysis,
+            };
+          });
+        
+        if (candidatesToDismiss.length > 0) {
+          await candidateStatus.batchDismiss(candidatesToDismiss);
+        }
+        
+        const keptCount = data.results.length - candidatesToDismiss.length;
+        toast.success(`${keptCount} profil${keptCount > 1 ? 's' : ''} pertinent${keptCount > 1 ? 's' : ''} trouvé${keptCount > 1 ? 's' : ''}`);
+      }
+    } catch (err) {
+      console.error('Auto-score error:', err);
+      toast.error('Erreur lors du scoring automatique');
+    } finally {
+      setScoringInProgress(false);
+    }
+  }, [selectedJob, buildProfileData, candidateStatus]);
+
+  // Combined search + score function
+  const handleSearchAndScore = useCallback(async (appendMode = false) => {
+    const collected = await handleSearch(true, appendMode, true);
+    if (collected && collected.length > 0) {
+      await scoreProfiles(collected);
+    }
+  }, [handleSearch, scoreProfiles]);
+
+  // Load more with auto-scoring
+  const handleLoadMore = useCallback(() => {
+    if (!cursor || loadingMore || !hasMoreResults || scoringInProgress) return;
+    handleSearchAndScore(true);
+  }, [cursor, loadingMore, hasMoreResults, scoringInProgress, handleSearchAndScore]);
+
   return (
     <div className="grid lg:grid-cols-[320px_1fr] gap-6 items-start">
       {/* Filters sidebar */}
@@ -1405,7 +1527,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
               value={filters.keywords}
               onChange={(e) => setFilters(f => ({ ...f, keywords: e.target.value }))}
               placeholder="Ex: Product Manager, React..."
-              onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+              onKeyDown={(e) => e.key === 'Enter' && selectedJob && handleSearchAndScore()}
             />
           </div>
         </div>
@@ -1421,21 +1543,21 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
         {/* Action buttons */}
         <div className="flex gap-2">
           <Button
-            onClick={() => handleSearch()}
-            disabled={loading || !selectedAccount || needsReconnection || !isApiModeAvailable}
+            onClick={() => handleSearchAndScore()}
+            disabled={loading || scoringInProgress || !selectedAccount || !selectedJob || needsReconnection || !isApiModeAvailable}
             className="flex-1 bg-[#0077B5] hover:bg-[#005E93]"
           >
-            {loading ? (
+            {loading || scoringInProgress ? (
               <Loader2 className="w-4 h-4 animate-spin mr-2" />
             ) : (
               <Search className="w-4 h-4 mr-2" />
             )}
-            Rechercher
+            {!selectedJob ? 'Sélectionnez un poste' : loading ? 'Recherche...' : scoringInProgress ? 'Scoring...' : 'Rechercher & Scorer'}
           </Button>
           <Button
             variant="outline"
             onClick={handleClearFilters}
-            disabled={loading}
+            disabled={loading || scoringInProgress}
           >
             Effacer
           </Button>
@@ -1685,36 +1807,44 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
                   </div>
                   
                   <div className="space-y-4">
+                    <div className="bg-gradient-to-r from-amber-50 to-orange-50 rounded-xl p-4 border border-amber-200/50">
+                      <h4 className="font-medium text-amber-800 mb-3 flex items-center gap-2">
+                        <span className="w-6 h-6 rounded-full bg-amber-500 text-white text-xs flex items-center justify-center">1</span>
+                        Sélectionnez un poste
+                      </h4>
+                      <p className="text-sm text-amber-700/80 ml-8">
+                        Choisissez un <strong>poste de référence</strong> dans le panneau de gauche. C'est obligatoire pour lancer la recherche.
+                      </p>
+                    </div>
+                    
                     <div className="bg-[#0077B5]/5 rounded-xl p-4 border border-[#0077B5]/10">
                       <h4 className="font-medium text-[#1A1A1A] mb-3 flex items-center gap-2">
-                        <span className="w-6 h-6 rounded-full bg-[#0077B5] text-white text-xs flex items-center justify-center">1</span>
-                        Configurez vos filtres
+                        <span className="w-6 h-6 rounded-full bg-[#0077B5] text-white text-xs flex items-center justify-center">2</span>
+                        Configurez vos filtres (optionnel)
                       </h4>
                       <ul className="text-sm text-[#1A1A1A]/70 space-y-2 ml-8">
-                        <li>• <strong>Mots-clés</strong> : titres de poste, compétences...</li>
-                        <li>• <strong>Localisation</strong> : ville, région, pays</li>
-                        <li>• <strong>Entreprise</strong> : nom ou secteur d'activité</li>
-                        <li>• <strong>Expérience</strong> : années, séniorité, fonctions</li>
+                        <li>• Utilisez <strong>Auto-fill</strong> pour remplir les filtres automatiquement</li>
+                        <li>• Ou configurez manuellement : mots-clés, localisation, expérience...</li>
                       </ul>
                     </div>
                     
                     <div className="bg-[#1A1A1A]/5 rounded-xl p-4 border border-[#1A1A1A]/10">
                       <h4 className="font-medium text-[#1A1A1A] mb-3 flex items-center gap-2">
-                        <span className="w-6 h-6 rounded-full bg-[#1A1A1A] text-white text-xs flex items-center justify-center">2</span>
-                        Lancez la recherche
+                        <span className="w-6 h-6 rounded-full bg-[#1A1A1A] text-white text-xs flex items-center justify-center">3</span>
+                        Rechercher & Scorer
                       </h4>
                       <p className="text-sm text-[#1A1A1A]/70 ml-8">
-                        Cliquez sur <strong>Rechercher</strong> ou attendez 2 secondes après avoir modifié un filtre pour lancer une recherche automatique.
+                        Cliquez sur <strong>Rechercher & Scorer</strong> : les 25 premiers profils seront automatiquement scorés et triés par pertinence.
                       </p>
                     </div>
                     
-                    <div className="bg-gradient-to-r from-amber-50 to-orange-50 rounded-xl p-4 border border-amber-200/50">
-                      <h4 className="font-medium text-amber-800 mb-3 flex items-center gap-2">
-                        <Sparkles className="w-5 h-5 text-amber-600" />
-                        Astuce : Scoring IA
+                    <div className="bg-green-50 rounded-xl p-4 border border-green-200/50">
+                      <h4 className="font-medium text-green-800 mb-3 flex items-center gap-2">
+                        <Sparkles className="w-5 h-5 text-green-600" />
+                        Scoring automatique
                       </h4>
-                      <p className="text-sm text-amber-700/80 ml-7">
-                        Sélectionnez un <strong>poste de référence</strong> dans le panneau de gauche pour scorer automatiquement les candidats selon leur adéquation au job.
+                      <p className="text-sm text-green-700/80 ml-7">
+                        Les profils sont scorés par <strong>Claude 4.5 Sonnet</strong>. Les candidats peu pertinents (score &lt; 40) sont automatiquement masqués.
                       </p>
                     </div>
                   </div>
@@ -1763,7 +1893,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
                     <span className="text-sm text-[#1A1A1A]/60">Chargement...</span>
                   </div>
                 )}
-                {!loadingMore && hasMoreResults && cursor && (
+                {!loadingMore && !scoringInProgress && hasMoreResults && cursor && (
                   <div className="flex justify-center">
                     <Button
                       variant="outline"
@@ -1771,8 +1901,15 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
                       onClick={handleLoadMore}
                       className="gap-2"
                     >
-                      Charger plus de profils
+                      <Search className="w-3.5 h-3.5" />
+                      Charger + scorer 25 profils
                     </Button>
+                  </div>
+                )}
+                {scoringInProgress && (
+                  <div className="flex items-center justify-center gap-2 py-4">
+                    <Loader2 className="w-5 h-5 animate-spin text-[#0077B5]" />
+                    <span className="text-sm text-[#1A1A1A]/60">Scoring en cours...</span>
                   </div>
                 )}
                 {!hasMoreResults && results.length > 0 && (
