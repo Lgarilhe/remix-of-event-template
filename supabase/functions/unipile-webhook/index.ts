@@ -1,5 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -12,6 +12,15 @@ interface WebhookPayload {
   event: string;
   account_id: string;
   data: Record<string, unknown>;
+}
+
+interface SequenceEnrollment {
+  id: string;
+  sequence_id: string;
+  profile_id: string;
+  account_id: string;
+  status: string;
+  connection_status: string | null;
 }
 
 serve(async (req) => {
@@ -78,7 +87,7 @@ serve(async (req) => {
   }
 });
 
-async function handleNewRelation(supabase: ReturnType<typeof createClient>, payload: WebhookPayload) {
+async function handleNewRelation(supabase: SupabaseClient, payload: WebhookPayload) {
   const { account_id, data } = payload;
   
   // Extract the profile ID of the new connection
@@ -143,7 +152,7 @@ async function handleNewRelation(supabase: ReturnType<typeof createClient>, payl
   }
 }
 
-async function handleNewMessage(supabase: ReturnType<typeof createClient>, payload: WebhookPayload) {
+async function handleNewMessage(supabase: SupabaseClient, payload: WebhookPayload) {
   const { account_id, data } = payload;
   
   // Extract sender info from message

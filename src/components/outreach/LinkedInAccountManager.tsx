@@ -9,7 +9,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Linkedin, Loader2, Trash2, CheckCircle, AlertCircle, Key, Cookie, RefreshCw, Building2, Info } from 'lucide-react';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { TooltipProvider } from '@/components/ui/tooltip';
+import { WebhookManager } from './WebhookManager';
 
 interface LinkedInAccountManagerProps {
   accounts: LinkedInAccount[];
@@ -214,7 +215,8 @@ export const LinkedInAccountManager: React.FC<LinkedInAccountManagerProps> = ({
   }
 
   return (
-    <div className="grid gap-6 lg:grid-cols-2">
+    <div className="space-y-6">
+      <div className="grid gap-6 lg:grid-cols-2">
       {/* Connected accounts */}
       <Card>
         <CardHeader>
@@ -495,6 +497,10 @@ export const LinkedInAccountManager: React.FC<LinkedInAccountManagerProps> = ({
           )}
         </CardContent>
       </Card>
+      </div>
+
+      {/* Webhook Manager */}
+      <WebhookManager />
     </div>
   );
 };
