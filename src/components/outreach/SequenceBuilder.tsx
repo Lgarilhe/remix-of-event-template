@@ -11,6 +11,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { 
   Plus, 
   Trash2, 
@@ -26,8 +27,11 @@ import {
   Timer,
   X,
   Zap,
+  List,
+  Workflow,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { SequenceFlowDiagram } from './SequenceFlowDiagram';
 
 export interface SequenceStep {
   id: string;
@@ -262,14 +266,36 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = ({
             </div>
           </div>
 
-          {/* Steps */}
+          {/* Steps with tabs for list/visual view */}
           <div>
-            <div className="flex items-center justify-between mb-3">
-              <Label className="text-base font-medium">Étapes de la séquence</Label>
-              <span className="text-sm text-muted-foreground">{sequence.steps.length} étape(s)</span>
-            </div>
+            <Tabs defaultValue="list" className="w-full">
+              <div className="flex items-center justify-between mb-3">
+                <Label className="text-base font-medium">Étapes de la séquence</Label>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-muted-foreground">{sequence.steps.length} étape(s)</span>
+                  <TabsList className="h-8">
+                    <TabsTrigger value="list" className="h-6 px-2 text-xs">
+                      <List className="w-3 h-3 mr-1" />
+                      Liste
+                    </TabsTrigger>
+                    <TabsTrigger value="visual" className="h-6 px-2 text-xs">
+                      <Workflow className="w-3 h-3 mr-1" />
+                      Visuel
+                    </TabsTrigger>
+                  </TabsList>
+                </div>
+              </div>
 
-            <div className="space-y-3">
+              <TabsContent value="visual" className="mt-0">
+                <SequenceFlowDiagram
+                  steps={sequence.steps}
+                  onStepClick={(stepId) => setExpandedStepId(stepId)}
+                  selectedStepId={expandedStepId}
+                />
+              </TabsContent>
+
+              <TabsContent value="list" className="mt-0">
+              <div className="space-y-3">
               {sequence.steps.map((step, index) => {
                 const isExpanded = expandedStepId === step.id;
                 const stepConfig = ALL_STEP_TYPES.find(a => a.value === step.actionType);
@@ -638,7 +664,6 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = ({
                   </div>
                 );
               })}
-            </div>
 
             {/* Step picker - shows when no steps or user clicked add */}
             {(showStepPicker || sequence.steps.length === 0) && (() => {
@@ -746,6 +771,9 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = ({
                 Ajouter une étape
               </Button>
             )}
+            </div>
+              </TabsContent>
+            </Tabs>
           </div>
         </div>
 
