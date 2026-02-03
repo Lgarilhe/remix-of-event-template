@@ -7,10 +7,18 @@ const corsHeaders = {
 };
 
 const UNIPILE_API_KEY = Deno.env.get('UNIPILE_API_KEY');
-const UNIPILE_DSN_RAW = Deno.env.get('UNIPILE_DSN') || '';
-const UNIPILE_DSN = UNIPILE_DSN_RAW.startsWith('http') ? UNIPILE_DSN_RAW : `https://${UNIPILE_DSN_RAW}`;
+const UNIPILE_DSN_RAW = (Deno.env.get('UNIPILE_DSN') || '').replace(/^https?:\/\//, '').replace(/\/$/, '');
+const UNIPILE_DSN = `https://${UNIPILE_DSN_RAW}`;
 const ANTHROPIC_API_KEY = Deno.env.get('ANTHROPIC_API_KEY');
 const NOTION_API_KEY = Deno.env.get('NOTION_API_KEY');
+
+console.log('[process-sequences] Config:', {
+  hasDSN: !!UNIPILE_DSN_RAW,
+  dsn: UNIPILE_DSN,
+  hasApiKey: !!UNIPILE_API_KEY,
+  hasAnthropicKey: !!ANTHROPIC_API_KEY,
+  hasNotionKey: !!NOTION_API_KEY,
+});
 
 // Quota limits per account type
 const WEEKLY_INVITE_LIMIT = 100;
