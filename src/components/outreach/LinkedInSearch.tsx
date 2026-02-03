@@ -1236,7 +1236,8 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
   }, [selectedJob, selectedProfiles, results, buildProfileData, candidateStatus]);
 
   // Auto-score profiles after search (used by handleSearchAndScore)
-  const scoreProfiles = useCallback(async (profilesToScore: LinkedInProfile[]) => {
+  // Also adds ALL scored candidates to the active project
+  const scoreProfiles = useCallback(async (profilesToScore: LinkedInProfile[], projectId?: string) => {
     if (!selectedJob || profilesToScore.length === 0) return;
     
     setScoringInProgress(true);
@@ -1293,7 +1294,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
         setJobScores(prev => ({ ...prev, ...newScores }));
         setSortByScore(true); // Auto-enable sorting after scoring
         
-        // Auto-archive candidates with recommendation 'skip' (score < 40)
+        // Identify candidates to dismiss (score < 40)
         const candidatesToDismiss = profilesToScore
           .filter((profile, index) => {
             const result = data.results[index];
@@ -1316,6 +1317,52 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
           await candidateStatus.batchDismiss(candidatesToDismiss);
         }
         
+        // Add ALL scored candidates to the project (not just dismissed ones)
+        const effectiveProjectId = projectId || activeProject?.id;
+        if (effectiveProjectId) {
+          const { data: { user } } = await supabase.auth.getUser();
+          if (user) {
+            // Build candidates to upsert with their scores
+            const candidatesToAdd = profilesToScore.map((profile, index) => {
+              const result = data.results[index];
+              const isDismissed = result?.recommendation === 'skip';
+              return {
+                candidate_id: profile.id,
+                job_id: selectedJob.id,
+                project_id: effectiveProjectId,
+                created_by: user.id,
+                candidate_name: profile.name || `${profile.first_name || ''} ${profile.last_name || ''}`.trim(),
+                candidate_headline: profile.headline || null,
+                linkedin_profile_url: profile.public_profile_url || profile.profile_url || null,
+                score: result?.match_score || null,
+                recommendation: result?.recommendation || null,
+                status: isDismissed ? 'dismissed' : 'untreated',
+              };
+            });
+            
+            // Upsert to avoid duplicates (on conflict update score)
+            const { error: upsertError } = await supabase
+              .from('job_candidate_status')
+              .upsert(candidatesToAdd, { 
+                onConflict: 'candidate_id,job_id,created_by',
+                ignoreDuplicates: false 
+              });
+            
+            if (upsertError) {
+              console.error('Failed to add candidates to project:', upsertError);
+            } else {
+              // Update project stats
+              const scoredCount = profilesToScore.length;
+              const dismissedCount = candidatesToDismiss.length;
+              await updateProject({
+                id: effectiveProjectId,
+                stats_scored: (activeProject?.stats_scored || 0) + scoredCount,
+                stats_dismissed: (activeProject?.stats_dismissed || 0) + dismissedCount,
+              });
+            }
+          }
+        }
+        
         const keptCount = data.results.length - candidatesToDismiss.length;
         toast.success(`${keptCount} profil${keptCount > 1 ? 's' : ''} pertinent${keptCount > 1 ? 's' : ''} trouvé${keptCount > 1 ? 's' : ''}`);
       }
@@ -1325,28 +1372,14 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
     } finally {
       setScoringInProgress(false);
     }
-  }, [selectedJob, buildProfileData, candidateStatus]);
+  }, [selectedJob, buildProfileData, candidateStatus, activeProject, updateProject]);
 
   // Combined search + score function
   const handleSearchAndScore = useCallback(async (appendMode = false) => {
     const collected = await handleSearch(true, appendMode, true);
-    if (collected && collected.length > 0) {
-      await scoreProfiles(collected);
-    }
     
-    // Update project with filters and stats after search
-    if (activeProject && !appendMode) {
-      try {
-        await updateProject({
-          id: activeProject.id,
-          filters_snapshot: filters,
-          last_search_at: new Date().toISOString(),
-          stats_total_found: total || collected?.length || 0,
-        });
-      } catch (err) {
-        console.error('Failed to update project:', err);
-      }
-    }
+    // Determine the project to use (existing or newly created)
+    let projectIdToUse = activeProject?.id;
     
     // Auto-create project for job if none exists
     if (selectedJob && !activeProject && onProjectChange) {
@@ -1364,8 +1397,28 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
           stats_total_found: total || collected?.length || 0,
         });
         onProjectChange(project);
+        projectIdToUse = project.id;
       } catch (err) {
         console.error('Failed to create project:', err);
+      }
+    }
+    
+    // Score collected profiles and add them to the project
+    if (collected && collected.length > 0) {
+      await scoreProfiles(collected, projectIdToUse);
+    }
+    
+    // Update project with filters and stats after search
+    if (activeProject && !appendMode) {
+      try {
+        await updateProject({
+          id: activeProject.id,
+          filters_snapshot: filters,
+          last_search_at: new Date().toISOString(),
+          stats_total_found: total || collected?.length || 0,
+        });
+      } catch (err) {
+        console.error('Failed to update project:', err);
       }
     }
   }, [handleSearch, scoreProfiles, activeProject, updateProject, filters, total, selectedJob, onProjectChange, findOrCreateForJob]);
