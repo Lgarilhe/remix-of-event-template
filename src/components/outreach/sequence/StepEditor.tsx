@@ -211,7 +211,7 @@ export const StepEditor: React.FC<StepEditorProps> = ({
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="__next__">Étape suivante</SelectItem>
-                    {allSteps.filter(s => s.order > step.order).map(s => {
+                    {allSteps.filter(s => s.order > step.order && s.id).map(s => {
                       const config = allStepTypes.find(a => a.value === s.actionType);
                       return (
                         <SelectItem key={s.id} value={s.id}>
@@ -237,7 +237,7 @@ export const StepEditor: React.FC<StepEditorProps> = ({
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="__next__">Étape suivante</SelectItem>
-                    {allSteps.filter(s => s.order > step.order).map(s => {
+                    {allSteps.filter(s => s.order > step.order && s.id).map(s => {
                       const config = allStepTypes.find(a => a.value === s.actionType);
                       return (
                         <SelectItem key={s.id} value={s.id}>
@@ -317,7 +317,7 @@ export const StepEditor: React.FC<StepEditorProps> = ({
               <SelectContent>
                 <SelectItem value="__auto__">Automatique (ordre)</SelectItem>
                 <SelectItem value="__end__">Fin de séquence</SelectItem>
-                {allSteps.filter(s => s.id !== step.id).map(s => {
+                {allSteps.filter(s => s.id !== step.id && s.id).map(s => {
                   const config = allStepTypes.find(a => a.value === s.actionType);
                   return (
                     <SelectItem key={s.id} value={s.id}>
