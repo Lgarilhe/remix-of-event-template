@@ -1,4 +1,4 @@
-import React, { useRef, useCallback, useEffect } from 'react';
+import React, { useRef, useCallback, useEffect, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { 
   Tooltip,
@@ -22,6 +22,11 @@ import {
   Link,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import {
+  escapeHTML,
+  incomingToEditorHTML,
+  normalizeEditorHTMLForStorage,
+} from './inmailEditor/transforms';
 
 interface InMailTextEditorProps {
   value: string;
@@ -69,30 +74,40 @@ export const InMailTextEditor: React.FC<InMailTextEditorProps> = ({
   const editorRef = useRef<HTMLDivElement>(null);
   const isInternalChange = useRef(false);
 
+  const displayHTML = useMemo(() => incomingToEditorHTML(value), [value]);
+
+  // Get plain text for counting
+  const getPlainText = (html: string) => {
+    const div = document.createElement('div');
+    div.innerHTML = html;
+    return div.textContent || div.innerText || '';
+  };
+
   // Sync external value changes to the editor
   useEffect(() => {
     if (editorRef.current && !isInternalChange.current) {
-      if (editorRef.current.innerHTML !== value) {
-        editorRef.current.innerHTML = value;
+      if (editorRef.current.innerHTML !== displayHTML) {
+        editorRef.current.innerHTML = displayHTML;
       }
     }
     isInternalChange.current = false;
-  }, [value]);
-
-  // Normalize HTML for LinkedIn Recruiter (convert <b> to <strong>, <i> to <em>)
-  const normalizeHTML = (html: string): string => {
-    return html
-      .replace(/<b(\s|>)/gi, '<strong$1')
-      .replace(/<\/b>/gi, '</strong>')
-      .replace(/<i(\s|>)/gi, '<em$1')
-      .replace(/<\/i>/gi, '</em>');
-  };
+  }, [displayHTML]);
 
   // Handle content changes
   const handleInput = useCallback(() => {
     if (editorRef.current) {
       isInternalChange.current = true;
-      const normalizedHTML = normalizeHTML(editorRef.current.innerHTML);
+      const current = editorRef.current.innerHTML;
+      const normalizedHTML = normalizeEditorHTMLForStorage(current);
+
+      // Make "truly empty" (fix placeholder not showing when browser leaves <br>)
+      const plain = getPlainText(normalizedHTML).trim();
+      if (!plain) {
+        editorRef.current.innerHTML = '';
+        onChange('');
+        return;
+      }
+
       onChange(normalizedHTML);
     }
   }, [onChange]);
@@ -135,6 +150,15 @@ export const InMailTextEditor: React.FC<InMailTextEditorProps> = ({
     handleInput();
   }, [handleInput]);
 
+  const handlePaste = useCallback((e: React.ClipboardEvent<HTMLDivElement>) => {
+    // Preserve line breaks when pasting plain text
+    const text = e.clipboardData.getData('text/plain');
+    if (!text) return;
+    e.preventDefault();
+    const safe = escapeHTML(text).replace(/\n/g, '<br>');
+    insertHTML(safe);
+  }, [insertHTML]);
+
   // Insert link
   const insertLink = useCallback(() => {
     const selection = window.getSelection();
@@ -160,13 +184,6 @@ export const InMailTextEditor: React.FC<InMailTextEditorProps> = ({
     document.execCommand('insertText', false, emoji);
     handleInput();
   }, [handleInput]);
-
-  // Get plain text for counting
-  const getPlainText = (html: string) => {
-    const div = document.createElement('div');
-    div.innerHTML = html;
-    return div.textContent || div.innerText || '';
-  };
 
   const plainText = getPlainText(value);
   const wordCount = plainText.split(/\s+/).filter(Boolean).length;
@@ -336,12 +353,14 @@ export const InMailTextEditor: React.FC<InMailTextEditorProps> = ({
         id={id}
         contentEditable
         onInput={handleInput}
+        onPaste={handlePaste}
         onKeyDown={handleKeyDown}
         data-placeholder={placeholder}
+        suppressContentEditableWarning
         className={cn(
           "w-full rounded-md border border-input bg-background px-3 py-2 text-sm",
           "ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-          "font-sans leading-relaxed overflow-y-auto",
+          "font-sans leading-relaxed overflow-y-auto whitespace-pre-wrap break-words",
           "empty:before:content-[attr(data-placeholder)] empty:before:text-muted-foreground empty:before:pointer-events-none",
           "[&_a]:text-primary [&_a]:underline",
           "[&_strong]:font-bold [&_b]:font-bold",
