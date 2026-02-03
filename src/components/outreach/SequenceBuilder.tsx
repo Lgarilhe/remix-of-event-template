@@ -31,7 +31,7 @@ import {
   Workflow,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { SequenceFlowDiagram } from './SequenceFlowDiagram';
+import { VisualSequenceEditor } from './sequence/VisualSequenceEditor';
 
 export interface SequenceStep {
   id: string;
@@ -287,10 +287,9 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = ({
               </div>
 
               <TabsContent value="visual" className="mt-0">
-                <SequenceFlowDiagram
+                <VisualSequenceEditor
                   steps={sequence.steps}
-                  onStepClick={(stepId) => setExpandedStepId(stepId)}
-                  selectedStepId={expandedStepId}
+                  onStepsChange={(newSteps) => setSequence(prev => ({ ...prev, steps: newSteps }))}
                 />
               </TabsContent>
 
