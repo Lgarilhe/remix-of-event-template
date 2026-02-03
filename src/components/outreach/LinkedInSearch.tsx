@@ -5,6 +5,8 @@ import { LinkedInFilters } from './LinkedInFilters';
 import { LinkedInResultCard } from './LinkedInResultCard';
 import { JobSelector, BatchScoreButton, GeneratedFilters } from './JobSelector';
 import { FilterAssistantModal } from './FilterAssistantModal';
+import { FilterPresetsManager } from './FilterPresetsManager';
+import { AutoFillFiltersButton } from './AutoFillFiltersButton';
 import { JobMatchResult } from './JobScoreDisplay';
 import { QuotaDisplay } from './QuotaDisplay';
 import { BulkInMailModal } from './BulkInMailModal';
@@ -1425,17 +1427,29 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
             onAutoFillFilters={handleAutoFillFilters}
           />
           
-          {/* AI Filter Assistant - conversational */}
+          {/* Filter actions: Auto-fill, AI Assistant, Favorites */}
           <div className="flex items-center justify-between bg-gradient-to-r from-indigo-50 to-purple-50 rounded-lg border border-indigo-200/50 p-3">
             <div className="flex items-center gap-2">
-              <span className="text-sm text-indigo-700">💬 Décris le profil et je remplis les filtres</span>
+              <span className="text-sm text-indigo-700">🎯 Filtres automatiques</span>
             </div>
-            <FilterAssistantModal
-              currentFilters={filters}
-              onApplyFilters={(update) => setFilters(prev => ({ ...prev, ...update }))}
-              accountId={selectedAccount || undefined}
-              selectedJob={selectedJob}
-            />
+            <div className="flex items-center gap-2">
+              <AutoFillFiltersButton
+                selectedJob={selectedJob}
+                accountId={selectedAccount}
+                onApplyFilters={(update) => setFilters(prev => ({ ...prev, ...update }))}
+              />
+              <FilterAssistantModal
+                currentFilters={filters}
+                onApplyFilters={(update) => setFilters(prev => ({ ...prev, ...update }))}
+                accountId={selectedAccount || undefined}
+                selectedJob={selectedJob}
+              />
+              <FilterPresetsManager
+                currentFilters={filters}
+                onApplyFilters={setFilters}
+                selectedJob={selectedJob}
+              />
+            </div>
           </div>
         </div>
 

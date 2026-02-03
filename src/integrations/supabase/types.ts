@@ -493,6 +493,48 @@ export type Database = {
         }
         Relationships: []
       }
+      saved_filter_presets: {
+        Row: {
+          created_at: string
+          created_by: string
+          description: string | null
+          filters: Json
+          id: string
+          job_id: string | null
+          job_title: string | null
+          last_used_at: string | null
+          name: string
+          updated_at: string
+          usage_count: number
+        }
+        Insert: {
+          created_at?: string
+          created_by: string
+          description?: string | null
+          filters?: Json
+          id?: string
+          job_id?: string | null
+          job_title?: string | null
+          last_used_at?: string | null
+          name: string
+          updated_at?: string
+          usage_count?: number
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          description?: string | null
+          filters?: Json
+          id?: string
+          job_id?: string | null
+          job_title?: string | null
+          last_used_at?: string | null
+          name?: string
+          updated_at?: string
+          usage_count?: number
+        }
+        Relationships: []
+      }
       sequence_analytics: {
         Row: {
           created_at: string | null
