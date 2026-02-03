@@ -856,69 +856,109 @@ async function executeStepAction(
       case 'smart_message':
       case 'inmail':
       case 'message': {
+        // Unipile requires multipart/form-data for /chats endpoint
+        // Doc: https://developer.unipile.com/docs/send-messages
         const profile = await getProfileInfo(accountId, profileId);
         const isConnected = profile?.network_distance === 'FIRST_DEGREE';
+        const needsInMail = !isConnected && (actionType === 'inmail' || actionType === 'smart_message');
         
-        const messageBody: Record<string, unknown> = {
-          account_id: accountId,
-          attendees: [{ provider_id: profileId }],
-          text: messageText,
-        };
+        const formData = new FormData();
+        formData.append('account_id', accountId);
+        formData.append('attendees_ids', profileId); // Provider internal ID (LinkedIn URN)
+        formData.append('text', messageText);
         
-        if (!isConnected && subjectText) {
-          messageBody.subject = subjectText;
+        // For InMails (2nd/3rd degree contacts), add LinkedIn-specific params
+        if (needsInMail) {
+          formData.append('linkedin[api]', 'recruiter');
+          formData.append('linkedin[inmail]', 'true');
+          if (subjectText) {
+            formData.append('linkedin[subject]', subjectText);
+          }
         }
+        
+        console.log(`[process-sequences] Sending ${needsInMail ? 'InMail' : 'message'} to ${profileId}`, {
+          accountId,
+          profileId,
+          isConnected,
+          needsInMail,
+          hasSubject: !!subjectText,
+          textLength: messageText.length,
+        });
         
         const msgResponse = await fetch(`${UNIPILE_DSN}/api/v1/chats`, {
           method: 'POST',
           headers: {
             'X-API-KEY': UNIPILE_API_KEY!,
-            'Content-Type': 'application/json',
+            // Don't set Content-Type - browser/fetch will set it with boundary for FormData
           },
-          body: JSON.stringify(messageBody),
+          body: formData,
         });
         
-        if (msgResponse.ok) {
-          await logAnalytics(supabase, enrollment.sequence_id as string, 'messages_sent');
+        if (!msgResponse.ok) {
+          const errorText = await msgResponse.text();
+          console.error(`[process-sequences] Message send failed:`, msgResponse.status, errorText);
+          return { 
+            success: false, 
+            error: `Unipile error ${msgResponse.status}: ${errorText}` 
+          };
         }
         
+        const msgResult = await msgResponse.json();
+        console.log(`[process-sequences] Message sent successfully:`, msgResult.id || msgResult.chat_id);
+        
+        await logAnalytics(supabase, enrollment.sequence_id as string, 'messages_sent');
+        
         return { 
-          success: msgResponse.ok,
+          success: true,
           message: messageText,
-          subject: !isConnected ? subjectText : undefined,
+          subject: needsInMail ? subjectText : undefined,
         };
       }
 
       case 'connection_request': {
-        const connectBody: Record<string, unknown> = {
-          account_id: accountId,
-          provider_id: profileId,
-        };
+        // Unipile invite endpoint
+        // Doc: https://developer.unipile.com/reference/userscontroller_adduserbyidentifier
+        const inviteNote = messageText ? messageText.slice(0, 50) : '';
         
-        if (messageText) {
-          // Limit invitation note to 50 characters
-          connectBody.message = messageText.slice(0, 50);
+        const formData = new FormData();
+        formData.append('account_id', accountId);
+        formData.append('provider_id', profileId);
+        if (inviteNote) {
+          formData.append('message', inviteNote);
         }
+        
+        console.log(`[process-sequences] Sending connection request to ${profileId}`, {
+          accountId,
+          profileId,
+          noteLength: inviteNote.length,
+        });
         
         const connectResponse = await fetch(`${UNIPILE_DSN}/api/v1/users/invite`, {
           method: 'POST',
           headers: {
             'X-API-KEY': UNIPILE_API_KEY!,
-            'Content-Type': 'application/json',
           },
-          body: JSON.stringify(connectBody),
+          body: formData,
         });
         
-        if (connectResponse.ok) {
-          await logAnalytics(supabase, enrollment.sequence_id as string, 'invites_sent');
-          
-          await supabase
-            .from('sequence_enrollments')
-            .update({ connection_status: 'pending_invite' })
-            .eq('id', enrollment.id);
+        if (!connectResponse.ok) {
+          const errorText = await connectResponse.text();
+          console.error(`[process-sequences] Invite failed:`, connectResponse.status, errorText);
+          return { 
+            success: false, 
+            error: `Unipile invite error ${connectResponse.status}: ${errorText}` 
+          };
         }
         
-        return { success: connectResponse.ok, message: messageText?.slice(0, 50) };
+        console.log(`[process-sequences] Invitation sent successfully`);
+        await logAnalytics(supabase, enrollment.sequence_id as string, 'invites_sent');
+        
+        await supabase
+          .from('sequence_enrollments')
+          .update({ connection_status: 'pending_invite' })
+          .eq('id', enrollment.id);
+        
+        return { success: true, message: inviteNote };
       }
 
       default:
