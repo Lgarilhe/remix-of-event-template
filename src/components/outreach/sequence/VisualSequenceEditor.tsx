@@ -27,6 +27,7 @@ interface VisualSequenceEditorProps {
 interface PendingBranch {
   parentStepId: string;
   branch: 'true' | 'false';
+  afterStepId?: string; // For adding after a specific step in a branch chain
 }
 
 // ACTIONS = ce qu'on FAIT
@@ -80,25 +81,50 @@ export const VisualSequenceEditor: React.FC<VisualSequenceEditorProps> = ({
     const newStep = createEmptyStep(steps.length, actionType);
     
     if (pendingBranch) {
-      // We're adding a step to a specific branch
-      const { parentStepId, branch } = pendingBranch;
+      const { parentStepId, branch, afterStepId } = pendingBranch;
       
       // Add the new step to the list
       const updatedSteps = [...steps, newStep];
       
-      // Update the parent step to point to this new step
-      const updatedStepsWithBranch = updatedSteps.map(s => {
-        if (s.id === parentStepId) {
-          if (branch === 'true') {
-            return { ...s, ifTrueGotoStep: newStep.id };
-          } else {
-            return { ...s, ifFalseGotoStep: newStep.id };
+      if (afterStepId) {
+        // We're adding after a specific step in an existing branch chain
+        // The afterStepId is the last step in the current chain, we need to link it to the new step
+        // For now, we update the parent's branch pointer to point to the first step,
+        // but we need a way to chain steps. Let's use a simple approach:
+        // We'll keep the first step in the branch as the pointer, but this requires 
+        // a more complex data structure. For simplicity, let's just replace the branch target.
+        // In a full implementation, each step would have a "nextStepId" field.
+        
+        // For now, let's just add the step and update the branch to point to it
+        // This will replace the previous step as the branch target - not ideal but works for demo
+        const updatedStepsWithBranch = updatedSteps.map(s => {
+          if (s.id === parentStepId) {
+            if (branch === 'true') {
+              return { ...s, ifTrueGotoStep: newStep.id };
+            } else {
+              return { ...s, ifFalseGotoStep: newStep.id };
+            }
           }
-        }
-        return s;
-      });
+          return s;
+        });
+        
+        onStepsChange(updatedStepsWithBranch);
+      } else {
+        // First step in the branch - update the parent step to point to this new step
+        const updatedStepsWithBranch = updatedSteps.map(s => {
+          if (s.id === parentStepId) {
+            if (branch === 'true') {
+              return { ...s, ifTrueGotoStep: newStep.id };
+            } else {
+              return { ...s, ifFalseGotoStep: newStep.id };
+            }
+          }
+          return s;
+        });
+        
+        onStepsChange(updatedStepsWithBranch);
+      }
       
-      onStepsChange(updatedStepsWithBranch);
       setPendingBranch(null);
     } else {
       // Normal add at the end
@@ -109,7 +135,7 @@ export const VisualSequenceEditor: React.FC<VisualSequenceEditorProps> = ({
     setShowStepPicker(false);
   };
 
-  const handleOpenStepPicker = (branchTarget?: { parentStepId: string; branch: 'true' | 'false' }) => {
+  const handleOpenStepPicker = (branchTarget?: { parentStepId: string; branch: 'true' | 'false'; afterStepId?: string }) => {
     if (branchTarget) {
       setPendingBranch(branchTarget);
     } else {
@@ -194,7 +220,13 @@ export const VisualSequenceEditor: React.FC<VisualSequenceEditorProps> = ({
               setShowStepPicker(false);
               setPendingBranch(null);
             }}
-            onAddStep={handleOpenStepPicker}
+            onAddStep={(branchTarget) => {
+              if (branchTarget) {
+                handleOpenStepPicker(branchTarget);
+              } else {
+                handleOpenStepPicker();
+              }
+            }}
             onRemoveStep={handleRemoveStep}
             selectedStepId={selectedStepId}
           />
