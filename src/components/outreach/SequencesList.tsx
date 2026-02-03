@@ -141,7 +141,11 @@ export const SequencesList: React.FC<SequencesListProps> = ({
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Non authentifié');
 
+      // Map old client-side IDs to database IDs after insert
+      const clientIdToDbId: Record<string, string> = {};
+
       if (sequence.id) {
+        // UPDATE existing sequence
         const { error: updateError } = await supabase
           .from('outreach_sequences')
           .update({
@@ -153,11 +157,13 @@ export const SequencesList: React.FC<SequencesListProps> = ({
 
         if (updateError) throw updateError;
 
+        // Delete old steps
         await supabase
           .from('sequence_steps')
           .delete()
           .eq('sequence_id', sequence.id);
 
+        // Step 1: Insert steps WITHOUT branch references
         const stepsToInsert = sequence.steps.map(step => ({
           sequence_id: sequence.id,
           step_order: step.order,
@@ -175,18 +181,46 @@ export const SequencesList: React.FC<SequencesListProps> = ({
           timeout_days: step.timeoutDays,
           wait_for_event: step.waitForEvent,
           timeout_branch_step_id: null,
-          if_true_goto_step: step.ifTrueGotoStep || null,
-          if_false_goto_step: step.ifFalseGotoStep || null,
+          if_true_goto_step: null,
+          if_false_goto_step: null,
         }));
 
-        const { error: stepsError } = await supabase
+        const { data: insertedSteps, error: stepsError } = await supabase
           .from('sequence_steps')
-          .insert(stepsToInsert);
+          .insert(stepsToInsert)
+          .select();
 
         if (stepsError) throw stepsError;
 
+        // Build mapping from client ID to DB ID
+        sequence.steps.forEach((step, index) => {
+          if (insertedSteps && insertedSteps[index]) {
+            clientIdToDbId[step.id] = insertedSteps[index].id;
+          }
+        });
+
+        // Step 2: Update steps WITH branch references (now that all IDs exist)
+        for (const step of sequence.steps) {
+          const dbId = clientIdToDbId[step.id];
+          if (!dbId) continue;
+
+          const ifTrueDbId = step.ifTrueGotoStep ? clientIdToDbId[step.ifTrueGotoStep] : null;
+          const ifFalseDbId = step.ifFalseGotoStep ? clientIdToDbId[step.ifFalseGotoStep] : null;
+
+          if (ifTrueDbId || ifFalseDbId) {
+            await supabase
+              .from('sequence_steps')
+              .update({
+                if_true_goto_step: ifTrueDbId,
+                if_false_goto_step: ifFalseDbId,
+              })
+              .eq('id', dbId);
+          }
+        }
+
         toast.success('Séquence mise à jour');
       } else {
+        // CREATE new sequence
         const { data: newSeq, error: createError } = await supabase
           .from('outreach_sequences')
           .insert({
@@ -200,6 +234,7 @@ export const SequencesList: React.FC<SequencesListProps> = ({
 
         if (createError) throw createError;
 
+        // Step 1: Insert steps WITHOUT branch references
         const stepsToInsert = sequence.steps.map(step => ({
           sequence_id: newSeq.id,
           step_order: step.order,
@@ -217,15 +252,42 @@ export const SequencesList: React.FC<SequencesListProps> = ({
           timeout_days: step.timeoutDays,
           wait_for_event: step.waitForEvent,
           timeout_branch_step_id: null,
-          if_true_goto_step: step.ifTrueGotoStep || null,
-          if_false_goto_step: step.ifFalseGotoStep || null,
+          if_true_goto_step: null,
+          if_false_goto_step: null,
         }));
 
-        const { error: stepsError } = await supabase
+        const { data: insertedSteps, error: stepsError } = await supabase
           .from('sequence_steps')
-          .insert(stepsToInsert);
+          .insert(stepsToInsert)
+          .select();
 
         if (stepsError) throw stepsError;
+
+        // Build mapping from client ID to DB ID
+        sequence.steps.forEach((step, index) => {
+          if (insertedSteps && insertedSteps[index]) {
+            clientIdToDbId[step.id] = insertedSteps[index].id;
+          }
+        });
+
+        // Step 2: Update steps WITH branch references (now that all IDs exist)
+        for (const step of sequence.steps) {
+          const dbId = clientIdToDbId[step.id];
+          if (!dbId) continue;
+
+          const ifTrueDbId = step.ifTrueGotoStep ? clientIdToDbId[step.ifTrueGotoStep] : null;
+          const ifFalseDbId = step.ifFalseGotoStep ? clientIdToDbId[step.ifFalseGotoStep] : null;
+
+          if (ifTrueDbId || ifFalseDbId) {
+            await supabase
+              .from('sequence_steps')
+              .update({
+                if_true_goto_step: ifTrueDbId,
+                if_false_goto_step: ifFalseDbId,
+              })
+              .eq('id', dbId);
+          }
+        }
 
         toast.success('Séquence créée');
       }
