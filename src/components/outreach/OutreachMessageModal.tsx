@@ -97,7 +97,13 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
       if (error) throw error;
       
       if (data?.subject) setSubject(data.subject);
-      if (data?.message) setMessage(data.message);
+      if (data?.message) {
+        // Convert \n to <br> for proper display in the WYSIWYG editor
+        const formattedMessage = data.message
+          .replace(/\n\n/g, '<br><br>')
+          .replace(/\n/g, '<br>');
+        setMessage(formattedMessage);
+      }
       if (data?.personalization_points) setPersonalizationPoints(data.personalization_points);
       setHasGenerated(true);
     } catch (err) {
