@@ -45,13 +45,32 @@ serve(async (req) => {
       }
 
       case 'register': {
-        // Register all required webhooks
-        const webhookUrl = `${SUPABASE_URL}/functions/v1/unipile-webhook`;
-        
-        const sources: Array<'messaging' | 'users' | 'accounts'> = ['messaging', 'users', 'accounts'];
-        const results: Array<{ source: string; success: boolean; error?: string; id?: string }> = [];
+        // First, list existing webhooks to avoid duplicates
+        const listResponse = await fetch(`${UNIPILE_DSN}/api/v1/webhooks`, {
+          headers: { 'X-API-KEY': UNIPILE_API_KEY! },
+        });
 
-        for (const source of sources) {
+        let existingSources: string[] = [];
+        if (listResponse.ok) {
+          const existingData = await listResponse.json();
+          const existingWebhooks = existingData?.items || existingData || [];
+          existingSources = existingWebhooks.map((w: { source: string }) => w.source);
+        }
+
+        // Register only missing webhooks
+        const webhookUrl = `${SUPABASE_URL}/functions/v1/unipile-webhook`;
+        const allSources: Array<'messaging' | 'users' | 'accounts'> = ['messaging', 'users', 'accounts'];
+        const missingSources = allSources.filter(s => !existingSources.includes(s));
+        
+        const results: Array<{ source: string; success: boolean; error?: string; id?: string; skipped?: boolean }> = [];
+
+        // Mark already existing as skipped
+        for (const source of allSources) {
+          if (existingSources.includes(source)) {
+            results.push({ source, success: true, skipped: true });
+            continue;
+          }
+
           const config: WebhookConfig = {
             request_url: webhookUrl,
             source,
@@ -91,6 +110,8 @@ serve(async (req) => {
           success: allSucceeded, 
           results,
           webhook_url: webhookUrl,
+          skipped: results.filter(r => r.skipped).length,
+          registered: results.filter(r => !r.skipped && r.success).length,
         }), {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
