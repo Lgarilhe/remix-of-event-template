@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Navbar } from '@/components/Navbar';
 import { SEOHead } from '@/components/SEOHead';
@@ -8,10 +8,12 @@ import { SequencesList } from '@/components/outreach/SequencesList';
 import { MessagesInbox } from '@/components/outreach/MessagesInbox';
 import { NurturingDashboard } from '@/components/outreach/NurturingDashboard';
 import { InMailQueueStatus } from '@/components/outreach/InMailQueueStatus';
+import { ProjectsList } from '@/components/outreach/projects';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Search, Users, Settings, GitBranch, MessageSquare, Sparkles } from 'lucide-react';
+import { Search, Users, Settings, GitBranch, MessageSquare, Sparkles, FolderOpen } from 'lucide-react';
 import { toast } from 'sonner';
 import { useRegisterCopilotContext } from '@/contexts/CopilotContext';
+import { SourcingProject } from '@/hooks/useSourcingProjects';
 
 export interface LinkedInAccountSubscriptions {
   classic: boolean;
@@ -34,8 +36,15 @@ export default function Outreach() {
   const [accounts, setAccounts] = useState<LinkedInAccount[]>([]);
   const [selectedAccount, setSelectedAccount] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState('search');
+  const [activeTab, setActiveTab] = useState('projects');
   const [unreadMessageCount, setUnreadMessageCount] = useState(0);
+  const [activeProject, setActiveProject] = useState<SourcingProject | null>(null);
+
+  // Handle resuming search from a project
+  const handleResumeSearch = useCallback((project: SourcingProject) => {
+    setActiveProject(project);
+    setActiveTab('search');
+  }, []);
 
   // Fetch connected accounts
   const fetchAccounts = async () => {
@@ -111,6 +120,10 @@ export default function Outreach() {
 
           <Tabs value={activeTab} onValueChange={setActiveTab}>
             <TabsList className="bg-white border border-[#1A1A1A]/10 mb-6">
+              <TabsTrigger value="projects" className="gap-2 data-[state=active]:bg-[#0077B5] data-[state=active]:text-white">
+                <FolderOpen className="w-4 h-4" />
+                Projets
+              </TabsTrigger>
               <TabsTrigger value="search" className="gap-2 data-[state=active]:bg-[#0077B5] data-[state=active]:text-white">
                 <Search className="w-4 h-4" />
                 Recherche
@@ -138,6 +151,12 @@ export default function Outreach() {
               </TabsTrigger>
             </TabsList>
 
+            <TabsContent value="projects" className="mt-0">
+              <div className="bg-white rounded-xl border border-[#1A1A1A]/10 p-6">
+                <ProjectsList onResumeSearch={handleResumeSearch} />
+              </div>
+            </TabsContent>
+
             <TabsContent value="search" className="mt-0">
               {accounts.length === 0 ? (
                 <div className="bg-white rounded-xl border border-[#1A1A1A]/10 p-12 text-center">
@@ -160,6 +179,8 @@ export default function Outreach() {
                   accounts={accounts}
                   selectedAccount={selectedAccount}
                   onAccountChange={setSelectedAccount}
+                  activeProject={activeProject}
+                  onProjectChange={setActiveProject}
                 />
               )}
             </TabsContent>

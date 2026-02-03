@@ -12,6 +12,7 @@ import { QuotaDisplay } from './QuotaDisplay';
 import { BulkInMailModal } from './BulkInMailModal';
 import { useUnipileQuota } from '@/hooks/useUnipileQuota';
 import { useJobCandidateStatus } from '@/hooks/useJobCandidateStatus';
+import { useSourcingProjects, SourcingProject } from '@/hooks/useSourcingProjects';
 import { Job } from '@/pages/JobSpace';
 import { filterByCalculatedExperience } from './calculateExperience';
 import { useCopilotActions } from '@/hooks/useCopilotActions';
@@ -39,12 +40,16 @@ interface LinkedInSearchProps {
   accounts: LinkedInAccount[];
   selectedAccount: string | null;
   onAccountChange: (accountId: string | null) => void;
+  activeProject?: SourcingProject | null;
+  onProjectChange?: (project: SourcingProject | null) => void;
 }
 
 export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
   accounts,
   selectedAccount,
   onAccountChange,
+  activeProject,
+  onProjectChange,
 }) => {
   const [filters, setFilters] = useState<LinkedInFiltersState>(INITIAL_FILTERS);
   const filtersRef = useRef<LinkedInFiltersState>(INITIAL_FILTERS);
@@ -82,6 +87,9 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
   // Bulk InMail modal state
   const [showBulkInMailModal, setShowBulkInMailModal] = useState(false);
   
+  // Projects integration
+  const { updateProject, findOrCreateForJob } = useSourcingProjects();
+  
   // Debounce ref kept only for cleanup (auto-search is disabled)
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
@@ -89,6 +97,31 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
   useEffect(() => {
     filtersRef.current = filters;
   }, [filters]);
+  
+  // Load filters from active project when it changes
+  useEffect(() => {
+    if (activeProject) {
+      // Load saved filters from project
+      const savedFilters = activeProject.filters_snapshot;
+      if (savedFilters && Object.keys(savedFilters).length > 0) {
+        setFilters(prev => ({
+          ...prev,
+          ...savedFilters,
+        }));
+        toast.info(`Filtres du projet "${activeProject.name}" chargés`);
+      }
+      
+      // If project is linked to a job, select that job
+      if (activeProject.job_id && activeProject.job_title) {
+        // Create a minimal Job object for the selector
+        setSelectedJob({
+          id: activeProject.job_id,
+          title: activeProject.job_title,
+          client: activeProject.client_name ? { name: activeProject.client_name } : undefined,
+        } as Job);
+      }
+    }
+  }, [activeProject?.id]);
   
   // Sync selected job to Copilot context and reset status filter
   useEffect(() => {
@@ -1300,7 +1333,42 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
     if (collected && collected.length > 0) {
       await scoreProfiles(collected);
     }
-  }, [handleSearch, scoreProfiles]);
+    
+    // Update project with filters and stats after search
+    if (activeProject && !appendMode) {
+      try {
+        await updateProject({
+          id: activeProject.id,
+          filters_snapshot: filters,
+          last_search_at: new Date().toISOString(),
+          stats_total_found: total || collected?.length || 0,
+        });
+      } catch (err) {
+        console.error('Failed to update project:', err);
+      }
+    }
+    
+    // Auto-create project for job if none exists
+    if (selectedJob && !activeProject && onProjectChange) {
+      try {
+        const project = await findOrCreateForJob(
+          selectedJob.id,
+          selectedJob.title,
+          selectedJob.client?.name
+        );
+        // Save filters to the new project
+        await updateProject({
+          id: project.id,
+          filters_snapshot: filters,
+          last_search_at: new Date().toISOString(),
+          stats_total_found: total || collected?.length || 0,
+        });
+        onProjectChange(project);
+      } catch (err) {
+        console.error('Failed to create project:', err);
+      }
+    }
+  }, [handleSearch, scoreProfiles, activeProject, updateProject, filters, total, selectedJob, onProjectChange, findOrCreateForJob]);
 
   // Load more with auto-scoring
   const handleLoadMore = useCallback(() => {
