@@ -5,6 +5,7 @@ import { LinkedInFilters } from './LinkedInFilters';
 import { LinkedInResultCard } from './LinkedInResultCard';
 import { JobSelector, BatchScoreButton, GeneratedFilters } from './JobSelector';
 import { FilterAssistantModal } from './FilterAssistantModal';
+import { FilterWizard } from './filter-wizard';
 import { FilterPresetsManager } from './FilterPresetsManager';
 import { AutoFillFiltersButton } from './AutoFillFiltersButton';
 import { JobMatchResult } from './JobScoreDisplay';
@@ -86,6 +87,9 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
   
   // Bulk InMail modal state
   const [showBulkInMailModal, setShowBulkInMailModal] = useState(false);
+  
+  // Filter wizard state (guided flow when job is selected)
+  const [showFilterWizard, setShowFilterWizard] = useState(false);
   
   // Projects integration
   const { updateProject, findOrCreateForJob } = useSourcingProjects();
@@ -1576,18 +1580,44 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
               accountId={selectedAccount}
               onApplyFilters={(update) => setFilters(prev => ({ ...prev, ...update }))}
             />
-            <FilterAssistantModal
-              currentFilters={filters}
-              onApplyFilters={(update) => setFilters(prev => ({ ...prev, ...update }))}
-              accountId={selectedAccount || undefined}
-              selectedJob={selectedJob}
-            />
+            
+            {/* Show Wizard button when job is selected, otherwise show chat assistant */}
+            {selectedJob ? (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowFilterWizard(true)}
+                className="gap-2 bg-gradient-to-r from-green-50 to-emerald-50 border-green-300 hover:border-green-400 text-green-700"
+              >
+                <Sparkles className="w-4 h-4" />
+                <span className="hidden sm:inline">Assistant IA</span>
+              </Button>
+            ) : (
+              <FilterAssistantModal
+                currentFilters={filters}
+                onApplyFilters={(update) => setFilters(prev => ({ ...prev, ...update }))}
+                accountId={selectedAccount || undefined}
+                selectedJob={selectedJob}
+              />
+            )}
+            
             <FilterPresetsManager
               currentFilters={filters}
               onApplyFilters={setFilters}
               selectedJob={selectedJob}
             />
           </div>
+          
+          {/* Filter Wizard Modal */}
+          {selectedJob && (
+            <FilterWizard
+              open={showFilterWizard}
+              onOpenChange={setShowFilterWizard}
+              job={selectedJob}
+              accountId={selectedAccount || undefined}
+              onApplyFilters={(update) => setFilters(prev => ({ ...prev, ...update }))}
+            />
+          )}
         </div>
 
         {/* Search input */}
