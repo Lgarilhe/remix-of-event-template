@@ -135,9 +135,20 @@ export const AutoFillFiltersButton: React.FC<AutoFillFiltersButtonProps> = ({
         (update.school?.length || 0);
 
       toast.success(`${filterCount} filtres appliqués depuis le poste`);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error auto-filling filters:', error);
-      toast.error('Erreur lors de la génération des filtres');
+      
+      // Extract error message from edge function response if available
+      let errorMessage = 'Erreur lors de la génération des filtres';
+      if (error?.context?.json?.error) {
+        errorMessage = error.context.json.error;
+      } else if (error?.message?.includes('503') || error?.message?.includes('529')) {
+        errorMessage = 'Service IA temporairement surchargé, réessayez dans 30 secondes';
+      } else if (error?.message?.includes('429')) {
+        errorMessage = 'Trop de requêtes, réessayez dans quelques secondes';
+      }
+      
+      toast.error(errorMessage);
     } finally {
       setLoading(false);
     }

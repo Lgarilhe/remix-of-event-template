@@ -179,39 +179,103 @@ ${transversal.context ? `Contexte: ${transversal.context}` : ''}` : ''}
 
     console.log("[generate-search-filters] Calling AI with job:", job.title);
 
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "x-api-key": ANTHROPIC_API_KEY,
-        "anthropic-version": "2023-06-01",
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "claude-sonnet-4-5-20250929",
-        max_tokens: 2048,
-        system: systemPrompt,
-        messages: [
-          { role: "user", content: jobContext },
-        ],
-      }),
-    });
+    // Helper function to call AI with retry logic for 529 errors
+    const callAIWithRetry = async (maxRetries = 3): Promise<Response> => {
+      let lastError: Error | null = null;
+      
+      for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+          const response = await fetch("https://api.anthropic.com/v1/messages", {
+            method: "POST",
+            headers: {
+              "x-api-key": ANTHROPIC_API_KEY,
+              "anthropic-version": "2023-06-01",
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              model: "claude-sonnet-4-5-20250929",
+              max_tokens: 2048,
+              system: systemPrompt,
+              messages: [
+                { role: "user", content: jobContext },
+              ],
+            }),
+          });
 
-    if (!response.ok) {
-      if (response.status === 429) {
+          if (response.ok) {
+            return response;
+          }
+
+          // Handle specific error codes
+          if (response.status === 429) {
+            throw new Error("RATE_LIMIT");
+          }
+          if (response.status === 402) {
+            throw new Error("CREDITS_EXHAUSTED");
+          }
+          if (response.status === 529 || response.status === 503) {
+            // Service overloaded - retry with exponential backoff
+            const errorText = await response.text();
+            console.warn(`[generate-search-filters] AI overloaded (attempt ${attempt}/${maxRetries}):`, errorText);
+            
+            if (attempt < maxRetries) {
+              const delay = Math.pow(2, attempt) * 1000; // 2s, 4s, 8s
+              console.log(`[generate-search-filters] Retrying in ${delay}ms...`);
+              await new Promise(resolve => setTimeout(resolve, delay));
+              continue;
+            }
+            throw new Error("SERVICE_OVERLOADED");
+          }
+
+          // Other errors
+          const errorText = await response.text();
+          console.error("[generate-search-filters] AI error:", response.status, errorText);
+          throw new Error(`AI_ERROR_${response.status}`);
+        } catch (error) {
+          lastError = error instanceof Error ? error : new Error(String(error));
+          if (lastError.message === "RATE_LIMIT" || 
+              lastError.message === "CREDITS_EXHAUSTED" ||
+              lastError.message === "SERVICE_OVERLOADED" ||
+              lastError.message.startsWith("AI_ERROR_")) {
+            throw lastError;
+          }
+          // Network error - retry
+          if (attempt < maxRetries) {
+            const delay = Math.pow(2, attempt) * 1000;
+            console.warn(`[generate-search-filters] Network error (attempt ${attempt}/${maxRetries}):`, lastError.message);
+            await new Promise(resolve => setTimeout(resolve, delay));
+          }
+        }
+      }
+      throw lastError || new Error("Unknown error after retries");
+    };
+
+    let response: Response;
+    try {
+      response = await callAIWithRetry(3);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Unknown error";
+      
+      if (errorMessage === "RATE_LIMIT") {
         return new Response(
-          JSON.stringify({ error: "Rate limit exceeded, please try again later" }),
+          JSON.stringify({ error: "Trop de requêtes, réessayez dans quelques secondes" }),
           { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
-      if (response.status === 402) {
+      if (errorMessage === "CREDITS_EXHAUSTED") {
         return new Response(
-          JSON.stringify({ error: "AI credits exhausted, please add funds" }),
+          JSON.stringify({ error: "Crédits IA épuisés" }),
           { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
-      const errorText = await response.text();
-      console.error("[generate-search-filters] AI error:", response.status, errorText);
-      throw new Error(`AI gateway error: ${response.status}`);
+      if (errorMessage === "SERVICE_OVERLOADED") {
+        return new Response(
+          JSON.stringify({ error: "Service IA temporairement surchargé, réessayez dans 30 secondes" }),
+          { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+      console.error("[generate-search-filters] AI call failed:", errorMessage);
+      throw new Error(`AI gateway error: ${errorMessage}`);
     }
 
     const aiResult = await response.json();
