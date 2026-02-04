@@ -82,6 +82,9 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
   const [showDismissed, setShowDismissed] = useState(false); // Toggle to show/hide dismissed candidates
   const [statusFilter, setStatusFilter] = useState<'all' | 'untreated' | 'messaged' | 'dismissed'>('all');
   
+  // Auto-hide treated profiles when loading more results (ON by default)
+  const [autoHideTreated, setAutoHideTreated] = useState(true);
+  
   // Copilot context sync
   const { updateJobContext, updateProfilesContext, updateFiltersContext } = useCopilotActions();
   
@@ -301,13 +304,18 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
   const filteredAndSortedResults = useMemo(() => {
     let filtered = results;
     
-    // Filter out dismissed candidates for this job (unless user wants to see them)
-    if (selectedJob && !showDismissed) {
-      filtered = filtered.filter(p => !candidateStatus.isDismissed(p.id));
+    // When autoHideTreated is ON, filter out ALL treated candidates (messaged, dismissed, in sequence)
+    if (selectedJob && autoHideTreated) {
+      filtered = filtered.filter(p => !candidateStatus.isTreated(p.id));
+    } else {
+      // Legacy behavior: only filter out dismissed candidates (unless showDismissed is ON)
+      if (selectedJob && !showDismissed) {
+        filtered = filtered.filter(p => !candidateStatus.isDismissed(p.id));
+      }
     }
     
-    // Apply status filter
-    if (selectedJob && statusFilter !== 'all') {
+    // Apply status filter (only when autoHideTreated is OFF)
+    if (selectedJob && !autoHideTreated && statusFilter !== 'all') {
       filtered = filtered.filter(p => {
         const status = candidateStatus.getStatus(p.id);
         switch (statusFilter) {
@@ -334,7 +342,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
     }
     
     return filtered;
-  }, [results, jobScores, sortByScore, filters.calculated_experience_min, filters.calculated_experience_max, selectedJob, showDismissed, candidateStatus, statusFilter]);
+  }, [results, jobScores, sortByScore, filters.calculated_experience_min, filters.calculated_experience_max, selectedJob, showDismissed, autoHideTreated, candidateStatus, statusFilter]);
 
   // Calculate selectable profiles (exclude "peu adapté" with recommendation: skip)
   // Use filtered results so client-side filters apply
@@ -766,6 +774,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
       }
 
       const dismissedIds = candidateStatus.dismissedIds;
+      const treatedIds = candidateStatus.treatedIds;
 
       const params: Record<string, unknown> = {
         ...baseParams,
@@ -811,7 +820,10 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
       for (const p of filteredBatch) {
         if (!p?.id) continue;
         if (seen.has(p.id)) continue;
-        if (selectedJob && !showDismissed && dismissedIds.has(p.id)) continue;
+        // Auto-hide treated profiles if enabled (they've been messaged, sequenced, or dismissed)
+        if (selectedJob && autoHideTreated && treatedIds.has(p.id)) continue;
+        // Also respect showDismissed toggle (legacy behavior)
+        if (selectedJob && !showDismissed && dismissedIds.has(p.id) && !autoHideTreated) continue;
         seen.add(p.id);
         collected.push(p);
       }
@@ -861,7 +873,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
       setLoadingMore(false);
     }
     return [];
-  }, [selectedAccount, filters, selectedJob, showDismissed, candidateStatus.dismissedIds, cursor, results, quota]);
+  }, [selectedAccount, filters, selectedJob, showDismissed, autoHideTreated, candidateStatus.dismissedIds, candidateStatus.treatedIds, cursor, results, quota]);
 
   // Check if filters have any active search criteria
   const hasActiveFilters = useMemo(() => {
@@ -1609,8 +1621,35 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
           
           {/* Right side: Filters + Actions */}
           <div className="flex items-center gap-2 shrink-0">
-            {/* Status filter dropdown (only when job selected and has results) */}
-            {selectedJob && hasSearched && results.length > 0 && (
+            {/* Auto-hide treated profiles toggle */}
+            {selectedJob && hasSearched && (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant={autoHideTreated ? 'default' : 'ghost'}
+                      size="sm"
+                      className={`h-8 px-2 text-xs gap-1.5 ${autoHideTreated ? 'bg-green-600 hover:bg-green-700 text-white' : 'text-[#1A1A1A]/60 hover:text-[#1A1A1A]'}`}
+                      onClick={() => setAutoHideTreated(!autoHideTreated)}
+                    >
+                      {autoHideTreated ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                      Traités
+                      {candidateStatus.treatedIds.size > 0 && (
+                        <Badge variant="secondary" className="h-4 px-1 text-[10px] font-medium">
+                          {candidateStatus.treatedIds.size}
+                        </Badge>
+                      )}
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>{autoHideTreated ? 'Afficher les profils traités (messagés, séquencés, archivés)' : 'Masquer les profils traités lors du chargement'}</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
+            
+            {/* Status filter dropdown (only when autoHideTreated is OFF) */}
+            {selectedJob && hasSearched && results.length > 0 && !autoHideTreated && (
               <Select 
                 value={statusFilter} 
                 onValueChange={(v) => setStatusFilter(v as typeof statusFilter)}
@@ -1641,8 +1680,8 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
               </Select>
             )}
             
-            {/* Dismissed toggle */}
-            {selectedJob && candidateStatus.dismissedIds.size > 0 && (
+            {/* Dismissed toggle (only when autoHideTreated is OFF) */}
+            {selectedJob && !autoHideTreated && candidateStatus.dismissedIds.size > 0 && (
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger asChild>

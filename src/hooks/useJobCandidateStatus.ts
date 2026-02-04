@@ -24,12 +24,14 @@ export function useJobCandidateStatus(jobId: string | null) {
   const [statuses, setStatuses] = useState<Map<string, JobCandidateStatus>>(new Map());
   const [loading, setLoading] = useState(false);
   const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set());
+  const [treatedIds, setTreatedIds] = useState<Set<string>>(new Set()); // messaged, replied, shortlisted, dismissed
 
   // Fetch all statuses for current job
   const fetchStatuses = useCallback(async () => {
     if (!jobId) {
       setStatuses(new Map());
       setDismissedIds(new Set());
+      setTreatedIds(new Set());
       return;
     }
 
@@ -39,6 +41,7 @@ export function useJobCandidateStatus(jobId: string | null) {
       if (!user) {
         setStatuses(new Map());
         setDismissedIds(new Set());
+        setTreatedIds(new Set());
         return;
       }
 
@@ -52,16 +55,20 @@ export function useJobCandidateStatus(jobId: string | null) {
 
       const statusMap = new Map<string, JobCandidateStatus>();
       const dismissed = new Set<string>();
+      const treated = new Set<string>();
       
       (data || []).forEach((s: any) => {
         statusMap.set(s.candidate_id, s as JobCandidateStatus);
         if (s.status === 'dismissed') {
           dismissed.add(s.candidate_id);
         }
+        // All statuses mean the candidate has been treated
+        treated.add(s.candidate_id);
       });
 
       setStatuses(statusMap);
       setDismissedIds(dismissed);
+      setTreatedIds(treated);
     } catch (error) {
       console.error('Error fetching candidate statuses:', error);
     } finally {
@@ -116,6 +123,7 @@ export function useJobCandidateStatus(jobId: string | null) {
 
       // Update local state
       setDismissedIds(prev => new Set([...prev, candidateId]));
+      setTreatedIds(prev => new Set([...prev, candidateId]));
       setStatuses(prev => {
         const next = new Map(prev);
         next.set(candidateId, {
@@ -185,15 +193,20 @@ export function useJobCandidateStatus(jobId: string | null) {
 
       // Update local state
       const newDismissed = new Set(dismissedIds);
-      candidates.forEach(c => newDismissed.add(c.id));
+      const newTreated = new Set(treatedIds);
+      candidates.forEach(c => {
+        newDismissed.add(c.id);
+        newTreated.add(c.id);
+      });
       setDismissedIds(newDismissed);
+      setTreatedIds(newTreated);
 
       // Note: Toast is handled by the caller (LinkedInSearch) to provide better context
     } catch (error) {
       console.error('Error batch dismissing candidates:', error);
       toast.error('Erreur lors de l\'archivage en lot');
     }
-  }, [jobId, dismissedIds]);
+  }, [jobId, dismissedIds, treatedIds]);
 
   // Update status (messaged, replied, shortlisted)
   const updateStatus = useCallback(async (
@@ -229,6 +242,7 @@ export function useJobCandidateStatus(jobId: string | null) {
       if (error) throw error;
 
       // Update local state
+      setTreatedIds(prev => new Set([...prev, candidateId]));
       if (status === 'dismissed') {
         setDismissedIds(prev => new Set([...prev, candidateId]));
       } else {
@@ -301,12 +315,14 @@ export function useJobCandidateStatus(jobId: string | null) {
   return {
     statuses,
     dismissedIds,
+    treatedIds,
     loading,
     dismissCandidate,
     batchDismiss,
     updateStatus,
     restoreCandidate,
     isDismissed,
+    isTreated: useCallback((candidateId: string) => treatedIds.has(candidateId), [treatedIds]),
     getStatus,
     refresh: fetchStatuses,
   };
