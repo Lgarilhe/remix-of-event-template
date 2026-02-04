@@ -501,29 +501,15 @@ ${transversal.context ? `Contexte: ${transversal.context}` : ''}` : ''}
     // === RÈGLE 5: Valoriser les candidats Open to Work ===
     const openToWork = parsed.suggest_open_to_work !== false; // Default true
 
-    // === RÈGLE 6: Élargir PROGRAMMATIQUEMENT la plage d'expérience (PROPORTIONNEL) ===
-    // Plus le niveau est senior, plus on élargit la plage
-    // Junior (0-2 ans) → 0-5 ans | Senior (10 ans) → 8-null (pas de max)
-    // Philosophie: être junior est bloquant, être senior ne l'est pas (le scoring gère)
+    // === RÈGLE 6: Utiliser les valeurs de l'IA avec élargissement léger ===
+    // L'IA a déjà fait le travail d'inférence, on applique juste un petit élargissement
     const rawXpMin = parsed.years_experience_min ?? job.xpMin ?? null;
     const rawXpMax = parsed.years_experience_max ?? job.xpMax ?? null;
     
-    // Réduction proportionnelle sur le min: ~25% avec min 1 an, max 3 ans
-    const minReduction = rawXpMin !== null 
-      ? Math.min(3, Math.max(1, Math.round(rawXpMin * 0.25))) 
-      : 0;
-    
-    // Pour le max: très généreux car les seniors ne sont pas un problème
-    // - Si le job demande <5 ans max → on met +3 ans
-    // - Si le job demande 5-10 ans max → on met +10 ans  
-    // - Si le job demande >10 ans max → pas de max (null)
-    const maxAddition = rawXpMax !== null 
-      ? (rawXpMax < 5 ? 3 : (rawXpMax <= 10 ? 10 : null))
-      : null;
-    
-    const widenedXpMin = rawXpMin !== null ? Math.max(0, rawXpMin - minReduction) : null;
-    // Si maxAddition est null, on ne met pas de max du tout (ouvert aux seniors)
-    const widenedXpMax = (rawXpMax !== null && maxAddition !== null) ? rawXpMax + maxAddition : null;
+    // Élargissement simple: -1 an sur min, +3 ans sur max
+    // On garde TOUJOURS les deux valeurs (jamais null si l'IA les a fournies)
+    const widenedXpMin = rawXpMin !== null ? Math.max(0, rawXpMin - 1) : null;
+    const widenedXpMax = rawXpMax !== null ? rawXpMax + 3 : null;
     
     // S'assurer que min <= max
     const finalXpMin = (widenedXpMin !== null && widenedXpMax !== null && widenedXpMin > widenedXpMax) 
