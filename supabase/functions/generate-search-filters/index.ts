@@ -104,12 +104,32 @@ Le champ "keywords" sert UNIQUEMENT à affiner la recherche avec des TECHNOLOGIE
 Le champ "role_keywords" sert UNIQUEMENT aux TITRES DE POSTE.
 NE JAMAIS mélanger titres et technologies dans le même champ !
 
-STRATÉGIE "KEYWORDS" (technologies uniquement):
-- Utiliser des OR entre technologies alternatives (ex: "AWS OR Azure OR GCP")
-- Limiter à 2-3 groupes de technologies max
-- Éviter les AND trop restrictifs sauf si VRAIMENT indispensable
-- Exemple BON: "Kubernetes OR K8s" 
-- Exemple MAUVAIS: "(AWS AND Kubernetes AND CNI) AND (Network Engineer)" ❌
+=== STRATÉGIE "KEYWORDS" (LAYERED - OBLIGATOIRE) ===
+Structurer les keywords en GROUPES LOGIQUES avec AND entre groupes et OR au sein de chaque groupe.
+
+RÈGLES:
+1. Identifier 2-3 catégories technologiques DISTINCTES du poste (ex: langage, cloud, framework)
+2. Pour chaque catégorie, lister les alternatives avec OR
+3. Combiner les catégories avec AND (parenthèses obligatoires)
+4. MAX 2-3 groupes - au-delà c'est trop restrictif !
+5. Chaque groupe: 2-4 alternatives max
+
+EXEMPLES BONS:
+- Backend + Cloud: "(Python OR Java OR Go) AND (AWS OR GCP OR Azure)"
+- Data + Infra: "(Spark OR Databricks) AND (Kubernetes OR K8s)"
+- Frontend mono-stack: "React OR Vue" (pas besoin de AND si une seule catégorie)
+
+EXEMPLES MAUVAIS:
+- Trop restrictif: "(Python AND Django AND PostgreSQL) AND (AWS AND Kubernetes)" ❌
+- Trop vague: "Python OR AWS OR Cloud OR Backend" ❌ (pas de structure)
+- Mélange titres: "(Engineer OR Architect) AND Python" ❌ (titres → role_keywords)
+
+CATÉGORIES TYPIQUES À IDENTIFIER:
+- Langages: Python, Java, Go, TypeScript, Rust...
+- Cloud: AWS, GCP, Azure, OVH...
+- Orchestration: Kubernetes, Docker, Terraform...
+- Data: Spark, Kafka, Snowflake, BigQuery...
+- Frameworks: React, Django, Spring, FastAPI...
 
 STRATÉGIE "ROLE_KEYWORDS" (titres uniquement):
 - UN SEUL élément avec tous les titres alternatifs en OR
@@ -125,24 +145,25 @@ STRATÉGIE "ROLE_KEYWORDS" (titres uniquement):
 - Le filtrage fin se fera par scoring IA, pas par les filtres de recherche
 
 RÈGLES MÉTIER:
-1. Pour un profil RARE, être MOINS restrictif sur les keywords (OR plutôt que AND)
-2. Les critères MUST-HAVE vont dans skills_to_search, PAS dans keywords
+1. Pour un profil RARE, réduire à 1-2 groupes AND (moins restrictif)
+2. Les critères MUST-HAVE techniques vont dans keywords, les soft-skills dans skills_to_search
 3. open_to_work = false par défaut (trop restrictif sinon)
 
 Retourne UNIQUEMENT un objet JSON avec:
-- keywords: string - Technologies/compétences clés avec OR (PAS de titres de poste ici!)
+- keywords: string - Booléen LAYERED: "(catégorie1 OR alt1) AND (catégorie2 OR alt2)"
 - role_keywords: string[] - UN élément avec titres FR+EN en OR
 - seniority_levels: string[] - Niveaux "1"-"10"
 - years_experience_min: number | null - TOUJOURS élargir de -2 ans vs le besoin strict
 - years_experience_max: number | null - TOUJOURS élargir de +2 ans vs le besoin strict
-- skills_to_search: string[] - Compétences techniques (max 10)
+- skills_to_search: string[] - Soft-skills et compétences secondaires (max 10)
 - certifications: string[] - Certifications pertinentes (max 3)
 - industry_keywords: string[] - Secteurs (max 3)
 - domain_expertise: string[] - Domaines métier (max 3)
 - location_hint: string
 - job_category: string - "tech", "business", "data", "product", "design", "other"
 - suggest_open_to_work: boolean - false sauf si explicitement demandé
-- search_rationale: string - Stratégie en 1 phrase
+- keyword_rationale: string - Explication de la structure layered choisie (1 phrase)
+- search_rationale: string - Stratégie globale en 1 phrase
 
 JSON uniquement, sans markdown.`;
 
