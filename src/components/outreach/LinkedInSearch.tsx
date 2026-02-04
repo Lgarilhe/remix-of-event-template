@@ -1479,6 +1479,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
             <AutoFillFiltersButton
               selectedJob={selectedJob}
               accountId={selectedAccount}
+              currentLocation={filters.location}
               onApplyFilters={(update) => setFilters(prev => ({ ...prev, ...update }))}
             />
             
