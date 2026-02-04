@@ -155,37 +155,77 @@ async function handleNewRelation(supabase: SupabaseClient, payload: WebhookPaylo
 async function handleNewMessage(supabase: SupabaseClient, payload: WebhookPayload) {
   const { account_id, data } = payload;
   
-  // Extract sender info from message
-  // Unipile sends: { message: { sender_id: "...", ... }, chat: { ... } }
-  const message = data.message as { sender_id?: string; attendee_provider_id?: string } | undefined;
-  const senderId = message?.sender_id || message?.attendee_provider_id;
+  // Extract sender info from message - Unipile can send various formats
+  // { message: { sender_id: "...", attendee_provider_id: "...", sender: { provider_id: "..." } }, chat: { attendees: [...] } }
+  const message = data.message as { 
+    sender_id?: string; 
+    attendee_provider_id?: string;
+    sender?: { provider_id?: string; id?: string };
+    is_sender?: boolean; // If true, WE sent the message, not them
+  } | undefined;
+  
+  // Skip if this is a message WE sent (not a reply)
+  if (message?.is_sender === true) {
+    console.log('[unipile-webhook] new_message: Skipping - this is our own sent message');
+    return;
+  }
+  
+  // Try multiple ways to extract the sender's profile ID
+  const senderId = message?.sender?.provider_id || 
+                   message?.sender?.id || 
+                   message?.sender_id || 
+                   message?.attendee_provider_id;
   
   if (!senderId) {
-    console.log('[unipile-webhook] new_message: No sender ID in payload', data);
+    console.log('[unipile-webhook] new_message: No sender ID in payload', JSON.stringify(data, null, 2));
     return;
   }
 
-  console.log('[unipile-webhook] new_message: From profile:', senderId);
+  console.log('[unipile-webhook] new_message: From profile:', senderId, '| Account:', account_id);
 
-  // Find active enrollments from this profile
-  const { data: enrollments, error: enrollError } = await supabase
+  // Find active enrollments - try exact match first, then partial match for ID format variations
+  // LinkedIn IDs can come in different formats: "AEMAABl08fo...", "ACo...", "urn:li:member:..."
+  let enrollments: SequenceEnrollment[] = [];
+  
+  // Try exact match first
+  const { data: exactMatch, error: exactError } = await supabase
     .from('sequence_enrollments')
     .select('*')
     .eq('account_id', account_id)
     .eq('profile_id', senderId)
     .eq('status', 'active');
 
-  if (enrollError) {
-    console.error('[unipile-webhook] Error fetching enrollments:', enrollError);
+  if (exactError) {
+    console.error('[unipile-webhook] Error fetching enrollments (exact):', exactError);
     return;
   }
 
-  if (!enrollments || enrollments.length === 0) {
-    console.log('[unipile-webhook] No active enrollments found for this sender');
+  if (exactMatch && exactMatch.length > 0) {
+    enrollments = exactMatch as SequenceEnrollment[];
+  } else {
+    // Try matching by profile URL containing the sender ID (for cases where format differs)
+    // This is more robust as profile_url is normalized
+    const { data: urlMatch, error: urlError } = await supabase
+      .from('sequence_enrollments')
+      .select('*')
+      .eq('account_id', account_id)
+      .eq('status', 'active')
+      .like('profile_url', `%${senderId}%`);
+
+    if (!urlError && urlMatch && urlMatch.length > 0) {
+      enrollments = urlMatch as SequenceEnrollment[];
+      console.log('[unipile-webhook] Matched via profile_url fallback');
+    }
+  }
+
+  if (enrollments.length === 0) {
+    console.log('[unipile-webhook] No active enrollments found for sender:', senderId);
     return;
   }
 
-  console.log(`[unipile-webhook] Found ${enrollments.length} enrollments - candidate replied!`);
+  // Extra validation: log the matched profiles to help debug false positives
+  console.log(`[unipile-webhook] Found ${enrollments.length} enrollment(s) - marking as replied:`, 
+    enrollments.map(e => ({ id: e.id, profile_id: e.profile_id })));
 
   for (const enrollment of enrollments) {
     // Mark as replied and pause the sequence
@@ -202,6 +242,17 @@ async function handleNewMessage(supabase: SupabaseClient, payload: WebhookPayloa
       console.error('[unipile-webhook] Error updating enrollment:', updateError);
       continue;
     }
+
+    // Cancel any pending step executions
+    await supabase
+      .from('sequence_step_executions')
+      .update({
+        status: 'cancelled',
+        skip_reason: 'Reply detected via webhook',
+        updated_at: new Date().toISOString(),
+      })
+      .eq('enrollment_id', enrollment.id)
+      .eq('status', 'scheduled');
 
     // Log analytics
     const today = new Date().toISOString().split('T')[0];
