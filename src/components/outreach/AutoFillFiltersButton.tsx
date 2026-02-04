@@ -188,17 +188,11 @@ export const AutoFillFiltersButton: React.FC<AutoFillFiltersButtonProps> = ({
         update.location_within_area = generated.location_within_area;
       }
 
-      // Location keywords (from job location)
-      if (generated.location_keywords?.length) {
-        // Convert location string to LocationFilterItem format
-        // Use 'MUST_HAVE' with 'CURRENT_OR_OPEN_TO_RELOCATE' scope for best results
-        update.location = generated.location_keywords.map((loc, index) => ({
-          id: `loc-${index}`,
-          name: loc,
-          priority: 'MUST_HAVE' as const,
-          scope: 'CURRENT_OR_OPEN_TO_RELOCATE' as const,
-        }));
-      }
+      // Location keywords - DON'T auto-fill with fake IDs
+      // The Unipile API requires valid LinkedIn location IDs (e.g., "104246759")
+      // We can't convert text like "Paris" to a LinkedIn ID without an autocomplete lookup
+      // So we just set the radius and let the user manually select location via autocomplete
+      // The location hint is displayed in the debug panel for reference
 
       // Company keywords (e.g., exclude client)
       if (generated.company_keywords?.length) {
