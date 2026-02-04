@@ -126,61 +126,72 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <MessageSquare className="w-5 h-5 text-[#0077B5]" />
-            Message d'approche pour {fullName}
-          </DialogTitle>
-        </DialogHeader>
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto p-0">
+        {/* Header with gradient accent */}
+        <div className="px-6 pt-6 pb-4 border-b border-border/50 bg-gradient-to-r from-slate-50 to-white">
+          <DialogHeader className="space-y-3">
+            <DialogTitle className="flex items-center gap-2.5 text-lg font-semibold text-foreground">
+              <div className="w-8 h-8 rounded-lg bg-[#0077B5]/10 flex items-center justify-center">
+                <MessageSquare className="w-4 h-4 text-[#0077B5]" />
+              </div>
+              Message pour {fullName}
+            </DialogTitle>
+            {/* Context info - compact badges */}
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <span className="font-medium text-foreground">{job.title}</span>
+              {job.client?.name && (
+                <>
+                  <span className="text-muted-foreground/50">•</span>
+                  <span>{job.client.name}</span>
+                </>
+              )}
+            </div>
+          </DialogHeader>
+        </div>
 
-        <div className="space-y-4">
-          {/* Context badges */}
-          <div className="flex flex-wrap gap-2">
-            <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-200">
-              {job.title}
-            </Badge>
-            {job.client?.name && (
-              <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
-                {job.client.name}
-              </Badge>
-            )}
-          </div>
+        <div className="p-6 space-y-5">
+          {/* Configuration row - compact layout */}
+          <div className="flex items-end gap-4">
+            {/* Sender name */}
+            <div className="flex-shrink-0">
+              <label className="text-xs font-medium text-muted-foreground mb-1.5 block uppercase tracking-wide">
+                Signature
+              </label>
+              <Input
+                value={senderName}
+                onChange={(e) => handleSenderNameChange(e.target.value)}
+                placeholder="Prénom"
+                className="w-32 h-9 text-sm"
+              />
+            </div>
 
-          {/* Sender name */}
-          <div>
-            <label className="text-sm font-medium text-[#1A1A1A] mb-1 block">
-              Ton prénom (pour la signature)
-            </label>
-            <Input
-              value={senderName}
-              onChange={(e) => handleSenderNameChange(e.target.value)}
-              placeholder="Ex: Marc"
-              className="max-w-[200px]"
-            />
-          </div>
-
-          {/* Tone selector */}
-          <div>
-            <label className="text-sm font-medium text-[#1A1A1A] mb-2 block">
-              Ton du message
-            </label>
-            <div className="flex gap-2">
-              {[
-                { value: 'professional', label: 'Professionnel', emoji: '👔' },
-                { value: 'casual', label: 'Décontracté', emoji: '😊' },
-                { value: 'enthusiastic', label: 'Enthousiaste', emoji: '🚀' },
-              ].map((t) => (
-                <Button
-                  key={t.value}
-                  variant={tone === t.value ? 'default' : 'outline'}
-                  size="sm"
-                  onClick={() => setTone(t.value as Tone)}
-                  className={tone === t.value ? 'bg-[#0077B5] hover:bg-[#005E93]' : ''}
-                >
-                  {t.emoji} {t.label}
-                </Button>
-              ))}
+            {/* Tone selector */}
+            <div className="flex-1">
+              <label className="text-xs font-medium text-muted-foreground mb-1.5 block uppercase tracking-wide">
+                Ton
+              </label>
+              <div className="flex gap-1.5">
+                {[
+                  { value: 'professional', label: 'Pro', icon: '👔' },
+                  { value: 'casual', label: 'Décontracté', icon: '💬' },
+                  { value: 'enthusiastic', label: 'Enthousiaste', icon: '⚡' },
+                ].map((t) => (
+                  <Button
+                    key={t.value}
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setTone(t.value as Tone)}
+                    className={`h-9 px-3 text-sm font-medium transition-all ${
+                      tone === t.value 
+                        ? 'bg-[#0077B5] text-white border-[#0077B5] hover:bg-[#005E93] hover:border-[#005E93]' 
+                        : 'hover:border-[#0077B5]/50 hover:text-[#0077B5]'
+                    }`}
+                  >
+                    <span className="mr-1.5">{t.icon}</span>
+                    {t.label}
+                  </Button>
+                ))}
+              </div>
             </div>
           </div>
 
@@ -189,7 +200,8 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
             <Button
               onClick={generateMessage}
               disabled={loading}
-              className="w-full bg-gradient-to-r from-purple-600 to-[#0077B5] hover:from-purple-700 hover:to-[#005E93]"
+              size="lg"
+              className="w-full h-12 bg-[#0077B5] hover:bg-[#005E93] text-white font-medium shadow-sm"
             >
               {loading ? (
                 <>
@@ -207,23 +219,23 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
 
           {/* Generated content */}
           {hasGenerated && (
-            <>
+            <div className="space-y-4">
               {/* Subject line */}
               <div>
-                <label className="text-sm font-medium text-[#1A1A1A] mb-1 block">
-                  Objet (InMail)
+                <label className="text-xs font-medium text-muted-foreground mb-1.5 block uppercase tracking-wide">
+                  Objet
                 </label>
                 <Input
                   value={subject}
                   onChange={(e) => setSubject(e.target.value)}
                   placeholder="Objet du message..."
-                  className="font-medium"
+                  className="h-10 font-medium"
                 />
               </div>
 
               {/* Message body */}
               <div>
-                <label className="text-sm font-medium text-[#1A1A1A] mb-1 block">
+                <label className="text-xs font-medium text-muted-foreground mb-1.5 block uppercase tracking-wide">
                   Message
                 </label>
                 <InMailTextEditor
@@ -235,17 +247,17 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
                 />
               </div>
 
-              {/* Personalization points */}
+              {/* Personalization points - subtle design */}
               {personalizationPoints.length > 0 && (
-                <div className="bg-amber-50 rounded-lg p-3 border border-amber-200">
-                  <div className="flex items-center gap-2 text-amber-700 font-medium text-sm mb-2">
-                    <Lightbulb className="w-4 h-4" />
-                    Points de personnalisation utilisés
+                <div className="bg-muted/30 rounded-lg p-3 border border-border/50">
+                  <div className="flex items-center gap-2 text-muted-foreground font-medium text-xs mb-2 uppercase tracking-wide">
+                    <Lightbulb className="w-3.5 h-3.5" />
+                    Points de personnalisation
                   </div>
                   <ul className="space-y-1">
                     {personalizationPoints.map((point, i) => (
-                      <li key={i} className="text-xs text-amber-800 flex items-start gap-2">
-                        <span className="text-amber-500">•</span>
+                      <li key={i} className="text-xs text-muted-foreground flex items-start gap-2">
+                        <span className="text-muted-foreground/50 mt-0.5">•</span>
                         {point}
                       </li>
                     ))}
@@ -253,11 +265,12 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
                 </div>
               )}
 
-              {/* Actions */}
-              <div className="flex gap-2 pt-2">
+              {/* Actions - clean footer */}
+              <div className="flex gap-2 pt-2 border-t border-border/50">
                 <Button
                   onClick={handleCopy}
-                  className="flex-1 bg-[#0077B5] hover:bg-[#005E93]"
+                  size="lg"
+                  className="flex-1 h-11 bg-[#0077B5] hover:bg-[#005E93] text-white font-medium"
                 >
                   {copied ? (
                     <>
@@ -273,8 +286,10 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
                 </Button>
                 <Button
                   variant="outline"
+                  size="lg"
                   onClick={generateMessage}
                   disabled={loading}
+                  className="h-11 px-4 hover:border-[#0077B5]/50 hover:text-[#0077B5]"
                 >
                   {loading ? (
                     <Loader2 className="w-4 h-4 animate-spin" />
@@ -283,7 +298,7 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
                   )}
                 </Button>
               </div>
-            </>
+            </div>
           )}
         </div>
       </DialogContent>
