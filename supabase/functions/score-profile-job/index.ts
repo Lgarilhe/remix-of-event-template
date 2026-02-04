@@ -5,6 +5,43 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+async function fetchWithRetry(
+  url: string,
+  init: RequestInit,
+  opts?: {
+    retries?: number;
+    baseDelayMs?: number;
+    retryStatusCodes?: number[];
+  }
+): Promise<Response> {
+  const retries = opts?.retries ?? 3;
+  const baseDelayMs = opts?.baseDelayMs ?? 600;
+  const retryStatusCodes = opts?.retryStatusCodes ?? [500, 502, 503, 504, 529, 408];
+
+  let lastResponse: Response | null = null;
+
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    const res = await fetch(url, init);
+    lastResponse = res;
+
+    // Success
+    if (res.ok) return res;
+
+    // Retry only on transient upstream issues
+    const shouldRetry = retryStatusCodes.includes(res.status);
+    if (!shouldRetry || attempt === retries) return res;
+
+    const delay = Math.round(baseDelayMs * Math.pow(2, attempt));
+    console.warn(`[score-profile-job] transient AI error ${res.status}, retrying in ${delay}ms (attempt ${attempt + 1}/${retries})`);
+    await sleep(delay);
+  }
+
+  // Should be unreachable
+  return lastResponse!;
+}
+
 interface WorkExperienceItem {
   role: string;
   company: string;
@@ -370,7 +407,7 @@ JSON UNIQUEMENT:
   }
 }`;
 
-          const response = await fetch("https://api.anthropic.com/v1/messages", {
+           const response = await fetchWithRetry("https://api.anthropic.com/v1/messages", {
             method: "POST",
             headers: {
               "x-api-key": ANTHROPIC_API_KEY,
@@ -387,17 +424,31 @@ JSON UNIQUEMENT:
             }),
           });
 
-          if (!response.ok) {
-            console.error("AI gateway error:", response.status);
+           if (!response.ok) {
+             const errorText = await response.text().catch(() => '');
+             console.error("Anthropic API error:", {
+               status: response.status,
+               body: errorText?.slice(0, 1200),
+             });
             if (response.status === 402) {
               throw new Error("CREDITS_EXHAUSTED");
             }
             if (response.status === 429) {
               throw new Error("RATE_LIMITED");
             }
+
+             // Friendly message for transient server errors
+             if ([500, 502, 503, 504, 529, 408].includes(response.status)) {
+               return {
+                 profile_name: p.name,
+                 error: "Service IA temporairement indisponible. Réessayez dans 30 secondes.",
+                 match_score: 0,
+               };
+             }
+
             return {
               profile_name: p.name,
-              error: `AI error: ${response.status}`,
+               error: `Erreur IA (${response.status}).`,
               match_score: 0,
             };
           }
