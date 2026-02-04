@@ -63,6 +63,18 @@ function getRandomDelayMs(minMinutes: number, maxMinutes: number): number {
   return Math.floor(Math.random() * (maxMs - minMs) + minMs);
 }
 
+// Helper to sleep for a given number of milliseconds
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+// Get random delay between actions (30s to 2min) to simulate human behavior
+function getInterActionDelayMs(): number {
+  const minMs = 30 * 1000;  // 30 seconds
+  const maxMs = 120 * 1000; // 2 minutes
+  return Math.floor(Math.random() * (maxMs - minMs) + minMs);
+}
+
 // Calculate next business hour slot if we're outside business hours
 function getNextBusinessHourSlot(timezone: string): Date {
   const now = new Date();
@@ -288,6 +300,15 @@ serve(async (req) => {
 
               await scheduleNextStep(supabase, enrollment, step.step_order);
               results.processed++;
+              
+              // Add random delay between LinkedIn actions to simulate human behavior
+              // Only delay for actions that interact with LinkedIn API
+              const linkedInActions = ['profile_visit', 'connection_request', 'message', 'inmail', 'smart_message'];
+              if (linkedInActions.includes(step.action_type)) {
+                const delayMs = getInterActionDelayMs();
+                console.log(`[process-sequences] Waiting ${Math.round(delayMs/1000)}s before next action (human simulation)`);
+                await sleep(delayMs);
+              }
             } else {
               await supabase
                 .from('sequence_step_executions')
