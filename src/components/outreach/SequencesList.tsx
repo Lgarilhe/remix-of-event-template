@@ -513,16 +513,17 @@ export const SequencesList: React.FC<SequencesListProps> = ({
 
                 {/* Prospects - clickable to open panel */}
                 <button 
-                  className="text-center text-sm text-gray-600 hover:text-blue-600 hover:underline"
+                  className="inline-flex items-center justify-center gap-1.5 px-2.5 py-1.5 text-sm bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 transition-colors cursor-pointer border border-blue-200"
                   onClick={(e) => { 
                     e.stopPropagation(); 
-                    if (seq.enrollments.total > 0) {
-                      setEnrollmentsPanelSequence(seq);
-                    }
+                    setEnrollmentsPanelSequence(seq);
                   }}
-                  disabled={seq.enrollments.total === 0}
+                  title="Voir et gérer les candidats inscrits (arrêter/reprendre)"
                 >
-                  {seq.enrollments.completed}/{seq.enrollments.total}
+                  <Users className="w-3.5 h-3.5" />
+                  <span className="font-medium">{seq.enrollments.active}</span>
+                  <span className="text-blue-400">/</span>
+                  <span>{seq.enrollments.total}</span>
                 </button>
 
                 {/* Created */}
