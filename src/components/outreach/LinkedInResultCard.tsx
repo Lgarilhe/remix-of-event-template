@@ -58,6 +58,7 @@ interface LinkedInResultCardProps {
   onMessageSent?: () => void;
   onSequenceEnroll?: () => void;
   activeProject?: SourcingProject | null;
+  onProfileTreated?: () => void; // Called when profile is messaged, added to project, or enrolled in sequence
 }
 
 interface ChatMessage {
@@ -87,6 +88,7 @@ export const LinkedInResultCard: React.FC<LinkedInResultCardProps> = ({
   onMessageSent,
   onSequenceEnroll,
   activeProject,
+  onProfileTreated,
 }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const [showMessageModal, setShowMessageModal] = useState(false);
@@ -325,8 +327,9 @@ export const LinkedInResultCard: React.FC<LinkedInResultCardProps> = ({
       setReplyText('');
       toast.success('Message envoyé !');
       
-      // Notify parent to track quota
+      // Notify parent to track quota and mark as treated
       onMessageSent?.();
+      onProfileTreated?.();
     } catch (error) {
       console.error('Error sending message:', error);
       toast.error("Erreur lors de l'envoi du message");
@@ -557,7 +560,10 @@ export const LinkedInResultCard: React.FC<LinkedInResultCardProps> = ({
                       selectedProfiles={[profile]}
                       accountId={accountId}
                       selectedJob={selectedJob ? { id: selectedJob.id, title: selectedJob.title } : undefined}
-                      onSuccess={onSequenceEnroll}
+                      onSuccess={() => {
+                        onSequenceEnroll?.();
+                        onProfileTreated?.();
+                      }}
                     />
                   )}
                   
@@ -574,6 +580,7 @@ export const LinkedInResultCard: React.FC<LinkedInResultCardProps> = ({
                       jobId={selectedJob.id}
                       activeProject={activeProject}
                       compact
+                      onAdded={onProfileTreated}
                     />
                   )}
                 </div>
