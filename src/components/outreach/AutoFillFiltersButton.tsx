@@ -184,6 +184,18 @@ export const AutoFillFiltersButton: React.FC<AutoFillFiltersButtonProps> = ({
         update.location_within_area = generated.location_within_area;
       }
 
+      // Location keywords (from job location)
+      if (generated.location_keywords?.length) {
+        // Convert location string to LocationFilterItem format
+        // Use 'MUST_HAVE' with 'CURRENT_OR_OPEN_TO_RELOCATE' scope for best results
+        update.location = generated.location_keywords.map((loc, index) => ({
+          id: `loc-${index}`,
+          name: loc,
+          priority: 'MUST_HAVE' as const,
+          scope: 'CURRENT_OR_OPEN_TO_RELOCATE' as const,
+        }));
+      }
+
       // Company keywords (e.g., exclude client)
       if (generated.company_keywords?.length) {
         update.company_keywords = generated.company_keywords.map(c => ({
