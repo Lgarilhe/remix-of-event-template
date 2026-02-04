@@ -732,11 +732,33 @@ serve(async (req) => {
         xpMin: getPropertyValue(job.properties['XP minimum']),
         xpMax: getPropertyValue(job.properties['XP maximum']),
         tjm: getPropertyValue(job.properties['TJM']),
-        accompagnement: getPropertyValue(
-          job.properties['Type d\'accompagnement'] || 
-          job.properties["Type d\u2019accompagnement"] ||
-          Object.entries(job.properties).find(([k]) => k.toLowerCase().includes('accompagnement'))?.[1] as NotionProperty | undefined
-        ) || [],
+        accompagnement: (() => {
+          // Try multiple property name variants
+          const variants = [
+            "Type d'accompagnement",
+            "Type d\u2019accompagnement",
+            "Type daccompagnement",
+            "Accompagnement",
+          ];
+          for (const v of variants) {
+            if (job.properties[v]) {
+              return getPropertyValue(job.properties[v]) || [];
+            }
+          }
+          // Fallback: search by partial match
+          const found = Object.entries(job.properties).find(([k]) => 
+            k.toLowerCase().includes('accompagnement')
+          );
+          if (found) {
+            console.log('[fetch-notion-jobs] Found accompagnement property:', found[0]);
+            return getPropertyValue(found[1] as NotionProperty) || [];
+          }
+          // Log available properties for debugging (only for first job)
+          if (transformedJobs.length === 0) {
+            console.log('[fetch-notion-jobs] Available properties:', Object.keys(job.properties).slice(0, 30));
+          }
+          return [];
+        })(),
         jobUrl: getPropertyValue(job.properties['userDefined:URL']),
         // Resolved transversal criteria (company-wide requirements)
         transversalCriteria: transversalCriteria,
