@@ -641,10 +641,16 @@ serve(async (req) => {
       if (clientRelation?.type === 'relation') {
         clientRelation.relation?.forEach(r => companyIds.add(r.id));
       }
-      // Collect transversal criteria IDs
-      const criteriaRelation = job.properties['Critères Transverses Numspot'];
-      if (criteriaRelation?.type === 'relation') {
-        criteriaRelation.relation?.forEach(r => transversalCriteriaIds.add(r.id));
+      // Collect transversal criteria IDs - search by partial match
+      const criteriaPropertyName = Object.keys(job.properties).find(k => 
+        k.toLowerCase().includes('critères transvers') || 
+        k.toLowerCase().includes('criteres transvers')
+      );
+      if (criteriaPropertyName) {
+        const criteriaRelation = job.properties[criteriaPropertyName];
+        if (criteriaRelation?.type === 'relation') {
+          criteriaRelation.relation?.forEach(r => transversalCriteriaIds.add(r.id));
+        }
       }
     });
 
@@ -698,8 +704,14 @@ serve(async (req) => {
       const aiSkills = allSkillsMap.get(job.id) || [];
       const skills = notionSkills.length > 0 ? notionSkills : aiSkills;
 
-      // Resolve transversal criteria from linked pages
-      const criteriaIds = getPropertyValue(job.properties['Critères Transverses Numspot']) || [];
+      // Resolve transversal criteria from linked pages - search by partial match
+      const criteriaPropertyName = Object.keys(job.properties).find(k => 
+        k.toLowerCase().includes('critères transvers') || 
+        k.toLowerCase().includes('criteres transvers')
+      );
+      const criteriaIds = criteriaPropertyName 
+        ? (getPropertyValue(job.properties[criteriaPropertyName]) || [])
+        : [];
       const transversalCriteria = mergeTransversalCriteria(criteriaIds, transversalCriteriaMap);
 
       return {
