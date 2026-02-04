@@ -67,7 +67,26 @@ interface GeneratedFilters {
   open_to_work: boolean;
 }
 
-// TOP_SCHOOLS removed - schools are now selected manually via "TOP Écoles" button
+// TOP French Engineering Schools - used when job explicitly requires "top X" schools
+const TOP_SCHOOLS = [
+  { id: "14034", name: "École Polytechnique" },
+  { id: "14803", name: "CentraleSupélec" },
+  { id: "15092675", name: "Mines Paris - PSL" },
+  { id: "24772587", name: "École des Ponts ParisTech" },
+  { id: "163637", name: "Télécom Paris" },
+  { id: "12442", name: "Centrale Lyon" },
+  { id: "163631", name: "Centrale Lille" },
+  { id: "12429", name: "Centrale Nantes" },
+  { id: "27158163", name: "ENSTA Paris" },
+  { id: "12463", name: "IMT Atlantique" },
+  { id: "12444", name: "Grenoble INP - Ensimag" },
+  { id: "12437", name: "Arts et Métiers" },
+  { id: "12443", name: "INP-ENSEEIHT" },
+  { id: "12467", name: "UTC" },
+  { id: "12446", name: "ISAE-SUPAERO" },
+  { id: "12451", name: "ISEP" },
+  { id: "12440", name: "EPITA" },
+];
 
 // ESN companies to deprioritize
 const ESN_KEYWORDS = [
@@ -419,9 +438,35 @@ ${transversal.context ? `Contexte: ${transversal.context}` : ''}` : ''}
     // Note: On n'exclut pas les ESN car certains bons profils y sont, mais on peut les signaler
     // Pour l'instant on ne les ajoute pas en DOESNT_HAVE pour ne pas être trop restrictif
 
-    // === RÈGLE 3: Pas de filtre école automatique ===
-    // Les écoles ne sont plus auto-générées - l'utilisateur les sélectionne manuellement via le bouton "TOP Écoles"
-    const schoolFilters: SchoolFilter[] = [];
+    // === RÈGLE 3: Écoles TOP X si demandé explicitement ===
+    // Détecter si le poste mentionne "top 5", "top 10", "top 15", "top école", etc.
+    const jobTextForSchools = `${job.description || ''} ${job.requirements || ''} ${job.sourcingCriteria || ''} ${job.mustHave || ''} ${job.shouldHave || ''}`.toLowerCase();
+    
+    // Regex pour détecter "top X" avec X = nombre ou "écoles"
+    const topMatch = jobTextForSchools.match(/top\s*(\d+|écoles?|schools?|ingé|engineering)/i);
+    let schoolFilters: SchoolFilter[] = [];
+    
+    if (topMatch) {
+      let topCount = 17; // Par défaut toutes les écoles
+      const matchValue = topMatch[1]?.toLowerCase();
+      
+      if (matchValue && /^\d+$/.test(matchValue)) {
+        topCount = Math.min(parseInt(matchValue, 10), TOP_SCHOOLS.length);
+      } else if (matchValue?.includes('5') || matchValue === '5') {
+        topCount = 5;
+      } else if (matchValue?.includes('10') || matchValue === '10') {
+        topCount = 10;
+      }
+      
+      console.log(`[generate-search-filters] Detected TOP ${topCount} schools requirement`);
+      
+      // Prendre les N premières écoles (déjà triées par prestige)
+      schoolFilters = TOP_SCHOOLS.slice(0, topCount).map(school => ({
+        id: school.id,
+        name: school.name,
+        priority: 'CAN_HAVE' as const, // OR logic entre les écoles
+      }));
+    }
 
     // === RÈGLE 4: Adapter le rayon de recherche selon la politique remote ===
     // Default: 40km (~25 miles) - même pour hybrid car les gens ne déménagent pas pour du partiel
