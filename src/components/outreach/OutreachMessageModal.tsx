@@ -11,7 +11,6 @@ import {
 import { Button } from '@/components/ui/button';
 import { InMailTextEditor } from './InMailTextEditor';
 import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
 import { 
   Loader2, 
   Copy, 
@@ -20,6 +19,7 @@ import {
   Sparkles,
   MessageSquare,
   Lightbulb,
+  Send,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -28,6 +28,7 @@ interface OutreachMessageModalProps {
   onOpenChange: (open: boolean) => void;
   profile: LinkedInProfile;
   job: Job;
+  selectedAccount?: string | null;
 }
 
 type Tone = 'professional' | 'casual' | 'enthusiastic';
@@ -37,14 +38,17 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
   onOpenChange,
   profile,
   job,
+  selectedAccount,
 }) => {
   const [loading, setLoading] = useState(false);
+  const [sending, setSending] = useState(false);
   const [subject, setSubject] = useState('');
   const [message, setMessage] = useState('');
   const [personalizationPoints, setPersonalizationPoints] = useState<string[]>([]);
   const [copied, setCopied] = useState(false);
   const [tone, setTone] = useState<Tone>('professional');
   const [hasGenerated, setHasGenerated] = useState(false);
+  const [messageSent, setMessageSent] = useState(false);
   const [senderName, setSenderName] = useState(() => {
     return localStorage.getItem('outreach_sender_name') || '';
   });
@@ -115,14 +119,84 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
   };
 
   const handleCopy = async () => {
-    const fullMessage = subject ? `Objet: ${subject}\n\n${message}` : message;
+    // Convert HTML to plain text for clipboard
+    const plainMessage = message
+      .replace(/<br\s*\/?>/gi, '\n')
+      .replace(/<[^>]+>/g, '');
+    const fullMessage = subject ? `Objet: ${subject}\n\n${plainMessage}` : plainMessage;
     await navigator.clipboard.writeText(fullMessage);
     setCopied(true);
     toast.success('Message copié !');
     setTimeout(() => setCopied(false), 2000);
   };
 
+  // Send message via LinkedIn (direct message or InMail based on network distance)
+  const handleSendMessage = async () => {
+    if (!selectedAccount) {
+      toast.error('Aucun compte LinkedIn sélectionné');
+      return;
+    }
+
+    // Get recipient ID - prefer provider_id for Unipile API (cast to any for API-specific fields)
+    const profileAny = profile as any;
+    const recipientId = profileAny.provider_id || profile.id;
+    if (!recipientId) {
+      toast.error('Impossible d\'identifier le destinataire');
+      return;
+    }
+
+    // Convert HTML to plain text for sending
+    const plainMessage = message
+      .replace(/<br\s*\/?>/gi, '\n')
+      .replace(/<[^>]+>/g, '');
+
+    if (!plainMessage.trim()) {
+      toast.error('Le message ne peut pas être vide');
+      return;
+    }
+
+    setSending(true);
+    try {
+      // Determine if this is a 1st degree connection (free message) or 2nd/3rd (InMail)
+      const networkDist = profile.network_distance || profileAny.specifics?.network_distance;
+      const isFirstDegree = networkDist === 'DISTANCE_1' || networkDist === 1;
+      
+      const { data, error } = await supabase.functions.invoke('unipile-search', {
+        body: {
+          action: 'send_message',
+          account_id: selectedAccount,
+          recipient_id: recipientId,
+          message: plainMessage,
+          subject: !isFirstDegree ? subject : undefined, // Subject only for InMails
+          is_inmail: !isFirstDegree,
+        }
+      });
+
+      if (error) throw error;
+      if (!data?.success) throw new Error(data?.error || 'Erreur lors de l\'envoi');
+
+      setMessageSent(true);
+      toast.success(isFirstDegree ? 'Message envoyé !' : 'InMail envoyé !');
+      
+      // Close modal after short delay
+      setTimeout(() => {
+        onOpenChange(false);
+      }, 1500);
+    } catch (err: any) {
+      console.error('Send message error:', err);
+      toast.error(err.message || 'Erreur lors de l\'envoi du message');
+    } finally {
+      setSending(false);
+    }
+  };
+
   const fullName = profile.name || `${profile.first_name || ''} ${profile.last_name || ''}`.trim();
+  
+  // Determine network distance for UI display
+  const profileAny = profile as any;
+  const networkDistance = profile.network_distance || profileAny.specifics?.network_distance;
+  const isFirstDegree = networkDistance === 'DISTANCE_1' || networkDistance === 1;
+  const canSendDirectly = selectedAccount && (isFirstDegree || profile.can_send_inmail !== false);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -267,10 +341,42 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
 
               {/* Actions - clean footer */}
               <div className="flex gap-2 pt-2 border-t border-border/50">
+                {/* Send button - primary action if account connected */}
+                {canSendDirectly && (
+                  <Button
+                    onClick={handleSendMessage}
+                    disabled={sending || messageSent}
+                    size="lg"
+                    className="flex-1 h-11 bg-green-600 hover:bg-green-700 text-white font-medium"
+                  >
+                    {messageSent ? (
+                      <>
+                        <Check className="w-4 h-4 mr-2" />
+                        Envoyé !
+                      </>
+                    ) : sending ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Envoi...
+                      </>
+                    ) : (
+                      <>
+                        <Send className="w-4 h-4 mr-2" />
+                        {isFirstDegree ? 'Envoyer' : 'Envoyer (InMail)'}
+                      </>
+                    )}
+                  </Button>
+                )}
+                
+                {/* Copy button */}
                 <Button
                   onClick={handleCopy}
+                  variant={canSendDirectly ? 'outline' : 'default'}
                   size="lg"
-                  className="flex-1 h-11 bg-[#0077B5] hover:bg-[#005E93] text-white font-medium"
+                  className={canSendDirectly 
+                    ? "h-11 px-4 hover:border-[#0077B5]/50 hover:text-[#0077B5]"
+                    : "flex-1 h-11 bg-[#0077B5] hover:bg-[#005E93] text-white font-medium"
+                  }
                 >
                   {copied ? (
                     <>
@@ -280,10 +386,12 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
                   ) : (
                     <>
                       <Copy className="w-4 h-4 mr-2" />
-                      Copier le message
+                      {canSendDirectly ? '' : 'Copier'}
                     </>
                   )}
                 </Button>
+                
+                {/* Regenerate button */}
                 <Button
                   variant="outline"
                   size="lg"

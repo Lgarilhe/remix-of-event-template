@@ -1095,9 +1095,9 @@ async function handleGetMessages(
 }
 
 /**
- * Handle Send Message - Send a message to an existing chat
- * API: POST /chats/{chat_id}/messages
- * Uses multipart/form-data with 'text' field
+ * Send message to a LinkedIn user
+ * Supports both direct messages (for 1st degree) and InMails (for 2nd/3rd degree)
+ * Uses multipart/form-data format required by Unipile
  */
 async function handleSendMessage(
   baseUrl: string,
@@ -1105,16 +1105,18 @@ async function handleSendMessage(
   accountId: string,
   params: Record<string, unknown>
 ): Promise<Response> {
-  const { chat_id, text } = params;
+  const { chat_id, recipient_id, text, message, subject, is_inmail } = params;
+  const messageText = (text || message) as string;
 
-  if (!chat_id) {
+  // Need either chat_id (existing conversation) or recipient_id (new message)
+  if (!chat_id && !recipient_id) {
     return new Response(
-      JSON.stringify({ success: false, error: 'Chat ID requis' }),
+      JSON.stringify({ success: false, error: 'Chat ID ou Recipient ID requis' }),
       { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
 
-  if (!text || typeof text !== 'string' || text.trim().length === 0) {
+  if (!messageText || typeof messageText !== 'string' || messageText.trim().length === 0) {
     return new Response(
       JSON.stringify({ success: false, error: 'Message vide' }),
       { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -1123,10 +1125,31 @@ async function handleSendMessage(
 
   // Build multipart form data
   const formData = new FormData();
-  formData.append('text', text.trim());
+  formData.append('text', messageText.trim());
 
-  const url = `${baseUrl}/chats/${chat_id}/messages`;
-  console.log('Send message URL:', url);
+  let url: string;
+
+  if (chat_id) {
+    // Send to existing chat
+    url = `${baseUrl}/chats/${chat_id}/messages`;
+  } else {
+    // Create new chat/message to recipient
+    // For InMails (2nd/3rd degree), we need to use the LinkedIn Recruiter API format
+    url = `${baseUrl}/chats`;
+    formData.append('account_id', accountId);
+    formData.append('attendees_ids', recipient_id as string);
+    
+    // Add LinkedIn-specific options for InMail
+    if (is_inmail) {
+      formData.append('linkedin[api]', 'recruiter');
+      formData.append('linkedin[inmail]', 'true');
+      if (subject) {
+        formData.append('linkedin[subject]', subject as string);
+      }
+    }
+  }
+
+  console.log('Send message URL:', url, 'is_inmail:', is_inmail);
 
   const response = await fetch(url, {
     method: 'POST',
@@ -1145,6 +1168,7 @@ async function handleSendMessage(
       JSON.stringify({ 
         success: false, 
         error: data.detail || data.message || "Erreur lors de l'envoi du message",
+        code: data.status_code || response.status,
       }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
