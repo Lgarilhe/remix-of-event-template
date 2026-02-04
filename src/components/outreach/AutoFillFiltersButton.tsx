@@ -5,7 +5,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Wand2, Loader2, Eye, ChevronDown, ChevronUp } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
-import { LinkedInFiltersState, RoleFilter, PriorityFilterItem, CompanyKeywordFilter } from './types';
+import { LinkedInFiltersState, RoleFilter, PriorityFilterItem, CompanyKeywordFilter, LocationFilterItem } from './types';
 import { Job } from '@/pages/JobSpace';
 import { toast } from 'sonner';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
@@ -13,6 +13,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 interface AutoFillFiltersButtonProps {
   selectedJob: Job | null;
   accountId: string | null;
+  currentLocation?: LocationFilterItem[];
   onApplyFilters: (filters: Partial<LinkedInFiltersState>) => void;
   disabled?: boolean;
 }
@@ -95,6 +96,7 @@ function getMissingFields(job: Job): { critical: string[], optional: string[] } 
 export const AutoFillFiltersButton: React.FC<AutoFillFiltersButtonProps> = ({
   selectedJob,
   accountId,
+  currentLocation,
   onApplyFilters,
   disabled,
 }) => {
@@ -188,11 +190,54 @@ export const AutoFillFiltersButton: React.FC<AutoFillFiltersButtonProps> = ({
         update.location_within_area = generated.location_within_area;
       }
 
-      // IMPORTANT: Clear any existing location filters to avoid stale/invalid IDs
-      // The Unipile API requires valid LinkedIn location IDs (e.g., "104246759")
-      // We can't convert text like "Paris" to a LinkedIn ID without an autocomplete lookup
-      // So we reset location and let the user manually select via autocomplete
-      update.location = [];
+      // Location: try to resolve a keyword (e.g. "Courbevoie") to a valid LinkedIn location ID.
+      // IMPORTANT: never overwrite a location already selected by the user (and valid).
+      const hasValidExistingLocation = (currentLocation || []).some((loc) => /^\d+$/.test(String(loc.id)));
+
+      const locationKeyword = (generated.location_keywords?.[0] || '').trim();
+
+      if (!hasValidExistingLocation && locationKeyword && accountId) {
+        try {
+          const { data: paramData, error: paramError } = await supabase.functions.invoke('unipile-search', {
+            body: {
+              action: 'get_parameters',
+              account_id: accountId,
+              type: 'LOCATION',
+              keywords: locationKeyword,
+              service: 'RECRUITER',
+            },
+          });
+
+          if (paramError) throw paramError;
+
+          const items = Array.isArray(paramData?.items) ? paramData.items : [];
+          if (paramData?.success && items.length > 0) {
+            const normalized = locationKeyword.toLowerCase();
+            const best =
+              items.find((it: any) => String(it.title || '').toLowerCase() === normalized) ||
+              items.find((it: any) => String(it.title || '').toLowerCase().includes(normalized)) ||
+              items[0];
+
+            if (best?.id && best?.title) {
+              update.location = [
+                {
+                  id: String(best.id),
+                  name: String(best.title),
+                  priority: 'MUST_HAVE',
+                  scope: 'CURRENT_OR_OPEN_TO_RELOCATE',
+                },
+              ];
+            }
+          } else {
+            // Clear stale invalid location IDs (e.g. loc-0) if any.
+            update.location = [];
+          }
+        } catch (e) {
+          console.warn('[AutoFill] Failed to resolve location keyword:', locationKeyword, e);
+          // Clear stale invalid location IDs (e.g. loc-0) if any.
+          update.location = [];
+        }
+      }
 
       // Company keywords (e.g., exclude client)
       if (generated.company_keywords?.length) {
@@ -250,7 +295,7 @@ export const AutoFillFiltersButton: React.FC<AutoFillFiltersButtonProps> = ({
     } finally {
       setLoading(false);
     }
-  }, [selectedJob, accountId, onApplyFilters]);
+  }, [selectedJob, accountId, currentLocation, onApplyFilters]);
 
   const isDisabled = disabled || !selectedJob || !accountId || loading;
 
