@@ -1123,16 +1123,53 @@ async function executeStepAction(
       }
 
       case 'connection_request': {
-        // Unipile invite endpoint requires the LinkedIn member URN (provider_id)
+        // Unipile invite endpoint requires a provider_id starting with "ACo..."
         // Doc: https://developer.unipile.com/docs/invite-users
-        // Example: provider_id: 'ACoAAAcDMMQBODyLwZrRcgYhrkCafURGqva0U4E'
-        // The profileId from search results is already in the correct URN format
+        // The profileId from search may be in a different format (AEM..., ADo..., etc.)
+        // We need to fetch the profile first to get the correct provider_id
         
         const inviteNote = messageText ? messageText.slice(0, 50) : '';
         
+        // First, try to extract public_identifier from profile URL to get correct provider_id
+        let correctProviderId = profileId;
+        const profileUrl = enrollment.profile_url as string | undefined;
+        
+        if (profileUrl) {
+          const match = profileUrl.match(/linkedin\.com\/in\/([^/?]+)/);
+          if (match) {
+            const publicIdentifier = match[1];
+            console.log(`[process-sequences] Fetching provider_id for public_identifier: ${publicIdentifier}`);
+            
+            // Call Unipile to get the correct provider_id (ACo... format)
+            try {
+              const profileResponse = await fetch(
+                `${UNIPILE_DSN}/api/v1/users/${encodeURIComponent(publicIdentifier)}?account_id=${accountId}`,
+                {
+                  headers: {
+                    'X-API-KEY': UNIPILE_API_KEY!,
+                    'accept': 'application/json',
+                  },
+                }
+              );
+              
+              if (profileResponse.ok) {
+                const profileData = await profileResponse.json();
+                if (profileData.provider_id) {
+                  correctProviderId = profileData.provider_id;
+                  console.log(`[process-sequences] Resolved provider_id: ${correctProviderId}`);
+                }
+              } else {
+                console.warn(`[process-sequences] Could not fetch profile for ${publicIdentifier}:`, profileResponse.status);
+              }
+            } catch (err) {
+              console.warn(`[process-sequences] Error fetching profile:`, err);
+            }
+          }
+        }
+        
         const inviteBody: Record<string, string> = {
           account_id: accountId,
-          provider_id: profileId, // Use the original LinkedIn URN (e.g., AEMAAAsFKvABLw2CGw4poUZxj9cLHEFhzfwubGI)
+          provider_id: correctProviderId,
         };
         
         if (inviteNote) {
@@ -1141,7 +1178,8 @@ async function executeStepAction(
         
         console.log(`[process-sequences] Sending connection request`, {
           accountId,
-          profileId,
+          originalProfileId: profileId,
+          resolvedProviderId: correctProviderId,
           noteLength: inviteNote.length,
         });
         
@@ -1164,7 +1202,7 @@ async function executeStepAction(
           };
         }
         
-        console.log(`[process-sequences] Invitation sent successfully to ${profileId}`);
+        console.log(`[process-sequences] Invitation sent successfully to ${correctProviderId}`);
         await logAnalytics(supabase, enrollment.sequence_id as string, 'invites_sent');
         
         await supabase
