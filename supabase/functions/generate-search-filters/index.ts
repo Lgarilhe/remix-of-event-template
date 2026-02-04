@@ -234,10 +234,10 @@ ${transversal.context ? `Contexte: ${transversal.context}` : ''}` : ''}
           if (response.status === 402) {
             throw new Error("CREDITS_EXHAUSTED");
           }
-          if (response.status === 529 || response.status === 503) {
-            // Service overloaded - retry with exponential backoff
+          if (response.status === 529 || response.status === 503 || response.status === 500 || response.status === 502) {
+            // Service overloaded or internal error - retry with exponential backoff
             const errorText = await response.text();
-            console.warn(`[generate-search-filters] AI overloaded (attempt ${attempt}/${maxRetries}):`, errorText);
+            console.warn(`[generate-search-filters] AI error ${response.status} (attempt ${attempt}/${maxRetries}):`, errorText?.slice(0, 500));
             
             if (attempt < maxRetries) {
               const delay = Math.pow(2, attempt) * 1000; // 2s, 4s, 8s
@@ -248,9 +248,9 @@ ${transversal.context ? `Contexte: ${transversal.context}` : ''}` : ''}
             throw new Error("SERVICE_OVERLOADED");
           }
 
-          // Other errors
+          // Other errors (4xx that shouldn't be retried)
           const errorText = await response.text();
-          console.error("[generate-search-filters] AI error:", response.status, errorText);
+          console.error("[generate-search-filters] AI error:", response.status, errorText?.slice(0, 500));
           throw new Error(`AI_ERROR_${response.status}`);
         } catch (error) {
           lastError = error instanceof Error ? error : new Error(String(error));
