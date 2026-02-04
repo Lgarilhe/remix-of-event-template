@@ -104,25 +104,50 @@ Le champ "keywords" sert UNIQUEMENT à affiner la recherche avec des TECHNOLOGIE
 Le champ "role_keywords" sert UNIQUEMENT aux TITRES DE POSTE.
 NE JAMAIS mélanger titres et technologies dans le même champ !
 
-=== STRATÉGIE "KEYWORDS" (LAYERED - OBLIGATOIRE) ===
+=== STRATÉGIE "KEYWORDS" (LAYERED + EXHAUSTIF - OBLIGATOIRE) ===
 Structurer les keywords en GROUPES LOGIQUES avec AND entre groupes et OR au sein de chaque groupe.
 
-RÈGLES:
-1. Identifier 2-3 catégories technologiques DISTINCTES du poste (ex: langage, cloud, framework)
-2. Pour chaque catégorie, lister les alternatives avec OR
+⚠️ RÈGLE CRITIQUE - SYNONYMES EXHAUSTIFS:
+Pour CHAQUE technologie, tu DOIS inclure TOUS les synonymes, abréviations et variantes utilisés sur LinkedIn:
+
+EXEMPLES DE MAPPING OBLIGATOIRES:
+- Java → "Java OR JEE OR J2EE OR J2E OR \"Java EE\" OR \"Jakarta EE\" OR JavaSE"
+- Spring → "Spring OR \"Spring Boot\" OR SpringBoot OR \"Spring Framework\" OR \"Spring Batch\""
+- Kubernetes → "Kubernetes OR K8s OR K8"
+- AWS → "AWS OR \"Amazon Web Services\" OR \"Amazon AWS\""
+- GCP → "GCP OR \"Google Cloud\" OR \"Google Cloud Platform\""
+- Azure → "Azure OR \"Microsoft Azure\" OR \"Azure Cloud\""
+- Docker → "Docker OR Containers OR Containerization"
+- Python → "Python OR Python3 OR Py"
+- JavaScript → "JavaScript OR JS OR ECMAScript"
+- TypeScript → "TypeScript OR TS"
+- React → "React OR ReactJS OR \"React.js\""
+- Angular → "Angular OR AngularJS OR \"Angular.js\" OR Angular2+"
+- Vue → "Vue OR VueJS OR \"Vue.js\""
+- Node → "Node OR NodeJS OR \"Node.js\""
+- PostgreSQL → "PostgreSQL OR Postgres OR PGSQL"
+- MongoDB → "MongoDB OR Mongo"
+- Terraform → "Terraform OR TF OR IaC"
+- CI/CD → "CI/CD OR CICD OR \"CI CD\" OR Jenkins OR GitLab OR GitHub Actions"
+- Kafka → "Kafka OR \"Apache Kafka\" OR \"Event Streaming\""
+- Spark → "Spark OR \"Apache Spark\" OR PySpark"
+- Machine Learning → "\"Machine Learning\" OR ML OR \"Deep Learning\" OR DL"
+- DevOps → "DevOps OR SRE OR \"Site Reliability\""
+
+RÈGLES DE CONSTRUCTION:
+1. Identifier 2-3 catégories technologiques DISTINCTES du poste
+2. Pour CHAQUE techno de chaque catégorie, TOUJOURS ajouter ses synonymes/variantes
 3. Combiner les catégories avec AND (parenthèses obligatoires)
 4. MAX 2-3 groupes - au-delà c'est trop restrictif !
-5. Chaque groupe: 2-4 alternatives max
 
-EXEMPLES BONS:
-- Backend + Cloud: "(Python OR Java OR Go) AND (AWS OR GCP OR Azure)"
-- Data + Infra: "(Spark OR Databricks) AND (Kubernetes OR K8s)"
-- Frontend mono-stack: "React OR Vue" (pas besoin de AND si une seule catégorie)
+EXEMPLES BONS (avec synonymes):
+- Backend Java: "(Java OR JEE OR J2EE OR \"Java EE\") AND (Spring OR \"Spring Boot\" OR SpringBoot)"
+- Cloud + Orchestration: "(AWS OR \"Amazon Web Services\" OR GCP OR \"Google Cloud\") AND (Kubernetes OR K8s OR Docker)"
+- Data: "(Spark OR PySpark OR \"Apache Spark\") AND (Kafka OR \"Apache Kafka\")"
 
 EXEMPLES MAUVAIS:
-- Trop restrictif: "(Python AND Django AND PostgreSQL) AND (AWS AND Kubernetes)" ❌
-- Trop vague: "Python OR AWS OR Cloud OR Backend" ❌ (pas de structure)
-- Mélange titres: "(Engineer OR Architect) AND Python" ❌ (titres → role_keywords)
+- Sans synonymes: "(Java) AND (Spring)" ❌ - rate les profils qui écrivent "J2EE" ou "Spring Boot"
+- Trop restrictif: "(Java AND JEE AND Spring)" ❌ - AND entre synonymes !
 
 CATÉGORIES TYPIQUES À IDENTIFIER:
 - Langages: Python, Java, Go, TypeScript, Rust...
