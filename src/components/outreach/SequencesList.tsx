@@ -19,6 +19,7 @@ import {
   UserPlus,
   Eye,
   MessageSquare,
+  Activity,
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -42,6 +43,7 @@ import { cn } from '@/lib/utils';
 import { SequenceBuilder, Sequence, SequenceStep } from './SequenceBuilder';
 import { SequenceEnrollModal } from './SequenceEnrollModal';
 import { SequenceEnrollmentsPanel } from './SequenceEnrollmentsPanel';
+import { SequenceActivityLog } from './SequenceActivityLog';
 import { LinkedInProfile } from './types';
 import { formatDistanceToNow } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -89,6 +91,7 @@ export const SequencesList: React.FC<SequencesListProps> = ({
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [enrollModalSequence, setEnrollModalSequence] = useState<SequenceWithStats | null>(null);
   const [enrollmentsPanelSequence, setEnrollmentsPanelSequence] = useState<SequenceWithStats | null>(null);
+  const [showActivityLog, setShowActivityLog] = useState(false);
 
   const fetchSequences = async () => {
     try {
@@ -428,13 +431,23 @@ export const SequencesList: React.FC<SequencesListProps> = ({
       {/* Header */}
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold text-gray-900">Séquences</h1>
-        <Button 
-          onClick={handleCreateNew}
-          className="bg-blue-600 hover:bg-blue-700 text-white rounded-lg px-4"
-        >
-          <Send className="w-4 h-4 mr-2" />
-          Créer une séquence
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button 
+            variant="outline"
+            onClick={() => setShowActivityLog(true)}
+            className="border-gray-200"
+          >
+            <Activity className="w-4 h-4 mr-2" />
+            Journal d'activité
+          </Button>
+          <Button 
+            onClick={handleCreateNew}
+            className="bg-blue-600 hover:bg-blue-700 text-white rounded-lg px-4"
+          >
+            <Send className="w-4 h-4 mr-2" />
+            Créer une séquence
+          </Button>
+        </div>
       </div>
 
       {/* Search & Filters */}
@@ -627,6 +640,12 @@ export const SequencesList: React.FC<SequencesListProps> = ({
           sequenceName={enrollmentsPanelSequence.name}
         />
       )}
+
+      {/* Activity Log */}
+      <SequenceActivityLog
+        isOpen={showActivityLog}
+        onClose={() => setShowActivityLog(false)}
+      />
 
       {/* Delete confirmation */}
       <AlertDialog open={!!deleteConfirmId} onOpenChange={() => setDeleteConfirmId(null)}>
