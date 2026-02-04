@@ -82,6 +82,18 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
     try {
       const profileData = buildProfileData();
       
+      // Debug: log job data being sent
+      console.log('[OutreachMessageModal] Job data:', {
+        title: job.title,
+        client: job.client?.name,
+        accompagnement: job.accompagnement,
+        isRPO: (job.accompagnement || []).some((a: string) => 
+          a.toLowerCase().includes('rpo') || 
+          a.toLowerCase().includes('embedded') ||
+          a.toLowerCase().includes('intégré')
+        )
+      });
+      
       const { data, error } = await supabase.functions.invoke('generate-outreach-message', {
         body: { 
           profile: profileData, 
