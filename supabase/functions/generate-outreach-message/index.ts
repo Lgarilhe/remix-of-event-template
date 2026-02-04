@@ -73,9 +73,9 @@ serve(async (req) => {
     }
 
     const toneInstructions = {
-      professional: "Vouvoiement, ton direct et respectueux. Pas de flatterie excessive.",
-      casual: "Tutoiement naturel, comme un message à un ancien collègue. Décontracté mais pro.",
-      enthusiastic: "Tutoiement, ton dynamique mais pas surjoué. Montre un intérêt sincère."
+      professional: "Vouvoiement obligatoire. Ton direct, sobre et respectueux. Langage professionnel standard, pas de jargon startup ni d'expressions familières. Évite 'ton taf', 'mise gros', 'ça colle', etc.",
+      casual: "Tutoiement naturel mais reste professionnel. Comme un message à un pair du secteur. Évite le jargon trop startup ('ton taf', 'mise gros'). Reste accessible sans être familier.",
+      enthusiastic: "Tutoiement, ton dynamique mais mesuré. Montre de l'intérêt sans surjouer. Garde un vocabulaire professionnel, évite les expressions trop cool."
     };
 
     // Build salary info for the prompt
@@ -196,6 +196,8 @@ ${statusInstructions[candidateStatus] || statusInstructions.other}
    - Questions génériques: "ça t'intéresserait ?", "tu serais ouvert ?"
    - Forcer une question quand un CTA suffit
    - FORMAT CHIFFRES: JAMAIS de "20+", "10+", "5+" → écrire "plus de 20", "plus de 10", "plus de 5"
+   - JARGON TROP COOL/STARTUP: "ton taf", "mise gros", "ça colle", "c'est chaud", "le kiff", "la bombe"
+   - EXPRESSIONS FAMILIÈRES: évite les raccourcis trop oraux même en mode casual
 
 7. FORMAT OBLIGATOIRE:
    - 80-100 mots maximum
