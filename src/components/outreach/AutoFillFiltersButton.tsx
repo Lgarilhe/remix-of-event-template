@@ -69,21 +69,27 @@ function buildJobContext(job: Job): string {
   return lines.filter(line => line !== null).join('\n').trim();
 }
 
-// Get missing fields diagnostic
-function getMissingFields(job: Job): string[] {
-  const missing: string[] = [];
-  if (!job.location) missing.push('location');
-  if (!job.seniority) missing.push('seniority');
-  if (job.xpMin === undefined || job.xpMin === null) missing.push('xpMin');
-  if (job.xpMax === undefined || job.xpMax === null) missing.push('xpMax');
-  if (!job.skills?.length) missing.push('skills');
-  if (!job.description) missing.push('description');
-  if (!(job as any).mustHave) missing.push('mustHave');
-  if (!(job as any).shouldHave) missing.push('shouldHave');
-  if (!(job as any).niceToHave) missing.push('niceToHave');
-  if (!(job as any).sourcingCriteria) missing.push('sourcingCriteria');
-  if (!(job as any).remote && !(job as any).remotePolicy) missing.push('remote');
-  return missing;
+// Get missing fields diagnostic - categorized by importance
+function getMissingFields(job: Job): { critical: string[], optional: string[] } {
+  const critical: string[] = [];
+  const optional: string[] = [];
+  
+  // Critical fields for filter generation
+  if (!job.location) critical.push('location');
+  if (!job.skills?.length) critical.push('skills');
+  if (!(job as any).mustHave) critical.push('mustHave');
+  
+  // Important but not blocking
+  if (!job.seniority) optional.push('seniority');
+  if (job.xpMin === undefined || job.xpMin === null) optional.push('xpMin');
+  if (job.xpMax === undefined || job.xpMax === null) optional.push('xpMax');
+  if (!(job as any).shouldHave) optional.push('shouldHave');
+  if (!(job as any).niceToHave) optional.push('niceToHave');
+  if (!(job as any).sourcingCriteria) optional.push('sourcingCriteria');
+  if (!(job as any).remote && !(job as any).remotePolicy) optional.push('remote');
+  if (!(job as any).transversalCriteria) optional.push('transversalCriteria');
+  
+  return { critical, optional };
 }
 
 export const AutoFillFiltersButton: React.FC<AutoFillFiltersButtonProps> = ({
@@ -100,7 +106,7 @@ export const AutoFillFiltersButton: React.FC<AutoFillFiltersButtonProps> = ({
   } | null>(null);
   const [showInput, setShowInput] = useState(true);
   const [showOutput, setShowOutput] = useState(true);
-  const [missingFields, setMissingFields] = useState<string[]>([]);
+  const [missingFields, setMissingFields] = useState<{ critical: string[], optional: string[] }>({ critical: [], optional: [] });
 
   const handleShowInput = useCallback(() => {
     if (!selectedJob) {
@@ -316,21 +322,42 @@ export const AutoFillFiltersButton: React.FC<AutoFillFiltersButtonProps> = ({
           <ScrollArea className="max-h-[60vh] pr-4">
             <div className="space-y-4">
               {/* Missing fields warning */}
-              {missingFields.length > 0 && (
-                <div className="p-3 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900">
-                  <div className="flex items-center gap-2 text-amber-700 dark:text-amber-400 font-medium text-sm mb-2">
-                    ⚠️ Champs manquants dans le job ({missingFields.length})
-                  </div>
-                  <div className="flex flex-wrap gap-1">
-                    {missingFields.map(field => (
-                      <span key={field} className="text-xs px-2 py-0.5 rounded bg-amber-100 dark:bg-amber-900/50 text-amber-800 dark:text-amber-300">
-                        {field}
-                      </span>
-                    ))}
-                  </div>
-                  <p className="text-xs text-amber-600 dark:text-amber-400 mt-2">
-                    Ces champs sont vides dans Notion ou n'ont pas été chargés. Cliquez sur "🔄 Sync Notion" dans le sélecteur de job.
-                  </p>
+              {(missingFields.critical.length > 0 || missingFields.optional.length > 0) && (
+                <div className="space-y-2">
+                  {/* Critical missing */}
+                  {missingFields.critical.length > 0 && (
+                    <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/30">
+                      <div className="flex items-center gap-2 text-destructive font-medium text-sm mb-2">
+                        🔴 Champs critiques manquants ({missingFields.critical.length})
+                      </div>
+                      <div className="flex flex-wrap gap-1">
+                        {missingFields.critical.map(field => (
+                          <span key={field} className="text-xs px-2 py-0.5 rounded bg-destructive/20 text-destructive">
+                            {field}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* Optional missing */}
+                  {missingFields.optional.length > 0 && (
+                    <div className="p-3 rounded-lg bg-muted border border-border">
+                      <div className="flex items-center gap-2 text-muted-foreground font-medium text-sm mb-2">
+                        ℹ️ Champs optionnels non renseignés ({missingFields.optional.length})
+                      </div>
+                      <div className="flex flex-wrap gap-1">
+                        {missingFields.optional.map(field => (
+                          <span key={field} className="text-xs px-2 py-0.5 rounded bg-secondary text-secondary-foreground">
+                            {field}
+                          </span>
+                        ))}
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-2">
+                        Ces champs améliorent la qualité des filtres mais ne bloquent pas l'auto-fill.
+                      </p>
+                    </div>
+                  )}
                 </div>
               )}
 
