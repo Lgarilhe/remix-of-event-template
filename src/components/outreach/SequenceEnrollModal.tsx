@@ -321,8 +321,21 @@ function calculateScheduledTime(
   if (day === 0) scheduled.setDate(scheduled.getDate() + 1); // Sunday -> Monday
   if (day === 6) scheduled.setDate(scheduled.getDate() + 2); // Saturday -> Monday
   
-  // Add random minutes for natural timing
-  scheduled.setMinutes(Math.floor(Math.random() * 30));
+  // Add small jitter (±5 minutes) for natural timing (do NOT overwrite minutes)
+  const jitterMinutes = Math.floor(Math.random() * 11) - 5; // -5..+5
+  scheduled.setTime(scheduled.getTime() + jitterMinutes * 60 * 1000);
+
+  // Ensure we still respect preferred window after jitter (edge cases near boundaries)
+  const localHourAfterJitter = parseInt(formatter.format(scheduled));
+  if (localHourAfterJitter < preferredHourStart) {
+    scheduled.setHours(scheduled.getHours() + (preferredHourStart - localHourAfterJitter));
+    scheduled.setTime(scheduled.getTime() + Math.floor(Math.random() * 6) * 60 * 1000); // 0..5 min
+  } else if (localHourAfterJitter >= preferredHourEnd) {
+    scheduled.setDate(scheduled.getDate() + 1);
+    scheduled.setHours(preferredHourStart);
+    scheduled.setMinutes(0);
+    scheduled.setTime(scheduled.getTime() + Math.floor(Math.random() * 6) * 60 * 1000); // 0..5 min
+  }
   
   return scheduled;
 }
