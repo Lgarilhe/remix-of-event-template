@@ -1,11 +1,14 @@
 import React, { useState, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { Wand2, Loader2 } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Wand2, Loader2, Eye, ChevronDown, ChevronUp } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { LinkedInFiltersState, RoleFilter, PriorityFilterItem, CompanyKeywordFilter } from './types';
 import { Job } from '@/pages/JobSpace';
 import { toast } from 'sonner';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 
 interface AutoFillFiltersButtonProps {
   selectedJob: Job | null;
@@ -30,6 +33,39 @@ interface GeneratedFilters {
   open_to_work: boolean;
 }
 
+// Build the same job context as the edge function for preview
+function buildJobContext(job: Job): string {
+  const transversal = (job as any).transversalCriteria;
+  const remotePolicy = (job as any).remotePolicy || (job as any).remote || '';
+  
+  return `
+Titre du poste: ${job.title}
+${job.client?.name ? `Client: ${job.client.name}` : ''}
+${job.client?.sector ? `Secteur: ${job.client.sector}` : ''}
+${job.location ? `Localisation: ${job.location}` : ''}
+${job.seniority ? `Séniorité: ${job.seniority}` : ''}
+${job.xpMin !== undefined ? `Expérience min: ${job.xpMin} ans` : ''}
+${job.xpMax !== undefined ? `Expérience max: ${job.xpMax} ans` : ''}
+${job.skills?.length ? `Compétences requises: ${job.skills.join(', ')}` : ''}
+${remotePolicy ? `Politique remote: ${remotePolicy}` : ''}
+${job.description ? `Description: ${job.description.substring(0, 800)}` : ''}
+${(job as any).sourcingCriteria ? `Critères de sourcing: ${(job as any).sourcingCriteria}` : ''}
+
+=== CRITÈRES DU POSTE (pour scoring) ===
+${(job as any).mustHave ? `🔴 MUST-HAVE (obligatoire): ${(job as any).mustHave}` : ''}
+${(job as any).shouldHave ? `🟡 SHOULD-HAVE (souhaité): ${(job as any).shouldHave}` : ''}
+${(job as any).niceToHave ? `🟢 NICE-TO-HAVE (bonus): ${(job as any).niceToHave}` : ''}
+
+${transversal ? `=== CRITÈRES TRANSVERSES (entreprise) ===
+${transversal.domain ? `Domaine: ${transversal.domain}` : ''}
+${transversal.level ? `Niveau: ${transversal.level}` : ''}
+${transversal.must ? `🔴 Must transverse: ${transversal.must}` : ''}
+${transversal.should ? `🟡 Should transverse: ${transversal.should}` : ''}
+${transversal.niceToHave ? `🟢 Nice-to-have transverse: ${transversal.niceToHave}` : ''}
+${transversal.context ? `Contexte: ${transversal.context}` : ''}` : ''}
+`.trim();
+}
+
 export const AutoFillFiltersButton: React.FC<AutoFillFiltersButtonProps> = ({
   selectedJob,
   accountId,
@@ -37,6 +73,23 @@ export const AutoFillFiltersButton: React.FC<AutoFillFiltersButtonProps> = ({
   disabled,
 }) => {
   const [loading, setLoading] = useState(false);
+  const [showDebugModal, setShowDebugModal] = useState(false);
+  const [debugData, setDebugData] = useState<{
+    input: string;
+    output: GeneratedFilters | null;
+  } | null>(null);
+  const [showInput, setShowInput] = useState(true);
+  const [showOutput, setShowOutput] = useState(true);
+
+  const handleShowInput = useCallback(() => {
+    if (!selectedJob) {
+      toast.error('Veuillez sélectionner un poste');
+      return;
+    }
+    const context = buildJobContext(selectedJob);
+    setDebugData({ input: context, output: null });
+    setShowDebugModal(true);
+  }, [selectedJob]);
 
   const handleAutoFill = useCallback(async () => {
     if (!selectedJob) {
@@ -48,6 +101,9 @@ export const AutoFillFiltersButton: React.FC<AutoFillFiltersButtonProps> = ({
       toast.error('Compte LinkedIn non connecté');
       return;
     }
+
+    // Capture input for debug
+    const inputContext = buildJobContext(selectedJob);
 
     setLoading(true);
     try {
@@ -62,6 +118,9 @@ export const AutoFillFiltersButton: React.FC<AutoFillFiltersButtonProps> = ({
       }
 
       const generated: GeneratedFilters = data.filters;
+
+      // Store debug data
+      setDebugData({ input: inputContext, output: generated });
 
       // Build the filter update
       const update: Partial<LinkedInFiltersState> = {};
@@ -157,43 +216,124 @@ export const AutoFillFiltersButton: React.FC<AutoFillFiltersButtonProps> = ({
   const isDisabled = disabled || !selectedJob || !accountId || loading;
 
   return (
-    <TooltipProvider>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            variant={selectedJob ? 'default' : 'outline'}
-            size="sm"
-            onClick={handleAutoFill}
-            disabled={isDisabled}
-            className={`gap-2 text-xs h-8 ${
-              selectedJob 
-                ? 'bg-gradient-to-r from-violet-500 to-purple-600 hover:from-violet-600 hover:to-purple-700 text-white' 
-                : ''
-            }`}
-          >
-            {loading ? (
-              <>
-                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                Génération...
-              </>
-            ) : (
-              <>
-                <Wand2 className="w-3.5 h-3.5" />
-                Auto-fill
-              </>
-            )}
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent side="bottom">
-          {!selectedJob ? (
-            <p>Sélectionnez un poste pour activer l'auto-remplissage</p>
-          ) : !accountId ? (
-            <p>Connectez un compte LinkedIn</p>
-          ) : (
-            <p>Remplir automatiquement les filtres depuis le poste sélectionné</p>
-          )}
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
+    <>
+      <TooltipProvider>
+        <div className="flex items-center gap-1">
+          {/* Preview input button */}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleShowInput}
+                disabled={!selectedJob}
+                className="h-8 w-8 p-0"
+              >
+                <Eye className="w-3.5 h-3.5" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">
+              <p>Voir l'input envoyé à l'IA</p>
+            </TooltipContent>
+          </Tooltip>
+
+          {/* Auto-fill button */}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant={selectedJob ? 'default' : 'outline'}
+                size="sm"
+                onClick={handleAutoFill}
+                disabled={isDisabled}
+                className={`gap-2 text-xs h-8 ${
+                  selectedJob 
+                    ? 'bg-gradient-to-r from-violet-500 to-purple-600 hover:from-violet-600 hover:to-purple-700 text-white' 
+                    : ''
+                }`}
+              >
+                {loading ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    Génération...
+                  </>
+                ) : (
+                  <>
+                    <Wand2 className="w-3.5 h-3.5" />
+                    Auto-fill
+                  </>
+                )}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">
+              {!selectedJob ? (
+                <p>Sélectionnez un poste pour activer l'auto-remplissage</p>
+              ) : !accountId ? (
+                <p>Connectez un compte LinkedIn</p>
+              ) : (
+                <p>Remplir automatiquement les filtres depuis le poste sélectionné</p>
+              )}
+            </TooltipContent>
+          </Tooltip>
+        </div>
+      </TooltipProvider>
+
+      {/* Debug Modal */}
+      <Dialog open={showDebugModal} onOpenChange={setShowDebugModal}>
+        <DialogContent className="max-w-3xl max-h-[85vh]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Wand2 className="w-5 h-5 text-violet-500" />
+              Debug Auto-Fill: {selectedJob?.title}
+            </DialogTitle>
+            <DialogDescription>
+              Visualisez les données envoyées à l'IA et les filtres générés
+            </DialogDescription>
+          </DialogHeader>
+
+          <ScrollArea className="max-h-[60vh] pr-4">
+            <div className="space-y-4">
+              {/* Input Section */}
+              <Collapsible open={showInput} onOpenChange={setShowInput}>
+                <CollapsibleTrigger asChild>
+                  <Button variant="ghost" className="w-full justify-between p-3 h-auto bg-muted/50 hover:bg-muted">
+                    <span className="font-medium text-sm">📥 Input envoyé à l'IA</span>
+                    {showInput ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                  </Button>
+                </CollapsibleTrigger>
+                <CollapsibleContent>
+                  <pre className="mt-2 p-4 bg-muted rounded-lg text-xs font-mono whitespace-pre-wrap overflow-x-auto border">
+                    {debugData?.input || 'Aucune donnée'}
+                  </pre>
+                </CollapsibleContent>
+              </Collapsible>
+
+              {/* Output Section */}
+              {debugData?.output && (
+                <Collapsible open={showOutput} onOpenChange={setShowOutput}>
+                  <CollapsibleTrigger asChild>
+                    <Button variant="ghost" className="w-full justify-between p-3 h-auto bg-green-50 dark:bg-green-950/30 hover:bg-green-100 dark:hover:bg-green-950/50">
+                      <span className="font-medium text-sm text-green-700 dark:text-green-400">📤 Filtres générés</span>
+                      {showOutput ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                    </Button>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent>
+                    <pre className="mt-2 p-4 bg-green-50 dark:bg-green-950/20 rounded-lg text-xs font-mono whitespace-pre-wrap overflow-x-auto border border-green-200 dark:border-green-900">
+                      {JSON.stringify(debugData.output, null, 2)}
+                    </pre>
+                  </CollapsibleContent>
+                </Collapsible>
+              )}
+
+              {/* Help text */}
+              {!debugData?.output && (
+                <p className="text-sm text-muted-foreground text-center py-4">
+                  Cliquez sur "Auto-fill" pour voir les filtres générés
+                </p>
+              )}
+            </div>
+          </ScrollArea>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 };
