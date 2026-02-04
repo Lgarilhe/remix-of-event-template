@@ -772,17 +772,24 @@ TEMPLATE DE BASE (à personnaliser):
    - EXPRESSIONS FAMILIÈRES: évite les raccourcis trop oraux même en mode casual
 
 7. FORMAT OBLIGATOIRE:
-   ${isInvitation ? `- MAXIMUM 50 CARACTÈRES (note d'invitation LinkedIn)
-   - Sois ultra concis: "[Sujet] - échangeons ?" ou "[Client] recrute [Profil]"` : `- 80-100 mots maximum
+   ${isInvitation ? `⚠️ CONTRAINTE CRITIQUE: MAXIMUM 50 CARACTÈRES TOTAL (espaces inclus) ⚠️
+   - LinkedIn coupe le message à 50 caractères, tout ce qui dépasse est PERDU
+   - COMPTE tes caractères ! Exemples valides:
+     • "Profil Data intéressant !" (24 car) ✓
+     • "On recrute chez [Client]" (25 car) ✓  
+     • "Poste Tech Lead - dispo ?" (26 car) ✓
+   - PAS de salutation (Salut X, Bonjour) → gaspille des caractères
+   - PAS de sauts de ligne
+   - VA DROIT AU BUT en moins de 50 caractères` : `- 80-100 mots maximum
    - Phrases courtes et percutantes
    - SAUTS DE LIGNE entre chaque paragraphe/idée (2-3 paragraphes distincts)
    - Structure type: Accroche perso (1-2 phrases) → Pitch poste (2-3 phrases) → CTA (1 phrase)`}
-   - Signature: "${senderName || '[Prénom]'}"
+   ${!isInvitation ? `- Signature: "${senderName || '[Prénom]'}"` : ''}
 
 Réponds UNIQUEMENT en JSON valide:
 {
   "subject": "Objet court (max 50 car)",
-  "message": "Le message complet${isInvitation ? '' : ' avec des \\\\n\\\\n entre les paragraphes'}"
+  "message": "${isInvitation ? 'Note COURTE de max 50 caractères sans salutation' : 'Le message complet avec des \\\\n\\\\n entre les paragraphes'}"
 }`;
 
   return prompt;
@@ -1140,7 +1147,18 @@ async function executeStepAction(
         // The profileId from search may be in a different format (AEM..., ADo..., etc.)
         // We need to fetch the profile first to get the correct provider_id
         
-        const inviteNote = messageText ? messageText.slice(0, 50) : '';
+        // Truncate smartly to 50 chars - cut at last space to avoid mid-word cuts
+        let inviteNote = '';
+        if (messageText) {
+          if (messageText.length <= 50) {
+            inviteNote = messageText;
+          } else {
+            // Find last space before char 50
+            const truncated = messageText.slice(0, 50);
+            const lastSpace = truncated.lastIndexOf(' ');
+            inviteNote = lastSpace > 20 ? truncated.slice(0, lastSpace) : truncated;
+          }
+        }
         
         // Resolve provider_id (ACo...) for the invite endpoint
         let correctProviderId = profileId;
