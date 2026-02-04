@@ -347,9 +347,16 @@ serve(async (req) => {
         let repliesDetected = 0;
 
         for (const enrollment of activeEnrollments || []) {
-          const hasReply = await checkForReply(enrollment.account_id, enrollment.profile_id);
+          // Pass enrollment created_at to only check messages AFTER enrollment
+          const hasReply = await checkForReplyAfterDate(
+            enrollment.account_id, 
+            enrollment.profile_id,
+            enrollment.created_at
+          );
           
           if (hasReply) {
+            console.log(`[process-sequences] Reply detected for enrollment ${enrollment.id} (${enrollment.profile_name})`);
+            
             await supabase
               .from('sequence_enrollments')
               .update({ 
@@ -1250,8 +1257,11 @@ async function getProfileInfo(accountId: string, profileId: string): Promise<{
   }
 }
 
-async function checkHasProspectReplied(accountId: string, profileId: string): Promise<boolean> {
+// Check if prospect has replied AFTER a specific date (usually enrollment creation)
+async function checkForReplyAfterDate(accountId: string, profileId: string, afterDate: string): Promise<boolean> {
   try {
+    const enrollmentTime = new Date(afterDate).getTime();
+    
     const chatsResponse = await fetch(
       `${UNIPILE_DSN}/api/v1/chat_attendees/${profileId}/chats?account_id=${accountId}`,
       { headers: { 'X-API-KEY': UNIPILE_API_KEY! } }
@@ -1275,19 +1285,44 @@ async function checkHasProspectReplied(accountId: string, profileId: string): Pr
       const messagesData = await messagesResponse.json();
       const messages = messagesData.items || [];
       
-      const prospectMessages = messages.filter((m: { is_sender_self?: boolean; sender_attendee_id?: string }) => 
-        !m.is_sender_self && m.sender_attendee_id !== 'self'
-      );
+      // Only count messages from the prospect that were sent AFTER enrollment
+      const newProspectMessages = messages.filter((m: { 
+        is_sender_self?: boolean; 
+        sender_attendee_id?: string;
+        timestamp?: string;
+        date?: string;
+        created_at?: string;
+      }) => {
+        // Must be from prospect (not us)
+        if (m.is_sender_self || m.sender_attendee_id === 'self') return false;
+        
+        // Must have a timestamp to check
+        const msgTime = m.timestamp || m.date || m.created_at;
+        if (!msgTime) return false;
+        
+        // Must be after enrollment
+        const messageTime = new Date(msgTime).getTime();
+        return messageTime > enrollmentTime;
+      });
       
-      if (prospectMessages.length > 0) {
+      if (newProspectMessages.length > 0) {
+        console.log(`[process-sequences] Found ${newProspectMessages.length} new messages from prospect ${profileId} after ${afterDate}`);
         return true;
       }
     }
     
     return false;
-  } catch {
+  } catch (err) {
+    console.error(`[process-sequences] Error checking replies for ${profileId}:`, err);
     return false;
   }
+}
+
+// Legacy wrapper - only checks for ANY reply (used for wait_for_event conditions)
+async function checkHasProspectReplied(accountId: string, profileId: string): Promise<boolean> {
+  // For backward compatibility, check from 24h ago as a reasonable default
+  const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  return await checkForReplyAfterDate(accountId, profileId, yesterday);
 }
 
 // deno-lint-ignore no-explicit-any
@@ -1753,6 +1788,9 @@ async function checkTimeoutBranches(supabase: any) {
   return { checked: waitingExecutions.length, branched };
 }
 
+// Deprecated - use checkForReplyAfterDate instead with enrollment.created_at
 async function checkForReply(accountId: string, profileId: string): Promise<boolean> {
-  return await checkHasProspectReplied(accountId, profileId);
+  // Legacy: Check from 24h ago
+  const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  return await checkForReplyAfterDate(accountId, profileId, yesterday);
 }
