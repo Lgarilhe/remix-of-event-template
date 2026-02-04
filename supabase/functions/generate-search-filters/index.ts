@@ -213,13 +213,32 @@ STRATÉGIE "ROLE_KEYWORDS" (titres uniquement):
 - Inclure français ET anglais
 - Exemple: "Cloud Network Engineer OR Network Architect OR Ingénieur Réseau"
 
-⚠️ RÈGLE EXPÉRIENCE - PLAGES LARGES:
-- TOUJOURS élargir la plage d'expérience de ±2-3 ans par rapport au besoin strict
-- Si le poste demande 7-8 ans → retourner 5-10 ans
-- Si le poste demande 5 ans min → retourner 3 ans min
-- Si le poste demande 10 ans max → retourner 12 ans max
-- Objectif: ne PAS exclure des profils légèrement hors critères qui pourraient convenir
-- Le filtrage fin se fera par scoring IA, pas par les filtres de recherche
+⚠️ RÈGLE EXPÉRIENCE - INFÉRENCE OBLIGATOIRE:
+Tu DOIS TOUJOURS retourner years_experience_min ET years_experience_max avec des valeurs numériques cohérentes.
+Si le poste ne précise pas l'expérience, DÉDUIS-LA du contexte:
+
+INFÉRENCE PAR TITRE/SÉNIORITÉ:
+- "Junior", "Débutant", "Entry-level" → 0-3 ans
+- "Confirmé", "Mid-level", "Expérimenté" → 3-7 ans  
+- "Senior", "Lead", "Principal" → 5-12 ans
+- "Staff", "Expert", "Architecte" → 8-15 ans
+- "Director", "VP", "C-Level", "Head of" → 10-20 ans
+
+INFÉRENCE PAR MOTS-CLÉS DESCRIPTION:
+- "Autonomie", "leadership technique" → ajouter +2 ans au min
+- "Encadrement d'équipe", "management" → min 5 ans
+- "Stratégie", "vision" → min 8 ans
+- "Première expérience OK", "profil évolutif" → max 5 ans
+
+PLAGES PAR DÉFAUT (si aucun indice):
+- Poste technique standard → 2-8 ans
+- Poste avec "Senior" dans le titre → 5-12 ans
+- Poste management → 7-15 ans
+
+ÉLARGISSEMENT SYSTÉMATIQUE:
+- Une fois la plage déduite, élargir de -2 ans sur le min et +3 ans sur le max
+- Objectif: ne PAS exclure des profils légèrement hors critères
+- Le filtrage fin se fera par scoring IA, pas par les filtres
 
 RÈGLES MÉTIER:
 1. Pour un profil RARE, réduire à 1-2 groupes AND (moins restrictif)
@@ -229,8 +248,8 @@ RÈGLES MÉTIER:
 Retourne UNIQUEMENT un objet JSON avec:
 - keywords: string - Booléen LAYERED: "(catégorie1 OR alt1) AND (catégorie2 OR alt2)"
 - role_keywords: string[] - UN élément avec titres FR+EN en OR
-- years_experience_min: number | null - Expérience MIN en années (élargir de -2 ans vs le besoin strict)
-- years_experience_max: number | null - Expérience MAX en années (élargir de +2 ans vs le besoin strict, null si senior OK)
+- years_experience_min: number - Expérience MIN en années (OBLIGATOIRE, jamais null)
+- years_experience_max: number - Expérience MAX en années (OBLIGATOIRE, jamais null)
 - skills_to_search: string[] - Soft-skills et compétences secondaires (max 10)
 - certifications: string[] - Certifications pertinentes (max 3)
 - industry_keywords: string[] - Secteurs (max 3)
@@ -239,6 +258,7 @@ Retourne UNIQUEMENT un objet JSON avec:
 - job_category: string - "tech", "business", "data", "product", "design", "other"
 - suggest_open_to_work: boolean - false sauf si explicitement demandé
 - keyword_rationale: string - Explication de la structure layered choisie (1 phrase)
+- experience_rationale: string - Comment tu as déduit la plage d'expérience (1 phrase)
 - search_rationale: string - Stratégie globale en 1 phrase
 
 NOTE: Ne PAS retourner de champ "seniority_levels" - utiliser uniquement years_experience_min/max.
