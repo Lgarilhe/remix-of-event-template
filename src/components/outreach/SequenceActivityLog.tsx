@@ -42,12 +42,14 @@ import {
   Timer,
   RefreshCw,
   Calendar,
-  Filter,
+  Pencil,
+  Ban,
 } from 'lucide-react';
 import { format, formatDistanceToNow, isAfter, isBefore, startOfDay, endOfDay, subDays } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { EditScheduledMessageModal } from './activity-log/EditScheduledMessageModal';
 
 interface StepExecution {
   id: string;
@@ -114,6 +116,8 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
   const [statusFilter, setStatusFilter] = useState<FilterStatus>('all');
   const [periodFilter, setPeriodFilter] = useState<FilterPeriod>('all');
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
+  const [editingExecution, setEditingExecution] = useState<StepExecution | null>(null);
+  const [cancellingId, setCancellingId] = useState<string | null>(null);
 
   const fetchExecutions = async () => {
     try {
@@ -162,6 +166,26 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
       }
       return next;
     });
+  };
+
+  const handleCancelExecution = async (executionId: string) => {
+    setCancellingId(executionId);
+    try {
+      const { error } = await supabase
+        .from('sequence_step_executions')
+        .update({ status: 'cancelled', skip_reason: 'Annulé manuellement' })
+        .eq('id', executionId);
+
+      if (error) throw error;
+
+      toast.success('Action annulée');
+      fetchExecutions();
+    } catch (err) {
+      console.error('Error cancelling execution:', err);
+      toast.error("Erreur lors de l'annulation");
+    } finally {
+      setCancellingId(null);
+    }
   };
 
   // Filter and group executions
@@ -469,6 +493,39 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
                                 </div>
                               )}
 
+                              {/* Actions for scheduled items */}
+                              {exec.status === 'scheduled' && (
+                                <div className="flex items-center gap-2 pt-2">
+                                  {hasMessage && (
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      className="h-7 text-xs"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setEditingExecution(exec);
+                                      }}
+                                    >
+                                      <Pencil className="w-3 h-3 mr-1.5" />
+                                      Modifier
+                                    </Button>
+                                  )}
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="h-7 text-xs text-red-600 hover:text-red-700 hover:bg-red-50"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleCancelExecution(exec.id);
+                                    }}
+                                    disabled={cancellingId === exec.id}
+                                  >
+                                    <Ban className="w-3 h-3 mr-1.5" />
+                                    {cancellingId === exec.id ? 'Annulation...' : 'Annuler'}
+                                  </Button>
+                                </div>
+                              )}
+
                               {/* Metadata */}
                               <div className="flex items-center gap-3 text-[11px] text-muted-foreground pt-1">
                                 <div className="flex items-center gap-1">
@@ -494,6 +551,14 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
           </div>
         </ScrollArea>
       </SheetContent>
+
+      {/* Edit scheduled message modal */}
+      <EditScheduledMessageModal
+        isOpen={!!editingExecution}
+        onClose={() => setEditingExecution(null)}
+        execution={editingExecution}
+        onSaved={fetchExecutions}
+      />
     </Sheet>
   );
 };
