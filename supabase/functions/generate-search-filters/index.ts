@@ -424,15 +424,16 @@ ${transversal.context ? `Contexte: ${transversal.context}` : ''}` : ''}
     const schoolFilters: SchoolFilter[] = [];
 
     // === RÈGLE 4: Adapter le rayon de recherche selon la politique remote ===
-    let locationRadius: number | null = 50; // Default 50 miles (~80km)
+    // Default: 40km (~25 miles) autour de la ville du poste
+    let locationRadius: number | null = 25; // 25 miles ≈ 40km
     const remotePolicyForRadius = (job.remotePolicy || job.remote || '').toLowerCase();
     
     if (remotePolicyForRadius.includes('full') || remotePolicyForRadius.includes('100%') || remotePolicyForRadius.includes('remote')) {
       locationRadius = null; // Pas de limite = recherche nationale
-    } else if (remotePolicyForRadius.includes('hybrid') || remotePolicyForRadius.includes('hybride')) {
-      locationRadius = 75; // ~120km pour hybrid
-    } else if (remotePolicyForRadius.includes('onsite') || remotePolicyForRadius.includes('présentiel')) {
-      locationRadius = 35; // ~56km pour présentiel
+    } else if (remotePolicyForRadius.includes('hybrid') || remotePolicyForRadius.includes('hybride') || remotePolicyForRadius.includes('partiel')) {
+      locationRadius = 50; // ~80km pour hybrid/télétravail partiel
+    } else if (remotePolicyForRadius.includes('onsite') || remotePolicyForRadius.includes('présentiel') || remotePolicyForRadius.includes('sur site')) {
+      locationRadius = 25; // ~40km pour présentiel strict
     }
 
     // === RÈGLE 5: Valoriser les candidats Open to Work ===
