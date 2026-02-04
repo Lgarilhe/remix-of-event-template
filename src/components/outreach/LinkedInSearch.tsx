@@ -2079,6 +2079,26 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
                       setResults(prev => prev.filter(p => p.id !== profile.id));
                     }
                   }}
+                  onArchive={selectedJob ? async () => {
+                    const profileUrl = profile.public_profile_url || 
+                      (profile.id ? `https://linkedin.com/in/${profile.id}` : undefined);
+                    const fullName = [profile.first_name, profile.last_name].filter(Boolean).join(' ') || 'Profil';
+                    
+                    await candidateStatus.dismissCandidate(profile.id, {
+                      name: fullName,
+                      headline: profile.headline,
+                      profileUrl,
+                      score: jobScores[profile.id]?.match_score,
+                      recommendation: jobScores[profile.id]?.recommendation,
+                    });
+                    
+                    // Remove from results if autoHideTreated is enabled
+                    if (autoHideTreatedRef.current) {
+                      setResults(prev => prev.filter(p => p.id !== profile.id));
+                    }
+                    
+                    toast.success(`${fullName} archivé`);
+                  } : undefined}
                 />
               ))}
 

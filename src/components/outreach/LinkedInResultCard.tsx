@@ -38,6 +38,7 @@ import {
   Send,
   GitBranch,
   FolderPlus,
+  Archive,
 } from 'lucide-react';
 import { SequenceEnrollButton } from './SequenceEnrollButton';
 import { AddToProjectButton } from './projects/AddToProjectButton';
@@ -59,6 +60,7 @@ interface LinkedInResultCardProps {
   onSequenceEnroll?: () => void;
   activeProject?: SourcingProject | null;
   onProfileTreated?: () => void; // Called when profile is messaged, added to project, or enrolled in sequence
+  onArchive?: () => void; // Called when profile is archived/dismissed
 }
 
 interface ChatMessage {
@@ -89,6 +91,7 @@ export const LinkedInResultCard: React.FC<LinkedInResultCardProps> = ({
   onSequenceEnroll,
   activeProject,
   onProfileTreated,
+  onArchive,
 }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const [showMessageModal, setShowMessageModal] = useState(false);
@@ -582,6 +585,25 @@ export const LinkedInResultCard: React.FC<LinkedInResultCardProps> = ({
                       compact
                       onAdded={onProfileTreated}
                     />
+                  )}
+                  
+                  {/* Archive button */}
+                  {onArchive && (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={onArchive}
+                          className="text-muted-foreground hover:text-orange-600 hover:bg-orange-50 h-8 w-8 p-0"
+                        >
+                          <Archive className="w-4 h-4" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>Archiver ce profil</p>
+                      </TooltipContent>
+                    </Tooltip>
                   )}
                 </div>
               </div>
