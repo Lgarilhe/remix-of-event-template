@@ -115,20 +115,51 @@ const statusConfig: Record<string, { label: string; icon: React.ReactNode; class
   },
 };
 
-const actionTypeConfig: Record<string, { label: string; icon: React.ReactNode; color: string }> = {
-  send_inmail: { label: 'InMail', icon: <Mail className="w-3.5 h-3.5" />, color: 'text-purple-600' },
-  send_message: { label: 'Message', icon: <Send className="w-3.5 h-3.5" />, color: 'text-blue-600' },
-  send_invitation: { label: 'Invitation', icon: <UserPlus className="w-3.5 h-3.5" />, color: 'text-green-600' },
-  visit_profile: { label: 'Visite profil', icon: <Eye className="w-3.5 h-3.5" />, color: 'text-gray-600' },
-  smart_message: { label: 'Smart Message', icon: <MessageCircle className="w-3.5 h-3.5" />, color: 'text-indigo-600' },
-  check_connection: { label: 'Check connexion', icon: <Users className="w-3.5 h-3.5" />, color: 'text-orange-600' },
-  wait_for_event: { label: 'Attente', icon: <Timer className="w-3.5 h-3.5" />, color: 'text-amber-600' },
+const actionTypeConfig: Record<string, { label: string; icon: React.ReactNode; color: string; bgColor: string }> = {
+  // Standard action names
+  send_inmail: { label: 'InMail', icon: <Mail className="w-3.5 h-3.5" />, color: 'text-purple-600', bgColor: 'bg-purple-100' },
+  send_message: { label: 'Message', icon: <Send className="w-3.5 h-3.5" />, color: 'text-blue-600', bgColor: 'bg-blue-100' },
+  send_invitation: { label: 'Invitation', icon: <UserPlus className="w-3.5 h-3.5" />, color: 'text-green-600', bgColor: 'bg-green-100' },
+  visit_profile: { label: 'Visite du profil', icon: <Eye className="w-3.5 h-3.5" />, color: 'text-gray-600', bgColor: 'bg-gray-100' },
+  smart_message: { label: 'Message intelligent', icon: <MessageCircle className="w-3.5 h-3.5" />, color: 'text-indigo-600', bgColor: 'bg-indigo-100' },
+  check_connection: { label: 'Vérification connexion', icon: <Users className="w-3.5 h-3.5" />, color: 'text-orange-600', bgColor: 'bg-orange-100' },
+  wait_for_event: { label: 'Attente événement', icon: <Timer className="w-3.5 h-3.5" />, color: 'text-amber-600', bgColor: 'bg-amber-100' },
+  // Alternative action names (used in some steps)
+  profile_visit: { label: 'Visite du profil', icon: <Eye className="w-3.5 h-3.5" />, color: 'text-gray-600', bgColor: 'bg-gray-100' },
+  connection_request: { label: 'Demande de connexion', icon: <UserPlus className="w-3.5 h-3.5" />, color: 'text-green-600', bgColor: 'bg-green-100' },
+  message: { label: 'Message', icon: <Send className="w-3.5 h-3.5" />, color: 'text-blue-600', bgColor: 'bg-blue-100' },
+  inmail: { label: 'InMail', icon: <Mail className="w-3.5 h-3.5" />, color: 'text-purple-600', bgColor: 'bg-purple-100' },
+  wait_connection: { label: 'Attente connexion', icon: <Timer className="w-3.5 h-3.5" />, color: 'text-amber-600', bgColor: 'bg-amber-100' },
+  wait_reply: { label: 'Attente réponse', icon: <Timer className="w-3.5 h-3.5" />, color: 'text-amber-600', bgColor: 'bg-amber-100' },
+};
+
+// Helper to format error messages nicely
+const formatErrorMessage = (error: string | null): string => {
+  if (!error) return '';
+  try {
+    // Try to parse JSON error
+    const parsed = JSON.parse(error);
+    if (parsed.detail) return parsed.detail;
+    if (parsed.title) return parsed.title;
+    if (parsed.message) return parsed.message;
+    return error;
+  } catch {
+    // If it starts with { and contains JSON-like content, try to extract meaningful parts
+    if (error.startsWith('{') || error.startsWith('[')) {
+      const titleMatch = error.match(/"title"\s*:\s*"([^"]+)"/);
+      const detailMatch = error.match(/"detail"\s*:\s*"([^"]+)"/);
+      if (detailMatch) return detailMatch[1];
+      if (titleMatch) return titleMatch[1];
+    }
+    return error;
+  }
 };
 
 const executionStatusConfig: Record<string, { label: string; icon: React.ReactNode; className: string }> = {
   pending: { label: 'À venir', icon: <Clock className="w-3 h-3" />, className: 'bg-gray-50 text-gray-400 border-gray-200 border-dashed' },
   scheduled: { label: 'Planifié', icon: <Clock className="w-3 h-3" />, className: 'bg-blue-50 text-blue-600 border-blue-200' },
   executed: { label: 'Exécuté', icon: <CheckCircle2 className="w-3 h-3" />, className: 'bg-green-50 text-green-600 border-green-200' },
+  sent: { label: 'Envoyé', icon: <CheckCircle2 className="w-3 h-3" />, className: 'bg-green-50 text-green-600 border-green-200' },
   skipped: { label: 'Ignoré', icon: <SkipForward className="w-3 h-3" />, className: 'bg-gray-50 text-gray-500 border-gray-200' },
   failed: { label: 'Échoué', icon: <AlertCircle className="w-3 h-3" />, className: 'bg-red-50 text-red-600 border-red-200' },
   cancelled: { label: 'Annulé', icon: <XCircle className="w-3 h-3" />, className: 'bg-gray-50 text-gray-500 border-gray-200' },
@@ -547,46 +578,55 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
                                   const actionConfig = actionTypeConfig[step.action_type] || { 
                                     label: step.action_type, 
                                     icon: <Send className="w-3.5 h-3.5" />,
-                                    color: 'text-gray-600'
+                                    color: 'text-gray-600',
+                                    bgColor: 'bg-gray-100'
                                   };
                                   
                                   // Determine status: from execution or 'pending' if no execution yet
                                   const status = exec?.status || 'pending';
                                   const execStatus = executionStatusConfig[status] || executionStatusConfig.pending;
+                                  const isPending = status === 'pending';
+                                  const isFailed = status === 'failed';
+                                  const isSkipped = status === 'skipped';
 
                                   return (
                                     <div 
                                       key={step.id}
                                       className={cn(
-                                        "flex items-start gap-3 p-2 rounded-lg border",
-                                        execStatus.className
+                                        "flex items-start gap-3 p-2.5 rounded-lg border transition-colors",
+                                        isFailed && "bg-red-50/70 border-red-200",
+                                        isSkipped && "bg-gray-50/70 border-gray-200",
+                                        !isFailed && !isSkipped && execStatus.className
                                       )}
                                     >
-                                      {/* Step number */}
+                                      {/* Step number with icon */}
                                       <div className={cn(
-                                        "flex-shrink-0 w-6 h-6 rounded-full bg-white border flex items-center justify-center text-[10px] font-bold",
-                                        status === 'pending' ? 'border-gray-300 text-gray-400' : 'border-current'
+                                        "flex-shrink-0 w-7 h-7 rounded-lg flex items-center justify-center",
+                                        isPending ? 'bg-gray-100 text-gray-400' : actionConfig.bgColor,
+                                        !isPending && actionConfig.color
                                       )}>
-                                        {idx + 1}
+                                        {actionConfig.icon}
                                       </div>
 
                                       {/* Step details */}
                                       <div className="flex-1 min-w-0">
                                         <div className="flex items-center gap-2 flex-wrap">
                                           <span className={cn(
-                                            "flex items-center gap-1 text-sm font-medium", 
-                                            status === 'pending' ? 'text-gray-400' : actionConfig.color
+                                            "text-sm font-medium", 
+                                            isPending ? 'text-gray-400' : 'text-foreground'
                                           )}>
-                                            {actionConfig.icon}
                                             {actionConfig.label}
                                           </span>
-                                          <Badge variant="outline" className={cn("text-[9px] px-1.5 py-0", execStatus.className)}>
+                                          <Badge variant="outline" className={cn(
+                                            "text-[9px] px-1.5 py-0 h-4",
+                                            execStatus.className
+                                          )}>
                                             {execStatus.icon}
                                             <span className="ml-0.5">{execStatus.label}</span>
                                           </Badge>
                                           {/* Show delay for pending steps */}
-                                          {status === 'pending' && (step.delay_days > 0 || step.delay_hours > 0) && (
-                                            <span className="text-[9px] text-gray-400">
+                                          {isPending && (step.delay_days > 0 || step.delay_hours > 0) && (
+                                            <span className="text-[10px] text-muted-foreground">
                                               +{step.delay_days > 0 ? `${step.delay_days}j` : ''}{step.delay_hours > 0 ? `${step.delay_hours}h` : ''}
                                             </span>
                                           )}
@@ -594,49 +634,53 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
 
                                         {/* Timing info from execution */}
                                         {exec && (
-                                          <div className="text-[10px] text-gray-500 mt-1">
+                                          <div className="text-[11px] mt-1">
                                             {exec.status === 'scheduled' && (
-                                              <span>
+                                              <span className="text-muted-foreground">
                                                 Prévu : {format(new Date(exec.scheduled_at), 'dd/MM HH:mm', { locale: fr })}
                                               </span>
                                             )}
-                                            {exec.status === 'executed' && exec.executed_at && (
-                                              <span>
-                                                Exécuté : {format(new Date(exec.executed_at), 'dd/MM HH:mm', { locale: fr })}
+                                            {(exec.status === 'executed' || exec.status === 'sent') && exec.executed_at && (
+                                              <span className="text-green-600">
+                                                ✓ {format(new Date(exec.executed_at), 'dd/MM HH:mm', { locale: fr })}
                                               </span>
                                             )}
                                             {exec.status === 'skipped' && exec.skip_reason && (
-                                              <span className="text-gray-400">
-                                                Raison : {exec.skip_reason}
+                                              <span className="text-gray-500">
+                                                {exec.skip_reason}
                                               </span>
                                             )}
                                             {exec.status === 'cancelled' && exec.skip_reason && (
-                                              <span className="text-gray-400">
+                                              <span className="text-gray-500">
                                                 {exec.skip_reason}
                                               </span>
                                             )}
                                             {exec.status === 'failed' && exec.error_message && (
-                                              <span className="text-red-500">
-                                                Erreur : {exec.error_message}
-                                              </span>
+                                              <div className="text-red-600 mt-1 p-2 bg-red-100/50 rounded text-[10px]">
+                                                <strong>Erreur :</strong> {formatErrorMessage(exec.error_message)}
+                                              </div>
                                             )}
                                           </div>
                                         )}
 
-                                        {/* Message preview if executed */}
-                                        {exec?.status === 'executed' && exec.final_message && (
-                                          <div className="mt-1.5 p-2 bg-white rounded border border-gray-100 text-[11px] text-gray-600 line-clamp-2">
+                                        {/* Message preview if executed/sent */}
+                                        {(exec?.status === 'executed' || exec?.status === 'sent') && exec.final_message && (
+                                          <div className="mt-2 p-2 bg-white rounded-lg border text-[11px] text-muted-foreground">
                                             {exec.final_subject && (
-                                              <p className="font-medium mb-0.5">📧 {exec.final_subject}</p>
+                                              <p className="font-medium text-foreground mb-1 pb-1 border-b text-xs">
+                                                {exec.final_subject}
+                                              </p>
                                             )}
-                                            {exec.final_message}
+                                            <p className="line-clamp-2 leading-relaxed">
+                                              {exec.final_message.replace(/\\n/g, ' ').substring(0, 120)}...
+                                            </p>
                                           </div>
                                         )}
 
                                         {/* Template preview for pending steps */}
-                                        {status === 'pending' && step.message_template && (
-                                          <div className="mt-1 text-[10px] text-gray-400 italic truncate">
-                                            "{step.message_template.substring(0, 60)}..."
+                                        {isPending && step.message_template && (
+                                          <div className="mt-1.5 text-[10px] text-muted-foreground/70 italic line-clamp-1">
+                                            « {step.message_template.replace(/\\n/g, ' ').substring(0, 80)}... »
                                           </div>
                                         )}
                                       </div>
