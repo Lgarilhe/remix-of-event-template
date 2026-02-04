@@ -1130,41 +1130,70 @@ async function executeStepAction(
         
         const inviteNote = messageText ? messageText.slice(0, 50) : '';
         
-        // First, try to extract public_identifier from profile URL to get correct provider_id
+        // Resolve provider_id (ACo...) for the invite endpoint
         let correctProviderId = profileId;
         const profileUrl = enrollment.profile_url as string | undefined;
-        
-        if (profileUrl) {
-          const match = profileUrl.match(/linkedin\.com\/in\/([^/?]+)/);
-          if (match) {
-            const publicIdentifier = match[1];
-            console.log(`[process-sequences] Fetching provider_id for public_identifier: ${publicIdentifier}`);
-            
-            // Call Unipile to get the correct provider_id (ACo... format)
-            try {
-              const profileResponse = await fetch(
-                `${UNIPILE_DSN}/api/v1/users/${encodeURIComponent(publicIdentifier)}?account_id=${accountId}`,
-                {
-                  headers: {
-                    'X-API-KEY': UNIPILE_API_KEY!,
-                    'accept': 'application/json',
-                  },
-                }
-              );
-              
-              if (profileResponse.ok) {
-                const profileData = await profileResponse.json();
-                if (profileData.provider_id) {
-                  correctProviderId = profileData.provider_id;
-                  console.log(`[process-sequences] Resolved provider_id: ${correctProviderId}`);
-                }
-              } else {
-                console.warn(`[process-sequences] Could not fetch profile for ${publicIdentifier}:`, profileResponse.status);
+
+        const extractProviderId = (profileData: any): string | undefined => {
+          return (
+            profileData?.provider_id ||
+            profileData?.providerId ||
+            profileData?.provider?.id ||
+            profileData?.provider?.provider_id
+          );
+        };
+
+        const fetchProviderId = async (identifier: string, source: string) => {
+          try {
+            const profileResponse = await fetch(
+              `${UNIPILE_DSN}/api/v1/users/${encodeURIComponent(identifier)}?account_id=${accountId}`,
+              {
+                headers: {
+                  'X-API-KEY': UNIPILE_API_KEY!,
+                  'accept': 'application/json',
+                },
               }
-            } catch (err) {
-              console.warn(`[process-sequences] Error fetching profile:`, err);
+            );
+
+            if (!profileResponse.ok) {
+              console.warn(`[process-sequences] Could not fetch profile (${source}) for ${identifier}:`, profileResponse.status);
+              return;
+            }
+
+            const profileData = await profileResponse.json();
+            const providerId = extractProviderId(profileData);
+            if (providerId) {
+              correctProviderId = providerId;
+              console.log(`[process-sequences] Resolved provider_id (${source}): ${correctProviderId}`);
+            }
+          } catch (err) {
+            console.warn(`[process-sequences] Error fetching profile (${source}):`, err);
+          }
+        };
+
+        // If profileId isn't already a provider_id, try resolving it.
+        if (typeof profileId === 'string' && !profileId.startsWith('ACo')) {
+          // 1) Try resolving directly from the stored profile_id (works for talent/search/profile/AEM...)
+          await fetchProviderId(profileId, 'by_profile_id');
+
+          // 2) Fallback: resolve by public_identifier from a /in/{slug} URL
+          if (!correctProviderId.startsWith('ACo') && profileUrl) {
+            const match = profileUrl.match(/linkedin\.com\/in\/([^/?]+)/);
+            if (match) {
+              const publicIdentifier = match[1];
+              console.log(`[process-sequences] Fetching provider_id for public_identifier: ${publicIdentifier}`);
+              await fetchProviderId(publicIdentifier, 'by_public_identifier');
             }
           }
+        }
+
+        if (typeof correctProviderId === 'string' && !correctProviderId.startsWith('ACo')) {
+          console.warn(`[process-sequences] provider_id not resolved to ACo...; invite likely to fail`, {
+            accountId,
+            originalProfileId: profileId,
+            resolvedProviderId: correctProviderId,
+            profileUrl,
+          });
         }
         
         const inviteBody: Record<string, string> = {
