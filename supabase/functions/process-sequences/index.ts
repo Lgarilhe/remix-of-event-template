@@ -434,7 +434,8 @@ serve(async (req) => {
 // ============ QUOTA VERIFICATION ============
 
 function needsMessage(actionType: string): boolean {
-  return ['message', 'inmail', 'smart_message', 'connection_request'].includes(actionType);
+  // connection_request no longer needs a message (LinkedIn limits to 50 chars, not worth it)
+  return ['message', 'inmail', 'smart_message'].includes(actionType);
 }
 
 // deno-lint-ignore no-explicit-any
@@ -1393,18 +1394,7 @@ async function executeStepAction(
         // The profileId from search may be in a different format (AEM..., ADo..., etc.)
         // We need to fetch the profile first to get the correct provider_id
         
-        // Truncate smartly to 50 chars - cut at last space to avoid mid-word cuts
-        let inviteNote = '';
-        if (messageText) {
-          if (messageText.length <= 50) {
-            inviteNote = messageText;
-          } else {
-            // Find last space before char 50
-            const truncated = messageText.slice(0, 50);
-            const lastSpace = truncated.lastIndexOf(' ');
-            inviteNote = lastSpace > 20 ? truncated.slice(0, lastSpace) : truncated;
-          }
-        }
+        // No message for connection requests (LinkedIn limits to 50 chars, not worth personalizing)
         
         // Resolve provider_id (ACo...) for the invite endpoint
         let correctProviderId = profileId;
@@ -1511,16 +1501,12 @@ async function executeStepAction(
           account_id: accountId,
           provider_id: correctProviderId,
         };
+        // No message attached - just send the connection request
         
-        if (inviteNote) {
-          inviteBody.message = inviteNote;
-        }
-        
-        console.log(`[process-sequences] Sending connection request`, {
+        console.log(`[process-sequences] Sending connection request (no message)`, {
           accountId,
           originalProfileId: profileId,
           resolvedProviderId: correctProviderId,
-          noteLength: inviteNote.length,
         });
         
         const connectResponse = await fetch(`${UNIPILE_DSN}/api/v1/users/invite`, {
@@ -1550,7 +1536,7 @@ async function executeStepAction(
           .update({ connection_status: 'pending_invite' })
           .eq('id', enrollment.id);
         
-        return { success: true, message: inviteNote };
+        return { success: true };
       }
 
       default:
