@@ -134,8 +134,23 @@ export const SequencesList: React.FC<SequencesListProps> = ({
     }
   };
 
+  // Refetch when component becomes visible (tab change)
+  // We use a custom event to trigger refetch when the Sequences tab is selected
   useEffect(() => {
     fetchSequences();
+    
+    // Listen for visibility changes (when user returns to this tab)
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        fetchSequences();
+      }
+    };
+    
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
   }, []);
 
   const handleSaveSequence = async (sequence: Sequence) => {
