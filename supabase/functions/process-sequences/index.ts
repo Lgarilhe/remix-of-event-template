@@ -556,18 +556,63 @@ async function generatePersonalizedMessage(
       .eq('status', 'sent')
       .order('step_order', { ascending: true });
 
-    // 4. Determine message type
-    const stepOrder = step.step_order as number;
+    // 4. Determine message type based on action history, not just step order
     const actionType = step.action_type as string;
-    const isFollowUp = stepOrder > 0 && (previousSteps?.length || 0) > 0;
     const isInvitation = actionType === 'connection_request';
+    
+    // Check if a connection_request was sent before (invitation workflow)
+    const hadInvitation = previousSteps?.some((ps: Record<string, unknown>) => 
+      (ps.step as Record<string, unknown>)?.action_type === 'connection_request'
+    );
+    
+    // Check if any actual message/inmail was already sent
+    const hadPreviousMessage = previousSteps?.some((ps: Record<string, unknown>) => 
+      ['message', 'inmail', 'smart_message'].includes((ps.step as Record<string, unknown>)?.action_type as string)
+    );
+    
+    // Message type logic:
+    // - If we had an invitation before but no message yet → "SUITE INVITATION" (not "RELANCE")
+    // - If we had a previous message → "RELANCE"
+    // - If no previous contact → "PREMIER MESSAGE"
+    let messageType: string;
+    if (isInvitation) {
+      messageType = 'INVITATION (max 50 caractères pour la note)';
+    } else if (hadPreviousMessage) {
+      messageType = 'RELANCE';
+    } else if (hadInvitation) {
+      messageType = 'SUITE INVITATION';
+    } else {
+      messageType = 'PREMIER MESSAGE';
+    }
 
-    // 5. Build the prompt
-    const messageType = isInvitation 
-      ? 'INVITATION (max 50 caractères pour la note)' 
-      : isFollowUp 
-        ? 'RELANCE' 
-        : 'PREMIER MESSAGE';
+    // 5. Get sender name from profile or LinkedIn account
+    let senderName: string | undefined;
+    
+    // First, try to get from profiles table
+    const { data: userProfile } = await supabase
+      .from('profiles')
+      .select('display_name')
+      .eq('user_id', enrollment.created_by)
+      .single();
+    
+    if (userProfile?.display_name) {
+      senderName = userProfile.display_name;
+    } else {
+      // Fallback: get the LinkedIn account name
+      try {
+        const accountResponse = await fetch(
+          `${UNIPILE_DSN}/api/v1/accounts/${enrollment.account_id}`,
+          { headers: { 'X-API-KEY': UNIPILE_API_KEY! } }
+        );
+        if (accountResponse.ok) {
+          const accountData = await accountResponse.json();
+          // Use just the first name from the account
+          senderName = accountData.name?.split(' ')[0] || accountData.name;
+        }
+      } catch (e) {
+        console.warn('Failed to fetch account name:', e);
+      }
+    }
 
     const previousMessagesContext = previousSteps?.map((ps: Record<string, unknown>) => 
       `Étape ${ps.step_order}: ${(ps.step as Record<string, unknown>)?.action_type} - "${ps.final_message || 'N/A'}"`
@@ -581,6 +626,7 @@ async function generatePersonalizedMessage(
       template: step.message_template as string,
       tone: step.ai_tone as string || 'professional',
       isInvitation,
+      senderName,
     });
 
     // 6. Call Claude with enhanced system prompt
@@ -667,6 +713,15 @@ OBJECTIF: QUALIFIER OU PROPOSER UN CALL
 - SI des infos critiques manquent dans le profil (techno clé, niveau management, etc.) → pose UNE question pertinente
 - NE POSE PAS de question sur l'anglais sauf si c'est explicitement un must-have critique
 - PRÉFÈRE un CTA direct ("Dispo pour un call ?") plutôt qu'une question de qualification générique`,
+    
+    'SUITE INVITATION': `
+OBJECTIF: PREMIER VRAI MESSAGE APRÈS ACCEPTATION D'INVITATION
+- C'est ton PREMIER MESSAGE de fond après une simple invitation LinkedIn
+- NE DIS JAMAIS "je reviens vers vous" ou "suite à notre échange" car il n'y a PAS EU d'échange
+- Commence directement par présenter le poste de manière engageante
+- Remercie brièvement pour l'acceptation (1 phrase max) puis enchaîne sur le pitch
+- Tu peux mentionner "Merci d'avoir accepté" mais PAS "je reviens" ou "nous avions parlé"
+- Structure: Remerciement court (optionnel) → Accroche perso → Pitch poste → CTA`,
     
     'RELANCE': `
 OBJECTIF: RELANCER
