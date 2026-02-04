@@ -133,29 +133,37 @@ MAPPING TECHNOS (exemples obligatoires):
 - .NET → ".NET OR DotNet OR \"C#\" OR CSharp"
 - SQL → "SQL OR MySQL OR MariaDB OR MSSQL"
 
-⚠️ RÈGLE CRITIQUE 2 - RACINES INTELLIGENTES:
-Utiliser des RACINES/PRÉFIXES courts pour capturer toutes les variantes d'un même concept:
+⚠️ RÈGLE CRITIQUE 2 - RACINES INTELLIGENTES (CONTEXTUELLES):
+Utiliser des RACINES/PRÉFIXES courts UNIQUEMENT quand c'est pertinent au contexte du poste.
 
-EXEMPLES DE RACINES EFFICACES:
-- "Dev" → capture: Developer, Développeur, DevOps, Dev Lead, Development...
-- "Eng" → capture: Engineer, Engineering, Ingénieur...
-- "Archi" → capture: Architect, Architecture, Architecte...
-- "Admin" → capture: Administrator, Administration, Administrateur, SysAdmin...
-- "Auto" → capture: Automation, Automatisation, Automated...
-- "Infra" → capture: Infrastructure, Infra...
-- "Micro" → capture: Microservices, Microservice...
-- "Full" → capture: Fullstack, Full-stack, Full Stack...
-- "Front" → capture: Frontend, Front-end, Front End...
-- "Back" → capture: Backend, Back-end, Back End...
-- "Data" → capture: Data Engineer, Data Scientist, Database...
-- "Cloud" → capture: Cloud Engineer, Cloud Architect, Cloud Native...
-- "Agil" → capture: Agile, Agilité, Agiliste...
-- "Scrum" → capture: Scrum, ScrumMaster, Scrum Master...
+⚠️ ATTENTION - RACINES À DOUBLE SENS:
+- "Dev" capture Developer ET DevOps → UTILISER SEULEMENT si le poste inclut les deux !
+  - Pour un poste Developer pur → utiliser "Developer OR Développeur" (PAS "Dev")
+  - Pour un poste DevOps pur → utiliser "DevOps OR SRE" (PAS "Dev")
+  - Pour un poste mixte Dev+Ops → "Dev" est OK
+- "Data" capture Data Engineer ET Data Scientist → préciser si le poste est spécifique
 
-⚠️ ATTENTION AUX RACINES TROP COURTES:
-- "Py" seul → ÉVITER (trop vague, capture "Pyramid", "PyQt"...)
-- "Go" seul → ÉVITER (mot commun, utiliser "Golang" à la place)
-- "C" seul → ÉVITER (utiliser "C++" ou "C#" ou "C lang")
+RACINES SÛRES (peu de collision):
+- "Eng" → Engineer, Engineering, Ingénieur (OK car tous techniques)
+- "Archi" → Architect, Architecture, Architecte (OK)
+- "Admin" → Administrator, SysAdmin, Administrateur (OK si contexte infra)
+- "Infra" → Infrastructure (OK)
+- "Micro" → Microservices (OK)
+- "Full" → Fullstack, Full-stack (OK)
+- "Front" → Frontend, Front-end (OK)
+- "Back" → Backend, Back-end (OK)
+- "Agil" → Agile, Agilité, Agiliste (OK)
+
+RACINES DANGEREUSES (collision sémantique):
+- "Dev" → Developer vs DevOps → ÉVITER sauf si le poste veut les deux
+- "Data" → Data Engineer vs Data Scientist vs Data Analyst → PRÉCISER
+- "Cloud" → Cloud Engineer vs Cloud Architect → peut être OK selon contexte
+- "Lead" → Tech Lead vs Team Lead → peut capturer des non-tech
+
+⚠️ RACINES TROP COURTES (TOUJOURS ÉVITER):
+- "Py" seul → trop vague
+- "Go" seul → mot commun, utiliser "Golang"
+- "C" seul → utiliser "C++" ou "C#" explicitement
 
 RÈGLES DE CONSTRUCTION:
 1. Identifier 2-3 catégories technologiques DISTINCTES du poste
