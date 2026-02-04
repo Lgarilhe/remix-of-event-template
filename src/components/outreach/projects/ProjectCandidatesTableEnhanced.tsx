@@ -223,6 +223,7 @@ export const ProjectCandidatesTableEnhanced: React.FC<ProjectCandidatesTableEnha
       if (error) throw error;
 
       queryClient.invalidateQueries({ queryKey: ['project-candidates', projectId] });
+      queryClient.invalidateQueries({ queryKey: ['project-stats', projectId] });
       queryClient.invalidateQueries({ queryKey: ['sourcing-projects'] });
       setSelectedIds(new Set());
       toast.success(`${ids.length} candidat(s) mis à jour`);
@@ -269,6 +270,7 @@ export const ProjectCandidatesTableEnhanced: React.FC<ProjectCandidatesTableEnha
       if (error) throw error;
 
       queryClient.invalidateQueries({ queryKey: ['project-candidates', projectId] });
+      queryClient.invalidateQueries({ queryKey: ['project-stats', projectId] });
       queryClient.invalidateQueries({ queryKey: ['sourcing-projects'] });
       toast.success(`Statut mis à jour`);
     } catch (error) {
@@ -287,6 +289,8 @@ export const ProjectCandidatesTableEnhanced: React.FC<ProjectCandidatesTableEnha
       if (error) throw error;
 
       queryClient.invalidateQueries({ queryKey: ['project-candidates', projectId] });
+      queryClient.invalidateQueries({ queryKey: ['project-stats', projectId] });
+      queryClient.invalidateQueries({ queryKey: ['projects-stats-batch'] });
       toast.success('Candidat retiré du projet');
     } catch (error) {
       console.error('Error removing from project:', error);
