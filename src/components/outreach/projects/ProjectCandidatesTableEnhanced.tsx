@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -41,6 +41,8 @@ import {
   Download,
   CheckSquare,
   XSquare,
+  StopCircle,
+  Play,
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -87,6 +89,93 @@ export const ProjectCandidatesTableEnhanced: React.FC<ProjectCandidatesTableEnha
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [candidateEnrollments, setCandidateEnrollments] = useState<Record<string, { id: string; status: string; sequence_name: string } | null>>({});
+
+  // Fetch active sequence enrollments for candidates
+  useEffect(() => {
+    const fetchEnrollments = async () => {
+      if (candidates.length === 0) return;
+      
+      const candidateIds = candidates.map(c => c.candidate_id);
+      
+      const { data: enrollments } = await supabase
+        .from('sequence_enrollments')
+        .select('id, profile_id, status, outreach_sequences(name)')
+        .in('profile_id', candidateIds)
+        .in('status', ['active', 'paused']);
+      
+      const enrollmentMap: Record<string, { id: string; status: string; sequence_name: string } | null> = {};
+      for (const candidateId of candidateIds) {
+        const enrollment = enrollments?.find(e => e.profile_id === candidateId);
+        enrollmentMap[candidateId] = enrollment ? {
+          id: enrollment.id,
+          status: enrollment.status,
+          sequence_name: (enrollment.outreach_sequences as any)?.name || 'Séquence',
+        } : null;
+      }
+      setCandidateEnrollments(enrollmentMap);
+    };
+    
+    fetchEnrollments();
+  }, [candidates]);
+
+  // Stop sequence for a candidate
+  const stopSequence = async (candidateId: string) => {
+    const enrollment = candidateEnrollments[candidateId];
+    if (!enrollment) return;
+    
+    try {
+      // Update enrollment status to paused
+      const { error: enrollError } = await supabase
+        .from('sequence_enrollments')
+        .update({ status: 'paused' })
+        .eq('id', enrollment.id);
+      
+      if (enrollError) throw enrollError;
+      
+      // Cancel pending executions
+      await supabase
+        .from('sequence_step_executions')
+        .update({ status: 'cancelled', skip_reason: 'Arrêt manuel' })
+        .eq('enrollment_id', enrollment.id)
+        .eq('status', 'scheduled');
+      
+      setCandidateEnrollments(prev => ({
+        ...prev,
+        [candidateId]: enrollment ? { ...enrollment, status: 'paused' } : null,
+      }));
+      
+      toast.success('Séquence arrêtée');
+    } catch (error) {
+      console.error('Error stopping sequence:', error);
+      toast.error('Erreur lors de l\'arrêt');
+    }
+  };
+
+  // Resume sequence for a candidate
+  const resumeSequence = async (candidateId: string) => {
+    const enrollment = candidateEnrollments[candidateId];
+    if (!enrollment) return;
+    
+    try {
+      const { error } = await supabase
+        .from('sequence_enrollments')
+        .update({ status: 'active' })
+        .eq('id', enrollment.id);
+      
+      if (error) throw error;
+      
+      setCandidateEnrollments(prev => ({
+        ...prev,
+        [candidateId]: enrollment ? { ...enrollment, status: 'active' } : null,
+      }));
+      
+      toast.success('Séquence reprise');
+    } catch (error) {
+      console.error('Error resuming sequence:', error);
+      toast.error('Erreur lors de la reprise');
+    }
+  };
 
   // Filter candidates
   const filteredCandidates = useMemo(() => {
@@ -417,7 +506,7 @@ export const ProjectCandidatesTableEnhanced: React.FC<ProjectCandidatesTableEnha
                           <MoreHorizontal className="h-4 w-4" />
                         </Button>
                       </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="w-48">
+                      <DropdownMenuContent align="end" className="w-52">
                         {candidate.status !== 'shortlisted' && (
                           <DropdownMenuItem onClick={() => updateCandidateStatus(candidate.id, 'shortlisted')}>
                             <UserCheck className="w-4 h-4 mr-2 text-purple-600" />
@@ -435,6 +524,33 @@ export const ProjectCandidatesTableEnhanced: React.FC<ProjectCandidatesTableEnha
                             <UserX className="w-4 h-4 mr-2 text-red-500" />
                             Écarter
                           </DropdownMenuItem>
+                        )}
+                        
+                        {/* Sequence actions */}
+                        {candidateEnrollments[candidate.candidate_id] && (
+                          <>
+                            <DropdownMenuSeparator />
+                            {candidateEnrollments[candidate.candidate_id]?.status === 'active' ? (
+                              <DropdownMenuItem 
+                                onClick={() => stopSequence(candidate.candidate_id)}
+                                className="text-orange-600 focus:text-orange-600"
+                              >
+                                <StopCircle className="w-4 h-4 mr-2" />
+                                Arrêter la séquence
+                                <span className="ml-auto text-[10px] text-gray-400">
+                                  {candidateEnrollments[candidate.candidate_id]?.sequence_name}
+                                </span>
+                              </DropdownMenuItem>
+                            ) : (
+                              <DropdownMenuItem 
+                                onClick={() => resumeSequence(candidate.candidate_id)}
+                                className="text-green-600 focus:text-green-600"
+                              >
+                                <Play className="w-4 h-4 mr-2" />
+                                Reprendre la séquence
+                              </DropdownMenuItem>
+                            )}
+                          </>
                         )}
                         
                         <DropdownMenuSeparator />

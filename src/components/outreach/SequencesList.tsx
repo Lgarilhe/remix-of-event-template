@@ -41,6 +41,7 @@ import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { SequenceBuilder, Sequence, SequenceStep } from './SequenceBuilder';
 import { SequenceEnrollModal } from './SequenceEnrollModal';
+import { SequenceEnrollmentsPanel } from './SequenceEnrollmentsPanel';
 import { LinkedInProfile } from './types';
 import { formatDistanceToNow } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -85,6 +86,7 @@ export const SequencesList: React.FC<SequencesListProps> = ({
   const [editingSequence, setEditingSequence] = useState<Sequence | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [enrollModalSequence, setEnrollModalSequence] = useState<SequenceWithStats | null>(null);
+  const [enrollmentsPanelSequence, setEnrollmentsPanelSequence] = useState<SequenceWithStats | null>(null);
 
   const fetchSequences = async () => {
     try {
@@ -509,10 +511,19 @@ export const SequencesList: React.FC<SequencesListProps> = ({
                   </div>
                 </div>
 
-                {/* Prospects */}
-                <div className="text-center text-sm text-gray-600">
+                {/* Prospects - clickable to open panel */}
+                <button 
+                  className="text-center text-sm text-gray-600 hover:text-blue-600 hover:underline"
+                  onClick={(e) => { 
+                    e.stopPropagation(); 
+                    if (seq.enrollments.total > 0) {
+                      setEnrollmentsPanelSequence(seq);
+                    }
+                  }}
+                  disabled={seq.enrollments.total === 0}
+                >
                   {seq.enrollments.completed}/{seq.enrollments.total}
-                </div>
+                </button>
 
                 {/* Created */}
                 <div className="text-center text-sm text-gray-500">
@@ -580,6 +591,16 @@ export const SequencesList: React.FC<SequencesListProps> = ({
           accountId={selectedAccount}
           job={selectedJob}
           onSuccess={handleEnrollSuccess}
+        />
+      )}
+
+      {/* Enrollments panel */}
+      {enrollmentsPanelSequence && (
+        <SequenceEnrollmentsPanel
+          isOpen={!!enrollmentsPanelSequence}
+          onClose={() => setEnrollmentsPanelSequence(null)}
+          sequenceId={enrollmentsPanelSequence.id}
+          sequenceName={enrollmentsPanelSequence.name}
         />
       )}
 
