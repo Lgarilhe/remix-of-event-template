@@ -169,7 +169,21 @@ ${statusInstructions[candidateStatus] || statusInstructions.other}
    SI tu trouves quelque chose dans le À propos, UTILISE-LE comme accroche.
    C'est ce qui fait la différence entre un message générique et un message qui convertit.
 
-2. ADAPTATION DU STYLE AU CANDIDAT:
+2. VENDRE L'OPPORTUNITÉ (SUBTILEMENT MAIS EFFICACEMENT)
+   Le candidat doit sentir que c'est une opportunité à ne pas rater. Intègre UN ou DEUX éléments différenciants parmi:
+   
+   - TAILLE/STADE: "scale-up en hyper-croissance", "startup early-stage avec runway solide", "leader sur son marché"
+   - ÉQUIPE: "équipe de 6 seniors", "CTO ex-Datadog", "culture engineering forte"
+   - STACK/PROJET: "projet greenfield", "refonte from scratch", "stack moderne (Go/K8s/...")"
+   - IMPACT: "tu définiras l'archi", "impact direct sur le produit", "ownership total"
+   - CONDITIONS: si remote/hybride flexible, si salaire attractif, si équilibre vie pro/perso
+   - SECTEUR: si le secteur est porteur ou la mission a du sens (santé, climat, souveraineté...)
+   
+   NE SURVENDS PAS: 1-2 éléments max, intégrés naturellement dans le pitch. Pas de liste à puces.
+   ÉVITE les formules creuses: "projet passionnant", "belle aventure", "super équipe".
+   PRÉFÈRE les faits concrets: "refonte de l'archi data pour 10M users" > "projet ambitieux".
+
+3. ADAPTATION DU STYLE AU CANDIDAT:
    - SI le candidat écrit de façon décontractée avec des émojis → sois plus casual
    - SI le candidat est très corporate/formel → reste pro mais pas froid
    - SI le candidat montre de l'humour → ose une touche légère
@@ -177,20 +191,20 @@ ${statusInstructions[candidateStatus] || statusInstructions.other}
    
    Le but: que le candidat ait l'impression de lire un message d'un pair, pas d'un robot.
 
-3. EXEMPLES D'ACCROCHES PERSONNALISÉES (inspirés du À propos):
+4. EXEMPLES D'ACCROCHES PERSONNALISÉES (inspirés du À propos):
    - "Tu mentionnes ton amour du clean code dans ton profil - on cherche exactement ça chez [Client]"
    - "J'ai vu que tu avais contribué à [projet open source] - le CTO est très orienté communauté"
    - "Tu parles de ton passage de corporate à startup - c'est pile le mouvement inverse qu'on propose"
    - "Ton focus sur les archi event-driven colle parfaitement avec ce qu'on monte chez [Client]"
 
-4. TON: ${toneInstructions[tone]}
+5. TON: ${toneInstructions[tone]}
 
-5. NE POSE PAS DE QUESTION SI:
+6. NE POSE PAS DE QUESTION SI:
    - Le profil semble déjà matcher → propose un call directement
    - Tu n'as pas de vraie question de qualification → CTA direct
    - ÉVITE les questions sur l'anglais (sauf si vraiment critique et absent du profil)
 
-6. INTERDITS:
+7. INTERDITS:
    - "j'ai parcouru ton profil", "a retenu mon attention", "m'a tapé dans l'œil"
    - Superlatifs: exceptionnel, remarquable, impressionnant
    - Questions génériques: "ça t'intéresserait ?", "tu serais ouvert ?"
@@ -198,12 +212,13 @@ ${statusInstructions[candidateStatus] || statusInstructions.other}
    - FORMAT CHIFFRES: JAMAIS de "20+", "10+", "5+" → écrire "plus de 20", "plus de 10", "plus de 5"
    - JARGON TROP COOL/STARTUP: "ton taf", "mise gros", "ça colle", "c'est chaud", "le kiff", "la bombe"
    - EXPRESSIONS FAMILIÈRES: évite les raccourcis trop oraux même en mode casual
+   - FORMULES CREUSES: "projet passionnant", "belle aventure", "super équipe", "environnement stimulant"
 
-7. FORMAT OBLIGATOIRE:
+8. FORMAT OBLIGATOIRE:
    - 80-100 mots maximum
    - Phrases courtes et percutantes
    - SAUTS DE LIGNE entre chaque paragraphe/idée (2-3 paragraphes distincts)
-   - Structure type: Accroche perso (1-2 phrases) → Pitch poste (2-3 phrases) → CTA (1 phrase)
+   - Structure type: Accroche perso (1-2 phrases) → Pitch poste AVEC 1-2 selling points (2-3 phrases) → CTA (1 phrase)
    - Signature: "${senderName || '[Prénom]'}"
    
    IMPORTANT: Utilise des sauts de ligne (\\n\\n) pour aérer le message. Jamais de bloc de texte massif.
