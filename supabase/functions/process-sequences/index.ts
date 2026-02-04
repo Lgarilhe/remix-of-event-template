@@ -906,7 +906,12 @@ async function checkStepCondition(
   profileId: string,
   waitForEvent?: string
 ): Promise<boolean | 'wait'> {
-  switch (conditionType) {
+  // NOTE: Some “wait_*” steps are stored with condition_type='always' in DB.
+  // If a step declares wait_for_event, we must treat it as a blocking condition.
+  // This keeps legacy data working and routes these steps through the waiting_event mechanism.
+  const effectiveConditionType = waitForEvent ? 'wait_for_event' : (conditionType || 'always');
+
+  switch (effectiveConditionType) {
     case 'always':
       return true;
 
@@ -1025,6 +1030,13 @@ async function executeStepAction(
     const subjectText = (execution.final_subject || step.subject_template || '') as string;
 
     switch (actionType) {
+      case 'wait_connection': {
+        // This step is a pure “gate”: the actual waiting happens in checkStepCondition()
+        // (status=waiting_event) + check_wait_events/check_timeouts.
+        // Once the event is satisfied, we simply allow the sequence to continue.
+        return { success: true };
+      }
+
       case 'check_connection': {
         const profile = await getProfileInfo(accountId, profileId);
         const isConnected = profile?.network_distance === 'FIRST_DEGREE';
@@ -1338,6 +1350,29 @@ async function scheduleNextStep(supabase: any, enrollment: any, currentStepOrder
       .eq('step_order', currentStepOrder + 1)
       .maybeSingle();
     nextStep = data;
+
+    // If the next step is actually configured as a timeout-branch target for the current step,
+    // skip it in the normal linear flow. The timeout path is scheduled explicitly via
+    // scheduleNextStep(..., forceBranchStepId) in checkTimeoutBranches().
+    if (nextStep) {
+      const { data: currentStep } = await supabase
+        .from('sequence_steps')
+        .select('timeout_branch_step_id')
+        .eq('sequence_id', enrollment.sequence_id)
+        .eq('step_order', currentStepOrder)
+        .maybeSingle();
+
+      const timeoutBranchId = currentStep?.timeout_branch_step_id as string | null | undefined;
+      if (timeoutBranchId && nextStep.id === timeoutBranchId) {
+        const { data: data2 } = await supabase
+          .from('sequence_steps')
+          .select('*')
+          .eq('sequence_id', enrollment.sequence_id)
+          .eq('step_order', currentStepOrder + 2)
+          .maybeSingle();
+        nextStep = data2;
+      }
+    }
   }
 
   if (!nextStep) {
