@@ -132,23 +132,21 @@ Accroche + présentation + CTA.`
     // Different positioning based on engagement type
     const engagementInstructions = isRPO
       ? `
-=== MODE RPO (TU ES UN RECRUTEUR INTERNE) ===
-CRITIQUE: Tu parles AU NOM de ${job.client?.name || 'l\'entreprise'}, comme si tu étais SALARIÉ de cette boîte.
-- TOUJOURS utiliser "nous", "notre équipe", "on cherche", "chez nous", "ce qu'on recherche"
-- JAMAIS dire "je recrute pour eux", "ils cherchent", "leur équipe" → c'est INTERDIT en mode RPO
-- Tu ES ${job.client?.name || 'l\'entreprise'}: "Ton profil colle avec ce qu'on recherche chez ${job.client?.name || 'nous'}"
-- Parle comme un pair: "On monte une équipe data", "On cherche quelqu'un pour..."
-- Le candidat doit penser qu'il parle à quelqu'un DE l'entreprise, pas à un cabinet externe
+=== MODE RPO (TU ES SALARIÉ DE ${job.client?.name?.toUpperCase() || 'L\'ENTREPRISE'}) ===
+CRITIQUE: Tu travailles CHEZ ${job.client?.name || 'cette entreprise'}. Tu n'es PAS un cabinet externe.
+- TOUJOURS: "nous", "notre équipe", "on cherche", "chez nous", "ce qu'on recherche"
+- Le candidat doit penser qu'il parle à un employé de ${job.client?.name || 'l\'entreprise'}
 
-EXEMPLES RPO CORRECTS:
-- "Ton profil colle bien avec ce qu'on recherche chez Numspot"
-- "On cherche un ${job.title} pour renforcer notre équipe"
-- "Ça matche avec nos besoins côté data"
+FORMULATIONS RPO:
+- "On cherche un ${job.title} pour notre équipe"
+- "Ton background colle bien avec ce qu'on monte chez ${job.client?.name || 'nous'}"
+- "Ça correspond à nos besoins côté data/tech"
 
-EXEMPLES RPO INTERDITS:
-- "Je recrute pour eux" ❌
-- "Ce qu'ils cherchent chez Numspot" ❌
-- "Leur équipe technique" ❌`
+⛔ INTERDIT EN MODE RPO (ne jamais écrire):
+- "Je recrute pour eux" → tu NE recrutes PAS pour un client, tu ES le client
+- "Ce qu'ils cherchent" → c'est "ce qu'on recherche"  
+- "Leur équipe" → c'est "notre équipe"
+- Toute formulation qui suggère que tu es externe à l'entreprise`
       : `
 === MODE SUCCÈS (CABINET EXTERNE) ===
 Tu parles EN TANT QUE recruteur externe/cabinet qui accompagne un client.
@@ -249,14 +247,23 @@ ${statusInstructions[candidateStatus] || statusInstructions.other}
    - Superlatifs: exceptionnel, remarquable, impressionnant
    - Questions génériques: "ça t'intéresserait ?", "tu serais ouvert ?"
    - Forcer une question quand un CTA suffit
-   - FORMAT CHIFFRES: JAMAIS de "20+", "10+", "5+", "2+" → écrire "plus de 20", "plus de 10", "plus de 5", "plus de 2"
-   - TIRETS EN DÉBUT DE PHRASE: JAMAIS de "- ils montent", "- équipe senior" → écris des phrases normales
+   - FORMAT CHIFFRES: JAMAIS de "20+", "10+", "5+", "2+" → écrire "plus de 20", "plus de 10", etc.
+   - TIRETS EN DÉBUT DE PHRASE: JAMAIS de "- ils montent", "- équipe senior" → phrases normales
    - LISTES À PUCES: JAMAIS de listes, écris en prose fluide
    - ÉNUMÉRATIONS ENTRE PARENTHÈSES: évite "(Python, Go, K8s)" → intègre naturellement
    - JARGON TROP COOL/STARTUP: "ton taf", "mise gros", "c'est chaud", "le kiff", "la bombe"
-   - EXPRESSIONS FAMILIÈRES: évite les raccourcis trop oraux même en mode casual
    - FORMULES CREUSES: "projet passionnant", "belle aventure", "super équipe", "environnement stimulant"
-   - EN MODE RPO: JAMAIS "je recrute pour eux", "ce qu'ils cherchent", "leur équipe"
+   
+   TOURNURES FLATTEUSES INTERDITES (trop vendeuses/IA):
+   - "ton profil colle parfaitement" ❌ → préfère "ton profil colle bien" ou "ça matche"
+   - "ton expérience c'est exactement/parfaitement ce qu'on veut" ❌
+   - "c'est pile ce qu'on cherche" ❌
+   - Évite "parfaitement", "exactement", "idéalement" → sois plus naturel et mesuré
+   
+   EN MODE RPO - ABSOLUMENT INTERDIT:
+   - "je recrute pour eux" ❌ (tu bosses DANS la boîte, pas pour un client)
+   - "ce qu'ils cherchent" ❌ → "ce qu'on recherche"
+   - "leur équipe" ❌ → "notre équipe"
 
 8. FORMAT OBLIGATOIRE:
    - 80-100 mots maximum
