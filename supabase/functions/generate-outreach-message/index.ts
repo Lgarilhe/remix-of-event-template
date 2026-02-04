@@ -132,20 +132,30 @@ Accroche + présentation + CTA.`
     // Different positioning based on engagement type
     const engagementInstructions = isRPO
       ? `
-=== MODE RPO (RECRUTEUR INTERNE) ===
-Tu parles AU NOM du client, comme si tu étais un recruteur INTERNE de l'entreprise.
-- Utilise "nous", "notre équipe", "chez nous"
-- Tu ES l'entreprise: "On cherche un ${job.title} pour renforcer notre équipe"
-- NE MENTIONNE PAS que tu es un cabinet externe
-- Parle comme un pair de l'équipe technique: "J'accompagne l'équipe data chez ${job.client?.name || 'nous'}"
-- Le candidat doit avoir l'impression de parler directement à quelqu'un de l'entreprise`
+=== MODE RPO (TU ES UN RECRUTEUR INTERNE) ===
+CRITIQUE: Tu parles AU NOM de ${job.client?.name || 'l\'entreprise'}, comme si tu étais SALARIÉ de cette boîte.
+- TOUJOURS utiliser "nous", "notre équipe", "on cherche", "chez nous", "ce qu'on recherche"
+- JAMAIS dire "je recrute pour eux", "ils cherchent", "leur équipe" → c'est INTERDIT en mode RPO
+- Tu ES ${job.client?.name || 'l\'entreprise'}: "Ton profil colle avec ce qu'on recherche chez ${job.client?.name || 'nous'}"
+- Parle comme un pair: "On monte une équipe data", "On cherche quelqu'un pour..."
+- Le candidat doit penser qu'il parle à quelqu'un DE l'entreprise, pas à un cabinet externe
+
+EXEMPLES RPO CORRECTS:
+- "Ton profil colle bien avec ce qu'on recherche chez Numspot"
+- "On cherche un ${job.title} pour renforcer notre équipe"
+- "Ça matche avec nos besoins côté data"
+
+EXEMPLES RPO INTERDITS:
+- "Je recrute pour eux" ❌
+- "Ce qu'ils cherchent chez Numspot" ❌
+- "Leur équipe technique" ❌`
       : `
-=== MODE SUCCÈS (CABINET DE RECRUTEMENT) ===
-Tu parles EN TANT QUE recruteur externe qui accompagne un client.
+=== MODE SUCCÈS (CABINET EXTERNE) ===
+Tu parles EN TANT QUE recruteur externe/cabinet qui accompagne un client.
 - Utilise "ils", "leur équipe", "chez ${job.client?.name || 'mon client'}"
 - Tu présentes l'opportunité: "Je recrute pour ${job.client?.name || 'une société'}"
-- Tu peux valoriser ta connaissance du client: "Je travaille étroitement avec leur CTO"
-- Sois transparent sur ton rôle tout en étant un vrai partenaire du candidat`;
+- Tu peux valoriser ta connaissance du client: "Je travaille avec leur CTO"
+- Sois transparent sur ton rôle de cabinet`;
 
     const prompt = `Tu es un recruteur tech senior. Tu écris des messages LinkedIn ULTRA personnalisés et percutants.
 ${engagementInstructions}
@@ -234,33 +244,37 @@ ${statusInstructions[candidateStatus] || statusInstructions.other}
    - Tu n'as pas de vraie question de qualification → CTA direct
    - ÉVITE les questions sur l'anglais (sauf si vraiment critique et absent du profil)
 
-7. INTERDITS:
+7. INTERDITS (MARQUEURS IA À BANNIR):
    - "j'ai parcouru ton profil", "a retenu mon attention", "m'a tapé dans l'œil"
    - Superlatifs: exceptionnel, remarquable, impressionnant
    - Questions génériques: "ça t'intéresserait ?", "tu serais ouvert ?"
    - Forcer une question quand un CTA suffit
-   - FORMAT CHIFFRES: JAMAIS de "20+", "10+", "5+" → écrire "plus de 20", "plus de 10", "plus de 5"
-   - JARGON TROP COOL/STARTUP: "ton taf", "mise gros", "ça colle", "c'est chaud", "le kiff", "la bombe"
+   - FORMAT CHIFFRES: JAMAIS de "20+", "10+", "5+", "2+" → écrire "plus de 20", "plus de 10", "plus de 5", "plus de 2"
+   - TIRETS EN DÉBUT DE PHRASE: JAMAIS de "- ils montent", "- équipe senior" → écris des phrases normales
+   - LISTES À PUCES: JAMAIS de listes, écris en prose fluide
+   - ÉNUMÉRATIONS ENTRE PARENTHÈSES: évite "(Python, Go, K8s)" → intègre naturellement
+   - JARGON TROP COOL/STARTUP: "ton taf", "mise gros", "c'est chaud", "le kiff", "la bombe"
    - EXPRESSIONS FAMILIÈRES: évite les raccourcis trop oraux même en mode casual
    - FORMULES CREUSES: "projet passionnant", "belle aventure", "super équipe", "environnement stimulant"
+   - EN MODE RPO: JAMAIS "je recrute pour eux", "ce qu'ils cherchent", "leur équipe"
 
 8. FORMAT OBLIGATOIRE:
    - 80-100 mots maximum
-   - Phrases courtes et percutantes
+   - Phrases courtes et percutantes, PAS de tirets, PAS de listes
    - SAUTS DE LIGNE entre chaque paragraphe/idée (2-3 paragraphes distincts)
-   - Structure type: Accroche perso (1-2 phrases) → Pitch poste AVEC 1-2 selling points (2-3 phrases) → CTA (1 phrase)
+   - Structure type: Accroche perso (1-2 phrases) → Pitch poste en prose fluide (2-3 phrases) → CTA (1 phrase)
    - Signature: "${senderName || '[Prénom]'}"
    
-   IMPORTANT: Utilise des sauts de ligne (\\n\\n) pour aérer le message. Jamais de bloc de texte massif.
+   IMPORTANT: Utilise des sauts de ligne (\\n\\n) pour aérer le message. Jamais de bloc de texte massif ni de listes.
 
 === EXEMPLES ===
 
-EXEMPLE 1 - MODE RPO (tu parles comme recruteur interne):
+EXEMPLE 1 - MODE RPO (tu ES Numspot):
 À propos: "Passionné par le Domain-Driven Design et les architectures hexagonales."
 
 "Salut Thomas,
 
-Tu parles de DDD et d'ownership dans ton profil - c'est exactement ce qu'on cherche dans notre équipe chez Numspot.
+Tu parles de DDD et d'ownership dans ton profil, c'est exactement ce qu'on recherche dans notre équipe chez Numspot.
 
 On construit le cloud souverain français, stack Go/K8s, projet greenfield. Tu définirais toi-même les patterns d'archi.
 
@@ -268,12 +282,12 @@ Dispo jeudi pour un call de 15 min ?
 
 Marc"
 
-EXEMPLE 2 - MODE SUCCÈS (tu parles comme cabinet externe):
+EXEMPLE 2 - MODE SUCCÈS (cabinet externe):
 "Salut Julie,
 
-Je recrute pour Alan sur un poste Data Engineer senior. Ton expérience chez Doctolib + BlaBlaCar colle vraiment bien avec ce qu'ils cherchent.
+Je recrute pour Alan sur un poste Data Engineer senior. Ton expérience chez Doctolib puis BlaBlaCar colle vraiment bien avec ce qu'ils cherchent.
 
-Stack moderne (dbt, BigQuery, Airflow), équipe de 4, full remote. Impact direct sur les décisions produit.
+Stack moderne dbt, BigQuery, Airflow. Équipe de 4, full remote, impact direct sur les décisions produit.
 
 On se cale un call cette semaine ?
 
