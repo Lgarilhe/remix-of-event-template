@@ -737,13 +737,31 @@ Maximum 50 caractères ! Sois ultra concis et percutant.
 Exemples: "Votre profil Python m'intéresse", "On recrute chez [Client]", "Poste [Titre] - échangeons ?"`,
   };
 
-  // Build experiences string
-  const experiencesStr = profile?.experiences 
-    ? (profile.experiences as Array<{title?: string; company?: string; duration?: string}>)
+  // Build experiences string with descriptions
+  type ExperienceType = {
+    title?: string;
+    company?: string;
+    duration?: string;
+    description?: string;
+    location?: string;
+  };
+  
+  const experiences = (profile?.experiences as ExperienceType[]) || [];
+  const experiencesStr = experiences.length > 0
+    ? experiences
         .slice(0, 3)
         .map(exp => `${exp.title || ''} chez ${exp.company || ''} (${exp.duration || ''})`)
         .join('; ')
     : 'Non spécifiées';
+  
+  // Build detailed experiences for personalization (with descriptions)
+  const detailedExperiences = experiences.length > 0
+    ? experiences
+        .slice(0, 3)
+        .filter(exp => exp.description)
+        .map(exp => `• ${exp.title} chez ${exp.company}: ${(exp.description || '').slice(0, 200)}...`)
+        .join('\n')
+    : '';
 
   // Determine engagement type (RPO vs Success fee) - same logic as generate-outreach-message
   const accompagnement = (job?.accompagnement as string[]) || [];
@@ -793,6 +811,10 @@ PROFIL DU CANDIDAT:
 - Expériences passées: ${experiencesStr}
 ${profile?.yearsOfExperience ? `- Années d'expérience: ~${profile.yearsOfExperience} ans` : ''}
 ${(profile?.education as string[] | undefined)?.length ? `- Formation: ${(profile?.education as string[]).slice(0, 2).join('; ')}` : ''}
+${detailedExperiences ? `
+=== DÉTAILS DES EXPÉRIENCES (pour personnalisation) ===
+${detailedExperiences}
+=== FIN EXPÉRIENCES ===` : ''}
 ${profile?.summary ? `
 === SECTION "À PROPOS" DU CANDIDAT (SOURCE CLÉ DE PERSONNALISATION ET DE STYLE) ===
 "${(profile.summary as string).slice(0, 800)}"
@@ -952,10 +974,24 @@ async function getFullLinkedInProfile(
       }
     }
 
-    // Extract education
-    const education = (data.education || data.schools || []).map((e: Record<string, unknown>) => 
-      `${e.degree || e.field_of_study || ''} - ${e.school_name || e.school || ''}`.trim()
-    ).filter(Boolean).slice(0, 3);
+    // Extract education with more details
+    const education = (data.education || data.schools || []).map((e: Record<string, unknown>) => {
+      const degree = e.degree || e.field_of_study || '';
+      const school = e.school_name || e.school || '';
+      const endYear = e.end_date ? (e.end_date as string).split('-')[0] : (e.ends_at ? String(e.ends_at) : '');
+      return `${degree} - ${school}${endYear ? ` (${endYear})` : ''}`.trim();
+    }).filter(Boolean).slice(0, 3);
+
+    // Extract experiences with descriptions
+    const experiences = positions.map((p: Record<string, unknown>) => ({
+      title: p.title,
+      company: p.company_name || p.company,
+      duration: p.duration_str || p.duration,
+      description: p.description || p.summary || '', // Include job description
+      location: p.location,
+      startDate: p.start_date || p.starts_at,
+      endDate: p.end_date || p.ends_at,
+    }));
 
     return {
       name: data.first_name ? `${data.first_name} ${data.last_name || ''}`.trim() : data.name,
@@ -965,11 +1001,7 @@ async function getFullLinkedInProfile(
       location: data.location,
       summary: data.summary || data.about,
       skills: data.skills?.map((s: Record<string, unknown>) => s.name || s) || [],
-      experiences: positions.map((p: Record<string, unknown>) => ({
-        title: p.title,
-        company: p.company_name,
-        duration: p.duration_str,
-      })),
+      experiences,
       education,
       yearsOfExperience,
       network_distance: data.network_distance,
