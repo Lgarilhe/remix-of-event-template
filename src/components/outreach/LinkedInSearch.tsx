@@ -55,6 +55,9 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
   const [filters, setFilters] = useState<LinkedInFiltersState>(INITIAL_FILTERS);
   const filtersRef = useRef<LinkedInFiltersState>(INITIAL_FILTERS);
   const [results, setResults] = useState<LinkedInProfile[]>([]);
+  
+  // Refs for values that need to be current in callbacks (avoid stale closure)
+  const autoHideTreatedRef = useRef(true);
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false); // For infinite scroll loading indicator
   const [cursor, setCursor] = useState<string | null>(null);
@@ -105,6 +108,11 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
     filtersRef.current = filters;
   }, [filters]);
   
+  // Keep refs in sync for use in callbacks (avoid stale closures)
+  useEffect(() => {
+    autoHideTreatedRef.current = autoHideTreated;
+  }, [autoHideTreated]);
+
   // Load filters from active project when it changes
   useEffect(() => {
     if (activeProject) {
@@ -817,13 +825,15 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
       );
 
       const collected: LinkedInProfile[] = [];
+      // Use ref to get current value of autoHideTreated (avoid stale closure)
+      const shouldHideTreated = autoHideTreatedRef.current;
       for (const p of filteredBatch) {
         if (!p?.id) continue;
         if (seen.has(p.id)) continue;
         // Auto-hide treated profiles if enabled (they've been messaged, sequenced, or dismissed)
-        if (selectedJob && autoHideTreated && treatedIds.has(p.id)) continue;
+        if (selectedJob && shouldHideTreated && treatedIds.has(p.id)) continue;
         // Also respect showDismissed toggle (legacy behavior)
-        if (selectedJob && !showDismissed && dismissedIds.has(p.id) && !autoHideTreated) continue;
+        if (selectedJob && !showDismissed && dismissedIds.has(p.id) && !shouldHideTreated) continue;
         seen.add(p.id);
         collected.push(p);
       }
@@ -873,7 +883,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
       setLoadingMore(false);
     }
     return [];
-  }, [selectedAccount, filters, selectedJob, showDismissed, autoHideTreated, candidateStatus.dismissedIds, candidateStatus.treatedIds, cursor, results, quota]);
+  }, [selectedAccount, filters, selectedJob, showDismissed, candidateStatus.dismissedIds, candidateStatus.treatedIds, cursor, results, quota]);
 
   // Check if filters have any active search criteria
   const hasActiveFilters = useMemo(() => {
