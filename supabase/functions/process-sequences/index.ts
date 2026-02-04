@@ -595,7 +595,7 @@ async function generatePersonalizedMessage(
       isInvitation,
     });
 
-    // 6. Call Claude
+    // 6. Call Claude with enhanced system prompt
     const response = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: {
@@ -606,13 +606,7 @@ async function generatePersonalizedMessage(
       body: JSON.stringify({
         model: "claude-sonnet-4-20250514",
         max_tokens: 400,
-        system: `Tu es un recruteur tech senior. Tu écris des messages LinkedIn personnalisés.
-RÈGLES:
-- Messages courts (80-100 mots max, sauf invitations: 50 car max)
-- Ton humain, pas de superlatifs
-- JAMAIS de "20+", toujours "plus de 20"
-- Sauts de ligne entre paragraphes
-- Réponds UNIQUEMENT en JSON: {"subject": "...", "message": "..."}`,
+        system: `Tu es un recruteur tech senior. Tu écris des messages LinkedIn courts, directs, humains. JAMAIS de superlatifs, JAMAIS de tournures IA. Tu parles comme un vrai humain pressé mais sympa. Tu réponds TOUJOURS en JSON valide, sans markdown ni code blocks.`,
         messages: [{ role: "user", content: prompt }],
       }),
     });
@@ -650,67 +644,158 @@ interface PersonalizationParams {
   template: string;
   tone: string;
   isInvitation: boolean;
+  senderName?: string;
 }
 
 function buildPersonalizationPrompt(params: PersonalizationParams): string {
-  const { profile, job, messageType, previousMessages, template, tone, isInvitation } = params;
+  const { profile, job, messageType, previousMessages, template, tone, isInvitation, senderName } = params;
 
   const toneInstructions: Record<string, string> = {
-    professional: "Vouvoiement, ton direct et respectueux.",
-    casual: "Tutoiement naturel, décontracté mais pro.",
-    enthusiastic: "Tutoiement, ton dynamique mais pas surjoué."
+    professional: "Vouvoiement obligatoire. Ton direct, sobre et respectueux. Langage professionnel standard, pas de jargon startup ni d'expressions familières. Évite 'ton taf', 'mise gros', 'ça colle', etc.",
+    casual: "Tutoiement naturel mais reste professionnel. Comme un message à un pair du secteur. Évite le jargon trop startup ('ton taf', 'mise gros'). Reste accessible sans être familier.",
+    enthusiastic: "Tutoiement, ton dynamique mais mesuré. Montre de l'intérêt sans surjouer. Garde un vocabulaire professionnel, évite les expressions trop cool."
   };
 
-  let prompt = `TYPE DE MESSAGE: ${messageType}\n\n`;
-
-  // Profile context
-  if (profile) {
-    prompt += `PROFIL DU CANDIDAT:
-- Nom: ${profile.name || 'Inconnu'}
-- Titre: ${profile.headline || 'Non spécifié'}
-- Entreprise actuelle: ${profile.current_company || 'Non spécifié'}
-- Localisation: ${profile.location || 'Non spécifié'}
-${profile.summary ? `- À propos: "${(profile.summary as string).slice(0, 500)}"` : ''}
-${profile.skills ? `- Compétences: ${(profile.skills as string[]).slice(0, 10).join(', ')}` : ''}
-${profile.experiences ? `- Expériences récentes: ${JSON.stringify((profile.experiences as unknown[]).slice(0, 3))}` : ''}\n\n`;
+  // Build salary info for the prompt
+  const salaryInfo: string[] = [];
+  if (job?.salaryMin || job?.salaryMax) {
+    salaryInfo.push(`Salaire: ${job.salaryMin || '?'}k€ - ${job.salaryMax || '?'}k€`);
+  }
+  if (job?.tjmMin || job?.tjmMax) {
+    salaryInfo.push(`TJM: ${job.tjmMin || '?'}€ - ${job.tjmMax || '?'}€/jour`);
   }
 
-  // Job context
-  if (job) {
-    prompt += `POSTE À POURVOIR:
-- Titre: ${job.title || 'Non spécifié'}
-- Client: ${(job.client as Record<string, unknown>)?.name || 'Confidentiel'}
-- Description: ${job.description ? (job.description as string).slice(0, 300) : 'Non spécifié'}
-- Compétences: ${(job.skills as string[])?.join(', ') || 'Non spécifié'}
-- Localisation: ${job.location || 'Non spécifié'}
-- Remote: ${job.remote || 'Non spécifié'}
-${job.mustHave ? `- Must-have: ${job.mustHave}` : ''}
-${job.shouldHave ? `- Should-have: ${job.shouldHave}` : ''}\n\n`;
-  }
+  // Build criteria context
+  const criteriaContext: string[] = [];
+  if (job?.mustHave) criteriaContext.push(`Must-have: ${job.mustHave}`);
+  if (job?.shouldHave) criteriaContext.push(`Should-have: ${job.shouldHave}`);
+  if (job?.niceToHave) criteriaContext.push(`Nice-to-have: ${job.niceToHave}`);
 
-  // Sequence history
-  prompt += `HISTORIQUE DE LA SÉQUENCE:
-${previousMessages}\n\n`;
+  // Determine message objective based on message type
+  const statusInstructions: Record<string, string> = {
+    'PREMIER MESSAGE': `
+OBJECTIF: QUALIFIER OU PROPOSER UN CALL
+- SI le profil semble déjà matcher (skills visibles, XP cohérente) → propose directement un call
+- SI des infos critiques manquent dans le profil (techno clé, niveau management, etc.) → pose UNE question pertinente
+- NE POSE PAS de question sur l'anglais sauf si c'est explicitement un must-have critique
+- PRÉFÈRE un CTA direct ("Dispo pour un call ?") plutôt qu'une question de qualification générique`,
+    
+    'RELANCE': `
+OBJECTIF: RELANCER
+Message court de relance, rappelle le contexte du message précédent + question ouverte ou CTA direct.
+Fais référence à ton message précédent de manière naturelle.`,
+    
+    'INVITATION (max 50 caractères pour la note)': `
+OBJECTIF: INVITATION LINKEDIN
+Maximum 50 caractères ! Sois ultra concis et percutant.
+Exemples: "Votre profil Python m'intéresse", "On recrute chez [Client]", "Poste [Titre] - échangeons ?"`,
+  };
 
-  // Template if provided
-  if (template) {
-    prompt += `TEMPLATE DE BASE (à personnaliser):
-"${template}"\n\n`;
-  }
+  // Build experiences string
+  const experiencesStr = profile?.experiences 
+    ? (profile.experiences as Array<{title?: string; company?: string; duration?: string}>)
+        .slice(0, 3)
+        .map(exp => `${exp.title || ''} chez ${exp.company || ''} (${exp.duration || ''})`)
+        .join('; ')
+    : 'Non spécifiées';
 
-  // Instructions
-  prompt += `TON: ${toneInstructions[tone] || toneInstructions.professional}\n\n`;
+  const prompt = `Tu es un recruteur tech senior. Tu écris des messages LinkedIn ULTRA personnalisés et percutants.
 
-  if (isInvitation) {
-    prompt += `IMPORTANT: C'est une NOTE D'INVITATION LinkedIn. Maximum 50 caractères !
-Sois ultra concis. Exemple: "Votre profil Python m'intéresse - échangeons ?"`;
-  } else {
-    prompt += `Génère un message personnalisé en tenant compte:
-1. Du profil du candidat (utilise son À propos si disponible)
-2. Du poste proposé et ses critères
-3. De l'historique de la séquence (si c'est une relance, fais référence au message précédent)
-4. Du ton demandé`;
-  }
+PROFIL DU CANDIDAT:
+- Prénom: ${(profile?.name as string)?.split(' ')[0] || 'Candidat'}
+- Titre: ${profile?.headline || 'Non spécifié'}
+- Poste actuel: ${profile?.current_role || profile?.headline || 'Non spécifié'} chez ${profile?.current_company || 'Non spécifié'}
+- Localisation: ${profile?.location || 'Non spécifié'}
+- Compétences: ${(profile?.skills as string[])?.slice(0, 10).join(', ') || 'Non spécifiées'}
+- Expériences passées: ${experiencesStr}
+${profile?.summary ? `
+=== SECTION "À PROPOS" DU CANDIDAT (SOURCE CLÉ DE PERSONNALISATION ET DE STYLE) ===
+"${(profile.summary as string).slice(0, 800)}"
+=== FIN À PROPOS ===
+
+IMPORTANT - ANALYSE LE STYLE D'ÉCRITURE DU CANDIDAT:
+- Observe comment il écrit: phrases courtes ou longues ? Formel ou décontracté ?
+- Utilise-t-il des émojis, de l'humour, des expressions familières ?
+- Son ton est-il corporate, startup, créatif, technique ?
+- ADAPTE TON MESSAGE À SON STYLE pour créer une résonance naturelle` : ''}
+
+POSTE À POURVOIR:
+- Titre: ${job?.title || 'Non spécifié'}
+- Client: ${(job?.client as Record<string, unknown>)?.name || 'Client confidentiel'} (${(job?.client as Record<string, unknown>)?.sector || 'Tech'})
+- Compétences requises: ${(job?.skills as string[])?.join(', ') || 'Non spécifiées'}
+- Séniorité: ${job?.seniority || 'Non spécifié'} | XP: ${job?.xpMin || '?'}-${job?.xpMax || '?'} ans
+- Localisation: ${job?.location || 'Non spécifié'}
+- Télétravail: ${job?.remote || 'Non spécifié'}
+- Type contrat: ${job?.contractType || 'Non spécifié'}
+${salaryInfo.length > 0 ? `- Rémunération: ${salaryInfo.join(' | ')}` : ''}
+${criteriaContext.length > 0 ? `- Critères clés: ${criteriaContext.join(' | ')}` : ''}
+${job?.description ? `- Contexte mission: ${(job.description as string).slice(0, 300)}...` : ''}
+
+TYPE DE MESSAGE: ${messageType}
+${statusInstructions[messageType] || statusInstructions['PREMIER MESSAGE']}
+
+HISTORIQUE DE LA SÉQUENCE:
+${previousMessages}
+${template ? `
+TEMPLATE DE BASE (à personnaliser):
+"${template}"` : ''}
+
+=== RÈGLES ABSOLUES ===
+
+1. PERSONNALISATION = LA PRIORITÉ #1
+   La section "À propos" est une MINE D'OR. Cherche:
+   - Une passion technique mentionnée ("j'aime les systèmes distribués", "le clean code c'est ma religion")
+   - Un side project, une contribution open source
+   - Une motivation personnelle ("j'ai quitté X pour rejoindre une startup")
+   - Un style de travail ("je préfère les petites équipes", "ownership total")
+   - Une techno qu'il dit aimer particulièrement
+   
+   SI tu trouves quelque chose dans le À propos, UTILISE-LE comme accroche.
+   C'est ce qui fait la différence entre un message générique et un message qui convertit.
+
+2. ADAPTATION DU STYLE AU CANDIDAT:
+   - SI le candidat écrit de façon décontractée avec des émojis → sois plus casual
+   - SI le candidat est très corporate/formel → reste pro mais pas froid
+   - SI le candidat montre de l'humour → ose une touche légère
+   - SI le candidat est très technique/précis → sois concis et factuel
+   
+   Le but: que le candidat ait l'impression de lire un message d'un pair, pas d'un robot.
+
+3. EXEMPLES D'ACCROCHES PERSONNALISÉES (inspirés du À propos):
+   - "Tu mentionnes ton amour du clean code dans ton profil - on cherche exactement ça chez [Client]"
+   - "J'ai vu que tu avais contribué à [projet open source] - le CTO est très orienté communauté"
+   - "Tu parles de ton passage de corporate à startup - c'est pile le mouvement inverse qu'on propose"
+   - "Ton focus sur les archi event-driven colle parfaitement avec ce qu'on monte chez [Client]"
+
+4. TON: ${toneInstructions[tone] || toneInstructions.professional}
+
+5. NE POSE PAS DE QUESTION SI:
+   - Le profil semble déjà matcher → propose un call directement
+   - Tu n'as pas de vraie question de qualification → CTA direct
+   - ÉVITE les questions sur l'anglais (sauf si vraiment critique et absent du profil)
+
+6. INTERDITS:
+   - "j'ai parcouru ton profil", "a retenu mon attention", "m'a tapé dans l'œil"
+   - Superlatifs: exceptionnel, remarquable, impressionnant
+   - Questions génériques: "ça t'intéresserait ?", "tu serais ouvert ?"
+   - Forcer une question quand un CTA suffit
+   - FORMAT CHIFFRES: JAMAIS de "20+", "10+", "5+" → écrire "plus de 20", "plus de 10", "plus de 5"
+   - JARGON TROP COOL/STARTUP: "ton taf", "mise gros", "ça colle", "c'est chaud", "le kiff", "la bombe"
+   - EXPRESSIONS FAMILIÈRES: évite les raccourcis trop oraux même en mode casual
+
+7. FORMAT OBLIGATOIRE:
+   ${isInvitation ? `- MAXIMUM 50 CARACTÈRES (note d'invitation LinkedIn)
+   - Sois ultra concis: "[Sujet] - échangeons ?" ou "[Client] recrute [Profil]"` : `- 80-100 mots maximum
+   - Phrases courtes et percutantes
+   - SAUTS DE LIGNE entre chaque paragraphe/idée (2-3 paragraphes distincts)
+   - Structure type: Accroche perso (1-2 phrases) → Pitch poste (2-3 phrases) → CTA (1 phrase)`}
+   - Signature: "${senderName || '[Prénom]'}"
+
+Réponds UNIQUEMENT en JSON valide:
+{
+  "subject": "Objet court (max 50 car)",
+  "message": "Le message complet${isInvitation ? '' : ' avec des \\\\n\\\\n entre les paragraphes'}"
+}`;
 
   return prompt;
 }
@@ -750,7 +835,7 @@ async function getFullLinkedInProfile(
   }
 }
 
-// Fetch job context from Notion
+// Fetch job context from Notion with full details
 async function fetchNotionJobContext(jobId: string): Promise<Record<string, unknown> | null> {
   try {
     const response = await fetch(`https://api.notion.com/v1/pages/${jobId}`, {
@@ -799,10 +884,20 @@ async function fetchNotionJobContext(jobId: string): Promise<Record<string, unkn
       skills: getValue(props['Compétences']) || getValue(props['Skills']),
       location: getValue(props['Localisation']) || getValue(props['Location']),
       remote: getValue(props['Remote']) || getValue(props['Télétravail']),
+      seniority: getValue(props['Séniorité']) || getValue(props['Seniority']),
+      xpMin: getValue(props['XP Min']) || getValue(props['Expérience Min']),
+      xpMax: getValue(props['XP Max']) || getValue(props['Expérience Max']),
+      salaryMin: getValue(props['Salaire Min']) || getValue(props['Salary Min']),
+      salaryMax: getValue(props['Salaire Max']) || getValue(props['Salary Max']),
+      tjmMin: getValue(props['TJM Min']),
+      tjmMax: getValue(props['TJM Max']),
+      contractType: getValue(props['Type de contrat']) || getValue(props['Contract Type']),
       mustHave: getValue(props['Must have']) || getValue(props['Critères Must']),
       shouldHave: getValue(props['Should have']) || getValue(props['Critères Should']),
+      niceToHave: getValue(props['Nice to have']) || getValue(props['Critères Nice']),
       client: {
         name: getValue(props['Client']) || getValue(props['Entreprise']),
+        sector: getValue(props['Secteur']) || getValue(props['Sector']),
       },
     };
   } catch (err) {
