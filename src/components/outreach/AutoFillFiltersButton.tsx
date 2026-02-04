@@ -173,10 +173,14 @@ export const AutoFillFiltersButton: React.FC<AutoFillFiltersButtonProps> = ({
         update.seniority = generated.seniority;
       }
 
-      // Experience (calculated for Recruiter)
+      // Experience - update BOTH calculated and LinkedIn API fields
       if (generated.years_of_experience_min !== null || generated.years_of_experience_max !== null) {
+        // Calculated experience (from diploma - primary filter for Recruiter)
         update.calculated_experience_min = generated.years_of_experience_min;
         update.calculated_experience_max = generated.years_of_experience_max;
+        // LinkedIn API experience (backup filter)
+        update.years_of_experience_min = generated.years_of_experience_min;
+        update.years_of_experience_max = generated.years_of_experience_max;
       }
 
       // Location radius
