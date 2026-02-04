@@ -488,30 +488,18 @@ async function checkQuotaForAction(
         const weekAgo = new Date();
         weekAgo.setDate(weekAgo.getDate() - 7);
         
-        const { count } = await supabase
+        // Query sent executions for connection_request steps directly
+        const { data: sentInvites } = await supabase
           .from('sequence_step_executions')
-          .select('*', { count: 'exact', head: true })
+          .select(`
+            id,
+            step:sequence_steps!inner(action_type)
+          `)
           .eq('status', 'sent')
-          .gte('executed_at', weekAgo.toISOString())
-          .in('step_id', 
-            supabase
-              .from('sequence_steps')
-              .select('id')
-              .eq('action_type', 'connection_request')
-          );
+          .eq('step.action_type', 'connection_request')
+          .gte('executed_at', weekAgo.toISOString());
         
-        // Also count from analytics
-        const { data: analyticsData } = await supabase
-          .from('sequence_analytics')
-          .select('invites_sent')
-          .gte('date', weekAgo.toISOString().split('T')[0]);
-        
-        const analyticsInvites = analyticsData?.reduce(
-          (sum: number, row: { invites_sent: number }) => sum + (row.invites_sent || 0), 
-          0
-        ) || 0;
-        
-        const totalInvites = (count || 0) + analyticsInvites;
+        const totalInvites = sentInvites?.length || 0;
         
         if (totalInvites >= WEEKLY_INVITE_LIMIT) {
           return { 
@@ -828,6 +816,9 @@ async function getFullLinkedInProfile(
         duration: p.duration_str,
       })) || [],
       network_distance: data.network_distance,
+      // Add public_identifier for connection requests
+      public_identifier: data.public_identifier || data.public_profile_identifier,
+      profile_url: data.public_profile_url || data.profile_url,
     };
   } catch (err) {
     console.error('Failed to fetch LinkedIn profile:', err);
@@ -1132,22 +1123,48 @@ async function executeStepAction(
       }
 
       case 'connection_request': {
-        // Unipile invite endpoint uses JSON (not FormData)
-        // Doc: https://developer.unipile.com/docs/invite-users
+        // Unipile invite endpoint requires the public LinkedIn identifier
+        // Doc: https://developer.unipile.com/reference/userscontroller_adduserbyidentifier
+        // The provider_id should be the public identifier (e.g., "julien-crepieux") OR a valid LinkedIn URN
+        
+        // First, get the profile to extract the public_identifier
+        const profileData = await getFullLinkedInProfile(accountId, profileId);
+        
+        // Determine the correct identifier to use
+        // Priority: public_identifier > profile URL slug > original profileId
+        let identifier = profileId;
+        
+        if (profileData) {
+          // Try to extract public identifier from profile data
+          const publicId = (profileData as Record<string, unknown>).public_identifier as string | undefined;
+          const profileUrl = enrollment.profile_url as string | undefined;
+          
+          if (publicId) {
+            identifier = publicId;
+          } else if (profileUrl) {
+            // Extract from URL: https://www.linkedin.com/in/julien-crepieux -> julien-crepieux
+            const match = profileUrl.match(/linkedin\.com\/in\/([^/?]+)/);
+            if (match) {
+              identifier = match[1];
+            }
+          }
+        }
+        
         const inviteNote = messageText ? messageText.slice(0, 50) : '';
         
         const inviteBody: Record<string, string> = {
           account_id: accountId,
-          provider_id: profileId,
+          provider_id: identifier, // Use the public LinkedIn identifier
         };
         
         if (inviteNote) {
           inviteBody.message = inviteNote;
         }
         
-        console.log(`[process-sequences] Sending connection request to ${profileId}`, {
+        console.log(`[process-sequences] Sending connection request`, {
           accountId,
-          profileId,
+          originalProfileId: profileId,
+          resolvedIdentifier: identifier,
           noteLength: inviteNote.length,
         });
         
@@ -1170,7 +1187,7 @@ async function executeStepAction(
           };
         }
         
-        console.log(`[process-sequences] Invitation sent successfully`);
+        console.log(`[process-sequences] Invitation sent successfully to ${identifier}`);
         await logAnalytics(supabase, enrollment.sequence_id as string, 'invites_sent');
         
         await supabase
