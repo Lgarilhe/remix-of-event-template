@@ -1143,10 +1143,14 @@ async function executeStepAction(
           );
         };
 
-        const fetchProviderId = async (identifier: string, source: string) => {
+        const fetchProfile = async (identifier: string, source: string, linkedinApi?: 'recruiter' | 'sales_navigator') => {
           try {
+            const url = new URL(`${UNIPILE_DSN}/api/v1/users/${encodeURIComponent(identifier)}`);
+            url.searchParams.set('account_id', accountId);
+            if (linkedinApi) url.searchParams.set('linkedin_api', linkedinApi);
+
             const profileResponse = await fetch(
-              `${UNIPILE_DSN}/api/v1/users/${encodeURIComponent(identifier)}?account_id=${accountId}`,
+              url.toString(),
               {
                 headers: {
                   'X-API-KEY': UNIPILE_API_KEY!,
@@ -1157,32 +1161,63 @@ async function executeStepAction(
 
             if (!profileResponse.ok) {
               console.warn(`[process-sequences] Could not fetch profile (${source}) for ${identifier}:`, profileResponse.status);
-              return;
+              return null;
             }
 
             const profileData = await profileResponse.json();
-            const providerId = extractProviderId(profileData);
-            if (providerId) {
-              correctProviderId = providerId;
-              console.log(`[process-sequences] Resolved provider_id (${source}): ${correctProviderId}`);
-            }
+            return profileData;
           } catch (err) {
             console.warn(`[process-sequences] Error fetching profile (${source}):`, err);
+            return null;
           }
         };
 
-        // If profileId isn't already a provider_id, try resolving it.
-        if (typeof profileId === 'string' && !profileId.startsWith('ACo')) {
-          // 1) Try resolving directly from the stored profile_id (works for talent/search/profile/AEM...)
-          await fetchProviderId(profileId, 'by_profile_id');
+        const setProviderIdFromProfile = (profileData: any, source: string) => {
+          const providerId = extractProviderId(profileData);
+          if (providerId) {
+            correctProviderId = providerId;
+            console.log(`[process-sequences] Resolved provider_id (${source}): ${correctProviderId}`);
+            return true;
+          }
+          console.warn(`[process-sequences] No provider_id in profile response (${source})`, {
+            hasPublicIdentifier: !!profileData?.public_identifier,
+            provider: profileData?.provider,
+          });
+          return false;
+        };
 
-          // 2) Fallback: resolve by public_identifier from a /in/{slug} URL
-          if (!correctProviderId.startsWith('ACo') && profileUrl) {
+        // If profileId isn't already a classic provider_id, try resolving it.
+        if (typeof profileId === 'string' && !profileId.startsWith('ACo') && !profileId.startsWith('ADo')) {
+          // 1) Recruiter IDs (AE... / AEM...) need a 2-step conversion:
+          //    - fetch recruiter profile to get public_identifier
+          //    - fetch classic profile by public_identifier to get ACo... provider_id
+          if (profileId.startsWith('AE') || profileId.startsWith('AEM')) {
+            const recruiterProfile = await fetchProfile(profileId, 'recruiter_by_profile_id', 'recruiter');
+            if (recruiterProfile) {
+              // Sometimes Unipile may already include a classic provider_id; try it first.
+              setProviderIdFromProfile(recruiterProfile, 'recruiter_by_profile_id');
+
+              const publicIdentifier = recruiterProfile.public_identifier as string | undefined;
+              if (publicIdentifier && !correctProviderId.startsWith('ACo') && !correctProviderId.startsWith('ADo')) {
+                console.log(`[process-sequences] Converting recruiter id -> classic provider_id using public_identifier: ${publicIdentifier}`);
+                const classicProfile = await fetchProfile(publicIdentifier, 'classic_by_public_identifier');
+                if (classicProfile) {
+                  setProviderIdFromProfile(classicProfile, 'classic_by_public_identifier');
+                }
+              }
+            }
+          }
+
+          // 2) Fallback: resolve by public_identifier from a /in/{slug} URL (classic)
+          if (!correctProviderId.startsWith('ACo') && !correctProviderId.startsWith('ADo') && profileUrl) {
             const match = profileUrl.match(/linkedin\.com\/in\/([^/?]+)/);
             if (match) {
               const publicIdentifier = match[1];
-              console.log(`[process-sequences] Fetching provider_id for public_identifier: ${publicIdentifier}`);
-              await fetchProviderId(publicIdentifier, 'by_public_identifier');
+              console.log(`[process-sequences] Fetching classic provider_id for public_identifier: ${publicIdentifier}`);
+              const classicProfile = await fetchProfile(publicIdentifier, 'classic_by_public_identifier_fallback');
+              if (classicProfile) {
+                setProviderIdFromProfile(classicProfile, 'classic_by_public_identifier_fallback');
+              }
             }
           }
         }
