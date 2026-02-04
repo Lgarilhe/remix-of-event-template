@@ -192,28 +192,31 @@ Accroche + présentation + CTA.`
     );
     
     // Different positioning based on engagement type
+    const clientName = job.client?.name || 'nous';
     const engagementInstructions = isRPO
       ? `
 === MODE RPO (TU ES SALARIÉ DE ${job.client?.name?.toUpperCase() || 'L\'ENTREPRISE'}) ===
-CRITIQUE: Tu travailles CHEZ ${job.client?.name || 'cette entreprise'}. Tu n'es PAS un cabinet externe.
-- TOUJOURS: "nous", "notre équipe", "on cherche", "chez nous", "ce qu'on recherche"
-- Le candidat doit penser qu'il parle à un employé de ${job.client?.name || 'l\'entreprise'}
+CRITIQUE: Tu travailles CHEZ ${clientName}. Tu n'es PAS un cabinet externe.
+- TOUJOURS: "on", "nous", "chez ${clientName}" ou "chez nous"
+- Le candidat doit penser qu'il parle à un employé de ${clientName}
 
-FORMULATIONS RPO:
-- "On cherche un ${job.title} pour notre équipe"
-- "Ton background colle bien avec ce qu'on monte chez ${job.client?.name || 'nous'}"
-- "Ça correspond à nos besoins côté data/tech"
+FORMULATIONS RPO NATURELLES (exemples):
+- "ça colle bien avec ce qu'on cherche chez ${clientName}"
+- "on monte le cloud souverain français" (pas "notre équipe monte...")
+- "tu apporterais [X] à l'équipe"
 
-⛔ INTERDIT EN MODE RPO (ne jamais écrire):
-- "Je recrute pour eux" → tu NE recrutes PAS pour un client, tu ES le client
-- "Ce qu'ils cherchent" → c'est "ce qu'on recherche"  
-- "Leur équipe" → c'est "notre équipe"
-- Toute formulation qui suggère que tu es externe à l'entreprise`
+⛔ FORMULATIONS INTERDITES EN MODE RPO:
+- "notre équipe chez ${clientName}" ❌ (redondant, trop corporate)
+- "dans notre équipe chez ${clientName}" ❌ (lourd)
+- "ce qu'on recherche dans notre équipe" ❌ (trop long)
+- "je recrute pour eux/mon client" ❌
+- "ils/leur" ❌
+- Préférer des formulations courtes: "chez ${clientName}" OU "notre équipe" mais PAS les deux ensemble`
       : `
 === MODE SUCCÈS (CABINET EXTERNE) ===
 Tu parles EN TANT QUE recruteur externe/cabinet qui accompagne un client.
-- Utilise "ils", "leur équipe", "chez ${job.client?.name || 'mon client'}"
-- Tu présentes l'opportunité: "Je recrute pour ${job.client?.name || 'une société'}"
+- Utilise "ils", "leur équipe", "chez ${clientName}"
+- Tu présentes l'opportunité: "Je recrute pour ${clientName}"
 - Tu peux valoriser ta connaissance du client: "Je travaille avec leur CTO"
 - Sois transparent sur ton rôle de cabinet`;
 
