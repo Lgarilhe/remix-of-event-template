@@ -1227,6 +1227,7 @@ export const LinkedInResultCard: React.FC<LinkedInResultCardProps> = ({
             onOpenChange={setShowMessageModal}
             profile={profile}
             job={selectedJob}
+            selectedAccount={accountId}
           />
         )}
       </div>
