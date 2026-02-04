@@ -40,6 +40,8 @@ import {
   CheckCircle2,
   Timer,
   SkipForward,
+  RefreshCw,
+  Zap,
 } from 'lucide-react';
 import { format, formatDistanceToNow } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -152,6 +154,7 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
   const [loading, setLoading] = useState(true);
   const [expandedEnrollments, setExpandedEnrollments] = useState<Set<string>>(new Set());
   const [allSteps, setAllSteps] = useState<SequenceStep[]>([]);
+  const [processingSequences, setProcessingSequences] = useState(false);
 
   const fetchEnrollments = async () => {
     try {
@@ -297,9 +300,47 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
     }
   };
 
+  const processSequencesNow = async () => {
+    try {
+      setProcessingSequences(true);
+      toast.info('Traitement des séquences en cours...');
+      
+      // Call all sequence processing actions
+      const results = await Promise.all([
+        supabase.functions.invoke('process-sequences', { body: { action: 'process' } }),
+        supabase.functions.invoke('process-sequences', { body: { action: 'check_replies' } }),
+        supabase.functions.invoke('process-sequences', { body: { action: 'check_wait_events' } }),
+      ]);
+      
+      const processResult = results[0].data;
+      
+      if (processResult?.success) {
+        const { processed = 0, failed = 0, skipped = 0, quota_blocked = 0 } = processResult.results || {};
+        let message = `Traitement terminé: ${processed} action(s) exécutée(s)`;
+        if (failed > 0) message += `, ${failed} échouée(s)`;
+        if (skipped > 0) message += `, ${skipped} ignorée(s)`;
+        if (quota_blocked > 0) message += `, ${quota_blocked} bloquée(s) (quota)`;
+        
+        toast.success(message);
+        await fetchEnrollments();
+      } else {
+        toast.error('Erreur lors du traitement');
+      }
+    } catch (error) {
+      console.error('Error processing sequences:', error);
+      toast.error('Erreur lors du traitement des séquences');
+    } finally {
+      setProcessingSequences(false);
+    }
+  };
+
   const activeCount = enrollments.filter(e => e.status === 'active').length;
   const pausedCount = enrollments.filter(e => e.status === 'paused').length;
   const completedCount = enrollments.filter(e => ['completed', 'replied'].includes(e.status)).length;
+
+  // Check if there are any pending executions that are past their scheduled time
+  const pendingExecutions = enrollments.flatMap(e => e.executions || [])
+    .filter(exec => exec.status === 'scheduled' && new Date(exec.scheduled_at) < new Date());
 
   return (
     <Sheet open={isOpen} onOpenChange={(open) => !open && onClose()}>
@@ -312,6 +353,33 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
         </SheetHeader>
 
         <div className="mt-6 space-y-4">
+          {/* Process now button - always show if there are pending tasks */}
+          {pendingExecutions.length > 0 && (
+            <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 text-amber-700">
+                  <AlertCircle className="w-4 h-4" />
+                  <span className="text-sm font-medium">
+                    {pendingExecutions.length} action(s) en attente
+                  </span>
+                </div>
+                <Button
+                  size="sm"
+                  onClick={processSequencesNow}
+                  disabled={processingSequences}
+                  className="bg-amber-600 hover:bg-amber-700 text-white"
+                >
+                  {processingSequences ? (
+                    <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                  ) : (
+                    <Zap className="w-4 h-4 mr-2" />
+                  )}
+                  Traiter maintenant
+                </Button>
+              </div>
+            </div>
+          )}
+
           {/* Stats */}
           <div className="flex gap-3">
             <div className="flex-1 p-3 rounded-lg bg-blue-50 text-center">
