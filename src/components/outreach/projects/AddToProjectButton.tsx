@@ -32,6 +32,7 @@ interface AddToProjectButtonProps {
   jobId: string;
   activeProject?: SourcingProject | null;
   compact?: boolean;
+  onAdded?: () => void; // Callback when profile is added to project
 }
 
 export const AddToProjectButton: React.FC<AddToProjectButtonProps> = ({
@@ -45,6 +46,7 @@ export const AddToProjectButton: React.FC<AddToProjectButtonProps> = ({
   jobId,
   activeProject,
   compact = false,
+  onAdded,
 }) => {
   const { projects } = useSourcingProjects();
   const queryClient = useQueryClient();
@@ -118,6 +120,7 @@ export const AddToProjectButton: React.FC<AddToProjectButtonProps> = ({
       queryClient.invalidateQueries({ queryKey: ['project-candidates', project.id] });
       queryClient.invalidateQueries({ queryKey: ['sourcing-projects'] });
       toast.success(`${candidateName} ajouté au projet "${project.name}"`);
+      onAdded?.();
     } catch (error) {
       console.error('Error adding to project:', error);
       toast.error("Erreur lors de l'ajout au projet");

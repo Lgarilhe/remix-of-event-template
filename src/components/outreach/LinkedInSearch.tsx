@@ -1353,6 +1353,12 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
 
       if (error) throw error;
       
+      // Remove added profiles from results if autoHideTreated is enabled
+      if (autoHideTreatedRef.current) {
+        const addedIds = new Set(profilesToAdd.map(p => p.id));
+        setResults(prev => prev.filter(p => !addedIds.has(p.id)));
+      }
+      
       setSelectedProfiles(new Set());
       toast.success(`${profilesToAdd.length} profil${profilesToAdd.length > 1 ? 's' : ''} ajouté${profilesToAdd.length > 1 ? 's' : ''} au projet`);
     } catch (err) {
@@ -1888,6 +1894,19 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
                     accountId={selectedAccount}
                     selectedJob={selectedJob}
                     onSuccess={() => {
+                      // Remove enrolled profiles from results if autoHideTreated is enabled
+                      if (autoHideTreatedRef.current) {
+                        const enrolledIds = new Set(
+                          results
+                            .filter(p => selectedProfiles.has(p.id))
+                            .filter(p => {
+                              const score = jobScores[p.id];
+                              return !score || score.recommendation !== 'skip';
+                            })
+                            .map(p => p.id)
+                        );
+                        setResults(prev => prev.filter(p => !enrolledIds.has(p.id)));
+                      }
                       setSelectedProfiles(new Set());
                       toast.success('Candidats inscrits dans la séquence');
                     }}
@@ -2054,6 +2073,12 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
                   accountId={selectedAccount || undefined}
                   onMessageSent={() => quota.recordAction('messagesSent')}
                   activeProject={activeProject}
+                  onProfileTreated={() => {
+                    // Remove profile from results if autoHideTreated is enabled
+                    if (autoHideTreatedRef.current) {
+                      setResults(prev => prev.filter(p => p.id !== profile.id));
+                    }
+                  }}
                 />
               ))}
 
