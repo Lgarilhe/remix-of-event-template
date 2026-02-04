@@ -704,6 +704,9 @@ function buildPersonalizationPrompt(params: PersonalizationParams): string {
   if (job?.mustHave) criteriaContext.push(`Must-have: ${job.mustHave}`);
   if (job?.shouldHave) criteriaContext.push(`Should-have: ${job.shouldHave}`);
   if (job?.niceToHave) criteriaContext.push(`Nice-to-have: ${job.niceToHave}`);
+  if (job && (job.transversalCriteria as Record<string, unknown>)?.must) {
+    criteriaContext.push(`Critères transverses: ${(job.transversalCriteria as Record<string, unknown>).must}`);
+  }
 
   // Determine message objective based on message type
   const statusInstructions: Record<string, string> = {
@@ -742,7 +745,44 @@ Exemples: "Votre profil Python m'intéresse", "On recrute chez [Client]", "Poste
         .join('; ')
     : 'Non spécifiées';
 
+  // Determine engagement type (RPO vs Success fee) - same logic as generate-outreach-message
+  const accompagnement = (job?.accompagnement as string[]) || [];
+  const isRPO = accompagnement.some((a: string) => 
+    a.toLowerCase().includes('rpo') || 
+    a.toLowerCase().includes('embedded') ||
+    a.toLowerCase().includes('intégré')
+  );
+  
+  const clientName = (job?.client as Record<string, unknown>)?.name || 'nous';
+  const engagementInstructions = isRPO
+    ? `
+=== MODE RPO (TU ES SALARIÉ DE ${String((job?.client as Record<string, unknown>)?.name || "L'ENTREPRISE").toUpperCase()}) ===
+CRITIQUE: Tu travailles CHEZ ${clientName}. Tu n'es PAS un cabinet externe.
+- TOUJOURS: "on", "nous", "chez ${clientName}" ou "chez nous"
+- Le candidat doit penser qu'il parle à un employé de ${clientName}
+
+FORMULATIONS RPO NATURELLES (exemples):
+- "ça colle bien avec ce qu'on cherche chez ${clientName}"
+- "on monte le cloud souverain français" (pas "notre équipe monte...")
+- "tu apporterais [X] à l'équipe"
+
+⛔ FORMULATIONS INTERDITES EN MODE RPO:
+- "notre équipe chez ${clientName}" ❌ (redondant, trop corporate)
+- "dans notre équipe chez ${clientName}" ❌ (lourd)
+- "ce qu'on recherche dans notre équipe" ❌ (trop long)
+- "je recrute pour eux/mon client" ❌
+- "ils/leur" ❌
+- Préférer des formulations courtes: "chez ${clientName}" OU "notre équipe" mais PAS les deux ensemble`
+    : `
+=== MODE SUCCÈS (CABINET EXTERNE) ===
+Tu parles EN TANT QUE recruteur externe/cabinet qui accompagne un client.
+- Utilise "ils", "leur équipe", "chez ${clientName}"
+- Tu présentes l'opportunité: "Je recrute pour ${clientName}"
+- Tu peux valoriser ta connaissance du client: "Je travaille avec leur CTO"
+- Sois transparent sur ton rôle de cabinet`;
+
   const prompt = `Tu es un recruteur tech senior. Tu écris des messages LinkedIn ULTRA personnalisés et percutants.
+${engagementInstructions}
 
 PROFIL DU CANDIDAT:
 - Prénom: ${(profile?.name as string)?.split(' ')[0] || 'Candidat'}
@@ -765,6 +805,7 @@ IMPORTANT - ANALYSE LE STYLE D'ÉCRITURE DU CANDIDAT:
 POSTE À POURVOIR:
 - Titre: ${job?.title || 'Non spécifié'}
 - Client: ${(job?.client as Record<string, unknown>)?.name || 'Client confidentiel'} (${(job?.client as Record<string, unknown>)?.sector || 'Tech'})
+- Type accompagnement: ${accompagnement.join(', ') || 'Non spécifié'} ${isRPO ? '(MODE RPO)' : '(MODE SUCCÈS)'}
 - Compétences requises: ${(job?.skills as string[])?.join(', ') || 'Non spécifiées'}
 - Séniorité: ${job?.seniority || 'Non spécifié'} | XP: ${job?.xpMin || '?'}-${job?.xpMax || '?'} ans
 - Localisation: ${job?.location || 'Non spécifié'}
@@ -796,7 +837,21 @@ TEMPLATE DE BASE (à personnaliser):
    SI tu trouves quelque chose dans le À propos, UTILISE-LE comme accroche.
    C'est ce qui fait la différence entre un message générique et un message qui convertit.
 
-2. ADAPTATION DU STYLE AU CANDIDAT:
+2. VENDRE L'OPPORTUNITÉ (SUBTILEMENT MAIS EFFICACEMENT)
+   Le candidat doit sentir que c'est une opportunité à ne pas rater. Intègre UN ou DEUX éléments différenciants parmi:
+   
+   - TAILLE/STADE: "scale-up en hyper-croissance", "startup early-stage avec runway solide", "leader sur son marché"
+   - ÉQUIPE: "équipe de 6 seniors", "CTO ex-Datadog", "culture engineering forte"
+   - STACK/PROJET: "projet greenfield", "refonte from scratch", "stack moderne (Go/K8s/...")"
+   - IMPACT: "tu définiras l'archi", "impact direct sur le produit", "ownership total"
+   - CONDITIONS: si remote/hybride flexible, si salaire attractif, si équilibre vie pro/perso
+   - SECTEUR: si le secteur est porteur ou la mission a du sens (santé, climat, souveraineté...)
+   
+   NE SURVENDS PAS: 1-2 éléments max, intégrés naturellement dans le pitch. Pas de liste à puces.
+   ÉVITE les formules creuses: "projet passionnant", "belle aventure", "super équipe".
+   PRÉFÈRE les faits concrets: "refonte de l'archi data pour 10M users" > "projet ambitieux".
+
+3. ADAPTATION DU STYLE AU CANDIDAT:
    - SI le candidat écrit de façon décontractée avec des émojis → sois plus casual
    - SI le candidat est très corporate/formel → reste pro mais pas froid
    - SI le candidat montre de l'humour → ose une touche légère
@@ -804,29 +859,42 @@ TEMPLATE DE BASE (à personnaliser):
    
    Le but: que le candidat ait l'impression de lire un message d'un pair, pas d'un robot.
 
-3. EXEMPLES D'ACCROCHES PERSONNALISÉES (inspirés du À propos):
+4. EXEMPLES D'ACCROCHES PERSONNALISÉES (inspirés du À propos):
    - "Tu mentionnes ton amour du clean code dans ton profil - on cherche exactement ça chez [Client]"
    - "J'ai vu que tu avais contribué à [projet open source] - le CTO est très orienté communauté"
    - "Tu parles de ton passage de corporate à startup - c'est pile le mouvement inverse qu'on propose"
    - "Ton focus sur les archi event-driven colle parfaitement avec ce qu'on monte chez [Client]"
 
-4. TON: ${toneInstructions[tone] || toneInstructions.professional}
+5. TON: ${toneInstructions[tone] || toneInstructions.professional}
 
-5. NE POSE PAS DE QUESTION SI:
+6. NE POSE PAS DE QUESTION SI:
    - Le profil semble déjà matcher → propose un call directement
    - Tu n'as pas de vraie question de qualification → CTA direct
    - ÉVITE les questions sur l'anglais (sauf si vraiment critique et absent du profil)
 
-6. INTERDITS:
+7. INTERDITS (MARQUEURS IA À BANNIR):
    - "j'ai parcouru ton profil", "a retenu mon attention", "m'a tapé dans l'œil"
    - Superlatifs: exceptionnel, remarquable, impressionnant
    - Questions génériques: "ça t'intéresserait ?", "tu serais ouvert ?"
    - Forcer une question quand un CTA suffit
    - FORMAT CHIFFRES: JAMAIS de "20+", "10+", "5+" → écrire "plus de 20", "plus de 10", "plus de 5"
-   - JARGON TROP COOL/STARTUP: "ton taf", "mise gros", "ça colle", "c'est chaud", "le kiff", "la bombe"
-   - EXPRESSIONS FAMILIÈRES: évite les raccourcis trop oraux même en mode casual
+   - TIRETS (DÉBUT OU MILIEU): JAMAIS de "- ..." ni de "A – B" / "A — B" / "A - B" → remplace par des phrases avec points/virgules
+   - LISTES À PUCES: JAMAIS de listes, écris en prose fluide
+   - JARGON TROP COOL/STARTUP: "ton taf", "mise gros", "c'est chaud", "le kiff", "la bombe"
+   - FORMULES CREUSES: "projet passionnant", "belle aventure", "super équipe", "environnement stimulant"
+   
+   TOURNURES FLATTEUSES INTERDITES (trop vendeuses/IA):
+   - "ton profil colle parfaitement" ❌ → préfère "ton profil colle bien" ou "ça matche"
+   - "ton expérience c'est exactement/parfaitement ce qu'on veut" ❌
+   - "c'est pile ce qu'on cherche" ❌
+   - Évite "parfaitement", "exactement", "idéalement" → sois plus naturel et mesuré
+   
+   EN MODE RPO - ABSOLUMENT INTERDIT:
+   - "je recrute pour eux" ❌ (tu bosses DANS la boîte, pas pour un client)
+   - "ce qu'ils cherchent" ❌ → "ce qu'on recherche"
+   - "leur équipe" ❌ → "notre équipe"
 
-7. FORMAT OBLIGATOIRE:
+8. FORMAT OBLIGATOIRE:
    ${isInvitation ? `⚠️ CONTRAINTE CRITIQUE: MAXIMUM 50 CARACTÈRES TOTAL (espaces inclus) ⚠️
    - LinkedIn coupe le message à 50 caractères, tout ce qui dépasse est PERDU
    - COMPTE tes caractères ! Exemples valides:
@@ -836,9 +904,9 @@ TEMPLATE DE BASE (à personnaliser):
    - PAS de salutation (Salut X, Bonjour) → gaspille des caractères
    - PAS de sauts de ligne
    - VA DROIT AU BUT en moins de 50 caractères` : `- 80-100 mots maximum
-   - Phrases courtes et percutantes
+   - Phrases courtes et percutantes, PAS de tirets, PAS de listes
    - SAUTS DE LIGNE entre chaque paragraphe/idée (2-3 paragraphes distincts)
-   - Structure type: Accroche perso (1-2 phrases) → Pitch poste (2-3 phrases) → CTA (1 phrase)`}
+   - Structure type: Accroche perso (1-2 phrases) → Pitch poste en prose fluide (2-3 phrases) → CTA (1 phrase)`}
    ${!isInvitation ? `- Signature: "${senderName || '[Prénom]'}"` : ''}
 
 Réponds UNIQUEMENT en JSON valide:
