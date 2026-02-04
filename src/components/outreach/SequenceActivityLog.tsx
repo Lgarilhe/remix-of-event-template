@@ -374,22 +374,24 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
                         onOpenChange={() => toggleExpanded(exec.id)}
                       >
                         <div className={cn(
-                          "border rounded-lg overflow-hidden",
-                          isOverdue && "border-amber-300 bg-amber-50/50",
-                          exec.status === 'failed' && "border-red-200 bg-red-50/30",
-                          exec.status === 'sent' && "border-green-200",
+                          "border rounded-lg overflow-hidden transition-colors",
+                          isOverdue && "border-amber-300 bg-amber-50/30",
+                          exec.status === 'failed' && "border-red-200 bg-red-50/20",
+                          exec.status === 'sent' && "border-green-200 bg-green-50/20",
+                          exec.status === 'skipped' && "border-gray-200 bg-gray-50/50",
+                          !isOverdue && exec.status === 'scheduled' && "border-blue-200 bg-blue-50/20",
                         )}>
                           <CollapsibleTrigger className="w-full">
-                            <div className="p-3 flex items-center gap-3 hover:bg-gray-50/50">
+                            <div className="p-3 flex items-start gap-3 hover:bg-muted/30 transition-colors">
                               {/* Action icon */}
-                              <div className={cn("w-8 h-8 rounded-full flex items-center justify-center", actionConfig.bgColor)}>
+                              <div className={cn("w-9 h-9 rounded-lg flex items-center justify-center shrink-0", actionConfig.bgColor)}>
                                 <span className={actionConfig.color}>{actionConfig.icon}</span>
                               </div>
 
                               {/* Main content */}
                               <div className="flex-1 min-w-0 text-left">
-                                <div className="flex items-center gap-2">
-                                  <span className="font-medium text-gray-900 truncate">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="font-medium text-foreground">
                                     {exec.enrollment?.profile_name || 'Candidat'}
                                   </span>
                                   {exec.enrollment?.profile_url && (
@@ -397,50 +399,49 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
                                       href={exec.enrollment.profile_url}
                                       target="_blank"
                                       rel="noopener noreferrer"
-                                      className="text-gray-400 hover:text-[#0077B5]"
+                                      className="text-muted-foreground hover:text-[#0077B5] transition-colors"
                                       onClick={(e) => e.stopPropagation()}
                                     >
-                                      <ExternalLink className="w-3 h-3" />
+                                      <ExternalLink className="w-3.5 h-3.5" />
                                     </a>
                                   )}
+                                  <Badge className={cn("text-[10px] border h-5", execStatus.className)}>
+                                    {execStatus.icon}
+                                    <span className="ml-1">{execStatus.label}</span>
+                                  </Badge>
                                 </div>
-                                <div className="flex items-center gap-2 text-xs text-gray-500">
-                                  <span>{actionConfig.label}</span>
-                                  <span>•</span>
-                                  <span className="truncate">{exec.enrollment?.sequence?.name}</span>
+                                <div className="flex items-center gap-1.5 text-xs text-muted-foreground mt-0.5">
+                                  <span className={cn("font-medium", actionConfig.color)}>{actionConfig.label}</span>
+                                  <span className="text-muted-foreground/50">·</span>
+                                  <span className="truncate max-w-[180px]">{exec.enrollment?.sequence?.name}</span>
+                                  <span className="text-muted-foreground/50">·</span>
+                                  <span className="tabular-nums">{format(new Date(exec.scheduled_at), 'HH:mm')}</span>
                                 </div>
                               </div>
 
-                              {/* Status & time */}
-                              <div className="flex items-center gap-2">
-                                <Badge className={cn("text-xs border", execStatus.className)}>
-                                  {execStatus.icon}
-                                  <span className="ml-1">{execStatus.label}</span>
-                                </Badge>
-                                <span className="text-xs text-gray-400 whitespace-nowrap">
-                                  {format(new Date(exec.scheduled_at), 'HH:mm')}
-                                </span>
-                                {(hasMessage || hasError) && (
-                                  isExpanded ? (
-                                    <ChevronDown className="w-4 h-4 text-gray-400" />
+                              {/* Expand indicator */}
+                              {(hasMessage || hasError) && (
+                                <div className="shrink-0 self-center">
+                                  {isExpanded ? (
+                                    <ChevronDown className="w-4 h-4 text-muted-foreground" />
                                   ) : (
-                                    <ChevronRight className="w-4 h-4 text-gray-400" />
-                                  )
-                                )}
-                              </div>
+                                    <ChevronRight className="w-4 h-4 text-muted-foreground" />
+                                  )}
+                                </div>
+                              )}
                             </div>
                           </CollapsibleTrigger>
 
                           <CollapsibleContent>
-                            <div className="px-3 pb-3 pt-0 space-y-2 border-t bg-gray-50/50">
+                            <div className="px-3 pb-3 pt-2 space-y-2 border-t bg-muted/20">
                               {/* Error message */}
                               {hasError && (
-                                <div className="p-2 bg-red-50 border border-red-200 rounded text-sm text-red-700">
-                                  <div className="flex items-center gap-2 font-medium">
+                                <div className="p-2.5 bg-red-50 border border-red-200 rounded-lg text-sm">
+                                  <div className="flex items-center gap-2 font-medium text-red-700">
                                     <AlertCircle className="w-4 h-4" />
                                     {exec.status === 'failed' ? 'Erreur' : 'Raison'}
                                   </div>
-                                  <p className="mt-1 text-red-600">
+                                  <p className="mt-1 text-red-600 text-xs">
                                     {exec.error_message || exec.skip_reason}
                                   </p>
                                 </div>
@@ -448,28 +449,37 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
 
                               {/* Message preview */}
                               {hasMessage && (
-                                <div className="p-2 bg-white border rounded">
+                                <div className="p-3 bg-white border rounded-lg mt-2">
                                   {(exec.final_subject || exec.step?.subject_template) && (
-                                    <div className="text-xs text-gray-500 mb-1">
-                                      <span className="font-medium">Objet:</span>{' '}
+                                    <div className="text-xs text-muted-foreground mb-2 pb-2 border-b">
+                                      <span className="font-medium">Objet :</span>{' '}
                                       {exec.final_subject || exec.step?.subject_template}
                                     </div>
                                   )}
-                                  <div className="text-sm text-gray-700 whitespace-pre-wrap">
-                                    {exec.final_message || exec.step?.message_template || 'Pas de message'}
+                                  <div className="text-sm text-foreground leading-relaxed">
+                                    {(exec.final_message || exec.step?.message_template || 'Pas de message')
+                                      .split(/\\n|\n/)
+                                      .map((line, i, arr) => (
+                                        <React.Fragment key={i}>
+                                          {line}
+                                          {i < arr.length - 1 && <br />}
+                                        </React.Fragment>
+                                      ))}
                                   </div>
                                 </div>
                               )}
 
                               {/* Metadata */}
-                              <div className="flex items-center gap-4 text-xs text-gray-500">
-                                <span>
-                                  Planifié: {format(new Date(exec.scheduled_at), 'dd/MM/yyyy HH:mm', { locale: fr })}
-                                </span>
+                              <div className="flex items-center gap-3 text-[11px] text-muted-foreground pt-1">
+                                <div className="flex items-center gap-1">
+                                  <Clock className="w-3 h-3" />
+                                  <span>Planifié : {format(new Date(exec.scheduled_at), 'dd/MM HH:mm', { locale: fr })}</span>
+                                </div>
                                 {exec.executed_at && (
-                                  <span>
-                                    Exécuté: {format(new Date(exec.executed_at), 'dd/MM/yyyy HH:mm', { locale: fr })}
-                                  </span>
+                                  <div className="flex items-center gap-1">
+                                    <CheckCircle2 className="w-3 h-3 text-green-600" />
+                                    <span>Exécuté : {format(new Date(exec.executed_at), 'dd/MM HH:mm', { locale: fr })}</span>
+                                  </div>
                                 )}
                               </div>
                             </div>
