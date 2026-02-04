@@ -33,6 +33,8 @@ interface JobData {
   tjmMin?: number;
   tjmMax?: number;
   contractType?: string;
+  // Type d'accompagnement: RPO, Succès, etc.
+  accompagnement?: string[];
   // Scoring criteria
   mustHave?: string;
   shouldHave?: string;
@@ -119,7 +121,34 @@ OBJECTIF: MESSAGE STANDARD
 Accroche + présentation + CTA.`
     };
 
+    // Determine engagement type (RPO vs Success fee)
+    const accompagnement = job.accompagnement || [];
+    const isRPO = accompagnement.some(a => 
+      a.toLowerCase().includes('rpo') || 
+      a.toLowerCase().includes('embedded') ||
+      a.toLowerCase().includes('intégré')
+    );
+    
+    // Different positioning based on engagement type
+    const engagementInstructions = isRPO
+      ? `
+=== MODE RPO (RECRUTEUR INTERNE) ===
+Tu parles AU NOM du client, comme si tu étais un recruteur INTERNE de l'entreprise.
+- Utilise "nous", "notre équipe", "chez nous"
+- Tu ES l'entreprise: "On cherche un ${job.title} pour renforcer notre équipe"
+- NE MENTIONNE PAS que tu es un cabinet externe
+- Parle comme un pair de l'équipe technique: "J'accompagne l'équipe data chez ${job.client?.name || 'nous'}"
+- Le candidat doit avoir l'impression de parler directement à quelqu'un de l'entreprise`
+      : `
+=== MODE SUCCÈS (CABINET DE RECRUTEMENT) ===
+Tu parles EN TANT QUE recruteur externe qui accompagne un client.
+- Utilise "ils", "leur équipe", "chez ${job.client?.name || 'mon client'}"
+- Tu présentes l'opportunité: "Je recrute pour ${job.client?.name || 'une société'}"
+- Tu peux valoriser ta connaissance du client: "Je travaille étroitement avec leur CTO"
+- Sois transparent sur ton rôle tout en étant un vrai partenaire du candidat`;
+
     const prompt = `Tu es un recruteur tech senior. Tu écris des messages LinkedIn ULTRA personnalisés et percutants.
+${engagementInstructions}
 
 PROFIL DU CANDIDAT:
 - Prénom: ${profile.name?.split(' ')[0] || 'Candidat'}
@@ -144,6 +173,7 @@ IMPORTANT - ANALYSE LE STYLE D'ÉCRITURE DU CANDIDAT:
 POSTE À POURVOIR:
 - Titre: ${job.title}
 - Client: ${job.client?.name || 'Client confidentiel'} (${job.client?.sector || 'Tech'})
+- Type accompagnement: ${accompagnement.join(', ') || 'Non spécifié'} ${isRPO ? '(MODE RPO)' : '(MODE SUCCÈS)'}
 - Compétences requises: ${job.skills?.join(', ') || 'Non spécifiées'}
 - Séniorité: ${job.seniority || 'Non spécifié'} | XP: ${job.xpMin || '?'}-${job.xpMax || '?'} ans
 - Localisation: ${job.location || 'Non spécifié'}
@@ -225,23 +255,23 @@ ${statusInstructions[candidateStatus] || statusInstructions.other}
 
 === EXEMPLES ===
 
-EXEMPLE 1 - Avec À propos riche:
-À propos: "Passionné par le Domain-Driven Design et les architectures hexagonales. Ex-Doctolib, j'ai quitté pour rejoindre une scale-up où j'ai plus d'ownership."
+EXEMPLE 1 - MODE RPO (tu parles comme recruteur interne):
+À propos: "Passionné par le Domain-Driven Design et les architectures hexagonales."
 
 "Salut Thomas,
 
-Tu parles de DDD et d'ownership dans ton profil - c'est exactement ce qu'on cherche chez Numspot pour architecturer leur cloud souverain.
+Tu parles de DDD et d'ownership dans ton profil - c'est exactement ce qu'on cherche dans notre équipe chez Numspot.
 
-Équipe de 6, stack Go/K8s, projet greenfield. Le genre d'environnement où tu définis toi-même les patterns.
+On construit le cloud souverain français, stack Go/K8s, projet greenfield. Tu définirais toi-même les patterns d'archi.
 
 Dispo jeudi pour un call de 15 min ?
 
 Marc"
 
-EXEMPLE 2 - Sans À propos, profil qui matche:
+EXEMPLE 2 - MODE SUCCÈS (tu parles comme cabinet externe):
 "Salut Julie,
 
-Ton expérience data chez Doctolib + BlaBlaCar colle parfaitement avec ce qu'on monte chez Alan.
+Je recrute pour Alan sur un poste Data Engineer senior. Ton expérience chez Doctolib + BlaBlaCar colle vraiment bien avec ce qu'ils cherchent.
 
 Stack moderne (dbt, BigQuery, Airflow), équipe de 4, full remote. Impact direct sur les décisions produit.
 
