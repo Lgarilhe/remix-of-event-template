@@ -791,6 +791,8 @@ PROFIL DU CANDIDAT:
 - Localisation: ${profile?.location || 'Non spécifié'}
 - Compétences: ${(profile?.skills as string[])?.slice(0, 10).join(', ') || 'Non spécifiées'}
 - Expériences passées: ${experiencesStr}
+${profile?.yearsOfExperience ? `- Années d'expérience: ~${profile.yearsOfExperience} ans` : ''}
+${(profile?.education as string[] | undefined)?.length ? `- Formation: ${(profile?.education as string[]).slice(0, 2).join('; ')}` : ''}
 ${profile?.summary ? `
 === SECTION "À PROPOS" DU CANDIDAT (SOURCE CLÉ DE PERSONNALISATION ET DE STYLE) ===
 "${(profile.summary as string).slice(0, 800)}"
@@ -933,18 +935,43 @@ async function getFullLinkedInProfile(
     
     const data = await response.json();
     
+    // Calculate years of experience from positions
+    const positions = data.positions || [];
+    let yearsOfExperience = 0;
+    if (positions.length > 0) {
+      // Find the earliest start date
+      const startDates = positions
+        .map((p: Record<string, unknown>) => p.start_date || p.starts_at)
+        .filter(Boolean);
+      if (startDates.length > 0) {
+        const earliest = startDates.reduce((min: string, d: string) => d < min ? d : min);
+        const startYear = parseInt(earliest.split('-')[0], 10);
+        if (startYear) {
+          yearsOfExperience = new Date().getFullYear() - startYear;
+        }
+      }
+    }
+
+    // Extract education
+    const education = (data.education || data.schools || []).map((e: Record<string, unknown>) => 
+      `${e.degree || e.field_of_study || ''} - ${e.school_name || e.school || ''}`.trim()
+    ).filter(Boolean).slice(0, 3);
+
     return {
       name: data.first_name ? `${data.first_name} ${data.last_name || ''}`.trim() : data.name,
       headline: data.headline,
       current_company: data.current_company?.name || data.company_name,
+      current_role: positions[0]?.title || data.headline,
       location: data.location,
       summary: data.summary || data.about,
       skills: data.skills?.map((s: Record<string, unknown>) => s.name || s) || [],
-      experiences: data.positions?.map((p: Record<string, unknown>) => ({
+      experiences: positions.map((p: Record<string, unknown>) => ({
         title: p.title,
         company: p.company_name,
         duration: p.duration_str,
-      })) || [],
+      })),
+      education,
+      yearsOfExperience,
       network_distance: data.network_distance,
       // Add public_identifier for connection requests
       public_identifier: data.public_identifier || data.public_profile_identifier,
@@ -956,7 +983,7 @@ async function getFullLinkedInProfile(
   }
 }
 
-// Fetch job context from Notion with full details
+// Fetch job context from Notion with full details including transversal criteria
 async function fetchNotionJobContext(jobId: string): Promise<Record<string, unknown> | null> {
   try {
     const response = await fetch(`https://api.notion.com/v1/pages/${jobId}`, {
@@ -985,6 +1012,8 @@ async function fetchNotionJobContext(jobId: string): Promise<Record<string, unkn
           return (prop.multi_select as Array<{ name: string }>)?.map(s => s.name) || [];
         case 'number':
           return prop.number;
+        case 'relation':
+          return (prop.relation as Array<{ id: string }>)?.map(r => r.id) || [];
         default:
           return null;
       }
@@ -998,6 +1027,66 @@ async function fetchNotionJobContext(jobId: string): Promise<Record<string, unkn
         break;
       }
     }
+
+    // Extract accompagnement - try multiple possible property names (with both apostrophe types)
+    let accompagnement: string[] = [];
+    const accompagnementKeys = [
+      "Type d'accompagnement", "Type d\u0027accompagnement", // straight apostrophe
+      "Type d'accompagnement", // curly apostrophe
+      "Accompagnement", "Mode", "Type accompagnement"
+    ];
+    for (const key of accompagnementKeys) {
+      const val = getValue(props[key]);
+      if (val && (Array.isArray(val) ? val.length > 0 : val)) {
+        accompagnement = Array.isArray(val) ? val : [val as string];
+        break;
+      }
+    }
+
+    // Case-insensitive search for accompagnement if not found
+    if (accompagnement.length === 0) {
+      for (const [propName, prop] of Object.entries(props)) {
+        const lowerName = propName.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        if (lowerName.includes('accompagnement') || lowerName.includes('type d')) {
+          const val = getValue(prop as Record<string, unknown>);
+          if (val && (Array.isArray(val) ? val.length > 0 : val)) {
+            accompagnement = Array.isArray(val) ? val : [val as string];
+            console.log(`[fetchNotionJobContext] Found accompagnement via case-insensitive search: ${propName} = ${JSON.stringify(accompagnement)}`);
+            break;
+          }
+        }
+      }
+    }
+
+    // Fetch transversal criteria if relation exists
+    let transversalCriteria: Record<string, string> | null = null;
+    const transversalRelation = getValue(props['Critères Transverses']) || getValue(props['Transversal']) || getValue(props['Critères transverses']);
+    if (Array.isArray(transversalRelation) && transversalRelation.length > 0) {
+      try {
+        const transversalId = transversalRelation[0];
+        const transversalResponse = await fetch(`https://api.notion.com/v1/pages/${transversalId}`, {
+          headers: {
+            'Authorization': `Bearer ${NOTION_API_KEY}`,
+            'Notion-Version': '2022-06-28',
+          },
+        });
+        
+        if (transversalResponse.ok) {
+          const transversalPage = await transversalResponse.json();
+          const tProps = transversalPage.properties || {};
+          transversalCriteria = {
+            must: getValue(tProps['Must']) as string || getValue(tProps['Must have']) as string || '',
+            should: getValue(tProps['Should']) as string || getValue(tProps['Should have']) as string || '',
+            niceToHave: getValue(tProps['Nice to have']) as string || getValue(tProps['Nice']) as string || '',
+            context: getValue(tProps['Contexte']) as string || getValue(tProps['Context']) as string || '',
+          };
+        }
+      } catch (e) {
+        console.warn('[fetchNotionJobContext] Failed to fetch transversal criteria:', e);
+      }
+    }
+
+    console.log(`[fetchNotionJobContext] Job ${jobId}: accompagnement=${JSON.stringify(accompagnement)}, hasTransversal=${!!transversalCriteria}`);
 
     return {
       title,
@@ -1016,6 +1105,8 @@ async function fetchNotionJobContext(jobId: string): Promise<Record<string, unkn
       mustHave: getValue(props['Must have']) || getValue(props['Critères Must']),
       shouldHave: getValue(props['Should have']) || getValue(props['Critères Should']),
       niceToHave: getValue(props['Nice to have']) || getValue(props['Critères Nice']),
+      accompagnement,
+      transversalCriteria,
       client: {
         name: getValue(props['Client']) || getValue(props['Entreprise']),
         sector: getValue(props['Secteur']) || getValue(props['Sector']),
