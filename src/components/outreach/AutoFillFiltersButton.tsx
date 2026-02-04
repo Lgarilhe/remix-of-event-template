@@ -38,32 +38,52 @@ function buildJobContext(job: Job): string {
   const transversal = (job as any).transversalCriteria;
   const remotePolicy = (job as any).remotePolicy || (job as any).remote || '';
   
-  return `
-Titre du poste: ${job.title}
-${job.client?.name ? `Client: ${job.client.name}` : ''}
-${job.client?.sector ? `Secteur: ${job.client.sector}` : ''}
-${job.location ? `Localisation: ${job.location}` : ''}
-${job.seniority ? `Séniorité: ${job.seniority}` : ''}
-${job.xpMin !== undefined ? `Expérience min: ${job.xpMin} ans` : ''}
-${job.xpMax !== undefined ? `Expérience max: ${job.xpMax} ans` : ''}
-${job.skills?.length ? `Compétences requises: ${job.skills.join(', ')}` : ''}
-${remotePolicy ? `Politique remote: ${remotePolicy}` : ''}
-${job.description ? `Description: ${job.description.substring(0, 800)}` : ''}
-${(job as any).sourcingCriteria ? `Critères de sourcing: ${(job as any).sourcingCriteria}` : ''}
+  // Filter empty lines
+  const lines = [
+    `Titre du poste: ${job.title}`,
+    job.client?.name ? `Client: ${job.client.name}` : null,
+    job.client?.sector ? `Secteur: ${job.client.sector}` : null,
+    job.location ? `Localisation: ${job.location}` : null,
+    job.seniority ? `Séniorité: ${job.seniority}` : null,
+    job.xpMin !== undefined && job.xpMin !== null ? `Expérience min: ${job.xpMin} ans` : null,
+    job.xpMax !== undefined && job.xpMax !== null ? `Expérience max: ${job.xpMax} ans` : null,
+    job.skills?.length ? `Compétences requises: ${job.skills.join(', ')}` : null,
+    remotePolicy ? `Politique remote: ${remotePolicy}` : null,
+    job.description ? `Description: ${job.description.substring(0, 800)}` : null,
+    (job as any).sourcingCriteria ? `Critères de sourcing: ${(job as any).sourcingCriteria}` : null,
+    '',
+    '=== CRITÈRES DU POSTE (pour scoring) ===',
+    (job as any).mustHave ? `🔴 MUST-HAVE (obligatoire): ${(job as any).mustHave}` : null,
+    (job as any).shouldHave ? `🟡 SHOULD-HAVE (souhaité): ${(job as any).shouldHave}` : null,
+    (job as any).niceToHave ? `🟢 NICE-TO-HAVE (bonus): ${(job as any).niceToHave}` : null,
+    transversal ? '' : null,
+    transversal ? '=== CRITÈRES TRANSVERSES (entreprise) ===' : null,
+    transversal?.domain ? `Domaine: ${transversal.domain}` : null,
+    transversal?.level ? `Niveau: ${transversal.level}` : null,
+    transversal?.must ? `🔴 Must transverse: ${transversal.must}` : null,
+    transversal?.should ? `🟡 Should transverse: ${transversal.should}` : null,
+    transversal?.niceToHave ? `🟢 Nice-to-have transverse: ${transversal.niceToHave}` : null,
+    transversal?.context ? `Contexte: ${transversal.context}` : null,
+  ];
+  
+  return lines.filter(line => line !== null).join('\n').trim();
+}
 
-=== CRITÈRES DU POSTE (pour scoring) ===
-${(job as any).mustHave ? `🔴 MUST-HAVE (obligatoire): ${(job as any).mustHave}` : ''}
-${(job as any).shouldHave ? `🟡 SHOULD-HAVE (souhaité): ${(job as any).shouldHave}` : ''}
-${(job as any).niceToHave ? `🟢 NICE-TO-HAVE (bonus): ${(job as any).niceToHave}` : ''}
-
-${transversal ? `=== CRITÈRES TRANSVERSES (entreprise) ===
-${transversal.domain ? `Domaine: ${transversal.domain}` : ''}
-${transversal.level ? `Niveau: ${transversal.level}` : ''}
-${transversal.must ? `🔴 Must transverse: ${transversal.must}` : ''}
-${transversal.should ? `🟡 Should transverse: ${transversal.should}` : ''}
-${transversal.niceToHave ? `🟢 Nice-to-have transverse: ${transversal.niceToHave}` : ''}
-${transversal.context ? `Contexte: ${transversal.context}` : ''}` : ''}
-`.trim();
+// Get missing fields diagnostic
+function getMissingFields(job: Job): string[] {
+  const missing: string[] = [];
+  if (!job.location) missing.push('location');
+  if (!job.seniority) missing.push('seniority');
+  if (job.xpMin === undefined || job.xpMin === null) missing.push('xpMin');
+  if (job.xpMax === undefined || job.xpMax === null) missing.push('xpMax');
+  if (!job.skills?.length) missing.push('skills');
+  if (!job.description) missing.push('description');
+  if (!(job as any).mustHave) missing.push('mustHave');
+  if (!(job as any).shouldHave) missing.push('shouldHave');
+  if (!(job as any).niceToHave) missing.push('niceToHave');
+  if (!(job as any).sourcingCriteria) missing.push('sourcingCriteria');
+  if (!(job as any).remote && !(job as any).remotePolicy) missing.push('remote');
+  return missing;
 }
 
 export const AutoFillFiltersButton: React.FC<AutoFillFiltersButtonProps> = ({
@@ -80,6 +100,7 @@ export const AutoFillFiltersButton: React.FC<AutoFillFiltersButtonProps> = ({
   } | null>(null);
   const [showInput, setShowInput] = useState(true);
   const [showOutput, setShowOutput] = useState(true);
+  const [missingFields, setMissingFields] = useState<string[]>([]);
 
   const handleShowInput = useCallback(() => {
     if (!selectedJob) {
@@ -87,6 +108,8 @@ export const AutoFillFiltersButton: React.FC<AutoFillFiltersButtonProps> = ({
       return;
     }
     const context = buildJobContext(selectedJob);
+    const missing = getMissingFields(selectedJob);
+    setMissingFields(missing);
     setDebugData({ input: context, output: null });
     setShowDebugModal(true);
   }, [selectedJob]);
@@ -292,6 +315,25 @@ export const AutoFillFiltersButton: React.FC<AutoFillFiltersButtonProps> = ({
 
           <ScrollArea className="max-h-[60vh] pr-4">
             <div className="space-y-4">
+              {/* Missing fields warning */}
+              {missingFields.length > 0 && (
+                <div className="p-3 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900">
+                  <div className="flex items-center gap-2 text-amber-700 dark:text-amber-400 font-medium text-sm mb-2">
+                    ⚠️ Champs manquants dans le job ({missingFields.length})
+                  </div>
+                  <div className="flex flex-wrap gap-1">
+                    {missingFields.map(field => (
+                      <span key={field} className="text-xs px-2 py-0.5 rounded bg-amber-100 dark:bg-amber-900/50 text-amber-800 dark:text-amber-300">
+                        {field}
+                      </span>
+                    ))}
+                  </div>
+                  <p className="text-xs text-amber-600 dark:text-amber-400 mt-2">
+                    Ces champs sont vides dans Notion ou n'ont pas été chargés. Cliquez sur "🔄 Sync Notion" dans le sélecteur de job.
+                  </p>
+                </div>
+              )}
+
               {/* Input Section */}
               <Collapsible open={showInput} onOpenChange={setShowInput}>
                 <CollapsibleTrigger asChild>

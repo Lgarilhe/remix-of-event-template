@@ -97,29 +97,39 @@ export const JobSelector: React.FC<JobSelectorProps> = ({ selectedJob, onJobChan
   const [searchQuery, setSearchQuery] = useState('');
 
   // If the selected job comes from a stale cache (or from a project resume with a minimal job object),
-  // hydrate it with the freshest version from the jobs list so fields like `accompagnement` are present.
+  // hydrate it with the freshest version from the jobs list so ALL fields are present.
   useEffect(() => {
     if (!selectedJob?.id || jobs.length === 0) return;
 
     const fresh = jobs.find((j) => j.id === selectedJob.id);
     if (!fresh) return;
 
-    const selectedAcc = Array.isArray((selectedJob as any).accompagnement)
-      ? ((selectedJob as any).accompagnement as string[])
-      : [];
-    const freshAcc = Array.isArray((fresh as any).accompagnement)
-      ? ((fresh as any).accompagnement as string[])
-      : [];
-
+    // Check if the selected job is missing important fields that the fresh one has
     const needsHydration =
-      (selectedAcc.length === 0 && freshAcc.length > 0) ||
+      // Core fields for auto-fill
       (!selectedJob.description && Boolean(fresh.description)) ||
-      ((selectedJob.skills?.length || 0) === 0 && (fresh.skills?.length || 0) > 0);
+      ((selectedJob.skills?.length || 0) === 0 && (fresh.skills?.length || 0) > 0) ||
+      (selectedJob.xpMin === undefined && fresh.xpMin !== undefined) ||
+      (selectedJob.xpMax === undefined && fresh.xpMax !== undefined) ||
+      (!selectedJob.location && Boolean(fresh.location)) ||
+      (!selectedJob.seniority && Boolean(fresh.seniority)) ||
+      // Scoring criteria
+      (!(selectedJob as any).mustHave && Boolean((fresh as any).mustHave)) ||
+      (!(selectedJob as any).shouldHave && Boolean((fresh as any).shouldHave)) ||
+      (!(selectedJob as any).niceToHave && Boolean((fresh as any).niceToHave)) ||
+      (!(selectedJob as any).sourcingCriteria && Boolean((fresh as any).sourcingCriteria)) ||
+      // Remote policy
+      (!(selectedJob as any).remote && Boolean((fresh as any).remote)) ||
+      // Accompagnement
+      ((selectedJob as any).accompagnement?.length === 0 && ((fresh as any).accompagnement?.length || 0) > 0) ||
+      // Transversal criteria
+      (!(selectedJob as any).transversalCriteria && Boolean((fresh as any).transversalCriteria));
 
     if (needsHydration) {
+      console.log('[JobSelector] Hydrating job with fresh data:', fresh.title);
       onJobChange(fresh);
     }
-  }, [jobs, onJobChange, selectedJob?.id]);
+  }, [jobs, onJobChange, selectedJob]);
 
   // Filter jobs based on search query
   const filteredJobs = useMemo(() => {
