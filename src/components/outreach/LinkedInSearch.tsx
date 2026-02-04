@@ -1,4 +1,5 @@
 import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { LinkedInAccount } from '@/pages/Outreach';
 import { LinkedInFilters } from './LinkedInFilters';
@@ -99,6 +100,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
   
   // Projects integration
   const { updateProject, findOrCreateForJob } = useSourcingProjects();
+  const queryClient = useQueryClient();
   
   // Debounce ref kept only for cleanup (auto-search is disabled)
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1353,6 +1355,11 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
 
       if (error) throw error;
       
+      // Invalidate project stats queries
+      queryClient.invalidateQueries({ queryKey: ['project-candidates', activeProject.id] });
+      queryClient.invalidateQueries({ queryKey: ['project-stats', activeProject.id] });
+      queryClient.invalidateQueries({ queryKey: ['projects-stats-batch'] });
+      
       // Remove added profiles from results if autoHideTreated is enabled
       if (autoHideTreatedRef.current) {
         const addedIds = new Set(profilesToAdd.map(p => p.id));
@@ -1365,7 +1372,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
       console.error('Bulk add to project error:', err);
       toast.error("Erreur lors de l'ajout au projet");
     }
-  }, [selectedJob, activeProject, selectedProfiles, results, jobScores]);
+  }, [selectedJob, activeProject, selectedProfiles, results, jobScores, queryClient]);
 
   // Simple search function (no auto-scoring)
   const handleSimpleSearch = useCallback(async (appendMode = false) => {

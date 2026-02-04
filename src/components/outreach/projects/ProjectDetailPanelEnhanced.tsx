@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { SourcingProject, useSourcingProjects, useProjectCandidates } from '@/hooks/useSourcingProjects';
+import { useProjectStats } from '@/hooks/useProjectStats';
 import {
   Sheet,
   SheetContent,
@@ -58,6 +59,7 @@ export const ProjectDetailPanelEnhanced: React.FC<ProjectDetailPanelEnhancedProp
 }) => {
   const { updateProject, isUpdating } = useSourcingProjects();
   const { data: candidates = [], isLoading: candidatesLoading } = useProjectCandidates(project.id);
+  const { data: dynamicStats } = useProjectStats(project.id);
   const [notes, setNotes] = useState(project.notes || '');
   const [notesChanged, setNotesChanged] = useState(false);
 
@@ -140,11 +142,11 @@ export const ProjectDetailPanelEnhanced: React.FC<ProjectDetailPanelEnhancedProp
               <TabsContent value="analytics" className="h-full m-0">
                 <ScrollArea className="h-full">
                   <ProjectFunnel
-                    totalFound={project.stats_total_found}
-                    scored={project.stats_scored}
-                    messaged={project.stats_messaged}
-                    shortlisted={project.stats_shortlisted}
-                    dismissed={project.stats_dismissed}
+                    totalFound={dynamicStats?.total || project.stats_total_found}
+                    scored={dynamicStats?.scored || project.stats_scored}
+                    messaged={dynamicStats?.messaged || 0}
+                    shortlisted={dynamicStats?.shortlisted || 0}
+                    dismissed={dynamicStats?.dismissed || 0}
                   />
                 </ScrollArea>
               </TabsContent>

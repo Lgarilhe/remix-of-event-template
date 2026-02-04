@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useSourcingProjects, SourcingProject } from '@/hooks/useSourcingProjects';
+import { useMultipleProjectStats, ProjectStats } from '@/hooks/useProjectStats';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -51,6 +52,24 @@ export const ProjectsList: React.FC<ProjectsListProps> = ({ onResumeSearch }) =>
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [selectedProject, setSelectedProject] = useState<SourcingProject | null>(null);
+
+  // Get project IDs for batch stats query
+  const projectIds = useMemo(() => projects.map(p => p.id), [projects]);
+  
+  // Fetch real-time stats from job_candidate_status table
+  const { data: projectStats = {} } = useMultipleProjectStats(projectIds);
+
+  // Helper to get stats for a project (with fallback to stored values)
+  const getProjectStats = (project: SourcingProject): ProjectStats => {
+    return projectStats[project.id] || {
+      total: project.stats_total_found,
+      scored: project.stats_scored,
+      messaged: project.stats_messaged,
+      shortlisted: project.stats_shortlisted,
+      dismissed: project.stats_dismissed,
+      untreated: 0,
+    };
+  };
 
   // Filter projects
   const filteredProjects = projects.filter(project => {
@@ -155,7 +174,7 @@ export const ProjectsList: React.FC<ProjectsListProps> = ({ onResumeSearch }) =>
         <div className="grid gap-4">
           {filteredProjects.map((project) => {
             const StatusIcon = statusConfig[project.status].icon;
-            const totalProcessed = project.stats_messaged + project.stats_dismissed + project.stats_shortlisted;
+            const stats = getProjectStats(project);
             
             return (
               <div
@@ -189,23 +208,23 @@ export const ProjectsList: React.FC<ProjectsListProps> = ({ onResumeSearch }) =>
                       </p>
                     )}
 
-                    {/* Stats */}
+                    {/* Stats - using dynamic counts from job_candidate_status */}
                     <div className="flex items-center gap-6 text-sm">
                       <div className="flex items-center gap-1.5 text-gray-600">
                         <Users className="w-4 h-4 text-blue-500" />
-                        <span>{project.stats_total_found} trouvés</span>
+                        <span>{stats.total || project.stats_total_found} trouvés</span>
                       </div>
                       <div className="flex items-center gap-1.5 text-gray-600">
                         <MessageSquare className="w-4 h-4 text-green-500" />
-                        <span>{project.stats_messaged} contactés</span>
+                        <span>{stats.messaged} contactés</span>
                       </div>
                       <div className="flex items-center gap-1.5 text-gray-600">
                         <UserCheck className="w-4 h-4 text-purple-500" />
-                        <span>{project.stats_shortlisted} shortlistés</span>
+                        <span>{stats.shortlisted} shortlistés</span>
                       </div>
                       <div className="flex items-center gap-1.5 text-gray-600">
                         <UserX className="w-4 h-4 text-red-400" />
-                        <span>{project.stats_dismissed} écartés</span>
+                        <span>{stats.dismissed} écartés</span>
                       </div>
                     </div>
                   </div>
