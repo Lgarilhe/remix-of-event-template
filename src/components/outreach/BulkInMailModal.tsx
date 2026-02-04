@@ -227,6 +227,7 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
             description: selectedJob.description,
             location: selectedJob.location,
             remote: selectedJob.remote,
+            accompagnement: selectedJob.accompagnement || [],
           },
           tone,
           senderName: senderName.trim() || undefined,

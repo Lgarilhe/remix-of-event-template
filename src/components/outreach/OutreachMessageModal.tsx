@@ -92,6 +92,7 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
             description: job.description,
             location: job.location,
             remote: job.remote,
+            accompagnement: job.accompagnement || [],
           },
           tone,
           senderName: senderName.trim() || undefined,
