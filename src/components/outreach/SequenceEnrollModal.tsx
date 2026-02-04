@@ -112,6 +112,7 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
               new Date(),
               firstStep.delay_days || 0,
               firstStep.delay_hours || 0,
+              firstStep.delay_minutes || 0,
               firstStep.preferred_hour_start ?? 9,
               firstStep.preferred_hour_end ?? 18,
               userTimezone
@@ -284,6 +285,7 @@ function calculateScheduledTime(
   fromDate: Date,
   delayDays: number,
   delayHours: number,
+  delayMinutes: number,
   preferredHourStart: number,
   preferredHourEnd: number,
   timezone: string
@@ -293,6 +295,7 @@ function calculateScheduledTime(
   // Add delay
   scheduled.setDate(scheduled.getDate() + delayDays);
   scheduled.setHours(scheduled.getHours() + delayHours);
+  scheduled.setMinutes(scheduled.getMinutes() + delayMinutes);
   
   // Get hour in user's timezone
   const formatter = new Intl.DateTimeFormat('en-US', {
