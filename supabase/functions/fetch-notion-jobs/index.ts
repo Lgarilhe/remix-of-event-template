@@ -732,7 +732,11 @@ serve(async (req) => {
         xpMin: getPropertyValue(job.properties['XP minimum']),
         xpMax: getPropertyValue(job.properties['XP maximum']),
         tjm: getPropertyValue(job.properties['TJM']),
-        accompagnement: getPropertyValue(job.properties['Type d\'accompagnement']) || [],
+        accompagnement: getPropertyValue(
+          job.properties['Type d\'accompagnement'] || 
+          job.properties["Type d\u2019accompagnement"] ||
+          Object.entries(job.properties).find(([k]) => k.toLowerCase().includes('accompagnement'))?.[1] as NotionProperty | undefined
+        ) || [],
         jobUrl: getPropertyValue(job.properties['userDefined:URL']),
         // Resolved transversal criteria (company-wide requirements)
         transversalCriteria: transversalCriteria,
