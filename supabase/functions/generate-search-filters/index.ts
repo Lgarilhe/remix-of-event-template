@@ -104,57 +104,82 @@ Le champ "keywords" sert UNIQUEMENT à affiner la recherche avec des TECHNOLOGIE
 Le champ "role_keywords" sert UNIQUEMENT aux TITRES DE POSTE.
 NE JAMAIS mélanger titres et technologies dans le même champ !
 
-=== STRATÉGIE "KEYWORDS" (LAYERED + EXHAUSTIF - OBLIGATOIRE) ===
+=== STRATÉGIE "KEYWORDS" (LAYERED + EXHAUSTIF + RACINES - OBLIGATOIRE) ===
 Structurer les keywords en GROUPES LOGIQUES avec AND entre groupes et OR au sein de chaque groupe.
 
-⚠️ RÈGLE CRITIQUE - SYNONYMES EXHAUSTIFS:
-Pour CHAQUE technologie, tu DOIS inclure TOUS les synonymes, abréviations et variantes utilisés sur LinkedIn:
+⚠️ RÈGLE CRITIQUE 1 - SYNONYMES EXHAUSTIFS:
+Pour CHAQUE technologie, inclure TOUS les synonymes, abréviations et variantes LinkedIn:
 
-EXEMPLES DE MAPPING OBLIGATOIRES:
-- Java → "Java OR JEE OR J2EE OR J2E OR \"Java EE\" OR \"Jakarta EE\" OR JavaSE"
-- Spring → "Spring OR \"Spring Boot\" OR SpringBoot OR \"Spring Framework\" OR \"Spring Batch\""
+MAPPING TECHNOS (exemples obligatoires):
+- Java → "Java OR JEE OR J2EE OR J2E OR \"Java EE\" OR \"Jakarta EE\""
+- Spring → "Spring OR \"Spring Boot\" OR SpringBoot OR \"Spring Batch\""
 - Kubernetes → "Kubernetes OR K8s OR K8"
-- AWS → "AWS OR \"Amazon Web Services\" OR \"Amazon AWS\""
+- AWS → "AWS OR \"Amazon Web Services\""
 - GCP → "GCP OR \"Google Cloud\" OR \"Google Cloud Platform\""
-- Azure → "Azure OR \"Microsoft Azure\" OR \"Azure Cloud\""
-- Docker → "Docker OR Containers OR Containerization"
-- Python → "Python OR Python3 OR Py"
-- JavaScript → "JavaScript OR JS OR ECMAScript"
+- Azure → "Azure OR \"Microsoft Azure\""
+- Docker → "Docker OR Container"
+- Python → "Python OR Python3"
+- JavaScript → "JavaScript OR JS"
 - TypeScript → "TypeScript OR TS"
-- React → "React OR ReactJS OR \"React.js\""
-- Angular → "Angular OR AngularJS OR \"Angular.js\" OR Angular2+"
-- Vue → "Vue OR VueJS OR \"Vue.js\""
-- Node → "Node OR NodeJS OR \"Node.js\""
-- PostgreSQL → "PostgreSQL OR Postgres OR PGSQL"
+- React → "React OR ReactJS"
+- Angular → "Angular OR AngularJS"
+- Vue → "Vue OR VueJS"
+- Node → "Node OR NodeJS"
+- PostgreSQL → "PostgreSQL OR Postgres"
 - MongoDB → "MongoDB OR Mongo"
-- Terraform → "Terraform OR TF OR IaC"
-- CI/CD → "CI/CD OR CICD OR \"CI CD\" OR Jenkins OR GitLab OR GitHub Actions"
-- Kafka → "Kafka OR \"Apache Kafka\" OR \"Event Streaming\""
-- Spark → "Spark OR \"Apache Spark\" OR PySpark"
-- Machine Learning → "\"Machine Learning\" OR ML OR \"Deep Learning\" OR DL"
-- DevOps → "DevOps OR SRE OR \"Site Reliability\""
+- Terraform → "Terraform OR IaC"
+- Kafka → "Kafka OR \"Apache Kafka\""
+- Spark → "Spark OR PySpark"
+- .NET → ".NET OR DotNet OR \"C#\" OR CSharp"
+- SQL → "SQL OR MySQL OR MariaDB OR MSSQL"
+
+⚠️ RÈGLE CRITIQUE 2 - RACINES INTELLIGENTES:
+Utiliser des RACINES/PRÉFIXES courts pour capturer toutes les variantes d'un même concept:
+
+EXEMPLES DE RACINES EFFICACES:
+- "Dev" → capture: Developer, Développeur, DevOps, Dev Lead, Development...
+- "Eng" → capture: Engineer, Engineering, Ingénieur...
+- "Archi" → capture: Architect, Architecture, Architecte...
+- "Admin" → capture: Administrator, Administration, Administrateur, SysAdmin...
+- "Auto" → capture: Automation, Automatisation, Automated...
+- "Infra" → capture: Infrastructure, Infra...
+- "Micro" → capture: Microservices, Microservice...
+- "Full" → capture: Fullstack, Full-stack, Full Stack...
+- "Front" → capture: Frontend, Front-end, Front End...
+- "Back" → capture: Backend, Back-end, Back End...
+- "Data" → capture: Data Engineer, Data Scientist, Database...
+- "Cloud" → capture: Cloud Engineer, Cloud Architect, Cloud Native...
+- "Agil" → capture: Agile, Agilité, Agiliste...
+- "Scrum" → capture: Scrum, ScrumMaster, Scrum Master...
+
+⚠️ ATTENTION AUX RACINES TROP COURTES:
+- "Py" seul → ÉVITER (trop vague, capture "Pyramid", "PyQt"...)
+- "Go" seul → ÉVITER (mot commun, utiliser "Golang" à la place)
+- "C" seul → ÉVITER (utiliser "C++" ou "C#" ou "C lang")
 
 RÈGLES DE CONSTRUCTION:
 1. Identifier 2-3 catégories technologiques DISTINCTES du poste
-2. Pour CHAQUE techno de chaque catégorie, TOUJOURS ajouter ses synonymes/variantes
+2. Pour CHAQUE techno: ajouter synonymes + racines pertinentes
 3. Combiner les catégories avec AND (parenthèses obligatoires)
-4. MAX 2-3 groupes - au-delà c'est trop restrictif !
+4. MAX 2-3 groupes AND - au-delà c'est trop restrictif !
 
-EXEMPLES BONS (avec synonymes):
-- Backend Java: "(Java OR JEE OR J2EE OR \"Java EE\") AND (Spring OR \"Spring Boot\" OR SpringBoot)"
-- Cloud + Orchestration: "(AWS OR \"Amazon Web Services\" OR GCP OR \"Google Cloud\") AND (Kubernetes OR K8s OR Docker)"
-- Data: "(Spark OR PySpark OR \"Apache Spark\") AND (Kafka OR \"Apache Kafka\")"
+EXEMPLES BONS (synonymes + racines):
+- Backend Java: "(Java OR JEE OR J2EE) AND (Spring OR SpringBoot)"
+- Fullstack: "(Full OR Fullstack) AND (React OR Angular OR Vue)"
+- DevOps: "(DevOps OR SRE OR Infra) AND (Kubernetes OR K8s OR Docker)"
+- Data: "(Data OR Big Data) AND (Spark OR Kafka OR Airflow)"
 
 EXEMPLES MAUVAIS:
-- Sans synonymes: "(Java) AND (Spring)" ❌ - rate les profils qui écrivent "J2EE" ou "Spring Boot"
-- Trop restrictif: "(Java AND JEE AND Spring)" ❌ - AND entre synonymes !
+- Sans synonymes: "(Java) AND (Spring)" ❌
+- AND entre synonymes: "(Java AND JEE)" ❌
+- Racine trop courte: "(J)" ❌
 
-CATÉGORIES TYPIQUES À IDENTIFIER:
-- Langages: Python, Java, Go, TypeScript, Rust...
+CATÉGORIES TYPIQUES:
+- Langages: Python, Java, Go/Golang, TypeScript, Rust, C++, C#...
 - Cloud: AWS, GCP, Azure, OVH...
 - Orchestration: Kubernetes, Docker, Terraform...
-- Data: Spark, Kafka, Snowflake, BigQuery...
-- Frameworks: React, Django, Spring, FastAPI...
+- Data: Spark, Kafka, Snowflake, BigQuery, Airflow...
+- Frameworks: React, Django, Spring, FastAPI, .NET...
 
 STRATÉGIE "ROLE_KEYWORDS" (titres uniquement):
 - UN SEUL élément avec tous les titres alternatifs en OR
