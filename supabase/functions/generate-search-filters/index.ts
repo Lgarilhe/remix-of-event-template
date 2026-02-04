@@ -210,9 +210,8 @@ RÈGLES MÉTIER:
 Retourne UNIQUEMENT un objet JSON avec:
 - keywords: string - Booléen LAYERED: "(catégorie1 OR alt1) AND (catégorie2 OR alt2)"
 - role_keywords: string[] - UN élément avec titres FR+EN en OR
-- seniority_levels: string[] - Niveaux "1"-"10"
-- years_experience_min: number | null - TOUJOURS élargir de -2 ans vs le besoin strict
-- years_experience_max: number | null - TOUJOURS élargir de +2 ans vs le besoin strict
+- years_experience_min: number | null - Expérience MIN en années (élargir de -2 ans vs le besoin strict)
+- years_experience_max: number | null - Expérience MAX en années (élargir de +2 ans vs le besoin strict, null si senior OK)
 - skills_to_search: string[] - Soft-skills et compétences secondaires (max 10)
 - certifications: string[] - Certifications pertinentes (max 3)
 - industry_keywords: string[] - Secteurs (max 3)
@@ -223,6 +222,7 @@ Retourne UNIQUEMENT un objet JSON avec:
 - keyword_rationale: string - Explication de la structure layered choisie (1 phrase)
 - search_rationale: string - Stratégie globale en 1 phrase
 
+NOTE: Ne PAS retourner de champ "seniority_levels" - utiliser uniquement years_experience_min/max.
 JSON uniquement, sans markdown.`;
 
     // Build comprehensive job context with all scoring criteria
@@ -478,7 +478,7 @@ ${transversal.context ? `Contexte: ${transversal.context}` : ''}` : ''}
         priority: "MUST_HAVE",
         scope: "CURRENT",
       }],
-      seniority: parsed.seniority_levels || [],
+      seniority: [], // Ne pas remplir - on utilise years_of_experience à la place
       years_of_experience_min: finalXpMin,
       years_of_experience_max: finalXpMax,
       skills_keywords: allSkillsKeywords, // Now includes certifications and domain expertise
