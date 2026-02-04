@@ -176,13 +176,22 @@ export const AutoFillFiltersButton: React.FC<AutoFillFiltersButtonProps> = ({
       }
 
       // Experience - update BOTH calculated and LinkedIn API fields
-      if (generated.years_of_experience_min !== null || generated.years_of_experience_max !== null) {
+      // Use typeof check to handle 0 correctly (0 is a valid value!)
+      const hasXpMin = typeof generated.years_of_experience_min === 'number';
+      const hasXpMax = typeof generated.years_of_experience_max === 'number';
+      
+      if (hasXpMin || hasXpMax) {
         // Calculated experience (from diploma - primary filter for Recruiter)
-        update.calculated_experience_min = generated.years_of_experience_min;
-        update.calculated_experience_max = generated.years_of_experience_max;
+        update.calculated_experience_min = hasXpMin ? generated.years_of_experience_min : null;
+        update.calculated_experience_max = hasXpMax ? generated.years_of_experience_max : null;
         // LinkedIn API experience (backup filter)
-        update.years_of_experience_min = generated.years_of_experience_min;
-        update.years_of_experience_max = generated.years_of_experience_max;
+        update.years_of_experience_min = hasXpMin ? generated.years_of_experience_min : null;
+        update.years_of_experience_max = hasXpMax ? generated.years_of_experience_max : null;
+        
+        console.log('[AutoFill] Experience set:', { 
+          min: update.calculated_experience_min, 
+          max: update.calculated_experience_max 
+        });
       }
 
       // Location radius
