@@ -124,12 +124,23 @@ const actionTypeConfig: Record<string, { label: string; icon: React.ReactNode; c
 };
 
 const executionStatusConfig: Record<string, { label: string; icon: React.ReactNode; className: string }> = {
+  pending: { label: 'À venir', icon: <Clock className="w-3 h-3" />, className: 'bg-gray-50 text-gray-400 border-gray-200 border-dashed' },
   scheduled: { label: 'Planifié', icon: <Clock className="w-3 h-3" />, className: 'bg-blue-50 text-blue-600 border-blue-200' },
   executed: { label: 'Exécuté', icon: <CheckCircle2 className="w-3 h-3" />, className: 'bg-green-50 text-green-600 border-green-200' },
   skipped: { label: 'Ignoré', icon: <SkipForward className="w-3 h-3" />, className: 'bg-gray-50 text-gray-500 border-gray-200' },
   failed: { label: 'Échoué', icon: <AlertCircle className="w-3 h-3" />, className: 'bg-red-50 text-red-600 border-red-200' },
   cancelled: { label: 'Annulé', icon: <XCircle className="w-3 h-3" />, className: 'bg-gray-50 text-gray-500 border-gray-200' },
 };
+
+interface SequenceStep {
+  id: string;
+  step_order: number;
+  action_type: string;
+  message_template: string | null;
+  subject_template: string | null;
+  delay_days: number;
+  delay_hours: number;
+}
 
 export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> = ({
   isOpen,
@@ -140,12 +151,21 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
   const [enrollments, setEnrollments] = useState<Enrollment[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedEnrollments, setExpandedEnrollments] = useState<Set<string>>(new Set());
-  const [steps, setSteps] = useState<Record<string, any>>({});
+  const [allSteps, setAllSteps] = useState<SequenceStep[]>([]);
 
   const fetchEnrollments = async () => {
     try {
       setLoading(true);
       
+      // Fetch sequence steps FIRST to get the full workflow
+      const { data: stepsData } = await supabase
+        .from('sequence_steps')
+        .select('id, action_type, message_template, subject_template, step_order, delay_days, delay_hours')
+        .eq('sequence_id', sequenceId)
+        .order('step_order', { ascending: true });
+
+      setAllSteps(stepsData || []);
+
       // Fetch enrollments
       const { data: enrollData, error: enrollError } = await supabase
         .from('sequence_enrollments')
@@ -163,17 +183,6 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
         .in('enrollment_id', enrollmentIds)
         .order('step_order', { ascending: true });
 
-      // Fetch sequence steps for action type info
-      const { data: stepsData } = await supabase
-        .from('sequence_steps')
-        .select('id, action_type, message_template, subject_template, step_order')
-        .eq('sequence_id', sequenceId);
-
-      // Create steps lookup
-      const stepsLookup: Record<string, any> = {};
-      stepsData?.forEach(s => { stepsLookup[s.id] = s; });
-      setSteps(stepsLookup);
-
       // Attach executions to enrollments
       const enriched = (enrollData || []).map(enrollment => ({
         ...enrollment,
@@ -181,7 +190,7 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
           .filter(e => e.enrollment_id === enrollment.id)
           .map(exec => ({
             ...exec,
-            step: stepsLookup[exec.step_id],
+            step: stepsData?.find(s => s.id === exec.step_id),
           })),
       }));
 
@@ -452,44 +461,54 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
                           </div>
                         </div>
 
-                        {/* Expanded content - Step executions timeline */}
+                        {/* Expanded content - Full workflow timeline */}
                         <CollapsibleContent>
                           <div className="border-t border-gray-100 bg-gray-50 p-3">
-                            {executions.length === 0 ? (
+                            {allSteps.length === 0 ? (
                               <p className="text-xs text-gray-500 text-center py-2">
-                                Aucune étape planifiée
+                                Aucune étape dans la séquence
                               </p>
                             ) : (
                               <div className="space-y-2">
                                 <p className="text-xs font-medium text-gray-600 mb-2">
-                                  Timeline des actions :
+                                  Workflow complet ({allSteps.length} étapes) :
                                 </p>
-                                {executions.map((exec, idx) => {
-                                  const actionType = exec.step?.action_type || 'unknown';
-                                  const actionConfig = actionTypeConfig[actionType] || { 
-                                    label: actionType, 
+                                {allSteps.map((step, idx) => {
+                                  // Find execution for this step if it exists
+                                  const exec = executions.find(e => e.step_id === step.id);
+                                  const actionConfig = actionTypeConfig[step.action_type] || { 
+                                    label: step.action_type, 
                                     icon: <Send className="w-3.5 h-3.5" />,
                                     color: 'text-gray-600'
                                   };
-                                  const execStatus = executionStatusConfig[exec.status] || executionStatusConfig.scheduled;
+                                  
+                                  // Determine status: from execution or 'pending' if no execution yet
+                                  const status = exec?.status || 'pending';
+                                  const execStatus = executionStatusConfig[status] || executionStatusConfig.pending;
 
                                   return (
                                     <div 
-                                      key={exec.id}
+                                      key={step.id}
                                       className={cn(
                                         "flex items-start gap-3 p-2 rounded-lg border",
                                         execStatus.className
                                       )}
                                     >
                                       {/* Step number */}
-                                      <div className="flex-shrink-0 w-6 h-6 rounded-full bg-white border border-current flex items-center justify-center text-[10px] font-bold">
+                                      <div className={cn(
+                                        "flex-shrink-0 w-6 h-6 rounded-full bg-white border flex items-center justify-center text-[10px] font-bold",
+                                        status === 'pending' ? 'border-gray-300 text-gray-400' : 'border-current'
+                                      )}>
                                         {idx + 1}
                                       </div>
 
                                       {/* Step details */}
                                       <div className="flex-1 min-w-0">
-                                        <div className="flex items-center gap-2">
-                                          <span className={cn("flex items-center gap-1 text-sm font-medium", actionConfig.color)}>
+                                        <div className="flex items-center gap-2 flex-wrap">
+                                          <span className={cn(
+                                            "flex items-center gap-1 text-sm font-medium", 
+                                            status === 'pending' ? 'text-gray-400' : actionConfig.color
+                                          )}>
                                             {actionConfig.icon}
                                             {actionConfig.label}
                                           </span>
@@ -497,44 +516,59 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
                                             {execStatus.icon}
                                             <span className="ml-0.5">{execStatus.label}</span>
                                           </Badge>
+                                          {/* Show delay for pending steps */}
+                                          {status === 'pending' && (step.delay_days > 0 || step.delay_hours > 0) && (
+                                            <span className="text-[9px] text-gray-400">
+                                              +{step.delay_days > 0 ? `${step.delay_days}j` : ''}{step.delay_hours > 0 ? `${step.delay_hours}h` : ''}
+                                            </span>
+                                          )}
                                         </div>
 
-                                        {/* Timing info */}
-                                        <div className="text-[10px] text-gray-500 mt-1">
-                                          {exec.status === 'scheduled' && (
-                                            <span>
-                                              Prévu : {format(new Date(exec.scheduled_at), 'dd/MM HH:mm', { locale: fr })}
-                                            </span>
-                                          )}
-                                          {exec.status === 'executed' && exec.executed_at && (
-                                            <span>
-                                              Exécuté : {format(new Date(exec.executed_at), 'dd/MM HH:mm', { locale: fr })}
-                                            </span>
-                                          )}
-                                          {exec.status === 'skipped' && exec.skip_reason && (
-                                            <span className="text-gray-400">
-                                              Raison : {exec.skip_reason}
-                                            </span>
-                                          )}
-                                          {exec.status === 'cancelled' && exec.skip_reason && (
-                                            <span className="text-gray-400">
-                                              {exec.skip_reason}
-                                            </span>
-                                          )}
-                                          {exec.status === 'failed' && exec.error_message && (
-                                            <span className="text-red-500">
-                                              Erreur : {exec.error_message}
-                                            </span>
-                                          )}
-                                        </div>
+                                        {/* Timing info from execution */}
+                                        {exec && (
+                                          <div className="text-[10px] text-gray-500 mt-1">
+                                            {exec.status === 'scheduled' && (
+                                              <span>
+                                                Prévu : {format(new Date(exec.scheduled_at), 'dd/MM HH:mm', { locale: fr })}
+                                              </span>
+                                            )}
+                                            {exec.status === 'executed' && exec.executed_at && (
+                                              <span>
+                                                Exécuté : {format(new Date(exec.executed_at), 'dd/MM HH:mm', { locale: fr })}
+                                              </span>
+                                            )}
+                                            {exec.status === 'skipped' && exec.skip_reason && (
+                                              <span className="text-gray-400">
+                                                Raison : {exec.skip_reason}
+                                              </span>
+                                            )}
+                                            {exec.status === 'cancelled' && exec.skip_reason && (
+                                              <span className="text-gray-400">
+                                                {exec.skip_reason}
+                                              </span>
+                                            )}
+                                            {exec.status === 'failed' && exec.error_message && (
+                                              <span className="text-red-500">
+                                                Erreur : {exec.error_message}
+                                              </span>
+                                            )}
+                                          </div>
+                                        )}
 
                                         {/* Message preview if executed */}
-                                        {exec.status === 'executed' && exec.final_message && (
+                                        {exec?.status === 'executed' && exec.final_message && (
                                           <div className="mt-1.5 p-2 bg-white rounded border border-gray-100 text-[11px] text-gray-600 line-clamp-2">
                                             {exec.final_subject && (
                                               <p className="font-medium mb-0.5">📧 {exec.final_subject}</p>
                                             )}
                                             {exec.final_message}
+                                          </div>
+                                        )}
+
+                                        {/* Template preview for pending steps */}
+                                        {status === 'pending' && step.message_template && (
+                                          <div className="mt-1 text-[10px] text-gray-400 italic truncate">
+                                            "{step.message_template.substring(0, 60)}..."
                                           </div>
                                         )}
                                       </div>
