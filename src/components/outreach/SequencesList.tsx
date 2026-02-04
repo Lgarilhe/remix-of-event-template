@@ -67,6 +67,7 @@ interface SequencesListProps {
   selectedProfiles?: LinkedInProfile[];
   selectedJob?: any;
   onClearSelection?: () => void;
+  isVisible?: boolean; // Added to trigger refetch when tab becomes visible
 }
 
 // Emoji pour les séquences
@@ -78,6 +79,7 @@ export const SequencesList: React.FC<SequencesListProps> = ({
   selectedProfiles = [],
   selectedJob,
   onClearSelection,
+  isVisible = true,
 }) => {
   const [sequences, setSequences] = useState<SequenceWithStats[]>([]);
   const [loading, setLoading] = useState(true);
@@ -134,12 +136,11 @@ export const SequencesList: React.FC<SequencesListProps> = ({
     }
   };
 
-  // Refetch when component becomes visible (tab change)
-  // We use a custom event to trigger refetch when the Sequences tab is selected
+  // Refetch when component becomes visible (tab change or page visibility)
   useEffect(() => {
     fetchSequences();
     
-    // Listen for visibility changes (when user returns to this tab)
+    // Listen for visibility changes (when user returns to browser tab)
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
         fetchSequences();
@@ -152,6 +153,13 @@ export const SequencesList: React.FC<SequencesListProps> = ({
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, []);
+
+  // Refetch when tab becomes visible within the app
+  useEffect(() => {
+    if (isVisible) {
+      fetchSequences();
+    }
+  }, [isVisible]);
 
   const handleSaveSequence = async (sequence: Sequence) => {
     try {

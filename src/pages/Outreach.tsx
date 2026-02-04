@@ -214,6 +214,7 @@ export default function Outreach() {
               <SequencesList
                 accounts={accounts}
                 selectedAccount={selectedAccount}
+                isVisible={activeTab === 'sequences'}
               />
             </div>
           </div>
