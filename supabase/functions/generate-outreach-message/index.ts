@@ -50,6 +50,65 @@ interface JobData {
 // Candidate status determines the message objective
 type CandidateStatus = 'to_evaluate' | 'to_contact' | 'in_sequence' | 'replied' | 'other';
 
+type ModelJson = {
+  subject: string;
+  message: string;
+  personalization_points: string[];
+};
+
+function detectViolations(args: { isRPO: boolean; message: string; subject?: string }): string[] {
+  const { isRPO, message, subject } = args;
+  const v: string[] = [];
+  const text = `${subject || ''}\n${message || ''}`;
+
+  // Dashes / bullet-like markers (user explicitly wants them gone)
+  if (/^\s*[-•]\s+/m.test(message)) v.push('tiret / puce en début de ligne');
+  if (/[–—]/.test(message) || /\s-\s/.test(message)) v.push('tiret (—/–/ - ) dans le texte');
+
+  // “AI-ish” flattery / over-claiming
+  if (/\b(colle|match)e\s+parfaitement\b/i.test(text)) v.push('"colle parfaitement"');
+  if (/\bparfaitement\s+ce\s+qu/i.test(text)) v.push('"parfaitement ce qu\'on veut"');
+  if (/\bexactement\s+ce\s+qu/i.test(text)) v.push('"exactement ce qu\'on veut"');
+
+  // RPO persona: never talk as an external recruiter.
+  if (isRPO) {
+    if (/\bje\s+recrute\b/i.test(text)) v.push('RPO: "je recrute"');
+    if (/\bje\s+recrute\s+pour\s+(eux|elle|lui|mon\s+client|un\s+client)\b/i.test(text)) v.push('RPO: "je recrute pour eux/mon client"');
+    if (/\bils\b/i.test(text)) v.push('RPO: "ils"');
+    if (/\bleur(s)?\b/i.test(text)) v.push('RPO: "leur"');
+    if (/\bmon\s+client\b/i.test(text)) v.push('RPO: "mon client"');
+  }
+
+  return v;
+}
+
+function sanitizeMessage(message: string): string {
+  // Hard safety net: remove bullet starts and replace dash separators with sentences.
+  return (message || '')
+    .replace(/^\s*[-•]\s+/gm, '')
+    .replace(/\s[–—]\s/g, '. ')
+    .replace(/\s-\s/g, '. ')
+    .replace(/[ \t]+\n/g, '\n')
+    .trim();
+}
+
+function tryParseModelJson(content: string): ModelJson | null {
+  try {
+    const result = JSON.parse(content);
+    if (!result || typeof result !== 'object') return null;
+    if (typeof (result as any).message !== 'string') return null;
+    return {
+      subject: String((result as any).subject || ''),
+      message: String((result as any).message || ''),
+      personalization_points: Array.isArray((result as any).personalization_points)
+        ? (result as any).personalization_points.filter((x: unknown) => typeof x === 'string')
+        : [],
+    };
+  } catch {
+    return null;
+  }
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -251,7 +310,7 @@ ${statusInstructions[candidateStatus] || statusInstructions.other}
    - Questions génériques: "ça t'intéresserait ?", "tu serais ouvert ?"
    - Forcer une question quand un CTA suffit
    - FORMAT CHIFFRES: JAMAIS de "20+", "10+", "5+", "2+" → écrire "plus de 20", "plus de 10", etc.
-   - TIRETS EN DÉBUT DE PHRASE: JAMAIS de "- ils montent", "- équipe senior" → phrases normales
+    - TIRETS (DÉBUT OU MILIEU): JAMAIS de "- ..." ni de "A – B" / "A — B" / "A - B" → remplace par des phrases avec points/virgules
    - LISTES À PUCES: JAMAIS de listes, écris en prose fluide
    - ÉNUMÉRATIONS ENTRE PARENTHÈSES: évite "(Python, Go, K8s)" → intègre naturellement
    - JARGON TROP COOL/STARTUP: "ton taf", "mise gros", "c'est chaud", "le kiff", "la bombe"
@@ -310,65 +369,83 @@ Réponds UNIQUEMENT en JSON valide:
   "personalization_points": ["Élément précis du profil utilisé", "Style détecté et comment tu t'y es adapté"]
 }`;
 
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "x-api-key": ANTHROPIC_API_KEY,
-        "anthropic-version": "2023-06-01",
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "claude-sonnet-4-20250514",
-        max_tokens: 400,
-        system: "Tu es un recruteur tech senior. Tu écris des messages LinkedIn courts, directs, humains. JAMAIS de superlatifs, JAMAIS de tournures IA. Tu parles comme un vrai humain pressé mais sympa. Tu réponds TOUJOURS en JSON valide, sans markdown ni code blocks.",
-        messages: [
-          { role: "user", content: prompt }
-        ],
-      }),
-    });
-
-    if (!response.ok) {
-      if (response.status === 429) {
-        return new Response(
-          JSON.stringify({ error: "Limite de requêtes atteinte, réessayez plus tard." }),
-          { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-      if (response.status === 402) {
-        return new Response(
-          JSON.stringify({ error: "Crédits IA épuisés." }),
-          { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-      const errorText = await response.text();
-      console.error("AI gateway error:", response.status, errorText);
-      throw new Error(`AI gateway error: ${response.status}`);
-    }
-
-    const data = await response.json();
-    let content = data.content?.[0]?.text || "";
-    
-    // Clean up potential markdown code blocks
-    content = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-    
-    try {
-      const result = JSON.parse(content);
-      return new Response(
-        JSON.stringify({ success: true, ...result }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    } catch (parseError) {
-      console.error("JSON parse error:", parseError, "Content:", content);
-      return new Response(
-        JSON.stringify({ 
-          success: true,
-          subject: `Opportunité ${job.title}`,
-          message: content,
-          personalization_points: []
+    const callAnthropic = async (userPrompt: string): Promise<{ ok: true; content: string } | { ok: false; response: Response }> => {
+      const response = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "x-api-key": ANTHROPIC_API_KEY,
+          "anthropic-version": "2023-06-01",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-20250514",
+          max_tokens: 450,
+          system:
+            "Tu es un recruteur tech senior. Tu écris des messages LinkedIn courts, directs, humains. JAMAIS de superlatifs, JAMAIS de tournures IA. Tu réponds TOUJOURS en JSON valide, sans markdown ni code blocks.",
+          messages: [{ role: "user", content: userPrompt }],
         }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      });
+
+      if (!response.ok) {
+        if (response.status === 429) {
+          return {
+            ok: false,
+            response: new Response(
+              JSON.stringify({ error: "Limite de requêtes atteinte, réessayez plus tard." }),
+              { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+            ),
+          };
+        }
+        if (response.status === 402) {
+          return {
+            ok: false,
+            response: new Response(
+              JSON.stringify({ error: "Crédits IA épuisés." }),
+              { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+            ),
+          };
+        }
+        const errorText = await response.text();
+        console.error("AI gateway error:", response.status, errorText);
+        throw new Error(`AI gateway error: ${response.status}`);
+      }
+
+      const data = await response.json();
+      let content = data.content?.[0]?.text || "";
+      content = content.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+      return { ok: true, content };
+    };
+
+    const first = await callAnthropic(prompt);
+    if (!first.ok) return first.response;
+
+    let parsed = tryParseModelJson(first.content);
+    if (!parsed) {
+      parsed = {
+        subject: `Opportunité ${job.title}`,
+        message: first.content,
+        personalization_points: [],
+      };
     }
+
+    // Guardrails: if RPO but the model speaks as an external recruiter (or uses dashes), re-run once.
+    const violations = detectViolations({ isRPO, message: parsed.message, subject: parsed.subject });
+    if (violations.length > 0) {
+      console.warn('[generate-outreach-message] Violations detected, retrying:', violations);
+      const correctionPrompt = `${prompt}\n\n=== CORRECTION STRICTE (OBLIGATOIRE) ===\nLe draft ci-dessous viole ces règles: ${violations.join(' ; ')}.\n\nRÈGLES CRITIQUES À RESPECTER:\n- Si MODE RPO: jamais \"ils\", \"leur\", \"mon client\", \"je recrute\". Toujours \"on\", \"nous\", \"notre\" + \"chez ${job.client?.name || 'nous'}\".\n- Aucun tiret (—, –, -) nulle part.\n\nDRAFT_JSON:\n${JSON.stringify(parsed)}\n\nRéponds UNIQUEMENT en JSON valide avec les 3 clés: subject, message, personalization_points.`;
+
+      const second = await callAnthropic(correctionPrompt);
+      if (!second.ok) return second.response;
+      const parsed2 = tryParseModelJson(second.content);
+      if (parsed2) parsed = parsed2;
+    }
+
+    parsed.message = sanitizeMessage(parsed.message);
+
+    return new Response(
+      JSON.stringify({ success: true, ...parsed }),
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+    );
   } catch (error) {
     console.error("Error generating message:", error);
     return new Response(

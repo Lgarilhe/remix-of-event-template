@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Job } from '@/pages/JobSpace';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -95,6 +95,31 @@ export const JobSelector: React.FC<JobSelectorProps> = ({ selectedJob, onJobChan
   const { refresh: refreshJobs, isRefreshing } = useRefreshJobs();
   const [autoFillLoading, setAutoFillLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+
+  // If the selected job comes from a stale cache (or from a project resume with a minimal job object),
+  // hydrate it with the freshest version from the jobs list so fields like `accompagnement` are present.
+  useEffect(() => {
+    if (!selectedJob?.id || jobs.length === 0) return;
+
+    const fresh = jobs.find((j) => j.id === selectedJob.id);
+    if (!fresh) return;
+
+    const selectedAcc = Array.isArray((selectedJob as any).accompagnement)
+      ? ((selectedJob as any).accompagnement as string[])
+      : [];
+    const freshAcc = Array.isArray((fresh as any).accompagnement)
+      ? ((fresh as any).accompagnement as string[])
+      : [];
+
+    const needsHydration =
+      (selectedAcc.length === 0 && freshAcc.length > 0) ||
+      (!selectedJob.description && Boolean(fresh.description)) ||
+      ((selectedJob.skills?.length || 0) === 0 && (fresh.skills?.length || 0) > 0);
+
+    if (needsHydration) {
+      onJobChange(fresh);
+    }
+  }, [jobs, onJobChange, selectedJob?.id]);
 
   // Filter jobs based on search query
   const filteredJobs = useMemo(() => {
