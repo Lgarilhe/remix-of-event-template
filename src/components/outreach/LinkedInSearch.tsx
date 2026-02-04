@@ -309,16 +309,19 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
   const filtersJson = useMemo(() => JSON.stringify(filters), [filters]);
 
   // Sort by score if enabled AND filter out dismissed candidates (unless showDismissed is true)
+  // Use treatedIds and dismissedIds directly for reactive dependency tracking
+  const { treatedIds, dismissedIds } = candidateStatus;
+  
   const filteredAndSortedResults = useMemo(() => {
     let filtered = results;
     
     // When autoHideTreated is ON, filter out ALL treated candidates (messaged, dismissed, in sequence)
     if (selectedJob && autoHideTreated) {
-      filtered = filtered.filter(p => !candidateStatus.isTreated(p.id));
+      filtered = filtered.filter(p => !treatedIds.has(p.id));
     } else {
       // Legacy behavior: only filter out dismissed candidates (unless showDismissed is ON)
       if (selectedJob && !showDismissed) {
-        filtered = filtered.filter(p => !candidateStatus.isDismissed(p.id));
+        filtered = filtered.filter(p => !dismissedIds.has(p.id));
       }
     }
     
@@ -350,7 +353,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
     }
     
     return filtered;
-  }, [results, jobScores, sortByScore, filters.calculated_experience_min, filters.calculated_experience_max, selectedJob, showDismissed, autoHideTreated, candidateStatus, statusFilter]);
+  }, [results, jobScores, sortByScore, filters.calculated_experience_min, filters.calculated_experience_max, selectedJob, showDismissed, autoHideTreated, treatedIds, dismissedIds, candidateStatus, statusFilter]);
 
   // Calculate selectable profiles (exclude "peu adapté" with recommendation: skip)
   // Use filtered results so client-side filters apply
@@ -1153,7 +1156,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
     }
   }, [selectedJob, buildProfileData]);
 
-  // Batch score selected profiles (without auto-dismiss - user decides)
+  // Batch score selected profiles (auto-dismiss low scores when autoHideTreated is ON)
   const handleBatchScore = useCallback(async () => {
     if (!selectedJob) {
       toast.error('Sélectionnez un poste pour le scoring');
@@ -1212,23 +1215,64 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
       
       if (data?.results) {
         const newScores: Record<string, JobMatchResult> = {};
-        let lowScoreCount = 0;
+        const lowScoreProfiles: Array<{
+          id: string;
+          name?: string;
+          headline?: string;
+          profileUrl?: string;
+          score?: number;
+          recommendation?: string;
+          skipReason?: string;
+        }> = [];
+        
         data.results.forEach((result: JobMatchResult, index: number) => {
           const profile = profilesToScore[index];
           if (profile) {
             newScores[profile.id] = result;
-            if (result.recommendation === 'skip') lowScoreCount++;
+            if (result.recommendation === 'skip') {
+              lowScoreProfiles.push({
+                id: profile.id,
+                name: profile.name || `${profile.first_name || ''} ${profile.last_name || ''}`.trim(),
+                headline: profile.headline,
+                profileUrl: profile.public_profile_url || profile.profile_url,
+                score: result.match_score,
+                recommendation: result.recommendation,
+                skipReason: result.summary || 'Score insuffisant',
+              });
+            }
           }
         });
+        
         setJobScores(prev => ({ ...prev, ...newScores }));
         setSortByScore(true);
         
-        // Just inform about low scores - don't auto-dismiss
-        const goodCount = data.results.length - lowScoreCount;
-        if (lowScoreCount > 0) {
-          toast.success(`${data.results.length} profils scorés : ${goodCount} pertinent${goodCount > 1 ? 's' : ''}, ${lowScoreCount} peu adapté${lowScoreCount > 1 ? 's' : ''}`);
+        // Auto-dismiss low score profiles when autoHideTreated is ON
+        const shouldAutoDismiss = autoHideTreatedRef.current;
+        if (shouldAutoDismiss && lowScoreProfiles.length > 0) {
+          // Archive low score profiles in the database
+          await candidateStatus.batchDismiss(lowScoreProfiles);
+          
+          // Immediately remove them from visible results
+          const lowScoreIds = new Set(lowScoreProfiles.map(p => p.id));
+          setResults(prev => prev.filter(p => !lowScoreIds.has(p.id)));
+          
+          // Clear selection for dismissed profiles
+          setSelectedProfiles(prev => {
+            const newSet = new Set(prev);
+            lowScoreIds.forEach(id => newSet.delete(id));
+            return newSet;
+          });
+          
+          const goodCount = data.results.length - lowScoreProfiles.length;
+          toast.success(`${data.results.length} profils scorés : ${goodCount} pertinent${goodCount > 1 ? 's' : ''}, ${lowScoreProfiles.length} écarté${lowScoreProfiles.length > 1 ? 's' : ''}`);
         } else {
-          toast.success(`${data.results.length} profils scorés`);
+          // Just inform about low scores without auto-dismiss
+          const goodCount = data.results.length - lowScoreProfiles.length;
+          if (lowScoreProfiles.length > 0) {
+            toast.success(`${data.results.length} profils scorés : ${goodCount} pertinent${goodCount > 1 ? 's' : ''}, ${lowScoreProfiles.length} peu adapté${lowScoreProfiles.length > 1 ? 's' : ''}`);
+          } else {
+            toast.success(`${data.results.length} profils scorés`);
+          }
         }
       }
     } catch (err) {
@@ -1237,7 +1281,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
     } finally {
       setScoringInProgress(false);
     }
-  }, [selectedJob, selectedProfiles, results, buildProfileData]);
+  }, [selectedJob, selectedProfiles, results, buildProfileData, candidateStatus]);
 
   // Bulk dismiss selected profiles
   const handleBulkDismiss = useCallback(async () => {
@@ -1260,6 +1304,13 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
       }));
 
     await candidateStatus.batchDismiss(profilesToDismiss);
+    
+    // Immediately remove dismissed profiles from results if autoHideTreated is ON
+    if (autoHideTreatedRef.current) {
+      const dismissedIdSet = new Set(profilesToDismiss.map(p => p.id));
+      setResults(prev => prev.filter(p => !dismissedIdSet.has(p.id)));
+    }
+    
     setSelectedProfiles(new Set());
     toast.success(`${profilesToDismiss.length} profil${profilesToDismiss.length > 1 ? 's' : ''} archivé${profilesToDismiss.length > 1 ? 's' : ''}`);
   }, [selectedJob, selectedProfiles, results, jobScores, candidateStatus]);
