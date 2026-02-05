@@ -309,7 +309,12 @@ serve(async (req) => {
                 .update({ current_step_order: step.step_order + 1 })
                 .eq('id', enrollment.id);
 
-              await scheduleNextStep(supabase, enrollment, step.step_order);
+              // Actions that handle their own scheduling (branching logic) should not have scheduleNextStep called again
+              // check_connection already calls scheduleNextStep with the correct branch target
+              const selfSchedulingActions = ['check_connection'];
+              if (!selfSchedulingActions.includes(step.action_type)) {
+                await scheduleNextStep(supabase, enrollment, step.step_order);
+              }
               results.processed++;
               
               // Add random delay between LinkedIn actions to simulate human behavior
