@@ -1802,6 +1802,19 @@ async function scheduleNextStep(supabase: any, enrollment: any, currentStepOrder
   
   console.log(`[process-sequences] Scheduling next step ${nextStep.step_order} for ${scheduledAt.toISOString()} (timezone: ${userTimezone})`);
 
+  // Check if an execution already exists for this enrollment + step to prevent duplicates
+  const { data: existingExecution } = await supabase
+    .from('sequence_step_executions')
+    .select('id, status')
+    .eq('enrollment_id', enrollment.id)
+    .eq('step_id', nextStep.id)
+    .maybeSingle();
+
+  if (existingExecution) {
+    console.log(`[process-sequences] Execution already exists for enrollment ${enrollment.id} step ${nextStep.step_order} (status: ${existingExecution.status}), skipping duplicate creation`);
+    return;
+  }
+
   await supabase
     .from('sequence_step_executions')
     .insert({
