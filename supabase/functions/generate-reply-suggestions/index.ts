@@ -63,6 +63,8 @@ interface ChatContext {
   // Enhanced context
   profileData?: ProfileData;
   jobData?: JobData;
+  // All available jobs to constrain suggestions
+  availableJobs?: Array<{ id: string; title: string; skills: string[]; client?: { name: string } | null }>;
   // Detected intent from analyze-response (optional)
   detectedIntent?: 'interested' | 'not_interested' | 'needs_info' | 'wants_call' | 'timing_issue' | 'already_placed' | 'neutral';
 }
@@ -252,12 +254,30 @@ serve(async (req) => {
       }
     }
 
+    // Build available jobs constraint
+    let availableJobsContext = '';
+    if (context.availableJobs && context.availableJobs.length > 0) {
+      const jobsList = context.availableJobs.slice(0, 15).map(j => 
+        `• ${j.title}${j.client?.name ? ` (${j.client.name})` : ''} - Skills: ${j.skills?.slice(0, 5).join(', ') || 'N/A'}`
+      ).join('\n');
+      availableJobsContext = `\n\n⚠️ POSTES RÉELLEMENT DISPONIBLES (liste exhaustive):
+${jobsList}
+
+CONTRAINTE ABSOLUE: Tu ne peux parler QUE de ces postes ci-dessus. 
+Si le profil du candidat (ex: Flutter, Python, etc.) ne correspond à AUCUN poste disponible, ne mentionne PAS de mission ou d'opportunité. 
+Propose plutôt de garder le contact ou de le recontacter quand un poste correspondra.`;
+    } else {
+      availableJobsContext = `\n\n⚠️ AUCUN POSTE DISPONIBLE ACTUELLEMENT.
+Ne propose AUCUNE mission ou opportunité. Propose uniquement de garder le contact.`;
+    }
+
     const prompt = `Tu es un recruteur tech expérimenté. Génère 3 suggestions de réponses courtes et naturelles pour cette conversation LinkedIn.
 
 PROFIL DU CANDIDAT:
 ${profileContext}
 ${jobContext}
 ${needsInfoContext}
+${availableJobsContext}
 
 CONVERSATION:
 ${conversationHistory}
@@ -265,14 +285,15 @@ ${conversationHistory}
 ${needsResponse ? "Le candidat vient d'envoyer un message, je dois répondre." : "J'ai envoyé le dernier message, je veux relancer ou remercier."}
 ${intentGuidance}
 
-RÈGLES POUR LES SUGGESTIONS:
+RÈGLES CRITIQUES POUR LES SUGGESTIONS:
 1. Maximum 60 mots par suggestion
 2. Ton naturel, comme un vrai humain
 3. INTERDIT: superlatifs (exceptionnel, incroyable), formules corporate, emojis excessifs
 4. Varier les options: une courte, une moyenne, une plus détaillée
-5. Si le candidat demande des infos → UTILISE les données du poste pour répondre précisément
-6. Si des infos manquent → inclure UNE question de qualification dans la réponse détaillée
-7. Personnalise avec les skills/expériences du candidat si pertinent
+5. ⚠️ INTERDIT de mentionner des postes/missions qui ne sont PAS dans la liste "POSTES DISPONIBLES"
+6. Si aucun poste ne correspond au profil → NE PAS inventer de mission, proposer de garder le contact
+7. Si le candidat demande des infos et un poste correspond → UTILISE les données du poste
+8. Si des infos manquent → inclure UNE question de qualification dans la réponse détaillée
 
 Réponds UNIQUEMENT en JSON valide:
 {
