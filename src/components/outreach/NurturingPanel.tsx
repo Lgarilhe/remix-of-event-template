@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -237,6 +237,11 @@ export const NurturingPanel: React.FC<NurturingPanelProps> = ({
   
   // Track if we've analyzed the current messages
   const [lastAnalyzedHash, setLastAnalyzedHash] = useState<string>('');
+  
+  // Refs to prevent infinite loops and concurrent calls
+  const isAnalyzingRef = useRef(false);
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Create a hash of messages to detect changes
   const getMessagesHash = useCallback(() => {
@@ -254,8 +259,21 @@ export const NurturingPanel: React.FC<NurturingPanelProps> = ({
     const currentHash = getMessagesHash();
     if (currentHash === lastAnalyzedHash) return;
     
+    // Prevent concurrent calls
+    if (isAnalyzingRef.current) {
+      console.log('[NurturingPanel] Analysis already in progress, skipping');
+      return;
+    }
+    
+    isAnalyzingRef.current = true;
     setLoading(true);
     setError(null);
+    
+    // Cancel any previous pending request
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    abortControllerRef.current = new AbortController();
     
     try {
       const response = await supabase.functions.invoke('analyze-response', {
@@ -271,27 +289,43 @@ export const NurturingPanel: React.FC<NurturingPanelProps> = ({
         throw new Error(response.data.error);
       }
     } catch (err) {
+      // Ignore abort errors
+      if (err instanceof Error && err.name === 'AbortError') return;
       console.error('Error analyzing response:', err);
       setError(err instanceof Error ? err.message : 'Erreur d\'analyse');
     } finally {
       setLoading(false);
+      isAnalyzingRef.current = false;
     }
   }, [context, hasCandidateMessage, needsAnalysis, getMessagesHash, lastAnalyzedHash]);
 
-  // Auto-analyze when there's a new candidate message
+  // Auto-analyze when there's a new candidate message (with debounce)
   useEffect(() => {
-    if (needsAnalysis && !loading && !analysis) {
-      analyzeResponse();
+    // Clear any pending debounce
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
     }
-  }, [needsAnalysis, loading, analysis, analyzeResponse]);
-
-  // Reset when conversation changes
-  useEffect(() => {
+    
+    // Reset analysis when conversation changes (before analyzing)
     const currentHash = getMessagesHash();
-    if (currentHash !== lastAnalyzedHash) {
+    if (currentHash !== lastAnalyzedHash && analysis) {
       setAnalysis(null);
     }
-  }, [getMessagesHash, lastAnalyzedHash]);
+    
+    // Only trigger analysis if we need it
+    if (needsAnalysis && !isAnalyzingRef.current && currentHash !== lastAnalyzedHash) {
+      // Debounce to avoid rapid successive calls
+      debounceTimerRef.current = setTimeout(() => {
+        analyzeResponse();
+      }, 300);
+    }
+    
+    return () => {
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+      }
+    };
+  }, [needsAnalysis, getMessagesHash, lastAnalyzedHash, analyzeResponse, analysis]);
 
   const handleActionClick = (action: SuggestedAction) => {
     switch (action.type) {
