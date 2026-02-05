@@ -674,6 +674,39 @@ async function generatePersonalizedMessage(
       senderName,
     });
 
+    // Log AI input for debugging personalization quality
+    console.log(`[process-sequences] AI INPUT for ${enrollment.profile_name}:`, JSON.stringify({
+      profileData: {
+        name: profileData?.name,
+        headline: profileData?.headline,
+        summary: profileData?.summary ? (profileData.summary as string).substring(0, 200) + '...' : null,
+        current_company: profileData?.current_company,
+        current_role: profileData?.current_role,
+        skills: profileData?.skills,
+        experienceCount: (profileData?.experiences as unknown[])?.length || 0,
+        experiences: (profileData?.experiences as Array<{title?: string; company?: string; description?: string}>)?.slice(0, 3).map(e => ({
+          title: e?.title,
+          company: e?.company,
+          hasDescription: !!e?.description,
+          descriptionLength: e?.description?.length || 0
+        })),
+        education: profileData?.education,
+        yearsOfExperience: profileData?.yearsOfExperience,
+      },
+      jobContext: jobContext ? {
+        title: jobContext.title,
+        client: jobContext.client,
+        accompagnement: jobContext.accompagnement,
+        skills: jobContext.skills,
+        location: jobContext.location,
+        remote: jobContext.remote,
+        transversalCriteria: jobContext.transversalCriteria,
+      } : null,
+      messageType,
+      isInvitation,
+      senderName,
+    }, null, 2));
+
     // 6. Call Claude with enhanced system prompt
     const response = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
