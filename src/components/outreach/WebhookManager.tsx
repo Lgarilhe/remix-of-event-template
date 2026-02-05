@@ -10,6 +10,7 @@ interface WebhookInfo {
   id: string;
   request_url: string;
   source: string;
+  account_ids?: string[];
   created_at?: string;
 }
 
@@ -179,9 +180,16 @@ export function WebhookManager() {
                       <Badge variant="outline" className="bg-[#0077B5]/10 text-[#0077B5] border-[#0077B5]/20">
                         {getSourceLabel(webhook.source)}
                       </Badge>
-                      <span className="text-sm text-muted-foreground">
-                        {getSourceDescription(webhook.source)}
-                      </span>
+                      <div className="leading-tight">
+                        <div className="text-sm text-muted-foreground">
+                          {getSourceDescription(webhook.source)}
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          {webhook.account_ids?.length
+                            ? `${webhook.account_ids.length} compte(s) ciblé(s)`
+                            : 'Tous les comptes'}
+                        </div>
+                      </div>
                     </div>
                     <Button
                       variant="ghost"
