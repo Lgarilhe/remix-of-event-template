@@ -1720,7 +1720,7 @@ async function logAnalytics(
 }
 
 // deno-lint-ignore no-explicit-any
-async function scheduleNextStep(supabase: any, enrollment: any, currentStepOrder: number, forceBranchStepId?: string) {
+async function scheduleNextStep(supabase: any, enrollment: any, currentStepOrder: number, forceBranchStepId?: string, wasBranchTarget?: boolean) {
   let nextStep;
   
   if (forceBranchStepId) {
@@ -1731,6 +1731,27 @@ async function scheduleNextStep(supabase: any, enrollment: any, currentStepOrder
       .maybeSingle();
     nextStep = data;
   } else {
+    // If the current step was reached via a branch (if_true_goto_step or if_false_goto_step),
+    // we need to check if it has its own branching or if it's the end of that branch.
+    // Get the current step to check its properties.
+    const { data: currentStep } = await supabase
+      .from('sequence_steps')
+      .select('*')
+      .eq('sequence_id', enrollment.sequence_id)
+      .eq('step_order', currentStepOrder)
+      .maybeSingle();
+    
+    // Check if the current step is a branch target (someone points to it via if_true/if_false)
+    const { data: parentBranchSteps } = await supabase
+      .from('sequence_steps')
+      .select('id, step_order, if_true_goto_step, if_false_goto_step')
+      .eq('sequence_id', enrollment.sequence_id)
+      .or(`if_true_goto_step.eq.${currentStep?.id},if_false_goto_step.eq.${currentStep?.id}`);
+    
+    const isBranchTarget = parentBranchSteps && parentBranchSteps.length > 0;
+    
+    // If this step was a branch target and doesn't have its own branching defined,
+    // check if the next linear step is part of the OTHER branch (which should be skipped)
     const { data } = await supabase
       .from('sequence_steps')
       .select('*')
@@ -1739,26 +1760,57 @@ async function scheduleNextStep(supabase: any, enrollment: any, currentStepOrder
       .maybeSingle();
     nextStep = data;
 
-    // If the next step is actually configured as a timeout-branch target for the current step,
-    // skip it in the normal linear flow. The timeout path is scheduled explicitly via
-    // scheduleNextStep(..., forceBranchStepId) in checkTimeoutBranches().
     if (nextStep) {
-      const { data: currentStep } = await supabase
-        .from('sequence_steps')
-        .select('timeout_branch_step_id')
-        .eq('sequence_id', enrollment.sequence_id)
-        .eq('step_order', currentStepOrder)
-        .maybeSingle();
-
-      const timeoutBranchId = currentStep?.timeout_branch_step_id as string | null | undefined;
-      if (timeoutBranchId && nextStep.id === timeoutBranchId) {
-        const { data: data2 } = await supabase
+      // 1. Skip timeout branch targets in normal linear flow
+      if (currentStep?.timeout_branch_step_id && nextStep.id === currentStep.timeout_branch_step_id) {
+        console.log(`[process-sequences] Skipping timeout branch step ${nextStep.step_order}, looking for step ${currentStepOrder + 2}`);
+        const { data: skipToStep } = await supabase
           .from('sequence_steps')
           .select('*')
           .eq('sequence_id', enrollment.sequence_id)
           .eq('step_order', currentStepOrder + 2)
           .maybeSingle();
-        nextStep = data2;
+        nextStep = skipToStep;
+      }
+      
+      // 2. If current step was a branch target, check if next step belongs to the OTHER branch
+      // This happens when: current step was reached via if_true_goto_step, and the next linear step
+      // is the if_false_goto_step target of the same parent (or vice versa)
+      if (isBranchTarget && nextStep) {
+        const parentStep = parentBranchSteps[0];
+        const trueBranchId = parentStep.if_true_goto_step;
+        const falseBranchId = parentStep.if_false_goto_step;
+        
+        // Current step was reached via true branch, next step is false branch target → skip to end
+        if (currentStep?.id === trueBranchId && nextStep.id === falseBranchId) {
+          console.log(`[process-sequences] Current step ${currentStepOrder} is TRUE branch target, next step ${nextStep.step_order} is FALSE branch target - marking sequence complete for this branch`);
+          nextStep = null; // End the sequence for this branch
+        }
+        // Current step was reached via false branch, next step is true branch target → skip to end  
+        else if (currentStep?.id === falseBranchId && nextStep.id === trueBranchId) {
+          console.log(`[process-sequences] Current step ${currentStepOrder} is FALSE branch target, next step ${nextStep.step_order} is TRUE branch target - marking sequence complete for this branch`);
+          nextStep = null; // End the sequence for this branch
+        }
+        // Also check if next step is part of a different branch chain
+        // (i.e., there's a parent that branches to next step but not to current step)
+        else {
+          const { data: nextStepParents } = await supabase
+            .from('sequence_steps')
+            .select('id, step_order, if_true_goto_step, if_false_goto_step')
+            .eq('sequence_id', enrollment.sequence_id)
+            .or(`if_true_goto_step.eq.${nextStep.id},if_false_goto_step.eq.${nextStep.id}`);
+          
+          // If next step is ALSO a branch target from a different parent condition,
+          // and that parent is the same as our parent but different branch, skip it
+          if (nextStepParents && nextStepParents.length > 0) {
+            const nextParent = nextStepParents[0];
+            if (nextParent.id === parentStep.id) {
+              // Same parent - we're crossing branches
+              console.log(`[process-sequences] Step ${nextStep.step_order} belongs to sibling branch, marking sequence complete`);
+              nextStep = null;
+            }
+          }
+        }
       }
     }
   }
