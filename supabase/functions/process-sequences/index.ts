@@ -1035,6 +1035,27 @@ async function getFullLinkedInProfile(
     
     const data = await response.json();
     
+    // Debug: Log raw Unipile response to check what data we actually receive
+    console.log(`[getFullLinkedInProfile] Raw Unipile response for ${profileId}:`, JSON.stringify({
+      hasName: !!data.name || !!data.first_name,
+      headline: data.headline,
+      hasSummary: !!data.summary,
+      summaryLength: data.summary?.length || 0,
+      hasAbout: !!data.about,
+      aboutLength: data.about?.length || 0,
+      positionsCount: data.positions?.length || 0,
+      positionsWithDescription: data.positions?.filter((p: Record<string, unknown>) => p.description || p.summary).length || 0,
+      skillsCount: data.skills?.length || 0,
+      educationCount: data.education?.length || data.schools?.length || 0,
+      rawPositionsSample: data.positions?.slice(0, 2).map((p: Record<string, unknown>) => ({
+        title: p.title,
+        company: p.company_name || p.company,
+        hasDescription: !!p.description,
+        descriptionLength: (p.description as string)?.length || 0,
+        hasSummary: !!p.summary,
+      })),
+    }, null, 2));
+    
     // Calculate years of experience from positions
     const positions = data.positions || [];
     let yearsOfExperience = 0;
