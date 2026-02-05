@@ -123,25 +123,61 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
     try {
       setLoading(true);
 
-      // Fetch step executions with enrollment and step data
+      // Fetch step executions
       const { data: execData, error: execError } = await supabase
         .from('sequence_step_executions')
-        .select(`
-          *,
-          step:sequence_steps(action_type, message_template, subject_template),
-          enrollment:sequence_enrollments(
-            profile_name,
-            profile_headline,
-            profile_url,
-            sequence:outreach_sequences(name)
-          )
-        `)
+        .select('*')
         .order('scheduled_at', { ascending: false })
         .limit(500);
 
       if (execError) throw execError;
 
-      setExecutions(execData || []);
+      if (!execData || execData.length === 0) {
+        setExecutions([]);
+        return;
+      }
+
+      // Get unique IDs for batch fetching
+      const enrollmentIds = [...new Set(execData.map(e => e.enrollment_id))];
+      const stepIds = [...new Set(execData.map(e => e.step_id))];
+
+      // Fetch enrollments with sequences
+      const { data: enrollmentsData } = await supabase
+        .from('sequence_enrollments')
+        .select('id, profile_name, profile_headline, profile_url, sequence_id')
+        .in('id', enrollmentIds);
+
+      // Get sequence IDs from enrollments
+      const sequenceIds = [...new Set((enrollmentsData || []).map(e => e.sequence_id))];
+      
+      // Fetch sequences
+      const { data: sequencesData } = await supabase
+        .from('outreach_sequences')
+        .select('id, name')
+        .in('id', sequenceIds);
+
+      // Fetch steps
+      const { data: stepsData } = await supabase
+        .from('sequence_steps')
+        .select('id, action_type, message_template, subject_template')
+        .in('id', stepIds);
+
+      // Build lookup maps
+      const sequencesMap = new Map((sequencesData || []).map(s => [s.id, s]));
+      const enrollmentsMap = new Map((enrollmentsData || []).map(e => [e.id, {
+        ...e,
+        sequence: sequencesMap.get(e.sequence_id)
+      }]));
+      const stepsMap = new Map((stepsData || []).map(s => [s.id, s]));
+
+      // Merge data
+      const enrichedExecutions = execData.map(exec => ({
+        ...exec,
+        enrollment: enrollmentsMap.get(exec.enrollment_id),
+        step: stepsMap.get(exec.step_id),
+      }));
+
+      setExecutions(enrichedExecutions);
     } catch (err) {
       console.error('Error fetching executions:', err);
       toast.error('Erreur lors du chargement');
