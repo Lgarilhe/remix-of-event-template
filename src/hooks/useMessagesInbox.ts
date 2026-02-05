@@ -1,6 +1,18 @@
-import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import {
+  getChatDisplayName,
+  getChatHeadline,
+  getChatJobInfo,
+  getAttendeeProfileId,
+  getMessageText,
+  isRecruiterChat,
+  isClassicChat,
+  hasUnread,
+  getUnreadCount,
+  buildChatSearchText,
+} from './useMessagesInboxHelpers';
 
 // Types
 export interface ChatAttendee {
@@ -263,7 +275,10 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange }: UseMe
     }
   }, [selectedAccount]);
 
-  // Fetch messages for a chat
+  // Fetch messages for a chat - use ref for cursor to avoid stale closure
+  const cursorRef = useRef<string | null>(null);
+  cursorRef.current = cursor;
+  
   const fetchMessages = useCallback(async (chatId: string, loadMore = false) => {
     if (!selectedAccount) return;
 
@@ -275,7 +290,7 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange }: UseMe
           account_id: selectedAccount,
           chat_id: chatId,
           limit: 50,
-          cursor: loadMore ? cursor : undefined,
+          cursor: loadMore ? cursorRef.current : undefined,
         },
       });
 
@@ -298,7 +313,7 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange }: UseMe
     } finally {
       setLoadingMessages(false);
     }
-  }, [selectedAccount, cursor]);
+  }, [selectedAccount]);
 
   // Send a message
   const sendMessage = useCallback(async () => {
@@ -387,8 +402,6 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange }: UseMe
     
     setLoadingSuggestions(true);
     try {
-      const { getChatDisplayName, getChatHeadline, getMessageText, getChatJobInfo } = await import('./useMessagesInboxHelpers');
-      
       const recipientName = getChatDisplayName(selectedChat);
       const recipientHeadline = getChatHeadline(selectedChat);
       const jobInfo = getChatJobInfo(selectedChat, enrollmentsMap);
@@ -461,8 +474,6 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange }: UseMe
   const enrollInSequence = useCallback(async (sequence: { id: string; name: string; steps: any[] }) => {
     if (!selectedChat || !selectedAccount) return;
     
-    const { getChatDisplayName, getChatHeadline, getAttendeeProfileId } = await import('./useMessagesInboxHelpers');
-    
     const profileId = getAttendeeProfileId(selectedChat);
     if (!profileId) {
       toast.error('Impossible d\'identifier le profil');
@@ -534,10 +545,9 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange }: UseMe
   }, [selectedChat, sequences.length]);
 
   // Handle scheduling call
-  const handleScheduleCall = useCallback(async () => {
+  const handleScheduleCall = useCallback(() => {
     if (!selectedChat) return;
     
-    const { getChatDisplayName } = await import('./useMessagesInboxHelpers');
     const profileName = getChatDisplayName(selectedChat);
     
     toast.info('📅 Planifier un call', {
@@ -554,40 +564,30 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange }: UseMe
 
   // Filter chats effect
   useEffect(() => {
-    const filterChats = async () => {
-      const { isRecruiterChat, isClassicChat, hasUnread, buildChatSearchText } = await import('./useMessagesInboxHelpers');
-      
-      let result = chats;
-      
-      if (sourceFilter === 'recruiter') {
-        result = result.filter(chat => isRecruiterChat(chat));
-      } else if (sourceFilter === 'classic') {
-        result = result.filter(chat => isClassicChat(chat));
-      }
-      
-      if (showUnreadOnly) {
-        result = result.filter(chat => hasUnread(chat));
-      }
-      
-      if (searchQuery.trim()) {
-        const query = searchQuery.toLowerCase();
-        result = result.filter(chat => buildChatSearchText(chat).includes(query));
-      }
-      
-      setFilteredChats(result);
-    };
+    let result = chats;
     
-    filterChats();
+    if (sourceFilter === 'recruiter') {
+      result = result.filter(chat => isRecruiterChat(chat));
+    } else if (sourceFilter === 'classic') {
+      result = result.filter(chat => isClassicChat(chat));
+    }
+    
+    if (showUnreadOnly) {
+      result = result.filter(chat => hasUnread(chat));
+    }
+    
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      result = result.filter(chat => buildChatSearchText(chat).includes(query));
+    }
+    
+    setFilteredChats(result);
   }, [searchQuery, chats, showUnreadOnly, sourceFilter]);
 
   // Unread count effect
   useEffect(() => {
-    const calculateUnread = async () => {
-      const { getUnreadCount } = await import('./useMessagesInboxHelpers');
-      const totalUnread = chats.reduce((acc, chat) => acc + getUnreadCount(chat), 0);
-      onUnreadCountChange?.(totalUnread);
-    };
-    calculateUnread();
+    const totalUnread = chats.reduce((acc, chat) => acc + getUnreadCount(chat), 0);
+    onUnreadCountChange?.(totalUnread);
   }, [chats, onUnreadCountChange]);
 
   // Load chats on account change
