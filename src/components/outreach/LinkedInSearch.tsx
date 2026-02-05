@@ -1,41 +1,15 @@
-import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
+import React, { useCallback, useMemo, useEffect, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
 import { LinkedInAccount } from '@/pages/Outreach';
-import { LinkedInFilters } from './LinkedInFilters';
-import { LinkedInResultCard } from './LinkedInResultCard';
-import { JobSelector, BatchScoreButton, GeneratedFilters } from './JobSelector';
-import { FilterAssistantModal } from './FilterAssistantModal';
-import { FilterWizard } from './filter-wizard';
-import { FilterPresetsManager } from './FilterPresetsManager';
-import { AutoFillFiltersButton } from './AutoFillFiltersButton';
-import { JobMatchResult } from './JobScoreDisplay';
-import { QuotaDisplay } from './QuotaDisplay';
-import { BulkInMailModal } from './BulkInMailModal';
-import { useUnipileQuota } from '@/hooks/useUnipileQuota';
-import { useJobCandidateStatus } from '@/hooks/useJobCandidateStatus';
-import { useSourcingProjects, SourcingProject } from '@/hooks/useSourcingProjects';
-import { Job } from '@/pages/JobSpace';
-import { filterByCalculatedExperience } from './calculateExperience';
-import { useCopilotActions } from '@/hooks/useCopilotActions';
-import {
-  LinkedInFiltersState,
-  LinkedInProfile,
-  INITIAL_FILTERS,
-  SENIORITY_LEVELS,
-  API_TYPE_OPTIONS,
-  LinkedInApiType,
-} from './types';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { Checkbox } from '@/components/ui/checkbox';
-import { Badge } from '@/components/ui/badge';
-import { Search, Loader2, AlertTriangle, Lock, Users, Sparkles, Mail, GitBranch, Archive, Eye, EyeOff, FolderPlus, Target } from 'lucide-react';
-import { SequenceEnrollButton } from './SequenceEnrollButton';
+import { SearchFiltersPanel } from './search/SearchFiltersPanel';
+import { SearchResultsPanel } from './search/SearchResultsPanel';
+import { useLinkedInSearch } from '@/hooks/useLinkedInSearch';
+import { useLinkedInSearchActions } from '@/hooks/useLinkedInSearchActions';
+import { useLinkedInScoring } from '@/hooks/useLinkedInScoring';
+import { useFilteredResults } from '@/hooks/useFilteredResults';
+import { useAutoFillFilters } from '@/hooks/useAutoFillFilters';
+import { SourcingProject } from '@/hooks/useSourcingProjects';
+import { LinkedInProfile } from './types';
 import { toast } from 'sonner';
 
 interface LinkedInSearchProps {
@@ -53,2123 +27,310 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
   activeProject,
   onProjectChange,
 }) => {
-  const [filters, setFilters] = useState<LinkedInFiltersState>(INITIAL_FILTERS);
-  const filtersRef = useRef<LinkedInFiltersState>(INITIAL_FILTERS);
-  const [results, setResults] = useState<LinkedInProfile[]>([]);
-  
-  // Refs for values that need to be current in callbacks (avoid stale closure)
-  const autoHideTreatedRef = useRef(true);
-  const [loading, setLoading] = useState(false);
-  const [loadingMore, setLoadingMore] = useState(false); // For infinite scroll loading indicator
-  const [cursor, setCursor] = useState<string | null>(null);
-  const [hasMoreResults, setHasMoreResults] = useState(true); // Track if more results available
-  const [total, setTotal] = useState<number | null>(null);
-  // Reduced batch size for infinite scroll - more efficient quota usage
-  const RESULTS_PER_BATCH = 25;
-  const [hasSearched, setHasSearched] = useState(false);
-  
-  // Intersection observer ref for infinite scroll
-  const loadMoreTriggerRef = useRef<HTMLDivElement>(null);
-  
-  // Quota tracking
-  const quota = useUnipileQuota(selectedAccount);
-  
-  // Job scoring state
-  const [selectedJob, setSelectedJob] = useState<Job | null>(null);
-  const [selectedProfiles, setSelectedProfiles] = useState<Set<string>>(new Set());
-  const [jobScores, setJobScores] = useState<Record<string, JobMatchResult>>({});
-  const [scoringInProgress, setScoringInProgress] = useState(false);
-  const [sortByScore, setSortByScore] = useState(false);
-  
-  // Candidate status tracking per job (dismissed, messaged, etc.)
-  const candidateStatus = useJobCandidateStatus(selectedJob?.id || null);
-  const [showDismissed, setShowDismissed] = useState(false); // Toggle to show/hide dismissed candidates
-  const [statusFilter, setStatusFilter] = useState<'all' | 'untreated' | 'messaged' | 'dismissed'>('all');
-  
-  // Auto-hide treated profiles when loading more results (ON by default)
-  const [autoHideTreated, setAutoHideTreated] = useState(true);
-  
-  // Copilot context sync
-  const { updateJobContext, updateProfilesContext, updateFiltersContext } = useCopilotActions();
-  
-  // Bulk InMail modal state
-  const [showBulkInMailModal, setShowBulkInMailModal] = useState(false);
-  
-  // Filter wizard state (guided flow when job is selected)
-  const [showFilterWizard, setShowFilterWizard] = useState(false);
-  
-  // Projects integration
-  const { updateProject, findOrCreateForJob } = useSourcingProjects();
   const queryClient = useQueryClient();
-  
-  // Debounce ref kept only for cleanup (auto-search is disabled)
-  const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
+  const loadMoreTriggerRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    filtersRef.current = filters;
-  }, [filters]);
-  
-  // Keep refs in sync for use in callbacks (avoid stale closures)
-  useEffect(() => {
-    autoHideTreatedRef.current = autoHideTreated;
-  }, [autoHideTreated]);
+  // Main search state hook
+  const search = useLinkedInSearch({
+    selectedAccount,
+    activeProject,
+    onProjectChange,
+  });
 
-  // Load filters from active project when it changes
-  useEffect(() => {
-    if (activeProject) {
-      // Load saved filters from project
-      const savedFilters = activeProject.filters_snapshot;
-      if (savedFilters && Object.keys(savedFilters).length > 0) {
-        setFilters(prev => ({
-          ...prev,
-          ...savedFilters,
-        }));
-        toast.info(`Filtres du projet "${activeProject.name}" chargés`);
-      }
-      
-      // If project is linked to a job, select that job
-      if (activeProject.job_id && activeProject.job_title) {
-        // Create a minimal Job object for the selector
-        setSelectedJob({
-          id: activeProject.job_id,
-          title: activeProject.job_title,
-          client: activeProject.client_name ? { name: activeProject.client_name } : undefined,
-        } as Job);
-      }
+  // Search actions hook
+  const { handleSearch, handleLoadMore } = useLinkedInSearchActions(
+    {
+      selectedAccount,
+      selectedJob: search.selectedJob,
+      filters: search.filters,
+      cursor: search.cursor,
+      results: search.results,
+      activeProject,
+      autoHideTreatedRef: search.autoHideTreatedRef,
+      quota: {
+        canPerformAction: search.quota.canPerformAction,
+        recordAction: search.quota.recordAction,
+        isNearLimit: search.quota.isNearLimit,
+      },
+      candidateStatus: {
+        treatedIds: search.candidateStatus.treatedIds,
+        dismissedIds: search.candidateStatus.dismissedIds,
+      },
+    },
+    {
+      setLoading: search.setLoading,
+      setLoadingMore: search.setLoadingMore,
+      setResults: search.setResults,
+      setCursor: search.setCursor,
+      setHasMoreResults: search.setHasMoreResults,
+      setTotal: search.setTotal,
+      setHasSearched: search.setHasSearched,
     }
-  }, [activeProject?.id]);
-  
-  // Sync selected job to Copilot context and reset status filter
-  useEffect(() => {
-    if (selectedJob) {
-      updateJobContext({
-        id: selectedJob.id,
-        title: selectedJob.title,
-        client: selectedJob.client?.name || '',
-        skills: selectedJob.skills,
-        requirements: selectedJob.requirements,
-        description: selectedJob.description,
-        remote: selectedJob.remote,
-        salaryMin: selectedJob.salaryMin,
-        salaryMax: selectedJob.salaryMax,
-      });
-      // Reset status filter when job changes
-      setStatusFilter('all');
-      setShowDismissed(false);
-    } else {
-      updateJobContext(null);
-      setStatusFilter('all');
-      setShowDismissed(false);
-    }
-  }, [selectedJob, updateJobContext]);
-  
-  // Sync selected profiles to Copilot context
-  useEffect(() => {
-    const selectedProfilesData = results
-      .filter(p => selectedProfiles.has(p.id))
-      .map(p => ({
-        id: p.id,
-        name: p.name || `${p.first_name || ''} ${p.last_name || ''}`.trim(),
-        headline: p.headline,
-        profileUrl: p.public_profile_url || p.profile_url,
-        location: p.location,
-        summary: p.summary,
-        currentCompany: p.work_experience?.[0]?.company,
-        workExperience: p.work_experience,
-        education: p.education,
-        skills: p.skills,
-        network_distance: p.network_distance,
-      }));
-    updateProfilesContext(selectedProfilesData);
-  }, [selectedProfiles, results, updateProfilesContext]);
-  
-  // Sync current filters to Copilot context
-  useEffect(() => {
-    updateFiltersContext(filters);
-  }, [filters, updateFiltersContext]);
-  
-  // Handler for AI-generated filter auto-fill
-  const handleAutoFillFilters = useCallback((generatedFilters: GeneratedFilters) => {
-    setFilters(prev => ({
-      ...prev,
-      // Keywords
-      keywords: generatedFilters.keywords || prev.keywords,
-      // Role filters (for Recruiter mode)
-      role: generatedFilters.role?.length > 0 ? generatedFilters.role.map(r => ({
-        keywords: r.keywords,
-        priority: r.priority as 'MUST_HAVE' | 'DOESNT_HAVE',
-        scope: r.scope as 'CURRENT' | 'PAST' | 'CURRENT_OR_PAST',
-      })) : prev.role,
-      // Seniority
-      seniority: generatedFilters.seniority?.length > 0 ? generatedFilters.seniority : prev.seniority,
-      // Years of experience - use calculated experience filter (client-side, more reliable)
-      calculated_experience_min: generatedFilters.years_of_experience_min ?? prev.calculated_experience_min,
-      calculated_experience_max: generatedFilters.years_of_experience_max ?? prev.calculated_experience_max,
-      // Keep LinkedIn API filter cleared since we use calculated
-      years_of_experience_min: null,
-      years_of_experience_max: null,
-      // Company keywords exclusions (e.g., exclude client company)
-      company_keywords: generatedFilters.company_keywords?.length > 0 
-        ? generatedFilters.company_keywords.map(c => ({
-            keywords: c.keywords,
-            priority: c.priority as 'CAN_HAVE' | 'MUST_HAVE' | 'DOESNT_HAVE',
-            scope: c.scope as 'CURRENT' | 'PAST' | 'CURRENT_OR_PAST' | 'PAST_NOT_CURRENT',
-          }))
-        : prev.company_keywords,
-      // School filters with CAN_HAVE priority (TOP schools)
-      school: generatedFilters.school?.length > 0
-        ? generatedFilters.school.map(s => ({
-            id: s.id,
-            name: s.name,
-            priority: s.priority as 'CAN_HAVE' | 'MUST_HAVE' | 'DOESNT_HAVE',
-          }))
-        : prev.school,
-      // Location radius based on remote policy
-      location_within_area: generatedFilters.location_within_area ?? prev.location_within_area,
-      // Spotlight for Open to Work (cast to proper type)
-      spotlight: (generatedFilters.spotlight || prev.spotlight) as typeof prev.spotlight,
-      // Open to work flag
-      open_to_work: generatedFilters.open_to_work ?? prev.open_to_work,
-    }));
+  );
 
-    // Resolve location keywords → location IDs (required by Recruiter API)
-    // If we don't resolve IDs, the UI looks empty and the API can't apply the location filter.
-    const locationKeyword = generatedFilters.location_keywords?.[0]?.trim();
-    if (locationKeyword && selectedAccount) {
-      void (async () => {
-        try {
-          // Don't overwrite a location the user already chose
-          if (filtersRef.current.location.length > 0) return;
+  // Scoring hook
+  const scoring = useLinkedInScoring({
+    selectedJob: search.selectedJob,
+    selectedProfiles: search.selectedProfiles,
+    results: search.results,
+    jobScores: search.jobScores,
+    setJobScores: search.setJobScores,
+    setScoringInProgress: search.setScoringInProgress,
+    setSortByScore: search.setSortByScore,
+    setResults: search.setResults,
+    setSelectedProfiles: search.setSelectedProfiles,
+    autoHideTreatedRef: search.autoHideTreatedRef,
+    candidateStatus: {
+      batchDismiss: search.candidateStatus.batchDismiss,
+    },
+  });
 
-          const { data, error } = await supabase.functions.invoke('unipile-search', {
-            body: {
-              action: 'get_parameters',
-              account_id: selectedAccount,
-              type: 'LOCATION',
-              keywords: locationKeyword,
-              service: 'RECRUITER',
-            },
-          });
+  // Filtered results hook
+  const { filteredAndSortedResults, selectableProfiles, allSelectableSelected } = useFilteredResults({
+    results: search.results,
+    jobScores: search.jobScores,
+    sortByScore: search.sortByScore,
+    selectedJob: search.selectedJob,
+    autoHideTreated: search.autoHideTreated,
+    showDismissed: search.showDismissed,
+    statusFilter: search.statusFilter,
+    candidateStatus: {
+      treatedIds: search.candidateStatus.treatedIds,
+      dismissedIds: search.candidateStatus.dismissedIds,
+      getStatus: search.candidateStatus.getStatus,
+    },
+    selectedProfiles: search.selectedProfiles,
+    calculatedExperienceMin: search.filters.calculated_experience_min,
+    calculatedExperienceMax: search.filters.calculated_experience_max,
+  });
 
-          if (error) throw error;
-          if (!data?.success || !Array.isArray(data?.items) || data.items.length === 0) {
-            console.warn('[AutoFill] Location could not be resolved from keyword:', locationKeyword);
-            return;
-          }
+  // Auto-fill filters hook
+  const { handleAutoFillFilters } = useAutoFillFilters({
+    selectedAccount,
+    filtersRef: search.filtersRef,
+    setFilters: search.setFilters,
+  });
 
-          const normalized = locationKeyword.toLowerCase();
-          const best =
-            data.items.find((it: any) => String(it.title || '').toLowerCase() === normalized) ||
-            data.items.find((it: any) => String(it.title || '').toLowerCase().includes(normalized)) ||
-            data.items[0];
-
-          if (!best?.id || !best?.title) return;
-
-          setFilters((curr) => ({
-            ...curr,
-            location: curr.location.length
-              ? curr.location
-              : [
-                  {
-                    id: String(best.id),
-                    name: String(best.title),
-                    priority: 'MUST_HAVE',
-                    scope: 'CURRENT_OR_OPEN_TO_RELOCATE',
-                  },
-                ],
-          }));
-
-          console.log('[AutoFill] Resolved location:', { keyword: locationKeyword, id: best.id, title: best.title });
-        } catch (e) {
-          console.error('[AutoFill] Failed to resolve location keyword:', locationKeyword, e);
-        }
-      })();
-    }
-    
-    // Log what was applied
-    console.log('[AutoFill] Applied filters:', {
-      keywords: generatedFilters.keywords,
-      roles: generatedFilters.role?.length,
-      seniority: generatedFilters.seniority,
-      calculatedXp: `${generatedFilters.years_of_experience_min}-${generatedFilters.years_of_experience_max}`,
-      companyExclusions: generatedFilters.company_keywords?.length,
-      schools: generatedFilters.school?.length,
-      locationKeywords: generatedFilters.location_keywords,
-      locationRadius: generatedFilters.location_within_area,
-      spotlight: generatedFilters.spotlight,
-      openToWork: generatedFilters.open_to_work,
-    });
-  }, [selectedAccount]);
-  
-  // Update API mode based on selected filter
-  useEffect(() => {
-    quota.setApiMode(filters.api);
-  }, [filters.api]);
-  
-  // Serialize filters to JSON for stable dependency tracking (for debounce)
-  const filtersJson = useMemo(() => JSON.stringify(filters), [filters]);
-
-  // Sort by score if enabled AND filter out dismissed candidates (unless showDismissed is true)
-  // Use treatedIds and dismissedIds directly for reactive dependency tracking
-  const { treatedIds, dismissedIds } = candidateStatus;
-  
-  const filteredAndSortedResults = useMemo(() => {
-    let filtered = results;
-    
-    // When autoHideTreated is ON, filter out ALL treated candidates (messaged, dismissed, in sequence)
-    if (selectedJob && autoHideTreated) {
-      filtered = filtered.filter(p => !treatedIds.has(p.id));
-    } else {
-      // Legacy behavior: only filter out dismissed candidates (unless showDismissed is ON)
-      if (selectedJob && !showDismissed) {
-        filtered = filtered.filter(p => !dismissedIds.has(p.id));
-      }
-    }
-    
-    // Apply status filter (only when autoHideTreated is OFF)
-    if (selectedJob && !autoHideTreated && statusFilter !== 'all') {
-      filtered = filtered.filter(p => {
-        const status = candidateStatus.getStatus(p.id);
-        switch (statusFilter) {
-          case 'untreated':
-            // No status = not treated yet
-            return !status;
-          case 'messaged':
-            return status?.status === 'messaged' || status?.status === 'replied';
-          case 'dismissed':
-            return status?.status === 'dismissed';
-          default:
-            return true;
-        }
-      });
-    }
-
-    // Sort by score if enabled
-    if (sortByScore && Object.keys(jobScores).length > 0) {
-      filtered = [...filtered].sort((a, b) => {
-        const scoreA = jobScores[a.id]?.match_score ?? -1;
-        const scoreB = jobScores[b.id]?.match_score ?? -1;
-        return scoreB - scoreA; // Descending order
-      });
-    }
-    
-    return filtered;
-  }, [results, jobScores, sortByScore, filters.calculated_experience_min, filters.calculated_experience_max, selectedJob, showDismissed, autoHideTreated, treatedIds, dismissedIds, candidateStatus, statusFilter]);
-
-  // Calculate selectable profiles (exclude "peu adapté" with recommendation: skip)
-  // Use filtered results so client-side filters apply
-  const selectableProfiles = useMemo(() => {
-    return filteredAndSortedResults.filter(p => {
-      const score = jobScores[p.id];
-      // If no score yet, allow selection
-      // If scored and recommendation is 'skip', exclude
-      return !score || score.recommendation !== 'skip';
-    });
-  }, [filteredAndSortedResults, jobScores]);
-
-  // Check if all selectable profiles are selected
-  const allSelectableSelected = useMemo(() => {
-    if (selectableProfiles.length === 0) return false;
-    return selectableProfiles.every(p => selectedProfiles.has(p.id));
-  }, [selectableProfiles, selectedProfiles]);
-
-  // Check if selected account needs reconnection or has subscription issues
+  // Account data helpers
   const selectedAccountData = useMemo(() => 
     accounts.find(a => a.id === selectedAccount),
     [accounts, selectedAccount]
   );
   const needsReconnection = selectedAccountData && selectedAccountData.status !== 'OK';
-  
-  // Check subscription availability for current API mode
   const subscriptions = selectedAccountData?.subscriptions;
-  
-  // Auto-select the best available API mode based on subscriptions
+
+  // Check API mode availability
+  const isApiModeAvailable = useMemo(() => {
+    if (!subscriptions) return true;
+    const hasPremiumLicense = subscriptions.recruiter || subscriptions.sales_navigator;
+    
+    switch (search.filters.api) {
+      case 'recruiter': return !!subscriptions.recruiter;
+      case 'sales_navigator': return !!subscriptions.sales_navigator;
+      case 'classic': return !hasPremiumLicense;
+      default: return true;
+    }
+  }, [subscriptions, search.filters.api]);
+
+  // Auto-select API mode based on subscriptions
   useEffect(() => {
     if (!subscriptions) return;
     
     const hasPremiumLicense = subscriptions.recruiter || subscriptions.sales_navigator;
     
-    // If user has premium license, ensure they're not on Classic mode
-    if (hasPremiumLicense && filters.api === 'classic') {
-      // Auto-switch to the available premium mode
+    if (hasPremiumLicense && search.filters.api === 'classic') {
       if (subscriptions.recruiter) {
-        setFilters(f => ({ ...f, api: 'recruiter' }));
+        search.setFilters(f => ({ ...f, api: 'recruiter' }));
       } else if (subscriptions.sales_navigator) {
-        setFilters(f => ({ ...f, api: 'sales_navigator' }));
+        search.setFilters(f => ({ ...f, api: 'sales_navigator' }));
       }
-    }
-    // If user doesn't have the currently selected premium license, switch to available one
-    else if (filters.api === 'recruiter' && !subscriptions.recruiter && subscriptions.sales_navigator) {
-      setFilters(f => ({ ...f, api: 'sales_navigator' }));
-    } else if (filters.api === 'sales_navigator' && !subscriptions.sales_navigator && subscriptions.recruiter) {
-      setFilters(f => ({ ...f, api: 'recruiter' }));
-    }
-    // If no premium license, ensure Classic is selected
-    else if (!hasPremiumLicense && filters.api !== 'classic') {
-      setFilters(f => ({ ...f, api: 'classic' }));
+    } else if (search.filters.api === 'recruiter' && !subscriptions.recruiter && subscriptions.sales_navigator) {
+      search.setFilters(f => ({ ...f, api: 'sales_navigator' }));
+    } else if (search.filters.api === 'sales_navigator' && !subscriptions.sales_navigator && subscriptions.recruiter) {
+      search.setFilters(f => ({ ...f, api: 'recruiter' }));
+    } else if (!hasPremiumLicense && search.filters.api !== 'classic') {
+      search.setFilters(f => ({ ...f, api: 'classic' }));
     }
   }, [subscriptions, selectedAccount]);
-  
-  const isApiModeAvailable = useMemo(() => {
-    if (!subscriptions) return true; // Default to available if no subscription info
+
+  // Treated/dismissed counts
+  const treatedCount = useMemo(() => {
+    return search.results.filter(p => search.candidateStatus.treatedIds.has(p.id)).length;
+  }, [search.results, search.candidateStatus.treatedIds]);
+
+  const dismissedCount = useMemo(() => {
+    return search.results.filter(p => search.candidateStatus.dismissedIds.has(p.id)).length;
+  }, [search.results, search.candidateStatus.dismissedIds]);
+
+  // Bulk actions
+  const handleBulkDismiss = useCallback(async () => {
+    if (!search.selectedJob) return;
     
-    const hasPremiumLicense = subscriptions.recruiter || subscriptions.sales_navigator;
-    
-    switch (filters.api) {
-      case 'recruiter': return subscriptions.recruiter;
-      case 'sales_navigator': return subscriptions.sales_navigator;
-      case 'classic': return !hasPremiumLicense; // Classic unavailable if premium exists
-      default: return true;
-    }
-  }, [subscriptions, filters.api]);
-
-  const handleSearch = useCallback(async (newSearch = true, appendMode = false, autoScore = true) => {
-    if (!selectedAccount) {
-      toast.error('Sélectionnez un compte LinkedIn');
-      return;
-    }
-
-    // Job is now required for search
-    if (!selectedJob) {
-      toast.error('Sélectionnez un poste pour lancer la recherche');
-      return;
-    }
-
-    // Check quota before searching
-    if (!quota.canPerformAction('searchResultsFetched', RESULTS_PER_BATCH)) {
-      toast.error('Quota de recherche journalier atteint. Réessayez demain.');
-      return;
-    }
-
-    // Set appropriate loading state
-    if (appendMode) {
-      setLoadingMore(true);
-    } else {
-      setLoading(true);
-    }
-    
-    try {
-      // Base params - pagination/limit are injected per fetch iteration
-      const baseParams: Record<string, unknown> = {
-        action: 'search',
-        account_id: selectedAccount,
-        api: filters.api,
-        category: filters.category,
-      };
-
-      // Keywords
-      if (filters.keywords) baseParams.keywords = filters.keywords;
-
-      // Location - Recruiter uses full objects with priority/scope, others use IDs
-      if (filters.location.length) {
-        if (filters.api === 'recruiter') {
-          // Send full location objects with priority and scope
-          baseParams.location = filters.location.map(f => ({
-            id: f.id,
-            priority: f.priority || 'MUST_HAVE',
-            scope: f.scope || 'CURRENT_OR_OPEN_TO_RELOCATE',
-          }));
-          // Add location radius if set
-          if (filters.location_within_area !== null) {
-            baseParams.location_within_area = filters.location_within_area;
-          }
-        } else {
-          // Classic and Sales Navigator use simple ID arrays
-          baseParams.location = filters.location.map(f => f.id);
-        }
-      }
-      
-      // School - Recruiter uses priority format, others use simple ID array
-      // IMPORTANT: On the Unipile Recruiter endpoint, multiple school filters with MUST_HAVE
-      // are AND'ed together, meaning candidates must have attended ALL schools = 0 results!
-      // 
-      // Strategy:
-      // - CAN_HAVE: UI-only signal, not sent to API
-      // - MUST_HAVE / SHOULD_HAVE: Keep only ONE filter with CAN_HAVE priority to create OR logic
-      //   (LinkedIn will return candidates from ANY of the listed schools)
-      // - DOESNT_HAVE: Exclusions can be sent as-is
-      const effectiveSchool =
-        filters.api === 'recruiter'
-          ? filters.school.filter((f) => (f.priority || 'MUST_HAVE') !== 'CAN_HAVE')
-          : filters.school;
-
-      if (effectiveSchool.length) {
-        if (filters.api === 'recruiter') {
-          // Group by intent: schools to include vs exclude
-          const includeSchools = effectiveSchool.filter(f => f.priority !== 'DOESNT_HAVE');
-          const excludeSchools = effectiveSchool.filter(f => f.priority === 'DOESNT_HAVE');
-          
-          // For include schools: send them all with CAN_HAVE to create OR logic
-          // This way LinkedIn returns candidates who attended ANY of these schools
-          const schoolFilters = [
-            ...includeSchools.map(f => ({
-              id: f.id,
-              priority: 'CAN_HAVE' as const, // OR logic between schools
-            })),
-            ...excludeSchools.map(f => ({
-              id: f.id,
-              priority: 'DOESNT_HAVE' as const,
-            })),
-          ];
-          
-          if (schoolFilters.length > 0) {
-            baseParams.school = schoolFilters;
-          }
-        } else {
-          baseParams.school = effectiveSchool.map(f => f.id);
-        }
-      }
-      
-      // Industry - structure with include for Recruiter/Sales Nav
-      if (filters.industry.length) {
-        baseParams.industry = { include: filters.industry.map(f => f.id) };
-      }
-      
-      // Company - ID-based with include structure
-      if (filters.company.length) {
-        baseParams.company = { include: filters.company.map(f => f.id) };
-      }
-      
-      // Company keywords (Recruiter only) - keywords-based with priority/scope
-      if (filters.api === 'recruiter' && filters.company_keywords.length) {
-        baseParams.company_keywords = filters.company_keywords.map(c => ({
-          keywords: c.keywords,
-          priority: c.priority,
-          scope: c.scope,
-        }));
-      }
-      
-      // Function/Department
-      if (filters.function.length) {
-        // Doc (Unipile): function = array of strings (IDs) (type DEPARTMENT)
-        baseParams.function = filters.function.map((f) => f.id);
-      }
-      
-      // Degree (Recruiter) - Doc: { include: string[], exclude: string[] }
-      if (filters.degree.length && filters.api === 'recruiter') {
-        const sanitiseDegreeIds = (ids: string[]) => {
-          const kept = ids.filter((id) => {
-            const n = Number(id);
-            // Legacy UI used placeholder IDs 1-6; real IDs are returned by DEGREE parameters (e.g. 500 for Master)
-            return Number.isFinite(n) && n > 10;
-          });
-          if (kept.length !== ids.length) {
-            console.warn('[Outreach] Degree IDs dropped (likely legacy placeholders). Please reselect degree from autocomplete.', {
-              dropped: ids.filter((id) => !kept.includes(id)),
-              kept,
-            });
-          }
-          return kept;
-        };
-
-        const includeIds = sanitiseDegreeIds(
-          filters.degree
-          .filter(d => d.priority !== 'DOESNT_HAVE')
-          .map(d => d.id)
-        );
-        const excludeIds = sanitiseDegreeIds(
-          filters.degree
-          .filter(d => d.priority === 'DOESNT_HAVE')
-          .map(d => d.id)
-        );
-        
-        if (includeIds.length > 0 || excludeIds.length > 0) {
-          baseParams.degree = {
-            ...(includeIds.length > 0 && { include: includeIds }),
-            ...(excludeIds.length > 0 && { exclude: excludeIds }),
-          };
-        }
-      }
-      
-      // Groups (Sales Navigator)
-      if (filters.groups.length && filters.api === 'sales_navigator') {
-        baseParams.groups = filters.groups.map(f => f.id);
-      }
-      
-      // Company location (Sales Navigator)
-      if (filters.company_location.length && filters.api === 'sales_navigator') {
-        baseParams.company_location = { include: filters.company_location.map(f => f.id) };
-      }
-
-      // Job title - use current_job_title for Recruiter API with priority
-      if (filters.job_title.length) {
-        // Recruiter uses current_job_title, edge function handles the mapping
-        baseParams.job_title = filters.job_title.map(item => ({
-          id: item.id,
-          priority: item.priority,
-        }));
-      }
-
-      // Skills - with priority
-      if (filters.skills.length) {
-        baseParams.skills = filters.skills.map(item => ({
-          id: item.id,
-          priority: item.priority,
-        }));
-      }
-
-      // Role - with keywords, priority, scope
-      // NOTE: The backend ignores `seniority` for PEOPLE searches (Unipile limitation),
-      // so we approximate seniority by injecting title keywords into the Recruiter `role` filter.
-      // IMPORTANT: Multiple MUST_HAVE role filters are AND'ed by LinkedIn, returning 0 results!
-      // We must COMBINE seniority keywords into an existing role filter, not add a separate one.
-      
-      // Start with user-defined roles
-      let allRoles = filters.role.map(r => ({
-        keywords: r.keywords,
-        priority: r.priority as 'MUST_HAVE' | 'DOESNT_HAVE',
-        scope: r.scope as 'CURRENT' | 'PAST' | 'CURRENT_OR_PAST',
+    const profilesToDismiss = Array.from(search.selectedProfiles)
+      .map(id => search.results.find(p => p.id === id))
+      .filter((p): p is LinkedInProfile => !!p)
+      .map(profile => ({
+        id: profile.id,
+        name: profile.name || `${profile.first_name || ''} ${profile.last_name || ''}`.trim(),
+        headline: profile.headline,
+        profileUrl: profile.public_profile_url || profile.profile_url,
       }));
+    
+    await search.candidateStatus.batchDismiss(profilesToDismiss);
+    search.setSelectedProfiles(new Set());
+    toast.success(`${profilesToDismiss.length} profil(s) archivé(s)`);
+  }, [search.selectedJob, search.selectedProfiles, search.results, search.candidateStatus, search.setSelectedProfiles]);
 
-      // If seniority is selected and we're in recruiter mode, we need to handle it carefully
-      if (filters.api === 'recruiter' && filters.seniority.length) {
-        const titlesByLevel: Record<string, string[]> = {
-          '1': ['Intern', 'Internship', 'Stagiaire', 'Apprentice', 'Trainee', 'Graduate'],
-          '2': ['Associate', 'Junior', 'Assistant', 'Consultant', 'Analyst'],
-          '3': ['Intermediate', 'Confirmé', 'Confirmed', 'Mid', 'Middle'],
-          '4': ['Senior', 'Sr', 'Principal', 'Staff', 'Lead'],
-          '5': ['Manager', 'Team Lead', 'Head of', 'Engineering Manager', 'Product Manager'],
-          '6': ['Director', 'Directeur', 'Head of', 'Senior Director'],
-          '7': ['VP', 'Vice President', 'Vice-President', 'SVP', 'EVP'],
-          '8': ['CEO', 'CTO', 'CFO', 'COO', 'CMO', 'CIO', 'CHRO', 'Chief', 'C-Level', 'President', 'Président', 'Managing Director'],
-          '9': ['Partner', 'Associé', 'Principal', 'Managing Partner'],
-          '10': ['Owner', 'Founder', 'Co-Founder', 'Fondateur', 'Propriétaire', 'Entrepreneur'],
-        };
-
-        const seniorityKeywords = Array.from(
-          new Set(
-            filters.seniority.flatMap((level) => titlesByLevel[level] ?? [])
-          )
-        ).join(' OR ');
-
-        if (seniorityKeywords) {
-          // If there's already a MUST_HAVE role filter, DON'T add seniority as separate filter
-          // Instead, we rely on years_of_experience to filter seniority
-          // Only add seniority keywords if there's NO existing role filter
-          const hasMustHaveRole = allRoles.some(r => r.priority === 'MUST_HAVE');
-          
-          if (!hasMustHaveRole) {
-            // No existing role filter, we can add seniority as a role filter
-            allRoles.push({
-              keywords: seniorityKeywords,
-              priority: 'MUST_HAVE',
-              scope: 'CURRENT',
-            });
-          }
-          // If there's already a MUST_HAVE role filter (e.g., from AI auto-fill),
-          // we skip adding seniority keywords to avoid AND conflict
-          // The years_of_experience filter will handle seniority filtering instead
-        }
-      }
-      
-      if (allRoles.length) {
-        baseParams.role = allRoles;
-      }
-      if (filters.network_distance.length) baseParams.network_distance = filters.network_distance;
-      if (filters.profile_language.length) baseParams.profile_language = filters.profile_language;
-
-      // Years of experience (Recruiter) / Tenure (Sales Navigator)
-      // Only use explicit years_of_experience filters (seniority now mapped to role/title keywords)
-      const explicitMin = filters.years_of_experience_min;
-      const explicitMax = filters.years_of_experience_max;
-
-      if (explicitMin !== null || explicitMax !== null) {
-        if (filters.api === 'recruiter') {
-          const yearsExp: Record<string, number> = {};
-          if (explicitMin !== null) yearsExp.min = explicitMin;
-          if (explicitMax !== null) yearsExp.max = explicitMax;
-          if (Object.keys(yearsExp).length) {
-            baseParams.years_of_experience = yearsExp;
-          }
-        } else if (filters.api === 'sales_navigator') {
-          // Sales Navigator uses `tenure` ranges
-          const tenure: Record<string, number> = {};
-          if (explicitMin !== null) tenure.min = explicitMin;
-          if (explicitMax !== null) tenure.max = explicitMax;
-          if (Object.keys(tenure).length) {
-            baseParams.tenure = [tenure];
-          }
-        }
-      }
-
-      // Tenure filters
-      if (filters.tenure_at_company_min !== null || filters.tenure_at_company_max !== null) {
-        const tenure: Record<string, number> = {};
-        if (filters.tenure_at_company_min !== null) tenure.min = filters.tenure_at_company_min;
-        if (filters.tenure_at_company_max !== null) tenure.max = filters.tenure_at_company_max;
-        baseParams.tenure = [tenure];
-      }
-
-      // Boolean filters
-      // NOTE: Recruiter "Open to work" is exposed by the Unipile schema as `spotlights: string[]`.
-      // The API does NOT expect `spotlight` (singular).
-      if (filters.open_to.length) baseParams.open_to = filters.open_to;
-
-      // Recruiter specific
-      if (filters.hiring_project) baseParams.hiring_project = filters.hiring_project;
-      if (filters.talent_pool) baseParams.talent_pool = filters.talent_pool;
-
-      // Spotlights (Recruiter)
-      if (filters.api === 'recruiter') {
-        const spotlights = Array.from(
-          new Set(
-            [
-              ...(filters.open_to_work === true ? ['OPEN_TO_WORK'] : []),
-              ...(filters.spotlight ? [filters.spotlight] : []),
-            ].filter(Boolean)
-          )
-        ) as string[];
-
-        if (spotlights.length) {
-          baseParams.spotlights = spotlights;
-        }
-      }
-      
-      // Recruiting activity (messages, notes, tags, etc.)
-      const recruitingActivity: Array<{
-        id: 'messages' | 'tags' | 'notes' | 'projects' | 'resumes' | 'reviews';
-        priority: 'CAN_HAVE' | 'MUST_HAVE' | 'DOESNT_HAVE';
-        timespan?: number;
-      }> = [];
-      
-      // Messages filter - timespan is REQUIRED by API, default to 3650 days (10 years) for "all time"
-      if (filters.activity_messages) {
-        recruitingActivity.push({
-          id: 'messages',
-          priority: filters.activity_messages === 'with_message' ? 'MUST_HAVE' : 'DOESNT_HAVE',
-          timespan: filters.activity_messages_days ?? 3650, // Default 10 years for "all time"
-        });
-      }
-      
-      // Notes filter - timespan is REQUIRED by API
-      if (filters.activity_notes) {
-        recruitingActivity.push({
-          id: 'notes',
-          priority: filters.activity_notes === 'with_note' ? 'MUST_HAVE' : 'DOESNT_HAVE',
-          timespan: filters.activity_notes_days ?? 3650, // Default 10 years for "all time"
-        });
-      }
-      
-      // Tags filter
-      if (filters.tags.length) {
-        recruitingActivity.push({
-          id: 'tags',
-          priority: 'MUST_HAVE',
-          timespan: 3650, // Required by API
-        });
-      }
-      
-      if (recruitingActivity.length) {
-        baseParams.recruiting_activity = recruitingActivity;
-      }
-
-      // Company filters (Sales Navigator)
-      if (filters.company_headcount.length) baseParams.company_headcount = filters.company_headcount;
-      if (filters.company_type.length) baseParams.company_type = filters.company_type;
-
-      // Past filters
-      if (filters.past_company.length) {
-        baseParams.past_company = { include: filters.past_company.map(f => f.id) };
-      }
-      if (filters.past_job_title.length) {
-        baseParams.past_job_title = filters.past_job_title.map(item => ({
-          id: item.id,
-          priority: item.priority,
-        }));
-      }
-
-      // IMPORTANT: To avoid quota bursts, we do **one API call max per load**.
-      // That means we may display fewer than RESULTS_PER_BATCH if client-side filters exclude profiles.
-      const seen = new Set<string>();
-      if (appendMode) {
-        results.forEach((p) => p?.id && seen.add(p.id));
-      }
-
-      const dismissedIds = candidateStatus.dismissedIds;
-      const treatedIds = candidateStatus.treatedIds;
-
-      const params: Record<string, unknown> = {
-        ...baseParams,
-        limit: RESULTS_PER_BATCH,
-        ...(appendMode && cursor ? { cursor } : {}),
-      };
-
-      console.log('[LinkedInSearch] Search params:', params);
-
-      const response = await supabase.functions.invoke('unipile-search', {
-        body: params,
+  const handleBulkAddToProject = useCallback(async () => {
+    if (!activeProject || !search.selectedJob) return;
+    
+    const profilesToAdd = Array.from(search.selectedProfiles)
+      .map(id => search.results.find(p => p.id === id))
+      .filter((p): p is LinkedInProfile => !!p);
+    
+    for (const profile of profilesToAdd) {
+      await search.candidateStatus.dismissCandidate(profile.id, {
+        name: profile.name || `${profile.first_name || ''} ${profile.last_name || ''}`.trim(),
+        headline: profile.headline,
+        profileUrl: profile.public_profile_url || profile.profile_url,
       });
-
-      if (response.error) throw response.error;
-      if (!response.data?.success) throw new Error(response.data?.error);
-
-      const batch: LinkedInProfile[] = response.data.results || [];
-      const batchCursor: string | null = response.data.cursor || null;
-      const fetchedTotal: number | null = response.data.total || null;
-
-      quota.recordAction('searchResultsFetched', batch.length);
-
-      if (batch.length > 0 && !appendMode) {
-        const firstResult: any = batch[0];
-        console.log('[LinkedInSearch] First result structure:', {
-          id: firstResult.id,
-          member_urn: firstResult.member_urn,
-          recruiter_candidate_id: firstResult.recruiter_candidate_id,
-          public_identifier: firstResult.public_identifier,
-          profile_url: firstResult.profile_url,
-          name: firstResult.name,
-          availableKeys: Object.keys(firstResult),
-        });
-      }
-
-      const filteredBatch = filterByCalculatedExperience(
-        batch,
-        filters.calculated_experience_min,
-        filters.calculated_experience_max
-      );
-
-      const collected: LinkedInProfile[] = [];
-      // Use ref to get current value of autoHideTreated (avoid stale closure)
-      const shouldHideTreated = autoHideTreatedRef.current;
-      for (const p of filteredBatch) {
-        if (!p?.id) continue;
-        if (seen.has(p.id)) continue;
-        // Auto-hide treated profiles if enabled (they've been messaged, sequenced, or dismissed)
-        if (selectedJob && shouldHideTreated && treatedIds.has(p.id)) continue;
-        // Also respect showDismissed toggle (legacy behavior)
-        if (selectedJob && !showDismissed && dismissedIds.has(p.id) && !shouldHideTreated) continue;
-        seen.add(p.id);
-        collected.push(p);
-      }
-
-      if (!batchCursor || batch.length === 0) {
-        setHasMoreResults(false);
-      }
-
-      // Warn if near limit
-      if (quota.isNearLimit('searchResultsFetched')) {
-        toast.warning('Attention: vous approchez de la limite quotidienne de résultats de recherche');
-      }
-
-      // Append or replace results based on mode
-      let allCollected: LinkedInProfile[];
-      if (appendMode) {
-        setResults(prev => {
-          allCollected = [...prev, ...collected];
-          return allCollected;
-        });
-        allCollected = [...results, ...collected];
-      } else {
-        setResults(collected);
-        allCollected = collected;
-        setHasMoreResults(true); // Reset for new search
-      }
-
-      // Store cursor for next manual load
-      setCursor(batchCursor);
-      setTotal(fetchedTotal);
-      setHasSearched(true);
-      
-      if (collected.length === 0 && !appendMode) {
-        toast.info('Aucun résultat trouvé');
-      }
-      
-      // Auto-score the new profiles if autoScore is enabled and we have profiles
-      if (autoScore && collected.length > 0 && selectedJob) {
-        // Return the collected profiles so we can score them
-        return collected;
-      }
-    } catch (error) {
-      console.error('Search error:', error);
-      toast.error(error instanceof Error ? error.message : 'Erreur de recherche');
-    } finally {
-      setLoading(false);
-      setLoadingMore(false);
     }
-    return [];
-  }, [selectedAccount, filters, selectedJob, showDismissed, candidateStatus.dismissedIds, candidateStatus.treatedIds, cursor, results, quota]);
-
-  // Check if filters have any active search criteria
-  const hasActiveFilters = useMemo(() => {
-    return (
-      filters.keywords.trim() !== '' ||
-      filters.location.length > 0 ||
-      filters.company.length > 0 ||
-      filters.company_keywords.length > 0 ||
-      filters.industry.length > 0 ||
-      filters.school.length > 0 ||
-      filters.job_title.length > 0 ||
-      filters.skills.length > 0 ||
-      filters.role.length > 0 ||
-      filters.function.length > 0 ||
-      filters.degree.length > 0 ||
-      filters.groups.length > 0 ||
-      filters.seniority.length > 0 ||
-      filters.network_distance.length > 0 ||
-      filters.profile_language.length > 0 ||
-      filters.years_of_experience_min !== null ||
-      filters.years_of_experience_max !== null ||
-      filters.tenure_at_company_min !== null ||
-      filters.tenure_at_company_max !== null ||
-      filters.open_to_work === true ||
-      filters.open_to.length > 0 ||
-      filters.hiring_project !== null ||
-      filters.talent_pool !== null ||
-      filters.spotlight !== null ||
-      filters.past_company.length > 0 ||
-      filters.past_job_title.length > 0 ||
-      filters.company_headcount.length > 0 ||
-      filters.company_type.length > 0 ||
-      filters.company_location.length > 0 ||
-      filters.activity_messages !== null ||
-      filters.activity_notes !== null ||
-      filters.tags.length > 0
-    );
-  }, [filters]);
-
-  // Auto-search DISABLED: user explicitly wants searches only when clicking "Rechercher" (or pressing Enter).
-  // This also prevents quota burn from effect re-triggers.
-  useEffect(() => {
-    if (searchDebounceRef.current) {
-      clearTimeout(searchDebounceRef.current);
-      searchDebounceRef.current = null;
-    }
-  }, [filtersJson]);
-
-  const handleClearFilters = () => {
-    setFilters(INITIAL_FILTERS);
-    setResults([]);
-    setHasSearched(false);
-    setCursor(null);
-    setHasMoreResults(true);
-    setTotal(null);
-    setSelectedProfiles(new Set());
-    setJobScores({});
-  };
-
-  // Scroll to top of results
-  const scrollToTop = useCallback(() => {
-    if (scrollAreaRef.current) {
-      const viewport = scrollAreaRef.current.querySelector('[data-radix-scroll-area-viewport]');
-      if (viewport) {
-        viewport.scrollTop = 0;
-      }
-    }
-  }, []);
-
-  // NOTE: Auto-load on scroll disabled (was consuming quota too fast).
-  // Loading is now manual via the "Charger plus de profils" button.
-
-  // NOTE: Auto-load on scroll disabled (was consuming quota too fast).
-  // Loading is now manual via the "Charger plus de profils" button.
-
-  // Reset infinite scroll when filters change
-  useEffect(() => {
-    setHasMoreResults(true);
-  }, [filtersJson]);
-
-  // Toggle profile selection for batch scoring
-  const toggleProfileSelection = useCallback((profileId: string) => {
-    setSelectedProfiles(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(profileId)) {
-        newSet.delete(profileId);
-      } else {
-        newSet.add(profileId);
-      }
-      return newSet;
-    });
-  }, []);
-
-  // Select/deselect all visible profiles (excluding "peu adapté" candidates with score < 40)
-  const toggleSelectAll = useCallback(() => {
-    // Get selectable profiles (exclude those with recommendation: 'skip')
-    const selectableProfiles = results.filter(p => {
-      const score = jobScores[p.id];
-      // If no score yet, allow selection
-      // If scored and recommendation is 'skip', exclude
-      return !score || score.recommendation !== 'skip';
-    });
     
-    const currentlySelected = selectableProfiles.filter(p => selectedProfiles.has(p.id));
-    
-    if (currentlySelected.length === selectableProfiles.length && selectableProfiles.length > 0) {
-      // All selectable are selected, deselect all
-      setSelectedProfiles(new Set());
-    } else {
-      // Select all selectable profiles
-      setSelectedProfiles(new Set(selectableProfiles.map(p => p.id)));
-    }
-  }, [results, selectedProfiles, jobScores]);
+    search.setSelectedProfiles(new Set());
+    queryClient.invalidateQueries({ queryKey: ['sourcing-projects'] });
+    toast.success(`${profilesToAdd.length} profil(s) ajouté(s) au projet`);
+  }, [activeProject, search.selectedJob, search.selectedProfiles, search.results, search.candidateStatus, search.setSelectedProfiles, queryClient]);
 
-  // Build profile data for scoring - enriched with summary + detailed work experience
-  const buildProfileData = useCallback((profile: LinkedInProfile) => {
-    const workExperience = profile.work_experience || [];
-    const currentJob = workExperience.find(exp => !exp.end) || workExperience[0];
-    const pastJobs = workExperience.filter(exp => exp.end).slice(0, 5);
-    const education = profile.education || [];
+  // Handle archive for single profile
+  const handleArchive = useCallback(async (profile: LinkedInProfile) => {
+    if (!search.selectedJob) return;
     
-    // Calculate years of experience from diploma end date (same logic as card)
-    const calculateYearsFromDiploma = () => {
-      const relevantDegreeKeywords = [
-        'bachelor', 'licence', 'bac+3',
-        'master', 'msc', 'bac+5', 'maîtrise',
-        'mba', 'ingénieur', 'engineer', 'engineering',
-        'phd', 'doctorat', 'bac+8',
-        'diplôme', 'degree', 'graduate', 'grande école'
-      ];
-      
-      const relevantEdu = education
-        .filter((edu: any) => {
-          if (!edu.end?.year) return false;
-          const combined = `${edu.degree || ''} ${edu.school || ''} ${edu.field_of_study || ''}`.toLowerCase();
-          return relevantDegreeKeywords.some(kw => combined.includes(kw));
-        })
-        .sort((a: any, b: any) => (b.end?.year || 0) - (a.end?.year || 0));
-      
-      const diplomaToUse = relevantEdu[0] || education.filter((edu: any) => edu.end?.year).sort((a: any, b: any) => (b.end?.year || 0) - (a.end?.year || 0))[0];
-      
-      if (!diplomaToUse?.end?.year) return null;
-      const years = new Date().getFullYear() - diplomaToUse.end.year;
-      return years > 0 ? years : null;
-    };
-    
-    // Helper to calculate duration in months from start/end dates
-    const calculateDurationMonths = (start?: { year?: number; month?: number }, end?: { year?: number; month?: number }): number => {
-      if (!start?.year) return 0;
-      const endYear = end?.year || new Date().getFullYear();
-      const endMonth = end?.month || new Date().getMonth() + 1;
-      const startYear = start.year;
-      const startMonth = start.month || 1;
-      return (endYear - startYear) * 12 + (endMonth - startMonth);
-    };
-    
-    // Helper to format duration string
-    const formatDuration = (totalMonths: number): string => {
-      const years = Math.floor(totalMonths / 12);
-      const months = totalMonths % 12;
-      if (years === 0) return `${months} mois`;
-      if (months === 0) return `${years} an${years > 1 ? 's' : ''}`;
-      return `${years} an${years > 1 ? 's' : ''} ${months} mois`;
-    };
-    
-    // Calculate average tenure across positions (for job hopper detection)
-    const calculateAverageTenure = (): number | null => {
-      const positionsWithDates = workExperience.filter(exp => exp.start?.year);
-      if (positionsWithDates.length === 0) return null;
-      
-      const tenures = positionsWithDates.map(exp => calculateDurationMonths(exp.start, exp.end));
-      const totalMonths = tenures.reduce((sum, t) => sum + t, 0);
-      return Math.round(totalMonths / positionsWithDates.length);
-    };
-    
-    // Build enriched work experience (max 3 positions, with descriptions truncated to 200 chars)
-    const recentPositions = workExperience.slice(0, 3);
-    const enrichedWorkExperience = recentPositions.map(exp => {
-      const durationMonths = calculateDurationMonths(exp.start, exp.end);
-      return {
-        role: exp.role || '',
-        company: exp.company || '',
-        duration: durationMonths > 0 ? formatDuration(durationMonths) : undefined,
-        durationMonths,
-        description: exp.description?.slice(0, 200) || undefined,
-        skills: exp.skills?.slice(0, 5).map(s => s.name || String(s)) || undefined,
-      };
-    });
-    
-    // Determine receptivity signals
-    const isOpenToWork = profile.open_to_work === true;
-    const isOpenProfile = profile.open_profile === true; // Can receive free InMail
-    const networkDistance = typeof profile.network_distance === 'number' 
-      ? profile.network_distance 
-      : parseInt(String(profile.network_distance), 10) || null;
-    
-    return {
+    await search.candidateStatus.dismissCandidate(profile.id, {
       name: profile.name || `${profile.first_name || ''} ${profile.last_name || ''}`.trim(),
       headline: profile.headline,
-      currentRole: currentJob?.role,
-      currentCompany: currentJob?.company,
-      location: profile.location,
-      skills: profile.skills?.map((s: any) => s.name || s).slice(0, 15) || [],
-      // Summary (About section) - truncated to 300 chars
-      summary: profile.summary?.slice(0, 300) || undefined,
-      // Enriched work experience with descriptions
-      workExperience: enrichedWorkExperience.length > 0 ? enrichedWorkExperience : undefined,
-      // Keep legacy format for backward compatibility
-      pastPositions: pastJobs.map(p => `${p.role} chez ${p.company}`),
-      education: education.map((e: any) => {
-        const degree = e.degree || '';
-        const school = e.school || '';
-        const year = e.end?.year ? ` (${e.end.year})` : '';
-        return `${degree} - ${school}${year}`;
-      }) || [],
-      yearsOfExperience: calculateYearsFromDiploma(),
-      // NEW: Tenure analysis for job hopper detection
-      averageTenureMonths: calculateAverageTenure(),
-      // NEW: Receptivity signals
-      openToWork: isOpenToWork,
-      openProfile: isOpenProfile,
-      networkDistance,
-    };
-  }, []);
+      profileUrl: profile.public_profile_url || profile.profile_url,
+    });
+    
+    toast.success('Profil archivé');
+  }, [search.selectedJob, search.candidateStatus]);
 
-  // Score a single profile against selected job
-  const scoreProfile = useCallback(async (profile: LinkedInProfile) => {
-    if (!selectedJob) {
-      toast.error('Sélectionnez un poste pour le scoring');
-      return;
-    }
+  // Handle profile treated (messaged, sequenced, etc.)
+  const handleProfileTreated = useCallback((profileId: string) => {
+    queryClient.invalidateQueries({ queryKey: ['job-candidate-status'] });
+  }, [queryClient]);
 
-    try {
-      const profileData = buildProfileData(profile);
-      
-      const { data, error } = await supabase.functions.invoke('score-profile-job', {
-        body: { 
-          profile: profileData, 
-          job: {
-            id: selectedJob.id,
-            title: selectedJob.title,
-            client: selectedJob.client,
-            skills: selectedJob.skills || [],
-            requirements: selectedJob.requirements,
-            description: selectedJob.description,
-            seniority: selectedJob.seniority,
-            location: selectedJob.location,
-            remote: selectedJob.remote,
-            xpMin: selectedJob.xpMin,
-            xpMax: selectedJob.xpMax,
-            // Salary information for adequacy analysis
-            salaryMin: selectedJob.salaryMin,
-            salaryMax: selectedJob.salaryMax,
-            tjmMin: selectedJob.tjm, // TJM stored as single value
-            contractType: selectedJob.contractType,
-          }
+  // Handle message sent
+  const handleMessageSent = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: ['job-candidate-status'] });
+  }, [queryClient]);
+
+  // Handle sequence enrollment success
+  const handleSequenceEnrollSuccess = useCallback(() => {
+    search.setSelectedProfiles(new Set());
+    queryClient.invalidateQueries({ queryKey: ['job-candidate-status'] });
+    toast.success('Profils inscrits à la séquence');
+  }, [search.setSelectedProfiles, queryClient]);
+
+  // Infinite scroll observer
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (
+          entries[0].isIntersecting &&
+          search.hasMoreResults &&
+          !search.loading &&
+          !search.loadingMore &&
+          search.cursor
+        ) {
+          handleLoadMore();
         }
-      });
+      },
+      { threshold: 0.1 }
+    );
 
-      if (error) throw error;
-      if (data?.result) {
-        setJobScores(prev => ({ ...prev, [profile.id]: data.result }));
-      }
-    } catch (err) {
-      console.error('Score error:', err);
-      toast.error('Erreur lors du scoring');
-    }
-  }, [selectedJob, buildProfileData]);
-
-  // Batch score selected profiles (auto-dismiss low scores when autoHideTreated is ON)
-  const handleBatchScore = useCallback(async () => {
-    if (!selectedJob) {
-      toast.error('Sélectionnez un poste pour le scoring');
-      return;
+    if (loadMoreTriggerRef.current) {
+      observer.observe(loadMoreTriggerRef.current);
     }
 
-    if (selectedProfiles.size === 0) {
-      toast.error('Sélectionnez au moins un profil');
-      return;
-    }
-
-    setScoringInProgress(true);
-    const profilesToScore = results.filter(p => selectedProfiles.has(p.id));
-    
-    try {
-      const profilesData = profilesToScore.map(buildProfileData);
-      
-      const { data, error } = await supabase.functions.invoke('score-profile-job', {
-        body: { 
-          profiles: profilesData, 
-          job: {
-            id: selectedJob.id,
-            title: selectedJob.title,
-            client: selectedJob.client,
-            skills: selectedJob.skills || [],
-            requirements: selectedJob.requirements,
-            description: selectedJob.description,
-            seniority: selectedJob.seniority,
-            location: selectedJob.location,
-            remote: selectedJob.remote,
-            xpMin: selectedJob.xpMin,
-            xpMax: selectedJob.xpMax,
-            salaryMin: selectedJob.salaryMin,
-            salaryMax: selectedJob.salaryMax,
-            tjmMin: selectedJob.tjm,
-            contractType: selectedJob.contractType,
-          }
-        }
-      });
-
-      if (error) {
-        if (error.message?.includes('CREDITS_EXHAUSTED') || error.message?.includes('402')) {
-          toast.error('Crédits IA épuisés. Veuillez ajouter des crédits dans Settings → Workspace → Usage.', {
-            duration: 8000,
-          });
-          return;
-        }
-        if (error.message?.includes('RATE_LIMITED') || error.message?.includes('429')) {
-          toast.error('Limite de requêtes IA atteinte. Réessayez dans quelques instants.', {
-            duration: 5000,
-          });
-          return;
-        }
-        throw error;
-      }
-      
-      if (data?.results) {
-        const newScores: Record<string, JobMatchResult> = {};
-        const lowScoreProfiles: Array<{
-          id: string;
-          name?: string;
-          headline?: string;
-          profileUrl?: string;
-          score?: number;
-          recommendation?: string;
-          skipReason?: string;
-        }> = [];
-        
-        data.results.forEach((result: JobMatchResult, index: number) => {
-          const profile = profilesToScore[index];
-          if (profile) {
-            newScores[profile.id] = result;
-            if (result.recommendation === 'skip') {
-              lowScoreProfiles.push({
-                id: profile.id,
-                name: profile.name || `${profile.first_name || ''} ${profile.last_name || ''}`.trim(),
-                headline: profile.headline,
-                profileUrl: profile.public_profile_url || profile.profile_url,
-                score: result.match_score,
-                recommendation: result.recommendation,
-                skipReason: result.summary || 'Score insuffisant',
-              });
-            }
-          }
-        });
-        
-        setJobScores(prev => ({ ...prev, ...newScores }));
-        setSortByScore(true);
-        
-        // Auto-dismiss low score profiles when autoHideTreated is ON
-        const shouldAutoDismiss = autoHideTreatedRef.current;
-        if (shouldAutoDismiss && lowScoreProfiles.length > 0) {
-          // Archive low score profiles in the database
-          await candidateStatus.batchDismiss(lowScoreProfiles);
-          
-          // Immediately remove them from visible results
-          const lowScoreIds = new Set(lowScoreProfiles.map(p => p.id));
-          setResults(prev => prev.filter(p => !lowScoreIds.has(p.id)));
-          
-          // Clear selection for dismissed profiles
-          setSelectedProfiles(prev => {
-            const newSet = new Set(prev);
-            lowScoreIds.forEach(id => newSet.delete(id));
-            return newSet;
-          });
-          
-          const goodCount = data.results.length - lowScoreProfiles.length;
-          toast.success(`${data.results.length} profils scorés : ${goodCount} pertinent${goodCount > 1 ? 's' : ''}, ${lowScoreProfiles.length} écarté${lowScoreProfiles.length > 1 ? 's' : ''}`);
-        } else {
-          // Just inform about low scores without auto-dismiss
-          const goodCount = data.results.length - lowScoreProfiles.length;
-          if (lowScoreProfiles.length > 0) {
-            toast.success(`${data.results.length} profils scorés : ${goodCount} pertinent${goodCount > 1 ? 's' : ''}, ${lowScoreProfiles.length} peu adapté${lowScoreProfiles.length > 1 ? 's' : ''}`);
-          } else {
-            toast.success(`${data.results.length} profils scorés`);
-          }
-        }
-      }
-    } catch (err) {
-      console.error('Batch score error:', err);
-      toast.error('Erreur lors du scoring par lot');
-    } finally {
-      setScoringInProgress(false);
-    }
-  }, [selectedJob, selectedProfiles, results, buildProfileData, candidateStatus]);
-
-  // Bulk dismiss selected profiles
-  const handleBulkDismiss = useCallback(async () => {
-    if (!selectedJob) return;
-    if (selectedProfiles.size === 0) {
-      toast.error('Sélectionnez au moins un profil');
-      return;
-    }
-
-    const profilesToDismiss = results
-      .filter(p => selectedProfiles.has(p.id))
-      .map(p => ({
-        id: p.id,
-        name: p.name || `${p.first_name || ''} ${p.last_name || ''}`.trim(),
-        headline: p.headline,
-        profileUrl: p.public_profile_url || p.profile_url,
-        score: jobScores[p.id]?.match_score,
-        recommendation: jobScores[p.id]?.recommendation,
-        skipReason: 'Écarté manuellement',
-      }));
-
-    await candidateStatus.batchDismiss(profilesToDismiss);
-    
-    // Immediately remove dismissed profiles from results if autoHideTreated is ON
-    if (autoHideTreatedRef.current) {
-      const dismissedIdSet = new Set(profilesToDismiss.map(p => p.id));
-      setResults(prev => prev.filter(p => !dismissedIdSet.has(p.id)));
-    }
-    
-    setSelectedProfiles(new Set());
-    toast.success(`${profilesToDismiss.length} profil${profilesToDismiss.length > 1 ? 's' : ''} archivé${profilesToDismiss.length > 1 ? 's' : ''}`);
-  }, [selectedJob, selectedProfiles, results, jobScores, candidateStatus]);
-
-  // Bulk add to project
-  const handleBulkAddToProject = useCallback(async () => {
-    if (!selectedJob || !activeProject) return;
-    if (selectedProfiles.size === 0) {
-      toast.error('Sélectionnez au moins un profil');
-      return;
-    }
-
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
-
-    const profilesToAdd = results.filter(p => selectedProfiles.has(p.id));
-    
-    try {
-      // Build upsert data
-      const candidatesData = profilesToAdd.map(p => ({
-        candidate_id: p.id,
-        candidate_name: p.name || `${p.first_name || ''} ${p.last_name || ''}`.trim(),
-        candidate_headline: p.headline,
-        linkedin_profile_url: p.public_profile_url || p.profile_url,
-        job_id: selectedJob.id,
-        project_id: activeProject.id,
-        score: jobScores[p.id]?.match_score || null,
-        recommendation: jobScores[p.id]?.recommendation || null,
-        skip_reason: jobScores[p.id]?.summary || null,
-        status: 'untreated',
-        created_by: user.id,
-      }));
-
-      const { error } = await supabase
-        .from('job_candidate_status')
-        .upsert(candidatesData, {
-          onConflict: 'candidate_id,job_id,project_id',
-          ignoreDuplicates: false,
-        });
-
-      if (error) throw error;
-      
-      // Invalidate project stats queries
-      queryClient.invalidateQueries({ queryKey: ['project-candidates', activeProject.id] });
-      queryClient.invalidateQueries({ queryKey: ['project-stats', activeProject.id] });
-      queryClient.invalidateQueries({ queryKey: ['projects-stats-batch'] });
-      
-      // Remove added profiles from results if autoHideTreated is enabled
-      if (autoHideTreatedRef.current) {
-        const addedIds = new Set(profilesToAdd.map(p => p.id));
-        setResults(prev => prev.filter(p => !addedIds.has(p.id)));
-      }
-      
-      setSelectedProfiles(new Set());
-      toast.success(`${profilesToAdd.length} profil${profilesToAdd.length > 1 ? 's' : ''} ajouté${profilesToAdd.length > 1 ? 's' : ''} au projet`);
-    } catch (err) {
-      console.error('Bulk add to project error:', err);
-      toast.error("Erreur lors de l'ajout au projet");
-    }
-  }, [selectedJob, activeProject, selectedProfiles, results, jobScores, queryClient]);
-
-  // Simple search function (no auto-scoring)
-  const handleSimpleSearch = useCallback(async (appendMode = false) => {
-    const collected = await handleSearch(true, appendMode, false);
-    
-    // Auto-create project for job if none exists
-    if (selectedJob && !activeProject && onProjectChange && !appendMode) {
-      try {
-        const project = await findOrCreateForJob(
-          selectedJob.id,
-          selectedJob.title,
-          selectedJob.client?.name
-        );
-        // Save filters to the new project
-        await updateProject({
-          id: project.id,
-          filters_snapshot: filters,
-          last_search_at: new Date().toISOString(),
-          stats_total_found: total || collected?.length || 0,
-        });
-        onProjectChange(project);
-      } catch (err) {
-        console.error('Failed to create project:', err);
-      }
-    }
-    
-    // Update project with filters and stats after search
-    if (activeProject && !appendMode) {
-      try {
-        await updateProject({
-          id: activeProject.id,
-          filters_snapshot: filters,
-          last_search_at: new Date().toISOString(),
-          stats_total_found: total || collected?.length || 0,
-        });
-      } catch (err) {
-        console.error('Failed to update project:', err);
-      }
-    }
-  }, [handleSearch, activeProject, updateProject, filters, total, selectedJob, onProjectChange, findOrCreateForJob]);
-
-  // Load more (no auto-scoring)
-  const handleLoadMore = useCallback(() => {
-    if (!cursor || loadingMore || !hasMoreResults) return;
-    handleSimpleSearch(true);
-  }, [cursor, loadingMore, hasMoreResults, handleSimpleSearch]);
+    return () => observer.disconnect();
+  }, [search.hasMoreResults, search.loading, search.loadingMore, search.cursor, handleLoadMore]);
 
   return (
-    <div className="grid lg:grid-cols-[320px_1fr] gap-6 items-start">
-      {/* Filters sidebar */}
-      <div className="space-y-4 sticky top-24">
-        {/* Reconnection alert */}
-        {needsReconnection && (
-          <Alert variant="destructive" className="bg-amber-50 border-amber-200">
-            <AlertTriangle className="h-4 w-4 text-amber-600" />
-            <AlertTitle className="text-amber-800">Reconnexion requise</AlertTitle>
-            <AlertDescription className="text-amber-700">
-              Le compte <strong>{selectedAccountData?.name || selectedAccountData?.identifier}</strong> est déconnecté. 
-              Rendez-vous dans l'onglet <strong>Comptes</strong> pour le reconnecter.
-            </AlertDescription>
-          </Alert>
-        )}
-
-        {/* Account selector - compact version */}
-        <div className="bg-white rounded-lg border border-[#1A1A1A]/10 p-3 space-y-2">
-          <div className="flex items-center justify-between">
-            <label className="text-xs font-medium text-[#1A1A1A]/70">Compte</label>
-            <QuotaDisplay
-              searchResultsFetched={quota.quotas.searchResultsFetched}
-              profileVisits={quota.quotas.profileVisits}
-              messagesSent={quota.quotas.messagesSent}
-              invitationsSent={quota.quotas.invitationsSent}
-              inmailsSent={quota.quotas.inmailsSent}
-              apiMode={quota.apiMode}
-              compact={true}
-            />
-          </div>
-          
-          <div className="flex items-center gap-2">
-            <Select value={selectedAccount || ''} onValueChange={onAccountChange}>
-              <SelectTrigger className="h-8 text-sm flex-1">
-                <SelectValue placeholder="Sélectionner" />
-              </SelectTrigger>
-              <SelectContent className="bg-white">
-                {accounts.map((account) => (
-                  <SelectItem key={account.id} value={account.id}>
-                    <div className="flex items-center gap-2">
-                      <span>{account.name || account.identifier}</span>
-                      <div className="flex gap-1">
-                        {account.subscriptions?.recruiter && (
-                          <span className="text-[9px] px-1.5 py-0.5 rounded bg-[#0077B5]/10 text-[#0077B5] font-medium">R</span>
-                        )}
-                        {account.subscriptions?.sales_navigator && (
-                          <span className="text-[9px] px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 font-medium">SN</span>
-                        )}
-                      </div>
-                    </div>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            
-            {/* Mode selector inline */}
-            <TooltipProvider>
-              <div className="flex gap-0.5 p-0.5 bg-gray-100 rounded-md shrink-0">
-                {API_TYPE_OPTIONS.map((option) => {
-                  const hasPremiumLicense = subscriptions?.recruiter || subscriptions?.sales_navigator;
-                  let isAvailable: boolean;
-                  if (option.value === 'classic') {
-                    isAvailable = !hasPremiumLicense;
-                  } else if (option.value === 'recruiter') {
-                    isAvailable = !!subscriptions?.recruiter;
-                  } else if (option.value === 'sales_navigator') {
-                    isAvailable = !!subscriptions?.sales_navigator;
-                  } else {
-                    isAvailable = true;
-                  }
-                  
-                  const shortLabel = option.value === 'recruiter' ? 'R' : option.value === 'sales_navigator' ? 'SN' : 'C';
-                  
-                  const button = (
-                    <button
-                      key={option.value}
-                      type="button"
-                      onClick={() => isAvailable && setFilters(f => ({ ...f, api: option.value as LinkedInApiType }))}
-                      disabled={!isAvailable}
-                      className={`w-7 h-7 text-[10px] font-medium rounded transition-all ${
-                        !isAvailable 
-                          ? 'text-[#1A1A1A]/20 cursor-not-allowed'
-                          : filters.api === option.value
-                            ? 'bg-white text-[#0077B5] shadow-sm'
-                            : 'text-[#1A1A1A]/50 hover:text-[#1A1A1A] hover:bg-white/50'
-                      }`}
-                    >
-                      {!isAvailable ? <Lock className="w-2.5 h-2.5 mx-auto" /> : shortLabel}
-                    </button>
-                  );
-                  
-                  if (!isAvailable) {
-                    return (
-                      <Tooltip key={option.value}>
-                        <TooltipTrigger asChild>{button}</TooltipTrigger>
-                        <TooltipContent side="bottom" className="max-w-[180px]">
-                          <p className="text-xs">
-                            {option.value === 'classic' && hasPremiumLicense 
-                              ? 'Désactivé (licence premium active)'
-                              : `Licence ${option.label} requise`}
-                          </p>
-                        </TooltipContent>
-                      </Tooltip>
-                    );
-                  }
-                  
-                  return (
-                    <Tooltip key={option.value}>
-                      <TooltipTrigger asChild>{button}</TooltipTrigger>
-                      <TooltipContent side="bottom">
-                        <p className="text-xs">{option.label}</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  );
-                })}
-              </div>
-            </TooltipProvider>
-          </div>
-
-          {/* License warning */}
-          {!isApiModeAvailable && (
-            <Alert variant="destructive" className="bg-red-50 border-red-200">
-              <Lock className="h-4 w-4 text-red-600" />
-              <AlertTitle className="text-red-800">Licence non disponible</AlertTitle>
-              <AlertDescription className="text-red-700">
-                Votre compte LinkedIn n'a pas de licence {filters.api === 'recruiter' ? 'Recruiter' : 'Sales Navigator'}. 
-                Sélectionnez le mode <strong>LinkedIn Classic</strong> ou connectez un compte avec la licence appropriée.
-              </AlertDescription>
-            </Alert>
-          )}
-        </div>
-
-        {/* Job Selector for scoring + AI Assistant */}
-        <div className="space-y-3">
-          <JobSelector 
-            selectedJob={selectedJob}
-            onJobChange={setSelectedJob}
-            onAutoFillFilters={handleAutoFillFilters}
-          />
-          
-          {/* Filter actions: Auto-fill, AI Assistant, Favorites */}
-          <div className="flex flex-wrap items-center gap-2">
-            <AutoFillFiltersButton
-              selectedJob={selectedJob}
-              accountId={selectedAccount}
-              currentLocation={filters.location}
-              onApplyFilters={(update) => setFilters(prev => ({ ...prev, ...update }))}
-            />
-            
-            {/* Show Wizard button when job is selected, otherwise show chat assistant */}
-            {selectedJob ? (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setShowFilterWizard(true)}
-                className="gap-2 bg-gradient-to-r from-green-50 to-emerald-50 border-green-300 hover:border-green-400 text-green-700"
-              >
-                <Sparkles className="w-4 h-4" />
-                <span className="hidden sm:inline">Assistant IA</span>
-              </Button>
-            ) : (
-              <FilterAssistantModal
-                currentFilters={filters}
-                onApplyFilters={(update) => setFilters(prev => ({ ...prev, ...update }))}
-                accountId={selectedAccount || undefined}
-                selectedJob={selectedJob}
-              />
-            )}
-            
-            <FilterPresetsManager
-              currentFilters={filters}
-              onApplyFilters={setFilters}
-              selectedJob={selectedJob}
-            />
-          </div>
-          
-          {/* Filter Wizard Modal */}
-          {selectedJob && (
-            <FilterWizard
-              open={showFilterWizard}
-              onOpenChange={setShowFilterWizard}
-              job={selectedJob}
-              accountId={selectedAccount || undefined}
-              onApplyFilters={(update) => setFilters(prev => ({ ...prev, ...update }))}
-            />
-          )}
-        </div>
-
-        {/* Search input */}
-        <div className="bg-white rounded-lg border border-[#1A1A1A]/10 p-4">
-          <label className="text-sm font-medium text-[#1A1A1A] mb-2 block">
-            Mots-clés
-          </label>
-          <div className="flex gap-2">
-            <Input
-              value={filters.keywords}
-              onChange={(e) => setFilters(f => ({ ...f, keywords: e.target.value }))}
-              placeholder="Ex: Product Manager, React..."
-              onKeyDown={(e) => e.key === 'Enter' && selectedJob && handleSimpleSearch()}
-            />
-          </div>
-        </div>
-
-        {/* Filters */}
-        <LinkedInFilters
-          filters={filters}
-          onChange={setFilters}
-          accountId={selectedAccount}
+    <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+      {/* Left panel: Filters */}
+      <div className="lg:col-span-4 xl:col-span-3">
+        <SearchFiltersPanel
+          accounts={accounts}
+          selectedAccount={selectedAccount}
+          onAccountChange={onAccountChange}
+          filters={search.filters}
+          setFilters={search.setFilters}
+          selectedJob={search.selectedJob}
+          onJobChange={search.setSelectedJob}
+          onAutoFillFilters={handleAutoFillFilters}
+          loading={search.loading}
+          needsReconnection={!!needsReconnection}
+          isApiModeAvailable={isApiModeAvailable}
+          subscriptions={subscriptions}
+          quota={{
+            quotas: search.quota.quotas,
+            apiMode: search.quota.apiMode,
+          }}
+          onSearch={() => handleSearch(false)}
+          onClearFilters={search.handleClearFilters}
+          showFilterWizard={search.showFilterWizard}
+          setShowFilterWizard={search.setShowFilterWizard}
         />
-
-
-        {/* Action buttons */}
-        <div className="flex gap-2">
-          <Button
-            onClick={() => handleSimpleSearch()}
-            disabled={loading || !selectedAccount || !selectedJob || needsReconnection || !isApiModeAvailable}
-            className="flex-1 bg-[#0077B5] hover:bg-[#005E93]"
-          >
-            {loading ? (
-              <Loader2 className="w-4 h-4 animate-spin mr-2" />
-            ) : (
-              <Search className="w-4 h-4 mr-2" />
-            )}
-            {!selectedJob ? 'Sélectionnez un poste' : loading ? 'Recherche...' : 'Rechercher'}
-          </Button>
-          <Button
-            variant="outline"
-            onClick={handleClearFilters}
-            disabled={loading}
-          >
-            Effacer
-          </Button>
-        </div>
       </div>
 
-      {/* Results */}
-      <div className="bg-white rounded-xl border border-[#1A1A1A]/10 flex flex-col h-[calc(100vh-120px)] sticky top-24">
-        {/* Results header - simplified */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-[#1A1A1A]/10 shrink-0 gap-3">
-          {/* Left side: Search button + count */}
-          <div className="flex items-center gap-3 min-w-0">
-            <Button
-              onClick={() => hasSearched && cursor ? handleLoadMore() : handleSimpleSearch()}
-              disabled={loading || !selectedAccount || !selectedJob || needsReconnection || !isApiModeAvailable}
-              size="sm"
-              className="bg-[#0077B5] hover:bg-[#005E93] shrink-0"
-            >
-              {loading ? (
-                <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" />
-              ) : (
-                <Search className="w-3.5 h-3.5 mr-1.5" />
-              )}
-              {loading ? 'Recherche...' : hasSearched && cursor ? 'Charger +' : 'Rechercher'}
-            </Button>
-            
-            {/* Compact profile count */}
-            {hasSearched && (
-              <div className="flex items-center gap-2 text-sm">
-                <span className="font-semibold text-[#1A1A1A]">
-                  {filteredAndSortedResults.length}
-                </span>
-                <span className="text-[#1A1A1A]/50">
-                  profil{filteredAndSortedResults.length > 1 ? 's' : ''}
-                </span>
-                {total !== null && (
-                  <span className="text-xs text-[#1A1A1A]/40">
-                    / {total.toLocaleString()}
-                  </span>
-                )}
-              </div>
-            )}
-          </div>
-          
-          {/* Right side: Filters + Actions */}
-          <div className="flex items-center gap-2 shrink-0">
-            {/* Auto-hide treated profiles toggle */}
-            {selectedJob && hasSearched && (
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant={autoHideTreated ? 'default' : 'ghost'}
-                      size="sm"
-                      className={`h-8 px-2 text-xs gap-1.5 ${autoHideTreated ? 'bg-green-600 hover:bg-green-700 text-white' : 'text-[#1A1A1A]/60 hover:text-[#1A1A1A]'}`}
-                      onClick={() => setAutoHideTreated(!autoHideTreated)}
-                    >
-                      {autoHideTreated ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                      Traités
-                      {candidateStatus.treatedIds.size > 0 && (
-                        <Badge variant="secondary" className="h-4 px-1 text-[10px] font-medium">
-                          {candidateStatus.treatedIds.size}
-                        </Badge>
-                      )}
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>{autoHideTreated ? 'Afficher les profils traités (messagés, séquencés, archivés)' : 'Masquer les profils traités lors du chargement'}</p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            )}
-            
-            {/* Status filter dropdown (only when autoHideTreated is OFF) */}
-            {selectedJob && hasSearched && results.length > 0 && !autoHideTreated && (
-              <Select 
-                value={statusFilter} 
-                onValueChange={(v) => setStatusFilter(v as typeof statusFilter)}
-              >
-                <SelectTrigger className="h-8 w-auto min-w-[110px] text-xs">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">
-                    <span className="flex items-center gap-1.5">
-                      <Users className="w-3 h-3" />
-                      Tous
-                    </span>
-                  </SelectItem>
-                  <SelectItem value="untreated">
-                    <span className="flex items-center gap-1.5">
-                      <Eye className="w-3 h-3" />
-                      Non traités
-                    </span>
-                  </SelectItem>
-                  <SelectItem value="messaged">
-                    <span className="flex items-center gap-1.5">
-                      <Mail className="w-3 h-3" />
-                      Contactés
-                    </span>
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-            )}
-            
-            {/* Dismissed toggle (only when autoHideTreated is OFF) */}
-            {selectedJob && !autoHideTreated && candidateStatus.dismissedIds.size > 0 && (
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant={showDismissed ? 'default' : 'ghost'}
-                      size="sm"
-                      className={`h-8 px-2 text-xs ${showDismissed ? 'bg-red-500 hover:bg-red-600' : 'text-red-500 hover:text-red-600'}`}
-                      onClick={() => setShowDismissed(!showDismissed)}
-                    >
-                      <Archive className="w-3.5 h-3.5" />
-                      <span className="ml-1">{candidateStatus.dismissedIds.size}</span>
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>{showDismissed ? 'Masquer' : 'Voir'} les écartés</p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            )}
-            
-            {/* Sort by score toggle */}
-            {Object.keys(jobScores).length > 0 && (
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant={sortByScore ? "default" : "ghost"}
-                      size="sm"
-                      onClick={() => setSortByScore(!sortByScore)}
-                      className={`h-8 px-2 ${sortByScore ? "bg-[#0077B5] hover:bg-[#005E93]" : ""}`}
-                    >
-                      <Sparkles className="w-3.5 h-3.5" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>{sortByScore ? 'Tri par score actif' : 'Trier par score'}</p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            )}
-            
-            {/* Selection actions */}
-            {selectedProfiles.size > 0 && (
-              <div className="flex items-center gap-1.5 pl-2 border-l border-[#1A1A1A]/10">
-                <span className="text-xs text-[#1A1A1A]/50">{selectedProfiles.size} sel.</span>
-                
-                {/* Score selected profiles */}
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={handleBatchScore}
-                        disabled={scoringInProgress || !selectedJob}
-                        className="h-8 px-2 border-amber-500 text-amber-600 hover:bg-amber-50"
-                      >
-                        {scoringInProgress ? (
-                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                        ) : (
-                          <Target className="w-3.5 h-3.5" />
-                        )}
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>Scorer la sélection</p>
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-
-                {/* Add to project */}
-                {activeProject && (
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={handleBulkAddToProject}
-                          className="h-8 px-2 border-green-500 text-green-600 hover:bg-green-50"
-                        >
-                          <FolderPlus className="w-3.5 h-3.5" />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p>Ajouter au projet</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-                )}
-
-                {/* Archive/Dismiss */}
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={handleBulkDismiss}
-                        disabled={!selectedJob}
-                        className="h-8 px-2 border-red-300 text-red-500 hover:bg-red-50"
-                      >
-                        <Archive className="w-3.5 h-3.5" />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>Archiver la sélection</p>
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-                
-                {/* Separator */}
-                <div className="w-px h-5 bg-[#1A1A1A]/10" />
-                
-                {/* InMail */}
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setShowBulkInMailModal(true)}
-                        className="h-8 px-2 border-[#0077B5] text-[#0077B5] hover:bg-[#0077B5]/10"
-                      >
-                        <Mail className="w-3.5 h-3.5" />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>Envoyer InMail groupé</p>
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-                
-                {selectedAccount && (
-                  <SequenceEnrollButton
-                    selectedProfiles={results
-                      .filter(p => selectedProfiles.has(p.id))
-                      .filter(p => {
-                        const score = jobScores[p.id];
-                        return !score || score.recommendation !== 'skip';
-                      })
-                    }
-                    accountId={selectedAccount}
-                    selectedJob={selectedJob}
-                    onSuccess={() => {
-                      // Remove enrolled profiles from results if autoHideTreated is enabled
-                      if (autoHideTreatedRef.current) {
-                        const enrolledIds = new Set(
-                          results
-                            .filter(p => selectedProfiles.has(p.id))
-                            .filter(p => {
-                              const score = jobScores[p.id];
-                              return !score || score.recommendation !== 'skip';
-                            })
-                            .map(p => p.id)
-                        );
-                        setResults(prev => prev.filter(p => !enrolledIds.has(p.id)));
-                      }
-                      setSelectedProfiles(new Set());
-                      toast.success('Candidats inscrits dans la séquence');
-                    }}
-                  />
-                )}
-              </div>
-            )}
-            
-            {/* Select all checkbox */}
-            {selectedJob && results.length > 0 && (
-              <div className="flex items-center gap-1.5 pl-2 border-l border-[#1A1A1A]/10">
-                <Checkbox
-                  checked={allSelectableSelected && selectableProfiles.length > 0}
-                  onCheckedChange={toggleSelectAll}
-                  id="select-all"
-                  className="h-4 w-4"
-                />
-                <label htmlFor="select-all" className="text-xs text-[#1A1A1A]/50 cursor-pointer whitespace-nowrap">
-                  Tout
-                </label>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Results list */}
-        <ScrollArea className="flex-1" ref={scrollAreaRef}>
-          {loading && results.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-20">
-              <Loader2 className="w-10 h-10 animate-spin text-[#0077B5] mb-4" />
-              <p className="text-sm text-[#1A1A1A]/50">Recherche en cours...</p>
-            </div>
-          ) : loading && results.length > 0 ? (
-            // Loading new page - show skeleton cards
-            <div className="p-4 space-y-3">
-              <div className="bg-gradient-to-r from-[#0077B5]/5 to-transparent rounded-lg p-3 mb-4 flex items-center gap-3 animate-pulse">
-                <div className="w-10 h-10 rounded-full bg-[#0077B5]/10" />
-                <div className="flex-1 space-y-2">
-                  <div className="h-4 bg-[#1A1A1A]/10 rounded w-48" />
-                  <div className="h-3 bg-[#1A1A1A]/5 rounded w-32" />
-                </div>
-              </div>
-              {[...Array(5)].map((_, i) => (
-                <div key={i} className="bg-white rounded-lg border border-[#1A1A1A]/10 p-4 animate-pulse">
-                  <div className="flex gap-4">
-                    <div className="w-14 h-14 rounded-full bg-[#1A1A1A]/10" />
-                    <div className="flex-1 space-y-2">
-                      <div className="h-5 bg-[#1A1A1A]/10 rounded w-40" />
-                      <div className="h-4 bg-[#1A1A1A]/5 rounded w-64" />
-                      <div className="h-3 bg-[#1A1A1A]/5 rounded w-32" />
-                    </div>
-                  </div>
-                </div>
-              ))}
-              <div className="flex justify-center pt-4">
-                <Loader2 className="w-6 h-6 animate-spin text-[#0077B5]" />
-              </div>
-            </div>
-          ) : results.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-12 text-[#1A1A1A]/40 px-8">
-              {hasSearched ? (
-                // No results found after search
-                <>
-                  <div className="w-20 h-20 rounded-full bg-[#1A1A1A]/5 flex items-center justify-center mb-6">
-                    <Search className="w-10 h-10" />
-                  </div>
-                  <p className="text-lg font-medium text-[#1A1A1A]/60 mb-2">
-                    Aucun profil trouvé
-                  </p>
-                  <p className="text-sm text-center max-w-md">
-                    Essayez d'ajuster vos filtres pour élargir votre recherche
-                  </p>
-                </>
-              ) : (
-                // Welcome message - no search performed yet
-                <div className="w-full max-w-lg">
-                  <div className="text-center mb-8">
-                    <div className="w-16 h-16 rounded-full bg-gradient-to-br from-[#0077B5]/20 to-[#0077B5]/5 flex items-center justify-center mx-auto mb-4">
-                      <Search className="w-8 h-8 text-[#0077B5]" />
-                    </div>
-                    <h3 className="text-xl font-semibold text-[#1A1A1A] mb-2">
-                      Recherche LinkedIn
-                    </h3>
-                    <p className="text-sm text-[#1A1A1A]/60">
-                      Trouvez des candidats qualifiés en utilisant les filtres avancés
-                    </p>
-                  </div>
-                  
-                  <div className="space-y-4">
-                    <div className="bg-gradient-to-r from-amber-50 to-orange-50 rounded-xl p-4 border border-amber-200/50">
-                      <h4 className="font-medium text-amber-800 mb-3 flex items-center gap-2">
-                        <span className="w-6 h-6 rounded-full bg-amber-500 text-white text-xs flex items-center justify-center">1</span>
-                        Sélectionnez un poste
-                      </h4>
-                      <p className="text-sm text-amber-700/80 ml-8">
-                        Choisissez un <strong>poste de référence</strong> dans le panneau de gauche. C'est obligatoire pour lancer la recherche.
-                      </p>
-                    </div>
-                    
-                    <div className="bg-[#0077B5]/5 rounded-xl p-4 border border-[#0077B5]/10">
-                      <h4 className="font-medium text-[#1A1A1A] mb-3 flex items-center gap-2">
-                        <span className="w-6 h-6 rounded-full bg-[#0077B5] text-white text-xs flex items-center justify-center">2</span>
-                        Recherchez des profils
-                      </h4>
-                      <ul className="text-sm text-[#1A1A1A]/70 space-y-2 ml-8">
-                        <li>• Configurez vos filtres ou utilisez <strong>Auto-fill</strong></li>
-                        <li>• Cliquez sur <strong>Rechercher</strong> pour récupérer les profils</li>
-                      </ul>
-                    </div>
-                    
-                    <div className="bg-[#1A1A1A]/5 rounded-xl p-4 border border-[#1A1A1A]/10">
-                      <h4 className="font-medium text-[#1A1A1A] mb-3 flex items-center gap-2">
-                        <span className="w-6 h-6 rounded-full bg-[#1A1A1A] text-white text-xs flex items-center justify-center">3</span>
-                        Sélectionnez et scorez
-                      </h4>
-                      <p className="text-sm text-[#1A1A1A]/70 ml-8">
-                        Sélectionnez les profils intéressants, puis cliquez sur <strong><Target className="w-3 h-3 inline" /> Scorer</strong> pour évaluer leur pertinence.
-                      </p>
-                    </div>
-                    
-                    <div className="bg-green-50 rounded-xl p-4 border border-green-200/50">
-                      <h4 className="font-medium text-green-800 mb-3 flex items-center gap-2">
-                        <span className="w-6 h-6 rounded-full bg-green-500 text-white text-xs flex items-center justify-center">4</span>
-                        Ajoutez ou archivez
-                      </h4>
-                      <ul className="text-sm text-green-700/80 space-y-1 ml-8">
-                        <li>• <strong><FolderPlus className="w-3 h-3 inline" /> Ajouter au projet</strong> : sauvegarde les candidats pertinents</li>
-                        <li>• <strong><Archive className="w-3 h-3 inline" /> Archiver</strong> : écarte les profils non adaptés</li>
-                      </ul>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          ) : (
-            <div className="p-4 space-y-3">
-              {/* Results stats banner */}
-              {hasSearched && total !== null && total > 0 && (
-                <div className="bg-gradient-to-r from-[#0077B5]/5 to-transparent rounded-lg p-3 mb-4 flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full bg-[#0077B5]/10 flex items-center justify-center">
-                    <Users className="w-5 h-5 text-[#0077B5]" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium text-[#1A1A1A]">
-                      {total.toLocaleString()} candidats correspondent à vos critères
-                    </p>
-                    <p className="text-xs text-[#1A1A1A]/50">
-                      {results.length} profils chargés
-                    </p>
-                  </div>
-                </div>
-              )}
-
-              {/* Profile cards */}
-              {filteredAndSortedResults.map((profile, index) => (
-                <LinkedInResultCard 
-                  key={profile.id || `profile-${index}`} 
-                  profile={profile}
-                  selectedJob={selectedJob}
-                  isSelected={selectedProfiles.has(profile.id)}
-                  onToggleSelect={() => toggleProfileSelection(profile.id)}
-                  jobScore={jobScores[profile.id]}
-                  onScoreProfile={() => scoreProfile(profile)}
-                  accountId={selectedAccount || undefined}
-                  onMessageSent={() => quota.recordAction('messagesSent')}
-                  activeProject={activeProject}
-                  onProfileTreated={() => {
-                    // Remove profile from results if autoHideTreated is enabled
-                    if (autoHideTreatedRef.current) {
-                      setResults(prev => prev.filter(p => p.id !== profile.id));
-                    }
-                  }}
-                  onArchive={selectedJob ? async () => {
-                    const profileUrl = profile.public_profile_url || 
-                      (profile.id ? `https://linkedin.com/in/${profile.id}` : undefined);
-                    const fullName = [profile.first_name, profile.last_name].filter(Boolean).join(' ') || 'Profil';
-                    
-                    await candidateStatus.dismissCandidate(profile.id, {
-                      name: fullName,
-                      headline: profile.headline,
-                      profileUrl,
-                      score: jobScores[profile.id]?.match_score,
-                      recommendation: jobScores[profile.id]?.recommendation,
-                    });
-                    
-                    // Remove from results if autoHideTreated is enabled
-                    if (autoHideTreatedRef.current) {
-                      setResults(prev => prev.filter(p => p.id !== profile.id));
-                    }
-                    
-                    toast.success(`${fullName} archivé`);
-                  } : undefined}
-                />
-              ))}
-
-              {/* Infinite scroll trigger */}
-              <div ref={loadMoreTriggerRef} className="py-4">
-                {loadingMore && (
-                  <div className="flex items-center justify-center gap-2 py-4">
-                    <Loader2 className="w-5 h-5 animate-spin text-[#0077B5]" />
-                    <span className="text-sm text-[#1A1A1A]/60">Chargement...</span>
-                  </div>
-                )}
-                {!loadingMore && hasMoreResults && cursor && (
-                  <div className="flex justify-center">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={handleLoadMore}
-                      className="gap-2"
-                    >
-                      <Search className="w-3.5 h-3.5" />
-                      Charger 25 profils de plus
-                    </Button>
-                  </div>
-                )}
-                {!hasMoreResults && results.length > 0 && (
-                  <p className="text-center text-xs text-[#1A1A1A]/40 py-2">
-                    Tous les profils ont été chargés ({results.length})
-                  </p>
-                )}
-              </div>
-            </div>
-          )}
-        </ScrollArea>
+      {/* Right panel: Results */}
+      <div className="lg:col-span-8 xl:col-span-9">
+        <SearchResultsPanel
+          results={search.results}
+          filteredResults={filteredAndSortedResults}
+          loading={search.loading}
+          loadingMore={search.loadingMore}
+          hasSearched={search.hasSearched}
+          hasMoreResults={search.hasMoreResults}
+          cursor={search.cursor}
+          total={search.total}
+          selectedJob={search.selectedJob}
+          selectedProfiles={search.selectedProfiles}
+          jobScores={search.jobScores}
+          scoringInProgress={search.scoringInProgress}
+          sortByScore={search.sortByScore}
+          selectableProfiles={selectableProfiles}
+          allSelectableSelected={allSelectableSelected}
+          autoHideTreated={search.autoHideTreated}
+          showDismissed={search.showDismissed}
+          statusFilter={search.statusFilter}
+          treatedCount={treatedCount}
+          dismissedCount={dismissedCount}
+          selectedAccount={selectedAccount}
+          activeProject={activeProject}
+          showBulkInMailModal={search.showBulkInMailModal}
+          onSearch={() => handleSearch(false)}
+          onLoadMore={handleLoadMore}
+          onToggleProfileSelection={search.toggleProfileSelection}
+          onToggleSelectAll={search.toggleSelectAll}
+          onScoreProfile={scoring.scoreProfile}
+          onBatchScore={scoring.handleBatchScore}
+          onBulkDismiss={handleBulkDismiss}
+          onBulkAddToProject={handleBulkAddToProject}
+          onSetAutoHideTreated={search.setAutoHideTreated}
+          onSetShowDismissed={search.setShowDismissed}
+          onSetStatusFilter={search.setStatusFilter}
+          onSetSortByScore={search.setSortByScore}
+          onSetShowBulkInMailModal={search.setShowBulkInMailModal}
+          onProfileTreated={handleProfileTreated}
+          onArchive={handleArchive}
+          onMessageSent={handleMessageSent}
+          onSequenceEnrollSuccess={handleSequenceEnrollSuccess}
+          scrollAreaRef={scrollAreaRef}
+          loadMoreTriggerRef={loadMoreTriggerRef}
+        />
       </div>
-      
-      {/* Bulk InMail Modal - excludes candidates with recommendation 'skip' */}
-      <BulkInMailModal
-        isOpen={showBulkInMailModal}
-        onClose={() => setShowBulkInMailModal(false)}
-        recipients={results
-          .filter(p => selectedProfiles.has(p.id))
-          // Double-check: exclude candidates with recommendation 'skip' (score < 40)
-          .filter(p => {
-            const score = jobScores[p.id];
-            return !score || score.recommendation !== 'skip';
-          })
-          .map(p => ({
-            id: p.id,
-            name: p.name || `${p.first_name || ''} ${p.last_name || ''}`.trim(),
-            headline: p.headline,
-            // For Recruiter InMails, use the main 'id' field which contains the LinkedIn URN (AEM..., ACo..., etc.)
-            // DO NOT use recruiter_candidate_id which is a numeric internal ID that causes 422 errors
-            profile_id: p.id,
-            // Pass network distance for smart message routing (1=DM, 2/3=InMail)
-            network_distance: p.network_distance,
-            profile: p,
-          }))
-        }
-        accountId={selectedAccount || ''}
-        selectedJob={selectedJob}
-      />
     </div>
   );
 };
-
-// Re-export types for backward compatibility
-export type { LinkedInFiltersState, LinkedInProfile } from './types';
