@@ -447,6 +447,13 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange }: UseMe
               niceToHave: enrichedJobData.niceToHave,
               transversalCriteria: enrichedJobData.transversalCriteria,
             } : undefined,
+            // Pass all available jobs to constrain AI suggestions
+            availableJobs: availableJobs.map(j => ({
+              id: j.id,
+              title: j.title,
+              skills: j.skills || [],
+              client: j.client,
+            })),
           },
         },
       });
