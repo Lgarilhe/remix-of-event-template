@@ -17,16 +17,10 @@ interface MessagesInboxProps {
   onUnreadCountChange?: (count: number) => void;
 }
 
-export const MessagesInbox: React.FC<MessagesInboxProps> = ({
-  accounts,
-  selectedAccount,
-  onUnreadCountChange,
-}) => {
-  const inbox = useMessagesInbox({
-    selectedAccount,
-    onUnreadCountChange,
-  });
+export const MessagesInbox: React.FC<MessagesInboxProps> = (props) => {
+  const { selectedAccount } = props;
 
+  // Wrapper without hooks: avoids hook-order issues when selectedAccount toggles
   if (!selectedAccount) {
     return (
       <div className="flex items-center justify-center h-96 text-muted-foreground">
@@ -37,6 +31,17 @@ export const MessagesInbox: React.FC<MessagesInboxProps> = ({
       </div>
     );
   }
+
+  return <MessagesInboxInner {...props} selectedAccount={selectedAccount} />;
+};
+
+const MessagesInboxInner: React.FC<
+  MessagesInboxProps & { selectedAccount: string }
+> = ({ selectedAccount, onUnreadCountChange }) => {
+  const inbox = useMessagesInbox({
+    selectedAccount,
+    onUnreadCountChange,
+  });
 
   const candidateProfile = getCurrentCandidateProfile(inbox.selectedChat);
 
@@ -104,7 +109,7 @@ export const MessagesInbox: React.FC<MessagesInboxProps> = ({
               </Button>
             </div>
             <div className="space-y-2 max-h-60 overflow-y-auto">
-              {inbox.sequences.map(sequence => (
+              {inbox.sequences.map((sequence) => (
                 <button
                   key={sequence.id}
                   onClick={() => inbox.enrollInSequence(sequence)}
@@ -136,3 +141,4 @@ export const MessagesInbox: React.FC<MessagesInboxProps> = ({
     </div>
   );
 };
+
