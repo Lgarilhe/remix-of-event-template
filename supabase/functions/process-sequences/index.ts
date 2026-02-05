@@ -249,11 +249,22 @@ serve(async (req) => {
               continue;
             }
 
-            // Mark as sending
-            await supabase
+            // Mark as sending with optimistic locking to prevent duplicate executions
+            // Only update if status is still 'scheduled' - this prevents race conditions
+            const { data: lockResult, error: lockError } = await supabase
               .from('sequence_step_executions')
               .update({ status: 'sending' })
-              .eq('id', exec.id);
+              .eq('id', exec.id)
+              .eq('status', 'scheduled')
+              .select()
+              .single();
+
+            if (lockError || !lockResult) {
+              // Another process already took this execution, skip it
+              console.log(`[process-sequences] Execution ${exec.id} already being processed by another instance, skipping`);
+              results.skipped++;
+              continue;
+            }
 
             // ============ AI PERSONALIZATION ============
             let finalMessage = (exec.final_message || step.message_template || '') as string;
@@ -1044,6 +1055,53 @@ async function getFullLinkedInProfile(
   }
 }
 
+// Fetch company/client details from a Notion relation
+async function fetchClientFromRelation(clientIds: string[]): Promise<{ name: string; sector: string } | null> {
+  if (!clientIds || clientIds.length === 0) return null;
+  
+  try {
+    const response = await fetch(`https://api.notion.com/v1/pages/${clientIds[0]}`, {
+      headers: {
+        'Authorization': `Bearer ${NOTION_API_KEY}`,
+        'Notion-Version': '2022-06-28',
+      },
+    });
+    
+    if (!response.ok) return null;
+    
+    const page = await response.json();
+    const props = page.properties || {};
+    
+    // Find title property (company name)
+    let name = '';
+    for (const [, prop] of Object.entries(props)) {
+      if ((prop as Record<string, unknown>).type === 'title') {
+        const titleArray = (prop as Record<string, unknown>).title as Array<{ plain_text: string }>;
+        name = titleArray?.[0]?.plain_text || '';
+        break;
+      }
+    }
+    
+    // Find sector property
+    let sector = '';
+    const sectorProp = props['Secteur'] || props['Sector'] || props['Industry'];
+    if (sectorProp) {
+      if ((sectorProp as Record<string, unknown>).type === 'select') {
+        sector = ((sectorProp as Record<string, unknown>).select as { name: string })?.name || '';
+      } else if ((sectorProp as Record<string, unknown>).type === 'rich_text') {
+        const textArray = (sectorProp as Record<string, unknown>).rich_text as Array<{ plain_text: string }>;
+        sector = textArray?.map(t => t.plain_text).join('') || '';
+      }
+    }
+    
+    console.log(`[fetchClientFromRelation] Resolved client: name="${name}", sector="${sector}"`);
+    return { name, sector };
+  } catch (err) {
+    console.error('[fetchClientFromRelation] Failed to fetch client:', err);
+    return null;
+  }
+}
+
 // Fetch job context from Notion with full details including transversal criteria
 async function fetchNotionJobContext(jobId: string): Promise<Record<string, unknown> | null> {
   try {
@@ -1149,6 +1207,30 @@ async function fetchNotionJobContext(jobId: string): Promise<Record<string, unkn
 
     console.log(`[fetchNotionJobContext] Job ${jobId}: accompagnement=${JSON.stringify(accompagnement)}, hasTransversal=${!!transversalCriteria}`);
 
+    // Resolve client from relation (Client property is typically a relation to a Companies database)
+    const clientRelationValue = getValue(props['Client']);
+    let clientInfo: { name: string; sector: string } | null = null;
+    
+    if (Array.isArray(clientRelationValue) && clientRelationValue.length > 0) {
+      // It's a relation - need to fetch the related page
+      clientInfo = await fetchClientFromRelation(clientRelationValue);
+    } else if (typeof clientRelationValue === 'string' && clientRelationValue) {
+      // It's a direct text value (some Notion setups)
+      clientInfo = { name: clientRelationValue, sector: '' };
+    }
+    
+    // Fallback to Entreprise property if Client not found
+    if (!clientInfo?.name) {
+      const entrepriseValue = getValue(props['Entreprise']);
+      if (Array.isArray(entrepriseValue) && entrepriseValue.length > 0) {
+        clientInfo = await fetchClientFromRelation(entrepriseValue);
+      } else if (typeof entrepriseValue === 'string' && entrepriseValue) {
+        clientInfo = { name: entrepriseValue, sector: '' };
+      }
+    }
+    
+    console.log(`[fetchNotionJobContext] Resolved client: ${JSON.stringify(clientInfo)}`);
+
     return {
       title,
       description: getValue(props['Description']),
@@ -1168,8 +1250,8 @@ async function fetchNotionJobContext(jobId: string): Promise<Record<string, unkn
       niceToHave: getValue(props['Nice to have']) || getValue(props['Critères Nice']),
       accompagnement,
       transversalCriteria,
-      client: {
-        name: getValue(props['Client']) || getValue(props['Entreprise']),
+      client: clientInfo || {
+        name: null,
         sector: getValue(props['Secteur']) || getValue(props['Sector']),
       },
     };
