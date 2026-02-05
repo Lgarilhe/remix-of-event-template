@@ -1168,10 +1168,12 @@ async function fetchNotionJobContext(jobId: string): Promise<Record<string, unkn
     }
 
     // Case-insensitive search for accompagnement if not found
+    // IMPORTANT: Only search for 'accompagnement' - do NOT match 'type d' as it would match 'Type de contrat'
     if (accompagnement.length === 0) {
       for (const [propName, prop] of Object.entries(props)) {
         const lowerName = propName.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-        if (lowerName.includes('accompagnement') || lowerName.includes('type d')) {
+        // Only match if contains 'accompagnement' - don't match generic 'type d' pattern
+        if (lowerName.includes('accompagnement')) {
           const val = getValue(prop as Record<string, unknown>);
           if (val && (Array.isArray(val) ? val.length > 0 : val)) {
             accompagnement = Array.isArray(val) ? val : [val as string];
