@@ -11,10 +11,14 @@ interface FilteredResultsOptions {
   autoHideTreated: boolean;
   showDismissed: boolean;
   statusFilter: 'all' | 'untreated' | 'messaged' | 'dismissed';
-  treatedIds: Set<string>;
-  dismissedIds: Set<string>;
-  getStatus: (id: string) => { status: string } | undefined;
-  filters: LinkedInFiltersState;
+  candidateStatus: {
+    treatedIds: Set<string>;
+    dismissedIds: Set<string>;
+    getStatus: (id: string) => { status: string } | undefined;
+  };
+  selectedProfiles: Set<string>;
+  calculatedExperienceMin?: number | null;
+  calculatedExperienceMax?: number | null;
 }
 
 export function useFilteredResults({
@@ -25,11 +29,11 @@ export function useFilteredResults({
   autoHideTreated,
   showDismissed,
   statusFilter,
-  treatedIds,
-  dismissedIds,
-  getStatus,
-  filters,
+  candidateStatus,
+  selectedProfiles,
 }: FilteredResultsOptions) {
+  const { treatedIds, dismissedIds, getStatus } = candidateStatus;
+
   // Filter and sort results
   const filteredAndSortedResults = useMemo(() => {
     let filtered = results;
@@ -83,11 +87,9 @@ export function useFilteredResults({
 
   // Check if all selectable profiles are selected
   const allSelectableSelected = useMemo(() => {
-    return (selectedProfiles: Set<string>) => {
-      if (selectableProfiles.length === 0) return false;
-      return selectableProfiles.every(p => selectedProfiles.has(p.id));
-    };
-  }, [selectableProfiles]);
+    if (selectableProfiles.length === 0) return false;
+    return selectableProfiles.every(p => selectedProfiles.has(p.id));
+  }, [selectableProfiles, selectedProfiles]);
 
   return {
     filteredAndSortedResults,

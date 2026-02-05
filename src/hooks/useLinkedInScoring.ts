@@ -5,13 +5,18 @@ import { Job } from '@/pages/JobSpace';
 import { JobMatchResult } from '@/components/outreach/JobScoreDisplay';
 import { toast } from 'sonner';
 
-interface ScoringContext {
+interface ScoringOptions {
   selectedJob: Job | null;
   selectedProfiles: Set<string>;
   results: LinkedInProfile[];
   jobScores: Record<string, JobMatchResult>;
-  autoHideTreatedRef: React.MutableRefObject<boolean>;
-  candidateStatus: {
+  setJobScores: React.Dispatch<React.SetStateAction<Record<string, JobMatchResult>>>;
+  setScoringInProgress: (v: boolean) => void;
+  setSortByScore?: (v: boolean) => void;
+  setResults?: React.Dispatch<React.SetStateAction<LinkedInProfile[]>>;
+  setSelectedProfiles?: React.Dispatch<React.SetStateAction<Set<string>>>;
+  autoHideTreatedRef?: React.MutableRefObject<boolean>;
+  candidateStatus?: {
     batchDismiss: (profiles: Array<{
       id: string;
       name?: string;
@@ -22,14 +27,6 @@ interface ScoringContext {
       skipReason?: string;
     }>) => Promise<void>;
   };
-}
-
-interface ScoringSetters {
-  setJobScores: React.Dispatch<React.SetStateAction<Record<string, JobMatchResult>>>;
-  setScoringInProgress: (v: boolean) => void;
-  setSortByScore: (v: boolean) => void;
-  setResults: React.Dispatch<React.SetStateAction<LinkedInProfile[]>>;
-  setSelectedProfiles: React.Dispatch<React.SetStateAction<Set<string>>>;
 }
 
 // Build enriched profile data for scoring
@@ -138,26 +135,19 @@ export function buildProfileData(profile: LinkedInProfile) {
   };
 }
 
-export function useLinkedInScoring(
-  context: ScoringContext,
-  setters: ScoringSetters
-) {
-  const {
-    selectedJob,
-    selectedProfiles,
-    results,
-    jobScores,
-    autoHideTreatedRef,
-    candidateStatus,
-  } = context;
-
-  const {
-    setJobScores,
-    setScoringInProgress,
-    setSortByScore,
-    setResults,
-    setSelectedProfiles,
-  } = setters;
+export function useLinkedInScoring({
+  selectedJob,
+  selectedProfiles,
+  results,
+  jobScores,
+  setJobScores,
+  setScoringInProgress,
+  setSortByScore,
+  setResults,
+  setSelectedProfiles,
+  autoHideTreatedRef,
+  candidateStatus,
+}: ScoringOptions) {
 
   // Score a single profile
   const scoreProfile = useCallback(async (profile: LinkedInProfile) => {

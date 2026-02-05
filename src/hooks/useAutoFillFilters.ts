@@ -4,21 +4,17 @@ import { LinkedInFiltersState, LinkedInApiType } from '@/components/outreach/typ
 import { GeneratedFilters } from '@/components/outreach/JobSelector';
 import { toast } from 'sonner';
 
-interface AutoFillContext {
+interface AutoFillOptions {
   selectedAccount: string | null;
   filtersRef: React.MutableRefObject<LinkedInFiltersState>;
-}
-
-interface AutoFillSetters {
   setFilters: React.Dispatch<React.SetStateAction<LinkedInFiltersState>>;
 }
 
-export function useAutoFillFilters(
-  context: AutoFillContext,
-  setters: AutoFillSetters
-) {
-  const { selectedAccount, filtersRef } = context;
-  const { setFilters } = setters;
+export function useAutoFillFilters({
+  selectedAccount,
+  filtersRef,
+  setFilters,
+}: AutoFillOptions) {
 
   const handleAutoFillFilters = useCallback((generatedFilters: GeneratedFilters) => {
     setFilters(prev => ({
