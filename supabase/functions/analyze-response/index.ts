@@ -188,61 +188,108 @@ ${job.mustHave ? `- MUST-HAVE: ${job.mustHave}` : ''}`;
       infoToCollect.push('prétentions salariales');
     }
 
-    // Build job matching section
+    // Build job matching section with enriched context
     let jobMatchingPrompt = "";
     if (context.profileData && context.availableJobs && context.availableJobs.length > 0) {
-      const profileSkills = (context.profileData.skills || []).join(', ') || 'Non spécifiées';
-      const jobsList = context.availableJobs.slice(0, 10).map((job) => 
-        `- ID: "${job.id}" | ${job.title}${job.client?.name ? ` chez ${job.client.name}` : ''} | Skills: ${job.skills?.join(', ') || 'Non spécifiés'}`
-      ).join('\n');
+      const profile = context.profileData;
+      const profileContext = [
+        `Nom: ${profile.name}`,
+        profile.headline ? `Headline: ${profile.headline}` : null,
+        profile.currentRole ? `Poste actuel: ${profile.currentRole}${profile.currentCompany ? ` @ ${profile.currentCompany}` : ''}` : null,
+        profile.location ? `Localisation: ${profile.location}` : null,
+        profile.yearsOfExperience ? `Années d'XP: ${profile.yearsOfExperience}` : null,
+        (profile.skills && profile.skills.length > 0) ? `Skills: ${profile.skills.join(', ')}` : null,
+        (profile.pastPositions && profile.pastPositions.length > 0) ? `Expériences: ${profile.pastPositions.slice(0, 3).join(' | ')}` : null,
+        (profile.education && profile.education.length > 0) ? `Formation: ${profile.education.slice(0, 2).join(' | ')}` : null,
+      ].filter(Boolean).join('\n');
+
+      const jobsList = context.availableJobs.slice(0, 15).map((job) => {
+        const details = [
+          `ID: "${job.id}"`,
+          `Titre: ${job.title}`,
+          job.client?.name ? `Client: ${job.client.name} (${job.client.sector || 'N/A'})` : null,
+          job.skills?.length ? `Skills: ${job.skills.join(', ')}` : null,
+          job.seniority ? `Séniorité: ${job.seniority}` : null,
+          job.contractType ? `Contrat: ${job.contractType}` : null,
+          job.location ? `Lieu: ${job.location}` : null,
+          job.remote ? `Remote: ${job.remote}` : null,
+          (job.xpMin || job.xpMax) ? `XP: ${job.xpMin || '?'}-${job.xpMax || '?'} ans` : null,
+          (job.salaryMin || job.salaryMax) ? `Salaire: ${job.salaryMin || '?'}k€-${job.salaryMax || '?'}k€` : null,
+          job.mustHave ? `MUST-HAVE: ${job.mustHave.substring(0, 150)}` : null,
+        ].filter(Boolean).join(' | ');
+        return `- ${details}`;
+      }).join('\n');
       
       jobMatchingPrompt = `
 
-MATCHING AVEC LES POSTES:
-Profil: ${context.profileData.name} - ${context.profileData.headline || 'Non spécifié'}
-Skills: ${profileSkills}
+===== MATCHING POSTES =====
+PROFIL CANDIDAT:
+${profileContext}
 
-Postes disponibles (utilise EXACTEMENT l'ID UUID fourni):
+POSTES DISPONIBLES (${context.availableJobs.length} postes, top 15 affichés):
 ${jobsList}
 
-Évalue le top 3 des matchs pertinents.`;
+RÈGLES DE MATCHING:
+1. Compare les skills du profil avec les skills requis de chaque poste
+2. Vérifie la cohérence du niveau d'expérience (années XP vs séniorité demandée)
+3. Vérifie la compatibilité géographique (localisation profil vs lieu poste + politique remote)
+4. Analyse la trajectoire professionnelle (expériences passées pertinentes)
+5. Identifie les mismatches critiques (contrat, séniorité, compétences clés manquantes)
+
+SCORING:
+- 80-100: Excellent match, recommandation "go"
+- 50-79: Match partiel avec formations possibles, recommandation "maybe"
+- 0-49: Mismatch significatif, recommandation "skip"
+
+Retourne le TOP 3 des meilleurs matchs avec justification précise.`;
     }
 
-    const prompt = `Tu es un expert en recrutement tech. Analyse cette conversation LinkedIn.
+    const prompt = `Tu es un expert senior en recrutement tech avec 15 ans d'expérience. Tu analyses cette conversation LinkedIn pour qualifier le candidat et identifier les meilleures opportunités.
 
-CONTEXTE:
+CONTEXTE CONVERSATION:
 - Candidat: ${context.recipientName}${context.recipientHeadline ? ` (${context.recipientHeadline})` : ''}
 ${currentJobContext}
 
-CONVERSATION:
+HISTORIQUE:
 ${conversationHistory}
 
 DERNIER MESSAGE DU CANDIDAT:
 "${lastCandidateMessage.text}"
 
-LANGUE DÉTECTÉE: ${detectedLanguage === 'fr' ? 'Français' : 'English'}
-${infoToCollect.length > 0 ? `INFOS À COLLECTER: ${infoToCollect.join(', ')}` : ''}
+LANGUE: ${detectedLanguage === 'fr' ? 'Français' : 'English'}
+${infoToCollect.length > 0 ? `INFOS MANQUANTES À COLLECTER: ${infoToCollect.join(', ')}` : ''}
 ${jobMatchingPrompt}
 
-ANALYSE en JSON:
+ANALYSE DEMANDÉE (JSON strict, pas de markdown):
 {
   "intent": "interested|not_interested|needs_info|wants_call|timing_issue|already_placed|neutral",
   "intentConfidence": 0-100,
   "sentiment": "positive|neutral|negative",
   "engagement": "high|medium|low",
-  "suggestedActions": [{"type": "reply|tag|alert", "priority": "high|medium|low", "label": "...", "description": "..."}],
-  "suggestedTags": ["tag1"],
-  "summary": "Résumé 1 phrase",
-  "qualificationQuestions": ["Question pertinente à poser"],
+  "suggestedActions": [{"type": "reply|tag|alert|schedule_followup", "priority": "high|medium|low", "label": "Action courte", "description": "Détail action"}],
+  "suggestedTags": ["tag pertinent"],
+  "summary": "Résumé en 1 phrase de la situation",
+  "qualificationQuestions": ["Question stratégique à poser pour qualifier"],
   "replySuggestions": [
-    {"text": "Réponse courte (15 mots) ${detectedLanguage === 'en' ? 'in English' : 'en français'}", "type": "quick", "intent_match": "..."},
-    {"text": "Réponse moyenne (30 mots) ${detectedLanguage === 'en' ? 'in English' : 'en français'}", "type": "standard", "intent_match": "..."},
-    {"text": "Réponse détaillée (50 mots) ${detectedLanguage === 'en' ? 'in English' : 'en français'}", "type": "detailed", "intent_match": "..."}
+    {"text": "Réponse courte 15 mots ${detectedLanguage === 'en' ? 'in English' : 'en français'}", "type": "quick", "intent_match": "adapté à l'intent détecté"},
+    {"text": "Réponse moyenne 30 mots ${detectedLanguage === 'en' ? 'in English' : 'en français'}", "type": "standard", "intent_match": "..."},
+    {"text": "Réponse détaillée 50 mots ${detectedLanguage === 'en' ? 'in English' : 'en français'}", "type": "detailed", "intent_match": "..."}
   ]${jobMatchingPrompt ? `,
-  "jobMatches": [{"jobId": "UUID exact", "jobTitle": "...", "clientName": "...", "matchScore": 0-100, "matchingSkills": [], "missingSkills": [], "recommendation": "go|maybe|skip", "summary": "..."}]` : ''}
+  "jobMatches": [
+    {
+      "jobId": "UUID EXACT du poste",
+      "jobTitle": "Titre exact",
+      "clientName": "Nom client si dispo",
+      "matchScore": 0-100,
+      "matchingSkills": ["skill1", "skill2"],
+      "missingSkills": ["skill manquant critique"],
+      "recommendation": "go|maybe|skip",
+      "summary": "Justification précise du score en 1 phrase"
+    }
+  ]` : ''}
 }`;
 
-    console.log("[analyze-response] Calling Lovable AI...");
+    console.log("[analyze-response] Calling Claude Sonnet 4.5 via Lovable AI...");
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
@@ -251,15 +298,15 @@ ANALYSE en JSON:
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
+        model: "claude-sonnet-4-20250514",
         messages: [
           { 
             role: "system", 
-            content: "Tu es un assistant expert en recrutement tech. Tu analyses les conversations candidat et réponds UNIQUEMENT en JSON valide, sans markdown." 
+            content: "Tu es un assistant expert en recrutement tech. Tu analyses les conversations candidat avec précision et réponds UNIQUEMENT en JSON valide, sans markdown ni commentaires. Tes matchings de postes sont rigoureux et basés sur des critères objectifs." 
           },
           { role: "user", content: prompt }
         ],
-        temperature: 0.3,
+        temperature: 0.2,
       }),
     });
 
