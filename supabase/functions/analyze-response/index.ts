@@ -28,7 +28,6 @@ interface JobData {
   tjmMin?: number;
   tjmMax?: number;
   contractType?: string;
-  // Scoring criteria
   mustHave?: string;
   shouldHave?: string;
   niceToHave?: string;
@@ -60,11 +59,8 @@ interface AnalysisContext {
     title: string;
     company?: string;
   };
-  // Profile data for job matching
   profileData?: ProfileData;
-  // Jobs to match against
   availableJobs?: JobData[];
-  // Current job being discussed (with full criteria)
   currentJobData?: JobData;
 }
 
@@ -80,15 +76,10 @@ interface JobMatch {
 }
 
 interface AnalysisResult {
-  // Intent detection
   intent: 'interested' | 'not_interested' | 'needs_info' | 'wants_call' | 'timing_issue' | 'already_placed' | 'neutral';
-  intentConfidence: number; // 0-100
-  
-  // Sentiment analysis
+  intentConfidence: number;
   sentiment: 'positive' | 'neutral' | 'negative';
   engagement: 'high' | 'medium' | 'low';
-  
-  // Suggested actions
   suggestedActions: Array<{
     type: 'reply' | 'sequence_change' | 'tag' | 'alert' | 'schedule_followup';
     priority: 'high' | 'medium' | 'low';
@@ -96,22 +87,16 @@ interface AnalysisResult {
     description: string;
     data?: Record<string, unknown>;
   }>;
-  
-  // Suggested tags
   suggestedTags: string[];
-  
-  // Quick summary
   summary: string;
-  
-  // Reply suggestions
   replySuggestions: Array<{
     text: string;
     type: 'quick' | 'standard' | 'detailed';
     intent_match: string;
   }>;
-
-  // Job recommendations
   jobMatches?: JobMatch[];
+  detectedLanguage?: 'fr' | 'en' | 'other';
+  qualificationQuestions?: string[];
 }
 
 serve(async (req) => {
@@ -122,10 +107,9 @@ serve(async (req) => {
   try {
     const { context } = await req.json() as { context: AnalysisContext };
     
-    const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
-
-    if (!ANTHROPIC_API_KEY) {
-      throw new Error("ANTHROPIC_API_KEY is not configured");
+    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+    if (!LOVABLE_API_KEY) {
+      throw new Error("LOVABLE_API_KEY is not configured");
     }
 
     if (!context || !context.messages || context.messages.length === 0) {
@@ -134,7 +118,7 @@ serve(async (req) => {
 
     // Build conversation history
     const conversationHistory = context.messages
-      .slice(-15) // Last 15 messages for better context
+      .slice(-15)
       .map(m => `${m.is_sender ? 'RECRUTEUR' : context.recipientName}: ${m.text}`)
       .join('\n');
 
@@ -154,14 +138,24 @@ serve(async (req) => {
             suggestedTags: [],
             summary: "Aucun message du candidat à analyser",
             replySuggestions: [],
-            jobMatches: []
+            jobMatches: [],
+            detectedLanguage: 'fr',
+            qualificationQuestions: []
           }
         }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    // Build current job context with full criteria if available
+    // Detect language from last message
+    const lastMsgLower = lastCandidateMessage.text.toLowerCase();
+    const frenchIndicators = ['bonjour', 'merci', 'oui', 'non', 'je', 'vous', 'pour', 'avec', 'suis', 'pas', 'disponible'];
+    const englishIndicators = ['hello', 'thank', 'yes', 'no', 'the', 'for', 'with', 'available', 'interested'];
+    const frenchScore = frenchIndicators.filter(w => lastMsgLower.includes(w)).length;
+    const englishScore = englishIndicators.filter(w => lastMsgLower.includes(w)).length;
+    const detectedLanguage = frenchScore > englishScore ? 'fr' : (englishScore > frenchScore ? 'en' : 'fr');
+
+    // Build current job context
     let currentJobContext = "";
     if (context.currentJobData) {
       const job = context.currentJobData;
@@ -174,28 +168,16 @@ serve(async (req) => {
       }
       
       currentJobContext = `
-POSTE EN COURS DE DISCUSSION (DÉTAILS COMPLETS):
+POSTE EN COURS DE DISCUSSION:
 - Titre: ${job.title}${job.client?.name ? ` chez ${job.client.name}` : ''}
 - Rémunération: ${salaryInfo.length > 0 ? salaryInfo.join(' | ') : 'À discuter'}
-- Type de contrat: ${job.contractType || 'Non spécifié'}
+- Type: ${job.contractType || 'Non spécifié'}
 - Localisation: ${job.location || 'Non spécifié'} | Remote: ${job.remote || 'Non spécifié'}
-- Séniorité: ${job.seniority || 'Non spécifié'} | XP: ${job.xpMin || '?'}-${job.xpMax || '?'} ans
-- Skills requis: ${job.skills?.join(', ') || 'Non spécifiés'}
-${job.mustHave ? `- 🔴 MUST-HAVE: ${job.mustHave}` : ''}
-${job.shouldHave ? `- 🟡 SHOULD-HAVE: ${job.shouldHave}` : ''}
-${job.niceToHave ? `- 🟢 NICE-TO-HAVE: ${job.niceToHave}` : ''}
-${job.transversalCriteria?.must ? `- 🔴 Critères transverses MUST: ${job.transversalCriteria.must}` : ''}
-${job.transversalCriteria?.should ? `- 🟡 Critères transverses SHOULD: ${job.transversalCriteria.should}` : ''}
-${job.transversalCriteria?.context ? `- Contexte entreprise: ${job.transversalCriteria.context}` : ''}
-${job.description ? `- Description: ${job.description.slice(0, 300)}...` : ''}
-
-UTILISE CES INFOS pour:
-1. Répondre précisément aux questions du candidat (salaire, remote, etc.)
-2. Identifier les infos manquantes à collecter (disponibilité, prétentions, critères must-have non validés)
-3. Formuler des réponses qui qualifient le candidat sur les critères importants`;
+- Skills: ${job.skills?.join(', ') || 'Non spécifiés'}
+${job.mustHave ? `- MUST-HAVE: ${job.mustHave}` : ''}`;
     }
 
-    // Determine what info to collect based on conversation and job criteria
+    // Info to collect
     const conversationText = context.messages.map(m => m.text.toLowerCase()).join(' ');
     const infoToCollect: string[] = [];
     
@@ -205,172 +187,96 @@ UTILISE CES INFOS pour:
     if (!conversationText.includes('salaire') && !conversationText.includes('€') && !conversationText.includes('tjm')) {
       infoToCollect.push('prétentions salariales');
     }
-    if (!conversationText.includes('remote') && !conversationText.includes('télétravail')) {
-      infoToCollect.push('préférences télétravail');
-    }
-    
-    // Check must-have criteria from job
-    if (context.currentJobData?.mustHave) {
-      const mustHave = context.currentJobData.mustHave.toLowerCase();
-      if (mustHave.includes('anglais') && !conversationText.includes('anglais')) {
-        infoToCollect.push("niveau d'anglais");
-      }
-    }
 
-    // Build job matching section if profile and jobs are provided
+    // Build job matching section
     let jobMatchingPrompt = "";
     if (context.profileData && context.availableJobs && context.availableJobs.length > 0) {
       const profileSkills = (context.profileData.skills || []).join(', ') || 'Non spécifiées';
-      // Include the actual job ID in the list so the AI returns the real UUID
       const jobsList = context.availableJobs.slice(0, 10).map((job) => 
-        `- ID: "${job.id}" | ${job.title}${job.client?.name ? ` chez ${job.client.name}` : ''} | Skills: ${job.skills?.join(', ') || 'Non spécifiés'} | ${job.remote || ''} ${job.location || ''}`
+        `- ID: "${job.id}" | ${job.title}${job.client?.name ? ` chez ${job.client.name}` : ''} | Skills: ${job.skills?.join(', ') || 'Non spécifiés'}`
       ).join('\n');
       
       jobMatchingPrompt = `
 
 MATCHING AVEC LES POSTES:
-Profil du candidat:
-- Nom: ${context.profileData.name}
-- Titre: ${context.profileData.headline || 'Non spécifié'}
-- Poste actuel: ${context.profileData.currentRole || 'Non spécifié'} chez ${context.profileData.currentCompany || 'Non spécifié'}
-- Compétences: ${profileSkills}
-- Localisation: ${context.profileData.location || 'Non spécifiée'}
-${context.profileData.yearsOfExperience ? `- Expérience: ~${context.profileData.yearsOfExperience} ans` : ''}
-${context.profileData.education?.length ? `- Formation: ${context.profileData.education.slice(0, 2).join('; ')}` : ''}
+Profil: ${context.profileData.name} - ${context.profileData.headline || 'Non spécifié'}
+Skills: ${profileSkills}
 
-Postes disponibles (IMPORTANT: utilise EXACTEMENT l'ID fourni dans le champ jobId):
+Postes disponibles (utilise EXACTEMENT l'ID UUID fourni):
 ${jobsList}
 
-Pour chaque poste pertinent (max 3), évalue le match. IMPORTANT: Le jobId doit être EXACTEMENT l'ID UUID fourni ci-dessus, pas un numéro séquentiel.`;
+Évalue le top 3 des matchs pertinents.`;
     }
 
-    const prompt = `Tu es un expert en recrutement tech. Analyse cette conversation LinkedIn pour déterminer l'intention et le sentiment du candidat, et suggère des actions de nurturing.
+    const prompt = `Tu es un expert en recrutement tech. Analyse cette conversation LinkedIn.
 
 CONTEXTE:
 - Candidat: ${context.recipientName}${context.recipientHeadline ? ` (${context.recipientHeadline})` : ''}
-${context.jobContext ? `- Poste discuté: ${context.jobContext.title}${context.jobContext.company ? ` chez ${context.jobContext.company}` : ''}` : ''}
 ${currentJobContext}
 
 CONVERSATION:
 ${conversationHistory}
 
-DERNIER MESSAGE DU CANDIDAT À ANALYSER:
+DERNIER MESSAGE DU CANDIDAT:
 "${lastCandidateMessage.text}"
 
-${infoToCollect.length > 0 ? `INFOS À COLLECTER (non encore abordées): ${infoToCollect.join(', ')}` : ''}
-
-ANALYSE REQUISE:
-
-1. INTENTION - Catégorise le message:
-- "interested": Montre un intérêt clair pour le poste/discussion
-- "not_interested": Décline explicitement ou montre un désintérêt
-- "needs_info": Demande des informations (salaire, missions, équipe, etc.)
-- "wants_call": Souhaite un appel ou entretien
-- "timing_issue": Intéressé mais pas maintenant (en poste, vacances, etc.)
-- "already_placed": A déjà trouvé un poste ou en process avancé ailleurs
-- "neutral": Message informatif sans intention claire
-
-2. SENTIMENT: positive, neutral, ou negative
-
-3. ENGAGEMENT: high (répond vite, pose des questions), medium, ou low
-
-4. ACTIONS SUGGÉRÉES - Propose des actions concrètes:
-- "reply": Répondre avec un message spécifique
-- "sequence_change": Changer de séquence (ex: passer à séquence "Intéressé")
-- "tag": Ajouter un tag (chaud, tiède, froid, senior, etc.)
-- "alert": Alerte prioritaire (candidat très chaud)
-- "schedule_followup": Planifier une relance
-
-5. TAGS SUGGÉRÉS: Liste de tags pertinents (ex: "chaud", "senior", "react", etc.)
-
-6. RÉSUMÉ: Une phrase résumant la situation
-
-7. SUGGESTIONS DE RÉPONSE - TRÈS IMPORTANT:
-- Si l'intention est "needs_info": RÉPONDS PRÉCISÉMENT avec les données du poste (salaire, remote, etc.) ET pose une question de qualification en retour
-- Si des infos sont à collecter: inclure UNE question sur ces infos dans la réponse détaillée
-- Utilise les critères MUST-HAVE pour formuler des questions de qualification pertinentes
-- 3 réponses: quick (15 mots), standard (30 mots), detailed (50 mots + question qualification)
+LANGUE DÉTECTÉE: ${detectedLanguage === 'fr' ? 'Français' : 'English'}
+${infoToCollect.length > 0 ? `INFOS À COLLECTER: ${infoToCollect.join(', ')}` : ''}
 ${jobMatchingPrompt}
 
-RÉPONDS UNIQUEMENT EN JSON VALIDE:
+ANALYSE en JSON:
 {
   "intent": "interested|not_interested|needs_info|wants_call|timing_issue|already_placed|neutral",
   "intentConfidence": 0-100,
   "sentiment": "positive|neutral|negative",
   "engagement": "high|medium|low",
-  "suggestedActions": [
-    {
-      "type": "reply|sequence_change|tag|alert|schedule_followup",
-      "priority": "high|medium|low",
-      "label": "Libellé court de l'action",
-      "description": "Description détaillée",
-      "data": {}
-    }
-  ],
-  "suggestedTags": ["tag1", "tag2"],
-  "summary": "Résumé en une phrase",
-  "infoToCollect": ${JSON.stringify(infoToCollect)},
+  "suggestedActions": [{"type": "reply|tag|alert", "priority": "high|medium|low", "label": "...", "description": "..."}],
+  "suggestedTags": ["tag1"],
+  "summary": "Résumé 1 phrase",
+  "qualificationQuestions": ["Question pertinente à poser"],
   "replySuggestions": [
-    {
-      "text": "Texte de la réponse suggérée (UTILISE les données du poste si dispo)",
-      "type": "quick|standard|detailed",
-      "intent_match": "Description de pourquoi cette réponse est adaptée"
-    }
+    {"text": "Réponse courte (15 mots) ${detectedLanguage === 'en' ? 'in English' : 'en français'}", "type": "quick", "intent_match": "..."},
+    {"text": "Réponse moyenne (30 mots) ${detectedLanguage === 'en' ? 'in English' : 'en français'}", "type": "standard", "intent_match": "..."},
+    {"text": "Réponse détaillée (50 mots) ${detectedLanguage === 'en' ? 'in English' : 'en français'}", "type": "detailed", "intent_match": "..."}
   ]${jobMatchingPrompt ? `,
-  "jobMatches": [
-    {
-      "jobId": "UUID EXACT du poste (ex: 053aca21-fe31-4a0b-a6f1-9baba60a1b8d)",
-      "jobTitle": "Titre du poste",
-      "clientName": "Nom du client",
-      "matchScore": 0-100,
-      "matchingSkills": ["skill1", "skill2"],
-      "missingSkills": ["skill3"],
-      "recommendation": "go|maybe|skip",
-      "summary": "Pourquoi ce poste est pertinent/pas pertinent"
-    }
-  ]` : ''}
+  "jobMatches": [{"jobId": "UUID exact", "jobTitle": "...", "clientName": "...", "matchScore": 0-100, "matchingSkills": [], "missingSkills": [], "recommendation": "go|maybe|skip", "summary": "..."}]` : ''}
 }`;
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
+
+    console.log("[analyze-response] Calling Lovable AI...");
+
+    const response = await fetch("https://api.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: {
-        "x-api-key": ANTHROPIC_API_KEY,
-        "anthropic-version": "2023-06-01",
+        "Authorization": `Bearer ${LOVABLE_API_KEY}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "claude-sonnet-4-20250514",
-        max_tokens: 1500,
-        system: "Tu es un assistant expert en recrutement tech. Tu analyses les conversations candidat pour suggérer des actions de nurturing et matcher avec des postes. Tu réponds TOUJOURS en JSON valide, sans markdown ni commentaires.",
+        model: "google/gemini-2.5-flash",
         messages: [
+          { 
+            role: "system", 
+            content: "Tu es un assistant expert en recrutement tech. Tu analyses les conversations candidat et réponds UNIQUEMENT en JSON valide, sans markdown." 
+          },
           { role: "user", content: prompt }
         ],
+        temperature: 0.3,
       }),
     });
 
     if (!response.ok) {
-      if (response.status === 429) {
-        return new Response(
-          JSON.stringify({ error: "Limite de requêtes atteinte, réessayez plus tard." }),
-          { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-      if (response.status === 402) {
-        return new Response(
-          JSON.stringify({ error: "Crédits IA épuisés." }),
-          { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
       const errorText = await response.text();
-      console.error("AI gateway error:", response.status, errorText);
+      console.error("[analyze-response] AI error:", response.status, errorText);
       throw new Error(`AI gateway error: ${response.status}`);
     }
 
     const data = await response.json();
-    let content = data.content?.[0]?.text || "";
+    let content = data.choices?.[0]?.message?.content || "";
     
     // Clean up potential markdown code blocks
     content = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
     
+    console.log("[analyze-response] AI response received");
+
     try {
       const analysis: AnalysisResult = JSON.parse(content);
       
@@ -407,6 +313,10 @@ RÉPONDS UNIQUEMENT EN JSON VALIDE:
               recommendation: ['go', 'maybe', 'skip'].includes(jm.recommendation) ? jm.recommendation : 'maybe',
               summary: jm.summary || ''
             }))
+          : [],
+        detectedLanguage,
+        qualificationQuestions: Array.isArray(analysis.qualificationQuestions) 
+          ? analysis.qualificationQuestions.slice(0, 3) 
           : []
       };
       
@@ -415,7 +325,7 @@ RÉPONDS UNIQUEMENT EN JSON VALIDE:
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     } catch (parseError) {
-      console.error("JSON parse error:", parseError, "Content:", content);
+      console.error("[analyze-response] JSON parse error:", parseError);
       // Return a fallback analysis
       return new Response(
         JSON.stringify({ 
@@ -425,29 +335,24 @@ RÉPONDS UNIQUEMENT EN JSON VALIDE:
             intentConfidence: 30,
             sentiment: 'neutral',
             engagement: 'medium',
-            suggestedActions: [
-              {
-                type: 'reply',
-                priority: 'medium',
-                label: 'Répondre',
-                description: 'Continuer la conversation',
-              }
-            ],
+            suggestedActions: [],
             suggestedTags: [],
-            summary: "Analyse automatique - réponse en attente",
+            summary: "Analyse automatique",
             replySuggestions: [
               { text: "Merci pour ton retour !", type: "quick", intent_match: "Réponse générique" },
               { text: "Super, on se cale un call cette semaine ?", type: "standard", intent_match: "Proposition de call" },
               { text: "Merci pour ces infos. Je reste dispo si tu as des questions.", type: "detailed", intent_match: "Suivi" }
             ],
-            jobMatches: []
+            jobMatches: [],
+            detectedLanguage: 'fr',
+            qualificationQuestions: []
           }
         }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
   } catch (error) {
-    console.error("Error analyzing response:", error);
+    console.error("[analyze-response] Error:", error);
     return new Response(
       JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
