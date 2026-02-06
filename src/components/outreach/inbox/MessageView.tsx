@@ -298,68 +298,8 @@ export const MessageView: React.FC<MessageViewProps> = ({
         />
       )}
 
-      {/* Legacy Reply Suggestions */}
-      <div className="px-3 pt-2 border-t border-[#1A1A1A]/10">
-        {!suggestionsLoaded && messages.length > 0 && (
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={onFetchSuggestions}
-            disabled={loadingSuggestions}
-            className="w-full h-8 text-xs gap-2 text-[#0077B5] hover:text-[#005E93] hover:bg-[#0077B5]/5 mb-2"
-          >
-            {loadingSuggestions ? (
-              <Loader2 className="w-3 h-3 animate-spin" />
-            ) : (
-              <Sparkles className="w-3 h-3" />
-            )}
-            {loadingSuggestions ? 'Génération en cours...' : 'Proposer des réponses IA'}
-          </Button>
-        )}
-        
-        {replySuggestions.length > 0 && (
-          <div className="flex flex-col gap-1.5 mb-2">
-            <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
-              <Sparkles className="w-3 h-3 text-[#0077B5]" />
-              <span>Réponses suggérées</span>
-              <button 
-                onClick={onClearSuggestions}
-                className="ml-auto text-muted-foreground hover:text-foreground"
-              >
-                ✕
-              </button>
-            </div>
-            {replySuggestions.map((suggestion, idx) => (
-              <div
-                key={idx}
-                className="group flex items-start gap-2 p-2 bg-[#0077B5]/5 hover:bg-[#0077B5]/10 rounded-lg cursor-pointer transition-colors"
-                onClick={() => onSuggestionClick(suggestion.text)}
-              >
-                <p className="flex-1 text-xs text-[#1A1A1A] line-clamp-2">
-                  {suggestion.text}
-                </p>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onSuggestionSend(suggestion.text);
-                  }}
-                  disabled={sending}
-                  title="Envoyer directement"
-                >
-                  {sending ? (
-                    <Loader2 className="w-3 h-3 animate-spin" />
-                  ) : (
-                    <Zap className="w-3 h-3 text-[#0077B5]" />
-                  )}
-                </Button>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+      {/* Separator before input */}
+      <div className="border-t border-[#1A1A1A]/10" />
 
       {/* Message Input */}
       <div className="px-3 pb-3">
