@@ -306,7 +306,7 @@ ANALYSE DEMANDÉE (JSON strict, pas de markdown):
           },
           { role: "user", content: prompt }
         ],
-        temperature: 0.2,
+        
       }),
     });
 
