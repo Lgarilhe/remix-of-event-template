@@ -145,6 +145,28 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange }: UseMe
   const [loadingSuggestions, setLoadingSuggestions] = useState(false);
   const [suggestionsLoaded, setSuggestionsLoaded] = useState(false);
   
+  // AI Tone preference
+  const [selectedTone, setSelectedTone] = useState<'formal' | 'casual' | 'direct' | 'empathetic'>('casual');
+  
+  // Analysis data from NurturingPanel
+  const [analysisData, setAnalysisData] = useState<{
+    intent: string;
+    intentConfidence: number;
+    sentiment: 'positive' | 'neutral' | 'negative';
+    engagement: 'high' | 'medium' | 'low';
+    summary: string;
+    qualificationQuestions?: string[];
+    detectedLanguage?: 'fr' | 'en' | 'other';
+    topJobMatch?: {
+      jobId: string;
+      jobTitle: string;
+      clientName?: string;
+      matchScore: number;
+      recommendation: 'go' | 'maybe' | 'skip';
+    };
+  } | null>(null);
+  const [loadingAnalysis, setLoadingAnalysis] = useState(false);
+  
   // Modals
   const [showSequenceSelect, setShowSequenceSelect] = useState(false);
   const [showPipelineModal, setShowPipelineModal] = useState(false);
@@ -660,6 +682,14 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange }: UseMe
     loadingSuggestions,
     suggestionsLoaded,
     setSuggestionsLoaded,
+    
+    // Tone & Analysis
+    selectedTone,
+    setSelectedTone,
+    analysisData,
+    setAnalysisData,
+    loadingAnalysis,
+    setLoadingAnalysis,
     
     // Modals
     showSequenceSelect,

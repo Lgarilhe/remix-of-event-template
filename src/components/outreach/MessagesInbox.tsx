@@ -78,6 +78,10 @@ const MessagesInboxInner: React.FC<
         availableJobs={inbox.availableJobs}
         messagesEndRef={inbox.messagesEndRef}
         messagesContainerRef={inbox.messagesContainerRef}
+        analysisData={inbox.analysisData}
+        loadingAnalysis={inbox.loadingAnalysis}
+        selectedTone={inbox.selectedTone}
+        onToneChange={inbox.setSelectedTone}
         onBack={() => inbox.setSelectedChat(null)}
         onNewMessageChange={inbox.setNewMessage}
         onSendMessage={inbox.sendMessage}

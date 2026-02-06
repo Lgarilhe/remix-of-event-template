@@ -1,9 +1,11 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { InMailTextEditor } from '../InMailTextEditor';
 import { NurturingPanel } from '../NurturingPanel';
+import { ToneSelector, AITone } from './ToneSelector';
+import { ConversationSummary } from './ConversationSummary';
 import { 
   ChevronLeft,
   User,
@@ -29,6 +31,23 @@ import {
   formatMessageTime,
 } from '@/hooks/useMessagesInboxHelpers';
 
+interface AnalysisData {
+  intent: string;
+  intentConfidence: number;
+  sentiment: 'positive' | 'neutral' | 'negative';
+  engagement: 'high' | 'medium' | 'low';
+  summary: string;
+  qualificationQuestions?: string[];
+  detectedLanguage?: 'fr' | 'en' | 'other';
+  topJobMatch?: {
+    jobId: string;
+    jobTitle: string;
+    clientName?: string;
+    matchScore: number;
+    recommendation: 'go' | 'maybe' | 'skip';
+  };
+}
+
 interface MessageViewProps {
   selectedChat: Chat | null;
   messages: Message[];
@@ -42,6 +61,10 @@ interface MessageViewProps {
   availableJobs: JobData[];
   messagesEndRef: React.RefObject<HTMLDivElement>;
   messagesContainerRef: React.RefObject<HTMLDivElement>;
+  analysisData?: AnalysisData | null;
+  loadingAnalysis?: boolean;
+  selectedTone?: AITone;
+  onToneChange?: (tone: AITone) => void;
   onBack: () => void;
   onNewMessageChange: (message: string) => void;
   onSendMessage: () => void;
@@ -67,6 +90,10 @@ export const MessageView: React.FC<MessageViewProps> = ({
   availableJobs,
   messagesEndRef,
   messagesContainerRef,
+  analysisData,
+  loadingAnalysis,
+  selectedTone = 'casual',
+  onToneChange,
   onBack,
   onNewMessageChange,
   onSendMessage,
@@ -78,6 +105,10 @@ export const MessageView: React.FC<MessageViewProps> = ({
   onEnrollInSequence,
   onScheduleCall,
 }) => {
+  // Local tone state if not controlled
+  const [localTone, setLocalTone] = useState<AITone>(selectedTone);
+  const currentTone = onToneChange ? selectedTone : localTone;
+  const handleToneChange = onToneChange || setLocalTone;
   if (!selectedChat) {
     return (
       <div className="flex-1 flex items-center justify-center text-muted-foreground">
@@ -133,6 +164,12 @@ export const MessageView: React.FC<MessageViewProps> = ({
           )}
         </div>
         
+        {/* Tone Selector */}
+        <ToneSelector
+          selectedTone={currentTone}
+          onToneChange={handleToneChange}
+        />
+
         {selectedChat.attendees?.[0]?.profile_url && (
           <Button
             variant="outline"
@@ -145,6 +182,21 @@ export const MessageView: React.FC<MessageViewProps> = ({
           </Button>
         )}
       </div>
+
+      {/* AI Conversation Summary */}
+      {analysisData && (
+        <ConversationSummary
+          summary={analysisData.summary}
+          intent={analysisData.intent}
+          intentConfidence={analysisData.intentConfidence}
+          sentiment={analysisData.sentiment}
+          engagement={analysisData.engagement}
+          detectedLanguage={analysisData.detectedLanguage}
+          topJobMatch={analysisData.topJobMatch}
+          qualificationQuestions={analysisData.qualificationQuestions}
+          loading={loadingAnalysis}
+        />
+      )}
 
       {/* Messages Area */}
       <ScrollArea 
