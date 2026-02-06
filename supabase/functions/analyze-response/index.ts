@@ -289,7 +289,7 @@ ANALYSE DEMANDÉE (JSON strict, pas de markdown):
   ]` : ''}
 }`;
 
-    console.log("[analyze-response] Calling Claude Sonnet 4.5 via Lovable AI...");
+    console.log("[analyze-response] Calling GPT-5 via Lovable AI...");
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
@@ -298,9 +298,9 @@ ANALYSE DEMANDÉE (JSON strict, pas de markdown):
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "claude-sonnet-4-20250514",
+        model: "openai/gpt-5",
         messages: [
-          { 
+          {
             role: "system", 
             content: "Tu es un assistant expert en recrutement tech. Tu analyses les conversations candidat avec précision et réponds UNIQUEMENT en JSON valide, sans markdown ni commentaires. Tes matchings de postes sont rigoureux et basés sur des critères objectifs." 
           },
