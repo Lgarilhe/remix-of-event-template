@@ -11,9 +11,27 @@ interface Message {
   timestamp?: string;
 }
 
+interface Experience {
+  title: string;
+  company: string;
+  description?: string;
+  startDate?: string;
+  endDate?: string;
+  isCurrent?: boolean;
+}
+
+interface Education {
+  school: string;
+  degree?: string;
+  field?: string;
+  startYear?: string;
+  endYear?: string;
+}
+
 interface ProfileData {
   name: string;
   headline?: string;
+  summary?: string;
   currentRole?: string;
   currentCompany?: string;
   location?: string;
@@ -21,6 +39,10 @@ interface ProfileData {
   pastPositions?: string[];
   education?: string[];
   yearsOfExperience?: number;
+  // Enhanced profile fields
+  experiences?: Experience[];
+  educationDetails?: Education[];
+  languages?: string[];
 }
 
 interface JobData {
@@ -52,6 +74,9 @@ interface JobData {
   };
 }
 
+// Tone types for message generation
+type AITone = 'formal' | 'casual' | 'direct' | 'empathetic';
+
 interface ChatContext {
   recipientName: string;
   recipientHeadline?: string;
@@ -67,6 +92,8 @@ interface ChatContext {
   availableJobs?: Array<{ id: string; title: string; skills: string[]; client?: { name: string } | null }>;
   // Detected intent from analyze-response (optional)
   detectedIntent?: 'interested' | 'not_interested' | 'needs_info' | 'wants_call' | 'timing_issue' | 'already_placed' | 'neutral';
+  // Tone preference
+  tone?: AITone;
 }
 
 // Format salary info for display
@@ -162,6 +189,119 @@ const determineInfoToRequest = (messages: Message[], job?: JobData): string[] =>
   return infoToRequest.slice(0, 3); // Max 3 items to ask
 };
 
+// Detect conversation language
+const detectLanguage = (messages: Message[]): 'fr' | 'en' | 'other' => {
+  const allText = messages.map(m => m.text.toLowerCase()).join(' ');
+  
+  // French indicators
+  const frenchIndicators = ['bonjour', 'merci', 'je suis', 'nous', 'vous', 'c\'est', 'j\'ai', 'poste', 'équipe', 'entreprise'];
+  const frenchCount = frenchIndicators.filter(w => allText.includes(w)).length;
+  
+  // English indicators
+  const englishIndicators = ['hello', 'thank you', 'i am', 'we', 'you', 'it\'s', 'i have', 'position', 'team', 'company'];
+  const englishCount = englishIndicators.filter(w => allText.includes(w)).length;
+  
+  if (frenchCount > englishCount) return 'fr';
+  if (englishCount > frenchCount) return 'en';
+  return 'fr'; // Default to French
+};
+
+// Get tone instructions
+const getToneInstructions = (tone?: AITone): string => {
+  switch (tone) {
+    case 'formal':
+      return `TON: Formel et professionnel
+- Vouvoiement systématique
+- Structure claire et organisée
+- Vocabulaire précis
+- Formules de politesse appropriées`;
+    case 'casual':
+      return `TON: Décontracté et friendly
+- Tutoiement naturel
+- Style conversationnel et léger
+- Un emoji max autorisé
+- Ambiance startup / tech`;
+    case 'direct':
+      return `TON: Direct et efficace
+- Phrases courtes et impactantes
+- Aller droit au but
+- Éviter les formules superflues
+- Focus sur l'action`;
+    case 'empathetic':
+      return `TON: Empathique et chaleureux
+- Montrer de l'intérêt pour la personne
+- Reconnaître ses préoccupations
+- Proposer du support
+- Créer un lien humain`;
+    default:
+      return `TON: Naturel et professionnel
+- Équilibre entre pro et accessible
+- Ni trop formel ni trop familier`;
+  }
+};
+
+// Build enhanced profile context with detailed experiences
+const buildEnhancedProfileContext = (context: ChatContext): string => {
+  let profileContext = `- Nom: ${context.recipientName}`;
+  if (context.recipientHeadline) {
+    profileContext += `\n- Headline: ${context.recipientHeadline}`;
+  }
+  
+  if (context.profileData) {
+    const p = context.profileData;
+    if (p.currentRole) profileContext += `\n- Poste actuel: ${p.currentRole}${p.currentCompany ? ` chez ${p.currentCompany}` : ''}`;
+    if (p.location) profileContext += `\n- Localisation: ${p.location}`;
+    if (p.yearsOfExperience) profileContext += `\n- Expérience: ~${p.yearsOfExperience} ans`;
+    
+    // Enhanced: Include summary/about
+    if (p.summary) {
+      const truncatedSummary = p.summary.length > 300 ? p.summary.slice(0, 300) + '...' : p.summary;
+      profileContext += `\n- À propos: ${truncatedSummary}`;
+    }
+    
+    // Enhanced: Include detailed experiences (last 3)
+    if (p.experiences && p.experiences.length > 0) {
+      const expStrings = p.experiences.slice(0, 3).map(exp => {
+        let expStr = `  • ${exp.title} chez ${exp.company}`;
+        if (exp.startDate) {
+          const startYear = exp.startDate.split('-')[0];
+          const endYear = exp.endDate ? exp.endDate.split('-')[0] : 'Présent';
+          expStr += ` (${startYear}-${endYear})`;
+        }
+        if (exp.description) {
+          const truncDesc = exp.description.length > 120 ? exp.description.slice(0, 120) + '...' : exp.description;
+          expStr += `\n    → ${truncDesc}`;
+        }
+        return expStr;
+      });
+      profileContext += `\n- Expériences détaillées:\n${expStrings.join('\n')}`;
+    } else if (p.pastPositions?.length) {
+      profileContext += `\n- Expériences passées: ${p.pastPositions.slice(0, 3).join('; ')}`;
+    }
+    
+    // Enhanced: Include education
+    if (p.educationDetails && p.educationDetails.length > 0) {
+      const eduStrings = p.educationDetails.slice(0, 2).map(edu => {
+        let eduStr = edu.school;
+        if (edu.degree) eduStr += ` - ${edu.degree}`;
+        if (edu.field) eduStr += ` (${edu.field})`;
+        return eduStr;
+      });
+      profileContext += `\n- Formation: ${eduStrings.join('; ')}`;
+    } else if (p.education?.length) {
+      profileContext += `\n- Formation: ${p.education.slice(0, 2).join('; ')}`;
+    }
+    
+    // Skills
+    if (p.skills?.length) profileContext += `\n- Compétences: ${p.skills.slice(0, 12).join(', ')}`;
+    
+    // Languages
+    if (p.languages?.length) profileContext += `\n- Langues: ${p.languages.join(', ')}`;
+  }
+  
+  return profileContext;
+};
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -180,6 +320,12 @@ serve(async (req) => {
       throw new Error("Conversation context is required");
     }
 
+    // Detect conversation language
+    const detectedLanguage = detectLanguage(context.messages);
+    const languageInstruction = detectedLanguage === 'en' 
+      ? '\n\n🌐 LANGUE: La conversation est en ANGLAIS. Réponds EN ANGLAIS.'
+      : '';
+
     // Build conversation history for context
     const conversationHistory = context.messages
       .slice(-10) // Last 10 messages for context
@@ -190,19 +336,8 @@ serve(async (req) => {
     const lastMessage = context.messages[context.messages.length - 1];
     const needsResponse = !lastMessage.is_sender;
 
-    // Build enhanced profile context
-    let profileContext = `- Nom: ${context.recipientName}`;
-    if (context.recipientHeadline) {
-      profileContext += `\n- Headline: ${context.recipientHeadline}`;
-    }
-    if (context.profileData) {
-      const p = context.profileData;
-      if (p.currentRole) profileContext += `\n- Poste actuel: ${p.currentRole}${p.currentCompany ? ` chez ${p.currentCompany}` : ''}`;
-      if (p.location) profileContext += `\n- Localisation: ${p.location}`;
-      if (p.skills?.length) profileContext += `\n- Compétences: ${p.skills.slice(0, 8).join(', ')}`;
-      if (p.yearsOfExperience) profileContext += `\n- Expérience: ~${p.yearsOfExperience} ans`;
-      if (p.pastPositions?.length) profileContext += `\n- Expériences passées: ${p.pastPositions.slice(0, 3).join('; ')}`;
-    }
+    // Build enhanced profile context with full data
+    const profileContext = buildEnhancedProfileContext(context);
 
     // Build enhanced job context
     let jobContext = '';
@@ -271,6 +406,9 @@ Propose plutôt de garder le contact ou de le recontacter quand un poste corresp
 Ne propose AUCUNE mission ou opportunité. Propose uniquement de garder le contact.`;
     }
 
+    // Get tone instructions
+    const toneInstructions = getToneInstructions(context.tone);
+
     const prompt = `Tu es un recruteur tech expérimenté. Génère 3 suggestions de réponses courtes et naturelles pour cette conversation LinkedIn.
 
 PROFIL DU CANDIDAT:
@@ -278,6 +416,9 @@ ${profileContext}
 ${jobContext}
 ${needsInfoContext}
 ${availableJobsContext}
+${languageInstruction}
+
+${toneInstructions}
 
 CONVERSATION:
 ${conversationHistory}
@@ -287,13 +428,14 @@ ${intentGuidance}
 
 RÈGLES CRITIQUES POUR LES SUGGESTIONS:
 1. Maximum 60 mots par suggestion
-2. Ton naturel, comme un vrai humain
+2. Respecte le TON demandé ci-dessus
 3. INTERDIT: superlatifs (exceptionnel, incroyable), formules corporate, emojis excessifs
 4. Varier les options: une courte, une moyenne, une plus détaillée
 5. ⚠️ INTERDIT de mentionner des postes/missions qui ne sont PAS dans la liste "POSTES DISPONIBLES"
 6. Si aucun poste ne correspond au profil → NE PAS inventer de mission, proposer de garder le contact
 7. Si le candidat demande des infos et un poste correspond → UTILISE les données du poste
 8. Si des infos manquent → inclure UNE question de qualification dans la réponse détaillée
+9. Utilise le contexte du profil (About, expériences) pour personnaliser le hook
 
 Réponds UNIQUEMENT en JSON valide:
 {
@@ -351,7 +493,8 @@ Réponds UNIQUEMENT en JSON valide:
         JSON.stringify({ 
           success: true, 
           suggestions: result.suggestions || [],
-          infoToRequest: infoToRequest.length > 0 ? infoToRequest : undefined
+          infoToRequest: infoToRequest.length > 0 ? infoToRequest : undefined,
+          detectedLanguage,
         }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
