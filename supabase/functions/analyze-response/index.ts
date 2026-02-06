@@ -107,10 +107,6 @@ serve(async (req) => {
   try {
     const { context } = await req.json() as { context: AnalysisContext };
     
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) {
-      throw new Error("LOVABLE_API_KEY is not configured");
-    }
 
     if (!context || !context.messages || context.messages.length === 0) {
       throw new Error("Conversation context is required");
@@ -289,40 +285,45 @@ ANALYSE DEMANDÉE (JSON strict, pas de markdown):
   ]` : ''}
 }`;
 
-    console.log("[analyze-response] Calling GPT-5 via Lovable AI...");
+    console.log("[analyze-response] Calling Claude Sonnet via Anthropic API...");
 
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
+    if (!ANTHROPIC_API_KEY) {
+      throw new Error("ANTHROPIC_API_KEY is not configured");
+    }
+
+    const response = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: {
-        "Authorization": `Bearer ${LOVABLE_API_KEY}`,
+        "x-api-key": ANTHROPIC_API_KEY,
+        "anthropic-version": "2023-06-01",
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "openai/gpt-5",
+        model: "claude-sonnet-4-20250514",
+        max_tokens: 4096,
+        temperature: 0.2,
+        system: "Tu es un assistant expert en recrutement tech. Tu analyses les conversations candidat avec précision et réponds UNIQUEMENT en JSON valide, sans markdown ni commentaires. Tes matchings de postes sont rigoureux et basés sur des critères objectifs.",
         messages: [
-          {
-            role: "system", 
-            content: "Tu es un assistant expert en recrutement tech. Tu analyses les conversations candidat avec précision et réponds UNIQUEMENT en JSON valide, sans markdown ni commentaires. Tes matchings de postes sont rigoureux et basés sur des critères objectifs." 
-          },
           { role: "user", content: prompt }
         ],
-        
       }),
     });
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error("[analyze-response] AI error:", response.status, errorText);
-      throw new Error(`AI gateway error: ${response.status}`);
+      console.error("[analyze-response] Anthropic API error:", response.status, errorText);
+      throw new Error(`Anthropic API error: ${response.status}`);
     }
 
     const data = await response.json();
-    let content = data.choices?.[0]?.message?.content || "";
+    // Anthropic response format: data.content[0].text
+    let content = data.content?.[0]?.text || "";
     
     // Clean up potential markdown code blocks
     content = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
     
-    console.log("[analyze-response] AI response received");
+    console.log("[analyze-response] Claude response received");
 
     try {
       const analysis: AnalysisResult = JSON.parse(content);
