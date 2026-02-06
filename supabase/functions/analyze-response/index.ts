@@ -285,7 +285,7 @@ ANALYSE DEMANDÉE (JSON strict, pas de markdown):
   ]` : ''}
 }`;
 
-    console.log("[analyze-response] Calling Claude Sonnet via Anthropic API...");
+    console.log("[analyze-response] Calling Claude Opus 4.6 via Anthropic API...");
 
     const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
     if (!ANTHROPIC_API_KEY) {
@@ -300,7 +300,7 @@ ANALYSE DEMANDÉE (JSON strict, pas de markdown):
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "claude-sonnet-4-20250514",
+        model: "claude-opus-4-6",
         max_tokens: 4096,
         temperature: 0.2,
         system: "Tu es un assistant expert en recrutement tech. Tu analyses les conversations candidat avec précision et réponds UNIQUEMENT en JSON valide, sans markdown ni commentaires. Tes matchings de postes sont rigoureux et basés sur des critères objectifs.",
