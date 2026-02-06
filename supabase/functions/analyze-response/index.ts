@@ -216,26 +216,66 @@ ${job.mustHave ? `- MUST-HAVE: ${job.mustHave}` : ''}`;
         return `- ${details}`;
       }).join('\n');
       
+      // Extract candidate's explicit career intentions from conversation
+      const allMessages = context.messages.map(m => m.text.toLowerCase()).join(' ');
+      const careerIntentions: string[] = [];
+      
+      // Detect management/leadership intentions
+      if (allMessages.includes('head of') || allMessages.includes('director') || allMessages.includes('vp ') || 
+          allMessages.includes('vice president') || allMessages.includes('cto') || allMessages.includes('cio') ||
+          allMessages.includes('chief') || allMessages.includes('management') || allMessages.includes('lead') ||
+          allMessages.includes('manager')) {
+        careerIntentions.push('Recherche poste de LEADERSHIP/MANAGEMENT');
+      }
+      if (allMessages.includes('cloud') || allMessages.includes('infra')) {
+        careerIntentions.push('Domaine: Cloud/Infrastructure');
+      }
+      if (allMessages.includes('freelance') || allMessages.includes('indépendant')) {
+        careerIntentions.push('Préférence: Freelance/Indépendant');
+      }
+      if (allMessages.includes('cdi') || allMessages.includes('salari')) {
+        careerIntentions.push('Préférence: CDI/Salarié');
+      }
+
+      // Detect seniority from headline
+      const headlineLower = (profile.headline || '').toLowerCase();
+      let detectedSeniority = 'mid';
+      if (headlineLower.includes('head of') || headlineLower.includes('director') || headlineLower.includes('vp') ||
+          headlineLower.includes('chief') || headlineLower.includes('cto') || headlineLower.includes('cio')) {
+        detectedSeniority = 'executive';
+      } else if (headlineLower.includes('senior') || headlineLower.includes('lead') || headlineLower.includes('principal') ||
+                 headlineLower.includes('staff') || headlineLower.includes('manager')) {
+        detectedSeniority = 'senior';
+      }
+
+      const intentContext = careerIntentions.length > 0 
+        ? `\nINTENTIONS CARRIÈRE DÉTECTÉES: ${careerIntentions.join(' | ')}`
+        : '';
+      
       jobMatchingPrompt = `
 
 ===== MATCHING POSTES =====
 PROFIL CANDIDAT:
 ${profileContext}
+Niveau détecté: ${detectedSeniority.toUpperCase()}${intentContext}
 
 POSTES DISPONIBLES (${context.availableJobs.length} postes, top 15 affichés):
 ${jobsList}
 
-RÈGLES DE MATCHING:
-1. Compare les skills du profil avec les skills requis de chaque poste
-2. Vérifie la cohérence du niveau d'expérience (années XP vs séniorité demandée)
-3. Vérifie la compatibilité géographique (localisation profil vs lieu poste + politique remote)
-4. Analyse la trajectoire professionnelle (expériences passées pertinentes)
-5. Identifie les mismatches critiques (contrat, séniorité, compétences clés manquantes)
+⚠️ RÈGLES DE MATCHING CRITIQUES:
+1. **NIVEAU HIÉRARCHIQUE EN PRIORITÉ**: Un candidat "Head of" / "CTO" / "Director" ne doit JAMAIS être matché avec des postes de niveau inférieur (SRE, Dev, Engineer). C'est un mismatch CRITIQUE = score 0.
+2. **INTENTIONS EXPLICITES**: Si le candidat mentionne explicitement ce qu'il cherche (ex: "je cherche un poste de CTO"), seuls les postes correspondants sont valides.
+3. Compare les skills du profil avec les skills requis de chaque poste
+4. Vérifie la cohérence du niveau d'expérience (années XP vs séniorité demandée)
+5. Vérifie la compatibilité géographique (localisation profil vs lieu poste + politique remote)
+6. Identifie les mismatches critiques (contrat, type de rôle, niveau hiérarchique)
 
 SCORING:
-- 80-100: Excellent match, recommandation "go"
-- 50-79: Match partiel avec formations possibles, recommandation "maybe"
-- 0-49: Mismatch significatif, recommandation "skip"
+- 80-100: Excellent match niveau + skills + localisation, recommandation "go"
+- 50-79: Match partiel (skills ok mais niveau légèrement différent), recommandation "maybe"  
+- 0-49: Mismatch de niveau hiérarchique OU skills critiques manquants, recommandation "skip"
+
+⚠️ NE RECOMMANDE QUE des postes cohérents avec le niveau du candidat. Si aucun poste ne correspond au niveau recherché, retourne un tableau vide ou avec des scores très bas.
 
 Retourne le TOP 3 des meilleurs matchs avec justification précise.`;
     }
