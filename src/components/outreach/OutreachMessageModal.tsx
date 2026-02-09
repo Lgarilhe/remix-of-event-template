@@ -94,6 +94,10 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
         )
       });
       
+      // Get provider_id for posts fetching
+      const profileAnyLocal = profile as any;
+      const candidateProviderId = profileAnyLocal.provider_id || profile.id;
+
       const { data, error } = await supabase.functions.invoke('generate-outreach-message', {
         body: { 
           profile: profileData, 
@@ -108,6 +112,8 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
           },
           tone,
           senderName: senderName.trim() || undefined,
+          accountId: selectedAccount || undefined,
+          profileId: candidateProviderId || undefined,
         }
       });
 

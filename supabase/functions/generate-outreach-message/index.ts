@@ -109,18 +109,85 @@ function tryParseModelJson(content: string): ModelJson | null {
   }
 }
 
+// Fetch recent LinkedIn posts for a candidate via Unipile
+async function fetchRecentPosts(
+  accountId: string,
+  profileId: string,
+  maxPosts = 5,
+  maxAgeDays = 90,
+): Promise<{ text: string; date: string; reactions?: number }[]> {
+  const UNIPILE_DSN = Deno.env.get("UNIPILE_DSN");
+  const UNIPILE_API_KEY = Deno.env.get("UNIPILE_API_KEY");
+
+  if (!UNIPILE_DSN || !UNIPILE_API_KEY || !accountId || !profileId) {
+    return [];
+  }
+
+  try {
+    const url = `https://${UNIPILE_DSN}/api/v1/users/${encodeURIComponent(profileId)}/posts?account_id=${encodeURIComponent(accountId)}&limit=${maxPosts}`;
+    console.log('[generate-outreach-message] Fetching posts:', url);
+
+    const response = await fetch(url, {
+      headers: {
+        'X-API-KEY': UNIPILE_API_KEY,
+        'accept': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      console.warn('[generate-outreach-message] Posts fetch failed:', response.status);
+      return [];
+    }
+
+    const data = await response.json();
+    const items = data?.items || data?.data || (Array.isArray(data) ? data : []);
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - maxAgeDays);
+
+    const posts: { text: string; date: string; reactions?: number }[] = [];
+    for (const post of items) {
+      const text = post.text || post.body || post.content || '';
+      if (!text || text.length < 20) continue;
+
+      const postDate = post.created_at || post.date || post.timestamp || '';
+      if (postDate) {
+        const d = new Date(postDate);
+        if (d < cutoffDate) continue;
+      }
+
+      const reactions = post.reactions_count || post.likes_count || post.num_likes || 0;
+
+      posts.push({
+        text: text.slice(0, 500),
+        date: postDate ? new Date(postDate).toLocaleDateString('fr-FR') : 'récent',
+        reactions: reactions || undefined,
+      });
+
+      if (posts.length >= 3) break;
+    }
+
+    console.log(`[generate-outreach-message] Found ${posts.length} recent posts`);
+    return posts;
+  } catch (err) {
+    console.warn('[generate-outreach-message] Posts fetch error:', err);
+    return [];
+  }
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const { profile, job, tone = "professional", senderName, candidateStatus = "to_evaluate" } = await req.json() as {
+    const { profile, job, tone = "professional", senderName, candidateStatus = "to_evaluate", accountId, profileId } = await req.json() as {
       profile: ProfileData;
       job: JobData;
       tone?: "professional" | "casual" | "enthusiastic";
       senderName?: string;
       candidateStatus?: CandidateStatus;
+      accountId?: string;
+      profileId?: string;
     };
     
     const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
@@ -132,6 +199,11 @@ serve(async (req) => {
     if (!profile || !job) {
       throw new Error("Profile and job data are required");
     }
+
+    // Fetch posts in parallel with prompt building (non-blocking)
+    const postsPromise = (accountId && profileId)
+      ? fetchRecentPosts(accountId, profileId)
+      : Promise.resolve([]);
 
     // Debug: log accompagnement to verify it's being received
     console.log('[generate-outreach-message] Job accompagnement:', JSON.stringify(job.accompagnement), 'Client:', job.client?.name);
@@ -220,6 +292,26 @@ Tu parles EN TANT QUE recruteur externe/cabinet qui accompagne un client.
 - Tu peux valoriser ta connaissance du client: "Je travaille avec leur CTO"
 - Sois transparent sur ton rôle de cabinet`;
 
+    // Await posts (fetched in parallel during prompt building above)
+    const recentPosts = await postsPromise;
+
+    // Build posts section for the prompt
+    const postsSection = recentPosts.length > 0
+      ? `
+=== PUBLICATIONS LINKEDIN RÉCENTES DU CANDIDAT ===
+${recentPosts.map((p, i) => `POST ${i + 1} (${p.date}${p.reactions ? `, ${p.reactions} réactions` : ''}):
+"${p.text}"`).join('\n\n')}
+=== FIN PUBLICATIONS ===
+
+UTILISATION DES POSTS:
+- Les posts LinkedIn sont une SOURCE PREMIUM de personnalisation (meilleure que le "À propos")
+- Si un post est pertinent par rapport au poste → UTILISE-LE comme accroche ("j'ai vu ton post sur [sujet]")
+- Si un post montre une expertise/passion alignée avec le poste → mentionne-le
+- Si les posts ne sont PAS pertinents (contenu trop générique, sans lien avec le poste) → IGNORE-LES et utilise une autre source de personnalisation
+- JAMAIS mentionner un post ancien (> 2 mois) de manière explicite
+- Le ton de ses posts te renseigne aussi sur son style de communication → adapte-toi`
+      : '';
+
     const prompt = `Tu es un recruteur tech senior. Tu écris des messages LinkedIn ULTRA personnalisés et percutants.
 ${engagementInstructions}
 
@@ -242,6 +334,7 @@ IMPORTANT - ANALYSE LE STYLE D'ÉCRITURE DU CANDIDAT:
 - Utilise-t-il des émojis, de l'humour, des expressions familières ?
 - Son ton est-il corporate, startup, créatif, technique ?
 - ADAPTE TON MESSAGE À SON STYLE pour créer une résonance naturelle` : ''}
+${postsSection}
 
 POSTE À POURVOIR:
 - Titre: ${job.title}
@@ -269,26 +362,32 @@ ${statusInstructions[candidateStatus] || statusInstructions.other}
 - Les candidats "Open to Work" sont 75% plus susceptibles de répondre
 
 1. PERSONNALISATION = FACTEUR N°1 (NON NÉGOCIABLE)
-   Chaque message DOIT contenir au moins UN élément hyper-spécifique au candidat. Cherche dans cet ordre:
+   Chaque message DOIT contenir au moins UN élément hyper-spécifique au candidat. Cherche dans cet ordre de priorité:
    
-   a) SECTION "À PROPOS" (mine d'or):
+   a) PUBLICATIONS LINKEDIN RÉCENTES (si fournies, c'est la MEILLEURE source):
+      - Un post sur un sujet technique lié au poste → "j'ai vu ton post sur [sujet]"
+      - Une prise de position sur un enjeu du secteur → montre que tu l'as lu
+      - Un partage d'expérience professionnelle → fais le lien avec le poste
+      - ATTENTION: n'utilise un post QUE s'il est pertinent par rapport au poste. Sinon ignore-le.
+   
+   b) SECTION "À PROPOS" (mine d'or si pas de posts pertinents):
       - Une passion technique ("j'aime les systèmes distribués")
       - Un side project, une contribution open source
       - Une motivation personnelle ("j'ai quitté X pour Y")
       - Un style de travail ("petites équipes", "ownership")
       - Un hobby ou intérêt inhabituel mentionné
    
-   b) PARCOURS PROFESSIONNEL:
+   c) PARCOURS PROFESSIONNEL:
       - Un ancien employeur commun avec le client → +27% de réponse, TOUJOURS le mentionner si applicable
       - Une transition de carrière intéressante (ex: de corporate à startup)
       - Un changement de poste récent (6-12 mois → paradoxalement réceptif)
       - Une progression remarquable
    
-   c) CONNEXIONS MUTUELLES:
+   d) CONNEXIONS MUTUELLES:
       - Si tu peux déduire une connexion commune (même école, même ex-employeur), mentionne-la
       - Ça transforme un cold outreach en warm intro
    
-   d) ACTIVITÉ LINKEDIN (si visible):
+   e) ACTIVITÉ LINKEDIN (si aucun post récupéré automatiquement):
       - Un article publié, un post, un commentaire
       - Un engagement sur un sujet tech spécifique
    
