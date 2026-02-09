@@ -26,10 +26,8 @@ async function fetchWithRetry(
     const res = await fetch(url, init);
     lastResponse = res;
 
-    // Success
     if (res.ok) return res;
 
-    // Retry only on transient upstream issues
     const shouldRetry = retryStatusCodes.includes(res.status);
     if (!shouldRetry || attempt === retries) return res;
 
@@ -38,7 +36,6 @@ async function fetchWithRetry(
     await sleep(delay);
   }
 
-  // Should be unreachable
   return lastResponse!;
 }
 
@@ -58,20 +55,17 @@ interface ProfileData {
   currentCompany?: string;
   location?: string;
   skills?: string[];
-  summary?: string;                      // LinkedIn "About" section
-  workExperience?: WorkExperienceItem[]; // Enriched work history
-  pastPositions?: string[];              // Legacy format for backward compatibility
+  summary?: string;
+  workExperience?: WorkExperienceItem[];
+  pastPositions?: string[];
   education?: string[];
   yearsOfExperience?: number;
-  // NEW: Tenure analysis
-  averageTenureMonths?: number | null;   // Average time at each position
-  // NEW: Receptivity signals
-  openToWork?: boolean;                  // Actively looking
-  openProfile?: boolean;                 // Can receive free InMail
-  networkDistance?: number | null;       // 1st, 2nd, 3rd degree
+  averageTenureMonths?: number | null;
+  openToWork?: boolean;
+  openProfile?: boolean;
+  networkDistance?: number | null;
 }
 
-// Skill synonyms for semantic matching
 const SKILL_SYNONYMS: Record<string, string[]> = {
   'kubernetes': ['k8s', 'kube', 'container orchestration'],
   'javascript': ['js', 'ecmascript', 'es6', 'es2015'],
@@ -114,17 +108,14 @@ interface JobData {
   remote?: string;
   xpMin?: number;
   xpMax?: number;
-  // Salary information
   salaryMin?: number;
   salaryMax?: number;
   tjmMin?: number;
   tjmMax?: number;
-  contractType?: string; // CDI, Freelance, etc.
-  // Scoring criteria from job
+  contractType?: string;
   mustHave?: string;
   shouldHave?: string;
   niceToHave?: string;
-  // Transversal criteria (company-wide requirements)
   transversalCriteria?: {
     must?: string;
     should?: string;
@@ -151,17 +142,14 @@ serve(async (req) => {
       throw new Error("ANTHROPIC_API_KEY is not configured");
     }
 
-    // Handle batch scoring
     const profilesToScore = profiles || (profile ? [profile] : []);
     
     if (profilesToScore.length === 0) {
       throw new Error("No profile(s) provided");
     }
 
-    // Format salary info for prompt
     const formatSalaryInfo = (job: JobData): string => {
       const parts: string[] = [];
-      
       if (job.salaryMin || job.salaryMax) {
         if (job.salaryMin && job.salaryMax) {
           parts.push(`Salaire: ${job.salaryMin}k€ - ${job.salaryMax}k€ brut/an`);
@@ -171,7 +159,6 @@ serve(async (req) => {
           parts.push(`Salaire maximum: ${job.salaryMax}k€ brut/an`);
         }
       }
-      
       if (job.tjmMin || job.tjmMax) {
         if (job.tjmMin && job.tjmMax) {
           parts.push(`TJM: ${job.tjmMin}€ - ${job.tjmMax}€/jour`);
@@ -181,15 +168,12 @@ serve(async (req) => {
           parts.push(`TJM maximum: ${job.tjmMax}€/jour`);
         }
       }
-      
       if (job.contractType) {
         parts.push(`Type de contrat: ${job.contractType}`);
       }
-      
       return parts.length > 0 ? parts.join('\n') : 'Rémunération: Non spécifiée (à estimer)';
     };
 
-    // Batch processing to avoid rate limits: 3 profiles at a time with 1.5s delay
     const BATCH_SIZE = 3;
     const DELAY_BETWEEN_BATCHES_MS = 1500;
     const results: any[] = [];
@@ -199,25 +183,213 @@ serve(async (req) => {
 
       const batchResults = await Promise.all(
         batch.map(async (p) => {
-        try {
-          const profileSkills = (p.skills || []).map(s => s.toLowerCase());
-          const jobSkills = (job.skills || []).map(s => s.toLowerCase());
-          
-          // Semantic skill matching function
-          const skillsMatch = (profileSkill: string, jobSkill: string): boolean => {
-            // Direct match (partial)
-            if (profileSkill.includes(jobSkill) || jobSkill.includes(profileSkill)) {
-              return true;
-            }
-            // Check synonyms
-            for (const [canonical, synonyms] of Object.entries(SKILL_SYNONYMS)) {
-              const allVariants = [canonical, ...synonyms];
-              const profileMatches = allVariants.some(v => profileSkill.includes(v) || v.includes(profileSkill));
-              const jobMatches = allVariants.some(v => jobSkill.includes(v) || v.includes(jobSkill));
-              if (profileMatches && jobMatches) {
+          try {
+            const profileSkills = (p.skills || []).map(s => s.toLowerCase());
+            const jobSkills = (job.skills || []).map(s => s.toLowerCase());
+            
+            const skillsMatch = (profileSkill: string, jobSkill: string): boolean => {
+              if (profileSkill.includes(jobSkill) || jobSkill.includes(profileSkill)) {
                 return true;
+              }
+              for (const [canonical, synonyms] of Object.entries(SKILL_SYNONYMS)) {
+                const allVariants = [canonical, ...synonyms];
+                const profileMatches = allVariants.some(v => profileSkill.includes(v) || v.includes(profileSkill));
+                const jobMatches = allVariants.some(v => jobSkill.includes(v) || v.includes(jobSkill));
+                if (profileMatches && jobMatches) {
+                  return true;
+                }
+              }
+              return false;
+            };
 
-    // Return single result or array based on input
+            const matchedSkills = jobSkills.filter(js => 
+              profileSkills.some(ps => skillsMatch(ps, js))
+            );
+            const missingSkills = jobSkills.filter(js => 
+              !profileSkills.some(ps => skillsMatch(ps, js))
+            );
+
+            // Build work experience text
+            let workExpText = '';
+            if (p.workExperience && p.workExperience.length > 0) {
+              workExpText = p.workExperience.map(w => {
+                let line = `- ${w.role} @ ${w.company}`;
+                if (w.duration) line += ` (${w.duration})`;
+                if (w.durationMonths) line += ` [${w.durationMonths} mois]`;
+                if (w.description) line += `\n  ${w.description.substring(0, 200)}`;
+                if (w.skills && w.skills.length > 0) line += `\n  Skills: ${w.skills.join(', ')}`;
+                return line;
+              }).join('\n');
+            } else if (p.pastPositions && p.pastPositions.length > 0) {
+              workExpText = p.pastPositions.map(pp => `- ${pp}`).join('\n');
+            }
+
+            // Build transversal criteria text
+            let transversalText = '';
+            if (job.transversalCriteria) {
+              const tc = job.transversalCriteria;
+              if (tc.context) transversalText += `Contexte entreprise: ${tc.context}\n`;
+              if (tc.must) transversalText += `Critères transversaux OBLIGATOIRES: ${tc.must}\n`;
+              if (tc.should) transversalText += `Critères transversaux IMPORTANTS: ${tc.should}\n`;
+              if (tc.niceToHave) transversalText += `Critères transversaux BONUS: ${tc.niceToHave}\n`;
+            }
+
+            const prompt = `Tu es un expert en recrutement tech. Évalue la correspondance entre ce profil LinkedIn et cette offre d'emploi.
+
+POSTE:
+- Titre: ${job.title}
+- Client/Entreprise: ${job.client?.name || 'Non spécifié'} (Secteur: ${job.client?.sector || 'Non spécifié'})
+- Séniorité recherchée: ${job.seniority || 'Non spécifiée'}
+- Localisation: ${job.location || 'Non spécifiée'}
+- Remote: ${job.remote || 'Non spécifié'}
+- Expérience: ${job.xpMin || '?'} - ${job.xpMax || '?'} ans
+- ${formatSalaryInfo(job)}
+- Compétences requises: ${job.skills.join(', ')}
+${job.mustHave ? `- Critères OBLIGATOIRES (must-have): ${job.mustHave}` : ''}
+${job.shouldHave ? `- Critères IMPORTANTS (should-have): ${job.shouldHave}` : ''}
+${job.niceToHave ? `- Critères BONUS (nice-to-have): ${job.niceToHave}` : ''}
+${job.requirements ? `- Exigences détaillées: ${job.requirements}` : ''}
+${job.description ? `- Description du poste: ${job.description.substring(0, 500)}` : ''}
+${transversalText ? `\nCRITÈRES TRANSVERSAUX (appliqués à tous les postes):\n${transversalText}` : ''}
+
+PROFIL CANDIDAT:
+- Nom: ${p.name}
+- Titre actuel: ${p.headline || p.currentRole || 'Non spécifié'}
+- Entreprise actuelle: ${p.currentCompany || 'Non spécifiée'}
+- Localisation: ${p.location || 'Non spécifiée'}
+- Années d'expérience: ${p.yearsOfExperience ?? 'Non spécifié'}
+- Tenure moyenne: ${p.averageTenureMonths ? `${Math.round(p.averageTenureMonths)} mois` : 'Non calculée'}
+- Open to Work: ${p.openToWork ? 'Oui' : 'Non/Inconnu'}
+- Open Profile (InMail gratuit): ${p.openProfile ? 'Oui' : 'Non'}
+- Réseau: ${p.networkDistance ? `${p.networkDistance}ème degré` : 'Inconnu'}
+${p.summary ? `- Résumé: ${p.summary.substring(0, 300)}` : ''}
+- Compétences LinkedIn: ${profileSkills.join(', ') || 'Aucune'}
+- Compétences matchées avec le poste: ${matchedSkills.join(', ') || 'Aucune'}
+- Compétences manquantes: ${missingSkills.join(', ') || 'Aucune'}
+${p.education ? `- Formation: ${p.education.join(', ')}` : ''}
+${workExpText ? `\nEXPÉRIENCE PROFESSIONNELLE:\n${workExpText}` : ''}
+
+RÈGLES DE SCORING CRITIQUES:
+
+1. DÉTECTION DE SÉNIORITÉ (ÉLIMINATOIRE):
+   - Si le poste est un rôle de contributeur technique (Engineer, Developer, SRE, DevOps, etc.) et que le candidat occupe un rôle de direction/management (CTO, VP Engineering, Head of, Director, etc.) → Score ≤ 30, c'est un MISMATCH de séniorité
+   - Si le poste est un rôle de direction et que le candidat est un contributeur junior/mid → Score ≤ 35
+   - Les promotions internes au sein d'une même entreprise comptent comme UNE SEULE période de tenure
+
+2. CRITÈRES MUST-HAVE: Si des critères obligatoires sont définis et que le candidat n'en remplit AUCUN → Score ≤ 35
+
+3. ADÉQUATION GÉOGRAPHIQUE: Évalue si la localisation du candidat est compatible avec le poste (en tenant compte du remote)
+
+4. EXPÉRIENCE: Compare les années d'expérience du candidat avec la fourchette demandée
+
+5. RÉMUNÉRATION: Si des indices de rémunération sont disponibles (titre senior dans startup vs. package grand groupe), note les risques de mismatch
+
+Réponds UNIQUEMENT en JSON valide avec cette structure exacte:
+{
+  "score": <nombre entre 0 et 100>,
+  "recommendation": "<STRONG_MATCH|GOOD_MATCH|POSSIBLE_MATCH|WEAK_MATCH|NO_MATCH>",
+  "summary": "<1-2 phrases résumant l'évaluation>",
+  "strengths": ["<point fort 1>", "<point fort 2>"],
+  "concerns": ["<point faible 1>", "<point faible 2>"],
+  "missingSkills": ["<compétence manquante 1>"],
+  "seniorityMatch": "<MATCH|OVERQUALIFIED|UNDERQUALIFIED|MISMATCH>",
+  "locationMatch": "<MATCH|PARTIAL|REMOTE_OK|MISMATCH|UNKNOWN>",
+  "experienceMatch": "<MATCH|OVER|UNDER|UNKNOWN>",
+  "tenureAnalysis": "<STABLE|MODERATE|JOB_HOPPER|UNKNOWN>",
+  "receptivityScore": <nombre entre 0 et 100, basé sur openToWork/openProfile/networkDistance>,
+  "skipReason": "<null ou raison du rejet si score < 40>"
+}`;
+
+            const res = await fetchWithRetry(
+              "https://api.anthropic.com/v1/messages",
+              {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  "x-api-key": ANTHROPIC_API_KEY,
+                  "anthropic-version": "2023-06-01",
+                },
+                body: JSON.stringify({
+                  model: "claude-sonnet-4-20250514",
+                  max_tokens: 1024,
+                  messages: [
+                    {
+                      role: "user",
+                      content: prompt,
+                    },
+                  ],
+                }),
+              },
+              { retries: 3, baseDelayMs: 800, retryStatusCodes: [500, 502, 503, 504, 529] }
+            );
+
+            if (!res.ok) {
+              const errorBody = await res.text();
+              console.error(`Anthropic API error:`, { status: res.status, body: errorBody });
+              
+              if (res.status === 429) {
+                throw new Error("RATE_LIMITED");
+              }
+              if (res.status === 402) {
+                throw new Error("CREDITS_EXHAUSTED");
+              }
+              throw new Error(`Anthropic API error: ${res.status}`);
+            }
+
+            const data = await res.json();
+            const content = data.content?.[0]?.text || '';
+            
+            // Extract JSON from response
+            const jsonMatch = content.match(/\{[\s\S]*\}/);
+            if (!jsonMatch) {
+              console.error(`Failed to parse scoring response for ${p.name}:`, content);
+              throw new Error("Invalid AI response format");
+            }
+
+            const scoring = JSON.parse(jsonMatch[0]);
+
+            return {
+              name: p.name,
+              score: scoring.score,
+              recommendation: scoring.recommendation,
+              summary: scoring.summary,
+              strengths: scoring.strengths || [],
+              concerns: scoring.concerns || [],
+              missingSkills: scoring.missingSkills || [],
+              seniorityMatch: scoring.seniorityMatch || 'UNKNOWN',
+              locationMatch: scoring.locationMatch || 'UNKNOWN',
+              experienceMatch: scoring.experienceMatch || 'UNKNOWN',
+              tenureAnalysis: scoring.tenureAnalysis || 'UNKNOWN',
+              receptivityScore: scoring.receptivityScore ?? null,
+              skipReason: scoring.score < 40 ? (scoring.skipReason || scoring.summary) : null,
+              matchedSkills: matchedSkills,
+              matchedSkillCount: matchedSkills.length,
+              totalRequiredSkills: jobSkills.length,
+            };
+          } catch (err) {
+            console.error(`Error scoring profile: ${p.name}`, err);
+            return {
+              name: p.name,
+              score: 0,
+              recommendation: 'ERROR',
+              summary: err instanceof Error ? err.message : 'Unknown error',
+              strengths: [],
+              concerns: [],
+              missingSkills: [],
+              error: err instanceof Error ? err.message : 'Unknown error',
+            };
+          }
+        })
+      );
+
+      results.push(...batchResults);
+
+      // Delay between batches to avoid rate limits
+      if (i + BATCH_SIZE < profilesToScore.length) {
+        await sleep(DELAY_BETWEEN_BATCHES_MS);
+      }
+    }
+
     const responseData = profiles ? { results } : { result: results[0] };
 
     return new Response(
