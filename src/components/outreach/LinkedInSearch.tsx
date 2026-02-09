@@ -244,6 +244,13 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
       const { data, error } = await supabase.functions.invoke('refine-search-filters', {
         body: {
           currentFilters: currentSearchParams,
+          internalFilters: {
+            calculated_experience_min: search.filters.calculated_experience_min,
+            calculated_experience_max: search.filters.calculated_experience_max,
+            years_of_experience_min: search.filters.years_of_experience_min,
+            years_of_experience_max: search.filters.years_of_experience_max,
+            location_within_area: search.filters.location_within_area,
+          },
           totalResults: search.total,
           resultCount: search.results.length,
           jobTitle: search.selectedJob.title,
