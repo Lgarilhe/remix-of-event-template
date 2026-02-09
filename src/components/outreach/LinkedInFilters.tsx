@@ -45,6 +45,7 @@ import { CompanyFilter } from './CompanyFilter';
 import { TOP_SCHOOLS } from './topSchools';
 import { isFilterSupported, getFilterTooltip, FilterKey } from './filterApiSupport';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -52,6 +53,7 @@ import { Switch } from '@/components/ui/switch';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import {
   X,
   MapPin,
@@ -78,6 +80,7 @@ import {
   Tag,
   UsersRound,
   Network,
+  Pencil,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -113,6 +116,8 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
   const [newRoleKeywords, setNewRoleKeywords] = useState('');
   const [newRolePriority, setNewRolePriority] = useState<FilterPriority>('MUST_HAVE');
   const [newRoleScope, setNewRoleScope] = useState<FilterScope>('CURRENT_OR_PAST');
+  const [roleDialogOpen, setRoleDialogOpen] = useState(false);
+  const [roleDialogDraft, setRoleDialogDraft] = useState('');
 
   const toggleSection = useCallback((section: string) => {
     setOpenSections(prev => ({ ...prev, [section]: !prev[section] }));
@@ -806,25 +811,61 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
             ))}
             <div className={`space-y-2 p-2 bg-gray-50 rounded-lg ${!isFilterSupported(filters.api, 'role') ? 'opacity-50 pointer-events-none' : ''}`}>
               <div className="flex gap-2">
-                <Input
-                  value={newRoleKeywords}
-                  onChange={(e) => setNewRoleKeywords(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && newRoleKeywords.trim()) {
-                      e.preventDefault();
-                      handleAddRole();
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (isFilterSupported(filters.api, 'role')) {
+                      setRoleDialogDraft(newRoleKeywords);
+                      setRoleDialogOpen(true);
                     }
                   }}
-                  onBlur={() => {
-                    if (newRoleKeywords.trim()) {
-                      handleAddRole();
-                    }
-                  }}
-                  placeholder="Tapez un rôle et appuyez Entrée..."
-                  className="text-sm h-8 flex-1"
                   disabled={!isFilterSupported(filters.api, 'role')}
-                />
+                  className="w-full text-left flex items-center gap-2 px-3 py-1.5 rounded-md border border-input bg-background hover:bg-accent/50 transition-colors h-8 group disabled:opacity-50 disabled:pointer-events-none"
+                >
+                  {newRoleKeywords ? (
+                    <span className="text-sm truncate flex-1">{newRoleKeywords}</span>
+                  ) : (
+                    <span className="text-xs text-muted-foreground flex-1">Cliquez pour ajouter un rôle...</span>
+                  )}
+                  <Pencil className="w-3 h-3 text-muted-foreground shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
+                </button>
               </div>
+              <Dialog open={roleDialogOpen} onOpenChange={setRoleDialogOpen}>
+                <DialogContent className="sm:max-w-md">
+                  <DialogHeader>
+                    <DialogTitle>Rôle (mots-clés booléens)</DialogTitle>
+                  </DialogHeader>
+                  <Textarea
+                    autoFocus
+                    value={roleDialogDraft}
+                    onChange={(e) => setRoleDialogDraft(e.target.value)}
+                    placeholder='Ex: Solution Architect OR Cloud Architect OR "Solutions Engineer"'
+                    className="min-h-[100px] text-sm font-mono"
+                    rows={4}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Utilisez OR pour combiner plusieurs titres. Les guillemets pour les expressions exactes.
+                  </p>
+                  <DialogFooter>
+                    <Button variant="outline" size="sm" onClick={() => setRoleDialogOpen(false)}>Annuler</Button>
+                    <Button size="sm" onClick={() => {
+                      setNewRoleKeywords(roleDialogDraft.trim());
+                      setRoleDialogOpen(false);
+                      if (roleDialogDraft.trim()) {
+                        const newRole: RoleFilter = {
+                          keywords: roleDialogDraft.trim(),
+                          priority: newRolePriority,
+                          scope: newRoleScope,
+                        };
+                        onChange({ ...filters, role: [...filters.role, newRole] });
+                        setNewRoleKeywords('');
+                      }
+                    }}>
+                      Ajouter
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
               <div className="grid grid-cols-2 gap-2">
                 <div className="space-y-1">
                   <Label className="text-[10px] text-muted-foreground">Priorité</Label>
