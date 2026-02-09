@@ -4,7 +4,7 @@ import { LinkedInFiltersState, LinkedInProfile, INITIAL_FILTERS } from '@/compon
 import { useUnipileQuota } from '@/hooks/useUnipileQuota';
 import { useJobCandidateStatus } from '@/hooks/useJobCandidateStatus';
 import { useSourcingProjects, SourcingProject } from '@/hooks/useSourcingProjects';
-import { useCopilotActions } from '@/hooks/useCopilotActions';
+
 import { Job } from '@/pages/JobSpace';
 import { JobMatchResult } from '@/components/outreach/JobScoreDisplay';
 import { filterByCalculatedExperience } from '@/components/outreach/calculateExperience';
@@ -57,7 +57,7 @@ export function useLinkedInSearch({
   const quota = useUnipileQuota(selectedAccount);
   const candidateStatus = useJobCandidateStatus(selectedJob?.id || null);
   const { updateProject, findOrCreateForJob } = useSourcingProjects();
-  const { updateJobContext, updateProfilesContext, updateFiltersContext } = useCopilotActions();
+  
 
   // Sync refs
   useEffect(() => {
@@ -91,53 +91,16 @@ export function useLinkedInSearch({
     }
   }, [activeProject?.id]);
 
-  // Sync selected job to Copilot context
+  // Sync selected job state
   useEffect(() => {
     if (selectedJob) {
-      updateJobContext({
-        id: selectedJob.id,
-        title: selectedJob.title,
-        client: selectedJob.client?.name || '',
-        skills: selectedJob.skills,
-        requirements: selectedJob.requirements,
-        description: selectedJob.description,
-        remote: selectedJob.remote,
-        salaryMin: selectedJob.salaryMin,
-        salaryMax: selectedJob.salaryMax,
-      });
       setStatusFilter('all');
       setShowDismissed(false);
     } else {
-      updateJobContext(null);
       setStatusFilter('all');
       setShowDismissed(false);
     }
-  }, [selectedJob, updateJobContext]);
-
-  // Sync selected profiles to Copilot
-  useEffect(() => {
-    const selectedProfilesData = results
-      .filter(p => selectedProfiles.has(p.id))
-      .map(p => ({
-        id: p.id,
-        name: p.name || `${p.first_name || ''} ${p.last_name || ''}`.trim(),
-        headline: p.headline,
-        profileUrl: p.public_profile_url || p.profile_url,
-        location: p.location,
-        summary: p.summary,
-        currentCompany: p.work_experience?.[0]?.company,
-        workExperience: p.work_experience,
-        education: p.education,
-        skills: p.skills,
-        network_distance: p.network_distance,
-      }));
-    updateProfilesContext(selectedProfilesData);
-  }, [selectedProfiles, results, updateProfilesContext]);
-
-  // Sync filters to Copilot
-  useEffect(() => {
-    updateFiltersContext(filters);
-  }, [filters, updateFiltersContext]);
+  }, [selectedJob]);
 
   // Clear filters
   const handleClearFilters = useCallback(() => {
