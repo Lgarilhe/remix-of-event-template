@@ -285,13 +285,21 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
             autoFocus
             value={keywordsDraft}
             onChange={(e) => setKeywordsDraft(e.target.value)}
-            placeholder='Ex: (Terraform OR IaC OR "Infrastructure as Code") AND (AWS OR Azure)'
-            className="min-h-[120px] text-sm font-mono"
-            rows={5}
+            placeholder='Ex: (Terraform OR IaC OR "Infrastructure as Code") AND (AWS OR Azure) NOT (junior OR stagiaire)'
+            className="min-h-[140px] text-sm font-mono"
+            rows={6}
           />
-          <p className="text-xs text-muted-foreground">
-            Utilisez les opérateurs booléens : AND, OR, NOT et les guillemets pour les expressions exactes.
-          </p>
+          <div className="space-y-1.5 text-xs text-muted-foreground bg-muted/50 rounded-md p-3">
+            <p className="font-medium text-foreground/70">💡 Astuces Boolean avancées :</p>
+            <ul className="space-y-1 list-disc list-inside">
+              <li><strong>OR</strong> entre synonymes : <code className="text-[10px] bg-muted px-1 rounded">Java OR JEE OR J2EE</code></li>
+              <li><strong>AND</strong> entre catégories : <code className="text-[10px] bg-muted px-1 rounded">(Java OR JEE) AND (Spring OR SpringBoot)</code></li>
+              <li><strong>NOT</strong> pour exclure : <code className="text-[10px] bg-muted px-1 rounded">NOT (junior OR stagiaire OR freelance)</code></li>
+              <li><strong>Guillemets</strong> pour expressions exactes : <code className="text-[10px] bg-muted px-1 rounded">"data scientist"</code></li>
+              <li><strong>Wildcard *</strong> pour variantes : <code className="text-[10px] bg-muted px-1 rounded">cloud*</code> → cloud, cloudops, cloudstack</li>
+            </ul>
+            <p className="text-[10px] mt-1 text-muted-foreground/70">⚠️ Mettre les titres de poste dans le champ Rôle, pas ici. Limite ~200 caractères.</p>
+          </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setKeywordsDialogOpen(false)}>Annuler</Button>
             <Button onClick={() => { setFilters(f => ({ ...f, keywords: keywordsDraft })); setKeywordsDialogOpen(false); }}>
