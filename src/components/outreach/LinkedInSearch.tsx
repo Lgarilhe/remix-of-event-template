@@ -250,6 +250,8 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
             years_of_experience_min: search.filters.years_of_experience_min,
             years_of_experience_max: search.filters.years_of_experience_max,
             location_within_area: search.filters.location_within_area,
+            degree: search.filters.degree,
+            skills: search.filters.skills,
           },
           totalResults: search.total,
           resultCount: search.results.length,

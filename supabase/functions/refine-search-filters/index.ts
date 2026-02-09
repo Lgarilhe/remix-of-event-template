@@ -41,31 +41,48 @@ IMPORTANT - DEUX TYPES DE FILTRES D'EXPÉRIENCE:
    - Ces valeurs sont en ANNÉES. Ex: min=3, max=8 signifie 3-8 ans d'expérience calculée depuis le diplôme
    - TOUJOURS ajuster calculated_experience_min et calculated_experience_max en PRIORITÉ plutôt que years_of_experience
 
+FILTRES DISPONIBLES À AJUSTER:
+- "keywords": chaîne booléenne (AND/OR/NOT) — levier principal
+- "location_within_area": rayon en miles (25, 50, 75, 100)
+- "role": tableau d'objets {keywords, priority, scope} pour les titres de poste
+- "calculated_experience_min" / "calculated_experience_max": expérience calculée (années)
+- "degree": tableau d'objets {id, name, priority} pour le niveau d'études. IDs: 1=Bac, 2=Licence, 3=Master, 4=MBA, 5=Doctorat, 6=Ingénieur, 7=Professionnel
+  - Pour ÉLARGIR: supprimer le filtre degree ou ajouter des niveaux inférieurs
+  - Pour AFFINER: ajouter un filtre degree MUST_HAVE sur Master/Ingénieur/Doctorat
+- "skills_keywords": tableau de strings pour les compétences LinkedIn (ex: ["Python", "Machine Learning", "TensorFlow"])
+  - Pour ÉLARGIR: réduire la liste ou supprimer les compétences trop spécifiques
+  - Pour AFFINER: ajouter des compétences techniques précises liées au poste
+
 RÈGLES D'ÉLARGISSEMENT (quand trop peu de résultats):
-1. Augmenter le rayon géographique (location_within_area): 25→50→75→100 miles
-2. Passer le role de MUST_HAVE à CAN_HAVE ou supprimer des titres trop spécifiques
-3. Simplifier les keywords: réduire le nombre de groupes AND, garder 1-2 max
-4. Élargir calculated_experience_min et calculated_experience_max: -2 ans sur min, +3 ans sur max
-5. Supprimer des filtres secondaires (skills, school, spotlight)
-6. NE PAS toucher au compte ni au mode API
+1. Simplifier les keywords: réduire le nombre de groupes AND, garder 1-2 max
+2. Augmenter le rayon géographique (location_within_area): 25→50→75→100
+3. Passer le role de MUST_HAVE à CAN_HAVE ou supprimer des titres trop spécifiques
+4. Élargir calculated_experience_min/max: -2 ans sur min, +3 ans sur max
+5. Supprimer ou alléger le filtre degree
+6. Réduire la liste skills_keywords
+7. NE PAS toucher au compte ni au mode API
 
 RÈGLES D'AFFINAGE (quand trop de résultats):
-1. Réduire le rayon géographique
-2. Ajouter des groupes AND aux keywords
-3. Resserrer calculated_experience_min et calculated_experience_max
+1. Ajouter des groupes AND aux keywords
+2. Réduire le rayon géographique
+3. Resserrer calculated_experience_min/max
 4. Passer des filtres de CAN_HAVE à MUST_HAVE
 5. Ajouter des exclusions NOT dans les keywords
+6. Ajouter un filtre degree (ex: Master minimum)
+7. Ajouter des compétences techniques précises dans skills_keywords
 
 PRIORITÉ DES AJUSTEMENTS (du plus impactant au moins):
 1. Keywords (AND/OR structure)
 2. Location radius
 3. Role priority
 4. Expérience calculée (calculated_experience_min / calculated_experience_max)
-5. Autres filtres
+5. Niveau d'études (degree)
+6. Compétences (skills_keywords)
+7. Autres filtres
 
 Retourne UNIQUEMENT un JSON avec:
 - adjustments: tableau d'objets décrivant chaque changement. Chaque objet a:
-  - field: string (nom du champ: "keywords", "location_within_area", "role", "calculated_experience_min", "calculated_experience_max", etc.)
+  - field: string (nom du champ exact parmi ceux listés ci-dessus)
   - value: la nouvelle valeur pour ce champ
   - reason: string (explication courte du pourquoi en français)
 - summary: string (résumé en 1 phrase de ce qui a changé, en français)
