@@ -262,11 +262,28 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
         return;
       }
 
+      // Fields that MUST remain arrays in the filter state
+      const arrayFields = new Set([
+        'role', 'location', 'school', 'company', 'industry', 'function',
+        'degree', 'skills', 'job_title', 'seniority', 'network_distance',
+        'profile_language', 'open_to', 'groups', 'company_location',
+        'past_company', 'past_job_title', 'company_headcount', 'company_type',
+        'company_keywords', 'tags',
+      ]);
+
       search.setFilters(prev => {
         const updated = { ...prev };
         for (const adj of adjustments) {
           const field = adj.field as string;
-          if (field in updated) {
+          if (!(field in updated)) continue;
+          
+          // Ensure array fields stay arrays
+          if (arrayFields.has(field)) {
+            if (Array.isArray(adj.value)) {
+              (updated as any)[field] = adj.value;
+            }
+            // Skip non-array values for array fields
+          } else {
             (updated as any)[field] = adj.value;
           }
         }
