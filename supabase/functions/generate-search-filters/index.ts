@@ -258,16 +258,17 @@ PLAGES PAR DÉFAUT (si aucun indice):
 - Les filtres à sélection préformatée (titres, compétences, taille) sont souvent imprécis → préfère le Boolean direct.
 
 === VARIABLES D'AJUSTEMENT (SPOTLIGHTS & OPEN TO WORK) ===
-LinkedIn Recruiter propose des "spotlights" qui filtrent les profils par signal comportemental:
-- LIKELY_TO_RESPOND: Profils susceptibles de répondre (signal LinkedIn basé sur l'activité) → RECOMMANDÉ PAR DÉFAUT
+LinkedIn Recruiter propose des "spotlights" qui filtrent les profils par signal comportemental.
+Valeurs VALIDES pour l'API Unipile:
 - OPEN_TO_WORK: Profils déclarés ouverts aux opportunités → utile mais réduit le vivier
-- RECENTLY_CHANGED_JOBS: Changement de poste récent → bon pour les profils en transition
-- RECENTLY_PROMOTED: Récemment promu → profils satisfaits, moins réceptifs
-- OPEN_LINK: InMail gratuit possible → utile pour la prospection
-- SHARED_EXPERIENCES: Expériences communes avec le recruteur
+- ACTIVE_TALENT: Profils actifs sur LinkedIn récemment → RECOMMANDÉ PAR DÉFAUT
+- REDISCOVERED_CANDIDATES: Candidats déjà identifiés/contactés → utile pour relance
+- INTERNAL_CANDIDATES: Candidats internes à l'entreprise → rarement pertinent en sourcing externe
+- INTERESTED_IN_YOUR_COMPANY: Profils ayant montré un intérêt pour l'entreprise → bon signal
+- HAVE_COMPANY_CONNECTIONS: Profils avec des connexions dans l'entreprise → bon pour approche réseau
 
 STRATÉGIE RECOMMANDÉE:
-- suggest_spotlight: "LIKELY_TO_RESPOND" par défaut (maximise les chances de réponse sans réduire le vivier)
+- suggest_spotlight: "ACTIVE_TALENT" par défaut (profils récemment actifs, bonne réceptivité)
 - suggest_open_to_work: false par défaut (trop restrictif, réduit le vivier de 80%+)
 - Pour les profils RARES/PÉNURIQUES: ne PAS activer open_to_work ni spotlight restrictif
 
@@ -276,7 +277,7 @@ RÈGLES MÉTIER:
 2. Les critères MUST-HAVE techniques vont dans keywords, les soft-skills dans skills_to_search
 3. open_to_work = false par défaut (trop restrictif sinon)
 4. Toujours inclure des exclusions NOT pertinentes
-5. suggest_spotlight = "LIKELY_TO_RESPOND" par défaut sauf profil pénurique
+5. suggest_spotlight = "ACTIVE_TALENT" par défaut sauf profil pénurique
 
 Retourne UNIQUEMENT un objet JSON avec:
 - keywords: string - Booléen LAYERED: "(catégorie1 OR alt1) AND (catégorie2 OR alt2) NOT (exclusion1 OR exclusion2)"
@@ -290,7 +291,7 @@ Retourne UNIQUEMENT un objet JSON avec:
 - location_hint: string
 - job_category: string - "tech", "business", "data", "product", "design", "other"
 - suggest_open_to_work: boolean - false sauf si explicitement demandé
-- suggest_spotlight: string - "LIKELY_TO_RESPOND" par défaut, "" si profil pénurique (pour ne pas réduire le vivier)
+- suggest_spotlight: string - "ACTIVE_TALENT" par défaut, "" si profil pénurique (pour ne pas réduire le vivier). Valeurs valides: OPEN_TO_WORK, ACTIVE_TALENT, REDISCOVERED_CANDIDATES, INTERNAL_CANDIDATES, INTERESTED_IN_YOUR_COMPANY, HAVE_COMPANY_CONNECTIONS
 - keyword_rationale: string - Explication de la structure layered choisie (1 phrase)
 - experience_rationale: string - Explication de la plage d'expérience (1 phrase)
 - search_rationale: string - Stratégie globale en 1 phrase (mentionner Role/Work/Context)
@@ -534,7 +535,7 @@ ${transversal.context ? `Contexte: ${transversal.context}` : ''}` : ''}
 
     // === RÈGLE 5: Spotlight et Open to Work comme leviers d'ajustement ===
     const openToWork = parsed.suggest_open_to_work === true; // Default false (trop restrictif)
-    const spotlight = parsed.suggest_spotlight || 'LIKELY_TO_RESPOND'; // Default LIKELY_TO_RESPOND
+    const spotlight = parsed.suggest_spotlight || 'ACTIVE_TALENT'; // Default ACTIVE_TALENT
 
     // === RÈGLE 6: Utiliser les valeurs de l'IA avec élargissement léger ===
     // L'IA a déjà fait le travail d'inférence, on applique juste un petit élargissement

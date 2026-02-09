@@ -546,15 +546,27 @@ async function handleSearch(
       searchBody.open_to = open_to;
     }
   } else if (api === 'recruiter') {
-    // NOTE: Unipile Recruiter API does NOT support `spotlights` as a parameter.
-    // Spotlight values like LIKELY_TO_RESPOND, RECENTLY_CHANGED_JOBS, OPEN_TO_WORK etc.
-    // are NOT valid search body fields and cause 400 errors.
-    // These are LinkedIn UI-only features not exposed via the Unipile API.
-    // We silently ignore them to avoid breaking searches.
-    if (spotlights?.length || spotlight || open_to_work) {
-      console.log('[Search] Spotlight/open_to_work filters ignored (not supported by Unipile Recruiter API):', {
-        spotlights, spotlight, open_to_work
-      });
+    // Unipile Recruiter API supports spotlights with these valid values:
+    // OPEN_TO_WORK, ACTIVE_TALENT, REDISCOVERED_CANDIDATES, INTERNAL_CANDIDATES,
+    // INTERESTED_IN_YOUR_COMPANY, HAVE_COMPANY_CONNECTIONS
+    const VALID_RECRUITER_SPOTLIGHTS = new Set([
+      'OPEN_TO_WORK', 'ACTIVE_TALENT', 'REDISCOVERED_CANDIDATES',
+      'INTERNAL_CANDIDATES', 'INTERESTED_IN_YOUR_COMPANY', 'HAVE_COMPANY_CONNECTIONS',
+    ]);
+
+    const mergedSpotlights = Array.from(
+      new Set(
+        [
+          ...(Array.isArray(spotlights) ? spotlights : []),
+          ...(spotlight ? [spotlight] : []),
+          ...(open_to_work === true ? ['OPEN_TO_WORK'] : []),
+        ].filter(Boolean)
+      )
+    ).filter(s => VALID_RECRUITER_SPOTLIGHTS.has(s as string)) as string[];
+
+    if (mergedSpotlights.length) {
+      searchBody.spotlights = mergedSpotlights;
+      console.log('[Search] Applied spotlights:', mergedSpotlights);
     }
 
     if (open_to?.length) {
