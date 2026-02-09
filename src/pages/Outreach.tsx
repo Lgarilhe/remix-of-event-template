@@ -1,8 +1,8 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Navbar } from '@/components/Navbar';
 import { SEOHead } from '@/components/SEOHead';
-import { LinkedInAccountManager } from '@/components/outreach/LinkedInAccountManager';
+import { LinkedInAccountManager, applySubscriptionOverrides } from '@/components/outreach/LinkedInAccountManager';
 import { LinkedInSearch } from '@/components/outreach/LinkedInSearch';
 import { SequencesList } from '@/components/outreach/SequencesList';
 import { MessagesInbox } from '@/components/outreach/MessagesInbox';
@@ -34,11 +34,14 @@ export interface LinkedInAccount {
 
 export default function Outreach() {
   
-  const [accounts, setAccounts] = useState<LinkedInAccount[]>([]);
+  const [rawAccounts, setRawAccounts] = useState<LinkedInAccount[]>([]);
   const [selectedAccount, setSelectedAccount] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('projects');
   const [activeProject, setActiveProject] = useState<SourcingProject | null>(null);
+
+  // Apply subscription overrides from localStorage
+  const accounts = useMemo(() => rawAccounts.map(applySubscriptionOverrides), [rawAccounts]);
 
   // Fetch unread count on mount (not just when Messages tab is active)
   const { count: initialUnreadCount, refresh: refreshUnreadCount } = useUnreadMessageCount(selectedAccount);
@@ -66,7 +69,7 @@ export default function Outreach() {
       if (!response.data?.success) throw new Error(response.data?.error);
 
       // Accounts are already filtered to LinkedIn only by the edge function
-      setAccounts(response.data.accounts || []);
+      setRawAccounts(response.data.accounts || []);
       
       // Auto-select first OK account
       const okAccount = response.data.accounts?.find((a: LinkedInAccount) => a.status === 'OK');
@@ -92,7 +95,7 @@ export default function Outreach() {
   };
 
   const handleAccountDisconnected = (accountId: string) => {
-    setAccounts(prev => prev.filter(a => a.id !== accountId));
+    setRawAccounts(prev => prev.filter(a => a.id !== accountId));
     if (selectedAccount === accountId) {
       setSelectedAccount(accounts.find(a => a.id !== accountId)?.id || null);
     }

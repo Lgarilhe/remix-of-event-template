@@ -6,11 +6,40 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Linkedin, Loader2, Trash2, CheckCircle, AlertCircle, Key, Cookie, RefreshCw, Building2, Info } from 'lucide-react';
+import { Linkedin, Loader2, Trash2, CheckCircle, AlertCircle, Key, Cookie, RefreshCw, Building2, Info, ToggleLeft, ToggleRight } from 'lucide-react';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
-import { TooltipProvider } from '@/components/ui/tooltip';
+import { TooltipProvider, Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 import { WebhookManager } from './WebhookManager';
+
+// Helper to get/set subscription overrides in localStorage
+const OVERRIDES_KEY = 'linkedin_subscription_overrides';
+
+export function getSubscriptionOverrides(): Record<string, { recruiter?: boolean; sales_navigator?: boolean }> {
+  try {
+    return JSON.parse(localStorage.getItem(OVERRIDES_KEY) || '{}');
+  } catch { return {}; }
+}
+
+export function setSubscriptionOverride(accountId: string, key: 'recruiter' | 'sales_navigator', value: boolean) {
+  const overrides = getSubscriptionOverrides();
+  if (!overrides[accountId]) overrides[accountId] = {};
+  overrides[accountId][key] = value;
+  localStorage.setItem(OVERRIDES_KEY, JSON.stringify(overrides));
+}
+
+export function applySubscriptionOverrides(account: LinkedInAccount): LinkedInAccount {
+  const overrides = getSubscriptionOverrides()[account.id];
+  if (!overrides) return account;
+  return {
+    ...account,
+    subscriptions: {
+      classic: account.subscriptions?.classic ?? true,
+      recruiter: overrides.recruiter ?? account.subscriptions?.recruiter ?? false,
+      sales_navigator: overrides.sales_navigator ?? account.subscriptions?.sales_navigator ?? false,
+    },
+  };
+}
 
 interface LinkedInAccountManagerProps {
   accounts: LinkedInAccount[];
@@ -280,6 +309,45 @@ export const LinkedInAccountManager: React.FC<LinkedInAccountManagerProps> = ({
                           )}
                         </div>
                       </div>
+                      {/* Manual override toggles */}
+                      {account.status === 'OK' && !account.subscriptions?.recruiter && (
+                        <div className="mt-1.5">
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <button
+                                  onClick={() => {
+                                    const overrides = getSubscriptionOverrides();
+                                    const current = overrides[account.id]?.recruiter ?? false;
+                                    setSubscriptionOverride(account.id, 'recruiter', !current);
+                                    toast.success(
+                                      !current
+                                        ? 'Mode Recruiter activé manuellement'
+                                        : 'Mode Recruiter désactivé'
+                                    );
+                                    // Force re-render by triggering parent refresh
+                                    onAccountConnected();
+                                  }}
+                                  className="flex items-center gap-1 text-[10px] text-purple-600 hover:text-purple-800 transition-colors"
+                                >
+                                  {getSubscriptionOverrides()[account.id]?.recruiter ? (
+                                    <ToggleRight className="w-4 h-4 text-purple-600" />
+                                  ) : (
+                                    <ToggleLeft className="w-4 h-4 text-gray-400" />
+                                  )}
+                                  Forcer Recruiter
+                                </button>
+                              </TooltipTrigger>
+                              <TooltipContent side="bottom" className="max-w-[250px]">
+                                <p className="text-xs">
+                                  Si la détection automatique ne fonctionne pas, activez manuellement le mode Recruiter. 
+                                  Assurez-vous d'avoir connecté le cookie depuis linkedin.com/talent.
+                                </p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        </div>
+                      )}
                     </div>
                   </div>
                   <div className="flex items-center gap-1">
