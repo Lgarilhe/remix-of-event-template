@@ -839,13 +839,20 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
                     autoFocus
                     value={roleDialogDraft}
                     onChange={(e) => setRoleDialogDraft(e.target.value)}
-                    placeholder='Ex: Solution Architect OR Cloud Architect OR "Solutions Engineer"'
-                    className="min-h-[100px] text-sm font-mono"
-                    rows={4}
+                    placeholder='Ex: "Solution Architect" OR "Cloud Architect" OR "Architecte Cloud" OR "Solutions Engineer"'
+                    className="min-h-[120px] text-sm font-mono"
+                    rows={5}
                   />
-                  <p className="text-xs text-muted-foreground">
-                    Utilisez OR pour combiner plusieurs titres. Les guillemets pour les expressions exactes.
-                  </p>
+                  <div className="space-y-1.5 text-xs text-muted-foreground bg-muted/50 rounded-md p-3">
+                    <p className="font-medium text-foreground/70">💡 Synonym Rings — ratissez large :</p>
+                    <ul className="space-y-1 list-disc list-inside">
+                      <li>Combiner <strong>FR + EN</strong> : <code className="text-[10px] bg-muted px-1 rounded">"DevOps Engineer" OR "Ingénieur DevOps" OR SRE</code></li>
+                      <li>Inclure les <strong>variantes</strong> : <code className="text-[10px] bg-muted px-1 rounded">"VP Sales" OR "Head of Sales" OR "Directeur Commercial"</code></li>
+                      <li><strong>Guillemets</strong> pour les titres composés : <code className="text-[10px] bg-muted px-1 rounded">"Product Manager"</code></li>
+                      <li>Exclure avec <strong>NOT</strong> : <code className="text-[10px] bg-muted px-1 rounded">Sales NOT (Assistant OR Associate)</code></li>
+                    </ul>
+                    <p className="text-[10px] mt-1 text-muted-foreground/70">⚠️ Mettre les technos/compétences dans Mots-clés, pas ici. Limite ~200 caractères.</p>
+                  </div>
                   <DialogFooter>
                     <Button variant="outline" size="sm" onClick={() => setRoleDialogOpen(false)}>Annuler</Button>
                     <Button size="sm" onClick={() => {
