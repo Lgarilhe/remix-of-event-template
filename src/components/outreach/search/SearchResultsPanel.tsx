@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { LinkedInProfile } from '@/components/outreach/types';
 import { LinkedInResultCard } from '@/components/outreach/LinkedInResultCard';
 import { BulkInMailModal } from '@/components/outreach/BulkInMailModal';
@@ -14,7 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import {
   Search, Loader2, Users, Mail, GitBranch, Archive,
-  Eye, EyeOff, FolderPlus, Target, Sparkles
+  Eye, EyeOff, FolderPlus, Target, Sparkles, Maximize2, Minimize2
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -71,6 +71,10 @@ interface SearchResultsPanelProps {
   onMessageSent: () => void;
   onSequenceEnrollSuccess: () => void;
   
+  // Refine
+  onRefineSearch: (direction: 'expand' | 'narrow') => Promise<void>;
+  refineLoading: boolean;
+  
   // Refs
   scrollAreaRef: React.RefObject<HTMLDivElement>;
   loadMoreTriggerRef: React.RefObject<HTMLDivElement>;
@@ -117,6 +121,8 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
   onArchive,
   onMessageSent,
   onSequenceEnrollSuccess,
+  onRefineSearch,
+  refineLoading,
   scrollAreaRef,
   loadMoreTriggerRef,
 }) => {
@@ -396,9 +402,19 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
                 <p className="text-lg font-medium text-foreground/60 mb-2">
                   Aucun profil trouvé
                 </p>
-                <p className="text-sm text-center max-w-md">
+                <p className="text-sm text-center max-w-md mb-4">
                   Essayez d'ajuster vos filtres pour élargir votre recherche
                 </p>
+                {selectedJob && (
+                  <Button
+                    onClick={() => onRefineSearch('expand')}
+                    disabled={refineLoading}
+                    className="gap-2 bg-green-600 hover:bg-green-700"
+                  >
+                    {refineLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Maximize2 className="w-4 h-4" />}
+                    Élargir les filtres avec l'IA
+                  </Button>
+                )}
               </>
             ) : (
               <SearchWelcomeMessage />
@@ -409,16 +425,56 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
             {/* Results stats banner */}
             {hasSearched && total !== null && total > 0 && (
               <div className="bg-primary/5 rounded-lg p-3 mb-4 flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
+                <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
                   <Users className="w-5 h-5 text-primary" />
                 </div>
-                <div>
+                <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-foreground">
                     {total.toLocaleString()} candidats correspondent à vos critères
                   </p>
                   <p className="text-xs text-muted-foreground">
                     {results.length} profils chargés
                   </p>
+                </div>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => onRefineSearch('expand')}
+                          disabled={refineLoading}
+                          className="h-8 px-2.5 gap-1.5 text-xs border-green-300 text-green-700 hover:bg-green-50"
+                        >
+                          {refineLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Maximize2 className="w-3.5 h-3.5" />}
+                          Élargir
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>IA: ajuster les filtres pour obtenir plus de résultats</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => onRefineSearch('narrow')}
+                          disabled={refineLoading}
+                          className="h-8 px-2.5 gap-1.5 text-xs border-orange-300 text-orange-700 hover:bg-orange-50"
+                        >
+                          {refineLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Minimize2 className="w-3.5 h-3.5" />}
+                          Affiner
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>IA: ajuster les filtres pour des résultats plus ciblés</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
                 </div>
               </div>
             )}

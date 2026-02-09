@@ -1,15 +1,16 @@
-import React, { useCallback, useMemo, useEffect, useRef } from 'react';
+import React, { useCallback, useMemo, useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { LinkedInAccount } from '@/pages/Outreach';
 import { SearchFiltersPanel } from './search/SearchFiltersPanel';
 import { SearchResultsPanel } from './search/SearchResultsPanel';
 import { useLinkedInSearch } from '@/hooks/useLinkedInSearch';
-import { useLinkedInSearchActions } from '@/hooks/useLinkedInSearchActions';
+import { useLinkedInSearchActions, buildSearchParams } from '@/hooks/useLinkedInSearchActions';
 import { useLinkedInScoring } from '@/hooks/useLinkedInScoring';
 import { useFilteredResults } from '@/hooks/useFilteredResults';
 import { useAutoFillFilters } from '@/hooks/useAutoFillFilters';
 import { SourcingProject } from '@/hooks/useSourcingProjects';
 import { LinkedInProfile } from './types';
+import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
 interface LinkedInSearchProps {
@@ -232,6 +233,66 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
     toast.success('Profils inscrits à la séquence');
   }, [search.setSelectedProfiles, queryClient]);
 
+  // Refine search state and handler
+  const [refineLoading, setRefineLoading] = useState(false);
+
+  const handleRefineSearch = useCallback(async (direction: 'expand' | 'narrow') => {
+    if (!selectedAccount || !search.selectedJob) return;
+    setRefineLoading(true);
+    try {
+      const currentSearchParams = buildSearchParams(search.filters, selectedAccount);
+      const { data, error } = await supabase.functions.invoke('refine-search-filters', {
+        body: {
+          currentFilters: currentSearchParams,
+          totalResults: search.total,
+          resultCount: search.results.length,
+          jobTitle: search.selectedJob.title,
+          jobLocation: search.selectedJob.location,
+          direction,
+        },
+      });
+
+      if (error) throw error;
+      if (!data?.success) throw new Error(data?.error || 'Erreur inconnue');
+
+      // Apply adjustments
+      const adjustments = data.adjustments || [];
+      if (adjustments.length === 0) {
+        toast.info('Aucun ajustement suggéré');
+        return;
+      }
+
+      search.setFilters(prev => {
+        const updated = { ...prev };
+        for (const adj of adjustments) {
+          const field = adj.field as string;
+          if (field in updated) {
+            (updated as any)[field] = adj.value;
+          }
+        }
+        return updated;
+      });
+
+      // Reset search state for new search
+      search.setResults([]);
+      search.setCursor(null);
+      search.setHasMoreResults(true);
+      search.setHasSearched(false);
+      search.setTotal(null);
+
+      const reasons = adjustments.map((a: any) => `• ${a.reason}`).join('\n');
+      toast.success(data.summary || `${adjustments.length} filtre(s) ajusté(s)`, {
+        description: reasons,
+        duration: 6000,
+      });
+    } catch (err: any) {
+      console.error('[RefineSearch] Error:', err);
+      toast.error(err.message || 'Erreur lors de l\'affinage');
+    } finally {
+      setRefineLoading(false);
+    }
+  }, [selectedAccount, search.selectedJob, search.filters, search.total, search.results.length, search.setFilters, search.setResults, search.setCursor, search.setHasMoreResults, search.setHasSearched, search.setTotal]);
+
   // Infinite scroll observer
   useEffect(() => {
     const observer = new IntersectionObserver(
@@ -327,6 +388,8 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
           onArchive={handleArchive}
           onMessageSent={handleMessageSent}
           onSequenceEnrollSuccess={handleSequenceEnrollSuccess}
+          onRefineSearch={handleRefineSearch}
+          refineLoading={refineLoading}
           scrollAreaRef={scrollAreaRef}
           loadMoreTriggerRef={loadMoreTriggerRef}
         />
