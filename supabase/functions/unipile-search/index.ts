@@ -266,8 +266,28 @@ async function handleSearch(
     }
   }
 
-  // Keywords (all APIs)
-  if (keywords) searchBody.keywords = keywords;
+  // Keywords (all APIs) - truncate if too long to avoid content_too_large errors
+  if (keywords) {
+    // LinkedIn Classic API has strict payload limits; cap keywords to ~200 chars
+    if (keywords.length > 200) {
+      // Try to keep complete boolean groups by trimming the last AND group
+      let truncated = keywords;
+      while (truncated.length > 200) {
+        const lastAnd = truncated.lastIndexOf(' AND ');
+        if (lastAnd > 0) {
+          truncated = truncated.substring(0, lastAnd);
+        } else {
+          // No more AND groups, just hard truncate
+          truncated = truncated.substring(0, 200);
+          break;
+        }
+      }
+      console.log(`[search] Keywords truncated: ${keywords.length} → ${truncated.length} chars`);
+      searchBody.keywords = truncated;
+    } else {
+      searchBody.keywords = keywords;
+    }
+  }
 
   // Advanced keywords (Classic only)
   if (api === 'classic' && advanced_keywords) {
@@ -665,8 +685,19 @@ async function handleSearch(
     console.error('Search error:', JSON.stringify(data, null, 2));
     console.error('Request body was:', JSON.stringify(searchBody, null, 2));
     
+    // Handle content_too_large (400) - payload rejected by LinkedIn
+    if (response.status === 400 && data.type?.includes('content_too_large')) {
+      return new Response(
+        JSON.stringify({ 
+          success: false, 
+          error: 'La requête est trop volumineuse. Essayez de réduire les mots-clés ou les filtres.',
+          errorType: 'CONTENT_TOO_LARGE',
+        }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+    
     // Handle rate limiting (429) and server errors (500)
-    // Per Unipile docs: "Exceeding LinkedIn's limits will result in an HTTP 429 or 500 error"
     if (response.status === 429 || response.status === 500) {
       const isRateLimit = response.status === 429 || 
         (data.detail && data.detail.toLowerCase().includes('limit')) ||
@@ -678,7 +709,7 @@ async function handleSearch(
             success: false, 
             error: 'Limite LinkedIn atteinte. Espacez vos requêtes et réessayez plus tard.',
             errorType: 'RATE_LIMIT',
-            retryAfter: 60, // Suggest retry after 60 seconds
+            retryAfter: 60,
           }),
           { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
