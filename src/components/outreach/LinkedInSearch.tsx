@@ -275,16 +275,27 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
         const updated = { ...prev };
         for (const adj of adjustments) {
           const field = adj.field as string;
+          const value = adj.value;
+
+          // Special case: years_of_experience as {min, max} → split into two fields
+          if (field === 'years_of_experience' && value && typeof value === 'object' && !Array.isArray(value)) {
+            if ('min' in value) (updated as any).years_of_experience_min = value.min;
+            if ('max' in value) (updated as any).years_of_experience_max = value.max;
+            continue;
+          }
+
           if (!(field in updated)) continue;
           
           // Ensure array fields stay arrays
           if (arrayFields.has(field)) {
-            if (Array.isArray(adj.value)) {
-              (updated as any)[field] = adj.value;
+            if (Array.isArray(value)) {
+              (updated as any)[field] = value;
+            } else if (value && typeof value === 'object') {
+              // AI returned a single object instead of an array — wrap it
+              (updated as any)[field] = [value];
             }
-            // Skip non-array values for array fields
           } else {
-            (updated as any)[field] = adj.value;
+            (updated as any)[field] = value;
           }
         }
         return updated;
