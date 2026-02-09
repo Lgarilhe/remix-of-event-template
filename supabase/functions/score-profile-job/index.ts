@@ -127,8 +127,13 @@ interface JobData {
 // Sanitize strings to remove unpaired surrogates that break JSON serialization
 function sanitizeText(text: string | undefined | null): string {
   if (!text) return '';
-  // Remove unpaired surrogates
-  return text.replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, '');
+  try {
+    const encoder = new TextEncoder();
+    const decoder = new TextDecoder();
+    return decoder.decode(encoder.encode(text));
+  } catch {
+    return text.replace(/[\uD800-\uDFFF]/g, '');
+  }
 }
 
 serve(async (req) => {
@@ -325,7 +330,7 @@ Réponds UNIQUEMENT en JSON valide avec cette structure exacte:
                       content: prompt,
                     },
                   ],
-                }),
+                }).replace(/[\uD800-\uDFFF]/g, ''),
               },
               { retries: 3, baseDelayMs: 800, retryStatusCodes: [500, 502, 503, 504, 529] }
             );
