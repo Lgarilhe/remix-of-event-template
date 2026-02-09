@@ -440,11 +440,14 @@ async function handleSearch(
   }
 
   // Skills with priority (Recruiter only - not supported in Sales Navigator)
+  // Supports both id-based ({ id, priority }) and keywords-based ({ keywords, priority })
   if (skills?.length && api === 'recruiter') {
-    searchBody.skills = skills.map(s => ({
-      id: s.id,
-      priority: s.priority,
-    }));
+    searchBody.skills = skills.map((s: Record<string, unknown>) => {
+      if (s.keywords) {
+        return { keywords: s.keywords, priority: s.priority };
+      }
+      return { id: s.id, priority: s.priority };
+    });
   }
 
   // Role filter - Recruiter specific with keywords, priority, scope
