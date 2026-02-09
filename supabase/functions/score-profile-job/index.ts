@@ -124,6 +124,13 @@ interface JobData {
   };
 }
 
+// Sanitize strings to remove unpaired surrogates that break JSON serialization
+function sanitizeText(text: string | undefined | null): string {
+  if (!text) return '';
+  // Remove unpaired surrogates
+  return text.replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, '');
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -234,7 +241,7 @@ serve(async (req) => {
               if (tc.niceToHave) transversalText += `Critères transversaux BONUS: ${tc.niceToHave}\n`;
             }
 
-            const prompt = `Tu es un expert en recrutement tech. Évalue la correspondance entre ce profil LinkedIn et cette offre d'emploi.
+            const prompt = sanitizeText(`Tu es un expert en recrutement tech. Évalue la correspondance entre ce profil LinkedIn et cette offre d'emploi.
 
 POSTE:
 - Titre: ${job.title}
@@ -245,12 +252,12 @@ POSTE:
 - Expérience: ${job.xpMin || '?'} - ${job.xpMax || '?'} ans
 - ${formatSalaryInfo(job)}
 - Compétences requises: ${job.skills.join(', ')}
-${job.mustHave ? `- Critères OBLIGATOIRES (must-have): ${job.mustHave}` : ''}
-${job.shouldHave ? `- Critères IMPORTANTS (should-have): ${job.shouldHave}` : ''}
-${job.niceToHave ? `- Critères BONUS (nice-to-have): ${job.niceToHave}` : ''}
-${job.requirements ? `- Exigences détaillées: ${job.requirements}` : ''}
-${job.description ? `- Description du poste: ${job.description.substring(0, 500)}` : ''}
-${transversalText ? `\nCRITÈRES TRANSVERSAUX (appliqués à tous les postes):\n${transversalText}` : ''}
+${job.mustHave ? '- Critères OBLIGATOIRES (must-have): ' + job.mustHave : ''}
+${job.shouldHave ? '- Critères IMPORTANTS (should-have): ' + job.shouldHave : ''}
+${job.niceToHave ? '- Critères BONUS (nice-to-have): ' + job.niceToHave : ''}
+${job.requirements ? '- Exigences détaillées: ' + job.requirements : ''}
+${job.description ? '- Description du poste: ' + job.description.substring(0, 500) : ''}
+${transversalText ? '\nCRITÈRES TRANSVERSAUX (appliqués à tous les postes):\n' + transversalText : ''}
 
 PROFIL CANDIDAT:
 - Nom: ${p.name}
@@ -258,25 +265,25 @@ PROFIL CANDIDAT:
 - Entreprise actuelle: ${p.currentCompany || 'Non spécifiée'}
 - Localisation: ${p.location || 'Non spécifiée'}
 - Années d'expérience: ${p.yearsOfExperience ?? 'Non spécifié'}
-- Tenure moyenne: ${p.averageTenureMonths ? `${Math.round(p.averageTenureMonths)} mois` : 'Non calculée'}
+- Tenure moyenne: ${p.averageTenureMonths ? Math.round(p.averageTenureMonths) + ' mois' : 'Non calculée'}
 - Open to Work: ${p.openToWork ? 'Oui' : 'Non/Inconnu'}
 - Open Profile (InMail gratuit): ${p.openProfile ? 'Oui' : 'Non'}
-- Réseau: ${p.networkDistance ? `${p.networkDistance}ème degré` : 'Inconnu'}
-${p.summary ? `- Résumé: ${p.summary.substring(0, 300)}` : ''}
+- Réseau: ${p.networkDistance ? p.networkDistance + 'ème degré' : 'Inconnu'}
+${p.summary ? '- Résumé: ' + p.summary.substring(0, 300) : ''}
 - Compétences LinkedIn: ${profileSkills.join(', ') || 'Aucune'}
 - Compétences matchées avec le poste: ${matchedSkills.join(', ') || 'Aucune'}
 - Compétences manquantes: ${missingSkills.join(', ') || 'Aucune'}
-${p.education ? `- Formation: ${p.education.join(', ')}` : ''}
-${workExpText ? `\nEXPÉRIENCE PROFESSIONNELLE:\n${workExpText}` : ''}
+${p.education ? '- Formation: ' + p.education.join(', ') : ''}
+${workExpText ? '\nEXPÉRIENCE PROFESSIONNELLE:\n' + workExpText : ''}
 
 RÈGLES DE SCORING CRITIQUES:
 
 1. DÉTECTION DE SÉNIORITÉ (ÉLIMINATOIRE):
-   - Si le poste est un rôle de contributeur technique (Engineer, Developer, SRE, DevOps, etc.) et que le candidat occupe un rôle de direction/management (CTO, VP Engineering, Head of, Director, etc.) → Score ≤ 30, c'est un MISMATCH de séniorité
-   - Si le poste est un rôle de direction et que le candidat est un contributeur junior/mid → Score ≤ 35
+   - Si le poste est un rôle de contributeur technique (Engineer, Developer, SRE, DevOps, etc.) et que le candidat occupe un rôle de direction/management (CTO, VP Engineering, Head of, Director, etc.) -> Score <= 30, c'est un MISMATCH de séniorité
+   - Si le poste est un rôle de direction et que le candidat est un contributeur junior/mid -> Score <= 35
    - Les promotions internes au sein d'une même entreprise comptent comme UNE SEULE période de tenure
 
-2. CRITÈRES MUST-HAVE: Si des critères obligatoires sont définis et que le candidat n'en remplit AUCUN → Score ≤ 35
+2. CRITÈRES MUST-HAVE: Si des critères obligatoires sont définis et que le candidat n'en remplit AUCUN -> Score <= 35
 
 3. ADÉQUATION GÉOGRAPHIQUE: Évalue si la localisation du candidat est compatible avec le poste (en tenant compte du remote)
 
@@ -296,9 +303,9 @@ Réponds UNIQUEMENT en JSON valide avec cette structure exacte:
   "locationMatch": "<MATCH|PARTIAL|REMOTE_OK|MISMATCH|UNKNOWN>",
   "experienceMatch": "<MATCH|OVER|UNDER|UNKNOWN>",
   "tenureAnalysis": "<STABLE|MODERATE|JOB_HOPPER|UNKNOWN>",
-  "receptivityScore": <nombre entre 0 et 100, basé sur openToWork/openProfile/networkDistance>,
+  "receptivityScore": <nombre entre 0 et 100>,
   "skipReason": "<null ou raison du rejet si score < 40>"
-}`;
+}`);
 
             const res = await fetchWithRetry(
               "https://api.anthropic.com/v1/messages",
