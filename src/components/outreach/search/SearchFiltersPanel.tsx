@@ -10,7 +10,7 @@ import { AutoFillFiltersButton } from '@/components/outreach/AutoFillFiltersButt
 import { QuotaDisplay } from '@/components/outreach/QuotaDisplay';
 import { Job } from '@/pages/JobSpace';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
@@ -258,14 +258,19 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
         <label className="text-sm font-medium text-[#1A1A1A] mb-2 block">
           Mots-clés
         </label>
-        <div className="flex gap-2">
-          <Input
-            value={filters.keywords}
-            onChange={(e) => setFilters(f => ({ ...f, keywords: e.target.value }))}
-            placeholder="Ex: Product Manager, React..."
-            onKeyDown={(e) => e.key === 'Enter' && selectedJob && onSearch()}
-          />
-        </div>
+        <Textarea
+          value={filters.keywords}
+          onChange={(e) => setFilters(f => ({ ...f, keywords: e.target.value }))}
+          placeholder="Ex: Product Manager, React..."
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && !e.shiftKey && selectedJob) {
+              e.preventDefault();
+              onSearch();
+            }
+          }}
+          className="min-h-[40px] max-h-[200px] resize-y text-sm"
+          rows={1}
+        />
       </div>
 
       {/* Filters */}
