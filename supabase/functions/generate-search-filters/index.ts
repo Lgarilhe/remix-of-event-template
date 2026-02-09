@@ -552,7 +552,7 @@ ${transversal.context ? `Contexte: ${transversal.context}` : ''}` : ''}
       years_of_experience_max: finalXpMax,
       skills_keywords: allSkillsKeywords, // Now includes certifications and domain expertise
       industry_keywords: parsed.industry_keywords || [],
-      location_keywords: parsed.location_hint ? [parsed.location_hint] : (job.location ? [job.location] : []),
+      location_keywords: job.location ? [job.location] : (parsed.location_hint ? [parsed.location_hint] : []),
       location_within_area: locationRadius,
       company_keywords: companyKeywords,
       school: schoolFilters,
