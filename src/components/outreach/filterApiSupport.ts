@@ -93,7 +93,7 @@ export const FILTER_API_SUPPORT: Record<LinkedInApiType, Record<FilterKey, Filte
     tenure_at_role: { supported: true },
     open_to_work: { supported: true },
     open_to: { supported: true },
-    spotlight: { supported: false, tooltip: "Spotlight n'est pas supporté par l'API Unipile Recruiter. Ce filtre est ignoré silencieusement" },
+    spotlight: { supported: true }, // Valid: OPEN_TO_WORK, ACTIVE_TALENT, REDISCOVERED_CANDIDATES, INTERNAL_CANDIDATES, INTERESTED_IN_YOUR_COMPANY, HAVE_COMPANY_CONNECTIONS
     hiring_project: { supported: true },
     talent_pool: { supported: true },
     company_headcount: { supported: false, tooltip: "Utilisez Sales Navigator pour filtrer par taille d'entreprise" },
