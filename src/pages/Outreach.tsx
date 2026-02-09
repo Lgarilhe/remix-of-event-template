@@ -12,7 +12,7 @@ import { ProjectsList } from '@/components/outreach/projects';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Search, Users, Settings, GitBranch, MessageSquare, Sparkles, FolderOpen } from 'lucide-react';
 import { toast } from 'sonner';
-import { useRegisterCopilotContext } from '@/contexts/CopilotContext';
+
 import { OutreachSearchProvider } from '@/contexts/OutreachSearchContext';
 import { SourcingProject } from '@/hooks/useSourcingProjects';
 import { useUnreadMessageCount } from '@/hooks/useUnreadMessageCount';
@@ -33,8 +33,6 @@ export interface LinkedInAccount {
 }
 
 export default function Outreach() {
-  // Register this page with Copilot for context awareness
-  useRegisterCopilotContext('outreach');
   
   const [accounts, setAccounts] = useState<LinkedInAccount[]>([]);
   const [selectedAccount, setSelectedAccount] = useState<string | null>(null);
