@@ -293,6 +293,19 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
             continue;
           }
 
+          // Special case: skills_keywords (string[]) → convert to skills (PriorityFilterItem[])
+          if (field === 'skills_keywords') {
+            if (Array.isArray(value)) {
+              updated.skills = value.map((s: string) => ({
+                id: s.toLowerCase().replace(/\s+/g, '-'),
+                name: s,
+                keywords: s,
+                priority: 'CAN_HAVE' as const,
+              }));
+            }
+            continue;
+          }
+
           if (!(field in updated)) continue;
           
           // Ensure array fields stay arrays
