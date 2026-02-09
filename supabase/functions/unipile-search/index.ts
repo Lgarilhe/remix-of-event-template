@@ -915,16 +915,16 @@ async function handleGetChats(
     );
   }
 
-  // For inbox: fetch BOTH LinkedIn Classic AND Recruiter folders in parallel
-  // The API returns different conversations based on the folder parameter
-  const folders = ['INBOX_LINKEDIN_CLASSIC', 'INBOX_LINKEDIN_RECRUITER'];
+  // For inbox: fetch LinkedIn Classic, Recruiter, AND generic INBOX folders in parallel
+  // The generic INBOX folder may contain Recruiter messages when the license isn't detected
+  const folders = ['INBOX_LINKEDIN_CLASSIC', 'INBOX_LINKEDIN_RECRUITER', 'INBOX'];
   
   console.log('Fetching chats from folders:', folders, '| Account:', accountId);
   
   const fetchFromFolder = async (folderName: string) => {
     const queryParams = new URLSearchParams();
     queryParams.set('account_id', accountId);
-    queryParams.set('limit', String(Math.min(Number(limit), 125))); // Split limit between folders
+    queryParams.set('limit', String(Math.min(Number(limit), 125)));
     queryParams.set('folder', folderName);
     if (cursor) queryParams.set('cursor', String(cursor));
     
@@ -951,16 +951,17 @@ async function handleGetChats(
     }
   };
   
-  // Fetch both folders in parallel
-  const [classicChats, recruiterChats] = await Promise.all([
+  // Fetch all folders in parallel
+  const [classicChats, recruiterChats, genericChats] = await Promise.all([
     fetchFromFolder('INBOX_LINKEDIN_CLASSIC'),
     fetchFromFolder('INBOX_LINKEDIN_RECRUITER'),
+    fetchFromFolder('INBOX'),
   ]);
   
   // Merge and dedupe by chat ID, then sort by timestamp (most recent first)
   const chatMap = new Map<string, Record<string, unknown>>();
   
-  [...classicChats, ...recruiterChats].forEach((chat: Record<string, unknown>) => {
+  [...classicChats, ...recruiterChats, ...genericChats].forEach((chat: Record<string, unknown>) => {
     const chatId = chat.id as string;
     if (!chatMap.has(chatId)) {
       chatMap.set(chatId, chat);
@@ -973,7 +974,7 @@ async function handleGetChats(
     return timeB - timeA; // Most recent first
   });
   
-  console.log(`Total merged chats: ${chats.length} (Classic: ${classicChats.length}, Recruiter: ${recruiterChats.length})`);
+  console.log(`Total merged chats: ${chats.length} (Classic: ${classicChats.length}, Recruiter: ${recruiterChats.length}, Generic: ${genericChats.length})`);
   
   // Log folder distribution for debugging
   const folderCounts: Record<string, number> = {};
