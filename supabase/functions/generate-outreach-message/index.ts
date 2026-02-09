@@ -259,117 +259,143 @@ ${job.description ? `- Contexte mission: ${job.description.slice(0, 300)}...` : 
 STATUT: ${candidateStatus.toUpperCase()}
 ${statusInstructions[candidateStatus] || statusInstructions.other}
 
-=== RÈGLES ABSOLUES ===
+=== STRATÉGIE LINKEDIN 2025 – RÈGLES ABSOLUES ===
 
-1. PERSONNALISATION = LA PRIORITÉ #1
-   La section "À propos" est une MINE D'OR. Cherche:
-   - Une passion technique mentionnée ("j'aime les systèmes distribués", "le clean code c'est ma religion")
-   - Un side project, une contribution open source
-   - Une motivation personnelle ("j'ai quitté X pour rejoindre une startup")
-   - Un style de travail ("je préfère les petites équipes", "ownership total")
-   - Une techno qu'il dit aimer particulièrement
+📊 STATS CLÉS QUI GUIDENT TA RÉDACTION:
+- Les InMails personnalisés obtiennent +15% de taux de réponse vs envois en masse
+- Les messages entre 200 et 400 CARACTÈRES ont +16% de chances de réponse
+- 57% du trafic LinkedIn est mobile → sujet COURT obligatoire
+- Mentionner un ancien employeur commun = +27% de réponse
+- Les candidats "Open to Work" sont 75% plus susceptibles de répondre
+
+1. PERSONNALISATION = FACTEUR N°1 (NON NÉGOCIABLE)
+   Chaque message DOIT contenir au moins UN élément hyper-spécifique au candidat. Cherche dans cet ordre:
    
-   SI tu trouves quelque chose dans le À propos, UTILISE-LE comme accroche.
-   C'est ce qui fait la différence entre un message générique et un message qui convertit.
-
-2. VENDRE L'OPPORTUNITÉ (SUBTILEMENT MAIS EFFICACEMENT)
-   Le candidat doit sentir que c'est une opportunité à ne pas rater. Intègre UN ou DEUX éléments différenciants parmi:
+   a) SECTION "À PROPOS" (mine d'or):
+      - Une passion technique ("j'aime les systèmes distribués")
+      - Un side project, une contribution open source
+      - Une motivation personnelle ("j'ai quitté X pour Y")
+      - Un style de travail ("petites équipes", "ownership")
+      - Un hobby ou intérêt inhabituel mentionné
    
-   - TAILLE/STADE: "scale-up en hyper-croissance", "startup early-stage avec runway solide", "leader sur son marché"
-   - ÉQUIPE: "équipe de 6 seniors", "CTO ex-Datadog", "culture engineering forte"
-   - STACK/PROJET: "projet greenfield", "refonte from scratch", "stack moderne (Go/K8s/...")"
-   - IMPACT: "tu définiras l'archi", "impact direct sur le produit", "ownership total"
-   - CONDITIONS: si remote/hybride flexible, si salaire attractif, si équilibre vie pro/perso
-   - SECTEUR: si le secteur est porteur ou la mission a du sens (santé, climat, souveraineté...)
+   b) PARCOURS PROFESSIONNEL:
+      - Un ancien employeur commun avec le client → +27% de réponse, TOUJOURS le mentionner si applicable
+      - Une transition de carrière intéressante (ex: de corporate à startup)
+      - Un changement de poste récent (6-12 mois → paradoxalement réceptif)
+      - Une progression remarquable
    
-   NE SURVENDS PAS: 1-2 éléments max, intégrés naturellement dans le pitch. Pas de liste à puces.
-   ÉVITE les formules creuses: "projet passionnant", "belle aventure", "super équipe".
-   PRÉFÈRE les faits concrets: "refonte de l'archi data pour 10M users" > "projet ambitieux".
-
-3. ADAPTATION DU STYLE AU CANDIDAT:
-   - SI le candidat écrit de façon décontractée avec des émojis → sois plus casual
-   - SI le candidat est très corporate/formel → reste pro mais pas froid
-   - SI le candidat montre de l'humour → ose une touche légère
-   - SI le candidat est très technique/précis → sois concis et factuel
+   c) CONNEXIONS MUTUELLES:
+      - Si tu peux déduire une connexion commune (même école, même ex-employeur), mentionne-la
+      - Ça transforme un cold outreach en warm intro
    
-   Le but: que le candidat ait l'impression de lire un message d'un pair, pas d'un robot.
+   d) ACTIVITÉ LINKEDIN (si visible):
+      - Un article publié, un post, un commentaire
+      - Un engagement sur un sujet tech spécifique
+   
+   ⚠️ SI tu ne trouves RIEN de spécifique → utilise une QUESTION OUVERTE comme accroche:
+   "Qu'est-ce qui te ferait bouger aujourd'hui ?" plutôt qu'un pitch direct
 
-4. EXEMPLES D'ACCROCHES PERSONNALISÉES (inspirés du À propos):
-   - "Tu mentionnes ton amour du clean code dans ton profil - on cherche exactement ça chez [Client]"
-   - "J'ai vu que tu avais contribué à [projet open source] - le CTO est très orienté communauté"
-   - "Tu parles de ton passage de corporate à startup - c'est pile le mouvement inverse qu'on propose"
-   - "Ton focus sur les archi event-driven colle parfaitement avec ce qu'on monte chez [Client]"
+2. LONGUEUR = COURT (CRITIQUE)
+   - OBJECTIF: 200-400 CARACTÈRES pour le corps du message (hors signature)
+   - C'est environ 3-5 phrases MAX
+   - Chaque mot doit mériter sa place
+   - Si tu peux dire la même chose en moins de mots, fais-le
+   - Sur mobile (57% du trafic), un message court = entièrement visible sans scroller
 
-5. TON: ${toneInstructions[tone]}
+3. CE QUE LE CANDIDAT Y GAGNE (PAS UN DESCRIPTIF DE POSTE)
+   NE DÉCRIS PAS le poste. VENDS ce que le candidat obtient:
+   - "Tu définirais l'archi toi-même" > "Nous cherchons un architecte"
+   - "Stack greenfield Go/K8s, pas de legacy" > "Stack: Go, Kubernetes"
+   - "Impact direct sur 10M users" > "Projet à grande échelle"
+   - "Full remote, équipe de 5 seniors" > "Poste remote, grande équipe"
+   
+   MAX 1-2 éléments différenciants, intégrés naturellement. Pas de liste.
 
-6. NE POSE PAS DE QUESTION SI:
-   - Le profil semble déjà matcher → propose un call directement
-   - Tu n'as pas de vraie question de qualification → CTA direct
-   - ÉVITE les questions sur l'anglais (sauf si vraiment critique et absent du profil)
+4. CTA = SIMPLE ET NON-ENGAGEANT
+   Le candidat ne doit PAS se sentir forcé. Exemples de bons CTAs:
+   - "Dispo pour un call de 15 min cette semaine ?"
+   - "Ça te parle ? Je t'envoie plus de détails si oui"
+   - "Curieux d'avoir ton avis, même si tu n'es pas en recherche"
+   - "Qu'est-ce qui te ferait bouger aujourd'hui ?"
+   
+   ❌ MAUVAIS CTAs: "Es-tu intéressé ?", "Ça t'intéresserait ?", "Tu serais ouvert ?"
 
-7. INTERDITS (MARQUEURS IA À BANNIR):
+5. OBJET (INMAIL) = MOBILE-FIRST
+   - MAX 40 caractères (lisible sur mobile)
+   - Pas de jargon, pas de "Opportunité" générique
+   - Exemples: "${job.title} chez ${clientName}", "Une question rapide", "Ton avis m'intéresse"
+   - Personnalisé si possible: "Re: ton article sur [X]", "Ex-[entreprise] aussi ?"
+
+6. TON: ${toneInstructions[tone]}
+
+7. ADAPTATION AU STYLE DU CANDIDAT:
+   - SI décontracté avec émojis → sois plus casual
+   - SI corporate/formel → reste pro mais pas froid
+   - SI humour → ose une touche légère
+   - SI technique/précis → sois concis et factuel
+   Le but: un message de PAIR, pas de robot.
+
+8. INTERDITS (MARQUEURS IA À BANNIR):
    - "j'ai parcouru ton profil", "a retenu mon attention", "m'a tapé dans l'œil"
    - Superlatifs: exceptionnel, remarquable, impressionnant
+   - "parfaitement", "exactement", "idéalement" → trop vendeur
    - Questions génériques: "ça t'intéresserait ?", "tu serais ouvert ?"
-   - Forcer une question quand un CTA suffit
-   - FORMAT CHIFFRES: JAMAIS de "20+", "10+", "5+", "2+" → écrire "plus de 20", "plus de 10", etc.
-    - TIRETS (DÉBUT OU MILIEU): JAMAIS de "- ..." ni de "A – B" / "A — B" / "A - B" → remplace par des phrases avec points/virgules
-   - LISTES À PUCES: JAMAIS de listes, écris en prose fluide
-   - ÉNUMÉRATIONS ENTRE PARENTHÈSES: évite "(Python, Go, K8s)" → intègre naturellement
-   - JARGON TROP COOL/STARTUP: "ton taf", "mise gros", "c'est chaud", "le kiff", "la bombe"
-   - FORMULES CREUSES: "projet passionnant", "belle aventure", "super équipe", "environnement stimulant"
-   
-   TOURNURES FLATTEUSES INTERDITES (trop vendeuses/IA):
-   - "ton profil colle parfaitement" ❌ → préfère "ton profil colle bien" ou "ça matche"
-   - "ton expérience c'est exactement/parfaitement ce qu'on veut" ❌
-   - "c'est pile ce qu'on cherche" ❌
-   - Évite "parfaitement", "exactement", "idéalement" → sois plus naturel et mesuré
+   - FORMAT: JAMAIS "20+", "10+" → "plus de 20", "plus de 10"
+   - TIRETS: JAMAIS de "- ..." ni "A – B" → phrases avec points/virgules
+   - LISTES À PUCES: JAMAIS, écris en prose fluide
+   - LIENS: JAMAIS de liens dans le message (distrait du contenu)
+   - JARGON STARTUP: "ton taf", "mise gros", "c'est chaud", "le kiff"
+   - FORMULES CREUSES: "projet passionnant", "belle aventure", "super équipe"
+   - "ton profil colle parfaitement" ❌ → "ton profil colle bien" ou "ça matche"
    
    EN MODE RPO - ABSOLUMENT INTERDIT:
-   - "je recrute pour eux" ❌ (tu bosses DANS la boîte, pas pour un client)
+   - "je recrute pour eux" ❌
    - "ce qu'ils cherchent" ❌ → "ce qu'on recherche"
    - "leur équipe" ❌ → "notre équipe"
 
-8. FORMAT OBLIGATOIRE:
-   - 80-100 mots maximum
+9. FORMAT OBLIGATOIRE:
+   - 200-400 CARACTÈRES pour le message (hors signature) = 3-5 phrases
    - Phrases courtes et percutantes, PAS de tirets, PAS de listes
-   - SAUTS DE LIGNE entre chaque paragraphe/idée (2-3 paragraphes distincts)
-   - Structure type: Accroche perso (1-2 phrases) → Pitch poste en prose fluide (2-3 phrases) → CTA (1 phrase)
+   - SAUTS DE LIGNE entre chaque idée (2-3 paragraphes courts)
+   - Structure: Accroche perso (1 phrase) → Ce que le candidat y gagne (1-2 phrases) → CTA non-engageant (1 phrase)
    - Signature: "${senderName || '[Prénom]'}"
    
-   IMPORTANT: Utilise des sauts de ligne (\\n\\n) pour aérer le message. Jamais de bloc de texte massif ni de listes.
+   IMPORTANT: \\n\\n entre les paragraphes. Jamais de bloc massif.
 
-=== EXEMPLES ===
+=== EXEMPLES (BONNES PRATIQUES 2025) ===
 
-EXEMPLE 1 - MODE RPO (tu ES Numspot):
-À propos: "Passionné par le Domain-Driven Design et les architectures hexagonales."
-
+EXEMPLE 1 - MODE RPO, accroche "À propos":
 "Salut Thomas,
 
-Tu parles de DDD et d'ownership dans ton profil, c'est exactement ce qu'on recherche dans notre équipe chez Numspot.
+Tu parles de DDD et d'ownership dans ton profil. On monte le cloud souverain chez ${clientName}, stack Go/K8s, tu définirais l'archi toi-même.
 
-On construit le cloud souverain français, stack Go/K8s, projet greenfield. Tu définirais toi-même les patterns d'archi.
-
-Dispo jeudi pour un call de 15 min ?
+Dispo pour un call de 15 min ?
 
 Marc"
 
-EXEMPLE 2 - MODE SUCCÈS (cabinet externe):
+EXEMPLE 2 - MODE SUCCÈS, ancien employeur commun:
 "Salut Julie,
 
-Je recrute pour Alan sur un poste Data Engineer senior. Ton expérience chez Doctolib puis BlaBlaCar colle vraiment bien avec ce qu'ils cherchent.
-
-Stack moderne dbt, BigQuery, Airflow. Équipe de 4, full remote, impact direct sur les décisions produit.
+Ex-Doctolib aussi ? Je recrute pour Alan, Data Engineer senior. Stack dbt/BigQuery, full remote, équipe de 4 seniors. Impact direct sur les décisions produit.
 
 On se cale un call cette semaine ?
 
 Marc"
 
+EXEMPLE 3 - Accroche question ouverte (peu d'infos sur le profil):
+"Salut Alex,
+
+Qu'est-ce qui te ferait bouger aujourd'hui ? Je recrute un Lead Backend pour ${clientName}, projet greenfield, stack moderne.
+
+Curieux d'avoir ton avis, même si tu n'es pas en recherche active.
+
+Marc"
+
 Réponds UNIQUEMENT en JSON valide:
 {
-  "subject": "Objet court (max 50 car)",
-  "message": "Le message complet avec des \\n\\n entre les paragraphes",
-  "personalization_points": ["Élément précis du profil utilisé", "Style détecté et comment tu t'y es adapté"]
+  "subject": "Objet court (max 40 car, mobile-first)",
+  "message": "Le message complet avec des \\n\\n entre les paragraphes. 200-400 caractères hors signature.",
+  "personalization_points": ["Élément précis du profil utilisé", "Technique de personnalisation appliquée (ex: ancien employeur commun, passion du À propos, question ouverte)"]
 }`;
 
     const callAnthropic = async (userPrompt: string): Promise<{ ok: true; content: string } | { ok: false; response: Response }> => {
