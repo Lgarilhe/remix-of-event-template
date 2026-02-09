@@ -155,9 +155,13 @@ export function buildSearchParams(filters: LinkedInFiltersState, selectedAccount
     }));
   }
 
-  // Skills
-  if (filters.skills.length) {
-    baseParams.skills = filters.skills.map(item => ({
+  // Skills - only send items with valid numeric LinkedIn IDs
+  const validSkills = filters.skills.filter(item => {
+    const n = Number(item.id);
+    return Number.isFinite(n) && n > 0;
+  });
+  if (validSkills.length) {
+    baseParams.skills = validSkills.map(item => ({
       id: item.id,
       priority: item.priority,
     }));
