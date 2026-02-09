@@ -207,45 +207,79 @@ export function useLinkedInScoring({
     setScoringInProgress(true);
     const profilesToScore = results.filter(p => selectedProfiles.has(p.id));
 
+    // Batch settings to avoid AI rate limits
+    const BATCH_SIZE = 5;
+    const DELAY_BETWEEN_BATCHES_MS = 2000;
+
     try {
       const profilesData = profilesToScore.map(buildProfileData);
+      const jobPayload = {
+        id: selectedJob.id,
+        title: selectedJob.title,
+        client: selectedJob.client,
+        skills: selectedJob.skills || [],
+        requirements: selectedJob.requirements,
+        description: selectedJob.description,
+        seniority: selectedJob.seniority,
+        location: selectedJob.location,
+        remote: selectedJob.remote,
+        xpMin: selectedJob.xpMin,
+        xpMax: selectedJob.xpMax,
+        salaryMin: selectedJob.salaryMin,
+        salaryMax: selectedJob.salaryMax,
+        tjmMin: selectedJob.tjm,
+        contractType: selectedJob.contractType,
+      };
 
-      const { data, error } = await supabase.functions.invoke('score-profile-job', {
-        body: {
-          profiles: profilesData,
-          job: {
-            id: selectedJob.id,
-            title: selectedJob.title,
-            client: selectedJob.client,
-            skills: selectedJob.skills || [],
-            requirements: selectedJob.requirements,
-            description: selectedJob.description,
-            seniority: selectedJob.seniority,
-            location: selectedJob.location,
-            remote: selectedJob.remote,
-            xpMin: selectedJob.xpMin,
-            xpMax: selectedJob.xpMax,
-            salaryMin: selectedJob.salaryMin,
-            salaryMax: selectedJob.salaryMax,
-            tjmMin: selectedJob.tjm,
-            contractType: selectedJob.contractType,
+      const allResults: JobMatchResult[] = [];
+      let rateLimited = false;
+      const totalBatches = Math.ceil(profilesData.length / BATCH_SIZE);
+
+      for (let i = 0; i < profilesData.length; i += BATCH_SIZE) {
+        const batch = profilesData.slice(i, i + BATCH_SIZE);
+        const batchIndex = Math.floor(i / BATCH_SIZE) + 1;
+
+        if (totalBatches > 1) {
+          toast.info(`Scoring lot ${batchIndex}/${totalBatches}...`, { id: 'batch-scoring-progress', duration: 3000 });
+        }
+
+        const { data, error } = await supabase.functions.invoke('score-profile-job', {
+          body: { profiles: batch, job: jobPayload }
+        });
+
+        if (error) {
+          if (error.message?.includes('CREDITS_EXHAUSTED') || error.message?.includes('402')) {
+            toast.error('Crédits IA épuisés.', { duration: 8000 });
+            return;
           }
+          if (error.message?.includes('RATE_LIMITED') || error.message?.includes('429')) {
+            rateLimited = true;
+            // Fill fallback for this batch
+            batch.forEach(() => allResults.push({
+              match_score: 0,
+              matching_skills: [],
+              missing_skills: [],
+              experience_match: 'incertain',
+              location_match: false,
+              summary: 'Rate limited - réessayez plus tard',
+              recommendation: 'maybe',
+            } as any));
+            break;
+          }
+          throw error;
         }
-      });
 
-      if (error) {
-        if (error.message?.includes('CREDITS_EXHAUSTED') || error.message?.includes('402')) {
-          toast.error('Crédits IA épuisés. Veuillez ajouter des crédits.', { duration: 8000 });
-          return;
+        if (data?.results) {
+          allResults.push(...data.results);
         }
-        if (error.message?.includes('RATE_LIMITED') || error.message?.includes('429')) {
-          toast.error('Limite de requêtes IA atteinte. Réessayez dans quelques instants.', { duration: 5000 });
-          return;
+
+        // Delay between batches
+        if (i + BATCH_SIZE < profilesData.length && !rateLimited) {
+          await new Promise(resolve => setTimeout(resolve, DELAY_BETWEEN_BATCHES_MS));
         }
-        throw error;
       }
 
-      if (data?.results) {
+      if (allResults.length > 0) {
         const newScores: Record<string, JobMatchResult> = {};
         const lowScoreProfiles: Array<{
           id: string;
@@ -257,9 +291,9 @@ export function useLinkedInScoring({
           skipReason?: string;
         }> = [];
 
-        data.results.forEach((result: JobMatchResult, index: number) => {
+        allResults.forEach((result: JobMatchResult, index: number) => {
           const profile = profilesToScore[index];
-          if (profile) {
+          if (profile && result.match_score > 0) {
             newScores[profile.id] = result;
             if (result.recommendation === 'skip') {
               lowScoreProfiles.push({
@@ -278,6 +312,8 @@ export function useLinkedInScoring({
         setJobScores(prev => ({ ...prev, ...newScores }));
         setSortByScore(true);
 
+        const scoredCount = Object.keys(newScores).length;
+
         // Auto-dismiss low score profiles when autoHideTreated is ON
         const shouldAutoDismiss = autoHideTreatedRef.current;
         if (shouldAutoDismiss && lowScoreProfiles.length > 0) {
@@ -291,14 +327,17 @@ export function useLinkedInScoring({
             return newSet;
           });
 
-          const goodCount = data.results.length - lowScoreProfiles.length;
-          toast.success(`${data.results.length} profils scorés : ${goodCount} pertinent${goodCount > 1 ? 's' : ''}, ${lowScoreProfiles.length} écarté${lowScoreProfiles.length > 1 ? 's' : ''}`);
+          const goodCount = scoredCount - lowScoreProfiles.length;
+          const msg = `${scoredCount} profils scorés : ${goodCount} pertinent${goodCount > 1 ? 's' : ''}, ${lowScoreProfiles.length} écarté${lowScoreProfiles.length > 1 ? 's' : ''}`;
+          toast.success(rateLimited ? msg + ' (rate limit atteint)' : msg);
         } else {
-          const goodCount = data.results.length - lowScoreProfiles.length;
-          if (lowScoreProfiles.length > 0) {
-            toast.success(`${data.results.length} profils scorés : ${goodCount} pertinent${goodCount > 1 ? 's' : ''}, ${lowScoreProfiles.length} peu adapté${lowScoreProfiles.length > 1 ? 's' : ''}`);
+          if (rateLimited) {
+            toast.warning(`${scoredCount} profils scorés sur ${profilesToScore.length} (rate limit atteint, réessayez le reste)`);
+          } else if (lowScoreProfiles.length > 0) {
+            const goodCount = scoredCount - lowScoreProfiles.length;
+            toast.success(`${scoredCount} profils scorés : ${goodCount} pertinent${goodCount > 1 ? 's' : ''}, ${lowScoreProfiles.length} peu adapté${lowScoreProfiles.length > 1 ? 's' : ''}`);
           } else {
-            toast.success(`${data.results.length} profils scorés`);
+            toast.success(`${scoredCount} profils scorés`);
           }
         }
       }
