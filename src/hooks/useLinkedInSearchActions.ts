@@ -429,7 +429,9 @@ export function useLinkedInSearchActions(
 
     } catch (error: any) {
       console.error('[LinkedInSearch] Search error:', error);
-      toast.error(error.message || 'Erreur lors de la recherche');
+      toast.error(error.message || 'Erreur lors de la recherche', { id: 'search-error' });
+      // Stop infinite scroll from retrying on error
+      setHasMoreResults(false);
     } finally {
       setLoading(false);
       setLoadingMore(false);
