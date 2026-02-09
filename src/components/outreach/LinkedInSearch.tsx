@@ -117,7 +117,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
     accounts.find(a => a.id === selectedAccount),
     [accounts, selectedAccount]
   );
-  const needsReconnection = selectedAccountData && selectedAccountData.status !== 'OK';
+  const needsReconnection = selectedAccountData && !['OK', 'CONNECTED', 'CONNECTING'].includes(selectedAccountData.status);
   const subscriptions = selectedAccountData?.subscriptions;
 
   // Check API mode availability
