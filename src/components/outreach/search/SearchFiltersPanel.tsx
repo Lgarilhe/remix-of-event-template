@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { LinkedInFiltersState, LinkedInApiType, API_TYPE_OPTIONS } from '@/components/outreach/types';
 import { LinkedInAccount } from '@/pages/Outreach';
 import { LinkedInFilters } from '@/components/outreach/LinkedInFilters';
@@ -14,7 +14,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { Search, Loader2, AlertTriangle, Lock, Sparkles } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Search, Loader2, AlertTriangle, Lock, Sparkles, Pencil } from 'lucide-react';
 
 interface SearchFiltersPanelProps {
   // Account
@@ -77,6 +78,9 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
   showFilterWizard,
   setShowFilterWizard,
 }) => {
+  const [keywordsDialogOpen, setKeywordsDialogOpen] = useState(false);
+  const [keywordsDraft, setKeywordsDraft] = useState('');
+
   const selectedAccountData = accounts.find(a => a.id === selectedAccount);
   const hasPremiumLicense = subscriptions?.recruiter || subscriptions?.sales_navigator;
 
@@ -253,25 +257,49 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
         )}
       </div>
 
-      {/* Keywords input */}
+      {/* Keywords preview + edit dialog */}
       <div className="bg-white rounded-lg border border-[#1A1A1A]/10 p-4">
         <label className="text-sm font-medium text-[#1A1A1A] mb-2 block">
           Mots-clés
         </label>
-        <Textarea
-          value={filters.keywords}
-          onChange={(e) => setFilters(f => ({ ...f, keywords: e.target.value }))}
-          placeholder="Ex: Product Manager, React..."
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey && selectedJob) {
-              e.preventDefault();
-              onSearch();
-            }
-          }}
-          className="min-h-[40px] max-h-[200px] resize-y text-sm"
-          rows={1}
-        />
+        <button
+          type="button"
+          onClick={() => { setKeywordsDraft(filters.keywords); setKeywordsDialogOpen(true); }}
+          className="w-full text-left flex items-center gap-2 px-3 py-2 rounded-md border border-input bg-background hover:bg-accent/50 transition-colors min-h-[40px] group"
+        >
+          {filters.keywords ? (
+            <span className="text-sm truncate flex-1">{filters.keywords}</span>
+          ) : (
+            <span className="text-sm text-muted-foreground flex-1">Ex: Product Manager, React...</span>
+          )}
+          <Pencil className="w-3.5 h-3.5 text-muted-foreground shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
+        </button>
       </div>
+
+      <Dialog open={keywordsDialogOpen} onOpenChange={setKeywordsDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Mots-clés de recherche</DialogTitle>
+          </DialogHeader>
+          <Textarea
+            autoFocus
+            value={keywordsDraft}
+            onChange={(e) => setKeywordsDraft(e.target.value)}
+            placeholder='Ex: (Terraform OR IaC OR "Infrastructure as Code") AND (AWS OR Azure)'
+            className="min-h-[120px] text-sm font-mono"
+            rows={5}
+          />
+          <p className="text-xs text-muted-foreground">
+            Utilisez les opérateurs booléens : AND, OR, NOT et les guillemets pour les expressions exactes.
+          </p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setKeywordsDialogOpen(false)}>Annuler</Button>
+            <Button onClick={() => { setFilters(f => ({ ...f, keywords: keywordsDraft })); setKeywordsDialogOpen(false); }}>
+              Appliquer
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Filters */}
       <LinkedInFilters
