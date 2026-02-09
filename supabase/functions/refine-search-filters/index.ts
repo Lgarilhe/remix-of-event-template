@@ -7,11 +7,12 @@ const corsHeaders = {
 
 interface RefineRequest {
   currentFilters: Record<string, unknown>;
+  internalFilters?: Record<string, unknown>;
   totalResults: number | null;
   resultCount: number;
   jobTitle: string;
   jobLocation?: string;
-  direction: 'expand' | 'narrow' | 'auto'; // auto = AI decides based on count
+  direction: 'expand' | 'narrow' | 'auto';
 }
 
 serve(async (req) => {
@@ -20,7 +21,7 @@ serve(async (req) => {
   }
 
   try {
-    const { currentFilters, totalResults, resultCount, jobTitle, jobLocation, direction } =
+    const { currentFilters, internalFilters, totalResults, resultCount, jobTitle, jobLocation, direction } =
       await req.json() as RefineRequest;
 
     const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
@@ -34,18 +35,24 @@ serve(async (req) => {
 
     const systemPrompt = `Tu es un expert en recrutement LinkedIn. On te donne les filtres actuels d'une recherche LinkedIn et le nombre de résultats obtenus. Tu dois ajuster les filtres pour ${finalDirection === 'expand' ? 'ÉLARGIR la recherche (plus de résultats)' : 'AFFINER la recherche (moins de résultats, plus ciblés)'}.
 
+IMPORTANT - DEUX TYPES DE FILTRES D'EXPÉRIENCE:
+1. "years_of_experience" (API LinkedIn): filtre côté LinkedIn, moins fiable
+2. "calculated_experience_min" / "calculated_experience_max": filtre côté client basé sur l'année du diplôme, PLUS FIABLE et PRIORITAIRE
+   - Ces valeurs sont en ANNÉES. Ex: min=3, max=8 signifie 3-8 ans d'expérience calculée depuis le diplôme
+   - TOUJOURS ajuster calculated_experience_min et calculated_experience_max en PRIORITÉ plutôt que years_of_experience
+
 RÈGLES D'ÉLARGISSEMENT (quand trop peu de résultats):
 1. Augmenter le rayon géographique (location_within_area): 25→50→75→100 miles
 2. Passer le role de MUST_HAVE à CAN_HAVE ou supprimer des titres trop spécifiques
 3. Simplifier les keywords: réduire le nombre de groupes AND, garder 1-2 max
-4. Élargir la plage d'expérience: -2 ans sur le min, +3 ans sur le max
+4. Élargir calculated_experience_min et calculated_experience_max: -2 ans sur min, +3 ans sur max
 5. Supprimer des filtres secondaires (skills, school, spotlight)
 6. NE PAS toucher au compte ni au mode API
 
 RÈGLES D'AFFINAGE (quand trop de résultats):
 1. Réduire le rayon géographique
 2. Ajouter des groupes AND aux keywords
-3. Resserrer la plage d'expérience
+3. Resserrer calculated_experience_min et calculated_experience_max
 4. Passer des filtres de CAN_HAVE à MUST_HAVE
 5. Ajouter des exclusions NOT dans les keywords
 
@@ -53,12 +60,12 @@ PRIORITÉ DES AJUSTEMENTS (du plus impactant au moins):
 1. Keywords (AND/OR structure)
 2. Location radius
 3. Role priority
-4. Years of experience range
+4. Expérience calculée (calculated_experience_min / calculated_experience_max)
 5. Autres filtres
 
 Retourne UNIQUEMENT un JSON avec:
 - adjustments: tableau d'objets décrivant chaque changement. Chaque objet a:
-  - field: string (nom du champ de filtre à modifier, ex: "keywords", "location_within_area", "role", "calculated_experience_min", etc.)
+  - field: string (nom du champ: "keywords", "location_within_area", "role", "calculated_experience_min", "calculated_experience_max", etc.)
   - value: la nouvelle valeur pour ce champ
   - reason: string (explication courte du pourquoi en français)
 - summary: string (résumé en 1 phrase de ce qui a changé, en français)
@@ -71,7 +78,10 @@ ${jobLocation ? `Localisation du poste: ${jobLocation}` : ''}
 Nombre de résultats actuels: ${effectiveTotal}
 Direction souhaitée: ${finalDirection === 'expand' ? 'ÉLARGIR (plus de résultats)' : 'AFFINER (moins de résultats)'}
 
-Filtres actuels:
+Filtres internes (expérience calculée):
+${internalFilters ? JSON.stringify(internalFilters, null, 2) : 'Non fournis'}
+
+Filtres API envoyés à LinkedIn:
 ${JSON.stringify(currentFilters, null, 2)}`;
 
     console.log(`[refine-search-filters] Direction: ${finalDirection}, Total: ${effectiveTotal}, Job: ${jobTitle}`);
