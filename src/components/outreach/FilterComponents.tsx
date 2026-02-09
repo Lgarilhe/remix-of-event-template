@@ -51,13 +51,13 @@ export const FilterSection: React.FC<FilterSectionProps> = ({
       {/* Preview of active filters when collapsed */}
       {!isOpen && activeFiltersPreview && activeFiltersPreview.length > 0 && (
         <div className="flex flex-wrap gap-1 mt-2 w-full">
-          {activeFiltersPreview.slice(0, 5).map((filter, index) => (
+          {activeFiltersPreview.filter(Boolean).slice(0, 5).map((filter, index) => (
             <Badge 
               key={index} 
               variant="outline" 
               className="text-[10px] h-5 px-1.5 bg-white/60 text-[#1A1A1A]/70 border-[#1A1A1A]/10 font-normal"
             >
-              {filter.length > 20 ? `${filter.slice(0, 20)}...` : filter}
+              {String(filter).length > 20 ? `${String(filter).slice(0, 20)}...` : String(filter)}
             </Badge>
           ))}
           {activeFiltersPreview.length > 5 && (
