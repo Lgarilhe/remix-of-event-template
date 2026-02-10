@@ -81,6 +81,7 @@ export const CompanyFilter: React.FC<CompanyFilterProps> = ({
   const [dialogDraft, setDialogDraft] = useState('');
   const [dialogPriority, setDialogPriority] = useState<CompanyPriority>('MUST_HAVE');
   const [dialogScope, setDialogScope] = useState<CompanyScope>('CURRENT');
+  const [editingIndex, setEditingIndex] = useState<number | null>(null);
 
   const handleAddKeyword = () => {
     if (!newKeywords.trim()) return;
@@ -94,19 +95,40 @@ export const CompanyFilter: React.FC<CompanyFilterProps> = ({
 
   const handleDialogApply = () => {
     if (!dialogDraft.trim()) return;
-    onAddKeywordCompany({
-      keywords: dialogDraft.trim(),
-      priority: dialogPriority,
-      scope: dialogScope,
-    });
+    if (editingIndex !== null) {
+      // Update existing entry
+      onUpdateKeywordCompany(editingIndex, {
+        keywords: dialogDraft.trim(),
+        priority: dialogPriority,
+        scope: dialogScope,
+      });
+    } else {
+      // Add new entry
+      onAddKeywordCompany({
+        keywords: dialogDraft.trim(),
+        priority: dialogPriority,
+        scope: dialogScope,
+      });
+    }
     setDialogOpen(false);
     setDialogDraft('');
+    setEditingIndex(null);
   };
 
   const openBooleanDialog = () => {
+    setEditingIndex(null);
     setDialogDraft(newKeywords);
     setDialogPriority(newPriority);
     setDialogScope(newScope);
+    setDialogOpen(true);
+  };
+
+  const openEditDialog = (index: number) => {
+    const company = keywordCompanies[index];
+    setEditingIndex(index);
+    setDialogDraft(company.keywords);
+    setDialogPriority(company.priority);
+    setDialogScope(company.scope);
     setDialogOpen(true);
   };
   if (!isRecruiter) {
@@ -160,9 +182,14 @@ export const CompanyFilter: React.FC<CompanyFilterProps> = ({
                 className="bg-white border border-gray-100 rounded-md p-2 shadow-sm"
               >
                 <div className="flex items-center justify-between mb-1.5">
-                  <span className="text-xs font-medium text-[#1A1A1A] truncate flex-1 pr-2">
-                    {company.keywords}
-                  </span>
+                  <button
+                    type="button"
+                    onClick={() => openEditDialog(index)}
+                    className="text-xs font-medium text-[#1A1A1A] truncate flex-1 pr-2 text-left hover:text-[#0077B5] transition-colors group flex items-center gap-1"
+                  >
+                    <span className="truncate">{company.keywords}</span>
+                    <Pencil className="w-3 h-3 text-muted-foreground shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
+                  </button>
                   <button 
                     type="button" 
                     onClick={() => onRemoveKeywordCompany(index)} 
@@ -289,7 +316,7 @@ export const CompanyFilter: React.FC<CompanyFilterProps> = ({
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Entreprises — Éditeur Boolean</DialogTitle>
+            <DialogTitle>{editingIndex !== null ? 'Modifier' : 'Ajouter'} — Entreprises Boolean</DialogTitle>
           </DialogHeader>
           <Textarea
             autoFocus
@@ -341,7 +368,7 @@ export const CompanyFilter: React.FC<CompanyFilterProps> = ({
           <DialogFooter>
             <Button variant="outline" onClick={() => setDialogOpen(false)}>Annuler</Button>
             <Button onClick={handleDialogApply} disabled={!dialogDraft.trim()}>
-              Appliquer
+              {editingIndex !== null ? 'Modifier' : 'Appliquer'}
             </Button>
           </DialogFooter>
         </DialogContent>
