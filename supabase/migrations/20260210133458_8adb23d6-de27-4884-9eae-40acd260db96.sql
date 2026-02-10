@@ -1,0 +1,1 @@
+ALTER TABLE public.sequence_enrollments DROP CONSTRAINT IF EXISTS sequence_enrollments_created_by_fkey;
