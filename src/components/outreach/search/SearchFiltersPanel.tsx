@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { LinkedInFiltersState, LinkedInApiType, API_TYPE_OPTIONS } from '@/components/outreach/types';
 import { LinkedInAccount } from '@/pages/Outreach';
 import { LinkedInFilters } from '@/components/outreach/LinkedInFilters';
-import { JobSelector, GeneratedFilters } from '@/components/outreach/JobSelector';
+import { JobSelector, GeneratedFilters, useJobs } from '@/components/outreach/JobSelector';
 
 import { FilterPresetsManager } from '@/components/outreach/FilterPresetsManager';
 import { AutoFillFiltersButton } from '@/components/outreach/AutoFillFiltersButton';
@@ -74,6 +74,16 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
 }) => {
   const [keywordsDialogOpen, setKeywordsDialogOpen] = useState(false);
   const [keywordsDraft, setKeywordsDraft] = useState('');
+  const { data: allJobs = [] } = useJobs();
+
+  const handleApplyPresetJob = useCallback((jobId: string | null, _jobTitle: string | null) => {
+    if (jobId) {
+      const foundJob = allJobs.find(j => j.id === jobId);
+      if (foundJob) {
+        onJobChange(foundJob);
+      }
+    }
+  }, [allJobs, onJobChange]);
 
   const selectedAccountData = accounts.find(a => a.id === selectedAccount);
   const hasPremiumLicense = subscriptions?.recruiter || subscriptions?.sales_navigator;
@@ -218,6 +228,7 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
             currentFilters={filters}
             onApplyFilters={setFilters}
             selectedJob={selectedJob}
+            onApplyPresetJob={handleApplyPresetJob}
           />
         </div>
 
