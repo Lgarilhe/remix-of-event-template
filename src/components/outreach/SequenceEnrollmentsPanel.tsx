@@ -173,6 +173,12 @@ interface SequenceStep {
   subject_template: string | null;
   delay_days: number;
   delay_hours: number;
+  delay_minutes?: number | null;
+  timeout_days?: number | null;
+  timeout_branch_step_id?: string | null;
+  if_true_goto_step?: string | null;
+  if_false_goto_step?: string | null;
+  wait_for_event?: string | null;
 }
 
 export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> = ({
@@ -194,7 +200,7 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
       // Fetch sequence steps FIRST to get the full workflow
       const { data: stepsData } = await supabase
         .from('sequence_steps')
-        .select('id, action_type, message_template, subject_template, step_order, delay_days, delay_hours')
+        .select('id, action_type, message_template, subject_template, step_order, delay_days, delay_hours, delay_minutes, timeout_days, timeout_branch_step_id, if_true_goto_step, if_false_goto_step, wait_for_event')
         .eq('sequence_id', sequenceId)
         .order('step_order', { ascending: true });
 
@@ -631,6 +637,50 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
                                             </span>
                                           )}
                                         </div>
+
+                                        {/* Contextual info for wait/check steps */}
+                                        {(step.action_type === 'wait_connection' || step.action_type === 'wait_reply') && (
+                                          <div className="mt-1 text-[10px] text-amber-700 bg-amber-50 rounded px-2 py-1 border border-amber-200">
+                                            {step.timeout_days ? (
+                                              <>
+                                                <span className="font-medium">⏳ Timeout : {step.timeout_days} jour{step.timeout_days > 1 ? 's' : ''}</span>
+                                                {step.timeout_branch_step_id && (() => {
+                                                  const timeoutStep = allSteps.find(s => s.id === step.timeout_branch_step_id);
+                                                  const timeoutLabel = timeoutStep ? (actionTypeConfig[timeoutStep.action_type]?.label || timeoutStep.action_type) : '?';
+                                                  return <span> → si non accepté : <strong>{timeoutLabel}</strong> (étape {timeoutStep?.step_order})</span>;
+                                                })()}
+                                                {!step.timeout_branch_step_id && <span> → si non accepté : fin de séquence</span>}
+                                              </>
+                                            ) : (
+                                              <span>⏳ Attente indéfinie (pas de timeout configuré)</span>
+                                            )}
+                                            {exec?.status === 'scheduled' && step.timeout_days && (
+                                              <div className="mt-0.5 text-amber-600">
+                                                Expire le {format(
+                                                  new Date(new Date(exec.scheduled_at).getTime() + (step.timeout_days * 24 * 60 * 60 * 1000)),
+                                                  'dd/MM/yyyy à HH:mm',
+                                                  { locale: fr }
+                                                )}
+                                              </div>
+                                            )}
+                                          </div>
+                                        )}
+
+                                        {step.action_type === 'check_connection' && (
+                                          <div className="mt-1 text-[10px] text-indigo-700 bg-indigo-50 rounded px-2 py-1 border border-indigo-200">
+                                            <span className="font-medium">🔀 Branchement :</span>
+                                            {step.if_true_goto_step && (() => {
+                                              const trueStep = allSteps.find(s => s.id === step.if_true_goto_step);
+                                              const trueLabel = trueStep ? (actionTypeConfig[trueStep.action_type]?.label || trueStep.action_type) : '?';
+                                              return <span> Si connecté → <strong>{trueLabel}</strong> (ét. {trueStep?.step_order})</span>;
+                                            })()}
+                                            {step.if_false_goto_step && (() => {
+                                              const falseStep = allSteps.find(s => s.id === step.if_false_goto_step);
+                                              const falseLabel = falseStep ? (actionTypeConfig[falseStep.action_type]?.label || falseStep.action_type) : '?';
+                                              return <span> · Si non connecté → <strong>{falseLabel}</strong> (ét. {falseStep?.step_order})</span>;
+                                            })()}
+                                          </div>
+                                        )}
 
                                         {/* Timing info from execution */}
                                         {exec && (
