@@ -640,23 +640,26 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
 
                                         {/* Contextual info for wait/check steps */}
                                         {(step.action_type === 'wait_connection' || step.action_type === 'wait_reply') && (
-                                          <div className="mt-1 text-[10px] text-amber-700 bg-amber-50 rounded px-2 py-1 border border-amber-200">
-                                            {step.timeout_days ? (
-                                              <>
-                                                <span className="font-medium">⏳ Timeout : {step.timeout_days} jour{step.timeout_days > 1 ? 's' : ''}</span>
-                                                {step.timeout_branch_step_id && (() => {
-                                                  const timeoutStep = allSteps.find(s => s.id === step.timeout_branch_step_id);
-                                                  const timeoutLabel = timeoutStep ? (actionTypeConfig[timeoutStep.action_type]?.label || timeoutStep.action_type) : '?';
-                                                  return <span> → si non accepté : <strong>{timeoutLabel}</strong> (étape {timeoutStep?.step_order})</span>;
-                                                })()}
-                                                {!step.timeout_branch_step_id && <span> → si non accepté : fin de séquence</span>}
-                                              </>
-                                            ) : (
-                                              <span>⏳ Attente indéfinie (pas de timeout configuré)</span>
+                                          <div className="mt-1.5 text-[10px] text-amber-700 bg-amber-50 rounded-md px-2 py-1.5 border border-amber-200 space-y-0.5">
+                                            <div className="font-medium">
+                                              ⏳ {step.timeout_days 
+                                                ? `Timeout : ${step.timeout_days} jour${step.timeout_days > 1 ? 's' : ''}`
+                                                : 'Attente indéfinie (pas de timeout)'
+                                              }
+                                            </div>
+                                            {step.timeout_days && step.timeout_branch_step_id && (() => {
+                                              const timeoutStep = allSteps.find(s => s.id === step.timeout_branch_step_id);
+                                              const timeoutLabel = timeoutStep ? (actionTypeConfig[timeoutStep.action_type]?.label || timeoutStep.action_type) : '?';
+                                              return (
+                                                <div>→ Si non accepté : <strong>{timeoutLabel}</strong> (étape {timeoutStep?.step_order})</div>
+                                              );
+                                            })()}
+                                            {step.timeout_days && !step.timeout_branch_step_id && (
+                                              <div>→ Si non accepté : fin de séquence</div>
                                             )}
                                             {exec?.status === 'scheduled' && step.timeout_days && (
-                                              <div className="mt-0.5 text-amber-600">
-                                                Expire le {format(
+                                              <div className="text-amber-600">
+                                                📅 Expire le {format(
                                                   new Date(new Date(exec.scheduled_at).getTime() + (step.timeout_days * 24 * 60 * 60 * 1000)),
                                                   'dd/MM/yyyy à HH:mm',
                                                   { locale: fr }
@@ -667,17 +670,17 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
                                         )}
 
                                         {step.action_type === 'check_connection' && (
-                                          <div className="mt-1 text-[10px] text-indigo-700 bg-indigo-50 rounded px-2 py-1 border border-indigo-200">
-                                            <span className="font-medium">🔀 Branchement :</span>
+                                          <div className="mt-1.5 text-[10px] text-indigo-700 bg-indigo-50 rounded-md px-2 py-1.5 border border-indigo-200 space-y-0.5">
+                                            <div className="font-medium">🔀 Branchement</div>
                                             {step.if_true_goto_step && (() => {
                                               const trueStep = allSteps.find(s => s.id === step.if_true_goto_step);
                                               const trueLabel = trueStep ? (actionTypeConfig[trueStep.action_type]?.label || trueStep.action_type) : '?';
-                                              return <span> Si connecté → <strong>{trueLabel}</strong> (ét. {trueStep?.step_order})</span>;
+                                              return <div>✅ Si connecté → <strong>{trueLabel}</strong> (étape {trueStep?.step_order})</div>;
                                             })()}
                                             {step.if_false_goto_step && (() => {
                                               const falseStep = allSteps.find(s => s.id === step.if_false_goto_step);
                                               const falseLabel = falseStep ? (actionTypeConfig[falseStep.action_type]?.label || falseStep.action_type) : '?';
-                                              return <span> · Si non connecté → <strong>{falseLabel}</strong> (ét. {falseStep?.step_order})</span>;
+                                              return <div>❌ Si non connecté → <strong>{falseLabel}</strong> (étape {falseStep?.step_order})</div>;
                                             })()}
                                           </div>
                                         )}
