@@ -3,7 +3,9 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { X, Plus } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Textarea } from '@/components/ui/textarea';
+import { X, Plus, Pencil } from 'lucide-react';
 import { AutocompleteInput, ParameterOption } from './FilterComponents';
 
 // Company filter types
@@ -75,6 +77,10 @@ export const CompanyFilter: React.FC<CompanyFilterProps> = ({
   const [newKeywords, setNewKeywords] = useState('');
   const [newPriority, setNewPriority] = useState<CompanyPriority>('MUST_HAVE');
   const [newScope, setNewScope] = useState<CompanyScope>('CURRENT_OR_PAST');
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [dialogDraft, setDialogDraft] = useState('');
+  const [dialogPriority, setDialogPriority] = useState<CompanyPriority>('MUST_HAVE');
+  const [dialogScope, setDialogScope] = useState<CompanyScope>('CURRENT');
 
   const handleAddKeyword = () => {
     if (!newKeywords.trim()) return;
@@ -86,7 +92,23 @@ export const CompanyFilter: React.FC<CompanyFilterProps> = ({
     setNewKeywords('');
   };
 
-  // Non-Recruiter mode: simple autocomplete only
+  const handleDialogApply = () => {
+    if (!dialogDraft.trim()) return;
+    onAddKeywordCompany({
+      keywords: dialogDraft.trim(),
+      priority: dialogPriority,
+      scope: dialogScope,
+    });
+    setDialogOpen(false);
+    setDialogDraft('');
+  };
+
+  const openBooleanDialog = () => {
+    setDialogDraft(newKeywords);
+    setDialogPriority(newPriority);
+    setDialogScope(newScope);
+    setDialogOpen(true);
+  };
   if (!isRecruiter) {
     return (
       <div className="space-y-2">
@@ -246,12 +268,84 @@ export const CompanyFilter: React.FC<CompanyFilterProps> = ({
           >
             <Plus className="w-3 h-3" />
           </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={openBooleanDialog}
+            className="h-6 px-2"
+            title="Éditeur Boolean avancé"
+          >
+            <Pencil className="w-3 h-3" />
+          </Button>
         </div>
         
         <p className="text-[9px] text-muted-foreground">
-          Utilisez AND, NOT pour affiner: "developers AND product NOT managers"
+          Utilisez AND, NOT pour affiner ou <button type="button" onClick={openBooleanDialog} className="underline hover:text-foreground">ouvrez l'éditeur Boolean</button>
         </p>
       </div>
+
+      {/* Boolean editor dialog */}
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Entreprises — Éditeur Boolean</DialogTitle>
+          </DialogHeader>
+          <Textarea
+            autoFocus
+            value={dialogDraft}
+            onChange={(e) => setDialogDraft(e.target.value)}
+            placeholder='Ex: Accenture OR "Bearing Point" OR Capgemini OR "Sia Partners" NOT Freelance'
+            className="min-h-[140px] text-sm font-mono"
+            rows={6}
+          />
+          <div className="flex items-center gap-2 mt-1">
+            <Select value={dialogPriority} onValueChange={(v) => setDialogPriority(v as CompanyPriority)}>
+              <SelectTrigger className="h-8 flex-1 text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent className="bg-white z-50">
+                {COMPANY_PRIORITY_OPTIONS.map((opt) => (
+                  <SelectItem key={opt.value} value={opt.value} className="text-xs">
+                    <span className="flex items-center gap-1">
+                      <span>{opt.icon}</span>
+                      <span>{opt.label}</span>
+                    </span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={dialogScope} onValueChange={(v) => setDialogScope(v as CompanyScope)}>
+              <SelectTrigger className="h-8 flex-1 text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent className="bg-white z-50">
+                {COMPANY_SCOPE_OPTIONS.map((opt) => (
+                  <SelectItem key={opt.value} value={opt.value} className="text-xs">
+                    {opt.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1.5 text-xs text-muted-foreground bg-muted/50 rounded-md p-3">
+            <p className="font-medium text-foreground/70">💡 Astuces Boolean entreprises :</p>
+            <ul className="space-y-1 list-disc list-inside">
+              <li><strong>OR</strong> entre entreprises : <code className="text-[10px] bg-muted px-1 rounded">Accenture OR Capgemini OR McKinsey</code></li>
+              <li><strong>Guillemets</strong> pour noms composés : <code className="text-[10px] bg-muted px-1 rounded">"Bearing Point" OR "Sia Partners"</code></li>
+              <li><strong>AND</strong> pour combiner : <code className="text-[10px] bg-muted px-1 rounded">"Big Four" AND consulting</code></li>
+              <li><strong>NOT</strong> pour exclure : <code className="text-[10px] bg-muted px-1 rounded">NOT freelance NOT startup</code></li>
+            </ul>
+            <p className="text-[10px] mt-1 text-muted-foreground/70">⚠️ Limite ~200 caractères. Utilisez des guillemets pour les noms avec espaces.</p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDialogOpen(false)}>Annuler</Button>
+            <Button onClick={handleDialogApply} disabled={!dialogDraft.trim()}>
+              Appliquer
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
