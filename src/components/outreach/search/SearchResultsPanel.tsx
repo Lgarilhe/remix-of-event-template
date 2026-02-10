@@ -221,8 +221,8 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
             </Select>
           )}
 
-          {/* Dismissed toggle */}
-          {selectedJob && !autoHideTreated && dismissedCount > 0 && (
+          {/* Dismissed toggle - always visible when there are dismissed profiles */}
+          {selectedJob && dismissedCount > 0 && (
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
