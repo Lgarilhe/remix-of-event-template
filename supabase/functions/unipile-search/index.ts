@@ -576,7 +576,7 @@ async function handleSearch(
 
   // Recruiter specific filters
   if (api === 'recruiter') {
-    if (hiring_project) searchBody.hiring_project = hiring_project;
+    if (hiring_project) searchBody.hiring_projects = { include: [hiring_project] };
     if (talent_pool) searchBody.talent_pool = talent_pool;
     // NOTE: spotlights are handled above (merged from open_to_work + spotlight + spotlights)
     
