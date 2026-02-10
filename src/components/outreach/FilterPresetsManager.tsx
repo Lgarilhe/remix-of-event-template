@@ -49,12 +49,14 @@ interface FilterPresetsManagerProps {
   currentFilters: LinkedInFiltersState;
   onApplyFilters: (filters: LinkedInFiltersState) => void;
   selectedJob?: Job | null;
+  onApplyPresetJob?: (jobId: string | null, jobTitle: string | null) => void;
 }
 
 export const FilterPresetsManager: React.FC<FilterPresetsManagerProps> = ({
   currentFilters,
   onApplyFilters,
   selectedJob,
+  onApplyPresetJob,
 }) => {
   const { presets, loading, saving, savePreset, applyPreset, deletePreset } = useSavedFilterPresets();
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
@@ -85,6 +87,10 @@ export const FilterPresetsManager: React.FC<FilterPresetsManagerProps> = ({
     const filters = await applyPreset(preset);
     if (filters) {
       onApplyFilters(filters);
+      // Also restore the associated job if available
+      if (onApplyPresetJob) {
+        onApplyPresetJob(preset.job_id, preset.job_title);
+      }
       setPopoverOpen(false);
     }
   };
