@@ -43,16 +43,14 @@ export type SearchCategory = 'people' | 'companies' | 'jobs' | 'posts';
 // Open to work types
 export type OpenToType = 'all' | 'jobs' | 'hiring' | 'services' | 'providing' | 'proBono' | 'boardMember';
 
-// Spotlight types for Recruiter
+// Spotlight types for Recruiter (valid Unipile API values)
 export type SpotlightType = 
-  | 'RECENTLY_CHANGED_JOBS'
-  | 'RECENTLY_PROMOTED' 
-  | 'OPEN_LINK'
-  | 'SHARED_EXPERIENCES'
-  | 'LIKELY_TO_RESPOND'
-  | 'VETERAN'
-  | 'PREMIUM'
-  | 'OPEN_TO_WORK';
+  | 'OPEN_TO_WORK'
+  | 'ACTIVE_TALENT'
+  | 'REDISCOVERED_CANDIDATES'
+  | 'INTERNAL_CANDIDATES'
+  | 'INTERESTED_IN_YOUR_COMPANY'
+  | 'HAVE_COMPANY_CONNECTIONS';
 
 // Full LinkedIn filters state
 // Activity filter types (Recruiter specific)
@@ -380,17 +378,15 @@ export const LOCATION_RADIUS_OPTIONS = [
   { value: 100, label: '100 miles (~160 km)' },
 ];
 
-// Spotlight options (Recruiter specific)
+// Spotlight options (Recruiter specific - valid Unipile API values)
 export const SPOTLIGHT_OPTIONS = [
   { value: '', label: 'Tous les profils' },
-  { value: 'RECENTLY_CHANGED_JOBS', label: 'Changement de poste récent' },
-  { value: 'RECENTLY_PROMOTED', label: 'Récemment promu' },
-  { value: 'OPEN_LINK', label: 'Open Link (InMail gratuit)' },
   { value: 'OPEN_TO_WORK', label: 'Open to Work' },
-  { value: 'LIKELY_TO_RESPOND', label: 'Susceptible de répondre' },
-  { value: 'SHARED_EXPERIENCES', label: 'Expériences communes' },
-  { value: 'VETERAN', label: 'Vétéran' },
-  { value: 'PREMIUM', label: 'Compte Premium' },
+  { value: 'ACTIVE_TALENT', label: 'Talent actif' },
+  { value: 'REDISCOVERED_CANDIDATES', label: 'Candidats redécouverts' },
+  { value: 'INTERNAL_CANDIDATES', label: 'Candidats internes' },
+  { value: 'INTERESTED_IN_YOUR_COMPANY', label: 'Intéressé par votre entreprise' },
+  { value: 'HAVE_COMPANY_CONNECTIONS', label: 'Connexions dans l\'entreprise' },
 ];
 
 // Profile languages

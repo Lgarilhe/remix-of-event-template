@@ -5,7 +5,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Wand2, Loader2, Eye, ChevronDown, ChevronUp } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
-import { LinkedInFiltersState, RoleFilter, PriorityFilterItem, CompanyKeywordFilter, LocationFilterItem } from './types';
+import { LinkedInFiltersState, RoleFilter, PriorityFilterItem, CompanyKeywordFilter, LocationFilterItem, SpotlightType } from './types';
 import { Job } from '@/pages/JobSpace';
 import { toast } from 'sonner';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
@@ -268,7 +268,7 @@ export const AutoFillFiltersButton: React.FC<AutoFillFiltersButtonProps> = ({
 
       // Open to work / Spotlight
       if (generated.spotlight) {
-        update.spotlight = generated.spotlight as '' | 'RECENTLY_CHANGED_JOBS' | 'RECENTLY_PROMOTED' | 'OPEN_LINK' | 'SHARED_EXPERIENCES' | 'LIKELY_TO_RESPOND' | 'VETERAN' | 'PREMIUM' | 'OPEN_TO_WORK';
+        update.spotlight = generated.spotlight as SpotlightType | '';
       }
       if (generated.open_to_work !== undefined) {
         update.open_to_work = generated.open_to_work;
