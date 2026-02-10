@@ -285,20 +285,34 @@ ${p.summary ? '- Résumé: ' + p.summary.substring(0, 300) : ''}
 ${p.education ? '- Formation: ' + p.education.join(', ') : ''}
 ${workExpText ? '\nEXPÉRIENCE PROFESSIONNELLE:\n' + workExpText : ''}
 
-RÈGLES DE SCORING CRITIQUES:
+RÈGLES DE SCORING CRITIQUES (à appliquer STRICTEMENT) :
 
 1. DÉTECTION DE SÉNIORITÉ (ÉLIMINATOIRE):
-   - Si le poste est un rôle de contributeur technique (Engineer, Developer, SRE, DevOps, etc.) et que le candidat occupe un rôle de direction/management (CTO, VP Engineering, Head of, Director, etc.) -> Score <= 30, c'est un MISMATCH de séniorité
-   - Si le poste est un rôle de direction et que le candidat est un contributeur junior/mid -> Score <= 35
+   - Si le poste est un rôle de contributeur technique (Engineer, Developer, SRE, DevOps, etc.) et que le candidat occupe un rôle de direction/management (CTO, VP Engineering, Head of, Director, etc.) -> Score <= 30, recommendation = NO_MATCH
+   - Si le poste est un rôle de direction et que le candidat est un contributeur junior/mid -> Score <= 35, recommendation = NO_MATCH
    - Les promotions internes au sein d'une même entreprise comptent comme UNE SEULE période de tenure
 
-2. CRITÈRES MUST-HAVE: Si des critères obligatoires sont définis et que le candidat n'en remplit AUCUN -> Score <= 35
+2. CRITÈRES MUST-HAVE / OBLIGATOIRES (ÉLIMINATOIRE - TOLÉRANCE ZÉRO):
+   - Les critères "must-have", "obligatoires" et "critères transversaux OBLIGATOIRES" sont des PRÉ-REQUIS ABSOLUS.
+   - Analyse chaque critère must-have INDIVIDUELLEMENT. Si le candidat ne remplit pas ne serait-ce qu'UN SEUL critère must-have clairement identifiable -> Score <= 35, recommendation = NO_MATCH ou WEAK_MATCH.
+   - Ne cherche PAS à compenser un must-have manquant par d'autres qualités. Un must-have manquant = élimination, point final.
+   - Exemples de must-have typiques: technologie spécifique (ex: "Golang obligatoire"), certification (ex: "AWS Solutions Architect"), expérience sectorielle (ex: "expérience bancaire impérative"), niveau d'expérience minimum, langue obligatoire.
+   - Si le candidat ne remplit AUCUN must-have -> Score <= 20, recommendation = NO_MATCH.
 
-3. ADÉQUATION GÉOGRAPHIQUE: Évalue si la localisation du candidat est compatible avec le poste (en tenant compte du remote)
+3. ADÉQUATION GÉOGRAPHIQUE: Évalue si la localisation du candidat est compatible avec le poste (en tenant compte du remote). Incompatibilité géographique sans remote possible = pénalité forte.
 
-4. EXPÉRIENCE: Compare les années d'expérience du candidat avec la fourchette demandée
+4. EXPÉRIENCE: Compare les années d'expérience du candidat avec la fourchette demandée. Un écart de +5 ans au-dessus ou en-dessous = pénalité significative.
 
-5. RÉMUNÉRATION: Si des indices de rémunération sont disponibles (titre senior dans startup vs. package grand groupe), note les risques de mismatch
+5. RÉMUNÉRATION: Si des indices de rémunération sont disponibles, note les risques de mismatch.
+
+6. SEUILS DE RECOMMENDATION (STRICT):
+   - NO_MATCH (score 0-30): Un ou plusieurs critères éliminatoires non remplis (must-have manquant, mismatch de séniorité)
+   - WEAK_MATCH (score 31-45): Lacunes majeures mais pas totalement hors sujet
+   - POSSIBLE_MATCH (score 46-60): Profil intéressant mais avec des manques significatifs
+   - GOOD_MATCH (score 61-79): Bon profil, quelques ajustements mineurs
+   - STRONG_MATCH (score 80-100): Excellent match, tous les must-have remplis
+
+IMPORTANT: Sois SÉVÈRE. Un profil "à qualifier" (POSSIBLE_MATCH) doit avoir de réelles chances d'être pertinent. En cas de doute sur un must-have, penche vers le rejet plutôt que l'indulgence.
 
 Réponds UNIQUEMENT en JSON valide avec cette structure exacte:
 {
