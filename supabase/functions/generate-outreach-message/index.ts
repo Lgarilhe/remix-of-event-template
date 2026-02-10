@@ -44,7 +44,9 @@ interface JobData {
     should?: string;
     niceToHave?: string;
     context?: string;
+    bodyContent?: string;
   };
+  bodyContent?: string;
 }
 
 // Candidate status determines the message objective

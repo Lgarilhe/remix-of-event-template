@@ -121,7 +121,9 @@ interface JobData {
     should?: string;
     niceToHave?: string;
     context?: string;
+    bodyContent?: string;
   };
+  bodyContent?: string;
 }
 
 // Sanitize strings to remove unpaired surrogates that break JSON serialization
@@ -244,6 +246,7 @@ serve(async (req) => {
               if (tc.must) transversalText += `Critères transversaux OBLIGATOIRES: ${tc.must}\n`;
               if (tc.should) transversalText += `Critères transversaux IMPORTANTS: ${tc.should}\n`;
               if (tc.niceToHave) transversalText += `Critères transversaux BONUS: ${tc.niceToHave}\n`;
+              if (tc.bodyContent) transversalText += `Contenu détaillé critères transverses:\n${tc.bodyContent.substring(0, 500)}\n`;
             }
 
             const prompt = sanitizeText(`Tu es un expert en recrutement tech. Évalue la correspondance entre ce profil LinkedIn et cette offre d'emploi.
@@ -262,6 +265,7 @@ ${job.shouldHave ? '- Critères IMPORTANTS (should-have): ' + job.shouldHave : '
 ${job.niceToHave ? '- Critères BONUS (nice-to-have): ' + job.niceToHave : ''}
 ${job.requirements ? '- Exigences détaillées: ' + job.requirements : ''}
 ${job.description ? '- Description du poste: ' + job.description.substring(0, 500) : ''}
+${job.bodyContent ? '- Contenu détaillé de la page du poste:\n' + job.bodyContent.substring(0, 800) : ''}
 ${transversalText ? '\nCRITÈRES TRANSVERSAUX (appliqués à tous les postes):\n' + transversalText : ''}
 
 PROFIL CANDIDAT:

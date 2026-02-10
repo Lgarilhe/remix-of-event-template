@@ -365,6 +365,92 @@ interface TransversalCriteria {
   context: string;
   domain: string;
   level: string;
+  bodyContent: string;
+}
+
+// Fetch page body content (blocks/children) and convert to plain text
+async function fetchPageBody(pageId: string): Promise<string> {
+  const textParts: string[] = [];
+  let startCursor: string | undefined;
+
+  for (let i = 0; i < 10; i++) { // safety cap: 10 pages of blocks
+    const url = new URL(`https://api.notion.com/v1/blocks/${pageId}/children`);
+    url.searchParams.set('page_size', '100');
+    if (startCursor) url.searchParams.set('start_cursor', startCursor);
+
+    const response = await fetch(url.toString(), {
+      headers: {
+        'Authorization': `Bearer ${NOTION_API_KEY}`,
+        'Notion-Version': '2022-06-28',
+      },
+    });
+
+    if (!response.ok) {
+      console.error(`Failed to fetch blocks for ${pageId}:`, response.status);
+      break;
+    }
+
+    const data = await response.json();
+    const blocks = data?.results || [];
+
+    for (const block of blocks) {
+      const type = block.type;
+      const content = block[type];
+      if (!content) continue;
+
+      // Extract text from rich_text arrays (most block types have this)
+      if (content.rich_text && Array.isArray(content.rich_text)) {
+        const text = content.rich_text.map((t: any) => t.plain_text || '').join('');
+        if (text.trim()) {
+          // Add prefix based on block type
+          if (type === 'heading_1') textParts.push(`# ${text}`);
+          else if (type === 'heading_2') textParts.push(`## ${text}`);
+          else if (type === 'heading_3') textParts.push(`### ${text}`);
+          else if (type === 'bulleted_list_item' || type === 'numbered_list_item') textParts.push(`- ${text}`);
+          else if (type === 'to_do') textParts.push(`- [${content.checked ? 'x' : ' '}] ${text}`);
+          else textParts.push(text);
+        }
+      }
+      // Handle table rows
+      if (type === 'table_row' && content.cells) {
+        const row = content.cells.map((cell: any[]) => 
+          cell.map((t: any) => t.plain_text || '').join('')
+        ).join(' | ');
+        if (row.trim()) textParts.push(`| ${row} |`);
+      }
+    }
+
+    if (!data?.has_more) break;
+    startCursor = data?.next_cursor;
+    if (!startCursor) break;
+  }
+
+  return textParts.join('\n');
+}
+
+// Batch fetch page bodies with concurrency control
+async function fetchPageBodies(pageIds: string[], concurrency = 5): Promise<Map<string, string>> {
+  const bodiesMap = new Map<string, string>();
+  const uniqueIds = [...new Set(pageIds)];
+  
+  // Process in batches to avoid rate limiting
+  for (let i = 0; i < uniqueIds.length; i += concurrency) {
+    const batch = uniqueIds.slice(i, i + concurrency);
+    const results = await Promise.all(batch.map(async (id) => {
+      try {
+        const body = await fetchPageBody(id);
+        return { id, body };
+      } catch (error) {
+        console.error(`Failed to fetch body for ${id}:`, error);
+        return { id, body: '' };
+      }
+    }));
+    for (const { id, body } of results) {
+      if (body.trim()) bodiesMap.set(id, body);
+    }
+  }
+  
+  return bodiesMap;
 }
 
 async function fetchTransversalCriteria(criteriaIds: string[]): Promise<Map<string, TransversalCriteria>> {
@@ -374,6 +460,12 @@ async function fetchTransversalCriteria(criteriaIds: string[]): Promise<Map<stri
   
   // Batch fetch all unique criteria IDs
   const uniqueIds = [...new Set(criteriaIds)];
+  
+  // Fetch properties and bodies in parallel
+  const [_, bodiesMap] = await Promise.all([
+    Promise.resolve(), // placeholder for parallel structure
+    fetchPageBodies(uniqueIds),
+  ]);
   
   await Promise.all(uniqueIds.map(async (id) => {
     try {
@@ -386,6 +478,7 @@ async function fetchTransversalCriteria(criteriaIds: string[]): Promise<Map<stri
       
       if (response.ok) {
         const page = await response.json();
+        const bodyContent = bodiesMap.get(id) || '';
         
         criteriaMap.set(id, {
           must: getPropertyValue(page.properties['Critères Must']) || '',
@@ -394,6 +487,7 @@ async function fetchTransversalCriteria(criteriaIds: string[]): Promise<Map<stri
           context: getPropertyValue(page.properties['Contexte']) || '',
           domain: getPropertyValue(page.properties['Domaine']) || '',
           level: getPropertyValue(page.properties['Niveau']) || '',
+          bodyContent,
         });
       }
     } catch (error) {
@@ -418,6 +512,7 @@ function mergeTransversalCriteria(
     context: '',
     domain: '',
     level: '',
+    bodyContent: '',
   };
   
   const mustParts: string[] = [];
@@ -426,6 +521,7 @@ function mergeTransversalCriteria(
   const contextParts: string[] = [];
   const domains: string[] = [];
   const levels: string[] = [];
+  const bodyParts: string[] = [];
   
   for (const id of criteriaIds) {
     const criteria = criteriaMap.get(id);
@@ -436,6 +532,7 @@ function mergeTransversalCriteria(
       if (criteria.context) contextParts.push(criteria.context);
       if (criteria.domain) domains.push(criteria.domain);
       if (criteria.level) levels.push(criteria.level);
+      if (criteria.bodyContent) bodyParts.push(criteria.bodyContent);
     }
   }
   
@@ -445,6 +542,7 @@ function mergeTransversalCriteria(
   merged.context = contextParts.join('\n\n');
   merged.domain = [...new Set(domains)].join(', ');
   merged.level = [...new Set(levels)].join(', ');
+  merged.bodyContent = bodyParts.join('\n\n---\n\n');
   
   // Return null if all fields are empty
   if (!merged.must && !merged.should && !merged.niceToHave && !merged.context) {
@@ -654,12 +752,13 @@ serve(async (req) => {
       }
     });
 
-    // Fetch company details, candidate counts, cached skills, and transversal criteria in parallel
-    const [companies, candidateCounts, cachedSkills, transversalCriteriaMap] = await Promise.all([
+    // Fetch company details, candidate counts, cached skills, transversal criteria, and job bodies in parallel
+    const [companies, candidateCounts, cachedSkills, transversalCriteriaMap, jobBodiesMap] = await Promise.all([
       fetchCompanyDetails(Array.from(companyIds)),
       fetchCandidateCounts(jobIds),
       getCachedSkills(jobIds),
-      fetchTransversalCriteria(Array.from(transversalCriteriaIds))
+      fetchTransversalCriteria(Array.from(transversalCriteriaIds)),
+      fetchPageBodies(jobIds, 5),
     ]);
 
     // Find jobs that need AI skill extraction (not in cache)
@@ -772,6 +871,8 @@ serve(async (req) => {
           return [];
         })(),
         jobUrl: getPropertyValue(job.properties['userDefined:URL']),
+        // Page body content (free-form text blocks from Notion page)
+        bodyContent: jobBodiesMap.get(job.id) || '',
         // Resolved transversal criteria (company-wide requirements)
         transversalCriteria: transversalCriteria,
         // Candidate counts by stage
