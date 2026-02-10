@@ -51,6 +51,7 @@ function buildJobContext(job: Job): string {
     job.skills?.length ? `Compétences requises: ${job.skills.join(', ')}` : null,
     remotePolicy ? `Politique remote: ${remotePolicy}` : null,
     job.description ? `Description: ${job.description.substring(0, 800)}` : null,
+    (job as any).bodyContent ? `Contenu détaillé de la page du poste:\n${(job as any).bodyContent.substring(0, 1000)}` : null,
     (job as any).sourcingCriteria ? `Critères de sourcing: ${(job as any).sourcingCriteria}` : null,
     '',
     '=== CRITÈRES DU POSTE (pour scoring) ===',
@@ -65,6 +66,7 @@ function buildJobContext(job: Job): string {
     transversal?.should ? `🟡 Should transverse: ${transversal.should}` : null,
     transversal?.niceToHave ? `🟢 Nice-to-have transverse: ${transversal.niceToHave}` : null,
     transversal?.context ? `Contexte: ${transversal.context}` : null,
+    transversal?.bodyContent ? `Contenu détaillé critères transverses:\n${transversal.bodyContent.substring(0, 800)}` : null,
   ];
   
   return lines.filter(line => line !== null).join('\n').trim();
@@ -89,6 +91,7 @@ function getMissingFields(job: Job): { critical: string[], optional: string[] } 
   if (!(job as any).sourcingCriteria) optional.push('sourcingCriteria');
   if (!(job as any).remote && !(job as any).remotePolicy) optional.push('remote');
   if (!(job as any).transversalCriteria) optional.push('transversalCriteria');
+  if (!(job as any).bodyContent) optional.push('bodyContent');
   
   return { critical, optional };
 }
