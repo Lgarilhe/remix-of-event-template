@@ -3,7 +3,7 @@ import { LinkedInFiltersState, LinkedInApiType, API_TYPE_OPTIONS } from '@/compo
 import { LinkedInAccount } from '@/pages/Outreach';
 import { LinkedInFilters } from '@/components/outreach/LinkedInFilters';
 import { JobSelector, GeneratedFilters } from '@/components/outreach/JobSelector';
-import { FilterWizard } from '@/components/outreach/filter-wizard';
+
 import { FilterPresetsManager } from '@/components/outreach/FilterPresetsManager';
 import { AutoFillFiltersButton } from '@/components/outreach/AutoFillFiltersButton';
 import { QuotaDisplay } from '@/components/outreach/QuotaDisplay';
@@ -14,7 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { Search, Loader2, AlertTriangle, Lock, Sparkles, Pencil } from 'lucide-react';
+import { Search, Loader2, AlertTriangle, Lock, Pencil } from 'lucide-react';
 
 interface SearchFiltersPanelProps {
   // Account
@@ -53,9 +53,6 @@ interface SearchFiltersPanelProps {
   onSearch: () => void;
   onClearFilters: () => void;
   
-  // Wizard
-  showFilterWizard: boolean;
-  setShowFilterWizard: (v: boolean) => void;
 }
 
 export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
@@ -74,8 +71,6 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
   quota,
   onSearch,
   onClearFilters,
-  showFilterWizard,
-  setShowFilterWizard,
 }) => {
   const [keywordsDialogOpen, setKeywordsDialogOpen] = useState(false);
   const [keywordsDraft, setKeywordsDraft] = useState('');
@@ -218,17 +213,6 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
             onApplyFilters={(update) => setFilters(prev => ({ ...prev, ...update }))}
           />
 
-          {selectedJob && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setShowFilterWizard(true)}
-              className="gap-2 bg-gradient-to-r from-green-50 to-emerald-50 border-green-300 hover:border-green-400 text-green-700"
-            >
-              <Sparkles className="w-4 h-4" />
-              <span className="hidden sm:inline">Assistant IA</span>
-            </Button>
-          )}
 
           <FilterPresetsManager
             currentFilters={filters}
@@ -237,16 +221,6 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
           />
         </div>
 
-        {/* Filter Wizard Modal */}
-        {selectedJob && (
-          <FilterWizard
-            open={showFilterWizard}
-            onOpenChange={setShowFilterWizard}
-            job={selectedJob}
-            accountId={selectedAccount || undefined}
-            onApplyFilters={(update) => setFilters(prev => ({ ...prev, ...update }))}
-          />
-        )}
       </div>
 
       {/* Keywords preview + edit dialog */}

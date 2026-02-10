@@ -390,8 +390,6 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
           }}
           onSearch={() => handleSearch(false)}
           onClearFilters={search.handleClearFilters}
-          showFilterWizard={search.showFilterWizard}
-          setShowFilterWizard={search.setShowFilterWizard}
         />
       </div>
 
