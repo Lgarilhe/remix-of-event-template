@@ -128,7 +128,7 @@ serve(async (req: Request) => {
         },
       });
       
-      const { data: { user }, error: authError } = await userClient.auth.getUser();
+      const { data: { user }, error: authError } = await userClient.auth.getUser(token);
       
       if (authError || !user) {
         console.error("Auth error:", authError);
