@@ -375,13 +375,60 @@ async function executeStepAction(actionType: string, enrollment: Record<string, 
       case 'connection_request': {
         let providerId = profileId;
         if (!profileId.startsWith('ACo') && !profileId.startsWith('ADo')) {
+          console.log(`[connection_request] Profile ID ${profileId} is not classic format, resolving...`);
+          let resolved = false;
+
+          // Strategy 1: Extract slug from profile URL
           const profileUrl = enrollment.profile_url as string | undefined;
           if (profileUrl) {
             const match = profileUrl.match(/linkedin\.com\/in\/([^/?]+)/);
             if (match) {
+              console.log(`[connection_request] Trying slug resolution: ${match[1]}`);
               const pr = await fetch(`${UNIPILE_DSN}/api/v1/users/${encodeURIComponent(match[1])}?account_id=${accountId}`, { headers: { 'X-API-KEY': UNIPILE_API_KEY! } });
-              if (pr.ok) { const pd = await pr.json(); providerId = pd.provider_id || providerId; }
+              if (pr.ok) {
+                const pd = await pr.json();
+                if (pd.provider_id && (pd.provider_id.startsWith('ACo') || pd.provider_id.startsWith('ADo'))) {
+                  providerId = pd.provider_id;
+                  resolved = true;
+                  console.log(`[connection_request] Resolved via slug to: ${providerId}`);
+                }
+              }
             }
+          }
+
+          // Strategy 2: Fetch recruiter profile to get public_identifier, then resolve
+          if (!resolved) {
+            console.log(`[connection_request] Trying recruiter profile resolution...`);
+            const recruiterRes = await fetch(`${UNIPILE_DSN}/api/v1/users/${profileId}?account_id=${accountId}`, { headers: { 'X-API-KEY': UNIPILE_API_KEY! } });
+            if (recruiterRes.ok) {
+              const recruiterProfile = await recruiterRes.json();
+              const publicId = recruiterProfile.public_identifier || recruiterProfile.public_id;
+              if (publicId) {
+                console.log(`[connection_request] Got public_identifier: ${publicId}, resolving classic ID...`);
+                const classicRes = await fetch(`${UNIPILE_DSN}/api/v1/users/${encodeURIComponent(publicId)}?account_id=${accountId}`, { headers: { 'X-API-KEY': UNIPILE_API_KEY! } });
+                if (classicRes.ok) {
+                  const classicProfile = await classicRes.json();
+                  if (classicProfile.provider_id && (classicProfile.provider_id.startsWith('ACo') || classicProfile.provider_id.startsWith('ADo'))) {
+                    providerId = classicProfile.provider_id;
+                    resolved = true;
+                    console.log(`[connection_request] Resolved via recruiter profile to: ${providerId}`);
+                  }
+                }
+              }
+              // Strategy 3: Check if the recruiter profile itself has a member_urn or classic provider_id
+              if (!resolved && recruiterProfile.member_urn) {
+                const urnMatch = recruiterProfile.member_urn.match(/urn:li:fs_miniProfile:(.+)/);
+                if (urnMatch) {
+                  providerId = urnMatch[1];
+                  resolved = true;
+                  console.log(`[connection_request] Resolved via member_urn to: ${providerId}`);
+                }
+              }
+            }
+          }
+
+          if (!resolved) {
+            console.warn(`[connection_request] Could not resolve classic ID for ${profileId}, attempting with original ID`);
           }
         }
         const r = await fetch(`${UNIPILE_DSN}/api/v1/users/invite`, { method: 'POST', headers: { 'X-API-KEY': UNIPILE_API_KEY!, 'Content-Type': 'application/json' }, body: JSON.stringify({ account_id: accountId, provider_id: providerId }) });
