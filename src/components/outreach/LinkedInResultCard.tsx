@@ -647,6 +647,25 @@ export const LinkedInResultCard: React.FC<LinkedInResultCardProps> = ({
                     jobTitle={selectedJob?.title}
                     compact={!isExpanded}
                   />
+                  {/* Skip reason banner for dismissed profiles */}
+                  {jobScore.recommendation === 'skip' && jobScore.summary && (
+                    <div className="mt-2 flex items-start gap-2 p-2.5 rounded-lg bg-red-50 border border-red-200 text-xs text-red-700">
+                      <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0 text-red-500" />
+                      <div>
+                        <span className="font-semibold">Raison du rejet : </span>
+                        <span>{jobScore.summary}</span>
+                        {jobScore.missing_skills && jobScore.missing_skills.length > 0 && (
+                          <div className="mt-1 flex flex-wrap gap-1">
+                            {jobScore.missing_skills.map((skill, i) => (
+                              <span key={i} className="inline-flex items-center px-1.5 py-0.5 rounded bg-red-100 text-red-600 text-[10px] border border-red-200">
+                                ✗ {skill}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 
