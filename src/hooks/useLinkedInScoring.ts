@@ -139,7 +139,7 @@ export function buildProfileData(profile: LinkedInProfile) {
 function mapScoringResult(raw: any): JobMatchResult {
   const recMap: Record<string, string> = {
     'STRONG_MATCH': 'go', 'GOOD_MATCH': 'go',
-    'POSSIBLE_MATCH': 'maybe', 'WEAK_MATCH': 'maybe',
+    'POSSIBLE_MATCH': 'maybe', 'WEAK_MATCH': 'skip',
     'NO_MATCH': 'skip', 'ERROR': 'skip',
   };
   const expMap: Record<string, string> = {
