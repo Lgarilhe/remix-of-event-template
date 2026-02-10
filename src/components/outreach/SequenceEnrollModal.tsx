@@ -131,9 +131,11 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
           }
 
           enrollmentResults.success++;
-        } catch (err) {
+        } catch (err: any) {
+          const msg = err?.message || err?.details || err?.hint || JSON.stringify(err);
+          console.error('Enrollment error for', profile.name, err);
           enrollmentResults.errors.push(
-            `${profile.name}: ${err instanceof Error ? err.message : 'Erreur'}`
+            `${profile.name}: ${msg}`
           );
         }
       }
