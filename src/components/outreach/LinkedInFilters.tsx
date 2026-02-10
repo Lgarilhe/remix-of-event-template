@@ -118,6 +118,9 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
   const [newRoleScope, setNewRoleScope] = useState<FilterScope>('CURRENT_OR_PAST');
   const [roleDialogOpen, setRoleDialogOpen] = useState(false);
   const [roleDialogDraft, setRoleDialogDraft] = useState('');
+  const [editingRoleIndex, setEditingRoleIndex] = useState<number | null>(null);
+  const [roleDialogPriority, setRoleDialogPriority] = useState<FilterPriority>('MUST_HAVE');
+  const [roleDialogScope, setRoleDialogScope] = useState<FilterScope>('CURRENT_OR_PAST');
 
   const toggleSection = useCallback((section: string) => {
     setOpenSections(prev => ({ ...prev, [section]: !prev[section] }));
@@ -775,12 +778,20 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
             {filters.role.map((role, index) => (
               <div key={index} className="p-2 bg-purple-50 rounded-lg mb-2 space-y-2">
                 <div className="flex items-center gap-2">
-                  <Input
-                    value={role.keywords}
-                    onChange={(e) => handleUpdateRole(index, { keywords: e.target.value })}
-                    className="text-sm h-7 flex-1 bg-white border-purple-200"
-                    placeholder="Mots-clés du rôle..."
-                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditingRoleIndex(index);
+                      setRoleDialogDraft(role.keywords);
+                      setRoleDialogPriority(role.priority);
+                      setRoleDialogScope(role.scope);
+                      setRoleDialogOpen(true);
+                    }}
+                    className="text-sm h-7 flex-1 text-left truncate hover:text-[#0077B5] transition-colors group flex items-center gap-1"
+                  >
+                    <span className="truncate">{role.keywords}</span>
+                    <Pencil className="w-3 h-3 text-muted-foreground shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
+                  </button>
                   <button type="button" onClick={() => handleRemoveRole(index)} className="text-purple-400 hover:text-purple-600 shrink-0">
                     <X className="w-4 h-4" />
                   </button>
@@ -815,7 +826,10 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
                   type="button"
                   onClick={() => {
                     if (isFilterSupported(filters.api, 'role')) {
+                      setEditingRoleIndex(null);
                       setRoleDialogDraft(newRoleKeywords);
+                      setRoleDialogPriority(newRolePriority);
+                      setRoleDialogScope(newRoleScope);
                       setRoleDialogOpen(true);
                     }
                   }}
@@ -833,7 +847,7 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
               <Dialog open={roleDialogOpen} onOpenChange={setRoleDialogOpen}>
                 <DialogContent className="sm:max-w-md">
                   <DialogHeader>
-                    <DialogTitle>Rôle (mots-clés booléens)</DialogTitle>
+                    <DialogTitle>{editingRoleIndex !== null ? 'Modifier' : 'Ajouter'} — Rôle (mots-clés booléens)</DialogTitle>
                   </DialogHeader>
                   <Textarea
                     autoFocus
@@ -843,6 +857,34 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
                     className="min-h-[120px] text-sm font-mono"
                     rows={5}
                   />
+                  <div className="flex items-center gap-2 mt-1">
+                    <div className="space-y-1 flex-1">
+                      <Label className="text-[10px] text-muted-foreground">Priorité</Label>
+                      <Select value={roleDialogPriority} onValueChange={(v) => setRoleDialogPriority(v as FilterPriority)}>
+                        <SelectTrigger className="text-xs h-7">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {ROLE_PRIORITY_OPTIONS.map((opt) => (
+                            <SelectItem key={opt.value} value={opt.value} className="text-xs">{opt.label}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1 flex-1">
+                      <Label className="text-[10px] text-muted-foreground">Scope</Label>
+                      <Select value={roleDialogScope} onValueChange={(v) => setRoleDialogScope(v as FilterScope)}>
+                        <SelectTrigger className="text-xs h-7">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {SCOPE_OPTIONS.map((opt) => (
+                            <SelectItem key={opt.value} value={opt.value} className="text-xs">{opt.label}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
                   <div className="space-y-1.5 text-xs text-muted-foreground bg-muted/50 rounded-md p-3">
                     <p className="font-medium text-foreground/70">💡 Synonym Rings — ratissez large :</p>
                     <ul className="space-y-1 list-disc list-inside">
@@ -856,19 +898,29 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
                   <DialogFooter>
                     <Button variant="outline" size="sm" onClick={() => setRoleDialogOpen(false)}>Annuler</Button>
                     <Button size="sm" onClick={() => {
-                      setNewRoleKeywords(roleDialogDraft.trim());
                       setRoleDialogOpen(false);
                       if (roleDialogDraft.trim()) {
-                        const newRole: RoleFilter = {
-                          keywords: roleDialogDraft.trim(),
-                          priority: newRolePriority,
-                          scope: newRoleScope,
-                        };
-                        onChange({ ...filters, role: [...filters.role, newRole] });
+                        if (editingRoleIndex !== null) {
+                          // Update existing role
+                          handleUpdateRole(editingRoleIndex, {
+                            keywords: roleDialogDraft.trim(),
+                            priority: roleDialogPriority,
+                            scope: roleDialogScope,
+                          });
+                        } else {
+                          // Add new role
+                          const newRole: RoleFilter = {
+                            keywords: roleDialogDraft.trim(),
+                            priority: roleDialogPriority,
+                            scope: roleDialogScope,
+                          };
+                          onChange({ ...filters, role: [...filters.role, newRole] });
+                        }
                         setNewRoleKeywords('');
+                        setEditingRoleIndex(null);
                       }
                     }}>
-                      Ajouter
+                      {editingRoleIndex !== null ? 'Modifier' : 'Ajouter'}
                     </Button>
                   </DialogFooter>
                 </DialogContent>
