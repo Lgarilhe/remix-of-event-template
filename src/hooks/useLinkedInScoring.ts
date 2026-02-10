@@ -135,6 +135,30 @@ export function buildProfileData(profile: LinkedInProfile) {
   };
 }
 
+// Map edge function result keys to JobMatchResult interface
+function mapScoringResult(raw: any): JobMatchResult {
+  const recMap: Record<string, string> = {
+    'STRONG_MATCH': 'go', 'GOOD_MATCH': 'go',
+    'POSSIBLE_MATCH': 'maybe', 'WEAK_MATCH': 'maybe',
+    'NO_MATCH': 'skip', 'ERROR': 'skip',
+  };
+  const expMap: Record<string, string> = {
+    'MATCH': 'compatible', 'OVER': 'trop_senior',
+    'UNDER': 'trop_junior', 'UNKNOWN': 'incertain',
+  };
+  return {
+    profile_name: raw.name || raw.profile_name || '',
+    match_score: raw.score ?? raw.match_score ?? 0,
+    matching_skills: raw.matching_skills || raw.matchedSkills || [],
+    missing_skills: raw.missing_skills || raw.missingSkills || [],
+    experience_match: (expMap[raw.experienceMatch] || raw.experience_match || 'incertain') as JobMatchResult['experience_match'],
+    location_match: raw.location_match ?? (raw.locationMatch === 'MATCH' || raw.locationMatch === 'REMOTE_OK'),
+    summary: raw.summary || '',
+    recommendation: (recMap[raw.recommendation] || raw.recommendation || 'maybe') as JobMatchResult['recommendation'],
+    salary_analysis: raw.salary_analysis,
+  };
+}
+
 export function useLinkedInScoring({
   selectedJob,
   selectedProfiles,
@@ -184,7 +208,8 @@ export function useLinkedInScoring({
 
       if (error) throw error;
       if (data?.result) {
-        setJobScores(prev => ({ ...prev, [profile.id]: data.result }));
+        const mapped = mapScoringResult(data.result);
+        setJobScores(prev => ({ ...prev, [profile.id]: mapped }));
       }
     } catch (err) {
       console.error('Score error:', err);
@@ -291,8 +316,9 @@ export function useLinkedInScoring({
           skipReason?: string;
         }> = [];
 
-        allResults.forEach((result: JobMatchResult, index: number) => {
+        allResults.forEach((rawResult: any, index: number) => {
           const profile = profilesToScore[index];
+          const result = mapScoringResult(rawResult);
           if (profile && result.match_score > 0) {
             newScores[profile.id] = result;
             if (result.recommendation === 'skip') {
