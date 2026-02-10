@@ -12,6 +12,7 @@ interface TransversalCriteria {
   context: string;
   domain: string;
   level: string;
+  bodyContent?: string;
 }
 
 interface Job {
@@ -37,6 +38,8 @@ interface Job {
   niceToHave?: string;
   // Company-wide transversal criteria (resolved from linked Notion pages)
   transversalCriteria?: TransversalCriteria | null;
+  // Page body content (free-form text from the Notion page)
+  bodyContent?: string;
 }
 
 interface CompanyKeywordFilter {
@@ -314,6 +317,7 @@ ${job.xpMax !== undefined ? `Expérience max: ${job.xpMax} ans` : ''}
 ${job.skills?.length ? `Compétences requises: ${job.skills.join(', ')}` : ''}
 ${remotePolicy ? `Politique remote: ${remotePolicy}` : ''}
 ${job.description ? `Description: ${job.description.substring(0, 800)}` : ''}
+${job.bodyContent ? `Contenu détaillé de la page du poste:\n${job.bodyContent.substring(0, 1000)}` : ''}
 ${job.sourcingCriteria ? `Critères de sourcing: ${job.sourcingCriteria}` : ''}
 
 === CRITÈRES DU POSTE (pour scoring) ===
@@ -327,7 +331,8 @@ ${transversal.level ? `Niveau: ${transversal.level}` : ''}
 ${transversal.must ? `🔴 Must transverse: ${transversal.must}` : ''}
 ${transversal.should ? `🟡 Should transverse: ${transversal.should}` : ''}
 ${transversal.niceToHave ? `🟢 Nice-to-have transverse: ${transversal.niceToHave}` : ''}
-${transversal.context ? `Contexte: ${transversal.context}` : ''}` : ''}
+${transversal.context ? `Contexte: ${transversal.context}` : ''}
+${transversal.bodyContent ? `Contenu détaillé critères transverses:\n${transversal.bodyContent.substring(0, 800)}` : ''}` : ''}
 `.trim();
 
     console.log("[generate-search-filters] Calling AI with job:", job.title);
