@@ -341,7 +341,7 @@ export function useLinkedInSearchActions(
     setHasSearched,
   } = setters;
 
-  const handleSearch = useCallback(async (appendMode = false) => {
+  const handleSearch = useCallback(async (appendMode = false, retryCount = 0) => {
     if (!selectedAccount) {
       toast.error('Sélectionnez un compte LinkedIn');
       return;
@@ -433,7 +433,27 @@ export function useLinkedInSearchActions(
 
     } catch (error: any) {
       console.error('[LinkedInSearch] Search error:', error);
-      toast.error(error.message || 'Erreur lors de la recherche', { id: 'search-error' });
+      
+      // Detect LinkedIn multiple sessions error and auto-retry
+      const isMultipleSessionsError = error.message?.includes('multiple sessions') || error.message?.includes('unable to process');
+      
+      if (isMultipleSessionsError && retryCount < 2) {
+        const delay = (retryCount + 1) * 5; // 5s, 10s
+        toast.info(`Conflit de session LinkedIn détecté. Nouvelle tentative dans ${delay}s...`, { id: 'search-retry', duration: delay * 1000 });
+        await new Promise(resolve => setTimeout(resolve, delay * 1000));
+        if (appendMode) {
+          setLoadingMore(false);
+        } else {
+          setLoading(false);
+        }
+        return handleSearch(appendMode, retryCount + 1);
+      }
+      
+      if (isMultipleSessionsError) {
+        toast.error('Conflit de session LinkedIn persistant. Fermez LinkedIn Recruiter dans votre navigateur puis réessayez.', { id: 'search-error', duration: 10000 });
+      } else {
+        toast.error(error.message || 'Erreur lors de la recherche', { id: 'search-error' });
+      }
       // Stop infinite scroll from retrying on error
       setHasMoreResults(false);
     } finally {
