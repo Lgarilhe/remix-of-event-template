@@ -222,32 +222,6 @@ export const JobSelector: React.FC<JobSelectorProps> = ({ selectedJob, onJobChan
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
-          {/* Auto-fill button */}
-          {selectedJob && onAutoFillFilters && (
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={handleAutoFillFilters}
-                    disabled={autoFillLoading}
-                    className="h-6 px-2 text-purple-600 hover:text-purple-800 hover:bg-purple-100"
-                  >
-                    {autoFillLoading ? (
-                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    ) : (
-                      <Wand2 className="w-3.5 h-3.5" />
-                    )}
-                    <span className="ml-1 text-xs">Auto-filtres</span>
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="bottom">
-                  <p className="text-xs">L'IA génère automatiquement les filtres de recherche basés sur ce poste</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          )}
           {selectedJob && (
             <Button
               variant="ghost"
