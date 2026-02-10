@@ -105,9 +105,10 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
             .single();
 
           if (enrollError) throw enrollError;
+          if (!enrollment) throw new Error('Enrollment non créé');
 
           // Schedule first step execution
-          if (firstStep && enrollment) {
+          if (firstStep) {
             const scheduledAt = calculateScheduledTime(
               new Date(),
               firstStep.delay_days || 0,
