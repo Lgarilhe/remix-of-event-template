@@ -23,8 +23,8 @@ export const useSavedFilterPresets = () => {
 
   const fetchPresets = useCallback(async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user) {
         setPresets([]);
         setLoading(false);
         return;
@@ -65,11 +65,12 @@ export const useSavedFilterPresets = () => {
   ): Promise<boolean> => {
     setSaving(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user) {
         toast.error('Vous devez être connecté pour sauvegarder des filtres');
         return false;
       }
+      const user = session.user;
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { error } = await supabase
@@ -99,8 +100,8 @@ export const useSavedFilterPresets = () => {
 
   const applyPreset = useCallback(async (preset: SavedFilterPreset): Promise<LinkedInFiltersState | null> => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return preset.filters;
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user) return preset.filters;
 
       // Update usage count and last_used_at
       await supabase
