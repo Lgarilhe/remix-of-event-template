@@ -345,8 +345,9 @@ export function useLinkedInScoring({
         if (shouldAutoDismiss && lowScoreProfiles.length > 0) {
           await candidateStatus.batchDismiss(lowScoreProfiles);
 
+          // Don't remove from results - let useFilteredResults handle visibility
+          // so dismissed profiles can be revealed via the Archive button
           const lowScoreIds = new Set(lowScoreProfiles.map(p => p.id));
-          setResults(prev => prev.filter(p => !lowScoreIds.has(p.id)));
           setSelectedProfiles(prev => {
             const newSet = new Set(prev);
             lowScoreIds.forEach(id => newSet.delete(id));
