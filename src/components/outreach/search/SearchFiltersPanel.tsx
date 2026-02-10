@@ -3,7 +3,6 @@ import { LinkedInFiltersState, LinkedInApiType, API_TYPE_OPTIONS } from '@/compo
 import { LinkedInAccount } from '@/pages/Outreach';
 import { LinkedInFilters } from '@/components/outreach/LinkedInFilters';
 import { JobSelector, GeneratedFilters } from '@/components/outreach/JobSelector';
-import { FilterAssistantModal } from '@/components/outreach/FilterAssistantModal';
 import { FilterWizard } from '@/components/outreach/filter-wizard';
 import { FilterPresetsManager } from '@/components/outreach/FilterPresetsManager';
 import { AutoFillFiltersButton } from '@/components/outreach/AutoFillFiltersButton';
@@ -219,7 +218,7 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
             onApplyFilters={(update) => setFilters(prev => ({ ...prev, ...update }))}
           />
 
-          {selectedJob ? (
+          {selectedJob && (
             <Button
               variant="outline"
               size="sm"
@@ -229,13 +228,6 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
               <Sparkles className="w-4 h-4" />
               <span className="hidden sm:inline">Assistant IA</span>
             </Button>
-          ) : (
-            <FilterAssistantModal
-              currentFilters={filters}
-              onApplyFilters={(update) => setFilters(prev => ({ ...prev, ...update }))}
-              accountId={selectedAccount || undefined}
-              selectedJob={selectedJob}
-            />
           )}
 
           <FilterPresetsManager
