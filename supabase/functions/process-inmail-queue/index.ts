@@ -373,14 +373,26 @@ serve(async (req: Request) => {
 
     // Action: status - Get queue status for current user
     if (action === "status") {
-      const user = await validateUser();
+      // Try to get user, but allow anonymous access for status view
+      let userId: string | null = null;
+      try {
+        const user = await validateUser();
+        userId = user.id;
+      } catch {
+        // Allow unauthenticated status check - show recent items
+      }
 
-      const { data: queueItems, error: fetchError } = await supabase
+      const query = supabase
         .from("inmail_queue")
         .select("*")
-        .eq("created_by", user.id)
         .order("created_at", { ascending: false })
         .limit(100);
+
+      if (userId) {
+        query.eq("created_by", userId);
+      }
+
+      const { data: queueItems, error: fetchError } = await query;
 
       if (fetchError) throw fetchError;
 
