@@ -4,6 +4,7 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Routes, Route, useLocation, useNavigate } from "react-router-dom";
 import { SessionExpiredDialog } from "@/components/SessionExpiredDialog";
+import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { supabase } from "@/integrations/supabase/client";
 import Index from "./pages/Index";
 import Discover from "./pages/Discover";
@@ -69,8 +70,8 @@ const AppContent = () => {
         <Route path="/admin" element={<Admin />} />
         <Route path="/jobs" element={<JobSpace />} />
         <Route path="/candidates" element={<Candidates />} />
-        <Route path="/outreach" element={<Outreach />} />
-        <Route path="/ats" element={<ATS />} />
+        <Route path="/outreach" element={<ProtectedRoute><Outreach /></ProtectedRoute>} />
+        <Route path="/ats" element={<ProtectedRoute><ATS /></ProtectedRoute>} />
         <Route path="*" element={<NotFound />} />
       </Routes>
       <SessionExpiredDialog 
