@@ -10,6 +10,7 @@ const Auth = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLogin, setIsLogin] = useState(true);
+  const [isForgotPassword, setIsForgotPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
@@ -39,7 +40,17 @@ const Auth = () => {
     setLoading(true);
 
     try {
-      if (isLogin) {
+      if (isForgotPassword) {
+        const { error } = await supabase.auth.resetPasswordForEmail(email, {
+          redirectTo: `${window.location.origin}/auth`,
+        });
+        if (error) throw error;
+        toast({
+          title: 'Email envoyé',
+          description: 'Vérifiez votre boîte mail pour réinitialiser votre mot de passe.',
+        });
+        setIsForgotPassword(false);
+      } else if (isLogin) {
         const { error } = await supabase.auth.signInWithPassword({
           email,
           password,
@@ -56,7 +67,7 @@ const Auth = () => {
           email,
           password,
           options: {
-            emailRedirectTo: `${window.location.origin}/admin`,
+            emailRedirectTo: `${window.location.origin}/outreach`,
           },
         });
 
@@ -87,10 +98,12 @@ const Auth = () => {
       <div className="w-full max-w-md space-y-8">
         <div>
           <h2 className="text-4xl font-normal text-[#1A1A1A] tracking-[-0.02em]">
-            {isLogin ? 'Sign In' : 'Sign Up'}
+            {isForgotPassword ? 'Mot de passe oublié' : isLogin ? 'Sign In' : 'Sign Up'}
           </h2>
           <p className="mt-2 text-sm text-[#1A1A1A] opacity-50">
-            {isLogin ? 'Sign in to manage events' : 'Create an account to manage events'}
+            {isForgotPassword 
+              ? 'Entrez votre email pour recevoir un lien de réinitialisation'
+              : isLogin ? 'Sign in to manage events' : 'Create an account to manage events'}
           </p>
         </div>
         <form onSubmit={handleSubmit} className="space-y-6">
@@ -104,30 +117,42 @@ const Auth = () => {
               className="border-[#1A1A1A] text-[#1A1A1A]"
             />
           </div>
-          <div>
-            <Input
-              type="password"
-              placeholder="Password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              className="border-[#1A1A1A] text-[#1A1A1A]"
-            />
-          </div>
+          {!isForgotPassword && (
+            <div>
+              <Input
+                type="password"
+                placeholder="Password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                className="border-[#1A1A1A] text-[#1A1A1A]"
+              />
+            </div>
+          )}
           <Button
             type="submit"
             disabled={loading}
             className="w-full bg-[#1A1A1A] text-white hover:bg-opacity-90"
           >
-            {loading ? 'Loading...' : isLogin ? 'Sign In' : 'Sign Up'}
+            {loading ? 'Loading...' : isForgotPassword ? 'Envoyer le lien' : isLogin ? 'Sign In' : 'Sign Up'}
           </Button>
         </form>
-        <button
-          onClick={() => setIsLogin(!isLogin)}
-          className="text-sm text-[#1A1A1A] hover:opacity-70 transition-opacity"
-        >
-          {isLogin ? "Don't have an account? Sign up" : 'Already have an account? Sign in'}
-        </button>
+        <div className="flex flex-col gap-2">
+          {isLogin && !isForgotPassword && (
+            <button
+              onClick={() => setIsForgotPassword(true)}
+              className="text-sm text-[#1A1A1A]/60 hover:opacity-70 transition-opacity"
+            >
+              Mot de passe oublié ?
+            </button>
+          )}
+          <button
+            onClick={() => { setIsLogin(!isLogin); setIsForgotPassword(false); }}
+            className="text-sm text-[#1A1A1A] hover:opacity-70 transition-opacity"
+          >
+            {isForgotPassword ? 'Retour à la connexion' : isLogin ? "Don't have an account? Sign up" : 'Already have an account? Sign in'}
+          </button>
+        </div>
       </div>
     </div>
   );
