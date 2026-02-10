@@ -64,7 +64,11 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
 
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      const userId = user?.id || '00000000-0000-0000-0000-000000000000';
+      if (!user) {
+        toast.error('Vous devez être connecté pour inscrire des candidats');
+        setIsEnrolling(false);
+        return;
+      }
 
       // Get first step for initial scheduling
       const firstStep = sequence.steps.find((s: any) => s.step_order === 0) || sequence.steps[0];
