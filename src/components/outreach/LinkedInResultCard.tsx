@@ -401,8 +401,8 @@ export const LinkedInResultCard: React.FC<LinkedInResultCardProps> = ({
           : 'border-[#1A1A1A]/10 hover:border-[#0077B5]/20 hover:shadow-md'
       }`}>
         {/* Main card content */}
-        <div className="p-3 sm:p-4">
-          <div className="flex items-start gap-2 sm:gap-4">
+        <div className="p-2.5 sm:p-4 overflow-hidden">
+          <div className="flex items-start gap-2 sm:gap-4 min-w-0">
             {/* Checkbox for batch selection - disabled for low score candidates */}
             {selectedJob && onToggleSelect && (
               <div className="pt-3">
@@ -798,10 +798,10 @@ export const LinkedInResultCard: React.FC<LinkedInResultCardProps> = ({
               {/* Experience preview - show other current jobs + past jobs */}
               {(otherCurrentJobs.length > 0 || pastJobs.length > 0) && (
                 <div className="mt-3 pt-3 border-t border-[#1A1A1A]/5">
-                  <div className="flex items-center gap-2 mb-2">
-                    <Briefcase className="w-3.5 h-3.5 text-[#1A1A1A]/40" />
-                    <span className="text-[10px] font-semibold text-[#1A1A1A]/40 uppercase tracking-wider">
-                      {otherCurrentJobs.length > 0 ? 'Autres postes actuels + Parcours récent' : 'Parcours récent'}
+              <div className="flex items-center gap-2 mb-2">
+                    <Briefcase className="w-3.5 h-3.5 text-[#1A1A1A]/40 shrink-0" />
+                    <span className="text-[10px] font-semibold text-[#1A1A1A]/40 uppercase tracking-wider truncate">
+                      {otherCurrentJobs.length > 0 ? 'Postes actuels + Parcours' : 'Parcours récent'}
                     </span>
                   </div>
                   <div className="space-y-1.5">
@@ -913,7 +913,7 @@ export const LinkedInResultCard: React.FC<LinkedInResultCardProps> = ({
 
         {/* Expanded content with tabs */}
         <CollapsibleContent>
-          <div className="px-4 pb-4 border-t border-[#1A1A1A]/5 pt-4">
+          <div className="px-2.5 sm:px-4 pb-4 border-t border-[#1A1A1A]/5 pt-4 overflow-hidden">
             {/* Header with close button */}
             <div className="flex items-center justify-between mb-3">
               <h4 className="text-sm font-semibold text-[#1A1A1A]">Détails du profil</h4>
@@ -929,24 +929,24 @@ export const LinkedInResultCard: React.FC<LinkedInResultCardProps> = ({
             
             <Tabs defaultValue="experience" className="w-full">
               <TabsList className="w-full justify-start bg-[#1A1A1A]/5 p-1 h-auto flex-wrap gap-1">
-                <TabsTrigger value="experience" className="text-xs px-3 py-1.5 data-[state=active]:bg-white gap-1.5">
-                  <Briefcase className="w-3.5 h-3.5" />
-                  Expérience
+                <TabsTrigger value="experience" className="text-[10px] sm:text-xs px-2 sm:px-3 py-1 sm:py-1.5 data-[state=active]:bg-white gap-1">
+                  <Briefcase className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
+                  Exp.
                 </TabsTrigger>
-                <TabsTrigger value="education" className="text-xs px-3 py-1.5 data-[state=active]:bg-white gap-1.5">
-                  <GraduationCap className="w-3.5 h-3.5" />
-                  Formation
+                <TabsTrigger value="education" className="text-[10px] sm:text-xs px-2 sm:px-3 py-1 sm:py-1.5 data-[state=active]:bg-white gap-1">
+                  <GraduationCap className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
+                  Form.
                 </TabsTrigger>
-                <TabsTrigger value="skills" className="text-xs px-3 py-1.5 data-[state=active]:bg-white gap-1.5">
-                  <Zap className="w-3.5 h-3.5" />
-                  Compétences
+                <TabsTrigger value="skills" className="text-[10px] sm:text-xs px-2 sm:px-3 py-1 sm:py-1.5 data-[state=active]:bg-white gap-1">
+                  <Zap className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
+                  Skills
                 </TabsTrigger>
-                <TabsTrigger value="messages" className="text-xs px-3 py-1.5 data-[state=active]:bg-white gap-1.5">
-                  <MessageSquare className="w-3.5 h-3.5" />
-                  Messages
+                <TabsTrigger value="messages" className="text-[10px] sm:text-xs px-2 sm:px-3 py-1 sm:py-1.5 data-[state=active]:bg-white gap-1">
+                  <MessageSquare className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
+                  Msg
                 </TabsTrigger>
-                <TabsTrigger value="posts" className="text-xs px-3 py-1.5 data-[state=active]:bg-white gap-1.5">
-                  <Newspaper className="w-3.5 h-3.5" />
+                <TabsTrigger value="posts" className="text-[10px] sm:text-xs px-2 sm:px-3 py-1 sm:py-1.5 data-[state=active]:bg-white gap-1">
+                  <Newspaper className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
                   Posts
                 </TabsTrigger>
               </TabsList>
@@ -963,17 +963,17 @@ export const LinkedInResultCard: React.FC<LinkedInResultCardProps> = ({
                     <div className="space-y-2">
                       {currentJobs.map((pos, index) => (
                         <div key={index} className="bg-gradient-to-r from-green-50 to-white rounded-lg p-3 border border-green-100">
-                          <div className="flex items-start gap-3">
+                        <div className="flex items-start gap-2 sm:gap-3">
                             {pos.logo ? (
-                              <img src={pos.logo} alt={pos.company} className="w-10 h-10 rounded object-contain bg-white border" />
+                              <img src={pos.logo} alt={pos.company} className="w-8 h-8 sm:w-10 sm:h-10 rounded object-contain bg-white border" />
                             ) : (
-                              <div className="w-10 h-10 rounded bg-green-100 flex items-center justify-center shrink-0">
-                                <Building2 className="w-5 h-5 text-green-600" />
+                              <div className="w-8 h-8 sm:w-10 sm:h-10 rounded bg-green-100 flex items-center justify-center shrink-0">
+                                <Building2 className="w-4 h-4 sm:w-5 sm:h-5 text-green-600" />
                               </div>
                             )}
                             <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2">
-                                <p className="font-medium text-sm text-[#1A1A1A]">{pos.role}</p>
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <p className="font-medium text-xs sm:text-sm text-[#1A1A1A] break-words">{pos.role}</p>
                                 <Badge variant="outline" className="h-4 px-1.5 text-[9px] border-green-300 text-green-600 bg-green-50">
                                   Actuel
                                 </Badge>
