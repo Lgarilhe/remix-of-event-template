@@ -401,8 +401,8 @@ export const LinkedInResultCard: React.FC<LinkedInResultCardProps> = ({
           : 'border-[#1A1A1A]/10 hover:border-[#0077B5]/20 hover:shadow-md'
       }`}>
         {/* Main card content */}
-        <div className="p-4">
-          <div className="flex items-start gap-4">
+        <div className="p-3 sm:p-4">
+          <div className="flex items-start gap-2 sm:gap-4">
             {/* Checkbox for batch selection - disabled for low score candidates */}
             {selectedJob && onToggleSelect && (
               <div className="pt-3">
@@ -429,9 +429,9 @@ export const LinkedInResultCard: React.FC<LinkedInResultCardProps> = ({
             )}
             
             {/* Avatar */}
-            <div className="relative">
-              <Avatar className="w-14 h-14 border-2 border-white shadow-md">
-                <AvatarImage src={profile.profile_picture_url} alt={fullName} />
+            <div className="relative shrink-0">
+              <Avatar className="w-10 h-10 sm:w-14 sm:h-14 border-2 border-white shadow-md">
+                <AvatarImage src={profile.profile_picture_url} alt={fullName} className="object-cover" />
                 <AvatarFallback className="bg-gradient-to-br from-[#0077B5] to-[#005E93] text-white text-lg font-medium">
                   {initials || '?'}
                 </AvatarFallback>
@@ -445,132 +445,201 @@ export const LinkedInResultCard: React.FC<LinkedInResultCardProps> = ({
 
             {/* Info */}
             <div className="flex-1 min-w-0">
-              <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0 flex-1">
-                  {/* Name and badges */}
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <h3 className="font-semibold text-[#1A1A1A] text-base">
-                      {fullName || 'Profil LinkedIn'}
-                    </h3>
-                    {profile.premium && (
-                      <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-5 text-amber-600 border-amber-300 bg-amber-50">
-                        <Star className="w-3 h-3 mr-0.5 fill-amber-400" />
-                        Premium
-                      </Badge>
-                    )}
-                    {profile.open_to_work && (
-                      <Badge className="bg-green-500 text-white text-[10px] px-1.5 py-0 h-5 gap-0.5">
-                        <Zap className="w-3 h-3" />
-                        Open to Work
-                      </Badge>
-                    )}
-                    {isLikelyToRespond && (
-                      <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-5 text-purple-600 border-purple-300 bg-purple-50">
-                        <Sparkles className="w-3 h-3 mr-0.5" />
-                        Réactif
-                      </Badge>
-                    )}
-                    {/* Salary adequacy badge from job scoring */}
-                    {jobScore?.salary_analysis && (
-                      <SalaryBadge analysis={jobScore.salary_analysis} />
-                    )}
+              <div className="flex flex-col gap-1">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0 flex-1">
+                    {/* Name and badges */}
+                    <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+                      <h3 className="font-semibold text-[#1A1A1A] text-sm sm:text-base truncate">
+                        {fullName || 'Profil LinkedIn'}
+                      </h3>
+                      {profile.premium && (
+                        <Badge variant="outline" className="text-[10px] px-1 sm:px-1.5 py-0 h-4 sm:h-5 text-amber-600 border-amber-300 bg-amber-50 shrink-0">
+                          <Star className="w-2.5 h-2.5 sm:w-3 sm:h-3 mr-0.5 fill-amber-400" />
+                          <span className="hidden sm:inline">Premium</span>
+                        </Badge>
+                      )}
+                      {profile.open_to_work && (
+                        <Badge className="bg-green-500 text-white text-[10px] px-1 sm:px-1.5 py-0 h-4 sm:h-5 gap-0.5 shrink-0">
+                          <Zap className="w-2.5 h-2.5 sm:w-3 sm:h-3" />
+                          <span className="hidden sm:inline">Open to Work</span>
+                          <span className="sm:hidden">OTW</span>
+                        </Badge>
+                      )}
+                      {isLikelyToRespond && (
+                        <Badge variant="outline" className="text-[10px] px-1 sm:px-1.5 py-0 h-4 sm:h-5 text-purple-600 border-purple-300 bg-purple-50 shrink-0 hidden sm:flex">
+                          <Sparkles className="w-3 h-3 mr-0.5" />
+                          Réactif
+                        </Badge>
+                      )}
+                      {/* Salary adequacy badge from job scoring */}
+                      {jobScore?.salary_analysis && (
+                        <SalaryBadge analysis={jobScore.salary_analysis} />
+                      )}
+                    </div>
+                    
+                    {/* Headline */}
+                    <p className="text-xs sm:text-sm text-[#1A1A1A]/70 line-clamp-2 mt-0.5 sm:mt-1 leading-snug">
+                      {profile.headline || currentRole || 'Profil LinkedIn'}
+                    </p>
                   </div>
-                  
-                  {/* Headline */}
-                  <p className="text-sm text-[#1A1A1A]/70 line-clamp-2 mt-1 leading-snug">
-                    {profile.headline || currentRole || 'Profil LinkedIn'}
-                  </p>
-                </div>
 
-                {/* Actions */}
-                <div className="flex items-center gap-1 shrink-0">
-                  {/* Job score button */}
-                  {selectedJob && onScoreProfile && !jobScore && (
+                  {/* Actions - desktop: inline, mobile: compact */}
+                  <div className="hidden sm:flex items-center gap-1 shrink-0">
+                    {/* Job score button */}
+                    {selectedJob && onScoreProfile && !jobScore && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={onScoreProfile}
+                        disabled={isScoring}
+                        className="text-purple-600 hover:text-purple-700 hover:bg-purple-50 h-8 px-2 gap-1"
+                        title={`Scorer pour ${selectedJob.title}`}
+                      >
+                        {isScoring ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <>
+                            <Target className="w-4 h-4" />
+                            <span className="text-xs hidden sm:inline">Score</span>
+                          </>
+                        )}
+                      </Button>
+                    )}
+                    
+                    {/* Generate message button */}
+                    {selectedJob && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setShowMessageModal(true)}
+                        className="text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 h-8 px-2 gap-1"
+                        title="Générer un message d'approche"
+                      >
+                        <PenLine className="w-4 h-4" />
+                        <span className="text-xs hidden sm:inline">Message</span>
+                      </Button>
+                    )}
+                    
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={onScoreProfile}
-                      disabled={isScoring}
-                      className="text-purple-600 hover:text-purple-700 hover:bg-purple-50 h-8 px-2 gap-1"
-                      title={`Scorer pour ${selectedJob.title}`}
+                      onClick={handleAiAnalysis}
+                      disabled={isAnalyzing}
+                      className="text-purple-600 hover:text-purple-700 hover:bg-purple-50 h-8 w-8 p-0"
+                      title="Analyse IA du profil"
                     >
-                      {isScoring ? (
+                      {isAnalyzing ? (
                         <Loader2 className="w-4 h-4 animate-spin" />
                       ) : (
-                        <>
-                          <Target className="w-4 h-4" />
-                          <span className="text-xs hidden sm:inline">Score</span>
-                        </>
+                        <Bot className="w-4 h-4" />
                       )}
                     </Button>
-                  )}
-                  
-                  {/* Generate message button - only show when job is selected */}
-                  {selectedJob && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setShowMessageModal(true)}
-                      className="text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 h-8 px-2 gap-1"
-                      title="Générer un message d'approche"
-                    >
-                      <PenLine className="w-4 h-4" />
-                      <span className="text-xs hidden sm:inline">Message</span>
-                    </Button>
-                  )}
-                  
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={handleAiAnalysis}
-                    disabled={isAnalyzing}
-                    className="text-purple-600 hover:text-purple-700 hover:bg-purple-50 h-8 w-8 p-0"
-                    title="Analyse IA du profil"
-                  >
-                    {isAnalyzing ? (
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                    ) : (
-                      <Bot className="w-4 h-4" />
+                    {profile.can_send_inmail && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-[#0077B5] hover:text-[#005E93] hover:bg-[#0077B5]/10 h-8 w-8 p-0"
+                        title="Envoyer InMail"
+                      >
+                        <Mail className="w-4 h-4" />
+                      </Button>
                     )}
-                  </Button>
-                  {profile.can_send_inmail && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="text-[#0077B5] hover:text-[#005E93] hover:bg-[#0077B5]/10 h-8 w-8 p-0"
-                      title="Envoyer InMail"
-                    >
-                      <Mail className="w-4 h-4" />
+                    {profileUrl && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        asChild
+                        className="text-[#0077B5] hover:text-[#005E93] hover:bg-[#0077B5]/10 h-8 w-8 p-0"
+                        title="Voir le profil"
+                      >
+                        <a href={profileUrl} target="_blank" rel="noopener noreferrer">
+                          <ExternalLink className="w-4 h-4" />
+                        </a>
+                      </Button>
+                    )}
+                    
+                    {/* Sequence enroll button */}
+                    {accountId && jobScore?.recommendation !== 'skip' && (
+                      <SequenceEnrollButton
+                        selectedProfiles={[profile]}
+                        accountId={accountId}
+                        selectedJob={selectedJob ? { id: selectedJob.id, title: selectedJob.title } : undefined}
+                        onSuccess={() => {
+                          onSequenceEnroll?.();
+                          onProfileTreated?.();
+                        }}
+                      />
+                    )}
+                    
+                    {/* Add to project button */}
+                    {selectedJob && (
+                      <AddToProjectButton
+                        candidateId={profile.id}
+                        candidateName={fullName}
+                        candidateHeadline={profile.headline}
+                        linkedinProfileUrl={profileUrl}
+                        score={jobScore?.match_score}
+                        recommendation={jobScore?.recommendation}
+                        skipReason={jobScore?.missing_skills?.join(', ')}
+                        jobId={selectedJob.id}
+                        activeProject={activeProject}
+                        compact
+                        onAdded={onProfileTreated}
+                      />
+                    )}
+                    
+                    {/* Archive button */}
+                    {onArchive && (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={onArchive}
+                            className="text-muted-foreground hover:text-orange-600 hover:bg-orange-50 h-8 w-8 p-0"
+                          >
+                            <Archive className="w-4 h-4" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>Archiver ce profil</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    )}
+                  </div>
+                </div>
+
+                {/* Mobile actions row */}
+                <div className="flex sm:hidden items-center gap-0.5 mt-1 flex-wrap">
+                  {selectedJob && onScoreProfile && !jobScore && (
+                    <Button variant="ghost" size="sm" onClick={onScoreProfile} disabled={isScoring} className="text-purple-600 h-7 w-7 p-0">
+                      {isScoring ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Target className="w-3.5 h-3.5" />}
                     </Button>
                   )}
+                  {selectedJob && (
+                    <Button variant="ghost" size="sm" onClick={() => setShowMessageModal(true)} className="text-emerald-600 h-7 w-7 p-0">
+                      <PenLine className="w-3.5 h-3.5" />
+                    </Button>
+                  )}
+                  <Button variant="ghost" size="sm" onClick={handleAiAnalysis} disabled={isAnalyzing} className="text-purple-600 h-7 w-7 p-0">
+                    {isAnalyzing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Bot className="w-3.5 h-3.5" />}
+                  </Button>
                   {profileUrl && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      asChild
-                      className="text-[#0077B5] hover:text-[#005E93] hover:bg-[#0077B5]/10 h-8 w-8 p-0"
-                      title="Voir le profil"
-                    >
+                    <Button variant="ghost" size="sm" asChild className="text-[#0077B5] h-7 w-7 p-0">
                       <a href={profileUrl} target="_blank" rel="noopener noreferrer">
-                        <ExternalLink className="w-4 h-4" />
+                        <ExternalLink className="w-3.5 h-3.5" />
                       </a>
                     </Button>
                   )}
-                  
-                  {/* Sequence enroll button - disabled for low score candidates */}
                   {accountId && jobScore?.recommendation !== 'skip' && (
                     <SequenceEnrollButton
                       selectedProfiles={[profile]}
                       accountId={accountId}
                       selectedJob={selectedJob ? { id: selectedJob.id, title: selectedJob.title } : undefined}
-                      onSuccess={() => {
-                        onSequenceEnroll?.();
-                        onProfileTreated?.();
-                      }}
+                      onSuccess={() => { onSequenceEnroll?.(); onProfileTreated?.(); }}
                     />
                   )}
-                  
-                  {/* Add to project button */}
                   {selectedJob && (
                     <AddToProjectButton
                       candidateId={profile.id}
@@ -586,30 +655,16 @@ export const LinkedInResultCard: React.FC<LinkedInResultCardProps> = ({
                       onAdded={onProfileTreated}
                     />
                   )}
-                  
-                  {/* Archive button */}
                   {onArchive && (
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={onArchive}
-                          className="text-muted-foreground hover:text-orange-600 hover:bg-orange-50 h-8 w-8 p-0"
-                        >
-                          <Archive className="w-4 h-4" />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p>Archiver ce profil</p>
-                      </TooltipContent>
-                    </Tooltip>
+                    <Button variant="ghost" size="sm" onClick={onArchive} className="text-muted-foreground h-7 w-7 p-0">
+                      <Archive className="w-3.5 h-3.5" />
+                    </Button>
                   )}
                 </div>
               </div>
 
               {/* Meta info row */}
-              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-3 text-xs text-[#1A1A1A]/60">
+              <div className="flex flex-wrap items-center gap-x-3 sm:gap-x-4 gap-y-1 mt-2 sm:mt-3 text-[11px] sm:text-xs text-[#1A1A1A]/60">
                 {currentCompany && (
                   <span className="flex items-center gap-1.5 font-medium text-[#1A1A1A]/80">
                     <Building2 className="w-3.5 h-3.5 text-[#0077B5]" />
