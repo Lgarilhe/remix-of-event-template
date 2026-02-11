@@ -1331,6 +1331,32 @@ export const LinkedInResultCard: React.FC<LinkedInResultCardProps> = ({
             profile={profile}
             job={selectedJob}
             selectedAccount={accountId}
+            onMessageSent={async () => {
+              // Save candidate as "messaged" in job_candidate_status
+              try {
+                const { data: { user } } = await supabase.auth.getUser();
+                const userId = user?.id || '00000000-0000-0000-0000-000000000000';
+                const profileAnyLocal = profile as any;
+                const profileUrl = profile.profile_url || profile.public_profile_url || profileAnyLocal.linkedin_url;
+                
+                await supabase.from('job_candidate_status').upsert({
+                  job_id: selectedJob.id,
+                  candidate_id: profile.id,
+                  candidate_name: profile.name || `${profile.first_name || ''} ${profile.last_name || ''}`.trim(),
+                  candidate_headline: profile.headline || null,
+                  linkedin_profile_url: profileUrl || null,
+                  status: 'messaged',
+                  created_by: userId,
+                  project_id: activeProject?.id || null,
+                }, { onConflict: 'job_id,candidate_id,created_by' });
+              } catch (err) {
+                console.error('Error saving messaged status:', err);
+              }
+              
+              // Notify parent to remove from results
+              onMessageSent?.();
+              onProfileTreated?.();
+            }}
           />
         )}
       </div>
