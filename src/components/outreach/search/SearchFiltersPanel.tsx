@@ -89,7 +89,7 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
   const hasPremiumLicense = subscriptions?.recruiter || subscriptions?.sales_navigator;
 
   return (
-    <div className="space-y-4 sticky top-24">
+    <div className="space-y-4 lg:sticky lg:top-24">
       {/* Reconnection alert */}
       {needsReconnection && (
         <Alert variant="destructive" className="bg-amber-50 border-amber-200">

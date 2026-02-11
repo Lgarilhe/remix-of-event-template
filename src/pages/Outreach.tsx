@@ -111,16 +111,16 @@ export default function Outreach() {
       <Navbar />
 
       <main className="pt-20 pb-12">
-        <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="max-w-[1600px] mx-auto px-3 sm:px-6 lg:px-8">
           {/* Header */}
-          <div className="mb-8">
+          <div className="mb-4 sm:mb-8">
             <div className="flex items-center justify-between">
               <div>
-                <div className="flex items-center gap-3 mb-2">
-                  <Search className="w-8 h-8 text-[#0077B5]" />
-                  <h1 className="text-3xl font-bold text-[#1A1A1A]">Outreach LinkedIn</h1>
+                <div className="flex items-center gap-2 sm:gap-3 mb-1 sm:mb-2">
+                  <Search className="w-6 h-6 sm:w-8 sm:h-8 text-[#0077B5]" />
+                  <h1 className="text-xl sm:text-3xl font-bold text-[#1A1A1A]">Outreach LinkedIn</h1>
                 </div>
-                <p className="text-[#1A1A1A]/60">
+                <p className="text-xs sm:text-base text-[#1A1A1A]/60 hidden sm:block">
                   Recherchez des candidats sur LinkedIn avec les filtres Recruiter avancés
                 </p>
               </div>
@@ -131,37 +131,44 @@ export default function Outreach() {
           </div>
 
           <Tabs value={activeTab} onValueChange={setActiveTab}>
-            <TabsList className="bg-white border border-[#1A1A1A]/10 mb-6">
-              <TabsTrigger value="projects" className="gap-2 data-[state=active]:bg-[#0077B5] data-[state=active]:text-white">
-                <FolderOpen className="w-4 h-4" />
-                Projets
-              </TabsTrigger>
-              <TabsTrigger value="search" className="gap-2 data-[state=active]:bg-[#0077B5] data-[state=active]:text-white">
-                <Search className="w-4 h-4" />
-                Recherche
-              </TabsTrigger>
-              <TabsTrigger value="messages" className="gap-2 data-[state=active]:bg-[#0077B5] data-[state=active]:text-white">
-                <MessageSquare className="w-4 h-4" />
-                Messages
-                {unreadMessageCount > 0 && (
-                  <span className="ml-1 px-1.5 py-0.5 text-[10px] font-bold bg-red-500 text-white rounded-full min-w-[18px] text-center">
-                    {unreadMessageCount > 99 ? '99+' : unreadMessageCount}
-                  </span>
-                )}
-              </TabsTrigger>
-              <TabsTrigger value="sequences" className="gap-2 data-[state=active]:bg-[#0077B5] data-[state=active]:text-white">
-                <GitBranch className="w-4 h-4" />
-                Séquences
-              </TabsTrigger>
-              <TabsTrigger value="nurturing" className="gap-2 data-[state=active]:bg-[#0077B5] data-[state=active]:text-white">
-                <Sparkles className="w-4 h-4" />
-                Nurturing
-              </TabsTrigger>
-              <TabsTrigger value="accounts" className="gap-2 data-[state=active]:bg-[#0077B5] data-[state=active]:text-white">
-                <Settings className="w-4 h-4" />
-                Comptes ({accounts.length})
-              </TabsTrigger>
-            </TabsList>
+            <div className="overflow-x-auto -mx-3 px-3 sm:mx-0 sm:px-0">
+              <TabsList className="bg-white border border-[#1A1A1A]/10 mb-4 sm:mb-6 w-max sm:w-auto">
+                <TabsTrigger value="projects" className="gap-1.5 sm:gap-2 text-xs sm:text-sm data-[state=active]:bg-[#0077B5] data-[state=active]:text-white">
+                  <FolderOpen className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                  <span className="hidden sm:inline">Projets</span>
+                  <span className="sm:hidden">Projets</span>
+                </TabsTrigger>
+                <TabsTrigger value="search" className="gap-1.5 sm:gap-2 text-xs sm:text-sm data-[state=active]:bg-[#0077B5] data-[state=active]:text-white">
+                  <Search className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                  Recherche
+                </TabsTrigger>
+                <TabsTrigger value="messages" className="gap-1.5 sm:gap-2 text-xs sm:text-sm data-[state=active]:bg-[#0077B5] data-[state=active]:text-white">
+                  <MessageSquare className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                  <span className="hidden sm:inline">Messages</span>
+                  <span className="sm:hidden">Msg</span>
+                  {unreadMessageCount > 0 && (
+                    <span className="ml-0.5 sm:ml-1 px-1 sm:px-1.5 py-0.5 text-[9px] sm:text-[10px] font-bold bg-red-500 text-white rounded-full min-w-[16px] sm:min-w-[18px] text-center">
+                      {unreadMessageCount > 99 ? '99+' : unreadMessageCount}
+                    </span>
+                  )}
+                </TabsTrigger>
+                <TabsTrigger value="sequences" className="gap-1.5 sm:gap-2 text-xs sm:text-sm data-[state=active]:bg-[#0077B5] data-[state=active]:text-white">
+                  <GitBranch className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                  <span className="hidden sm:inline">Séquences</span>
+                  <span className="sm:hidden">Séq.</span>
+                </TabsTrigger>
+                <TabsTrigger value="nurturing" className="gap-1.5 sm:gap-2 text-xs sm:text-sm data-[state=active]:bg-[#0077B5] data-[state=active]:text-white">
+                  <Sparkles className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                  <span className="hidden sm:inline">Nurturing</span>
+                  <span className="sm:hidden">Nurt.</span>
+                </TabsTrigger>
+                <TabsTrigger value="accounts" className="gap-1.5 sm:gap-2 text-xs sm:text-sm data-[state=active]:bg-[#0077B5] data-[state=active]:text-white">
+                  <Settings className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                  <span className="hidden sm:inline">Comptes ({accounts.length})</span>
+                  <span className="sm:hidden">({accounts.length})</span>
+                </TabsTrigger>
+              </TabsList>
+            </div>
           </Tabs>
 
           {/* Tab panels - kept mounted to preserve state */}
