@@ -444,7 +444,7 @@ export const LinkedInResultCard: React.FC<LinkedInResultCardProps> = ({
             </div>
 
             {/* Info */}
-            <div className="flex-1 min-w-0">
+            <div className="flex-1 min-w-0 overflow-hidden">
               <div className="flex flex-col gap-1">
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0 flex-1">
@@ -611,7 +611,7 @@ export const LinkedInResultCard: React.FC<LinkedInResultCardProps> = ({
                 </div>
 
                 {/* Mobile actions row */}
-                <div className="flex sm:hidden items-center gap-0.5 mt-1 overflow-x-auto max-w-full">
+                <div className="flex sm:hidden items-center gap-0.5 mt-1 overflow-x-auto max-w-full no-scrollbar">
                   {selectedJob && onScoreProfile && !jobScore && (
                     <Button variant="ghost" size="sm" onClick={onScoreProfile} disabled={isScoring} className="text-purple-600 h-7 w-7 p-0">
                       {isScoring ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Target className="w-3.5 h-3.5" />}
@@ -807,7 +807,7 @@ export const LinkedInResultCard: React.FC<LinkedInResultCardProps> = ({
                   <div className="space-y-1.5">
                     {/* Show other current jobs first (simultaneous positions) */}
                     {otherCurrentJobs.slice(0, 2).map((pos, index) => (
-                      <div key={`current-${index}`} className="flex items-center gap-2 text-xs">
+                      <div key={`current-${index}`} className="flex items-center gap-2 text-xs min-w-0">
                         <div className="w-1.5 h-1.5 rounded-full bg-green-500 shrink-0" />
                         <span className="text-[#1A1A1A]/70 truncate">
                           <span className="font-medium">{pos.role}</span>
@@ -821,7 +821,7 @@ export const LinkedInResultCard: React.FC<LinkedInResultCardProps> = ({
                     ))}
                     {/* Then show past jobs */}
                     {pastJobs.slice(0, otherCurrentJobs.length > 0 ? 1 : 2).map((pos, index) => (
-                      <div key={`past-${index}`} className="flex items-center gap-2 text-xs">
+                      <div key={`past-${index}`} className="flex items-center gap-2 text-xs min-w-0">
                         <div className="w-1.5 h-1.5 rounded-full bg-[#0077B5]/40 shrink-0" />
                         <span className="text-[#1A1A1A]/70 truncate">
                           <span className="font-medium">{pos.role}</span>
@@ -855,7 +855,7 @@ export const LinkedInResultCard: React.FC<LinkedInResultCardProps> = ({
                   </div>
                   <div className="space-y-1.5">
                     {educationPreview.map((edu: any, index: number) => (
-                      <div key={index} className="flex items-center gap-2 text-xs">
+                      <div key={index} className="flex items-center gap-2 text-xs min-w-0">
                         <div className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
                         <span className="text-[#1A1A1A]/70 truncate">
                           <span className="font-medium">{edu.degree || edu.school}</span>
@@ -879,7 +879,7 @@ export const LinkedInResultCard: React.FC<LinkedInResultCardProps> = ({
 
               {/* Skills preview */}
               {skills.length > 0 && (
-                <div className="flex flex-wrap gap-1.5 mt-3">
+                <div className="flex flex-wrap gap-1.5 mt-3 overflow-hidden">
                   {skills.slice(0, 5).map((skill: any, index: number) => (
                     <Badge 
                       key={index} 
