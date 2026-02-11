@@ -199,6 +199,29 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
       setMessageSent(true);
       toast.success(isFirstDegree ? 'Message envoyé !' : 'InMail envoyé !');
       
+      // Track in inmail_queue so candidate appears in ATS
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          const profileAnyLocal = profile as any;
+          await supabase.from('inmail_queue').insert({
+            account_id: selectedAccount,
+            recipient_profile_id: recipientId,
+            recipient_name: profile.name || `${profile.first_name || ''} ${profile.last_name || ''}`.trim(),
+            recipient_headline: profile.headline || null,
+            subject: subject || '(Message direct)',
+            message: plainMessage,
+            status: 'sent',
+            sent_at: new Date().toISOString(),
+            created_by: user.id,
+            network_distance: isFirstDegree ? 1 : (typeof networkDistance === 'number' ? networkDistance : 2),
+          });
+        }
+      } catch (trackErr) {
+        console.error('Error tracking message in ATS:', trackErr);
+        // Non-blocking - don't fail the send
+      }
+      
       // Notify parent that message was sent
       onMessageSent?.();
       

@@ -220,50 +220,69 @@ async function handleNewMessage(supabase: SupabaseClient, payload: WebhookPayloa
 
   if (enrollments.length === 0) {
     console.log('[unipile-webhook] No active enrollments found for sender:', senderId);
-    return;
+  } else {
+    // Extra validation: log the matched profiles to help debug false positives
+    console.log(`[unipile-webhook] Found ${enrollments.length} enrollment(s) - marking as replied:`, 
+      enrollments.map(e => ({ id: e.id, profile_id: e.profile_id })));
+
+    for (const enrollment of enrollments) {
+      // Mark as replied and pause the sequence
+      const { error: updateError } = await supabase
+        .from('sequence_enrollments')
+        .update({
+          status: 'replied',
+          replied_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', enrollment.id);
+
+      if (updateError) {
+        console.error('[unipile-webhook] Error updating enrollment:', updateError);
+        continue;
+      }
+
+      // Cancel any pending step executions
+      await supabase
+        .from('sequence_step_executions')
+        .update({
+          status: 'cancelled',
+          skip_reason: 'Reply detected via webhook',
+          updated_at: new Date().toISOString(),
+        })
+        .eq('enrollment_id', enrollment.id)
+        .eq('status', 'scheduled');
+
+      // Log analytics
+      const today = new Date().toISOString().split('T')[0];
+      await supabase
+        .from('sequence_analytics')
+        .upsert({
+          sequence_id: enrollment.sequence_id,
+          date: today,
+          replies_received: 1,
+        }, { onConflict: 'sequence_id,date' });
+
+      console.log('[unipile-webhook] Enrollment', enrollment.id, 'marked as replied');
+    }
   }
 
-  // Extra validation: log the matched profiles to help debug false positives
-  console.log(`[unipile-webhook] Found ${enrollments.length} enrollment(s) - marking as replied:`, 
-    enrollments.map(e => ({ id: e.id, profile_id: e.profile_id })));
+  // Also update inmail_queue entries for this sender (for ATS tracking)
+  // Match by recipient_profile_id (exact or partial)
+  const { data: inmailMatches } = await supabase
+    .from('inmail_queue')
+    .select('id, recipient_profile_id')
+    .eq('status', 'sent')
+    .or(`recipient_profile_id.eq.${senderId},recipient_profile_id.ilike.%${senderId}%`);
 
-  for (const enrollment of enrollments) {
-    // Mark as replied and pause the sequence
-    const { error: updateError } = await supabase
-      .from('sequence_enrollments')
+  if (inmailMatches && inmailMatches.length > 0) {
+    console.log(`[unipile-webhook] Marking ${inmailMatches.length} inmail_queue entries as replied`);
+    const inmailIds = inmailMatches.map(m => m.id);
+    await supabase
+      .from('inmail_queue')
       .update({
         status: 'replied',
-        replied_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       })
-      .eq('id', enrollment.id);
-
-    if (updateError) {
-      console.error('[unipile-webhook] Error updating enrollment:', updateError);
-      continue;
-    }
-
-    // Cancel any pending step executions
-    await supabase
-      .from('sequence_step_executions')
-      .update({
-        status: 'cancelled',
-        skip_reason: 'Reply detected via webhook',
-        updated_at: new Date().toISOString(),
-      })
-      .eq('enrollment_id', enrollment.id)
-      .eq('status', 'scheduled');
-
-    // Log analytics
-    const today = new Date().toISOString().split('T')[0];
-    await supabase
-      .from('sequence_analytics')
-      .upsert({
-        sequence_id: enrollment.sequence_id,
-        date: today,
-        replies_received: 1,
-      }, { onConflict: 'sequence_id,date' });
-
-    console.log('[unipile-webhook] Enrollment', enrollment.id, 'marked as replied');
+      .in('id', inmailIds);
   }
 }

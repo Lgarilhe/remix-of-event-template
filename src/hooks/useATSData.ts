@@ -141,7 +141,7 @@ async function fetchInMails(existingProfileIds: Set<string>): Promise<ATSCandida
       linkedin: null,
       headline: inmail.recipient_headline || null,
       expertise: [],
-      stage: inmail.status === 'sent' ? 'Contacté' : 'Nouveau',
+      stage: inmail.status === 'replied' ? 'Répondu' : inmail.status === 'sent' ? 'Contacté' : 'Nouveau',
       entity: null,
       source: 'inmail' as const,
       sourceId: inmail.id,
