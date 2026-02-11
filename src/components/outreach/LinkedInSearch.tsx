@@ -12,6 +12,9 @@ import { SourcingProject } from '@/hooks/useSourcingProjects';
 import { LinkedInProfile } from './types';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
+import { Button } from '@/components/ui/button';
+import { SlidersHorizontal } from 'lucide-react';
 
 interface LinkedInSearchProps {
   accounts: LinkedInAccount[];
@@ -367,33 +370,59 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
     return () => observer.disconnect();
   }, [search.hasMoreResults, search.loading, search.loadingMore, search.cursor, handleLoadMore]);
 
+  const [filtersOpen, setFiltersOpen] = useState(false);
+
+  const filtersPanel = (
+    <SearchFiltersPanel
+      accounts={accounts}
+      selectedAccount={selectedAccount}
+      onAccountChange={onAccountChange}
+      filters={search.filters}
+      setFilters={search.setFilters}
+      selectedJob={search.selectedJob}
+      onJobChange={search.setSelectedJob}
+      onAutoFillFilters={handleAutoFillFilters}
+      loading={search.loading}
+      needsReconnection={!!needsReconnection}
+      isApiModeAvailable={isApiModeAvailable}
+      subscriptions={subscriptions}
+      quota={{
+        quotas: search.quota.quotas,
+        apiMode: search.quota.apiMode,
+      }}
+      onSearch={() => { handleSearch(false); setFiltersOpen(false); }}
+      onClearFilters={search.handleClearFilters}
+    />
+  );
+
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-      {/* Left panel: Filters */}
-      <div className="lg:col-span-4 xl:col-span-3">
-        <SearchFiltersPanel
-          accounts={accounts}
-          selectedAccount={selectedAccount}
-          onAccountChange={onAccountChange}
-          filters={search.filters}
-          setFilters={search.setFilters}
-          selectedJob={search.selectedJob}
-          onJobChange={search.setSelectedJob}
-          onAutoFillFilters={handleAutoFillFilters}
-          loading={search.loading}
-          needsReconnection={!!needsReconnection}
-          isApiModeAvailable={isApiModeAvailable}
-          subscriptions={subscriptions}
-          quota={{
-            quotas: search.quota.quotas,
-            apiMode: search.quota.apiMode,
-          }}
-          onSearch={() => handleSearch(false)}
-          onClearFilters={search.handleClearFilters}
-        />
+    <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 lg:gap-6">
+      {/* Mobile: Filters button + Sheet */}
+      <div className="lg:hidden">
+        <Sheet open={filtersOpen} onOpenChange={setFiltersOpen}>
+          <SheetTrigger asChild>
+            <Button variant="outline" className="w-full gap-2 border-[#0077B5] text-[#0077B5]">
+              <SlidersHorizontal className="w-4 h-4" />
+              Filtres de recherche
+              {search.selectedJob && (
+                <span className="text-xs bg-[#0077B5]/10 px-2 py-0.5 rounded-full">
+                  {search.selectedJob.title}
+                </span>
+              )}
+            </Button>
+          </SheetTrigger>
+          <SheetContent side="left" className="w-[90vw] max-w-[400px] p-4 overflow-y-auto">
+            {filtersPanel}
+          </SheetContent>
+        </Sheet>
       </div>
 
-      {/* Right panel: Results */}
+      {/* Desktop: Filters sidebar */}
+      <div className="hidden lg:block lg:col-span-4 xl:col-span-3">
+        {filtersPanel}
+      </div>
+
+      {/* Results panel */}
       <div className="lg:col-span-8 xl:col-span-9">
         <SearchResultsPanel
           results={search.results}
