@@ -29,6 +29,7 @@ interface OutreachMessageModalProps {
   profile: LinkedInProfile;
   job: Job;
   selectedAccount?: string | null;
+  onMessageSent?: () => void;
 }
 
 type Tone = 'professional' | 'casual' | 'enthusiastic';
@@ -39,6 +40,7 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
   profile,
   job,
   selectedAccount,
+  onMessageSent,
 }) => {
   const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
@@ -196,6 +198,9 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
 
       setMessageSent(true);
       toast.success(isFirstDegree ? 'Message envoyé !' : 'InMail envoyé !');
+      
+      // Notify parent that message was sent
+      onMessageSent?.();
       
       // Close modal after short delay
       setTimeout(() => {
