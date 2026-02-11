@@ -250,10 +250,12 @@ PLAGES PAR DÉFAUT (si aucun indice):
 - Poste avec "Senior" dans le titre → 5-12 ans
 - Poste management → 7-15 ans
 
-ÉLARGISSEMENT SYSTÉMATIQUE:
-- Une fois la plage déduite, élargir de -2 ans sur le min et +3 ans sur le max
-- Objectif: ne PAS exclure des profils légèrement hors critères
-- Le filtrage fin se fera par scoring IA, pas par les filtres
+PRÉCISION OBLIGATOIRE:
+- Retourner la plage EXACTE déduite du poste, SANS élargissement
+- L'élargissement sera fait côté code, pas par toi
+- Si le poste dit "3-5 ans", retourner exactement 3 et 5
+- Si tu infères depuis le titre/séniorité, retourner la plage naturelle (ex: Senior → 5-10)
+- Le scoring IA fera le filtrage fin ensuite
 
 ⚠️ FILTRES À ÉVITER (PEU FIABLES):
 - Le filtre Secteur/Industrie LinkedIn est TRÈS peu fiable (30%+ de profils perdus). Préfère les feeder companies.
@@ -543,14 +545,14 @@ ${transversal.bodyContent ? `Contenu détaillé critères transverses:\n${transv
     const spotlight = parsed.suggest_spotlight || 'ACTIVE_TALENT'; // Default ACTIVE_TALENT
 
     // === RÈGLE 6: Utiliser les valeurs de l'IA avec élargissement léger ===
-    // L'IA a déjà fait le travail d'inférence, on applique juste un petit élargissement
-    const rawXpMin = parsed.years_experience_min ?? job.xpMin ?? null;
-    const rawXpMax = parsed.years_experience_max ?? job.xpMax ?? null;
+    // L'IA retourne la plage EXACTE, on applique un léger élargissement côté code
+    // Priorité: valeurs Notion (xpMin/xpMax) > valeurs IA (inférées)
+    const rawXpMin = job.xpMin ?? parsed.years_experience_min ?? null;
+    const rawXpMax = job.xpMax ?? parsed.years_experience_max ?? null;
     
-    // Élargissement simple: -1 an sur min, +3 ans sur max
-    // On garde TOUJOURS les deux valeurs (jamais null si l'IA les a fournies)
+    // Élargissement minimal: -1 an sur min, +2 ans sur max
     const widenedXpMin = rawXpMin !== null ? Math.max(0, rawXpMin - 1) : null;
-    const widenedXpMax = rawXpMax !== null ? rawXpMax + 3 : null;
+    const widenedXpMax = rawXpMax !== null ? rawXpMax + 2 : null;
     
     // S'assurer que min <= max
     const finalXpMin = (widenedXpMin !== null && widenedXpMax !== null && widenedXpMin > widenedXpMax) 
