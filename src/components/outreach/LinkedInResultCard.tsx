@@ -395,11 +395,11 @@ export const LinkedInResultCard: React.FC<LinkedInResultCardProps> = ({
 
   return (
     <Collapsible open={isExpanded} onOpenChange={setIsExpanded}>
-      <div className={`bg-white rounded-xl border transition-all ${
+      <div className={`bg-white rounded-xl border transition-all overflow-hidden max-w-full ${
         isExpanded 
           ? 'border-[#0077B5]/30 shadow-lg shadow-[#0077B5]/5' 
           : 'border-[#1A1A1A]/10 hover:border-[#0077B5]/20 hover:shadow-md'
-      }`}>
+      }`} style={{ wordBreak: 'break-word' }}>
         {/* Main card content */}
         <div className="p-2.5 sm:p-4 overflow-hidden">
           <div className="flex items-start gap-2 sm:gap-4 min-w-0">
