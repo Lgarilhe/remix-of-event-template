@@ -210,12 +210,33 @@ export function useLinkedInScoring({
       if (data?.result) {
         const mapped = mapScoringResult(data.result);
         setJobScores(prev => ({ ...prev, [profile.id]: mapped }));
+        
+        // Auto-dismiss profiles with 'skip' recommendation
+        if (mapped.recommendation === 'skip' && candidateStatus) {
+          const profileAny = profile as any;
+          await candidateStatus.batchDismiss([{
+            id: profile.id,
+            name: profile.name || `${profile.first_name || ''} ${profile.last_name || ''}`.trim(),
+            headline: profile.headline,
+            profileUrl: profile.public_profile_url || profile.profile_url || profileAny?.linkedin_url,
+            score: mapped.match_score,
+            recommendation: mapped.recommendation,
+            skipReason: mapped.summary || 'Score insuffisant',
+          }]);
+          // Remove from selection
+          setSelectedProfiles?.(prev => {
+            const newSet = new Set(prev);
+            newSet.delete(profile.id);
+            return newSet;
+          });
+          toast.info(`Profil écarté (score: ${mapped.match_score}%)`);
+        }
       }
     } catch (err) {
       console.error('Score error:', err);
       toast.error('Erreur lors du scoring');
     }
-  }, [selectedJob, setJobScores]);
+  }, [selectedJob, setJobScores, candidateStatus, setSelectedProfiles]);
 
   // Batch score selected profiles
   const handleBatchScore = useCallback(async () => {
@@ -340,32 +361,26 @@ export function useLinkedInScoring({
 
         const scoredCount = Object.keys(newScores).length;
 
-        // Auto-dismiss low score profiles when autoHideTreated is ON
-        const shouldAutoDismiss = autoHideTreatedRef.current;
-        if (shouldAutoDismiss && lowScoreProfiles.length > 0) {
+        // Always auto-dismiss low score profiles after scoring
+        if (lowScoreProfiles.length > 0 && candidateStatus) {
           await candidateStatus.batchDismiss(lowScoreProfiles);
 
-          // Don't remove from results - let useFilteredResults handle visibility
-          // so dismissed profiles can be revealed via the Archive button
+          // Remove from selection
           const lowScoreIds = new Set(lowScoreProfiles.map(p => p.id));
-          setSelectedProfiles(prev => {
+          setSelectedProfiles?.(prev => {
             const newSet = new Set(prev);
             lowScoreIds.forEach(id => newSet.delete(id));
             return newSet;
           });
+        }
 
-          const goodCount = scoredCount - lowScoreProfiles.length;
-          const msg = `${scoredCount} profils scorés : ${goodCount} pertinent${goodCount > 1 ? 's' : ''}, ${lowScoreProfiles.length} écarté${lowScoreProfiles.length > 1 ? 's' : ''}`;
-          toast.success(rateLimited ? msg + ' (rate limit atteint)' : msg);
+        const goodCount = scoredCount - lowScoreProfiles.length;
+        if (rateLimited) {
+          toast.warning(`${scoredCount} profils scorés sur ${profilesToScore.length} (rate limit atteint, réessayez le reste)`);
+        } else if (lowScoreProfiles.length > 0) {
+          toast.success(`${scoredCount} profils scorés : ${goodCount} pertinent${goodCount > 1 ? 's' : ''}, ${lowScoreProfiles.length} écarté${lowScoreProfiles.length > 1 ? 's' : ''}`);
         } else {
-          if (rateLimited) {
-            toast.warning(`${scoredCount} profils scorés sur ${profilesToScore.length} (rate limit atteint, réessayez le reste)`);
-          } else if (lowScoreProfiles.length > 0) {
-            const goodCount = scoredCount - lowScoreProfiles.length;
-            toast.success(`${scoredCount} profils scorés : ${goodCount} pertinent${goodCount > 1 ? 's' : ''}, ${lowScoreProfiles.length} peu adapté${lowScoreProfiles.length > 1 ? 's' : ''}`);
-          } else {
-            toast.success(`${scoredCount} profils scorés`);
-          }
+          toast.success(`${scoredCount} profils scorés`);
         }
       }
     } catch (err) {
