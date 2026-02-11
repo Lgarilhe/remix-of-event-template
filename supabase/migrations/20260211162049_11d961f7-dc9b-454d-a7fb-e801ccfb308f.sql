@@ -1,0 +1,2 @@
+ALTER TABLE public.inmail_queue DROP CONSTRAINT inmail_queue_status_check;
+ALTER TABLE public.inmail_queue ADD CONSTRAINT inmail_queue_status_check CHECK (status = ANY (ARRAY['pending'::text, 'scheduled'::text, 'sending'::text, 'sent'::text, 'failed'::text, 'cancelled'::text, 'replied'::text]));
