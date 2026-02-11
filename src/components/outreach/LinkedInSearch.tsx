@@ -396,7 +396,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
   );
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 lg:gap-6 min-w-0 overflow-hidden">
+    <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 lg:gap-6 min-w-0">
       {/* Mobile: Filters button + Sheet */}
       <div className="lg:hidden">
         <Sheet open={filtersOpen} onOpenChange={setFiltersOpen}>
@@ -423,7 +423,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
       </div>
 
       {/* Results panel */}
-      <div className="lg:col-span-8 xl:col-span-9 min-w-0 overflow-hidden">
+      <div className="lg:col-span-8 xl:col-span-9 min-w-0">
         <SearchResultsPanel
           results={search.results}
           filteredResults={filteredAndSortedResults}

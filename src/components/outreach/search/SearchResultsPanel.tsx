@@ -421,10 +421,10 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
             )}
           </div>
         ) : (
-          <div className="p-4 space-y-3">
+          <div className="p-2 sm:p-4 space-y-3 min-w-0">
             {/* Results stats banner */}
             {hasSearched && total !== null && total > 0 && (
-              <div className="bg-primary/5 rounded-lg p-3 mb-4 flex items-center gap-3">
+              <div className="bg-primary/5 rounded-lg p-2 sm:p-3 mb-4 flex items-center gap-2 sm:gap-3">
                 <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
                   <Users className="w-5 h-5 text-primary" />
                 </div>
@@ -436,7 +436,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
                     {results.length} profils chargés
                   </p>
                 </div>
-                <div className="flex items-center gap-1.5 shrink-0">
+                <div className="hidden sm:flex items-center gap-1.5 shrink-0">
                   <TooltipProvider>
                     <Tooltip>
                       <TooltipTrigger asChild>

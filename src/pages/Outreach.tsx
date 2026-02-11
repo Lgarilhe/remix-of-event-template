@@ -103,7 +103,7 @@ export default function Outreach() {
   };
 
   return (
-    <div className="min-h-screen bg-[#FAFAFA]">
+    <div className="min-h-screen bg-[#FAFAFA] overflow-x-hidden">
       <SEOHead
         title="Outreach LinkedIn | Konekt"
         description="Recherchez et contactez des candidats sur LinkedIn avec les filtres Recruiter avancés"
@@ -178,7 +178,7 @@ export default function Outreach() {
             </div>
           </div>
 
-          <div className={cn("mt-0 min-w-0 overflow-hidden", activeTab !== 'search' && 'hidden')}>
+          <div className={cn("mt-0 min-w-0", activeTab !== 'search' && 'hidden')}>
             {accounts.length === 0 ? (
               <div className="bg-white rounded-xl border border-[#1A1A1A]/10 p-12 text-center">
                 <Users className="w-16 h-16 text-[#0077B5]/30 mx-auto mb-4" />
