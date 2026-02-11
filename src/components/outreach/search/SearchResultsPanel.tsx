@@ -127,7 +127,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
   loadMoreTriggerRef,
 }) => {
   return (
-    <div className="bg-white rounded-xl border border-border flex flex-col h-[calc(100vh-200px)] lg:h-[calc(100vh-120px)] lg:sticky lg:top-24">
+    <div className="bg-white rounded-xl border border-border flex flex-col h-[calc(100vh-200px)] lg:h-[calc(100vh-120px)] lg:sticky lg:top-24 min-w-0 overflow-hidden">
       {/* Results header */}
       <div className="flex items-center justify-between px-3 sm:px-4 py-2 sm:py-3 border-b border-border shrink-0 gap-2 sm:gap-3 flex-wrap">
         {/* Left side: Search button + count */}
