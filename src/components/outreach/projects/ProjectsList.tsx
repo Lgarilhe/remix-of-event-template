@@ -110,9 +110,9 @@ export const ProjectsList: React.FC<ProjectsListProps> = ({ onResumeSearch }) =>
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between gap-4">
-        <div className="flex items-center gap-3 flex-1">
-          <div className="relative flex-1 max-w-md">
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+        <div className="flex items-center gap-3 flex-1 min-w-0">
+          <div className="relative flex-1 max-w-md min-w-0">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
             <Input
               placeholder="Rechercher un projet..."
@@ -125,9 +125,9 @@ export const ProjectsList: React.FC<ProjectsListProps> = ({ onResumeSearch }) =>
           {/* Status filter */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm" className="gap-2">
+              <Button variant="outline" size="sm" className="gap-2 shrink-0">
                 <Filter className="w-4 h-4" />
-                {statusFilter ? statusConfig[statusFilter as keyof typeof statusConfig].label : 'Tous'}
+                <span className="hidden sm:inline">{statusFilter ? statusConfig[statusFilter as keyof typeof statusConfig].label : 'Tous'}</span>
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent>
@@ -145,9 +145,9 @@ export const ProjectsList: React.FC<ProjectsListProps> = ({ onResumeSearch }) =>
           </DropdownMenu>
         </div>
 
-        <Button onClick={() => setShowCreateModal(true)} className="gap-2 bg-[#0077B5] hover:bg-[#005E93]">
+        <Button onClick={() => setShowCreateModal(true)} className="gap-2 bg-[#0077B5] hover:bg-[#005E93] shrink-0">
           <Plus className="w-4 h-4" />
-          Nouveau projet
+          <span className="sm:inline">Nouveau projet</span>
         </Button>
       </div>
 
@@ -182,11 +182,11 @@ export const ProjectsList: React.FC<ProjectsListProps> = ({ onResumeSearch }) =>
                 className="bg-white rounded-xl border border-gray-200 p-5 hover:border-[#0077B5]/30 hover:shadow-md transition-all cursor-pointer"
                 onClick={() => setSelectedProject(project)}
               >
-                <div className="flex items-start justify-between gap-4">
+                <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
                   {/* Left: Main info */}
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-3 mb-2">
-                      <h3 className="text-lg font-semibold text-gray-900 truncate">
+                    <div className="flex items-center gap-2 sm:gap-3 mb-2 flex-wrap">
+                      <h3 className="text-base sm:text-lg font-semibold text-gray-900 truncate max-w-[200px] sm:max-w-none">
                         {project.name}
                       </h3>
                       <Badge className={statusConfig[project.status].color}>
@@ -197,8 +197,8 @@ export const ProjectsList: React.FC<ProjectsListProps> = ({ onResumeSearch }) =>
                     
                     {project.client_name && (
                       <div className="flex items-center gap-2 text-sm text-gray-500 mb-3">
-                        <Building2 className="w-4 h-4" />
-                        <span>{project.client_name}</span>
+                        <Building2 className="w-4 h-4 shrink-0" />
+                        <span className="truncate">{project.client_name}</span>
                       </div>
                     )}
 
@@ -209,28 +209,28 @@ export const ProjectsList: React.FC<ProjectsListProps> = ({ onResumeSearch }) =>
                     )}
 
                     {/* Stats - using dynamic counts from job_candidate_status */}
-                    <div className="flex items-center gap-6 text-sm">
+                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs sm:text-sm">
                       <div className="flex items-center gap-1.5 text-gray-600">
-                        <Users className="w-4 h-4 text-blue-500" />
+                        <Users className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-blue-500 shrink-0" />
                         <span>{stats.total || project.stats_total_found} trouvés</span>
                       </div>
                       <div className="flex items-center gap-1.5 text-gray-600">
-                        <MessageSquare className="w-4 h-4 text-green-500" />
+                        <MessageSquare className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-green-500 shrink-0" />
                         <span>{stats.messaged} contactés</span>
                       </div>
                       <div className="flex items-center gap-1.5 text-gray-600">
-                        <UserCheck className="w-4 h-4 text-purple-500" />
+                        <UserCheck className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-purple-500 shrink-0" />
                         <span>{stats.shortlisted} shortlistés</span>
                       </div>
                       <div className="flex items-center gap-1.5 text-gray-600">
-                        <UserX className="w-4 h-4 text-red-400" />
+                        <UserX className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-red-400 shrink-0" />
                         <span>{stats.dismissed} écartés</span>
                       </div>
                     </div>
                   </div>
 
                   {/* Right: Actions & Meta */}
-                  <div className="flex flex-col items-end gap-3">
+                  <div className="flex sm:flex-col items-center sm:items-end justify-between sm:justify-start gap-3 pt-2 sm:pt-0 border-t sm:border-t-0 border-gray-100">
                     <div className="flex items-center gap-2">
                       <Button
                         size="sm"
@@ -289,11 +289,11 @@ export const ProjectsList: React.FC<ProjectsListProps> = ({ onResumeSearch }) =>
                     </div>
 
                     <div className="flex items-center gap-1.5 text-xs text-gray-400">
-                      <Calendar className="w-3.5 h-3.5" />
-                      <span>
+                      <Calendar className="w-3.5 h-3.5 shrink-0" />
+                      <span className="truncate">
                         {project.last_search_at 
-                          ? `Recherche ${formatDistanceToNow(new Date(project.last_search_at), { addSuffix: true, locale: fr })}`
-                          : `Créé ${formatDistanceToNow(new Date(project.created_at), { addSuffix: true, locale: fr })}`
+                          ? `${formatDistanceToNow(new Date(project.last_search_at), { addSuffix: true, locale: fr })}`
+                          : `${formatDistanceToNow(new Date(project.created_at), { addSuffix: true, locale: fr })}`
                         }
                       </span>
                     </div>

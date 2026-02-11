@@ -172,8 +172,8 @@ export default function Outreach() {
           </Tabs>
 
           {/* Tab panels - kept mounted to preserve state */}
-          <div className={cn("mt-0", activeTab !== 'projects' && 'hidden')}>
-            <div className="bg-white rounded-xl border border-[#1A1A1A]/10 p-6">
+          <div className={cn("mt-0 min-w-0", activeTab !== 'projects' && 'hidden')}>
+            <div className="bg-white rounded-xl border border-[#1A1A1A]/10 p-3 sm:p-6 overflow-hidden">
               <ProjectsList onResumeSearch={handleResumeSearch} />
             </div>
           </div>
