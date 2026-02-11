@@ -20,6 +20,13 @@ const Auth = () => {
   const from = (location.state as any)?.from || '/outreach';
 
   useEffect(() => {
+    // Check URL hash FIRST for recovery flow before anything else
+    const hash = window.location.hash;
+    if (hash && (hash.includes('type=recovery') || hash.includes('type=magiclink'))) {
+      setIsResettingPassword(true);
+      return; // Don't check session or redirect
+    }
+
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === 'PASSWORD_RECOVERY') {
         setIsResettingPassword(true);
@@ -30,13 +37,7 @@ const Auth = () => {
 
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session && !isResettingPassword) {
-        // Check URL hash for recovery flow
-        const hash = window.location.hash;
-        if (hash && hash.includes('type=recovery')) {
-          setIsResettingPassword(true);
-        } else {
-          navigate(from);
-        }
+        navigate(from);
       }
     });
 
