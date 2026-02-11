@@ -611,7 +611,7 @@ export const LinkedInResultCard: React.FC<LinkedInResultCardProps> = ({
                 </div>
 
                 {/* Mobile actions row */}
-                <div className="flex sm:hidden items-center gap-0.5 mt-1 flex-wrap">
+                <div className="flex sm:hidden items-center gap-0.5 mt-1 overflow-x-auto max-w-full">
                   {selectedJob && onScoreProfile && !jobScore && (
                     <Button variant="ghost" size="sm" onClick={onScoreProfile} disabled={isScoring} className="text-purple-600 h-7 w-7 p-0">
                       {isScoring ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Target className="w-3.5 h-3.5" />}
@@ -664,7 +664,7 @@ export const LinkedInResultCard: React.FC<LinkedInResultCardProps> = ({
               </div>
 
               {/* Meta info row */}
-              <div className="flex flex-wrap items-center gap-x-3 sm:gap-x-4 gap-y-1 mt-2 sm:mt-3 text-[11px] sm:text-xs text-[#1A1A1A]/60">
+              <div className="flex flex-wrap items-center gap-x-2 sm:gap-x-4 gap-y-1 mt-2 sm:mt-3 text-[10px] sm:text-xs text-[#1A1A1A]/60">
                 {currentCompany && (
                   <span className="flex items-center gap-1.5 font-medium text-[#1A1A1A]/80">
                     <Building2 className="w-3.5 h-3.5 text-[#0077B5]" />
