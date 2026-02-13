@@ -46,7 +46,7 @@ const MessagesInboxInner: React.FC<
   const candidateProfile = getCurrentCandidateProfile(inbox.selectedChat);
 
   return (
-    <div className="flex h-[calc(100vh-220px)] min-h-[500px] bg-white rounded-xl border border-[#1A1A1A]/10 overflow-hidden">
+    <div className="flex h-[calc(100vh-220px)] min-h-[400px] md:min-h-[500px] bg-white rounded-xl border border-[#1A1A1A]/10 overflow-hidden relative">
       {/* Chat List Sidebar */}
       <ChatListSidebar
         chats={inbox.chats}

@@ -129,8 +129,8 @@ export const MessageView: React.FC<MessageViewProps> = ({
 
   return (
     <div className={cn(
-      "flex-1 flex flex-col",
-      !selectedChat && "hidden md:flex"
+      "flex-1 flex flex-col min-w-0",
+      !selectedChat ? "hidden md:flex" : "flex"
     )}>
       {/* Chat Header */}
       <div className="p-3 border-b border-[#1A1A1A]/10 flex items-center gap-3">

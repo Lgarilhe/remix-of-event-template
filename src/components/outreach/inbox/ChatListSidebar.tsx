@@ -47,8 +47,8 @@ export const ChatListSidebar: React.FC<ChatListSidebarProps> = ({
 
   return (
     <div className={cn(
-      "w-80 border-r border-[#1A1A1A]/10 flex flex-col",
-      selectedChat && "hidden md:flex"
+      "w-full md:w-80 border-r border-[#1A1A1A]/10 flex flex-col flex-shrink-0",
+      selectedChat ? "hidden md:flex" : "flex"
     )}>
       {/* Search Header */}
       <div className="p-3 border-b border-[#1A1A1A]/10 space-y-2">
