@@ -5,7 +5,6 @@ import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { InMailTextEditor } from '../InMailTextEditor';
 import { NurturingPanel } from '../NurturingPanel';
 import { ToneSelector, AITone } from './ToneSelector';
-import { ConversationSummary } from './ConversationSummary';
 import { 
   ChevronLeft,
   User,
@@ -183,20 +182,7 @@ export const MessageView: React.FC<MessageViewProps> = ({
         )}
       </div>
 
-      {/* AI Conversation Summary */}
-      {analysisData && (
-        <ConversationSummary
-          summary={analysisData.summary}
-          intent={analysisData.intent}
-          intentConfidence={analysisData.intentConfidence}
-          sentiment={analysisData.sentiment}
-          engagement={analysisData.engagement}
-          detectedLanguage={analysisData.detectedLanguage}
-          topJobMatch={analysisData.topJobMatch}
-          qualificationQuestions={analysisData.qualificationQuestions}
-          loading={loadingAnalysis}
-        />
-      )}
+      {/* AI analysis is now on-demand via NurturingPanel buttons */}
 
       {/* Messages Area */}
       <ScrollArea 
