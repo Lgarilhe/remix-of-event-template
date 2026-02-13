@@ -542,31 +542,74 @@ export const NurturingPanel: React.FC<NurturingPanelProps> = ({
                 {activePanel === 'suggestions' && (
                   <>
                     {analysis.replySuggestions.length > 0 ? (
-                      <div className="space-y-1.5">
-                        {analysis.replySuggestions.map((suggestion, i) => (
-                          <div
-                            key={i}
-                            className="group flex items-start gap-2 p-2 rounded-lg border border-violet-200/50 bg-white hover:border-violet-300 hover:shadow-sm transition-all cursor-pointer"
-                            onClick={() => onSuggestionSelect(suggestion.text)}
-                          >
-                            <div className="flex-1 min-w-0">
-                              <p className="text-sm text-[#1A1A1A] leading-snug">{suggestion.text}</p>
-                              <p className="text-[10px] text-muted-foreground mt-0.5">{suggestion.intent_match}</p>
+                      <div className="space-y-3">
+                        {/* Positive suggestions */}
+                        {(() => {
+                          const positive = analysis.replySuggestions.filter((s: any) => s.tone !== 'negative');
+                          return positive.length > 0 ? (
+                            <div className="space-y-1.5">
+                              <div className="flex items-center gap-1.5 text-[10px] font-medium text-emerald-600">
+                                <ThumbsUp className="w-3 h-3" />
+                                <span>Réponses positives</span>
+                              </div>
+                              {positive.map((suggestion: any, i: number) => (
+                                <div
+                                  key={`pos-${i}`}
+                                  className="group flex items-start gap-2 p-2 rounded-lg border border-emerald-200/50 bg-white hover:border-emerald-300 hover:shadow-sm transition-all cursor-pointer"
+                                  onClick={() => onSuggestionSelect(suggestion.text)}
+                                >
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-sm text-[#1A1A1A] leading-snug">{suggestion.text}</p>
+                                    <p className="text-[10px] text-muted-foreground mt-0.5">{suggestion.intent_match}</p>
+                                  </div>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-7 px-2 opacity-0 group-hover:opacity-100 transition-opacity"
+                                    onClick={(e) => { e.stopPropagation(); onSuggestionSend(suggestion.text); }}
+                                    disabled={sending}
+                                  >
+                                    {sending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+                                  </Button>
+                                </div>
+                              ))}
                             </div>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-7 px-2 opacity-0 group-hover:opacity-100 transition-opacity"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                onSuggestionSend(suggestion.text);
-                              }}
-                              disabled={sending}
-                            >
-                              {sending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
-                            </Button>
-                          </div>
-                        ))}
+                          ) : null;
+                        })()}
+
+                        {/* Negative suggestions */}
+                        {(() => {
+                          const negative = analysis.replySuggestions.filter((s: any) => s.tone === 'negative');
+                          return negative.length > 0 ? (
+                            <div className="space-y-1.5">
+                              <div className="flex items-center gap-1.5 text-[10px] font-medium text-red-500">
+                                <ThumbsDown className="w-3 h-3" />
+                                <span>Réponses de clôture</span>
+                              </div>
+                              {negative.map((suggestion: any, i: number) => (
+                                <div
+                                  key={`neg-${i}`}
+                                  className="group flex items-start gap-2 p-2 rounded-lg border border-red-200/50 bg-red-50/30 hover:border-red-300 hover:shadow-sm transition-all cursor-pointer"
+                                  onClick={() => onSuggestionSelect(suggestion.text)}
+                                >
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-sm text-[#1A1A1A] leading-snug">{suggestion.text}</p>
+                                    <p className="text-[10px] text-muted-foreground mt-0.5">{suggestion.intent_match}</p>
+                                  </div>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-7 px-2 opacity-0 group-hover:opacity-100 transition-opacity"
+                                    onClick={(e) => { e.stopPropagation(); onSuggestionSend(suggestion.text); }}
+                                    disabled={sending}
+                                  >
+                                    {sending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+                                  </Button>
+                                </div>
+                              ))}
+                            </div>
+                          ) : null;
+                        })()}
                       </div>
                     ) : (
                       <p className="text-xs text-muted-foreground text-center py-3">Aucune suggestion disponible</p>

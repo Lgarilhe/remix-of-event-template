@@ -307,9 +307,11 @@ ANALYSE DEMANDÉE (JSON strict, pas de markdown):
   "summary": "Résumé en 1 phrase de la situation",
   "qualificationQuestions": ["Question stratégique à poser pour qualifier"],
   "replySuggestions": [
-    {"text": "Réponse courte 15 mots ${detectedLanguage === 'en' ? 'in English' : 'en français'}", "type": "quick", "intent_match": "adapté à l'intent détecté"},
-    {"text": "Réponse moyenne 30 mots ${detectedLanguage === 'en' ? 'in English' : 'en français'}", "type": "standard", "intent_match": "..."},
-    {"text": "Réponse détaillée 50 mots ${detectedLanguage === 'en' ? 'in English' : 'en français'}", "type": "detailed", "intent_match": "..."}
+    {"text": "Réponse courte positive/engageante 15 mots ${detectedLanguage === 'en' ? 'in English' : 'en français'}", "type": "quick", "tone": "positive", "intent_match": "adapté à l'intent détecté"},
+    {"text": "Réponse moyenne engageante 30 mots ${detectedLanguage === 'en' ? 'in English' : 'en français'}", "type": "standard", "tone": "positive", "intent_match": "..."},
+    {"text": "Réponse détaillée engageante 50 mots ${detectedLanguage === 'en' ? 'in English' : 'en français'}", "type": "detailed", "tone": "positive", "intent_match": "..."},
+    {"text": "Réponse polie de refus/clôture 20 mots ${detectedLanguage === 'en' ? 'in English' : 'en français'} (profil pas aligné, poste pourvu, ou garder contact pour plus tard)", "type": "standard", "tone": "negative", "intent_match": "Clôture respectueuse"},
+    {"text": "Réponse de désengagement ferme mais professionnelle 15 mots ${detectedLanguage === 'en' ? 'in English' : 'en français'}", "type": "quick", "tone": "negative", "intent_match": "Fin de conversation"}
   ]${jobMatchingPrompt ? `,
   "jobMatches": [
     {
@@ -388,7 +390,7 @@ ANALYSE DEMANDÉE (JSON strict, pas de markdown):
           : [],
         summary: analysis.summary || "Analyse en cours",
         replySuggestions: Array.isArray(analysis.replySuggestions) 
-          ? analysis.replySuggestions.slice(0, 3) 
+          ? analysis.replySuggestions.slice(0, 5) 
           : [],
         jobMatches: Array.isArray(analysis.jobMatches) 
           ? analysis.jobMatches.slice(0, 3).map(jm => ({
