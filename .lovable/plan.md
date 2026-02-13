@@ -1,172 +1,78 @@
 
-# Séquence conditionnelle avec branchement intelligent
+# Refonte Landing Page SaaS - Style Zeliq
 
 ## Objectif
+Reecrire completement `src/pages/SkalrLanding.tsx` pour presenter Skalr comme une plateforme SaaS de recrutement, en s'inspirant du storytelling et de la structure de Zeliq.
 
-Créer des séquences de prospection avancées avec logique conditionnelle basée sur le statut de connexion LinkedIn :
+## Structure de la nouvelle page
 
-```text
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                                                                             │
-│  1. Visite de profil                                                        │
-│         │                                                                   │
-│         ▼                                                                   │
-│  2. Attendre 2 minutes                                                      │
-│         │                                                                   │
-│         ▼                                                                   │
-│  3. Vérifier connexion                                                      │
-│         │                                                                   │
-│    ┌────┴────┐                                                              │
-│    ▼         ▼                                                              │
-│  1er degré   2e/3e degré                                                    │
-│    │            │                                                           │
-│    ▼            ▼                                                           │
-│ Message     Invitation                                                      │
-│ direct      (<50 car.)                                                      │
-│    │            │                                                           │
-│    ▼            ▼                                                           │
-│  [FIN]     Attendre 2 jours                                                 │
-│               │                                                             │
-│          ┌────┴────┐                                                        │
-│          ▼         ▼                                                        │
-│       Accepté   Non accepté                                                 │
-│          │         │                                                        │
-│          ▼         ▼                                                        │
-│       Message   InMail                                                      │
-│       direct    payant                                                      │
-│                                                                             │
-└─────────────────────────────────────────────────────────────────────────────┘
-```
+### 1. Navigation
+- Logo "skalr."
+- Liens : Fonctionnalites, Comment ca marche, Resultats
+- Bouton "Commencer gratuitement" qui redirige vers `/auth`
+- Bouton "Reserver une demo" qui ouvre le modal Calendly (conserve)
 
-## Ce qui existe déjà
+### 2. Hero (fond sombre + video de fond conservee)
+- Titre large et impactant : **"Trouvez, engagez et recrutez vos meilleurs talents"**
+- Sous-titre : "La plateforme tout-en-un qui combine sourcing LinkedIn, sequences automatisees et suivi candidat."
+- 2 CTA : "Commencer gratuitement" (vers /auth) + "Voir comment ca marche" (scroll)
+- Badges en bas du hero : "Sourcing IA", "Sequences auto", "ATS integre"
 
-| Élément | État actuel |
-|---------|-------------|
-| Types d'actions | `profile_visit`, `connection_request`, `message`, `inmail`, `smart_message` |
-| Triggers | `wait_connection`, `wait_reply`, `wait_profile_visit`, `condition_branch` |
-| Conditions | `always`, `if_connected`, `if_not_connected`, `if_no_response` |
-| Délais | Jours et heures uniquement |
-| Timeout | `timeout_days` + `timeout_branch_step_id` pour branchement alternatif |
+### 3. Section "Tout ce dont vous avez besoin" (etapes numerotees, style Zeliq)
+5 blocs numerotes avec icone, titre et description :
+1. **Trouvez les bons profils** - Recherche LinkedIn avancee avec filtres (poste, experience, ecole, localisation)
+2. **Qualifiez avec l'IA** - Scoring automatique de chaque profil par rapport a vos offres
+3. **Engagez en automatique** - Sequences d'InMails et messages personnalises par l'IA
+4. **Centralisez les echanges** - Inbox unifiee pour gerer toutes vos conversations candidats
+5. **Suivez dans l'ATS** - Pipeline kanban avec statuts automatiques et timeline complete
 
-## Nouvelles fonctionnalités
+### 4. Section "Pour toutes les equipes" (onglets par persona, style Zeliq)
+Composant Tabs avec 4 onglets :
+- **Recruteur interne** : Automatisez le sourcing, concentrez-vous sur les entretiens
+- **Talent Acquisition** : Vue complete du pipeline, metriques et reporting
+- **Fondateur** : Recrutez vos premiers talents sans passer par une agence
+- **Cabinet de recrutement** : Gerez plusieurs mandats et centralisez vos candidats
 
-### 1. Support des délais en minutes
-Pour les cas comme "attendre 2 minutes après la visite de profil".
+### 5. Section "Resultats concrets" (stats impact)
+3 gros chiffres animes :
+- **x3** profils contactes par semaine
+- **-60%** temps de sourcing
+- **+80%** taux de reponse avec les sequences IA
 
-### 2. Nouveau trigger : Vérifier connexion (`check_connection`)
-Un step qui vérifie le degré de connexion et route vers deux branches :
-- **Si connecté (1er degré)** → branche A
-- **Si non connecté** → branche B
+### 6. Section Temoignage (conserve et adapte)
+Citation adaptee au produit SaaS
 
-### 3. Sélecteurs de branchement
-Pouvoir sélectionner "vers quelle étape aller" selon le résultat de la condition.
+### 7. FAQ (adaptee au SaaS)
+- Comment ca marche ?
+- Mon compte LinkedIn est-il en securite ?
+- Combien de messages puis-je envoyer ?
+- C'est gratuit ?
 
-### 4. Limite de caractères pour les invitations
-Compteur visuel avec limite à 50 caractères pour les notes d'invitation LinkedIn.
+### 8. CTA Final (fond sombre)
+"Vos prochains talents vous attendent" + boutons vers /auth et Calendly
 
----
+### 9. Footer (conserve)
 
-## Détails techniques
+## Elements conserves tels quels
+- Modal Calendly (logique + iframe)
+- Modal Contact (formulaire + envoi base de donnees + Notion)
+- Video de fond hero
+- SEOHead (meta tags mis a jour pour le SaaS)
+- Animations framer-motion
 
-### Migration base de données
+## Details techniques
 
-Ajout de 3 colonnes à la table `sequence_steps` :
+### Fichier modifie
+- `src/pages/SkalrLanding.tsx` : reecriture complete
 
-```sql
-ALTER TABLE sequence_steps
-ADD COLUMN delay_minutes integer DEFAULT 0,
-ADD COLUMN if_true_goto_step uuid REFERENCES sequence_steps(id) ON DELETE SET NULL,
-ADD COLUMN if_false_goto_step uuid REFERENCES sequence_steps(id) ON DELETE SET NULL;
-```
+### Ajout de `useNavigate`
+Import de `useNavigate` depuis `react-router-dom` pour les redirections vers `/auth`
 
-### Modifications Frontend
+### Composants utilises
+- `Tabs`, `TabsList`, `TabsTrigger`, `TabsContent` pour la section personas
+- `Button` pour tous les CTA
+- `motion` de framer-motion pour les animations au scroll
+- Icones lucide-react : `Search`, `Brain`, `Send`, `MessageSquare`, `LayoutGrid`, `ArrowRight`, `Check`, `Linkedin`, `Shield`, `Zap`
 
-**Fichier : `src/components/outreach/SequenceBuilder.tsx`**
-
-1. **Type `SequenceStep`** - Ajouter :
-   - `delayMinutes: number`
-   - `ifTrueGotoStep?: string`
-   - `ifFalseGotoStep?: string`
-
-2. **Nouveau trigger `check_connection`** dans la liste TRIGGERS :
-   ```typescript
-   { 
-     value: 'check_connection', 
-     label: 'Vérifier connexion', 
-     icon: GitBranch, 
-     color: 'bg-indigo-100 text-indigo-600', 
-     description: 'Route selon le degré', 
-     requiresPrevious: [], 
-     excludeIfPrevious: [] 
-   }
-   ```
-
-3. **Input minutes** dans la section délais (à côté de jours/heures)
-
-4. **Configuration branchement** pour `check_connection` :
-   - Dropdown "Si connecté → aller à l'étape X"
-   - Dropdown "Si non connecté → aller à l'étape Y"
-
-5. **Compteur de caractères** pour `connection_request` :
-   - Afficher "X/50" sous le champ message
-   - Rouge si > 50 caractères
-
-### Modifications Backend
-
-**Fichier : `supabase/functions/process-sequences/index.ts`**
-
-1. **Support `delay_minutes`** dans `scheduleNextStep()` :
-   ```typescript
-   scheduledAt.setMinutes(scheduledAt.getMinutes() + (nextStep.delay_minutes || 0));
-   ```
-
-2. **Handler `check_connection`** dans `executeStepAction()` :
-   ```typescript
-   case 'check_connection': {
-     const profile = await getProfileInfo(accountId, profileId);
-     const isConnected = profile?.network_distance === 'FIRST_DEGREE';
-     
-     const nextStepId = isConnected 
-       ? step.if_true_goto_step 
-       : step.if_false_goto_step;
-     
-     if (nextStepId) {
-       await scheduleNextStep(supabase, enrollment, step.step_order, nextStepId);
-     }
-     
-     return { success: true };
-   }
-   ```
-
-### Fichier : `src/components/outreach/SequencesList.tsx`
-
-Mapper les nouveaux champs lors de la sauvegarde :
-- `delay_minutes` ← `step.delayMinutes`
-- `if_true_goto_step` ← `step.ifTrueGotoStep`
-- `if_false_goto_step` ← `step.ifFalseGotoStep`
-
----
-
-## Exemple de séquence créée
-
-| Ordre | Type | Condition | Délai | Action |
-|-------|------|-----------|-------|--------|
-| 1 | profile_visit | always | 0 | Visite du profil |
-| 2 | check_connection | - | 2 min | Vérifie si connecté → 3 / sinon → 4 |
-| 3 | message | if_connected | 0 | Message direct (FIN) |
-| 4 | connection_request | if_not_connected | 0 | Invitation (<50 car.) |
-| 5 | wait_connection | - | timeout: 2j | Attendre acceptation → 6 / sinon → 7 |
-| 6 | message | if_connected | 0 | Message si accepté |
-| 7 | inmail | if_not_connected | 0 | InMail si non accepté |
-
----
-
-## Fichiers à modifier
-
-| Fichier | Type de modification |
-|---------|---------------------|
-| Migration SQL | Nouvelle migration : `delay_minutes`, `if_true_goto_step`, `if_false_goto_step` |
-| `src/components/outreach/SequenceBuilder.tsx` | Ajouter trigger, input minutes, compteur caractères, UI branchement |
-| `src/components/outreach/SequencesList.tsx` | Mapper les nouveaux champs à la sauvegarde |
-| `supabase/functions/process-sequences/index.ts` | Handler `check_connection`, support `delay_minutes` |
-
+### Aucune nouvelle dependance
+Tout est deja installe dans le projet
