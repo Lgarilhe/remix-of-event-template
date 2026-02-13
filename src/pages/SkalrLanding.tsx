@@ -1,7 +1,13 @@
-import { useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { useState, useRef, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { motion, AnimatePresence, useInView } from 'framer-motion';
 import { Button } from '@/components/ui/button';
-import { Check, ArrowRight, Users, Target, Zap, TrendingUp, Calendar, Clock, ChevronDown, Play, X, Mail, Loader2 } from 'lucide-react';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { 
+  Search, Brain, Send, MessageSquare, LayoutGrid, 
+  ArrowRight, Check, Linkedin, Shield, Zap, 
+  ChevronDown, X, Mail, Loader2, Users, Briefcase, Building2
+} from 'lucide-react';
 import { SEOHead } from '@/components/SEOHead';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -9,10 +15,29 @@ import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import heroVideo from '@/assets/hero-video.mp4';
 
-// Remplacez par votre vrai lien Calendly
 const CALENDLY_URL = 'https://calendly.com/demo/30min';
 
+// Animated counter component
+const AnimatedStat = ({ value, suffix = '' }: { value: string; suffix?: string }) => {
+  const ref = useRef<HTMLDivElement>(null);
+  const isInView = useInView(ref, { once: true });
+  
+  return (
+    <div ref={ref}>
+      <motion.span
+        initial={{ opacity: 0, y: 20 }}
+        animate={isInView ? { opacity: 1, y: 0 } : {}}
+        transition={{ duration: 0.6, ease: 'easeOut' }}
+        className="text-6xl md:text-7xl font-bold skalr-gradient-text"
+      >
+        {value}{suffix}
+      </motion.span>
+    </div>
+  );
+};
+
 const SkalrLanding = () => {
+  const navigate = useNavigate();
   const [openFaq, setOpenFaq] = useState<number | null>(null);
   const [showCalendly, setShowCalendly] = useState(false);
   const [showContact, setShowContact] = useState(false);
@@ -30,7 +55,6 @@ const SkalrLanding = () => {
 
     setIsSubmitting(true);
     try {
-      // Save to database
       const { error } = await supabase.from('contact_submissions').insert({
         name: contactForm.name.trim(),
         email: contactForm.email.trim(),
@@ -40,7 +64,6 @@ const SkalrLanding = () => {
 
       if (error) throw error;
 
-      // Send to Notion
       try {
         const notionResponse = await supabase.functions.invoke('notify-notion', {
           body: {
@@ -53,8 +76,6 @@ const SkalrLanding = () => {
         
         if (notionResponse.error) {
           console.warn('Notion sync failed:', notionResponse.error);
-        } else {
-          console.log('Contact synced to Notion successfully');
         }
       } catch (notionError) {
         console.warn('Notion sync error (non-blocking):', notionError);
@@ -71,124 +92,188 @@ const SkalrLanding = () => {
     }
   };
 
-  const packs = [
+  const scrollToSection = (id: string) => {
+    document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  const steps = [
     {
-      name: 'Starter',
-      price: '7 000',
-      duration: '4-6 semaines',
-      description: 'Cadrage rapide',
-      features: ['Audit processus', 'Quick wins', 'Plan d\'action', 'Account Manager'],
-      highlight: false,
+      num: '01',
+      icon: Search,
+      title: 'Trouvez les bons profils',
+      description: 'Recherche LinkedIn avancée avec filtres par poste, expérience, école, localisation. Identifiez les meilleurs talents en quelques clics.',
     },
     {
-      name: 'Booster',
-      price: '11 990',
-      duration: '8 semaines',
-      description: 'Design & mise en route',
-      features: ['Inclut Starter', 'Design funnel', 'Premiers outils', 'Automatisations', 'Lives experts'],
-      highlight: true,
+      num: '02',
+      icon: Brain,
+      title: "Qualifiez avec l'IA",
+      description: "Scoring automatique de chaque profil par rapport à vos offres. L'IA analyse les compétences, l'expérience et la compatibilité.",
     },
     {
-      name: 'Scale',
-      price: '15 990',
-      duration: '12-16 semaines',
-      description: 'Déploiement complet',
-      features: ['Inclut Booster', 'Documentation', 'Transfert compétences', 'Autonomisation', 'Support étendu'],
-      highlight: false,
+      num: '03',
+      icon: Send,
+      title: 'Engagez en automatique',
+      description: "Séquences d'InMails et messages personnalisés par l'IA. Relances automatiques, horaires optimisés, A/B testing intégré.",
+    },
+    {
+      num: '04',
+      icon: MessageSquare,
+      title: 'Centralisez les échanges',
+      description: 'Inbox unifiée pour gérer toutes vos conversations candidats. Suggestions de réponses par IA, suivi des interactions.',
+    },
+    {
+      num: '05',
+      icon: LayoutGrid,
+      title: "Suivez dans l'ATS",
+      description: 'Pipeline kanban avec statuts automatiques, timeline complète et notes collaboratives. Tout votre recrutement en un seul endroit.',
+    },
+  ];
+
+  const personas = [
+    {
+      id: 'recruiter',
+      label: 'Recruteur interne',
+      icon: Users,
+      title: 'Automatisez le sourcing, concentrez-vous sur les entretiens',
+      description: "Libérez-vous des tâches répétitives. Skalr trouve et contacte les candidats pour vous, pendant que vous vous concentrez sur l'évaluation et les entretiens.",
+      benefits: [
+        'Sourcing LinkedIn automatisé',
+        'Séquences de messages personnalisées',
+        'Pipeline candidats en temps réel',
+        'Scoring IA pour prioriser les profils',
+      ],
+    },
+    {
+      id: 'ta',
+      label: 'Talent Acquisition',
+      icon: Briefcase,
+      title: 'Vue complète du pipeline, métriques et reporting',
+      description: "Pilotez votre stratégie de recrutement avec des données précises. Suivez les performances de vos séquences, analysez vos taux de conversion et optimisez en continu.",
+      benefits: [
+        'Dashboard avec KPIs en temps réel',
+        'Analyse des taux de réponse par séquence',
+        'Gestion multi-postes centralisée',
+        'Historique complet des interactions',
+      ],
+    },
+    {
+      id: 'founder',
+      label: 'Fondateur',
+      icon: Zap,
+      title: "Recrutez vos premiers talents sans passer par une agence",
+      description: "Vous n'avez pas de budget pour un cabinet ? Skalr vous donne les outils pour recruter comme un pro, même sans équipe RH dédiée.",
+      benefits: [
+        'Interface simple, prise en main rapide',
+        "Messages générés par l'IA",
+        'Coût 10x inférieur à un cabinet',
+        'Résultats dès la première semaine',
+      ],
+    },
+    {
+      id: 'agency',
+      label: 'Cabinet de recrutement',
+      icon: Building2,
+      title: 'Gérez plusieurs mandats et centralisez vos candidats',
+      description: "Multipliez vos mandats sans multiplier vos efforts. Organisez vos recherches par projet, centralisez vos viviers et automatisez vos approches.",
+      benefits: [
+        'Projets de sourcing par mandat',
+        'Vivier de candidats partagé',
+        'Séquences réutilisables',
+        'Suivi client intégré',
+      ],
     },
   ];
 
   const stats = [
-    { value: '30%', label: 'Time-to-hire réduit' },
-    { value: '2x', label: 'Candidatures qualifiées' },
-    { value: '85%', label: 'Succès période d\'essai' },
-    { value: '150+', label: 'Startups accompagnées' },
-  ];
-
-  const pillars = [
-    { icon: Target, title: 'Roadmapping', description: 'Vision stratégique 12-24 mois' },
-    { icon: Users, title: 'Attraction', description: 'Proposition de valeur unique' },
-    { icon: Zap, title: 'Process', description: 'Automatisation & scale' },
+    { value: 'x3', label: 'profils contactés par semaine' },
+    { value: '-60%', label: 'temps de sourcing' },
+    { value: '+80%', label: 'taux de réponse avec les séquences IA' },
   ];
 
   const faqs = [
-    { question: 'Différence avec un cabinet de recrutement ?', answer: 'Nous ne recrutons pas. Nous transformons votre fonction recrutement en levier de croissance.' },
-    { question: 'Durée d\'accompagnement ?', answer: 'De 4 semaines (Starter) à 16 semaines (Scale).' },
-    { question: 'Pour qui ?', answer: 'Startups en hypercroissance, scale-ups, ETI innovantes.' },
-    { question: 'Quels résultats ?', answer: '-30% time-to-hire, 2x candidatures qualifiées, 85% succès.' },
+    {
+      question: 'Comment ça marche ?',
+      answer: "Connectez votre compte LinkedIn via notre intégration sécurisée, configurez vos filtres de recherche, et laissez Skalr trouver, scorer et contacter les meilleurs profils pour vous. Tout est centralisé dans votre dashboard.",
+    },
+    {
+      question: 'Mon compte LinkedIn est-il en sécurité ?',
+      answer: "Absolument. Nous utilisons des connexions sécurisées et respectons les limites de LinkedIn. Vos identifiants sont chiffrés et ne sont jamais stockés en clair. Des milliers de recruteurs utilisent Skalr sans aucun problème.",
+    },
+    {
+      question: "Combien de messages puis-je envoyer ?",
+      answer: "Cela dépend de votre abonnement LinkedIn (InMail) et de votre plan Skalr. Nous optimisons automatiquement le volume et les horaires d'envoi pour maximiser vos taux de réponse tout en respectant les limites.",
+    },
+    {
+      question: "C'est gratuit ?",
+      answer: "Skalr propose un essai gratuit pour découvrir la plateforme. Ensuite, nos plans sont adaptés à la taille de votre équipe et à vos besoins. Commencez gratuitement et upgradez quand vous êtes prêt.",
+    },
   ];
 
-  const companies = ['Ledger', 'PayFit', 'Lydia', 'Qonto', 'Alan', 'Swile'];
+  const heroBadges = [
+    { icon: Search, label: 'Sourcing IA' },
+    { icon: Zap, label: 'Séquences auto' },
+    { icon: LayoutGrid, label: 'ATS intégré' },
+  ];
 
   return (
     <>
       <SEOHead 
-        title="Skalr - Transformez votre recrutement"
-        description="Studio d'innovation talent pour startups et scale-ups."
-        keywords="recrutement startup, talent acquisition"
+        title="Skalr - Plateforme de recrutement tout-en-un"
+        description="Trouvez, engagez et recrutez vos meilleurs talents. Sourcing LinkedIn, séquences automatisées et suivi candidat en une seule plateforme."
+        keywords="recrutement saas, sourcing linkedin, ats, sequences automatisées, talent acquisition, outil recrutement"
       />
       
-      <div className="min-h-screen bg-white text-zinc-900">
-        {/* Hero with video background */}
-        <section className="relative min-h-screen overflow-hidden bg-zinc-950">
+      <div className="min-h-screen bg-zinc-950 text-white">
+        
+        {/* ===== HERO ===== */}
+        <section className="relative min-h-screen overflow-hidden">
           {/* Video background */}
           <div className="absolute inset-0">
-            <video
-              autoPlay
-              muted
-              loop
-              playsInline
-              className="absolute inset-0 w-full h-full object-cover"
-            >
+            <video autoPlay muted loop playsInline className="absolute inset-0 w-full h-full object-cover">
               <source src={heroVideo} type="video/mp4" />
             </video>
-            
-            {/* Dark overlay for readability */}
-            <div className="absolute inset-0 bg-black/50" />
-            
-            {/* Gradient overlay */}
-            <div className="absolute inset-0 bg-gradient-to-b from-black/30 via-transparent to-black/60" />
+            <div className="absolute inset-0 bg-black/60" />
+            <div className="absolute inset-0 bg-gradient-to-b from-black/40 via-transparent to-zinc-950" />
           </div>
 
           {/* Navigation */}
           <nav className="relative z-20 px-6 py-5">
             <div className="max-w-6xl mx-auto flex items-center justify-between">
-              <motion.div 
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                className="text-xl font-semibold text-white"
-              >
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-xl font-semibold text-white">
                 skalr<span className="text-zinc-500">.</span>
               </motion.div>
               
-              <motion.div 
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ delay: 0.1 }}
-                className="hidden md:flex items-center gap-8"
-              >
-                {['Méthode', 'Offres', 'Résultats'].map((item) => (
-                  <a 
-                    key={item}
-                    href={`#${item.toLowerCase()}`} 
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.1 }} className="hidden md:flex items-center gap-8">
+                {[
+                  { label: 'Fonctionnalités', id: 'features' },
+                  { label: 'Comment ça marche', id: 'how' },
+                  { label: 'Résultats', id: 'results' },
+                ].map((item) => (
+                  <button
+                    key={item.id}
+                    onClick={() => scrollToSection(item.id)}
                     className="text-sm text-zinc-400 hover:text-white transition-colors"
                   >
-                    {item}
-                  </a>
+                    {item.label}
+                  </button>
                 ))}
               </motion.div>
 
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ delay: 0.2 }}
-              >
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.2 }} className="flex items-center gap-3">
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => setShowCalendly(true)}
+                  className="text-zinc-300 hover:text-white hover:bg-white/10 rounded-full px-4"
+                >
+                  Réserver une démo
+                </Button>
                 <Button 
                   size="sm"
-                  onClick={() => setShowCalendly(true)}
+                  onClick={() => navigate('/auth')}
                   className="rounded-full bg-white text-zinc-900 hover:bg-zinc-100 font-medium px-5"
                 >
-                  Prendre RDV
+                  Commencer gratuitement
                 </Button>
               </motion.div>
             </div>
@@ -197,16 +282,16 @@ const SkalrLanding = () => {
           {/* Hero Content */}
           <div className="relative z-10 flex items-center min-h-[calc(100vh-80px)] px-6">
             <div className="max-w-6xl mx-auto w-full">
-              <div className="max-w-3xl">
+              <div className="max-w-3xl mx-auto text-center">
                 <motion.div
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.6 }}
                   className="mb-6"
                 >
-                  <span className="inline-flex items-center gap-2 text-sm text-zinc-400 font-medium">
+                  <span className="inline-flex items-center gap-2 text-sm text-zinc-400 font-medium border border-zinc-700 rounded-full px-4 py-1.5">
                     <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                    Studio d'innovation talent
+                    Plateforme de recrutement tout-en-un
                   </span>
                 </motion.div>
 
@@ -214,296 +299,301 @@ const SkalrLanding = () => {
                   initial={{ opacity: 0, y: 30 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.6, delay: 0.1 }}
-                  className="text-5xl md:text-7xl lg:text-8xl font-medium text-white tracking-tight leading-[0.95] mb-8"
+                  className="text-5xl md:text-6xl lg:text-7xl font-bold text-white tracking-tight leading-[1.05] mb-6"
                 >
-                  Recrutez
-                  <br />
-                  <span className="text-transparent bg-clip-text bg-gradient-to-r from-violet-400 via-fuchsia-400 to-pink-400">
-                    comme une
-                  </span>
-                  <br />
-                  scale-up
+                  Trouvez, engagez et recrutez{' '}
+                  <span className="skalr-gradient-text">vos meilleurs talents</span>
                 </motion.h1>
 
                 <motion.p
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.6, delay: 0.2 }}
-                  className="text-lg md:text-xl text-zinc-400 max-w-xl mb-10 leading-relaxed"
+                  className="text-lg md:text-xl text-zinc-400 max-w-2xl mx-auto mb-10 leading-relaxed"
                 >
-                  Méthodologies sur-mesure pour recruter plus vite, 
-                  mieux, et à moindre coût.
+                  La plateforme tout-en-un qui combine sourcing LinkedIn, 
+                  séquences automatisées et suivi candidat.
                 </motion.p>
 
                 <motion.div
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.6, delay: 0.3 }}
-                  className="flex flex-wrap gap-4"
+                  className="flex flex-wrap justify-center gap-4 mb-12"
                 >
                   <Button 
                     size="lg"
-                    onClick={() => setShowCalendly(true)}
-                    className="rounded-full bg-white text-zinc-900 hover:bg-zinc-100 font-medium px-8 h-12 text-base"
+                    onClick={() => navigate('/auth')}
+                    className="rounded-full skalr-gradient-bg text-white hover:opacity-90 font-medium px-8 h-13 text-base border-0"
                   >
-                    Audit gratuit
+                    Commencer gratuitement
                     <ArrowRight className="ml-2 h-4 w-4" />
                   </Button>
                   
                   <Button 
                     size="lg"
-                    variant="ghost"
-                    onClick={() => setShowContact(true)}
-                    className="rounded-full text-white hover:bg-white/10 font-medium px-6 h-12 text-base group"
+                    variant="outline"
+                    onClick={() => scrollToSection('how')}
+                    className="rounded-full border-zinc-600 text-white hover:bg-white/10 font-medium px-8 h-13 text-base"
                   >
-                    <Mail className="h-4 w-4 mr-2" />
-                    Nous contacter
+                    Voir comment ça marche
                   </Button>
                 </motion.div>
-              </div>
 
-              {/* Stats row at bottom */}
-              <motion.div
-                initial={{ opacity: 0, y: 40 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.6, delay: 0.5 }}
-                className="absolute bottom-12 left-6 right-6"
-              >
-                <div className="max-w-6xl mx-auto">
-                  <div className="flex flex-wrap gap-12 md:gap-16">
-                    {stats.map((stat, i) => (
-                      <div key={i} className="group">
-                        <div className="text-3xl md:text-4xl font-medium text-white mb-1">
-                          {stat.value}
-                        </div>
-                        <div className="text-sm text-zinc-500">
-                          {stat.label}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </motion.div>
-            </div>
-          </div>
-        </section>
-
-        {/* Clients */}
-        <section className="py-16 px-6 border-b border-zinc-100">
-          <div className="max-w-6xl mx-auto">
-            <p className="text-xs uppercase tracking-widest text-zinc-400 mb-8 text-center">
-              Ils nous font confiance
-            </p>
-            <div className="flex flex-wrap items-center justify-center gap-x-12 gap-y-6">
-              {companies.map((company) => (
-                <span 
-                  key={company}
-                  className="text-2xl font-semibold text-zinc-200 hover:text-zinc-400 transition-colors cursor-default"
-                >
-                  {company}
-                </span>
-              ))}
-            </div>
-          </div>
-        </section>
-
-        {/* Method */}
-        <section id="méthode" className="py-24 px-6">
-          <div className="max-w-6xl mx-auto">
-            <div className="max-w-2xl mb-16">
-              <p className="text-sm font-medium text-violet-600 mb-3">Méthode</p>
-              <h2 className="text-4xl md:text-5xl font-medium tracking-tight mb-4">
-                3 piliers pour scaler
-              </h2>
-              <p className="text-lg text-zinc-500">
-                Une approche éprouvée sur 150+ startups.
-              </p>
-            </div>
-
-            <div className="grid md:grid-cols-3 gap-6">
-              {pillars.map((pillar, index) => (
+                {/* Badges */}
                 <motion.div
-                  key={index}
-                  initial={{ opacity: 0, y: 30 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  viewport={{ once: true }}
-                  transition={{ delay: index * 0.1 }}
-                  className="group p-8 rounded-2xl bg-zinc-50 hover:bg-zinc-100 transition-colors"
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.6, delay: 0.4 }}
+                  className="flex flex-wrap justify-center gap-3"
                 >
-                  <div className="w-12 h-12 rounded-xl bg-white border border-zinc-200 flex items-center justify-center mb-6 group-hover:border-violet-200 group-hover:bg-violet-50 transition-colors">
-                    <pillar.icon className="h-5 w-5 text-zinc-600 group-hover:text-violet-600 transition-colors" />
-                  </div>
-                  <h3 className="text-xl font-medium mb-2">{pillar.title}</h3>
-                  <p className="text-zinc-500">{pillar.description}</p>
-                </motion.div>
-              ))}
-            </div>
-          </div>
-        </section>
-
-        {/* Pricing */}
-        <section id="offres" className="py-24 px-6 bg-zinc-50">
-          <div className="max-w-6xl mx-auto">
-            <div className="max-w-2xl mb-16">
-              <p className="text-sm font-medium text-violet-600 mb-3">Offres</p>
-              <h2 className="text-4xl md:text-5xl font-medium tracking-tight mb-4">
-                Choisissez votre pack
-              </h2>
-              <p className="text-lg text-zinc-500">
-                Adapté à votre maturité recrutement.
-              </p>
-            </div>
-
-            <div className="grid md:grid-cols-3 gap-6">
-              {packs.map((pack, index) => (
-                <motion.div
-                  key={index}
-                  initial={{ opacity: 0, y: 30 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  viewport={{ once: true }}
-                  transition={{ delay: index * 0.1 }}
-                  className={`relative p-8 rounded-2xl ${
-                    pack.highlight 
-                      ? 'bg-zinc-900 text-white' 
-                      : 'bg-white border border-zinc-200'
-                  }`}
-                >
-                  {pack.highlight && (
-                    <div className="absolute -top-3 left-8">
-                      <span className="px-3 py-1 text-xs font-medium bg-violet-500 text-white rounded-full">
-                        Populaire
-                      </span>
+                  {heroBadges.map((badge, i) => (
+                    <div key={i} className="flex items-center gap-2 bg-white/5 border border-zinc-700/50 rounded-full px-4 py-2 text-sm text-zinc-300">
+                      <badge.icon className="h-4 w-4 text-zinc-400" />
+                      {badge.label}
                     </div>
-                  )}
-                  
-                  <div className="mb-6">
-                    <h3 className="text-xl font-medium mb-1">{pack.name}</h3>
-                    <p className={pack.highlight ? 'text-zinc-400' : 'text-zinc-500'}>
-                      {pack.description}
-                    </p>
-                  </div>
-                  
-                  <div className="mb-6">
-                    <span className="text-4xl font-medium">{pack.price}€</span>
-                    <span className={pack.highlight ? 'text-zinc-400' : 'text-zinc-500'}> HT</span>
-                  </div>
-                  
-                  <div className={`flex items-center gap-2 text-sm mb-8 pb-6 border-b ${
-                    pack.highlight ? 'text-zinc-400 border-zinc-800' : 'text-zinc-500 border-zinc-100'
-                  }`}>
-                    <Clock className="h-4 w-4" />
-                    {pack.duration}
-                  </div>
-
-                  <ul className="space-y-3 mb-8">
-                    {pack.features.map((feature, i) => (
-                      <li key={i} className="flex items-center gap-3 text-sm">
-                        <Check className={`h-4 w-4 ${pack.highlight ? 'text-violet-400' : 'text-violet-600'}`} />
-                        <span className={pack.highlight ? 'text-zinc-300' : 'text-zinc-600'}>
-                          {feature}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-
-                  <Button 
-                    className={`w-full rounded-full h-11 font-medium ${
-                      pack.highlight 
-                        ? 'bg-white text-zinc-900 hover:bg-zinc-100' 
-                        : 'bg-zinc-900 text-white hover:bg-zinc-800'
-                    }`}
-                  >
-                    Choisir {pack.name}
-                  </Button>
-                </motion.div>
-              ))}
-            </div>
-          </div>
-        </section>
-
-        {/* Results */}
-        <section id="résultats" className="py-24 px-6">
-          <div className="max-w-6xl mx-auto">
-            <div className="grid md:grid-cols-2 gap-16 items-center">
-              <div>
-                <p className="text-sm font-medium text-violet-600 mb-3">Résultats</p>
-                <h2 className="text-4xl md:text-5xl font-medium tracking-tight mb-6">
-                  8 ans d'expertise
-                </h2>
-                <p className="text-lg text-zinc-500 mb-10">
-                  Méthodologie construite sur le terrain avec 150+ entreprises innovantes.
-                </p>
-
-                <div className="space-y-4">
-                  {[
-                    { icon: TrendingUp, label: '-40% coûts recrutement' },
-                    { icon: Calendar, label: '28 jours time-to-hire moyen' },
-                    { icon: Users, label: '85% succès période d\'essai' },
-                  ].map((item, i) => (
-                    <motion.div 
-                      key={i}
-                      initial={{ opacity: 0, x: -20 }}
-                      whileInView={{ opacity: 1, x: 0 }}
-                      viewport={{ once: true }}
-                      transition={{ delay: i * 0.1 }}
-                      className="flex items-center gap-4 p-4 rounded-xl bg-zinc-50"
-                    >
-                      <div className="w-10 h-10 rounded-lg bg-white border border-zinc-200 flex items-center justify-center">
-                        <item.icon className="h-5 w-5 text-zinc-600" />
-                      </div>
-                      <span className="font-medium">{item.label}</span>
-                    </motion.div>
                   ))}
-                </div>
+                </motion.div>
               </div>
-
-              <motion.div
-                initial={{ opacity: 0, y: 30 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                className="relative"
-              >
-                <div className="p-10 rounded-2xl bg-zinc-900 text-white">
-                  <p className="text-2xl font-medium leading-relaxed mb-8">
-                    "Skalr nous a permis de passer de 0 à 50 collaborateurs en 18 mois."
-                  </p>
-                  <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 rounded-full bg-gradient-to-br from-violet-500 to-pink-500 flex items-center justify-center text-white font-medium">
-                      A
-                    </div>
-                    <div>
-                      <div className="font-medium">CEO, Scale-up Tech</div>
-                      <div className="text-sm text-zinc-400">Série B — 20M€</div>
-                    </div>
-                  </div>
-                </div>
-              </motion.div>
             </div>
           </div>
         </section>
 
-        {/* FAQ */}
-        <section className="py-24 px-6 bg-zinc-50">
+        {/* ===== FEATURES / STEPS (style Zeliq) ===== */}
+        <section id="features" className="py-28 px-6">
+          <div className="max-w-6xl mx-auto">
+            <motion.div
+              initial={{ opacity: 0, y: 30 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              className="text-center mb-20"
+            >
+              <span className="text-sm font-medium skalr-gradient-text uppercase tracking-widest mb-4 block">
+                Fonctionnalités
+              </span>
+              <h2 className="text-4xl md:text-5xl font-bold tracking-tight mb-5">
+                Tout ce dont vous avez besoin
+              </h2>
+              <p className="text-lg text-zinc-400 max-w-2xl mx-auto">
+                Du sourcing à l'embauche, chaque étape est couverte par un outil pensé pour les recruteurs.
+              </p>
+            </motion.div>
+
+            <div className="space-y-6">
+              {steps.map((step, index) => (
+                <motion.div
+                  key={index}
+                  initial={{ opacity: 0, y: 30 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true }}
+                  transition={{ delay: index * 0.08 }}
+                  className="group relative flex items-start gap-6 md:gap-10 p-6 md:p-8 rounded-2xl bg-zinc-900/50 border border-zinc-800/50 hover:border-zinc-700 hover:bg-zinc-900 transition-all"
+                >
+                  {/* Number */}
+                  <div className="flex-shrink-0">
+                    <span className="text-3xl md:text-4xl font-bold text-zinc-700 group-hover:skalr-gradient-text transition-all">
+                      {step.num}
+                    </span>
+                  </div>
+
+                  {/* Icon */}
+                  <div className="flex-shrink-0 w-12 h-12 rounded-xl bg-zinc-800 border border-zinc-700 flex items-center justify-center group-hover:border-zinc-600 transition-colors">
+                    <step.icon className="h-5 w-5 text-zinc-400 group-hover:text-white transition-colors" />
+                  </div>
+
+                  {/* Content */}
+                  <div className="flex-1 min-w-0">
+                    <h3 className="text-xl md:text-2xl font-semibold mb-2">{step.title}</h3>
+                    <p className="text-zinc-400 leading-relaxed max-w-2xl">{step.description}</p>
+                  </div>
+                </motion.div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* ===== HOW / PERSONAS (style Zeliq tabs) ===== */}
+        <section id="how" className="py-28 px-6 bg-zinc-900/50">
+          <div className="max-w-6xl mx-auto">
+            <motion.div
+              initial={{ opacity: 0, y: 30 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              className="text-center mb-16"
+            >
+              <span className="text-sm font-medium skalr-gradient-text uppercase tracking-widest mb-4 block">
+                Pour toutes les équipes
+              </span>
+              <h2 className="text-4xl md:text-5xl font-bold tracking-tight mb-5">
+                Adapté à votre rôle
+              </h2>
+              <p className="text-lg text-zinc-400 max-w-2xl mx-auto">
+                Que vous soyez recruteur, fondateur ou cabinet, Skalr s'adapte à vos besoins.
+              </p>
+            </motion.div>
+
+            <Tabs defaultValue="recruiter" className="w-full">
+              <TabsList className="w-full max-w-2xl mx-auto grid grid-cols-2 md:grid-cols-4 bg-zinc-800/50 border border-zinc-700 rounded-xl p-1 mb-12 h-auto">
+                {personas.map((persona) => (
+                  <TabsTrigger
+                    key={persona.id}
+                    value={persona.id}
+                    className="rounded-lg py-3 text-sm data-[state=active]:bg-zinc-700 data-[state=active]:text-white text-zinc-400 transition-all"
+                  >
+                    <persona.icon className="h-4 w-4 mr-2" />
+                    <span className="hidden sm:inline">{persona.label}</span>
+                    <span className="sm:hidden">{persona.label.split(' ')[0]}</span>
+                  </TabsTrigger>
+                ))}
+              </TabsList>
+
+              {personas.map((persona) => (
+                <TabsContent key={persona.id} value={persona.id}>
+                  <motion.div
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.4 }}
+                    className="grid md:grid-cols-2 gap-10 items-center"
+                  >
+                    <div>
+                      <h3 className="text-3xl md:text-4xl font-bold mb-4">{persona.title}</h3>
+                      <p className="text-zinc-400 text-lg leading-relaxed mb-8">{persona.description}</p>
+                      
+                      <ul className="space-y-4 mb-8">
+                        {persona.benefits.map((benefit, i) => (
+                          <li key={i} className="flex items-center gap-3">
+                            <div className="w-6 h-6 rounded-full skalr-gradient-bg flex items-center justify-center flex-shrink-0">
+                              <Check className="h-3.5 w-3.5 text-white" />
+                            </div>
+                            <span className="text-zinc-300">{benefit}</span>
+                          </li>
+                        ))}
+                      </ul>
+
+                      <Button 
+                        onClick={() => navigate('/auth')}
+                        className="rounded-full skalr-gradient-bg text-white hover:opacity-90 font-medium px-6 border-0"
+                      >
+                        Essayer gratuitement
+                        <ArrowRight className="ml-2 h-4 w-4" />
+                      </Button>
+                    </div>
+
+                    {/* Visual placeholder */}
+                    <div className="relative">
+                      <div className="aspect-[4/3] rounded-2xl bg-gradient-to-br from-zinc-800 to-zinc-900 border border-zinc-700 flex items-center justify-center overflow-hidden">
+                        <div className="text-center p-8">
+                          <persona.icon className="h-16 w-16 text-zinc-600 mx-auto mb-4" />
+                          <p className="text-zinc-500 text-sm">{persona.label}</p>
+                        </div>
+                      </div>
+                      {/* Glow effect */}
+                      <div className="absolute -inset-4 bg-gradient-to-r from-purple-500/10 via-pink-500/10 to-blue-500/10 rounded-3xl blur-2xl -z-10" />
+                    </div>
+                  </motion.div>
+                </TabsContent>
+              ))}
+            </Tabs>
+          </div>
+        </section>
+
+        {/* ===== RESULTS / STATS ===== */}
+        <section id="results" className="py-28 px-6">
+          <div className="max-w-6xl mx-auto">
+            <motion.div
+              initial={{ opacity: 0, y: 30 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              className="text-center mb-20"
+            >
+              <span className="text-sm font-medium skalr-gradient-text uppercase tracking-widest mb-4 block">
+                Résultats
+              </span>
+              <h2 className="text-4xl md:text-5xl font-bold tracking-tight mb-5">
+                Des résultats concrets
+              </h2>
+              <p className="text-lg text-zinc-400 max-w-2xl mx-auto">
+                Les équipes qui utilisent Skalr transforment leur recrutement.
+              </p>
+            </motion.div>
+
+            <div className="grid md:grid-cols-3 gap-8">
+              {stats.map((stat, index) => (
+                <motion.div
+                  key={index}
+                  initial={{ opacity: 0, y: 30 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true }}
+                  transition={{ delay: index * 0.15 }}
+                  className="text-center p-10 rounded-2xl bg-zinc-900/50 border border-zinc-800/50"
+                >
+                  <AnimatedStat value={stat.value} />
+                  <p className="text-zinc-400 mt-4 text-lg">{stat.label}</p>
+                </motion.div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* ===== TESTIMONIAL ===== */}
+        <section className="py-20 px-6 bg-zinc-900/50">
+          <div className="max-w-4xl mx-auto">
+            <motion.div
+              initial={{ opacity: 0, y: 30 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              className="text-center"
+            >
+              <div className="p-10 md:p-14 rounded-2xl border border-zinc-800/50 bg-zinc-900/30">
+                <p className="text-2xl md:text-3xl font-medium leading-relaxed mb-8 text-zinc-200">
+                  "Skalr a transformé notre façon de recruter. On contacte 3x plus de candidats qualifiés, 
+                  et notre taux de réponse a explosé grâce aux séquences IA."
+                </p>
+                <div className="flex items-center justify-center gap-4">
+                  <div className="w-12 h-12 rounded-full skalr-gradient-bg flex items-center justify-center text-white font-semibold">
+                    T
+                  </div>
+                  <div className="text-left">
+                    <div className="font-medium text-white">Head of Talent, Scale-up Tech</div>
+                    <div className="text-sm text-zinc-500">Équipe de 80 personnes</div>
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        </section>
+
+        {/* ===== FAQ ===== */}
+        <section className="py-28 px-6">
           <div className="max-w-2xl mx-auto">
-            <div className="text-center mb-12">
-              <h2 className="text-3xl md:text-4xl font-medium tracking-tight">
+            <motion.div
+              initial={{ opacity: 0, y: 30 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              className="text-center mb-14"
+            >
+              <h2 className="text-3xl md:text-4xl font-bold tracking-tight">
                 Questions fréquentes
               </h2>
-            </div>
+            </motion.div>
 
             <div className="space-y-3">
               {faqs.map((faq, index) => (
-                <div 
+                <motion.div
                   key={index}
-                  className="bg-white rounded-xl border border-zinc-200 overflow-hidden"
+                  initial={{ opacity: 0, y: 20 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true }}
+                  transition={{ delay: index * 0.05 }}
+                  className="bg-zinc-900/50 rounded-xl border border-zinc-800/50 overflow-hidden"
                 >
                   <button
                     onClick={() => setOpenFaq(openFaq === index ? null : index)}
-                    className="w-full p-5 flex items-center justify-between text-left hover:bg-zinc-50 transition-colors"
+                    className="w-full p-5 flex items-center justify-between text-left hover:bg-zinc-800/30 transition-colors"
                   >
-                    <span className="font-medium pr-4">{faq.question}</span>
+                    <span className="font-medium pr-4 text-zinc-200">{faq.question}</span>
                     <ChevronDown 
-                      className={`h-5 w-5 text-zinc-400 shrink-0 transition-transform ${
+                      className={`h-5 w-5 text-zinc-500 shrink-0 transition-transform duration-200 ${
                         openFaq === index ? 'rotate-180' : ''
                       }`} 
                     />
@@ -517,67 +607,76 @@ const SkalrLanding = () => {
                         exit={{ height: 0 }}
                         className="overflow-hidden"
                       >
-                        <div className="px-5 pb-5 text-zinc-500">
+                        <div className="px-5 pb-5 text-zinc-400 leading-relaxed">
                           {faq.answer}
                         </div>
                       </motion.div>
                     )}
                   </AnimatePresence>
-                </div>
+                </motion.div>
               ))}
             </div>
           </div>
         </section>
 
-        {/* CTA */}
-        <section className="py-24 px-6 bg-zinc-900">
-          <div className="max-w-3xl mx-auto text-center">
-            <h2 className="text-4xl md:text-5xl font-medium text-white tracking-tight mb-6">
-              Prêt à transformer
-              <br />
-              votre recrutement ?
-            </h2>
-            <p className="text-lg text-zinc-400 mb-10">
-              Audit gratuit de 30 minutes • Sans engagement
-            </p>
-            <div className="flex flex-wrap justify-center gap-4">
-              <Button 
-                size="lg"
-                onClick={() => setShowCalendly(true)}
-                className="rounded-full bg-white text-zinc-900 hover:bg-zinc-100 font-medium px-10 h-14 text-lg"
-              >
-                Réserver mon audit
-                <ArrowRight className="ml-2 h-5 w-5" />
-              </Button>
-              <Button 
-                size="lg"
-                variant="outline"
-                onClick={() => setShowContact(true)}
-                className="rounded-full border-zinc-600 text-white hover:bg-white/10 font-medium px-8 h-14 text-lg"
-              >
-                <Mail className="mr-2 h-5 w-5" />
-                Envoyer un message
-              </Button>
-            </div>
+        {/* ===== CTA FINAL ===== */}
+        <section className="py-28 px-6 relative overflow-hidden">
+          {/* Background glow */}
+          <div className="absolute inset-0 flex items-center justify-center">
+            <div className="w-[600px] h-[600px] bg-gradient-to-r from-purple-500/10 via-pink-500/10 to-blue-500/10 rounded-full blur-3xl" />
+          </div>
+          
+          <div className="max-w-3xl mx-auto text-center relative z-10">
+            <motion.div
+              initial={{ opacity: 0, y: 30 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+            >
+              <h2 className="text-4xl md:text-5xl lg:text-6xl font-bold tracking-tight mb-6">
+                Vos prochains talents{' '}
+                <span className="skalr-gradient-text">vous attendent</span>
+              </h2>
+              <p className="text-lg text-zinc-400 mb-10 max-w-xl mx-auto">
+                Rejoignez les équipes qui recrutent mieux, plus vite et à moindre coût avec Skalr.
+              </p>
+              <div className="flex flex-wrap justify-center gap-4">
+                <Button 
+                  size="lg"
+                  onClick={() => navigate('/auth')}
+                  className="rounded-full skalr-gradient-bg text-white hover:opacity-90 font-medium px-10 h-14 text-lg border-0"
+                >
+                  Commencer gratuitement
+                  <ArrowRight className="ml-2 h-5 w-5" />
+                </Button>
+                <Button 
+                  size="lg"
+                  variant="outline"
+                  onClick={() => setShowCalendly(true)}
+                  className="rounded-full border-zinc-600 text-white hover:bg-white/10 font-medium px-8 h-14 text-lg"
+                >
+                  Réserver une démo
+                </Button>
+              </div>
+            </motion.div>
           </div>
         </section>
 
-        {/* Footer */}
-        <footer className="py-10 px-6 border-t border-zinc-100">
+        {/* ===== FOOTER ===== */}
+        <footer className="py-10 px-6 border-t border-zinc-800">
           <div className="max-w-6xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
-            <span className="text-lg font-semibold text-zinc-900">
-              skalr<span className="text-zinc-300">.</span>
+            <span className="text-lg font-semibold text-white">
+              skalr<span className="text-zinc-600">.</span>
             </span>
-            <div className="flex items-center gap-6 text-sm text-zinc-400">
-              <a href="#" className="hover:text-zinc-600 transition-colors">Mentions légales</a>
-              <a href="#" className="hover:text-zinc-600 transition-colors">Confidentialité</a>
-              <a href="#" className="hover:text-zinc-600 transition-colors">Contact</a>
+            <div className="flex items-center gap-6 text-sm text-zinc-500">
+              <a href="#" className="hover:text-zinc-300 transition-colors">Mentions légales</a>
+              <a href="#" className="hover:text-zinc-300 transition-colors">Confidentialité</a>
+              <button onClick={() => setShowContact(true)} className="hover:text-zinc-300 transition-colors">Contact</button>
             </div>
-            <span className="text-sm text-zinc-400">© 2025 Skalr</span>
+            <span className="text-sm text-zinc-500">© 2025 Skalr</span>
           </div>
         </footer>
 
-        {/* Calendly Modal */}
+        {/* ===== CALENDLY MODAL ===== */}
         <AnimatePresence>
           {showCalendly && (
             <motion.div
@@ -604,13 +703,14 @@ const SkalrLanding = () => {
                 <iframe
                   src={CALENDLY_URL}
                   className="w-full h-full border-0"
-                  title="Réserver un audit gratuit"
+                  title="Réserver une démo"
                 />
               </motion.div>
             </motion.div>
           )}
         </AnimatePresence>
-        {/* Contact Form Modal */}
+
+        {/* ===== CONTACT FORM MODAL ===== */}
         <AnimatePresence>
           {showContact && (
             <motion.div
@@ -624,61 +724,61 @@ const SkalrLanding = () => {
                 initial={{ opacity: 0, scale: 0.95, y: 20 }}
                 animate={{ opacity: 1, scale: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.95, y: 20 }}
-                className="relative w-full max-w-lg bg-white rounded-2xl overflow-hidden shadow-2xl p-8"
+                className="relative w-full max-w-lg bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden shadow-2xl p-8"
                 onClick={(e) => e.stopPropagation()}
               >
                 <button
                   onClick={() => setShowContact(false)}
-                  className="absolute top-4 right-4 w-10 h-10 rounded-full bg-zinc-100 hover:bg-zinc-200 flex items-center justify-center transition-colors"
+                  className="absolute top-4 right-4 w-10 h-10 rounded-full bg-zinc-800 hover:bg-zinc-700 flex items-center justify-center transition-colors"
                 >
-                  <X className="h-5 w-5 text-zinc-600" />
+                  <X className="h-5 w-5 text-zinc-400" />
                 </button>
 
-                <h3 className="text-2xl font-semibold text-zinc-900 mb-2">Nous contacter</h3>
-                <p className="text-zinc-500 mb-6">Préférez un échange par email ? Laissez-nous un message.</p>
+                <h3 className="text-2xl font-semibold text-white mb-2">Nous contacter</h3>
+                <p className="text-zinc-400 mb-6">Laissez-nous un message, nous revenons vers vous rapidement.</p>
 
                 <form onSubmit={handleContactSubmit} className="space-y-4">
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-sm font-medium text-zinc-700 mb-1">Nom *</label>
+                      <label className="block text-sm font-medium text-zinc-300 mb-1">Nom *</label>
                       <Input
                         value={contactForm.name}
                         onChange={(e) => setContactForm({ ...contactForm, name: e.target.value })}
                         placeholder="Votre nom"
-                        className="rounded-lg"
+                        className="rounded-lg bg-zinc-800 border-zinc-700 text-white placeholder:text-zinc-500"
                         required
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-zinc-700 mb-1">Email *</label>
+                      <label className="block text-sm font-medium text-zinc-300 mb-1">Email *</label>
                       <Input
                         type="email"
                         value={contactForm.email}
                         onChange={(e) => setContactForm({ ...contactForm, email: e.target.value })}
                         placeholder="vous@entreprise.com"
-                        className="rounded-lg"
+                        className="rounded-lg bg-zinc-800 border-zinc-700 text-white placeholder:text-zinc-500"
                         required
                       />
                     </div>
                   </div>
                   
                   <div>
-                    <label className="block text-sm font-medium text-zinc-700 mb-1">Entreprise</label>
+                    <label className="block text-sm font-medium text-zinc-300 mb-1">Entreprise</label>
                     <Input
                       value={contactForm.company}
                       onChange={(e) => setContactForm({ ...contactForm, company: e.target.value })}
                       placeholder="Nom de votre entreprise"
-                      className="rounded-lg"
+                      className="rounded-lg bg-zinc-800 border-zinc-700 text-white placeholder:text-zinc-500"
                     />
                   </div>
                   
                   <div>
-                    <label className="block text-sm font-medium text-zinc-700 mb-1">Message *</label>
+                    <label className="block text-sm font-medium text-zinc-300 mb-1">Message *</label>
                     <Textarea
                       value={contactForm.message}
                       onChange={(e) => setContactForm({ ...contactForm, message: e.target.value })}
                       placeholder="Comment pouvons-nous vous aider ?"
-                      className="rounded-lg min-h-[120px]"
+                      className="rounded-lg min-h-[120px] bg-zinc-800 border-zinc-700 text-white placeholder:text-zinc-500"
                       required
                     />
                   </div>
@@ -686,7 +786,7 @@ const SkalrLanding = () => {
                   <Button
                     type="submit"
                     disabled={isSubmitting}
-                    className="w-full rounded-full bg-zinc-900 text-white hover:bg-zinc-800 h-12 font-medium"
+                    className="w-full rounded-full skalr-gradient-bg text-white hover:opacity-90 h-12 font-medium border-0"
                   >
                     {isSubmitting ? (
                       <>
