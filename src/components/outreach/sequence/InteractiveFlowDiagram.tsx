@@ -16,6 +16,7 @@ import {
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { SequenceStep } from '../SequenceBuilder';
+import { getStepMessageType } from './messageTypeUtils';
 
 export type BranchTarget = 'true' | 'false' | null;
 
@@ -69,14 +70,16 @@ const STEP_LABELS: Record<string, string> = {
 const StepNode: React.FC<{
   step: SequenceStep;
   index: number;
+  allSteps: SequenceStep[];
   onClick: () => void;
   onRemove: () => void;
   isSelected: boolean;
   canRemove: boolean;
   compact?: boolean;
-}> = ({ step, index, onClick, onRemove, isSelected, canRemove, compact = false }) => {
+}> = ({ step, index, allSteps, onClick, onRemove, isSelected, canRemove, compact = false }) => {
   const Icon = STEP_ICONS[step.actionType] || Mail;
   const colorClass = STEP_COLORS[step.actionType] || 'bg-gray-100 text-gray-600 border-gray-300';
+  const msgType = getStepMessageType(step, allSteps);
   
   if (compact) {
     return (
@@ -89,13 +92,20 @@ const StepNode: React.FC<{
       >
         <div
           className={cn(
-            "flex items-center gap-2 px-3 py-2 rounded-lg border-2 transition-all",
+            "flex flex-col gap-1 px-3 py-2 rounded-lg border-2 transition-all",
             colorClass,
             isSelected && "ring-2 ring-primary ring-offset-1 shadow-md"
           )}
         >
-          <Icon className="w-4 h-4" />
-          <span className="text-xs font-medium">{STEP_LABELS[step.actionType]}</span>
+          <div className="flex items-center gap-2">
+            <Icon className="w-4 h-4" />
+            <span className="text-xs font-medium">{STEP_LABELS[step.actionType]}</span>
+          </div>
+          {msgType && (
+            <span className={cn("text-[10px] font-medium px-1.5 py-0.5 rounded-full w-fit", msgType.color)}>
+              {msgType.shortLabel}
+            </span>
+          )}
         </div>
         
         {canRemove && (
@@ -136,6 +146,11 @@ const StepNode: React.FC<{
           <div className="font-medium text-sm truncate">
             {STEP_LABELS[step.actionType]}
           </div>
+          {msgType && (
+            <div className={cn("text-[10px] font-medium px-1.5 py-0.5 rounded-full w-fit mt-0.5", msgType.color)}>
+              {msgType.shortLabel}
+            </div>
+          )}
           {step.delayDays > 0 || step.delayHours > 0 || (step.delayMinutes && step.delayMinutes > 0) ? (
             <div className="text-xs opacity-70 mt-0.5">
               ⏱ {step.delayDays > 0 ? `${step.delayDays}j` : ''} 
@@ -261,6 +276,7 @@ const BranchColumn: React.FC<{
                 <StepNode
                   step={branchStep}
                   index={stepIndex}
+                  allSteps={allSteps}
                   onClick={() => onStepClick(branchStep.id)}
                   onRemove={() => onRemoveStep(branchStep.id)}
                   isSelected={selectedStepId === branchStep.id}
@@ -379,6 +395,7 @@ export const InteractiveFlowDiagram: React.FC<InteractiveFlowDiagramProps> = ({
           key={step.id}
           step={step}
           index={i}
+          allSteps={steps}
           onClick={() => onStepClick(step.id)}
           onRemove={() => onRemoveStep(step.id)}
           isSelected={selectedStepId === step.id}
