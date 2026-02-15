@@ -549,20 +549,137 @@ async function logAnalytics(supabase: any, sequenceId: string, field: string) {
   } catch (e) { console.error('Analytics error:', e); }
 }
 
+// ============ NOTION HELPERS ============
+
+function extractNotionText(prop: unknown): string {
+  if (!prop || typeof prop !== 'object') return '';
+  const p = prop as Record<string, unknown>;
+  if (p.type === 'title' || p.type === 'rich_text') {
+    const arr = (p[p.type as string] || []) as Array<{ plain_text?: string }>;
+    return arr.map(t => t.plain_text || '').join('');
+  }
+  if (p.type === 'select' && p.select && typeof p.select === 'object') {
+    return (p.select as Record<string, unknown>).name as string || '';
+  }
+  if (p.type === 'multi_select' && Array.isArray(p.multi_select)) {
+    return (p.multi_select as Array<{ name: string }>).map(s => s.name).join(', ');
+  }
+  if (p.type === 'number') return p.number != null ? String(p.number) : '';
+  return '';
+}
+
+function extractNotionJob(pageData: Record<string, unknown>): Record<string, string> {
+  const props = (pageData.properties || {}) as Record<string, unknown>;
+  const result: Record<string, string> = {};
+  for (const [key, val] of Object.entries(props)) {
+    const text = extractNotionText(val);
+    if (text) result[key] = text;
+  }
+  return result;
+}
+
+// ============ POSTS FETCHER ============
+
+async function fetchRecentPostsForSequence(
+  accountId: string, profileId: string, maxPosts = 3, maxAgeDays = 90
+): Promise<{ text: string; date: string; reactions?: number }[]> {
+  if (!UNIPILE_DSN || !UNIPILE_API_KEY) return [];
+  try {
+    const url = `${UNIPILE_DSN}/api/v1/users/${encodeURIComponent(profileId)}/posts?account_id=${encodeURIComponent(accountId)}&limit=5`;
+    const response = await fetch(url, { headers: { 'X-API-KEY': UNIPILE_API_KEY, 'accept': 'application/json' } });
+    if (!response.ok) return [];
+    const data = await response.json();
+    const items = data?.items || data?.data || (Array.isArray(data) ? data : []);
+    const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - maxAgeDays);
+    const posts: { text: string; date: string; reactions?: number }[] = [];
+    for (const post of items) {
+      const text = post.text || post.body || post.content || '';
+      if (!text || text.length < 20) continue;
+      const postDate = post.created_at || post.date || post.timestamp || '';
+      if (postDate && new Date(postDate) < cutoff) continue;
+      posts.push({
+        text: text.slice(0, 500),
+        date: postDate ? new Date(postDate).toLocaleDateString('fr-FR') : 'récent',
+        reactions: post.reactions_count || post.likes_count || post.num_likes || undefined,
+      });
+      if (posts.length >= maxPosts) break;
+    }
+    return posts;
+  } catch { return []; }
+}
+
+// ============ GUARDRAILS ============
+
+function detectSequenceViolations(isRPO: boolean, message: string, subject?: string): string[] {
+  const v: string[] = [];
+  const text = `${subject || ''}\n${message || ''}`;
+  if (/^\s*[-•]\s+/m.test(message)) v.push('tiret / puce en début de ligne');
+  if (/[–—]/.test(message) || /\s-\s/.test(message)) v.push('tiret dans le texte');
+  if (/\b(colle|match)e\s+parfaitement\b/i.test(text)) v.push('"colle parfaitement"');
+  if (isRPO) {
+    if (/\bje\s+recrute\b/i.test(text)) v.push('RPO: "je recrute"');
+    if (/\bils\b/i.test(text)) v.push('RPO: "ils"');
+    if (/\bleur(s)?\b/i.test(text)) v.push('RPO: "leur"');
+    if (/\bmon\s+client\b/i.test(text)) v.push('RPO: "mon client"');
+  }
+  return v;
+}
+
+function sanitizeSequenceMessage(message: string): string {
+  return (message || '')
+    .replace(/^\s*[-•]\s+/gm, '')
+    .replace(/\s[–—]\s/g, '. ')
+    .replace(/\s-\s/g, '. ')
+    .replace(/[ \t]+\n/g, '\n')
+    .trim();
+}
+
+// ============ MESSAGE GENERATION ============
+
 // deno-lint-ignore no-explicit-any
 async function generatePersonalizedMessage(supabase: any, enrollment: Record<string, unknown>, step: Record<string, unknown>, _exec: Record<string, unknown>): Promise<{ message: string; subject?: string } | null> {
   if (!ANTHROPIC_API_KEY) return null;
   try {
-    const profileRes = await fetch(`${UNIPILE_DSN}/api/v1/users/${enrollment.profile_id}?account_id=${enrollment.account_id}`, { headers: { 'X-API-KEY': UNIPILE_API_KEY! } });
-    const profile = profileRes.ok ? await profileRes.json() : null;
+    // Fetch profile and posts in parallel
+    const profilePromise = fetch(`${UNIPILE_DSN}/api/v1/users/${enrollment.profile_id}?account_id=${enrollment.account_id}`, { headers: { 'X-API-KEY': UNIPILE_API_KEY! } }).then(r => r.ok ? r.json() : null).catch(() => null);
+    const postsPromise = fetchRecentPostsForSequence(enrollment.account_id as string, enrollment.profile_id as string);
     
-    let jobContext: Record<string, unknown> | null = null;
+    // Fetch Notion job context (full page + body content)
+    let jobNotionData: Record<string, string> = {};
+    let jobBodyContent = '';
+    let jobAccompagnement: string[] = [];
     if (enrollment.job_id && NOTION_API_KEY) {
       try {
-        const jr = await fetch(`https://api.notion.com/v1/pages/${enrollment.job_id}`, { headers: { 'Authorization': `Bearer ${NOTION_API_KEY}`, 'Notion-Version': '2022-06-28' } });
-        if (jr.ok) jobContext = await jr.json();
+        const [pageRes, blocksRes] = await Promise.all([
+          fetch(`https://api.notion.com/v1/pages/${enrollment.job_id}`, { headers: { 'Authorization': `Bearer ${NOTION_API_KEY}`, 'Notion-Version': '2022-06-28' } }),
+          fetch(`https://api.notion.com/v1/blocks/${enrollment.job_id}/children?page_size=50`, { headers: { 'Authorization': `Bearer ${NOTION_API_KEY}`, 'Notion-Version': '2022-06-28' } }),
+        ]);
+        if (pageRes.ok) {
+          const pageData = await pageRes.json();
+          jobNotionData = extractNotionJob(pageData);
+        }
+        if (blocksRes.ok) {
+          const blocksData = await blocksRes.json();
+          // deno-lint-ignore no-explicit-any
+          const blocks = (blocksData.results || []) as any[];
+          const textParts: string[] = [];
+          for (const block of blocks) {
+            const richText = block[block.type]?.rich_text || block[block.type]?.text;
+            if (Array.isArray(richText)) {
+              // deno-lint-ignore no-explicit-any
+              const text = richText.map((t: any) => t.plain_text || '').join('');
+              if (text.trim()) textParts.push(text.trim());
+            }
+          }
+          jobBodyContent = textParts.join('\n').slice(0, 800);
+        }
+        // Extract accompagnement
+        const accomp = jobNotionData['Accompagnement'] || jobNotionData['Type accompagnement'] || '';
+        if (accomp) jobAccompagnement = accomp.split(',').map(s => s.trim()).filter(Boolean);
       } catch { /* ignore */ }
     }
+
+    const [profile, recentPosts] = await Promise.all([profilePromise, postsPromise]);
 
     const { data: prevSteps } = await supabase.from('sequence_step_executions').select('*, step:sequence_steps(*)').eq('enrollment_id', enrollment.id).eq('status', 'sent').order('step_order');
     // deno-lint-ignore no-explicit-any
@@ -573,7 +690,6 @@ async function generatePersonalizedMessage(supabase: any, enrollment: Record<str
     const isInvite = step.action_type === 'connection_request';
     const isInMail = step.action_type === 'inmail' || step.action_type === 'smart_message';
     
-    // Count previous messages of same type (inmail vs message) to determine relance number
     // deno-lint-ignore no-explicit-any
     const prevInMails = prevMessages.filter((ps: any) => ['inmail', 'smart_message'].includes(ps.step?.action_type));
     // deno-lint-ignore no-explicit-any
@@ -591,114 +707,180 @@ async function generatePersonalizedMessage(supabase: any, enrollment: Record<str
         msgType = 'INMAIL INITIAL';
         toneInstructions = `TON FORMEL ET DIRECT. C'est un InMail (le candidat n'est pas connecté).
 - Objet obligatoire, < 40 caractères, mobile-first
-- Ton plus professionnel que pour un message direct
 - Proposition de valeur claire et concise
-- Explique brièvement pourquoi tu le contactes par InMail
 - CTA: proposition de call ou demande d'avis
-- 300-500 caractères pour le corps (InMail = légèrement plus long qu'un message direct)`;
+- 300-500 caractères pour le corps`;
       } else {
         msgType = 'INMAIL RELANCE (DERNIÈRE TENTATIVE)';
-        toneInstructions = `TON DE CLÔTURE FORMEL. C'est ta DERNIÈRE tentative par InMail.
+        toneInstructions = `TON DE CLÔTURE FORMEL. DERNIÈRE tentative par InMail.
 - Objet court type "Suite à mon précédent message"
-- Reconnaître que le candidat est probablement très sollicité
-- NE PAS répéter le pitch complet, juste rappeler le poste en une phrase
-- Laisser la porte ouverte sans insistance
-- Message court: 200-300 caractères
-- CTA doux: "je reste disponible si ça change"`;
+- NE PAS répéter le pitch, juste rappeler le poste
+- Laisser la porte ouverte
+- 200-300 caractères`;
       }
     } else {
-      // Message direct LinkedIn
       if (!hadMsg && !hadInvite) {
         msgType = 'PREMIER MESSAGE';
         toneInstructions = `PREMIER CONTACT. Accroche personnalisée + pitch concis + CTA non-engageant.
 - Cherche un hook dans les posts LinkedIn récents ou le "À propos"
-- Structure: Accroche perso (1 phrase) → Ce que le candidat y gagne (1-2 phrases) → CTA
 - 200-400 caractères`;
       } else if (!hadMsg && hadInvite) {
         msgType = 'SUITE INVITATION';
-        toneInstructions = `PREMIER MESSAGE après acceptation de connexion. Le candidat vient d'accepter ta demande.
-- Commence par un bref remerciement pour la connexion (1 phrase max, pas obséquieux)
-- Enchaîne directement avec le pitch du poste
-- NE DIS PAS "je reviens vers vous" (c'est le premier échange !)
-- CTA non-engageant
+        toneInstructions = `PREMIER MESSAGE après acceptation de connexion.
+- Bref remerciement (1 phrase) puis pitch direct
+- NE DIS PAS "je reviens vers vous"
 - 200-400 caractères`;
       } else if (prevDirectMsgs.length === 1) {
         msgType = 'RELANCE 1 (NOUVEL ANGLE)';
-        toneInstructions = `PREMIÈRE RELANCE. Le candidat n'a pas répondu au premier message.
-- NE RÉPÈTE PAS le même pitch. Apporte un NOUVEL ANGLE sur le poste:
-  * Un aspect technique différent (stack, ownership, impact)
-  * Le contexte d'équipe ou de croissance
-  * Un avantage concret (remote, salaire, stack greenfield)
-- Ton naturel, pas de "je me permets de revenir vers vous"
-- Pas de culpabilisation ("vous n'avez pas répondu")
-- Question ouverte ou nouvel élément pour relancer la conversation
+        toneInstructions = `PREMIÈRE RELANCE. NE RÉPÈTE PAS le même pitch. Apporte un NOUVEL ANGLE:
+- Aspect technique différent, contexte d'équipe, avantage concret
+- Pas de culpabilisation
 - 200-350 caractères`;
       } else {
         msgType = 'RELANCE 2 (MESSAGE DE CLÔTURE)';
-        toneInstructions = `DERNIÈRE RELANCE. Le candidat n'a pas répondu après 2 messages.
-- C'est ton DERNIER message, sois respectueux du silence
-- Reconnaître que le timing n'est peut-être pas bon
-- NE PAS repitcher en détail, juste rappeler le poste en quelques mots
-- Laisser la porte ouverte ("n'hésitez pas si ça change")
-- Ton poli et léger, JAMAIS passif-agressif
-- Message COURT: 150-250 caractères max
-- Pas de CTA pressant`;
+        toneInstructions = `DERNIÈRE RELANCE. Respectueux du silence.
+- NE PAS repitcher, juste rappeler le poste en quelques mots
+- Laisser la porte ouverte
+- 150-250 caractères max`;
       }
     }
 
-    // Build previous messages context for AI
+    // Build previous messages context
     // deno-lint-ignore no-explicit-any
     const prevMsgContext = prevMessages.length > 0 ? prevMessages.map((ps: any, i: number) => 
       `MESSAGE ${i + 1} (${ps.step?.action_type}): "${(ps.final_message || '').slice(0, 200)}"`
     ).join('\n') : '';
 
-    // Get sender name from profile
+    // Get sender name
     let senderName = 'Recruteur';
     try {
       const { data: senderProfile } = await supabase.from('profiles').select('display_name').eq('user_id', enrollment.created_by).maybeSingle();
       if (senderProfile?.display_name) senderName = senderProfile.display_name;
     } catch { /* ignore */ }
 
-    const prompt = `Tu es un recruteur tech senior. Écris un message LinkedIn personnalisé.
+    // Determine RPO vs Succès
+    const isRPO = jobAccompagnement.some(a => a.toLowerCase().includes('rpo') || a.toLowerCase().includes('embedded') || a.toLowerCase().includes('intégré'));
+    const clientName = jobNotionData['Client'] || jobNotionData['Entreprise'] || enrollment.job_title as string || 'nous';
+
+    const engagementBlock = isRPO
+      ? `=== MODE RPO (TU ES SALARIÉ DE ${clientName.toUpperCase()}) ===
+Tu travailles CHEZ ${clientName}. Tu n'es PAS un cabinet externe.
+- TOUJOURS: "on", "nous", "chez ${clientName}" ou "chez nous"
+- JAMAIS: "ils", "leur", "mon client", "je recrute pour"`
+      : `=== MODE SUCCÈS (CABINET EXTERNE) ===
+Tu parles EN TANT QUE recruteur externe.
+- Utilise "ils", "leur équipe", "chez ${clientName}"
+- Tu peux valoriser ta connaissance du client`;
+
+    // Build posts section
+    const postsSection = recentPosts.length > 0
+      ? `\nPUBLICATIONS LINKEDIN RÉCENTES:\n${recentPosts.map((p, i) => `POST ${i + 1} (${p.date}): "${p.text}"`).join('\n')}\n→ Utilise un post comme accroche SI pertinent par rapport au poste.`
+      : '';
+
+    // Build rich job context
+    const jobTitle = jobNotionData['Poste'] || jobNotionData['Titre'] || enrollment.job_title || 'Tech role';
+    const jobSkills = jobNotionData['Compétences'] || jobNotionData['Skills'] || '';
+    const jobLocation = jobNotionData['Localisation'] || jobNotionData['Lieu'] || '';
+    const jobRemote = jobNotionData['Remote'] || jobNotionData['Télétravail'] || '';
+    const jobDescription = jobNotionData['Description'] || '';
+    const jobSalary = jobNotionData['Salaire'] || jobNotionData['TJM'] || '';
+    const jobMustHave = jobNotionData['Must-have'] || jobNotionData['Must Have'] || '';
+
+    const jobContextBlock = `POSTE À POURVOIR:
+- Titre: ${jobTitle}
+- Client: ${clientName}
+- Accompagnement: ${jobAccompagnement.join(', ') || 'Non spécifié'} ${isRPO ? '(MODE RPO)' : '(MODE SUCCÈS)'}
+${jobSkills ? `- Compétences: ${jobSkills}` : ''}
+${jobLocation ? `- Localisation: ${jobLocation}` : ''}
+${jobRemote ? `- Remote: ${jobRemote}` : ''}
+${jobSalary ? `- Rémunération: ${jobSalary}` : ''}
+${jobMustHave ? `- Must-have: ${jobMustHave}` : ''}
+${jobDescription ? `- Contexte mission: ${jobDescription.slice(0, 300)}` : ''}
+${jobBodyContent ? `- Détails poste:\n${jobBodyContent.slice(0, 400)}` : ''}`;
+
+    // Build profile context
+    const profileExperiences = profile?.experiences || profile?.positions?.values || [];
+    // deno-lint-ignore no-explicit-any
+    const expContext = Array.isArray(profileExperiences) ? profileExperiences.slice(0, 3).map((e: any) => {
+      const title = e.title || e.role || '';
+      const company = e.company_name || e.company || '';
+      const desc = e.description || '';
+      return `  • ${title} @ ${company}${desc ? `: ${desc.slice(0, 120)}` : ''}`;
+    }).join('\n') : '';
+
+    const prompt = `Tu es un recruteur tech senior. Écris un message LinkedIn ULTRA personnalisé et percutant.
+${engagementBlock}
 
 PROFIL CANDIDAT:
 - Prénom: ${profile?.first_name || profile?.name?.split(' ')[0] || 'Candidat'}
 - Titre: ${profile?.headline || 'N/A'}
-${profile?.summary ? `- À propos: "${(profile.summary as string).slice(0, 400)}"` : ''}
+${profile?.summary ? `- À propos: "${(profile.summary as string).slice(0, 500)}"` : ''}
 ${profile?.current_company_name ? `- Entreprise actuelle: ${profile.current_company_name}` : ''}
+${expContext ? `- Expériences récentes:\n${expContext}` : ''}
+${postsSection}
 
-POSTE: ${enrollment.job_title || 'Tech role'}
+${jobContextBlock}
 
 TYPE DE MESSAGE: ${msgType}
 ${toneInstructions}
 
 ${prevMsgContext ? `MESSAGES PRÉCÉDENTS ENVOYÉS (ne te répète pas, apporte du neuf):\n${prevMsgContext}` : ''}
 
+=== STRATÉGIE LINKEDIN 2025 ===
+1. PERSONNALISATION: Utilise les posts LinkedIn > À propos > parcours comme accroche
+2. LONGUEUR: 200-400 caractères. Chaque mot doit mériter sa place
+3. CE QUE LE CANDIDAT Y GAGNE, pas un descriptif de poste
+4. CTA: simple et non-engageant ("Dispo pour un call de 15 min ?")
+
 RÈGLES ABSOLUES:
 - JAMAIS de tirets (—, –, -), bullet points, ni listes
 - JAMAIS de superlatifs IA: "exceptionnel", "impressionnant", "remarquable"
 - JAMAIS de "j'ai parcouru ton profil", "a retenu mon attention"
+- JAMAIS "ton profil colle parfaitement" → "ça matche" ou "ton profil colle bien"
 - Sauts de ligne entre les paragraphes (\\n\\n)
 - Signature: "${senderName}"
 
 Réponds UNIQUEMENT en JSON valide: {"subject": "objet si InMail, sinon vide", "message": "le message complet"}`;
 
-    const aiRes = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-api-key': ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({ model: 'claude-opus-4-6', max_tokens: 500, messages: [{ role: 'user', content: prompt }] }),
-    });
+    const callAI = async (userPrompt: string) => {
+      const res = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-api-key': ANTHROPIC_API_KEY!, 'anthropic-version': '2023-06-01' },
+        body: JSON.stringify({ model: 'claude-opus-4-6', max_tokens: 500, messages: [{ role: 'user', content: userPrompt }] }),
+      });
+      if (!res.ok) return null;
+      const data = await res.json();
+      // deno-lint-ignore no-explicit-any
+      const textContent = data.content?.find((c: any) => c.type === 'text')?.text || '';
+      return textContent.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+    };
 
-    if (!aiRes.ok) return null;
-    const aiData = await aiRes.json();
-    // deno-lint-ignore no-explicit-any
-    const textContent = aiData.content?.find((c: any) => c.type === 'text')?.text || '';
-    const jsonMatch = textContent.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      const parsed = JSON.parse(jsonMatch[0]);
-      console.log(`[generatePersonalizedMessage] Type: ${msgType}, Length: ${(parsed.message || '').length} chars`);
-      return { message: parsed.message || '', subject: parsed.subject };
+    const firstContent = await callAI(prompt);
+    if (!firstContent) return null;
+
+    const jsonMatch = firstContent.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) return null;
+
+    let parsed = JSON.parse(jsonMatch[0]);
+    
+    // Guardrails: detect violations and retry once if needed
+    const violations = detectSequenceViolations(isRPO, parsed.message || '', parsed.subject);
+    if (violations.length > 0) {
+      console.warn(`[generatePersonalizedMessage] Violations detected, retrying:`, violations);
+      const correctionPrompt = `${prompt}\n\n=== CORRECTION STRICTE ===\nLe draft viole ces règles: ${violations.join(' ; ')}.\n${isRPO ? `En MODE RPO: jamais "ils", "leur", "mon client". Toujours "on", "nous", "chez ${clientName}".` : ''}\nAucun tiret nulle part.\n\nDRAFT: ${JSON.stringify(parsed)}\n\nRéponds en JSON valide: {"subject": "...", "message": "..."}`;
+      const retryContent = await callAI(correctionPrompt);
+      if (retryContent) {
+        const retryMatch = retryContent.match(/\{[\s\S]*\}/);
+        if (retryMatch) {
+          try { parsed = JSON.parse(retryMatch[0]); } catch { /* keep original */ }
+        }
+      }
     }
-    return null;
+
+    // Sanitize output
+    parsed.message = sanitizeSequenceMessage(parsed.message || '');
+    
+    console.log(`[generatePersonalizedMessage] Type: ${msgType}, Length: ${parsed.message.length} chars, RPO: ${isRPO}`);
+    return { message: parsed.message, subject: parsed.subject };
   } catch (e) { console.error('AI personalization error:', e); return null; }
 }
