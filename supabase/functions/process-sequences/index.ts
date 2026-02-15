@@ -315,7 +315,7 @@ async function scheduleNextStep(supabase: any, enrollment: any, currentStepOrder
   } else {
     // First try to follow the current step's next_step_id (graph-based chaining)
     const { data: currentStep } = await supabase.from('sequence_steps')
-      .select('next_step_id')
+      .select('id, next_step_id')
       .eq('sequence_id', enrollment.sequence_id)
       .eq('step_order', currentStepOrder)
       .maybeSingle();
@@ -324,9 +324,42 @@ async function scheduleNextStep(supabase: any, enrollment: any, currentStepOrder
       const { data } = await supabase.from('sequence_steps').select('*').eq('id', currentStep.next_step_id).maybeSingle();
       nextStep = data;
     } else {
-      // Fallback to step_order + 1 for legacy linear sequences
-      const { data } = await supabase.from('sequence_steps').select('*').eq('sequence_id', enrollment.sequence_id).eq('step_order', currentStepOrder + 1).maybeSingle();
-      nextStep = data;
+      // Before falling back to step_order + 1, check if the current step was reached via branching
+      // (i.e. another step references it as a branch target). If so, this branch ends here.
+      if (currentStep?.id) {
+        const { data: referencingSteps } = await supabase.from('sequence_steps')
+          .select('id')
+          .eq('sequence_id', enrollment.sequence_id)
+          .or(`timeout_branch_step_id.eq.${currentStep.id},if_true_goto_step.eq.${currentStep.id},if_false_goto_step.eq.${currentStep.id}`);
+        
+        if (referencingSteps && referencingSteps.length > 0) {
+          // This step is a branch target with no next_step_id — branch ends, complete the sequence
+          console.log(`[scheduleNextStep] Step ${currentStepOrder} is a branch target with no next_step_id, completing sequence`);
+          await supabase.from('sequence_enrollments').update({ status: 'completed', completed_at: new Date().toISOString() }).eq('id', enrollment.id);
+          return;
+        }
+      }
+      
+      // Safe fallback to step_order + 1 for linear sequences
+      const { data: candidateNext } = await supabase.from('sequence_steps').select('*').eq('sequence_id', enrollment.sequence_id).eq('step_order', currentStepOrder + 1).maybeSingle();
+      
+      // Guard: if the candidate next step has a branch-specific condition, verify compatibility
+      if (candidateNext && candidateNext.condition_type) {
+        const connStatus = enrollment.connection_status;
+        if (candidateNext.condition_type === 'if_connected' && connStatus !== 'connected') {
+          console.log(`[scheduleNextStep] Skipping step ${candidateNext.step_order} (if_connected) — enrollment connection_status is '${connStatus}'`);
+          // Don't schedule this cross-branch step, complete the sequence
+          await supabase.from('sequence_enrollments').update({ status: 'completed', completed_at: new Date().toISOString() }).eq('id', enrollment.id);
+          return;
+        }
+        if (candidateNext.condition_type === 'if_not_connected' && connStatus === 'connected') {
+          console.log(`[scheduleNextStep] Skipping step ${candidateNext.step_order} (if_not_connected) — enrollment is connected`);
+          await supabase.from('sequence_enrollments').update({ status: 'completed', completed_at: new Date().toISOString() }).eq('id', enrollment.id);
+          return;
+        }
+      }
+      
+      nextStep = candidateNext;
     }
   }
 
