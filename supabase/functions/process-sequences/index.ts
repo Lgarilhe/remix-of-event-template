@@ -26,11 +26,11 @@ serve(async (req) => {
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    const { action } = await req.json();
+    const { action, force } = await req.json();
 
     switch (action) {
       case 'process':
-        return await handleProcess(supabase);
+        return await handleProcess(supabase, !!force);
       case 'check_replies':
         return await handleCheckReplies(supabase);
       case 'check_timeouts':
@@ -53,7 +53,7 @@ serve(async (req) => {
 // ============ ACTION HANDLERS ============
 
 // deno-lint-ignore no-explicit-any
-async function handleProcess(supabase: any) {
+async function handleProcess(supabase: any, force = false) {
   const now = new Date().toISOString();
   
   const { data: executions, error: fetchError } = await supabase
@@ -89,7 +89,7 @@ async function handleProcess(supabase: any) {
       }
 
       const userTimezone = enrollment.user_timezone || 'Europe/Paris';
-      if (!isWithinBusinessHours(userTimezone)) {
+      if (!force && !isWithinBusinessHours(userTimezone)) {
         const nextSlot = getNextBusinessHourSlot(userTimezone);
         await supabase.from('sequence_step_executions').update({ scheduled_at: nextSlot.toISOString() }).eq('id', exec.id);
         results.skipped++;
