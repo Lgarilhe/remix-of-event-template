@@ -96,7 +96,7 @@ async function handleProcess(supabase: any) {
         continue;
       }
 
-      const conditionResult = await checkStepCondition(step.condition_type, enrollment.account_id, enrollment.profile_id, step.wait_for_event);
+      const conditionResult = await checkStepCondition(step.condition_type, enrollment.account_id, enrollment.profile_id, step.wait_for_event, enrollment.profile_url);
       if (conditionResult === 'wait') {
         await supabase.from('sequence_step_executions').update({ status: 'waiting_event' }).eq('id', exec.id);
         results.skipped++;
@@ -196,7 +196,7 @@ async function handleCheckWaitEvents(supabase: any) {
 
     let eventOccurred = false;
     if (step.wait_for_event === 'connection_accepted') {
-      const profile = await getProfileInfo(enrollment.account_id, enrollment.profile_id);
+      const profile = await getProfileInfo(enrollment.account_id, enrollment.profile_id, enrollment.profile_url);
       eventOccurred = profile?.network_distance === 'FIRST_DEGREE';
     } else if (step.wait_for_event === 'reply_received') {
       eventOccurred = await checkHasProspectReplied(enrollment.account_id, enrollment.profile_id);
@@ -242,11 +242,59 @@ function getNextBusinessHourSlot(timezone: string): Date {
   return target;
 }
 
-async function getProfileInfo(accountId: string, profileId: string): Promise<{ network_distance?: string } | null> {
+async function getProfileInfo(accountId: string, profileId: string, enrollmentProfileUrl?: string): Promise<{ network_distance?: string } | null> {
   try {
     const r = await fetch(`${UNIPILE_DSN}/api/v1/users/${profileId}?account_id=${accountId}`, { headers: { 'X-API-KEY': UNIPILE_API_KEY! } });
-    return r.ok ? await r.json() : null;
-  } catch { return null; }
+    if (!r.ok) {
+      console.warn(`[getProfileInfo] API returned ${r.status} for profileId=${profileId}`);
+      return null;
+    }
+    const data = await r.json();
+    const rawDistance = data.network_distance;
+    console.log(`[getProfileInfo] profileId=${profileId} | network_distance=${rawDistance} | provider_id=${data.provider_id}`);
+
+    // Normalize network_distance: some API modes return numeric (1) or different strings
+    if (rawDistance === 'FIRST_DEGREE' || rawDistance === 1 || rawDistance === '1' || rawDistance === 'DISTANCE_1') {
+      data.network_distance = 'FIRST_DEGREE';
+      return data;
+    }
+
+    // If the profile ID is a Recruiter format (AE/AEM), the API may not return accurate network_distance.
+    // Try resolving via the profile slug for a more reliable check.
+    if (profileId.startsWith('AE') && rawDistance !== 'FIRST_DEGREE') {
+      let slug: string | null = null;
+      
+      // Try extracting slug from enrollment profile URL
+      if (enrollmentProfileUrl) {
+        const match = enrollmentProfileUrl.match(/linkedin\.com\/in\/([^/?]+)/);
+        if (match) slug = match[1];
+      }
+      
+      // Try extracting slug from the recruiter profile's public_identifier
+      if (!slug) {
+        slug = data.public_identifier || data.public_id || null;
+      }
+
+      if (slug) {
+        console.log(`[getProfileInfo] Recruiter ID detected, re-checking via slug: ${slug}`);
+        const slugRes = await fetch(`${UNIPILE_DSN}/api/v1/users/${encodeURIComponent(slug)}?account_id=${accountId}`, { headers: { 'X-API-KEY': UNIPILE_API_KEY! } });
+        if (slugRes.ok) {
+          const slugData = await slugRes.json();
+          const slugDistance = slugData.network_distance;
+          console.log(`[getProfileInfo] Slug resolution: network_distance=${slugDistance}`);
+          if (slugDistance === 'FIRST_DEGREE' || slugDistance === 1 || slugDistance === '1' || slugDistance === 'DISTANCE_1') {
+            slugData.network_distance = 'FIRST_DEGREE';
+            return slugData;
+          }
+        }
+      }
+    }
+
+    return data;
+  } catch (err) {
+    console.error(`[getProfileInfo] Error for profileId=${profileId}:`, err);
+    return null;
+  }
 }
 
 async function checkForReplyAfterDate(accountId: string, profileId: string, afterDate: string): Promise<boolean> {
@@ -288,16 +336,16 @@ async function checkQuotaForAction(supabase: any, actionType: string, accountId:
   } catch { return { allowed: true }; }
 }
 
-async function checkStepCondition(conditionType: string, accountId: string, profileId: string, waitForEvent?: string): Promise<boolean | 'wait'> {
+async function checkStepCondition(conditionType: string, accountId: string, profileId: string, waitForEvent?: string, profileUrl?: string): Promise<boolean | 'wait'> {
   const eff = waitForEvent ? 'wait_for_event' : (conditionType || 'always');
   switch (eff) {
     case 'always': return true;
-    case 'if_connected': { const p = await getProfileInfo(accountId, profileId); return p?.network_distance === 'FIRST_DEGREE'; }
-    case 'if_not_connected': { const p = await getProfileInfo(accountId, profileId); return p?.network_distance !== 'FIRST_DEGREE'; }
+    case 'if_connected': { const p = await getProfileInfo(accountId, profileId, profileUrl); return p?.network_distance === 'FIRST_DEGREE'; }
+    case 'if_not_connected': { const p = await getProfileInfo(accountId, profileId, profileUrl); return p?.network_distance !== 'FIRST_DEGREE'; }
     case 'if_no_response': return !(await checkHasProspectReplied(accountId, profileId));
-    case 'wait_until_connected': { const p = await getProfileInfo(accountId, profileId); return p?.network_distance === 'FIRST_DEGREE' ? true : 'wait'; }
+    case 'wait_until_connected': { const p = await getProfileInfo(accountId, profileId, profileUrl); return p?.network_distance === 'FIRST_DEGREE' ? true : 'wait'; }
     case 'wait_for_event': {
-      if (waitForEvent === 'connection_accepted') { const p = await getProfileInfo(accountId, profileId); return p?.network_distance === 'FIRST_DEGREE' ? true : 'wait'; }
+      if (waitForEvent === 'connection_accepted') { const p = await getProfileInfo(accountId, profileId, profileUrl); return p?.network_distance === 'FIRST_DEGREE' ? true : 'wait'; }
       if (waitForEvent === 'reply_received') return (await checkHasProspectReplied(accountId, profileId)) ? true : 'wait';
       return true;
     }
@@ -397,7 +445,7 @@ async function executeStepAction(actionType: string, enrollment: Record<string, 
     switch (actionType) {
       case 'wait_connection': return { success: true };
       case 'check_connection': {
-        const p = await getProfileInfo(accountId, profileId);
+        const p = await getProfileInfo(accountId, profileId, enrollment.profile_url as string | undefined);
         const isConnected = p?.network_distance === 'FIRST_DEGREE';
         await supabase.from('sequence_enrollments').update({ connection_status: isConnected ? 'connected' : 'not_connected' }).eq('id', enrollment.id);
         const nextId = isConnected ? step.if_true_goto_step : step.if_false_goto_step;
@@ -410,7 +458,7 @@ async function executeStepAction(actionType: string, enrollment: Record<string, 
         return { success: r.ok };
       }
       case 'smart_message': case 'inmail': case 'message': {
-        const p = await getProfileInfo(accountId, profileId);
+        const p = await getProfileInfo(accountId, profileId, enrollment.profile_url as string | undefined);
         const needsInMail = p?.network_distance !== 'FIRST_DEGREE' && (actionType === 'inmail' || actionType === 'smart_message');
         const fd = new FormData();
         fd.append('account_id', accountId); fd.append('attendees_ids', profileId); fd.append('text', msg);
