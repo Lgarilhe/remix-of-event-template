@@ -235,14 +235,16 @@ export const SequencesList: React.FC<SequencesListProps> = ({
           const ifTrueDbId = step.ifTrueGotoStep ? clientIdToDbId[step.ifTrueGotoStep] : null;
           const ifFalseDbId = step.ifFalseGotoStep ? clientIdToDbId[step.ifFalseGotoStep] : null;
           const timeoutBranchDbId = step.timeoutBranchStepId ? clientIdToDbId[step.timeoutBranchStepId] : null;
+          const nextStepDbId = step.nextStepId ? clientIdToDbId[step.nextStepId] : null;
 
-          if (ifTrueDbId || ifFalseDbId || timeoutBranchDbId) {
+          if (ifTrueDbId || ifFalseDbId || timeoutBranchDbId || nextStepDbId) {
             await supabase
               .from('sequence_steps')
               .update({
                 if_true_goto_step: ifTrueDbId,
                 if_false_goto_step: ifFalseDbId,
                 timeout_branch_step_id: timeoutBranchDbId,
+                next_step_id: nextStepDbId,
               })
               .eq('id', dbId);
           }
@@ -308,14 +310,16 @@ export const SequencesList: React.FC<SequencesListProps> = ({
           const ifTrueDbId = step.ifTrueGotoStep ? clientIdToDbId[step.ifTrueGotoStep] : null;
           const ifFalseDbId = step.ifFalseGotoStep ? clientIdToDbId[step.ifFalseGotoStep] : null;
           const timeoutBranchDbId = step.timeoutBranchStepId ? clientIdToDbId[step.timeoutBranchStepId] : null;
+          const nextStepDbId = step.nextStepId ? clientIdToDbId[step.nextStepId] : null;
 
-          if (ifTrueDbId || ifFalseDbId || timeoutBranchDbId) {
+          if (ifTrueDbId || ifFalseDbId || timeoutBranchDbId || nextStepDbId) {
             await supabase
               .from('sequence_steps')
               .update({
                 if_true_goto_step: ifTrueDbId,
                 if_false_goto_step: ifFalseDbId,
                 timeout_branch_step_id: timeoutBranchDbId,
+                next_step_id: nextStepDbId,
               })
               .eq('id', dbId);
           }
@@ -397,6 +401,7 @@ export const SequencesList: React.FC<SequencesListProps> = ({
         timeoutBranchStepId: s.timeout_branch_step_id,
         ifTrueGotoStep: s.if_true_goto_step,
         ifFalseGotoStep: s.if_false_goto_step,
+        nextStepId: s.next_step_id,
       })),
     };
     setEditingSequence(sequence);
