@@ -137,7 +137,7 @@ async function handleProcess(supabase: any, force = false) {
           await sleep(30000 + Math.random() * 90000);
         }
       } else {
-        await supabase.from('sequence_step_executions').update({ status: 'failed', error_message: executeResult.error, executed_at: now }).eq('id', exec.id);
+        await supabase.from('sequence_step_executions').update({ status: 'failed', error_message: executeResult.error, executed_at: now, final_message: finalMessage || null, final_subject: finalSubject || null }).eq('id', exec.id);
         results.failed++;
       }
     } catch (err) {
