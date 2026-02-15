@@ -234,13 +234,15 @@ export const SequencesList: React.FC<SequencesListProps> = ({
 
           const ifTrueDbId = step.ifTrueGotoStep ? clientIdToDbId[step.ifTrueGotoStep] : null;
           const ifFalseDbId = step.ifFalseGotoStep ? clientIdToDbId[step.ifFalseGotoStep] : null;
+          const timeoutBranchDbId = step.timeoutBranchStepId ? clientIdToDbId[step.timeoutBranchStepId] : null;
 
-          if (ifTrueDbId || ifFalseDbId) {
+          if (ifTrueDbId || ifFalseDbId || timeoutBranchDbId) {
             await supabase
               .from('sequence_steps')
               .update({
                 if_true_goto_step: ifTrueDbId,
                 if_false_goto_step: ifFalseDbId,
+                timeout_branch_step_id: timeoutBranchDbId,
               })
               .eq('id', dbId);
           }
@@ -305,13 +307,15 @@ export const SequencesList: React.FC<SequencesListProps> = ({
 
           const ifTrueDbId = step.ifTrueGotoStep ? clientIdToDbId[step.ifTrueGotoStep] : null;
           const ifFalseDbId = step.ifFalseGotoStep ? clientIdToDbId[step.ifFalseGotoStep] : null;
+          const timeoutBranchDbId = step.timeoutBranchStepId ? clientIdToDbId[step.timeoutBranchStepId] : null;
 
-          if (ifTrueDbId || ifFalseDbId) {
+          if (ifTrueDbId || ifFalseDbId || timeoutBranchDbId) {
             await supabase
               .from('sequence_steps')
               .update({
                 if_true_goto_step: ifTrueDbId,
                 if_false_goto_step: ifFalseDbId,
+                timeout_branch_step_id: timeoutBranchDbId,
               })
               .eq('id', dbId);
           }
