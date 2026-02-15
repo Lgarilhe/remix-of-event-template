@@ -740,6 +740,7 @@ export type Database = {
           if_false_goto_step: string | null
           if_true_goto_step: string | null
           message_template: string | null
+          next_step_id: string | null
           preferred_hour_end: number | null
           preferred_hour_start: number | null
           sequence_id: string
@@ -762,6 +763,7 @@ export type Database = {
           if_false_goto_step?: string | null
           if_true_goto_step?: string | null
           message_template?: string | null
+          next_step_id?: string | null
           preferred_hour_end?: number | null
           preferred_hour_start?: number | null
           sequence_id: string
@@ -784,6 +786,7 @@ export type Database = {
           if_false_goto_step?: string | null
           if_true_goto_step?: string | null
           message_template?: string | null
+          next_step_id?: string | null
           preferred_hour_end?: number | null
           preferred_hour_start?: number | null
           sequence_id?: string
@@ -805,6 +808,13 @@ export type Database = {
           {
             foreignKeyName: "sequence_steps_if_true_goto_step_fkey"
             columns: ["if_true_goto_step"]
+            isOneToOne: false
+            referencedRelation: "sequence_steps"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sequence_steps_next_step_id_fkey"
+            columns: ["next_step_id"]
             isOneToOne: false
             referencedRelation: "sequence_steps"
             referencedColumns: ["id"]

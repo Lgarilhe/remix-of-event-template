@@ -275,7 +275,7 @@ const generateRecommendedSequence = (): SequenceStep[] => {
   f6_waitReply2.nextStepId = f7_relance2.id;
   // f2 timeout → f8 InMail chain
   f2_waitConnection.timeoutAction = 'alternative_step';
-  (f2_waitConnection as any).timeoutBranchStepId = f8_inmail.id;
+  f2_waitConnection.timeoutBranchStepId = f8_inmail.id;
   f8_inmail.nextStepId = f9_waitReply.id;
   f9_waitReply.nextStepId = f10_inmailRelance.id;
 

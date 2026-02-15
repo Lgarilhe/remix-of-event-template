@@ -306,12 +306,26 @@ async function checkStepCondition(conditionType: string, accountId: string, prof
 // deno-lint-ignore no-explicit-any
 async function scheduleNextStep(supabase: any, enrollment: any, currentStepOrder: number, forceBranchStepId?: string) {
   let nextStep;
+  
   if (forceBranchStepId) {
     const { data } = await supabase.from('sequence_steps').select('*').eq('id', forceBranchStepId).maybeSingle();
     nextStep = data;
   } else {
-    const { data } = await supabase.from('sequence_steps').select('*').eq('sequence_id', enrollment.sequence_id).eq('step_order', currentStepOrder + 1).maybeSingle();
-    nextStep = data;
+    // First try to follow the current step's next_step_id (graph-based chaining)
+    const { data: currentStep } = await supabase.from('sequence_steps')
+      .select('next_step_id')
+      .eq('sequence_id', enrollment.sequence_id)
+      .eq('step_order', currentStepOrder)
+      .maybeSingle();
+    
+    if (currentStep?.next_step_id) {
+      const { data } = await supabase.from('sequence_steps').select('*').eq('id', currentStep.next_step_id).maybeSingle();
+      nextStep = data;
+    } else {
+      // Fallback to step_order + 1 for legacy linear sequences
+      const { data } = await supabase.from('sequence_steps').select('*').eq('sequence_id', enrollment.sequence_id).eq('step_order', currentStepOrder + 1).maybeSingle();
+      nextStep = data;
+    }
   }
 
   if (!nextStep) {

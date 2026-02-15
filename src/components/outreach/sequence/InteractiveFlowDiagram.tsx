@@ -206,6 +206,8 @@ const getAllBranchStepIds = (allSteps: SequenceStep[]): Set<string> => {
       // Also collect sub-branches if this step is also a check_connection
       if (step.ifTrueGotoStep) collectChain(step.ifTrueGotoStep, visited);
       if (step.ifFalseGotoStep) collectChain(step.ifFalseGotoStep, visited);
+      // Collect timeout branch chains
+      if (step.timeoutBranchStepId) collectChain(step.timeoutBranchStepId, visited);
     }
   };
   
