@@ -9,9 +9,11 @@ import {
   GitBranch,
   Zap,
   Timer,
+  MessageSquare,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { SequenceStep } from '../SequenceBuilder';
+import { getStepMessageType } from './messageTypeUtils';
 
 interface StepEditorProps {
   step: SequenceStep;
@@ -58,6 +60,7 @@ export const StepEditor: React.FC<StepEditorProps> = ({
   const stepConfig = allStepTypes.find(a => a.value === step.actionType);
   const StepIcon = stepConfig?.icon || Sparkles;
   const stepIsTrigger = isTrigger(step.actionType);
+  const msgType = getStepMessageType(step, allSteps);
 
   return (
     <div className="h-full flex flex-col">
@@ -79,6 +82,12 @@ export const StepEditor: React.FC<StepEditorProps> = ({
           <div className="text-xs text-muted-foreground">
             Étape {stepIndex + 1}
           </div>
+          {msgType && (
+            <div className={cn("text-[10px] font-medium px-2 py-0.5 rounded-full w-fit mt-0.5 flex items-center gap-1", msgType.color)}>
+              <MessageSquare className="w-3 h-3" />
+              {msgType.label}
+            </div>
+          )}
         </div>
       </div>
 
