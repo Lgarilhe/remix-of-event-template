@@ -62,7 +62,7 @@ const createEmptyStep = (order: number, actionType: string): SequenceStep => ({
   preferredHourEnd: 18,
   useAiPersonalization: false,
   aiTone: 'professional',
-  timeoutDays: 7,
+  timeoutDays: 3,
   timeoutAction: 'skip',
 });
 
