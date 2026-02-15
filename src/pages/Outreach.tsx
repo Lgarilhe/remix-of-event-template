@@ -9,7 +9,6 @@ import { MessagesInbox } from '@/components/outreach/MessagesInbox';
 import { NurturingDashboard } from '@/components/outreach/NurturingDashboard';
 import { InMailQueueStatus } from '@/components/outreach/InMailQueueStatus';
 import { ProjectsList } from '@/components/outreach/projects';
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Search, Users, Settings, GitBranch, MessageSquare, Sparkles, FolderOpen } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -32,27 +31,31 @@ export interface LinkedInAccount {
   subscriptions?: LinkedInAccountSubscriptions;
 }
 
+const tabs = [
+  { value: 'projects', label: 'Projets', shortLabel: 'Projets', icon: FolderOpen },
+  { value: 'search', label: 'Recherche', shortLabel: 'Recherche', icon: Search },
+  { value: 'messages', label: 'Messages', shortLabel: 'Msg', icon: MessageSquare },
+  { value: 'sequences', label: 'Séquences', shortLabel: 'Séq.', icon: GitBranch },
+  { value: 'nurturing', label: 'Nurturing', shortLabel: 'Nurt.', icon: Sparkles },
+  { value: 'accounts', label: 'Comptes', shortLabel: '', icon: Settings },
+] as const;
+
 export default function Outreach() {
-  
   const [rawAccounts, setRawAccounts] = useState<LinkedInAccount[]>([]);
   const [selectedAccount, setSelectedAccount] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('projects');
   const [activeProject, setActiveProject] = useState<SourcingProject | null>(null);
 
-  // Apply subscription overrides from localStorage
   const accounts = useMemo(() => rawAccounts.map(applySubscriptionOverrides), [rawAccounts]);
 
-  // Fetch unread count on mount (not just when Messages tab is active)
   const { count: initialUnreadCount, refresh: refreshUnreadCount } = useUnreadMessageCount(selectedAccount);
   const [unreadMessageCount, setUnreadMessageCount] = useState(0);
-  
-  // Sync initial count from hook
+
   useEffect(() => {
     setUnreadMessageCount(initialUnreadCount);
   }, [initialUnreadCount]);
 
-  // Handle resuming search from a project
   const handleResumeSearch = useCallback((project: SourcingProject) => {
     setActiveProject(project);
     setActiveTab('search');
@@ -68,10 +71,8 @@ export default function Outreach() {
       if (response.error) throw response.error;
       if (!response.data?.success) throw new Error(response.data?.error);
 
-      // Accounts are already filtered to LinkedIn only by the edge function
       setRawAccounts(response.data.accounts || []);
       
-      // Auto-select first OK account
       const okAccount = response.data.accounts?.find((a: LinkedInAccount) => a.status === 'OK');
       if (okAccount && !selectedAccount) {
         setSelectedAccount(okAccount.id);
@@ -103,7 +104,7 @@ export default function Outreach() {
   };
 
   return (
-    <div className="min-h-screen bg-[#FAFAFA] overflow-x-hidden">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-blue-50/30 overflow-x-hidden">
       <SEOHead
         title="Outreach LinkedIn | Konekt"
         description="Recherchez et contactez des candidats sur LinkedIn avec les filtres Recruiter avancés"
@@ -113,84 +114,76 @@ export default function Outreach() {
       <main className="pt-20 pb-12">
         <div className="max-w-[1600px] mx-auto px-3 sm:px-6 lg:px-8">
           {/* Header */}
-          <div className="mb-4 sm:mb-8">
+          <div className="mb-6 sm:mb-8">
             <div className="flex items-center justify-between">
               <div>
-                <div className="flex items-center gap-2 sm:gap-3 mb-1 sm:mb-2">
-                  <Search className="w-6 h-6 sm:w-8 sm:h-8 text-[#0077B5]" />
-                  <h1 className="text-xl sm:text-3xl font-bold text-[#1A1A1A]">Outreach LinkedIn</h1>
+                <div className="flex items-center gap-2.5 sm:gap-3 mb-1">
+                  <div className="p-1.5 sm:p-2 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-600/20">
+                    <Search className="w-4 h-4 sm:w-5 sm:h-5" />
+                  </div>
+                  <h1 className="text-xl sm:text-2xl font-bold text-foreground tracking-tight">Outreach</h1>
                 </div>
-                <p className="text-xs sm:text-base text-[#1A1A1A]/60 hidden sm:block">
-                  Recherchez des candidats sur LinkedIn avec les filtres Recruiter avancés
+                <p className="text-xs sm:text-sm text-muted-foreground hidden sm:block ml-[44px] sm:ml-[52px]">
+                  Sourcing, séquences & suivi candidats
                 </p>
               </div>
-              
-              {/* InMail Queue Status Button */}
               <InMailQueueStatus />
             </div>
           </div>
 
-          <Tabs value={activeTab} onValueChange={setActiveTab}>
-            <div className="overflow-x-auto -mx-3 px-3 sm:mx-0 sm:px-0">
-              <TabsList className="bg-white border border-[#1A1A1A]/10 mb-4 sm:mb-6 w-max sm:w-auto">
-                <TabsTrigger value="projects" className="gap-1.5 sm:gap-2 text-xs sm:text-sm data-[state=active]:bg-[#0077B5] data-[state=active]:text-white">
-                  <FolderOpen className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                  <span className="hidden sm:inline">Projets</span>
-                  <span className="sm:hidden">Projets</span>
-                </TabsTrigger>
-                <TabsTrigger value="search" className="gap-1.5 sm:gap-2 text-xs sm:text-sm data-[state=active]:bg-[#0077B5] data-[state=active]:text-white">
-                  <Search className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                  Recherche
-                </TabsTrigger>
-                <TabsTrigger value="messages" className="gap-1.5 sm:gap-2 text-xs sm:text-sm data-[state=active]:bg-[#0077B5] data-[state=active]:text-white">
-                  <MessageSquare className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                  <span className="hidden sm:inline">Messages</span>
-                  <span className="sm:hidden">Msg</span>
-                  {unreadMessageCount > 0 && (
-                    <span className="ml-0.5 sm:ml-1 px-1 sm:px-1.5 py-0.5 text-[9px] sm:text-[10px] font-bold bg-red-500 text-white rounded-full min-w-[16px] sm:min-w-[18px] text-center">
-                      {unreadMessageCount > 99 ? '99+' : unreadMessageCount}
-                    </span>
-                  )}
-                </TabsTrigger>
-                <TabsTrigger value="sequences" className="gap-1.5 sm:gap-2 text-xs sm:text-sm data-[state=active]:bg-[#0077B5] data-[state=active]:text-white">
-                  <GitBranch className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                  <span className="hidden sm:inline">Séquences</span>
-                  <span className="sm:hidden">Séq.</span>
-                </TabsTrigger>
-                <TabsTrigger value="nurturing" className="gap-1.5 sm:gap-2 text-xs sm:text-sm data-[state=active]:bg-[#0077B5] data-[state=active]:text-white">
-                  <Sparkles className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                  <span className="hidden sm:inline">Nurturing</span>
-                  <span className="sm:hidden">Nurt.</span>
-                </TabsTrigger>
-                <TabsTrigger value="accounts" className="gap-1.5 sm:gap-2 text-xs sm:text-sm data-[state=active]:bg-[#0077B5] data-[state=active]:text-white">
-                  <Settings className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                  <span className="hidden sm:inline">Comptes ({accounts.length})</span>
-                  <span className="sm:hidden">({accounts.length})</span>
-                </TabsTrigger>
-              </TabsList>
+          {/* Tabs */}
+          <div className="overflow-x-auto -mx-3 px-3 sm:mx-0 sm:px-0 mb-5 sm:mb-6">
+            <div className="flex gap-1 p-1 bg-white/80 backdrop-blur-sm border border-border rounded-2xl shadow-sm w-max sm:w-auto">
+              {tabs.map((tab) => {
+                const Icon = tab.icon;
+                const isActive = activeTab === tab.value;
+                return (
+                  <button
+                    key={tab.value}
+                    onClick={() => setActiveTab(tab.value)}
+                    className={cn(
+                      "flex items-center gap-1.5 px-3 py-2 sm:px-4 sm:py-2.5 rounded-xl text-xs sm:text-sm font-medium transition-all duration-200",
+                      isActive
+                        ? "bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md shadow-blue-600/25"
+                        : "text-muted-foreground hover:text-foreground hover:bg-accent/50"
+                    )}
+                  >
+                    <Icon className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
+                    <span className="hidden sm:inline">{tab.label}{tab.value === 'accounts' ? ` (${accounts.length})` : ''}</span>
+                    <span className="sm:hidden">{tab.shortLabel || tab.label}{tab.value === 'accounts' ? ` (${accounts.length})` : ''}</span>
+                    {tab.value === 'messages' && unreadMessageCount > 0 && (
+                      <span className="ml-0.5 px-1.5 py-0.5 text-[9px] sm:text-[10px] font-bold bg-red-500 text-white rounded-full min-w-[16px] text-center shadow-sm">
+                        {unreadMessageCount > 99 ? '99+' : unreadMessageCount}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
             </div>
-          </Tabs>
+          </div>
 
-          {/* Tab panels - kept mounted to preserve state */}
+          {/* Tab panels */}
           <div className={cn("mt-0 min-w-0", activeTab !== 'projects' && 'hidden')}>
-            <div className="bg-white rounded-xl border border-[#1A1A1A]/10 p-3 sm:p-6 overflow-hidden">
+            <div className="bg-white/90 backdrop-blur-sm rounded-2xl border border-border/60 p-3 sm:p-6 overflow-hidden shadow-sm">
               <ProjectsList onResumeSearch={handleResumeSearch} />
             </div>
           </div>
 
           <div className={cn("mt-0 min-w-0", activeTab !== 'search' && 'hidden')}>
             {accounts.length === 0 ? (
-              <div className="bg-white rounded-xl border border-[#1A1A1A]/10 p-12 text-center">
-                <Users className="w-16 h-16 text-[#0077B5]/30 mx-auto mb-4" />
-                <h2 className="text-xl font-semibold text-[#1A1A1A] mb-2">
+              <div className="bg-white/90 backdrop-blur-sm rounded-2xl border border-border/60 p-12 text-center shadow-sm">
+                <div className="p-4 rounded-2xl bg-blue-50 w-fit mx-auto mb-4">
+                  <Users className="w-12 h-12 text-blue-400" />
+                </div>
+                <h2 className="text-lg font-semibold text-foreground mb-2">
                   Connectez votre compte LinkedIn
                 </h2>
-                <p className="text-[#1A1A1A]/60 mb-6 max-w-md mx-auto">
-                  Pour rechercher des candidats, vous devez d'abord connecter un compte LinkedIn Recruiter.
+                <p className="text-muted-foreground text-sm mb-6 max-w-md mx-auto">
+                  Pour rechercher des candidats, connectez d'abord un compte LinkedIn Recruiter.
                 </p>
                 <button
                   onClick={() => setActiveTab('accounts')}
-                  className="px-6 py-2 bg-[#0077B5] text-white rounded-lg hover:bg-[#005E93] transition-colors"
+                  className="px-6 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl hover:shadow-lg hover:shadow-blue-600/25 transition-all duration-200 font-medium text-sm"
                 >
                   Connecter un compte
                 </button>
@@ -218,7 +211,7 @@ export default function Outreach() {
           </div>
 
           <div className={cn("mt-0", activeTab !== 'sequences' && 'hidden')}>
-            <div className="bg-white rounded-xl border border-[#1A1A1A]/10 p-6">
+            <div className="bg-white/90 backdrop-blur-sm rounded-2xl border border-border/60 p-3 sm:p-6 shadow-sm">
               <SequencesList
                 accounts={accounts}
                 selectedAccount={selectedAccount}
