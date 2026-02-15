@@ -161,8 +161,8 @@ export const StepEditor: React.FC<StepEditorProps> = ({
                 <Input
                   type="number"
                   min={1}
-                  value={step.timeoutDays || 7}
-                  onChange={(e) => onUpdate({ timeoutDays: parseInt(e.target.value) || 7 })}
+                  value={step.timeoutDays || 3}
+                  onChange={(e) => onUpdate({ timeoutDays: parseInt(e.target.value) || 3 })}
                   className="mt-1 h-8"
                 />
               </div>

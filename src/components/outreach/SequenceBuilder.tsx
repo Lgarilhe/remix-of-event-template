@@ -162,7 +162,7 @@ const createEmptyStep = (order: number, actionType: string = 'connection_request
     preferredHourEnd: 18,
     useAiPersonalization: false,
     aiTone: 'professional',
-    timeoutDays: 7,
+    timeoutDays: 3,
     timeoutAction: 'skip',
     waitForEvent: trigger?.waitEvent as SequenceStep['waitForEvent'],
   };
@@ -444,8 +444,8 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = ({
                                 <Input
                                   type="number"
                                   min={1}
-                                  value={step.timeoutDays || 7}
-                                  onChange={(e) => updateStep(step.id, { timeoutDays: parseInt(e.target.value) || 7 })}
+                                  value={step.timeoutDays || 3}
+                                  onChange={(e) => updateStep(step.id, { timeoutDays: parseInt(e.target.value) || 3 })}
                                   className="mt-1.5"
                                 />
                               </div>
