@@ -321,7 +321,7 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
 
   return (
     <Sheet open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <SheetContent className="w-[600px] sm:max-w-[600px] bg-white p-0">
+      <SheetContent className="w-full sm:w-[600px] sm:max-w-[600px] bg-white p-0">
         <SheetHeader className="p-6 pb-4 border-b">
           <SheetTitle className="flex items-center gap-2">
             <Activity className="w-5 h-5 text-blue-600" />
@@ -331,27 +331,27 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
 
         <div className="p-4 space-y-4">
           {/* Stats */}
-          <div className="grid grid-cols-4 gap-2">
-            <div className="p-3 rounded-lg bg-blue-50 text-center">
-              <div className="text-xl font-bold text-blue-700">{stats.scheduled}</div>
-              <div className="text-xs text-blue-600">À venir</div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            <div className="p-2.5 sm:p-3 rounded-lg bg-blue-50 text-center">
+              <div className="text-lg sm:text-xl font-bold text-blue-700">{stats.scheduled}</div>
+              <div className="text-[10px] sm:text-xs text-blue-600">À venir</div>
             </div>
-            <div className="p-3 rounded-lg bg-amber-50 text-center">
-              <div className="text-xl font-bold text-amber-700">{stats.pending}</div>
-              <div className="text-xs text-amber-600">En retard</div>
+            <div className="p-2.5 sm:p-3 rounded-lg bg-amber-50 text-center">
+              <div className="text-lg sm:text-xl font-bold text-amber-700">{stats.pending}</div>
+              <div className="text-[10px] sm:text-xs text-amber-600">En retard</div>
             </div>
-            <div className="p-3 rounded-lg bg-green-50 text-center">
-              <div className="text-xl font-bold text-green-700">{stats.sent}</div>
-              <div className="text-xs text-green-600">Envoyés</div>
+            <div className="p-2.5 sm:p-3 rounded-lg bg-green-50 text-center">
+              <div className="text-lg sm:text-xl font-bold text-green-700">{stats.sent}</div>
+              <div className="text-[10px] sm:text-xs text-green-600">Envoyés</div>
             </div>
-            <div className="p-3 rounded-lg bg-red-50 text-center">
-              <div className="text-xl font-bold text-red-700">{stats.failed}</div>
-              <div className="text-xs text-red-600">Échoués</div>
+            <div className="p-2.5 sm:p-3 rounded-lg bg-red-50 text-center">
+              <div className="text-lg sm:text-xl font-bold text-red-700">{stats.failed}</div>
+              <div className="text-[10px] sm:text-xs text-red-600">Échoués</div>
             </div>
           </div>
 
           {/* Filters */}
-          <div className="flex gap-2">
+          <div className="space-y-2 sm:space-y-0 sm:flex sm:gap-2">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
               <Input
@@ -361,32 +361,34 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
                 className="pl-9 bg-white"
               />
             </div>
-            <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as FilterStatus)}>
-              <SelectTrigger className="w-[130px]">
-                <SelectValue placeholder="Statut" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Tous</SelectItem>
-                <SelectItem value="scheduled">Planifiés</SelectItem>
-                <SelectItem value="sent">Envoyés</SelectItem>
-                <SelectItem value="failed">Échoués</SelectItem>
-                <SelectItem value="skipped">Ignorés</SelectItem>
-              </SelectContent>
-            </Select>
-            <Select value={periodFilter} onValueChange={(v) => setPeriodFilter(v as FilterPeriod)}>
-              <SelectTrigger className="w-[130px]">
-                <SelectValue placeholder="Période" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Tout</SelectItem>
-                <SelectItem value="today">Aujourd'hui</SelectItem>
-                <SelectItem value="week">7 derniers jours</SelectItem>
-                <SelectItem value="upcoming">À venir</SelectItem>
-              </SelectContent>
-            </Select>
-            <Button variant="outline" size="icon" onClick={fetchExecutions} disabled={loading}>
-              <RefreshCw className={cn("w-4 h-4", loading && "animate-spin")} />
-            </Button>
+            <div className="flex gap-2">
+              <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as FilterStatus)}>
+                <SelectTrigger className="flex-1 sm:w-[130px]">
+                  <SelectValue placeholder="Statut" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Tous</SelectItem>
+                  <SelectItem value="scheduled">Planifiés</SelectItem>
+                  <SelectItem value="sent">Envoyés</SelectItem>
+                  <SelectItem value="failed">Échoués</SelectItem>
+                  <SelectItem value="skipped">Ignorés</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select value={periodFilter} onValueChange={(v) => setPeriodFilter(v as FilterPeriod)}>
+                <SelectTrigger className="flex-1 sm:w-[130px]">
+                  <SelectValue placeholder="Période" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Tout</SelectItem>
+                  <SelectItem value="today">Aujourd'hui</SelectItem>
+                  <SelectItem value="week">7 derniers jours</SelectItem>
+                  <SelectItem value="upcoming">À venir</SelectItem>
+                </SelectContent>
+              </Select>
+              <Button variant="outline" size="icon" className="shrink-0" onClick={fetchExecutions} disabled={loading}>
+                <RefreshCw className={cn("w-4 h-4", loading && "animate-spin")} />
+              </Button>
+            </div>
           </div>
         </div>
 

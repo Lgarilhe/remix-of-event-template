@@ -219,7 +219,7 @@ export const SequenceAnalytics: React.FC<SequenceAnalyticsProps> = ({
 
   return (
     <Sheet open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <SheetContent className="w-[600px] sm:max-w-[600px] bg-white p-0">
+      <SheetContent className="w-full sm:w-[600px] sm:max-w-[600px] bg-white p-0">
         <SheetHeader className="p-6 pb-4 border-b border-gray-100">
           <SheetTitle className="flex items-center gap-2">
             <BarChart3 className="w-5 h-5 text-blue-600" />
@@ -230,10 +230,10 @@ export const SequenceAnalytics: React.FC<SequenceAnalyticsProps> = ({
         <ScrollArea className="h-[calc(100vh-80px)]">
           <div className="p-6 space-y-6">
             {/* Filters */}
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center gap-2 sm:gap-3">
               {!sequenceId && (
                 <Select value={selectedSeqId} onValueChange={setSelectedSeqId}>
-                  <SelectTrigger className="w-[220px] bg-white">
+                  <SelectTrigger className="w-full sm:w-[220px] bg-white">
                     <SelectValue placeholder="Toutes les séquences" />
                   </SelectTrigger>
                   <SelectContent className="bg-white">
@@ -244,19 +244,21 @@ export const SequenceAnalytics: React.FC<SequenceAnalyticsProps> = ({
                   </SelectContent>
                 </Select>
               )}
-              <Select value={period} onValueChange={(v) => setPeriod(v as '7' | '30' | '90')}>
-                <SelectTrigger className="w-[140px] bg-white">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent className="bg-white">
-                  <SelectItem value="7">7 derniers jours</SelectItem>
-                  <SelectItem value="30">30 derniers jours</SelectItem>
-                  <SelectItem value="90">90 derniers jours</SelectItem>
-                </SelectContent>
-              </Select>
-              <Button variant="ghost" size="icon" onClick={fetchData} disabled={loading}>
-                <RefreshCw className={cn("w-4 h-4", loading && "animate-spin")} />
-              </Button>
+              <div className="flex items-center gap-2">
+                <Select value={period} onValueChange={(v) => setPeriod(v as '7' | '30' | '90')}>
+                  <SelectTrigger className="w-[130px] sm:w-[140px] bg-white">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="bg-white">
+                    <SelectItem value="7">7 derniers jours</SelectItem>
+                    <SelectItem value="30">30 derniers jours</SelectItem>
+                    <SelectItem value="90">90 derniers jours</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Button variant="ghost" size="icon" onClick={fetchData} disabled={loading}>
+                  <RefreshCw className={cn("w-4 h-4", loading && "animate-spin")} />
+                </Button>
+              </div>
             </div>
 
             {loading ? (
@@ -266,13 +268,13 @@ export const SequenceAnalytics: React.FC<SequenceAnalyticsProps> = ({
             ) : (
               <>
                 {/* KPI Cards */}
-                <div className="grid grid-cols-3 gap-3">
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-3">
                   <KPICard icon={<Eye className="w-4 h-4" />} label="Visites profil" value={totals.profileVisits} color="text-gray-600" bg="bg-gray-50" />
                   <KPICard icon={<UserPlus className="w-4 h-4" />} label="Invitations" value={totals.invitesSent} subValue={`${acceptRate}% acceptées`} color="text-blue-600" bg="bg-blue-50" />
                   <KPICard icon={<Send className="w-4 h-4" />} label="Messages" value={totals.messagesSent} subValue={`${replyRate}% répondus`} color="text-purple-600" bg="bg-purple-50" />
                 </div>
 
-                <div className="grid grid-cols-3 gap-3">
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-3">
                   <KPICard icon={<MessageCircle className="w-4 h-4" />} label="Réponses" value={totals.repliesReceived} color="text-amber-600" bg="bg-amber-50" />
                   <KPICard icon={<Users className="w-4 h-4" />} label="Prospects" value={enrollmentStats?.total || 0} color="text-green-600" bg="bg-green-50" />
                   <KPICard icon={<Clock className="w-4 h-4" />} label="Temps moyen rép." value={formatAvgTime(enrollmentStats?.avgResponseTimeHours ?? null)} color="text-indigo-600" bg="bg-indigo-50" />

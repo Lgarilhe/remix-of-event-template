@@ -381,7 +381,7 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
 
   return (
     <Sheet open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <SheetContent className="w-[500px] sm:max-w-[500px] bg-white">
+      <SheetContent className="w-full sm:w-[500px] sm:max-w-[500px] bg-white">
         <SheetHeader>
           <SheetTitle className="flex items-center gap-2">
             <Users className="w-5 h-5 text-blue-600" />
