@@ -56,6 +56,8 @@ export interface SequenceStep {
   ifFalseGotoStep?: string;
   // Generic next step for graph-based sequencing
   nextStepId?: string;
+  // Timeout branch (e.g. wait_connection timeout → InMail)
+  timeoutBranchStepId?: string;
 }
 
 export interface Sequence {
@@ -168,6 +170,133 @@ const createEmptyStep = (order: number, actionType: string = 'connection_request
   };
 };
 
+/**
+ * Generates the recommended outreach sequence with full follow-up chains.
+ * 
+ * Flow:
+ * 1. Profile visit
+ * 2. Check connection (2min delay)
+ * 
+ * Branch TRUE (connected/1st degree):
+ *   → Smart Message → Wait Reply 3d → Relance 1 → Wait Reply 4d → Relance 2
+ * 
+ * Branch FALSE (not connected):
+ *   → Connection Request → Wait Connection 3d
+ *     If accepted: → Message → Wait Reply 3d → Relance 1 → Wait Reply 4d → Relance 2
+ *     If timeout:  → InMail → Wait Reply 5d → InMail Relance
+ */
+const generateRecommendedSequence = (): SequenceStep[] => {
+  const mkStep = (
+    order: number,
+    actionType: SequenceStep['actionType'],
+    overrides: Partial<SequenceStep> = {}
+  ): SequenceStep => ({
+    id: crypto.randomUUID(),
+    order,
+    actionType,
+    conditionType: 'always',
+    delayDays: 0,
+    delayHours: 0,
+    delayMinutes: 0,
+    preferredHourStart: 9,
+    preferredHourEnd: 18,
+    useAiPersonalization: actionType === 'smart_message',
+    aiTone: 'professional',
+    timeoutDays: 3,
+    timeoutAction: 'skip',
+    ...overrides,
+  });
+
+  // === Main trunk ===
+  const profileVisit = mkStep(0, 'profile_visit');
+  const checkConnection = mkStep(1, 'check_connection', { delayMinutes: 2 });
+
+  // === Branch TRUE: Connected (1st degree) ===
+  const t1_message = mkStep(2, 'smart_message');
+  const t2_waitReply = mkStep(3, 'wait_connection', {
+    actionType: 'wait_reply' as SequenceStep['actionType'],
+    waitForEvent: 'reply_received',
+    timeoutDays: 3,
+    timeoutAction: 'skip',
+  });
+  const t3_relance1 = mkStep(4, 'smart_message');
+  const t4_waitReply2 = mkStep(5, 'wait_reply' as SequenceStep['actionType'], {
+    waitForEvent: 'reply_received',
+    timeoutDays: 4,
+    timeoutAction: 'skip',
+  });
+  const t5_relance2 = mkStep(6, 'smart_message');
+
+  // Chain: t1 → t2 → t3 → t4 → t5
+  t1_message.nextStepId = t2_waitReply.id;
+  t2_waitReply.nextStepId = t3_relance1.id;
+  t3_relance1.nextStepId = t4_waitReply2.id;
+  t4_waitReply2.nextStepId = t5_relance2.id;
+
+  // === Branch FALSE: Not connected (2nd/3rd degree) ===
+  const f1_invite = mkStep(7, 'connection_request');
+  const f2_waitConnection = mkStep(8, 'wait_connection', {
+    waitForEvent: 'connection_accepted',
+    timeoutDays: 3,
+    timeoutAction: 'skip',
+  });
+
+  // Sub-branch: connection accepted → message + 2 relances
+  const f3_message = mkStep(9, 'smart_message');
+  const f4_waitReply = mkStep(10, 'wait_reply' as SequenceStep['actionType'], {
+    waitForEvent: 'reply_received',
+    timeoutDays: 3,
+    timeoutAction: 'skip',
+  });
+  const f5_relance1 = mkStep(11, 'smart_message');
+  const f6_waitReply2 = mkStep(12, 'wait_reply' as SequenceStep['actionType'], {
+    waitForEvent: 'reply_received',
+    timeoutDays: 4,
+    timeoutAction: 'skip',
+  });
+  const f7_relance2 = mkStep(13, 'smart_message');
+
+  // Sub-branch: timeout → InMail + 1 relance
+  const f8_inmail = mkStep(14, 'inmail', { useAiPersonalization: true });
+  const f9_waitReply = mkStep(15, 'wait_reply' as SequenceStep['actionType'], {
+    waitForEvent: 'reply_received',
+    timeoutDays: 5,
+    timeoutAction: 'skip',
+  });
+  const f10_inmailRelance = mkStep(16, 'inmail', { useAiPersonalization: true });
+
+  // Chain FALSE branch: f1 → f2
+  f1_invite.nextStepId = f2_waitConnection.id;
+  // f2 accepted → f3 message chain
+  f2_waitConnection.nextStepId = f3_message.id;
+  f3_message.nextStepId = f4_waitReply.id;
+  f4_waitReply.nextStepId = f5_relance1.id;
+  f5_relance1.nextStepId = f6_waitReply2.id;
+  f6_waitReply2.nextStepId = f7_relance2.id;
+  // f2 timeout → f8 InMail chain
+  f2_waitConnection.timeoutAction = 'alternative_step';
+  (f2_waitConnection as any).timeoutBranchStepId = f8_inmail.id;
+  f8_inmail.nextStepId = f9_waitReply.id;
+  f9_waitReply.nextStepId = f10_inmailRelance.id;
+
+  // === Wire the check_connection branches ===
+  checkConnection.ifTrueGotoStep = t1_message.id;
+  checkConnection.ifFalseGotoStep = f1_invite.id;
+
+  return [
+    profileVisit,
+    checkConnection,
+    // TRUE branch
+    t1_message, t2_waitReply, t3_relance1, t4_waitReply2, t5_relance2,
+    // FALSE branch  
+    f1_invite, f2_waitConnection,
+    // FALSE → accepted sub-branch
+    f3_message, f4_waitReply, f5_relance1, f6_waitReply2, f7_relance2,
+    // FALSE → timeout sub-branch (InMail)
+    f8_inmail, f9_waitReply, f10_inmailRelance,
+  ];
+};
+
 const isAction = (actionType: string) => ACTIONS.some(a => a.value === actionType);
 const isTrigger = (actionType: string) => TRIGGERS.some(t => t.value === actionType);
 const needsMessage = (type: string) => ['inmail', 'connection_request', 'message', 'smart_message'].includes(type);
@@ -267,6 +396,33 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = ({
                 className="mt-1.5"
               />
             </div>
+            {/* Template button - only show when creating new (no steps yet) */}
+            {sequence.steps.length === 0 && !initialSequence && (
+              <div className="p-4 rounded-lg border-2 border-dashed border-primary/30 bg-primary/5">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                    <Sparkles className="w-5 h-5 text-primary" />
+                  </div>
+                  <div className="flex-1">
+                    <p className="font-medium text-sm">Séquence recommandée</p>
+                    <p className="text-xs text-muted-foreground">
+                      Visite → Vérification → Messages + 2 relances (connecté) / Invitation + InMail (non connecté)
+                    </p>
+                  </div>
+                  <Button
+                    size="sm"
+                    onClick={() => {
+                      const steps = generateRecommendedSequence();
+                      setSequence(prev => ({ ...prev, steps }));
+                      setShowStepPicker(false);
+                      setExpandedStepId(steps[0]?.id || null);
+                    }}
+                  >
+                    Charger
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Steps with tabs for list/visual view */}
