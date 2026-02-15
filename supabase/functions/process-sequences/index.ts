@@ -485,24 +485,125 @@ async function generatePersonalizedMessage(supabase: any, enrollment: Record<str
     // deno-lint-ignore no-explicit-any
     const hadInvite = prevSteps?.some((ps: any) => ps.step?.action_type === 'connection_request');
     // deno-lint-ignore no-explicit-any
-    const hadMsg = prevSteps?.some((ps: any) => ['message', 'inmail', 'smart_message'].includes(ps.step?.action_type));
+    const prevMessages = prevSteps?.filter((ps: any) => ['message', 'inmail', 'smart_message'].includes(ps.step?.action_type)) || [];
+    const hadMsg = prevMessages.length > 0;
     const isInvite = step.action_type === 'connection_request';
-    const msgType = isInvite ? 'INVITATION' : hadMsg ? 'RELANCE' : hadInvite ? 'SUITE INVITATION' : 'PREMIER MESSAGE';
+    const isInMail = step.action_type === 'inmail' || step.action_type === 'smart_message';
+    
+    // Count previous messages of same type (inmail vs message) to determine relance number
+    // deno-lint-ignore no-explicit-any
+    const prevInMails = prevMessages.filter((ps: any) => ['inmail', 'smart_message'].includes(ps.step?.action_type));
+    // deno-lint-ignore no-explicit-any
+    const prevDirectMsgs = prevMessages.filter((ps: any) => ps.step?.action_type === 'message');
+    
+    // Determine precise message type
+    let msgType: string;
+    let toneInstructions: string;
+    
+    if (isInvite) {
+      msgType = 'INVITATION';
+      toneInstructions = 'Note d\'invitation courte. MAX 50 caractères.';
+    } else if (isInMail) {
+      if (prevInMails.length === 0) {
+        msgType = 'INMAIL INITIAL';
+        toneInstructions = `TON FORMEL ET DIRECT. C'est un InMail (le candidat n'est pas connecté).
+- Objet obligatoire, < 40 caractères, mobile-first
+- Ton plus professionnel que pour un message direct
+- Proposition de valeur claire et concise
+- Explique brièvement pourquoi tu le contactes par InMail
+- CTA: proposition de call ou demande d'avis
+- 300-500 caractères pour le corps (InMail = légèrement plus long qu'un message direct)`;
+      } else {
+        msgType = 'INMAIL RELANCE (DERNIÈRE TENTATIVE)';
+        toneInstructions = `TON DE CLÔTURE FORMEL. C'est ta DERNIÈRE tentative par InMail.
+- Objet court type "Suite à mon précédent message"
+- Reconnaître que le candidat est probablement très sollicité
+- NE PAS répéter le pitch complet, juste rappeler le poste en une phrase
+- Laisser la porte ouverte sans insistance
+- Message court: 200-300 caractères
+- CTA doux: "je reste disponible si ça change"`;
+      }
+    } else {
+      // Message direct LinkedIn
+      if (!hadMsg && !hadInvite) {
+        msgType = 'PREMIER MESSAGE';
+        toneInstructions = `PREMIER CONTACT. Accroche personnalisée + pitch concis + CTA non-engageant.
+- Cherche un hook dans les posts LinkedIn récents ou le "À propos"
+- Structure: Accroche perso (1 phrase) → Ce que le candidat y gagne (1-2 phrases) → CTA
+- 200-400 caractères`;
+      } else if (!hadMsg && hadInvite) {
+        msgType = 'SUITE INVITATION';
+        toneInstructions = `PREMIER MESSAGE après acceptation de connexion. Le candidat vient d'accepter ta demande.
+- Commence par un bref remerciement pour la connexion (1 phrase max, pas obséquieux)
+- Enchaîne directement avec le pitch du poste
+- NE DIS PAS "je reviens vers vous" (c'est le premier échange !)
+- CTA non-engageant
+- 200-400 caractères`;
+      } else if (prevDirectMsgs.length === 1) {
+        msgType = 'RELANCE 1 (NOUVEL ANGLE)';
+        toneInstructions = `PREMIÈRE RELANCE. Le candidat n'a pas répondu au premier message.
+- NE RÉPÈTE PAS le même pitch. Apporte un NOUVEL ANGLE sur le poste:
+  * Un aspect technique différent (stack, ownership, impact)
+  * Le contexte d'équipe ou de croissance
+  * Un avantage concret (remote, salaire, stack greenfield)
+- Ton naturel, pas de "je me permets de revenir vers vous"
+- Pas de culpabilisation ("vous n'avez pas répondu")
+- Question ouverte ou nouvel élément pour relancer la conversation
+- 200-350 caractères`;
+      } else {
+        msgType = 'RELANCE 2 (MESSAGE DE CLÔTURE)';
+        toneInstructions = `DERNIÈRE RELANCE. Le candidat n'a pas répondu après 2 messages.
+- C'est ton DERNIER message, sois respectueux du silence
+- Reconnaître que le timing n'est peut-être pas bon
+- NE PAS repitcher en détail, juste rappeler le poste en quelques mots
+- Laisser la porte ouverte ("n'hésitez pas si ça change")
+- Ton poli et léger, JAMAIS passif-agressif
+- Message COURT: 150-250 caractères max
+- Pas de CTA pressant`;
+      }
+    }
 
-    const prompt = `Tu es un recruteur tech. Écris un message LinkedIn personnalisé.
-PROFIL: ${profile?.first_name || profile?.name?.split(' ')[0] || 'Candidat'} - ${profile?.headline || 'N/A'}
+    // Build previous messages context for AI
+    // deno-lint-ignore no-explicit-any
+    const prevMsgContext = prevMessages.length > 0 ? prevMessages.map((ps: any, i: number) => 
+      `MESSAGE ${i + 1} (${ps.step?.action_type}): "${(ps.final_message || '').slice(0, 200)}"`
+    ).join('\n') : '';
+
+    // Get sender name from profile
+    let senderName = 'Recruteur';
+    try {
+      const { data: senderProfile } = await supabase.from('profiles').select('display_name').eq('user_id', enrollment.created_by).maybeSingle();
+      if (senderProfile?.display_name) senderName = senderProfile.display_name;
+    } catch { /* ignore */ }
+
+    const prompt = `Tu es un recruteur tech senior. Écris un message LinkedIn personnalisé.
+
+PROFIL CANDIDAT:
+- Prénom: ${profile?.first_name || profile?.name?.split(' ')[0] || 'Candidat'}
+- Titre: ${profile?.headline || 'N/A'}
+${profile?.summary ? `- À propos: "${(profile.summary as string).slice(0, 400)}"` : ''}
+${profile?.current_company_name ? `- Entreprise actuelle: ${profile.current_company_name}` : ''}
+
 POSTE: ${enrollment.job_title || 'Tech role'}
-TYPE: ${msgType}
-TON: ${step.ai_tone || 'professional'}
-${isInvite ? 'MAX 50 CARACTÈRES pour note invitation LinkedIn.' : 'Max 100 mots. Structure: Accroche → Pitch → CTA'}
-${step.message_template ? `Template: "${step.message_template}"` : ''}
 
-Réponds en JSON: {"subject": "...", "message": "..."}`;
+TYPE DE MESSAGE: ${msgType}
+${toneInstructions}
+
+${prevMsgContext ? `MESSAGES PRÉCÉDENTS ENVOYÉS (ne te répète pas, apporte du neuf):\n${prevMsgContext}` : ''}
+
+RÈGLES ABSOLUES:
+- JAMAIS de tirets (—, –, -), bullet points, ni listes
+- JAMAIS de superlatifs IA: "exceptionnel", "impressionnant", "remarquable"
+- JAMAIS de "j'ai parcouru ton profil", "a retenu mon attention"
+- Sauts de ligne entre les paragraphes (\\n\\n)
+- Signature: "${senderName}"
+
+Réponds UNIQUEMENT en JSON valide: {"subject": "objet si InMail, sinon vide", "message": "le message complet"}`;
 
     const aiRes = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-api-key': ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 500, messages: [{ role: 'user', content: prompt }] }),
+      body: JSON.stringify({ model: 'claude-opus-4-6', max_tokens: 500, messages: [{ role: 'user', content: prompt }] }),
     });
 
     if (!aiRes.ok) return null;
@@ -512,6 +613,7 @@ Réponds en JSON: {"subject": "...", "message": "..."}`;
     const jsonMatch = textContent.match(/\{[\s\S]*\}/);
     if (jsonMatch) {
       const parsed = JSON.parse(jsonMatch[0]);
+      console.log(`[generatePersonalizedMessage] Type: ${msgType}, Length: ${(parsed.message || '').length} chars`);
       return { message: parsed.message || '', subject: parsed.subject };
     }
     return null;
