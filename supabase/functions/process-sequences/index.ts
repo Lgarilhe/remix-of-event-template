@@ -158,6 +158,7 @@ async function handleCheckReplies(supabase: any) {
     if (await checkForReplyAfterDate(enrollment.account_id, enrollment.profile_id, enrollment.created_at)) {
       await supabase.from('sequence_enrollments').update({ status: 'replied', replied_at: new Date().toISOString() }).eq('id', enrollment.id);
       await supabase.from('sequence_step_executions').update({ status: 'cancelled', skip_reason: 'Reply detected' }).eq('enrollment_id', enrollment.id).eq('status', 'scheduled');
+      await logAnalytics(supabase, enrollment.sequence_id, 'replies_received');
       repliesDetected++;
     }
   }
@@ -205,6 +206,7 @@ async function handleCheckWaitEvents(supabase: any) {
       await supabase.from('sequence_step_executions').update({ status: 'scheduled', scheduled_at: new Date().toISOString() }).eq('id', exec.id);
       if (step.wait_for_event === 'connection_accepted') {
         await supabase.from('sequence_enrollments').update({ connection_status: 'connected' }).eq('id', enrollment.id);
+        await logAnalytics(supabase, enrollment.sequence_id, 'invites_accepted');
       }
       eventsTriggered++;
     }

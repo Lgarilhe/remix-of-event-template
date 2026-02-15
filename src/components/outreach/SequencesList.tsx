@@ -44,6 +44,7 @@ import { SequenceBuilder, Sequence, SequenceStep } from './SequenceBuilder';
 import { SequenceEnrollModal } from './SequenceEnrollModal';
 import { SequenceEnrollmentsPanel } from './SequenceEnrollmentsPanel';
 import { SequenceActivityLog } from './SequenceActivityLog';
+import { SequenceAnalytics } from './SequenceAnalytics';
 import { LinkedInProfile } from './types';
 import { formatDistanceToNow } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -92,6 +93,8 @@ export const SequencesList: React.FC<SequencesListProps> = ({
   const [enrollModalSequence, setEnrollModalSequence] = useState<SequenceWithStats | null>(null);
   const [enrollmentsPanelSequence, setEnrollmentsPanelSequence] = useState<SequenceWithStats | null>(null);
   const [showActivityLog, setShowActivityLog] = useState(false);
+  const [showGlobalAnalytics, setShowGlobalAnalytics] = useState(false);
+  const [analyticsSequence, setAnalyticsSequence] = useState<SequenceWithStats | null>(null);
 
   const fetchSequences = async () => {
     try {
@@ -443,6 +446,14 @@ export const SequencesList: React.FC<SequencesListProps> = ({
         <div className="flex items-center gap-2">
           <Button 
             variant="outline"
+            onClick={() => setShowGlobalAnalytics(true)}
+            className="border-gray-200"
+          >
+            <BarChart3 className="w-4 h-4 mr-2" />
+            Analytics
+          </Button>
+          <Button 
+            variant="outline"
             onClick={() => setShowActivityLog(true)}
             className="border-gray-200"
           >
@@ -581,7 +592,11 @@ export const SequencesList: React.FC<SequencesListProps> = ({
                   <button className="p-1.5 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600">
                     <Star className="w-4 h-4" />
                   </button>
-                  <button className="p-1.5 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600">
+                  <button 
+                    className="p-1.5 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600"
+                    onClick={(e) => { e.stopPropagation(); setAnalyticsSequence(seq); }}
+                    title="Voir les analytics"
+                  >
                     <BarChart3 className="w-4 h-4" />
                   </button>
                 </div>
@@ -655,6 +670,22 @@ export const SequencesList: React.FC<SequencesListProps> = ({
         isOpen={showActivityLog}
         onClose={() => setShowActivityLog(false)}
       />
+
+      {/* Global Analytics */}
+      <SequenceAnalytics
+        isOpen={showGlobalAnalytics}
+        onClose={() => setShowGlobalAnalytics(false)}
+      />
+
+      {/* Per-sequence Analytics */}
+      {analyticsSequence && (
+        <SequenceAnalytics
+          isOpen={!!analyticsSequence}
+          onClose={() => setAnalyticsSequence(null)}
+          sequenceId={analyticsSequence.id}
+          sequenceName={analyticsSequence.name}
+        />
+      )}
 
       {/* Delete confirmation */}
       <AlertDialog open={!!deleteConfirmId} onOpenChange={() => setDeleteConfirmId(null)}>
