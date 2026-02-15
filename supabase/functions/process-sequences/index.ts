@@ -711,7 +711,7 @@ async function generatePersonalizedMessage(supabase: any, enrollment: Record<str
         toneInstructions = `TON FORMEL ET DIRECT. C'est un InMail (le candidat n'est pas connecté).
 - Objet obligatoire, < 40 caractères, mobile-first
 - Proposition de valeur claire et concise
-- CTA: proposition de call ou demande d'avis
+- CTA non-engageant: demande d'avis, PAS de proposition de call/rdv
 - 200-400 caractères pour le corps`;
       } else {
         msgType = 'INMAIL RELANCE (DERNIÈRE TENTATIVE)';
@@ -835,7 +835,7 @@ ${prevMsgContext ? `MESSAGES PRÉCÉDENTS ENVOYÉS (ne te répète pas, apporte 
 1. PERSONNALISATION: Utilise les posts LinkedIn > À propos > parcours comme accroche
 2. LONGUEUR: 200-400 caractères MAX. Chaque mot doit mériter sa place. SI le message dépasse 400 caractères, COUPE.
 3. CE QUE LE CANDIDAT Y GAGNE, pas un descriptif de poste
-4. CTA: simple et non-engageant ("Dispo pour un call de 15 min ?")
+4. CTA: NON-ENGAGEANT. Demande un AVIS ou une OPINION, jamais un call/rdv/dispo. Exemples: "Ça te parlerait ?", "C'est un sujet pour toi ?", "T'aurais quelqu'un en tête ?"
 
 RÈGLES ABSOLUES:
 - JAMAIS de tirets (—, –, -), bullet points, ni listes
@@ -843,8 +843,9 @@ RÈGLES ABSOLUES:
 - JAMAIS de "j'ai parcouru ton profil", "a retenu mon attention"
 - JAMAIS "ton profil colle parfaitement" → "ça matche" ou "ton profil colle bien"
 - JAMAIS mentionner le salaire, la rémunération, le TJM, le package ou tout montant en €
+- JAMAIS proposer un call, un rdv, une dispo, un échange téléphonique. Le CTA doit être une question d'OPINION.
 - Sauts de ligne entre les paragraphes (\\n\\n)
-- Signature: "${senderName}"
+- Signe TOUJOURS avec ton prénom "${senderName}" (jamais "Recruteur", jamais de titre)
 
 Réponds UNIQUEMENT en JSON valide: {"subject": "objet si InMail, sinon vide", "message": "le message complet"}`;
 
