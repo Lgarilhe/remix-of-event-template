@@ -616,8 +616,11 @@ function detectSequenceViolations(isRPO: boolean, message: string, subject?: str
   if (/^\s*[-•]\s+/m.test(message)) v.push('tiret / puce en début de ligne');
   if (/[–—]/.test(message) || /\s-\s/.test(message)) v.push('tiret dans le texte');
   if (/\b(colle|match)e\s+parfaitement\b/i.test(text)) v.push('"colle parfaitement"');
+  // Salary/compensation leak
+  if (/\b(\d{2,3}\s*k€?|\d{2,3}\s*000\s*€|salaire|rémunération|package|compensation)\b/i.test(text)) v.push('mention de salaire/rémunération');
   if (isRPO) {
     if (/\bje\s+recrute\b/i.test(text)) v.push('RPO: "je recrute"');
+    if (/\bj['']accompagne\b/i.test(text)) v.push('RPO: "j\'accompagne"');
     if (/\bils\b/i.test(text)) v.push('RPO: "ils"');
     if (/\bleur(s)?\b/i.test(text)) v.push('RPO: "leur"');
     if (/\bmon\s+client\b/i.test(text)) v.push('RPO: "mon client"');
@@ -709,7 +712,7 @@ async function generatePersonalizedMessage(supabase: any, enrollment: Record<str
 - Objet obligatoire, < 40 caractères, mobile-first
 - Proposition de valeur claire et concise
 - CTA: proposition de call ou demande d'avis
-- 300-500 caractères pour le corps`;
+- 200-400 caractères pour le corps`;
       } else {
         msgType = 'INMAIL RELANCE (DERNIÈRE TENTATIVE)';
         toneInstructions = `TON DE CLÔTURE FORMEL. DERNIÈRE tentative par InMail.
@@ -763,13 +766,15 @@ async function generatePersonalizedMessage(supabase: any, enrollment: Record<str
     const clientName = jobNotionData['Client'] || jobNotionData['Entreprise'] || enrollment.job_title as string || 'nous';
 
     const engagementBlock = isRPO
-      ? `=== MODE RPO (TU ES SALARIÉ DE ${clientName.toUpperCase()}) ===
-Tu travailles CHEZ ${clientName}. Tu n'es PAS un cabinet externe.
-- TOUJOURS: "on", "nous", "chez ${clientName}" ou "chez nous"
-- JAMAIS: "ils", "leur", "mon client", "je recrute pour"`
+      ? `=== MODE RPO (TU ES INTÉGRÉ CHEZ ${clientName.toUpperCase()}) ===
+Tu travailles CHEZ ${clientName}. Tu n'es PAS un cabinet externe. Tu es un recruteur interne.
+- TOUJOURS: "on", "nous", "notre équipe", "chez ${clientName}" ou "chez nous"
+- JAMAIS: "ils", "leur", "mon client", "je recrute pour", "j'accompagne"
+- Tu parles comme si tu étais SALARIÉ de ${clientName}
+- Exemples: "On cherche", "Notre équipe Data", "Chez nous", "Chez ${clientName}"`
       : `=== MODE SUCCÈS (CABINET EXTERNE) ===
-Tu parles EN TANT QUE recruteur externe.
-- Utilise "ils", "leur équipe", "chez ${clientName}"
+Tu parles EN TANT QUE recruteur externe indépendant.
+- Utilise "je", "j'accompagne", "chez ${clientName}", "leur équipe"
 - Tu peux valoriser ta connaissance du client`;
 
     // Build posts section
@@ -783,7 +788,7 @@ Tu parles EN TANT QUE recruteur externe.
     const jobLocation = jobNotionData['Localisation'] || jobNotionData['Lieu'] || '';
     const jobRemote = jobNotionData['Remote'] || jobNotionData['Télétravail'] || '';
     const jobDescription = jobNotionData['Description'] || '';
-    const jobSalary = jobNotionData['Salaire'] || jobNotionData['TJM'] || '';
+    const jobSalary = ''; // Never expose salary to AI — forbidden in outreach messages
     const jobMustHave = jobNotionData['Must-have'] || jobNotionData['Must Have'] || '';
 
     const jobContextBlock = `POSTE À POURVOIR:
@@ -828,7 +833,7 @@ ${prevMsgContext ? `MESSAGES PRÉCÉDENTS ENVOYÉS (ne te répète pas, apporte 
 
 === STRATÉGIE LINKEDIN 2025 ===
 1. PERSONNALISATION: Utilise les posts LinkedIn > À propos > parcours comme accroche
-2. LONGUEUR: 200-400 caractères. Chaque mot doit mériter sa place
+2. LONGUEUR: 200-400 caractères MAX. Chaque mot doit mériter sa place. SI le message dépasse 400 caractères, COUPE.
 3. CE QUE LE CANDIDAT Y GAGNE, pas un descriptif de poste
 4. CTA: simple et non-engageant ("Dispo pour un call de 15 min ?")
 
@@ -837,6 +842,7 @@ RÈGLES ABSOLUES:
 - JAMAIS de superlatifs IA: "exceptionnel", "impressionnant", "remarquable"
 - JAMAIS de "j'ai parcouru ton profil", "a retenu mon attention"
 - JAMAIS "ton profil colle parfaitement" → "ça matche" ou "ton profil colle bien"
+- JAMAIS mentionner le salaire, la rémunération, le TJM, le package ou tout montant en €
 - Sauts de ligne entre les paragraphes (\\n\\n)
 - Signature: "${senderName}"
 
@@ -867,7 +873,7 @@ Réponds UNIQUEMENT en JSON valide: {"subject": "objet si InMail, sinon vide", "
     const violations = detectSequenceViolations(isRPO, parsed.message || '', parsed.subject);
     if (violations.length > 0) {
       console.warn(`[generatePersonalizedMessage] Violations detected, retrying:`, violations);
-      const correctionPrompt = `${prompt}\n\n=== CORRECTION STRICTE ===\nLe draft viole ces règles: ${violations.join(' ; ')}.\n${isRPO ? `En MODE RPO: jamais "ils", "leur", "mon client". Toujours "on", "nous", "chez ${clientName}".` : ''}\nAucun tiret nulle part.\n\nDRAFT: ${JSON.stringify(parsed)}\n\nRéponds en JSON valide: {"subject": "...", "message": "..."}`;
+      const correctionPrompt = `${prompt}\n\n=== CORRECTION STRICTE ===\nLe draft viole ces règles: ${violations.join(' ; ')}.\n${isRPO ? `En MODE RPO: jamais "ils", "leur", "mon client", "j'accompagne". Toujours "on", "nous", "chez ${clientName}".` : ''}\nJAMAIS mentionner le salaire ou la rémunération.\nAucun tiret nulle part. MAX 400 caractères.\n\nDRAFT: ${JSON.stringify(parsed)}\n\nRéponds en JSON valide: {"subject": "...", "message": "..."}`;
       const retryContent = await callAI(correctionPrompt);
       if (retryContent) {
         const retryMatch = retryContent.match(/\{[\s\S]*\}/);
