@@ -364,6 +364,9 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange }: UseMe
       setMessages(prev => [...prev, sentMessage]);
       setNewMessage('');
       
+      // Mark chat as read locally after sending
+      markChatAsReadLocally(selectedChat.id);
+      
       setTimeout(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
       }, 100);
@@ -404,6 +407,9 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange }: UseMe
       setMessages(prev => [...prev, sentMessage]);
       setReplySuggestions([]);
       setSuggestionsLoaded(false);
+      
+      // Mark chat as read locally after sending
+      if (selectedChat) markChatAsReadLocally(selectedChat.id);
       
       setTimeout(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -591,6 +597,17 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange }: UseMe
     });
   }, [selectedChat]);
 
+  // Helper: mark a chat as read locally (set unread_count/unread to 0)
+  const markChatAsReadLocally = useCallback((chatId: string) => {
+    setChats(prev => prev.map(c =>
+      c.id === chatId ? { ...c, unread_count: 0, unread: 0 } : c
+    ));
+    // Also update selectedChat if it matches
+    setSelectedChat(prev =>
+      prev && prev.id === chatId ? { ...prev, unread_count: 0, unread: 0 } : prev
+    );
+  }, []);
+
   // Filter chats effect
   useEffect(() => {
     let result = chats;
@@ -631,12 +648,14 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange }: UseMe
     }
   }, [selectedAccount, fetchChats, fetchEnrollments, fetchAvailableJobs, fetchSequences]);
 
-  // Load messages on chat selection
+  // Load messages on chat selection & mark as read
   useEffect(() => {
     if (selectedChat) {
       fetchMessages(selectedChat.id);
       setReplySuggestions([]);
       setSuggestionsLoaded(false);
+      // Mark as read locally when opening a conversation
+      markChatAsReadLocally(selectedChat.id);
     }
   }, [selectedChat?.id, fetchMessages]);
 
