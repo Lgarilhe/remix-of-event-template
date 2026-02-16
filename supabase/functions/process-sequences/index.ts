@@ -618,6 +618,10 @@ function detectSequenceViolations(isRPO: boolean, message: string, subject?: str
   if (/\b(colle|match)e\s+parfaitement\b/i.test(text)) v.push('"colle parfaitement"');
   // Salary/compensation leak
   if (/\b(\d{2,3}\s*k€?|\d{2,3}\s*000\s*€|salaire|rémunération|package|compensation)\b/i.test(text)) v.push('mention de salaire/rémunération');
+  // Signature must NOT be "Recruteur"
+  if (/\bRecruteur\b/i.test(message)) v.push('signature "Recruteur" interdite — utiliser le prénom');
+  // CTA: no call/rdv/dispo
+  if (/\b(dispo(nible)?|call|rdv|rendez.vous|échange téléphonique|en discuter de vive voix)\b/i.test(text)) v.push('CTA engageant interdit (call/rdv/dispo)');
   if (isRPO) {
     if (/\bje\s+recrute\b/i.test(text)) v.push('RPO: "je recrute"');
     if (/\bj['']accompagne\b/i.test(text)) v.push('RPO: "j\'accompagne"');
@@ -887,7 +891,17 @@ Réponds UNIQUEMENT en JSON valide: {"subject": "objet si InMail, sinon vide", "
     // Sanitize output
     parsed.message = sanitizeSequenceMessage(parsed.message || '');
     
-    console.log(`[generatePersonalizedMessage] Type: ${msgType}, Length: ${parsed.message.length} chars, RPO: ${isRPO}`);
+    // Force-replace "Recruteur" signature with actual sender name
+    parsed.message = parsed.message.replace(/\bRecruteur\b/gi, senderName);
+    
+    // Ensure message ends with sender name if not already present
+    const lines = parsed.message.trim().split('\n');
+    const lastLine = lines[lines.length - 1].trim();
+    if (lastLine.toLowerCase() !== senderName.toLowerCase() && !lastLine.toLowerCase().includes(senderName.toLowerCase())) {
+      parsed.message = parsed.message.trim() + '\n\n' + senderName;
+    }
+    
+    console.log(`[generatePersonalizedMessage] Type: ${msgType}, Length: ${parsed.message.length} chars, RPO: ${isRPO}, Sender: ${senderName}`);
     return { message: parsed.message, subject: parsed.subject };
   } catch (e) { console.error('AI personalization error:', e); return null; }
 }
