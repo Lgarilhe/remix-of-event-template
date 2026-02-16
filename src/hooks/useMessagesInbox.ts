@@ -598,15 +598,15 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange }: UseMe
   }, [selectedChat]);
 
   // Helper: mark a chat as read locally (set unread_count/unread to 0)
-  const markChatAsReadLocally = useCallback((chatId: string) => {
+  // Plain function (not a hook) to avoid changing hook count
+  const markChatAsReadLocally = (chatId: string) => {
     setChats(prev => prev.map(c =>
       c.id === chatId ? { ...c, unread_count: 0, unread: 0 } : c
     ));
-    // Also update selectedChat if it matches
     setSelectedChat(prev =>
       prev && prev.id === chatId ? { ...prev, unread_count: 0, unread: 0 } : prev
     );
-  }, []);
+  };
 
   // Filter chats effect
   useEffect(() => {
