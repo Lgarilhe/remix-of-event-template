@@ -264,9 +264,9 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
             </TooltipProvider>
           )}
 
-          {/* Separator + Bulk actions */}
+          {/* Bulk actions - desktop inline */}
           {selectedProfiles.size > 0 && (
-            <div className="flex items-center gap-1.5 pl-2 border-l border-border">
+            <div className="hidden sm:flex items-center gap-1.5 pl-2 border-l border-border">
               <span className="text-xs font-medium text-muted-foreground">
                 {selectedProfiles.size}
               </span>
@@ -384,6 +384,69 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
           )}
         </div>
       </div>
+
+      {/* Mobile bulk actions bar - sticky below header */}
+      {selectedProfiles.size > 0 && (
+        <div className="sm:hidden flex items-center gap-2 px-3 py-2 border-b border-border bg-primary/5 shrink-0 overflow-x-auto">
+          <span className="text-xs font-semibold text-primary whitespace-nowrap">
+            {selectedProfiles.size} sélectionné{selectedProfiles.size > 1 ? 's' : ''}
+          </span>
+          <div className="flex items-center gap-1">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onBatchScore}
+              disabled={scoringInProgress}
+              className="h-8 px-2.5 text-xs gap-1"
+            >
+              {scoringInProgress ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Target className="w-3.5 h-3.5" />}
+              Score
+            </Button>
+
+            {activeProject && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={onBulkAddToProject}
+                className="h-8 px-2.5 text-xs gap-1 text-green-600"
+              >
+                <FolderPlus className="w-3.5 h-3.5" />
+                Projet
+              </Button>
+            )}
+
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onBulkDismiss}
+              className="h-8 px-2.5 text-xs gap-1 text-red-500"
+            >
+              <Archive className="w-3.5 h-3.5" />
+            </Button>
+
+            {selectedAccount && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => onSetShowBulkInMailModal(true)}
+                className="h-8 px-2.5 text-xs gap-1 text-[#0077B5]"
+              >
+                <Mail className="w-3.5 h-3.5" />
+                InMail
+              </Button>
+            )}
+
+            {selectedAccount && (
+              <SequenceEnrollButton
+                selectedProfiles={selectableProfiles.filter(p => selectedProfiles.has(p.id))}
+                accountId={selectedAccount}
+                selectedJob={selectedJob}
+                onSuccess={onSequenceEnrollSuccess}
+              />
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Results list */}
       <ScrollArea className="flex-1" ref={scrollAreaRef}>
