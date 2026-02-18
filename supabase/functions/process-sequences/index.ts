@@ -67,7 +67,16 @@ async function handleProcess(supabase: any, force = false) {
 
   const results = { processed: 0, skipped: 0, failed: 0, quota_blocked: 0 };
 
-  for (const exec of executions || []) {
+  // Deduplicate: only process one execution per profile per batch to preserve natural spacing
+  const seenProfiles = new Set<string>();
+  const dedupedExecutions = (executions || []).filter((exec: { enrollment?: { profile_id?: string } }) => {
+    const profileId = exec.enrollment?.profile_id;
+    if (!profileId || seenProfiles.has(profileId)) return false;
+    seenProfiles.add(profileId);
+    return true;
+  });
+
+  for (const exec of dedupedExecutions) {
     try {
       const enrollment = exec.enrollment;
       const step = exec.step;
@@ -420,14 +429,26 @@ async function scheduleNextStep(supabase: any, enrollment: any, currentStepOrder
   scheduledAt.setMinutes(scheduledAt.getMinutes() + (nextStep.delay_minutes || 0));
   scheduledAt.setDate(scheduledAt.getDate() + (nextStep.delay_days || 0));
   scheduledAt.setHours(scheduledAt.getHours() + (nextStep.delay_hours || 0));
+  // Add human-like jitter: ±5 minutes
   scheduledAt.setMinutes(scheduledAt.getMinutes() + Math.floor(Math.random() * 10) - 5);
   
+  // Use timezone-aware hour checking for preferred hours and weekday skipping
+  const tz = enrollment.user_timezone || 'Europe/Paris';
   const ps = nextStep.preferred_hour_start ?? 9, pe = nextStep.preferred_hour_end ?? 18;
-  if (scheduledAt.getHours() < ps) scheduledAt.setHours(ps, Math.floor(Math.random() * 30), 0);
-  else if (scheduledAt.getHours() >= pe) { scheduledAt.setDate(scheduledAt.getDate() + 1); scheduledAt.setHours(ps, Math.floor(Math.random() * 30), 0); }
-  const day = scheduledAt.getDay();
-  if (day === 0) scheduledAt.setDate(scheduledAt.getDate() + 1);
-  if (day === 6) scheduledAt.setDate(scheduledAt.getDate() + 2);
+  
+  // Adjust to business hours in the user's timezone (loop up to 7 days to skip weekends)
+  for (let attempt = 0; attempt < 7; attempt++) {
+    try {
+      const localHour = parseInt(new Intl.DateTimeFormat("en-US", { timeZone: tz, hour: "numeric", hour12: false }).format(scheduledAt), 10);
+      const localDay = new Intl.DateTimeFormat("en-US", { timeZone: tz, weekday: "short" }).format(scheduledAt);
+      
+      if (localDay === "Sat") { scheduledAt.setDate(scheduledAt.getDate() + 2); scheduledAt.setHours(scheduledAt.getHours() - localHour + ps, Math.floor(Math.random() * 30), 0); continue; }
+      if (localDay === "Sun") { scheduledAt.setDate(scheduledAt.getDate() + 1); scheduledAt.setHours(scheduledAt.getHours() - localHour + ps, Math.floor(Math.random() * 30), 0); continue; }
+      if (localHour >= pe) { scheduledAt.setDate(scheduledAt.getDate() + 1); scheduledAt.setHours(scheduledAt.getHours() - localHour + ps, Math.floor(Math.random() * 30), 0); continue; }
+      if (localHour < ps) { scheduledAt.setHours(scheduledAt.getHours() + (ps - localHour), Math.floor(Math.random() * 30), 0); }
+      break;
+    } catch { break; }
+  }
 
   const { data: existing } = await supabase.from('sequence_step_executions').select('id').eq('enrollment_id', enrollment.id).eq('step_id', nextStep.id).maybeSingle();
   if (existing) return;
