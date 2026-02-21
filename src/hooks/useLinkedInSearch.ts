@@ -78,7 +78,7 @@ export function useLinkedInSearch({
     if (activeProject) {
       const savedFilters = activeProject.filters_snapshot;
       if (savedFilters && Object.keys(savedFilters).length > 0) {
-        setFilters(prev => ({ ...prev, ...savedFilters }));
+        setFilters({ ...INITIAL_FILTERS, ...savedFilters });
         toast.info(`Filtres du projet "${activeProject.name}" chargés`);
       }
       if (activeProject.job_id && activeProject.job_title) {
@@ -91,16 +91,25 @@ export function useLinkedInSearch({
     }
   }, [activeProject?.id]);
 
-  // Sync selected job state
+  // Reset filters & results when selected job changes
+  const prevSelectedJobRef = useRef<string | null>(null);
   useEffect(() => {
-    if (selectedJob) {
-      setStatusFilter('all');
-      setShowDismissed(false);
-    } else {
-      setStatusFilter('all');
-      setShowDismissed(false);
+    const jobId = selectedJob?.id || null;
+    if (prevSelectedJobRef.current !== null && prevSelectedJobRef.current !== jobId) {
+      // Job actually changed → reset filters and results
+      setFilters(INITIAL_FILTERS);
+      setResults([]);
+      setHasSearched(false);
+      setCursor(null);
+      setHasMoreResults(true);
+      setTotal(null);
+      setSelectedProfiles(new Set());
+      setJobScores({});
     }
-  }, [selectedJob]);
+    setStatusFilter('all');
+    setShowDismissed(false);
+    prevSelectedJobRef.current = jobId;
+  }, [selectedJob?.id]);
 
   // Clear filters
   const handleClearFilters = useCallback(() => {

@@ -10,7 +10,7 @@ import { useFilteredResults } from '@/hooks/useFilteredResults';
 import { useAutoFillFilters } from '@/hooks/useAutoFillFilters';
 import { useSearchHistory } from '@/hooks/useSearchHistory';
 import { SourcingProject } from '@/hooks/useSourcingProjects';
-import { LinkedInProfile } from './types';
+import { LinkedInProfile, INITIAL_FILTERS } from './types';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
@@ -440,8 +440,8 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
       onClearFilters={search.handleClearFilters}
       searchHistory={searchHistory.history}
       searchHistoryLoading={searchHistory.isLoading}
-      onApplyHistoryFilters={(filters) => {
-        search.setFilters(filters);
+      onApplyHistoryFilters={(historyFilters) => {
+        search.setFilters({ ...INITIAL_FILTERS, ...historyFilters });
         search.setResults([]);
         search.setHasSearched(false);
         search.setCursor(null);
