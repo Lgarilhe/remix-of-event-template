@@ -8,6 +8,7 @@ import { useLinkedInSearchActions, buildSearchParams } from '@/hooks/useLinkedIn
 import { useLinkedInScoring } from '@/hooks/useLinkedInScoring';
 import { useFilteredResults } from '@/hooks/useFilteredResults';
 import { useAutoFillFilters } from '@/hooks/useAutoFillFilters';
+import { useSearchHistory } from '@/hooks/useSearchHistory';
 import { SourcingProject } from '@/hooks/useSourcingProjects';
 import { LinkedInProfile } from './types';
 import { supabase } from '@/integrations/supabase/client';
@@ -41,6 +42,10 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
     activeProject,
     onProjectChange,
   });
+
+  // Search history (must be after search hook)
+  const searchHistory = useSearchHistory(search.selectedJob?.id || null);
+
 
   // Search actions hook
   const { handleSearch, handleLoadMore } = useLinkedInSearchActions(
@@ -166,6 +171,28 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
   const dismissedCount = useMemo(() => {
     return search.results.filter(p => search.candidateStatus.dismissedIds.has(p.id)).length;
   }, [search.results, search.candidateStatus.dismissedIds]);
+
+  // Auto-save search history when job changes (captures the previous session)
+  const prevJobIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    const currentJobId = search.selectedJob?.id || null;
+    if (prevJobIdRef.current && prevJobIdRef.current !== currentJobId && search.hasSearched && search.results.length > 0) {
+      searchHistory.saveSearch({
+        jobId: prevJobIdRef.current,
+        jobTitle: search.selectedJob?.title || null,
+        clientName: (search.selectedJob as any)?.client?.name || null,
+        filters: search.filters,
+        resultsCount: search.results.length,
+        treatedCount: treatedCount,
+        dismissedCount: dismissedCount,
+        messagedCount: 0,
+        shortlistedCount: 0,
+        searchApi: search.filters.api,
+        projectId: activeProject?.id || null,
+      });
+    }
+    prevJobIdRef.current = currentJobId;
+  }, [search.selectedJob?.id]);
 
   // Bulk actions
   const handleBulkDismiss = useCallback(async () => {
@@ -390,8 +417,37 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
         quotas: search.quota.quotas,
         apiMode: search.quota.apiMode,
       }}
-      onSearch={() => { handleSearch(false); setFiltersOpen(false); }}
+      onSearch={() => {
+        // Auto-save search to history
+        if (search.selectedJob && search.hasSearched) {
+          searchHistory.saveSearch({
+            jobId: search.selectedJob.id,
+            jobTitle: search.selectedJob.title,
+            clientName: (search.selectedJob as any).client?.name || null,
+            filters: search.filters,
+            resultsCount: search.results.length,
+            treatedCount: search.results.filter(p => search.candidateStatus.treatedIds.has(p.id)).length,
+            dismissedCount: search.results.filter(p => search.candidateStatus.dismissedIds.has(p.id)).length,
+            messagedCount: 0,
+            shortlistedCount: 0,
+            searchApi: search.filters.api,
+            projectId: activeProject?.id || null,
+          });
+        }
+        handleSearch(false);
+        setFiltersOpen(false);
+      }}
       onClearFilters={search.handleClearFilters}
+      searchHistory={searchHistory.history}
+      searchHistoryLoading={searchHistory.isLoading}
+      onApplyHistoryFilters={(filters) => {
+        search.setFilters(filters);
+        search.setResults([]);
+        search.setHasSearched(false);
+        search.setCursor(null);
+        search.setTotal(null);
+      }}
+      onDeleteHistoryEntry={searchHistory.deleteEntry}
     />
   );
 
