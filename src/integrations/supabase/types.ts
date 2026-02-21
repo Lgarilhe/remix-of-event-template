@@ -546,6 +546,68 @@ export type Database = {
         }
         Relationships: []
       }
+      search_history: {
+        Row: {
+          client_name: string | null
+          created_at: string
+          created_by: string
+          dismissed_count: number
+          filters_snapshot: Json
+          id: string
+          job_id: string
+          job_title: string | null
+          messaged_count: number
+          project_id: string | null
+          results_count: number
+          search_api: string | null
+          shortlisted_count: number
+          treated_count: number
+          updated_at: string
+        }
+        Insert: {
+          client_name?: string | null
+          created_at?: string
+          created_by: string
+          dismissed_count?: number
+          filters_snapshot?: Json
+          id?: string
+          job_id: string
+          job_title?: string | null
+          messaged_count?: number
+          project_id?: string | null
+          results_count?: number
+          search_api?: string | null
+          shortlisted_count?: number
+          treated_count?: number
+          updated_at?: string
+        }
+        Update: {
+          client_name?: string | null
+          created_at?: string
+          created_by?: string
+          dismissed_count?: number
+          filters_snapshot?: Json
+          id?: string
+          job_id?: string
+          job_title?: string | null
+          messaged_count?: number
+          project_id?: string | null
+          results_count?: number
+          search_api?: string | null
+          shortlisted_count?: number
+          treated_count?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "search_history_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "sourcing_projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       sequence_analytics: {
         Row: {
           created_at: string | null

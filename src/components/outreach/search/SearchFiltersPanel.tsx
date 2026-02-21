@@ -7,6 +7,8 @@ import { JobSelector, GeneratedFilters, useJobs } from '@/components/outreach/Jo
 import { FilterPresetsManager } from '@/components/outreach/FilterPresetsManager';
 import { AutoFillFiltersButton } from '@/components/outreach/AutoFillFiltersButton';
 import { QuotaDisplay } from '@/components/outreach/QuotaDisplay';
+import { SearchHistory } from './SearchHistory';
+import { SearchHistoryEntry } from '@/hooks/useSearchHistory';
 import { Job } from '@/pages/JobSpace';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -53,6 +55,11 @@ interface SearchFiltersPanelProps {
   onSearch: () => void;
   onClearFilters: () => void;
   
+  // History
+  searchHistory?: SearchHistoryEntry[];
+  searchHistoryLoading?: boolean;
+  onApplyHistoryFilters?: (filters: LinkedInFiltersState) => void;
+  onDeleteHistoryEntry?: (id: string) => void;
 }
 
 export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
@@ -71,6 +78,10 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
   quota,
   onSearch,
   onClearFilters,
+  searchHistory = [],
+  searchHistoryLoading = false,
+  onApplyHistoryFilters,
+  onDeleteHistoryEntry,
 }) => {
   const [keywordsDialogOpen, setKeywordsDialogOpen] = useState(false);
   const [keywordsDraft, setKeywordsDraft] = useState('');
@@ -233,6 +244,16 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
         </div>
 
       </div>
+
+      {/* Search History */}
+      {selectedJob && onApplyHistoryFilters && onDeleteHistoryEntry && (
+        <SearchHistory
+          history={searchHistory}
+          isLoading={searchHistoryLoading}
+          onApplyFilters={onApplyHistoryFilters}
+          onDelete={onDeleteHistoryEntry}
+        />
+      )}
 
       {/* Keywords preview + edit dialog */}
       <div className="bg-white rounded-lg border border-[#1A1A1A]/10 p-4">
