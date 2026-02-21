@@ -395,6 +395,22 @@ export function useLinkedInSearchActions(
 
       // Dedupe and filter treated profiles
       const seen = new Set<string>();
+      
+      // In non-append mode, keep previously loaded profiles that were treated/dismissed
+      // so the user can still see their work from prior searches on the same job
+      const retainedFromPrevious: LinkedInProfile[] = [];
+      if (!appendMode && results.length > 0) {
+        for (const p of results) {
+          if (!p?.id) continue;
+          const isTreated = candidateStatus.treatedIds.has(p.id);
+          const isDismissed = candidateStatus.dismissedIds.has(p.id);
+          if (isTreated || isDismissed) {
+            seen.add(p.id);
+            retainedFromPrevious.push(p);
+          }
+        }
+      }
+
       if (appendMode) {
         results.forEach((p) => p?.id && seen.add(p.id));
       }
@@ -422,7 +438,8 @@ export function useLinkedInSearchActions(
       if (appendMode) {
         setResults(prev => [...prev, ...collected]);
       } else {
-        setResults(collected);
+        // Merge: new results first, then retained treated/dismissed profiles at the end
+        setResults([...collected, ...retainedFromPrevious]);
         setHasSearched(true);
       }
 
