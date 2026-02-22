@@ -59,8 +59,9 @@ interface LinkedInResultCardProps {
   onMessageSent?: () => void;
   onSequenceEnroll?: () => void;
   activeProject?: SourcingProject | null;
-  onProfileTreated?: () => void; // Called when profile is messaged, added to project, or enrolled in sequence
-  onArchive?: () => void; // Called when profile is archived/dismissed
+  onProfileTreated?: () => void;
+  onArchive?: () => void;
+  candidateStatus?: { status: string; score?: number | null; recommendation?: string | null; updated_at?: string } | null;
 }
 
 interface ChatMessage {
@@ -92,6 +93,7 @@ export const LinkedInResultCard: React.FC<LinkedInResultCardProps> = ({
   activeProject,
   onProfileTreated,
   onArchive,
+  candidateStatus,
 }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const [showMessageModal, setShowMessageModal] = useState(false);
@@ -453,6 +455,41 @@ export const LinkedInResultCard: React.FC<LinkedInResultCardProps> = ({
                       <h3 className="font-semibold text-[#1A1A1A] text-sm sm:text-base truncate">
                         {fullName || 'Profil LinkedIn'}
                       </h3>
+                      {/* Candidate status badge */}
+                      {candidateStatus && (
+                        <>
+                          {candidateStatus.status === 'messaged' && (
+                            <Badge className="bg-blue-500 text-white text-[10px] px-1.5 py-0 h-4 sm:h-5 gap-0.5 shrink-0">
+                              <MessageSquare className="w-2.5 h-2.5" />
+                              <span className="hidden sm:inline">Contacté</span>
+                            </Badge>
+                          )}
+                          {candidateStatus.status === 'replied' && (
+                            <Badge className="bg-emerald-500 text-white text-[10px] px-1.5 py-0 h-4 sm:h-5 gap-0.5 shrink-0">
+                              <CheckCircle2 className="w-2.5 h-2.5" />
+                              <span className="hidden sm:inline">Répondu</span>
+                            </Badge>
+                          )}
+                          {candidateStatus.status === 'shortlisted' && (
+                            <Badge className="bg-amber-500 text-white text-[10px] px-1.5 py-0 h-4 sm:h-5 gap-0.5 shrink-0">
+                              <Star className="w-2.5 h-2.5" />
+                              <span className="hidden sm:inline">Shortlist</span>
+                            </Badge>
+                          )}
+                          {candidateStatus.status === 'scored' && !jobScore && (
+                            <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 sm:h-5 gap-0.5 shrink-0 text-purple-600 border-purple-300 bg-purple-50">
+                              <Target className="w-2.5 h-2.5" />
+                              {candidateStatus.score && <span>{candidateStatus.score}%</span>}
+                            </Badge>
+                          )}
+                          {candidateStatus.status === 'dismissed' && (
+                            <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 sm:h-5 gap-0.5 shrink-0 text-orange-500 border-orange-300 bg-orange-50">
+                              <Archive className="w-2.5 h-2.5" />
+                              <span className="hidden sm:inline">Archivé</span>
+                            </Badge>
+                          )}
+                        </>
+                      )}
                       {profile.premium && (
                         <Badge variant="outline" className="text-[10px] px-1 sm:px-1.5 py-0 h-4 sm:h-5 text-amber-600 border-amber-300 bg-amber-50 shrink-0">
                           <Star className="w-2.5 h-2.5 sm:w-3 sm:h-3 mr-0.5 fill-amber-400" />
@@ -721,6 +758,55 @@ export const LinkedInResultCard: React.FC<LinkedInResultCardProps> = ({
                       </div>
                     </div>
                   )}
+                </div>
+              )}
+
+              {/* Candidate Activity Timeline */}
+              {candidateStatus && isExpanded && (
+                <div className="mt-3 p-2.5 bg-muted/30 rounded-lg border border-border/50">
+                  <div className="flex items-center gap-1.5 mb-2">
+                    <Clock className="w-3.5 h-3.5 text-muted-foreground" />
+                    <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Historique</span>
+                  </div>
+                  <div className="flex items-center gap-2 text-xs">
+                    {candidateStatus.score != null && candidateStatus.score > 0 && (
+                      <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-purple-50 text-purple-700 border border-purple-200/50">
+                        <Target className="w-3 h-3" />
+                        Score: {candidateStatus.score}%
+                        {candidateStatus.recommendation && (
+                          <span className={`ml-0.5 font-medium ${
+                            candidateStatus.recommendation === 'go' ? 'text-green-600' :
+                            candidateStatus.recommendation === 'maybe' ? 'text-amber-600' : 'text-red-500'
+                          }`}>
+                            ({candidateStatus.recommendation === 'go' ? '✓ Go' : candidateStatus.recommendation === 'maybe' ? '~ Maybe' : '✗ Skip'})
+                          </span>
+                        )}
+                      </span>
+                    )}
+                    {(candidateStatus.status === 'messaged' || candidateStatus.status === 'replied') && (
+                      <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-blue-50 text-blue-700 border border-blue-200/50">
+                        <MessageSquare className="w-3 h-3" />
+                        {candidateStatus.status === 'replied' ? 'A répondu' : 'Contacté'}
+                      </span>
+                    )}
+                    {candidateStatus.status === 'shortlisted' && (
+                      <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-amber-50 text-amber-700 border border-amber-200/50">
+                        <Star className="w-3 h-3" />
+                        Shortlisté
+                      </span>
+                    )}
+                    {candidateStatus.status === 'dismissed' && (
+                      <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-orange-50 text-orange-600 border border-orange-200/50">
+                        <Archive className="w-3 h-3" />
+                        Archivé
+                      </span>
+                    )}
+                    {candidateStatus.updated_at && (
+                      <span className="text-muted-foreground/60 text-[10px] ml-auto">
+                        {new Date(candidateStatus.updated_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' })}
+                      </span>
+                    )}
+                  </div>
                 </div>
               )}
 

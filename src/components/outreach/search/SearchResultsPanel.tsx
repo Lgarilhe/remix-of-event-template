@@ -1,22 +1,20 @@
-import React, { useState } from 'react';
+import React, { useMemo } from 'react';
 import { LinkedInProfile } from '@/components/outreach/types';
 import { LinkedInResultCard } from '@/components/outreach/LinkedInResultCard';
 import { BulkInMailModal } from '@/components/outreach/BulkInMailModal';
 import { SequenceEnrollButton } from '@/components/outreach/SequenceEnrollButton';
 import { JobMatchResult } from '@/components/outreach/JobScoreDisplay';
 import { JobCandidateStatus } from '@/hooks/useJobCandidateStatus';
-import { TreatedCandidatesList } from './TreatedCandidatesList';
 import { Job } from '@/pages/JobSpace';
 import { SourcingProject } from '@/hooks/useSourcingProjects';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import {
-  Search, Loader2, Users, Mail, GitBranch, Archive,
-  Eye, EyeOff, FolderPlus, Target, Sparkles, Maximize2, Minimize2, ClipboardList
+  Search, Loader2, Users, Mail, Archive,
+  Eye, FolderPlus, Target, Sparkles, Maximize2, Minimize2
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -43,7 +41,7 @@ interface SearchResultsPanelProps {
   // Status
   autoHideTreated: boolean;
   showDismissed: boolean;
-  statusFilter: 'all' | 'untreated' | 'messaged' | 'dismissed';
+  statusFilter: 'all' | 'untreated' | 'scored' | 'messaged' | 'dismissed';
   treatedCount: number;
   dismissedCount: number;
   
@@ -69,7 +67,7 @@ interface SearchResultsPanelProps {
   onBulkAddToProject: () => void;
   onSetAutoHideTreated: (v: boolean) => void;
   onSetShowDismissed: (v: boolean) => void;
-  onSetStatusFilter: (v: 'all' | 'untreated' | 'messaged' | 'dismissed') => void;
+  onSetStatusFilter: (v: 'all' | 'untreated' | 'scored' | 'messaged' | 'dismissed') => void;
   onSetSortByScore: (v: boolean) => void;
   onSetShowBulkInMailModal: (v: boolean) => void;
   onProfileTreated: (id: string) => void;
@@ -134,49 +132,23 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
   scrollAreaRef,
   loadMoreTriggerRef,
 }) => {
-  const [viewMode, setViewMode] = useState<'search' | 'treated'>('search');
   const treatedCount_db = treatedCandidates.size;
+
+  // Count by status for filter badges
+  const statusCounts = React.useMemo(() => {
+    const counts = { scored: 0, messaged: 0, dismissed: 0, untreated: 0 };
+    for (const r of results) {
+      const s = treatedCandidates.get(r.id);
+      if (!s) { counts.untreated++; continue; }
+      if (s.status === 'scored') counts.scored++;
+      else if (s.status === 'messaged' || s.status === 'replied') counts.messaged++;
+      else if (s.status === 'dismissed') counts.dismissed++;
+    }
+    return counts;
+  }, [results, treatedCandidates]);
 
   return (
     <div className="bg-white rounded-xl border border-border flex flex-col h-[calc(100vh-200px)] lg:h-[calc(100vh-120px)] lg:sticky lg:top-24 min-w-0 overflow-hidden">
-      {/* View mode tabs */}
-      {selectedJob && (
-        <div className="flex items-center gap-1 px-3 py-1.5 border-b border-border bg-muted/30 shrink-0">
-          <Button
-            variant={viewMode === 'search' ? 'default' : 'ghost'}
-            size="sm"
-            className="h-7 px-3 text-xs gap-1.5"
-            onClick={() => setViewMode('search')}
-          >
-            <Search className="w-3.5 h-3.5" />
-            Recherche
-            {hasSearched && results.length > 0 && (
-              <Badge variant="secondary" className="h-4 px-1 text-[10px]">{filteredResults.length}</Badge>
-            )}
-          </Button>
-          <Button
-            variant={viewMode === 'treated' ? 'default' : 'ghost'}
-            size="sm"
-            className="h-7 px-3 text-xs gap-1.5"
-            onClick={() => setViewMode('treated')}
-          >
-            <ClipboardList className="w-3.5 h-3.5" />
-            Profils traités
-            {treatedCount_db > 0 && (
-              <Badge variant="secondary" className="h-4 px-1 text-[10px]">{treatedCount_db}</Badge>
-            )}
-          </Button>
-        </div>
-      )}
-
-      {/* Treated candidates view */}
-      {viewMode === 'treated' && selectedJob ? (
-        <TreatedCandidatesList
-          statuses={treatedCandidates}
-          onRestore={onRestoreCandidate}
-        />
-      ) : (
-        <>
       {/* Results header */}
       <div className="flex items-center justify-between px-3 sm:px-4 py-2 sm:py-3 border-b border-border shrink-0 gap-2 sm:gap-3 flex-wrap">
         {/* Left side: Search button + count */}
@@ -214,82 +186,37 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
 
         {/* Right side: Filters + Actions */}
         <div className="flex items-center gap-1.5 sm:gap-2 shrink-0 flex-wrap">
-          {/* Auto-hide treated toggle */}
-          {selectedJob && hasSearched && (
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant={autoHideTreated ? 'default' : 'ghost'}
-                    size="sm"
-                    className={`h-8 px-2 text-xs gap-1.5 ${autoHideTreated ? 'bg-green-600 hover:bg-green-700 text-white' : 'text-muted-foreground hover:text-foreground'}`}
-                    onClick={() => onSetAutoHideTreated(!autoHideTreated)}
-                  >
-                    {autoHideTreated ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                    Traités
-                    {treatedCount > 0 && (
-                      <Badge variant="secondary" className="h-4 px-1 text-[10px] font-medium">
-                        {treatedCount}
-                      </Badge>
-                    )}
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>{autoHideTreated ? 'Afficher les profils traités' : 'Masquer les profils traités'}</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          )}
-
-          {/* Status filter dropdown */}
-          {selectedJob && hasSearched && results.length > 0 && !autoHideTreated && (
-            <Select value={statusFilter} onValueChange={(v) => onSetStatusFilter(v as typeof statusFilter)}>
-              <SelectTrigger className="h-8 w-auto min-w-[110px] text-xs">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">
-                  <span className="flex items-center gap-1.5">
-                    <Users className="w-3 h-3" />
-                    Tous
-                  </span>
-                </SelectItem>
-                <SelectItem value="untreated">
-                  <span className="flex items-center gap-1.5">
-                    <Eye className="w-3 h-3" />
-                    Non traités
-                  </span>
-                </SelectItem>
-                <SelectItem value="messaged">
-                  <span className="flex items-center gap-1.5">
-                    <Mail className="w-3 h-3" />
-                    Contactés
-                  </span>
-                </SelectItem>
-              </SelectContent>
-            </Select>
-          )}
-
-          {/* Dismissed toggle - always visible when there are dismissed profiles */}
-          {selectedJob && dismissedCount > 0 && (
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant={showDismissed ? 'default' : 'ghost'}
-                    size="sm"
-                    className={`h-8 px-2 text-xs ${showDismissed ? 'bg-red-500 hover:bg-red-600' : 'text-red-500 hover:text-red-600'}`}
-                    onClick={() => onSetShowDismissed(!showDismissed)}
-                  >
-                    <Archive className="w-3.5 h-3.5" />
-                    <span className="ml-1">{dismissedCount}</span>
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>{showDismissed ? 'Masquer' : 'Voir'} les écartés</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
+          {/* Unified status filter */}
+          {selectedJob && hasSearched && results.length > 0 && (
+            <div className="flex items-center gap-0.5 bg-muted/50 rounded-lg p-0.5">
+              {([
+                { value: 'all', label: 'Tous', icon: Users, count: results.length },
+                { value: 'untreated', label: 'Nouveaux', icon: Eye, count: statusCounts.untreated },
+                { value: 'scored', label: 'Scorés', icon: Target, count: statusCounts.scored },
+                { value: 'messaged', label: 'Contactés', icon: Mail, count: statusCounts.messaged },
+                { value: 'dismissed', label: 'Archivés', icon: Archive, count: statusCounts.dismissed },
+              ] as const).map(({ value, label, icon: Icon, count }) => (
+                <Button
+                  key={value}
+                  variant={statusFilter === value ? 'default' : 'ghost'}
+                  size="sm"
+                  onClick={() => onSetStatusFilter(value)}
+                  className={`h-7 px-2 text-[11px] gap-1 ${
+                    statusFilter === value
+                      ? 'bg-primary text-primary-foreground shadow-sm'
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  <Icon className="w-3 h-3" />
+                  <span className="hidden sm:inline">{label}</span>
+                  {count > 0 && (
+                    <span className={`text-[10px] font-medium ${statusFilter === value ? 'text-primary-foreground/80' : 'text-muted-foreground/60'}`}>
+                      {count}
+                    </span>
+                  )}
+                </Button>
+              ))}
+            </div>
           )}
 
           {/* Sort by score toggle */}
@@ -606,6 +533,12 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
                 activeProject={activeProject}
                 onProfileTreated={() => onProfileTreated(profile.id)}
                 onArchive={selectedJob ? () => onArchive(profile) : undefined}
+                candidateStatus={treatedCandidates.get(profile.id) ? {
+                  status: treatedCandidates.get(profile.id)!.status,
+                  score: treatedCandidates.get(profile.id)!.score,
+                  recommendation: treatedCandidates.get(profile.id)!.recommendation,
+                  updated_at: treatedCandidates.get(profile.id)!.updated_at,
+                } : null}
               />
             ))}
 
@@ -634,8 +567,6 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
           </div>
         )}
       </ScrollArea>
-      </>
-      )}
     </div>
   );
 };
