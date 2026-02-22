@@ -29,7 +29,7 @@ interface OutreachMessageModalProps {
   profile: LinkedInProfile;
   job: Job;
   selectedAccount?: string | null;
-  onMessageSent?: () => void;
+  onMessageSent?: () => void | Promise<void>;
 }
 
 type Tone = 'professional' | 'casual' | 'enthusiastic';
@@ -222,8 +222,8 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
         // Non-blocking - don't fail the send
       }
       
-      // Notify parent that message was sent
-      onMessageSent?.();
+      // Notify parent that message was sent (await to ensure DB upsert completes)
+      await onMessageSent?.();
       
       // Close modal after short delay
       setTimeout(() => {
