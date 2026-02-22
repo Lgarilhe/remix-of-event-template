@@ -13,6 +13,7 @@ interface SearchContext {
   selectedAccount: string | null;
   selectedJob: Job | null;
   filters: LinkedInFiltersState;
+  filtersRef: React.MutableRefObject<LinkedInFiltersState>;
   cursor: string | null;
   results: LinkedInProfile[];
   activeProject?: SourcingProject | null;
@@ -364,7 +365,8 @@ export function useLinkedInSearchActions(
     }
 
     try {
-      const baseParams = buildSearchParams(filters, selectedAccount);
+      const currentFilters = context.filtersRef.current;
+      const baseParams = buildSearchParams(currentFilters, selectedAccount);
       const params: Record<string, unknown> = {
         ...baseParams,
         limit: RESULTS_PER_BATCH,

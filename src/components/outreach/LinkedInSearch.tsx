@@ -53,6 +53,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
       selectedAccount,
       selectedJob: search.selectedJob,
       filters: search.filters,
+      filtersRef: search.filtersRef,
       cursor: search.cursor,
       results: search.results,
       activeProject,
@@ -441,11 +442,20 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
       searchHistory={searchHistory.history}
       searchHistoryLoading={searchHistory.isLoading}
       onApplyHistoryFilters={(historyFilters) => {
-        search.setFilters({ ...INITIAL_FILTERS, ...historyFilters });
+        const merged = { ...INITIAL_FILTERS, ...historyFilters };
+        search.setFilters(merged);
+        // Update ref immediately so handleSearch reads fresh filters
+        search.filtersRef.current = merged;
         search.setResults([]);
         search.setHasSearched(false);
         search.setCursor(null);
         search.setTotal(null);
+        search.setSelectedProfiles(new Set());
+        search.setJobScores({});
+        setFiltersOpen(false);
+        // Trigger search on next tick (after state updates)
+        queueMicrotask(() => handleSearch(false));
+        toast.info('Filtres de l\'historique appliqués, recherche en cours...');
       }}
       onDeleteHistoryEntry={searchHistory.deleteEntry}
     />
