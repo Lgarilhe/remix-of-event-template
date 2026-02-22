@@ -4,6 +4,8 @@ import { LinkedInResultCard } from '@/components/outreach/LinkedInResultCard';
 import { BulkInMailModal } from '@/components/outreach/BulkInMailModal';
 import { SequenceEnrollButton } from '@/components/outreach/SequenceEnrollButton';
 import { JobMatchResult } from '@/components/outreach/JobScoreDisplay';
+import { JobCandidateStatus } from '@/hooks/useJobCandidateStatus';
+import { TreatedCandidatesList } from './TreatedCandidatesList';
 import { Job } from '@/pages/JobSpace';
 import { SourcingProject } from '@/hooks/useSourcingProjects';
 import { Button } from '@/components/ui/button';
@@ -14,7 +16,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import {
   Search, Loader2, Users, Mail, GitBranch, Archive,
-  Eye, EyeOff, FolderPlus, Target, Sparkles, Maximize2, Minimize2
+  Eye, EyeOff, FolderPlus, Target, Sparkles, Maximize2, Minimize2, ClipboardList
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -48,6 +50,10 @@ interface SearchResultsPanelProps {
   // Account
   selectedAccount: string | null;
   activeProject?: SourcingProject | null;
+  
+  // Treated candidates from DB
+  treatedCandidates: Map<string, JobCandidateStatus>;
+  onRestoreCandidate?: (candidateId: string) => void;
   
   // Modal state
   showBulkInMailModal: boolean;
@@ -103,6 +109,8 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
   dismissedCount,
   selectedAccount,
   activeProject,
+  treatedCandidates,
+  onRestoreCandidate,
   showBulkInMailModal,
   onSearch,
   onLoadMore,
@@ -126,8 +134,49 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
   scrollAreaRef,
   loadMoreTriggerRef,
 }) => {
+  const [viewMode, setViewMode] = useState<'search' | 'treated'>('search');
+  const treatedCount_db = treatedCandidates.size;
+
   return (
     <div className="bg-white rounded-xl border border-border flex flex-col h-[calc(100vh-200px)] lg:h-[calc(100vh-120px)] lg:sticky lg:top-24 min-w-0 overflow-hidden">
+      {/* View mode tabs */}
+      {selectedJob && (
+        <div className="flex items-center gap-1 px-3 py-1.5 border-b border-border bg-muted/30 shrink-0">
+          <Button
+            variant={viewMode === 'search' ? 'default' : 'ghost'}
+            size="sm"
+            className="h-7 px-3 text-xs gap-1.5"
+            onClick={() => setViewMode('search')}
+          >
+            <Search className="w-3.5 h-3.5" />
+            Recherche
+            {hasSearched && results.length > 0 && (
+              <Badge variant="secondary" className="h-4 px-1 text-[10px]">{filteredResults.length}</Badge>
+            )}
+          </Button>
+          <Button
+            variant={viewMode === 'treated' ? 'default' : 'ghost'}
+            size="sm"
+            className="h-7 px-3 text-xs gap-1.5"
+            onClick={() => setViewMode('treated')}
+          >
+            <ClipboardList className="w-3.5 h-3.5" />
+            Profils traités
+            {treatedCount_db > 0 && (
+              <Badge variant="secondary" className="h-4 px-1 text-[10px]">{treatedCount_db}</Badge>
+            )}
+          </Button>
+        </div>
+      )}
+
+      {/* Treated candidates view */}
+      {viewMode === 'treated' && selectedJob ? (
+        <TreatedCandidatesList
+          statuses={treatedCandidates}
+          onRestore={onRestoreCandidate}
+        />
+      ) : (
+        <>
       {/* Results header */}
       <div className="flex items-center justify-between px-3 sm:px-4 py-2 sm:py-3 border-b border-border shrink-0 gap-2 sm:gap-3 flex-wrap">
         {/* Left side: Search button + count */}
@@ -585,6 +634,8 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
           </div>
         )}
       </ScrollArea>
+      </>
+      )}
     </div>
   );
 };

@@ -545,6 +545,8 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
           dismissedCount={dismissedCount}
           selectedAccount={selectedAccount}
           activeProject={activeProject}
+          treatedCandidates={search.candidateStatus.statuses}
+          onRestoreCandidate={search.candidateStatus.restoreCandidate}
           showBulkInMailModal={search.showBulkInMailModal}
           onSearch={() => handleSearch(false)}
           onLoadMore={handleLoadMore}
