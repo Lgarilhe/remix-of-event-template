@@ -397,34 +397,18 @@ export function useLinkedInSearchActions(
 
       // Dedupe and filter treated profiles
       const seen = new Set<string>();
-      
-      // In non-append mode, keep previously loaded profiles that were treated/dismissed
-      // so the user can still see their work from prior searches on the same job
-      const retainedFromPrevious: LinkedInProfile[] = [];
-      if (!appendMode && results.length > 0) {
-        for (const p of results) {
-          if (!p?.id) continue;
-          const isTreated = candidateStatus.treatedIds.has(p.id);
-          const isDismissed = candidateStatus.dismissedIds.has(p.id);
-          if (isTreated || isDismissed) {
-            seen.add(p.id);
-            retainedFromPrevious.push(p);
-          }
-        }
-      }
 
       if (appendMode) {
         results.forEach((p) => p?.id && seen.add(p.id));
       }
 
-      const shouldHideTreated = autoHideTreatedRef.current;
       const collected: LinkedInProfile[] = [];
 
       for (const p of filteredBatch) {
         if (!p?.id) continue;
         if (seen.has(p.id)) continue;
-        if (selectedJob && shouldHideTreated && candidateStatus.treatedIds.has(p.id)) continue;
-        if (selectedJob && !shouldHideTreated && candidateStatus.dismissedIds.has(p.id)) continue;
+        // Always exclude already treated/dismissed profiles from new results
+        if (selectedJob && candidateStatus.treatedIds.has(p.id)) continue;
         seen.add(p.id);
         collected.push(p);
       }
@@ -440,8 +424,7 @@ export function useLinkedInSearchActions(
       if (appendMode) {
         setResults(prev => [...prev, ...collected]);
       } else {
-        // Merge: new results first, then retained treated/dismissed profiles at the end
-        setResults([...collected, ...retainedFromPrevious]);
+        setResults(collected);
         setHasSearched(true);
       }
 
