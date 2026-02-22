@@ -10,7 +10,7 @@ interface FilteredResultsOptions {
   selectedJob: Job | null;
   autoHideTreated: boolean;
   showDismissed: boolean;
-  statusFilter: 'all' | 'untreated' | 'messaged' | 'dismissed';
+  statusFilter: 'all' | 'untreated' | 'scored' | 'messaged' | 'dismissed';
   candidateStatus: {
     treatedIds: Set<string>;
     dismissedIds: Set<string>;
@@ -38,23 +38,15 @@ export function useFilteredResults({
   const filteredAndSortedResults = useMemo(() => {
     let filtered = results;
 
-    // When autoHideTreated is ON, filter out ALL treated candidates
-    if (selectedJob && autoHideTreated) {
-      filtered = filtered.filter(p => !treatedIds.has(p.id));
-    } else {
-      // Legacy behavior: only filter out dismissed candidates
-      if (selectedJob && !showDismissed) {
-        filtered = filtered.filter(p => !dismissedIds.has(p.id));
-      }
-    }
-
-    // Apply status filter (only when autoHideTreated is OFF)
-    if (selectedJob && !autoHideTreated && statusFilter !== 'all') {
+    // Apply status filter
+    if (selectedJob && statusFilter !== 'all') {
       filtered = filtered.filter(p => {
         const status = getStatus(p.id);
         switch (statusFilter) {
           case 'untreated':
             return !status;
+          case 'scored':
+            return status?.status === 'scored';
           case 'messaged':
             return status?.status === 'messaged' || status?.status === 'replied';
           case 'dismissed':
