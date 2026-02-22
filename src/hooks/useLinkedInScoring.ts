@@ -26,6 +26,21 @@ interface ScoringOptions {
       recommendation?: string;
       skipReason?: string;
     }>) => Promise<void>;
+    saveScore?: (candidateId: string, data: {
+      name?: string;
+      headline?: string;
+      profileUrl?: string;
+      score: number;
+      recommendation: string;
+    }) => Promise<void>;
+    batchSaveScores?: (candidates: Array<{
+      id: string;
+      name?: string;
+      headline?: string;
+      profileUrl?: string;
+      score: number;
+      recommendation: string;
+    }>) => Promise<void>;
   };
 }
 
@@ -211,25 +226,35 @@ export function useLinkedInScoring({
         const mapped = mapScoringResult(data.result);
         setJobScores(prev => ({ ...prev, [profile.id]: mapped }));
         
+        const profileName = profile.name || `${profile.first_name || ''} ${profile.last_name || ''}`.trim();
+        const profileUrl = profile.public_profile_url || profile.profile_url || (profile as any)?.linkedin_url;
+
         // Auto-dismiss profiles with 'skip' recommendation
         if (mapped.recommendation === 'skip' && candidateStatus) {
-          const profileAny = profile as any;
           await candidateStatus.batchDismiss([{
             id: profile.id,
-            name: profile.name || `${profile.first_name || ''} ${profile.last_name || ''}`.trim(),
+            name: profileName,
             headline: profile.headline,
-            profileUrl: profile.public_profile_url || profile.profile_url || profileAny?.linkedin_url,
+            profileUrl,
             score: mapped.match_score,
             recommendation: mapped.recommendation,
             skipReason: mapped.summary || 'Score insuffisant',
           }]);
-          // Remove from selection
           setSelectedProfiles?.(prev => {
             const newSet = new Set(prev);
             newSet.delete(profile.id);
             return newSet;
           });
           toast.info(`Profil écarté (score: ${mapped.match_score}%)`);
+        } else if (candidateStatus?.saveScore) {
+          // Persist score for go/maybe profiles too
+          await candidateStatus.saveScore(profile.id, {
+            name: profileName,
+            headline: profile.headline,
+            profileUrl,
+            score: mapped.match_score,
+            recommendation: mapped.recommendation,
+          });
         }
       }
     } catch (err) {
@@ -340,21 +365,40 @@ export function useLinkedInScoring({
           recommendation?: string;
           skipReason?: string;
         }> = [];
+        const goodScoreProfiles: Array<{
+          id: string;
+          name?: string;
+          headline?: string;
+          profileUrl?: string;
+          score: number;
+          recommendation: string;
+        }> = [];
 
         allResults.forEach((rawResult: any, index: number) => {
           const profile = profilesToScore[index];
           const result = mapScoringResult(rawResult);
           if (profile && result.match_score > 0) {
             newScores[profile.id] = result;
+            const profileName = profile.name || `${profile.first_name || ''} ${profile.last_name || ''}`.trim();
+            const profileUrl = profile.public_profile_url || profile.profile_url;
             if (result.recommendation === 'skip') {
               lowScoreProfiles.push({
                 id: profile.id,
-                name: profile.name || `${profile.first_name || ''} ${profile.last_name || ''}`.trim(),
+                name: profileName,
                 headline: profile.headline,
-                profileUrl: profile.public_profile_url || profile.profile_url,
+                profileUrl,
                 score: result.match_score,
                 recommendation: result.recommendation,
                 skipReason: result.summary || 'Score insuffisant',
+              });
+            } else {
+              goodScoreProfiles.push({
+                id: profile.id,
+                name: profileName,
+                headline: profile.headline,
+                profileUrl,
+                score: result.match_score,
+                recommendation: result.recommendation,
               });
             }
           }
@@ -364,6 +408,11 @@ export function useLinkedInScoring({
         setSortByScore(true);
 
         const scoredCount = Object.keys(newScores).length;
+
+        // Persist good scores
+        if (goodScoreProfiles.length > 0 && candidateStatus?.batchSaveScores) {
+          await candidateStatus.batchSaveScores(goodScoreProfiles);
+        }
 
         // Always auto-dismiss low score profiles after scoring
         if (lowScoreProfiles.length > 0 && candidateStatus) {

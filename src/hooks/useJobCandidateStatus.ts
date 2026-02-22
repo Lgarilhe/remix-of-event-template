@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
-export type CandidateStatus = 'dismissed' | 'messaged' | 'replied' | 'shortlisted';
+export type CandidateStatus = 'dismissed' | 'messaged' | 'replied' | 'shortlisted' | 'scored';
 
 export interface JobCandidateStatus {
   id: string;
@@ -307,6 +307,143 @@ export function useJobCandidateStatus(jobId: string | null) {
     }
   }, [jobId]);
 
+  // Save score for a candidate (without changing status to dismissed)
+  const saveScore = useCallback(async (
+    candidateId: string,
+    candidateData: {
+      name?: string;
+      headline?: string;
+      profileUrl?: string;
+      score: number;
+      recommendation: string;
+    }
+  ) => {
+    if (!jobId) return;
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const existing = statuses.get(candidateId);
+      // Don't overwrite a higher-priority status (messaged, replied, shortlisted)
+      const currentStatus = existing?.status;
+      const keepStatus = currentStatus && ['messaged', 'replied', 'shortlisted'].includes(currentStatus);
+
+      const { error } = await supabase
+        .from('job_candidate_status')
+        .upsert({
+          job_id: jobId,
+          candidate_id: candidateId,
+          linkedin_profile_url: candidateData.profileUrl || existing?.linkedin_profile_url || null,
+          candidate_name: candidateData.name || existing?.candidate_name || null,
+          candidate_headline: candidateData.headline || existing?.candidate_headline || null,
+          status: keepStatus ? currentStatus : 'scored',
+          score: candidateData.score,
+          recommendation: candidateData.recommendation,
+          created_by: user.id,
+        }, {
+          onConflict: 'job_id,candidate_id,created_by'
+        });
+
+      if (error) throw error;
+
+      // Update local state
+      setTreatedIds(prev => new Set([...prev, candidateId]));
+      setStatuses(prev => {
+        const next = new Map(prev);
+        next.set(candidateId, {
+          id: existing?.id || '',
+          job_id: jobId,
+          candidate_id: candidateId,
+          linkedin_profile_url: candidateData.profileUrl || existing?.linkedin_profile_url || null,
+          candidate_name: candidateData.name || existing?.candidate_name || null,
+          candidate_headline: candidateData.headline || existing?.candidate_headline || null,
+          status: (keepStatus ? currentStatus : 'scored') as CandidateStatus,
+          score: candidateData.score,
+          recommendation: candidateData.recommendation,
+          skip_reason: null,
+          created_by: user.id,
+          created_at: existing?.created_at || new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        });
+        return next;
+      });
+    } catch (error) {
+      console.error('Error saving score:', error);
+    }
+  }, [jobId, statuses]);
+
+  // Batch save scores for multiple candidates
+  const batchSaveScores = useCallback(async (
+    candidates: Array<{
+      id: string;
+      name?: string;
+      headline?: string;
+      profileUrl?: string;
+      score: number;
+      recommendation: string;
+    }>
+  ) => {
+    if (!jobId || candidates.length === 0) return;
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const records = candidates.map(c => {
+        const existing = statuses.get(c.id);
+        const keepStatus = existing?.status && ['messaged', 'replied', 'shortlisted'].includes(existing.status);
+        return {
+          job_id: jobId,
+          candidate_id: c.id,
+          linkedin_profile_url: c.profileUrl || existing?.linkedin_profile_url || null,
+          candidate_name: c.name || existing?.candidate_name || null,
+          candidate_headline: c.headline || existing?.candidate_headline || null,
+          status: keepStatus ? existing.status : 'scored',
+          score: c.score,
+          recommendation: c.recommendation,
+          created_by: user.id,
+        };
+      });
+
+      const { error } = await supabase
+        .from('job_candidate_status')
+        .upsert(records, {
+          onConflict: 'job_id,candidate_id,created_by'
+        });
+
+      if (error) throw error;
+
+      // Update local state
+      const newTreated = new Set(treatedIds);
+      const newStatuses = new Map(statuses);
+      candidates.forEach(c => {
+        newTreated.add(c.id);
+        const existing = newStatuses.get(c.id);
+        const keepStatus = existing?.status && ['messaged', 'replied', 'shortlisted'].includes(existing.status);
+        newStatuses.set(c.id, {
+          id: existing?.id || '',
+          job_id: jobId,
+          candidate_id: c.id,
+          linkedin_profile_url: c.profileUrl || existing?.linkedin_profile_url || null,
+          candidate_name: c.name || existing?.candidate_name || null,
+          candidate_headline: c.headline || existing?.candidate_headline || null,
+          status: (keepStatus ? existing.status : 'scored') as CandidateStatus,
+          score: c.score,
+          recommendation: c.recommendation,
+          skip_reason: null,
+          created_by: user.id,
+          created_at: existing?.created_at || new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        });
+      });
+      setTreatedIds(newTreated);
+      setStatuses(newStatuses);
+    } catch (error) {
+      console.error('Error batch saving scores:', error);
+    }
+  }, [jobId, statuses, treatedIds]);
+
   // Check if a candidate is dismissed
   const isDismissed = useCallback((candidateId: string) => {
     return dismissedIds.has(candidateId);
@@ -324,6 +461,8 @@ export function useJobCandidateStatus(jobId: string | null) {
     loading,
     dismissCandidate,
     batchDismiss,
+    saveScore,
+    batchSaveScores,
     updateStatus,
     restoreCandidate,
     isDismissed,
