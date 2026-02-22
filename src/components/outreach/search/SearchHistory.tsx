@@ -73,33 +73,31 @@ export const SearchHistory: React.FC<SearchHistoryProps> = ({
         <ScrollArea className="max-h-[300px] mt-2">
           <div className="space-y-2">
             {history.map((entry) => (
-              <div
+              <button
                 key={entry.id}
-                className="group bg-white border border-[#1A1A1A]/10 rounded-lg p-3 hover:border-[#0077B5]/30 transition-colors"
+                type="button"
+                onClick={() => onApplyFilters(entry.filters_snapshot)}
+                className="w-full text-left group bg-white border border-[#1A1A1A]/10 rounded-lg p-3 hover:border-[#0077B5]/30 active:border-[#0077B5]/50 transition-colors cursor-pointer"
               >
                 <div className="flex items-start justify-between gap-2 mb-1.5">
                   <span className="text-xs text-[#1A1A1A]/50">
                     {format(new Date(entry.created_at), 'dd MMM yyyy · HH:mm', { locale: fr })}
                   </span>
-                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-6 w-6 p-0 text-[#0077B5]"
-                      onClick={() => onApplyFilters(entry.filters_snapshot)}
+                  <div className="flex items-center gap-1">
+                    <span
+                      className="inline-flex items-center justify-center h-6 w-6 rounded text-[#0077B5]"
                       title="Réutiliser ces filtres"
                     >
                       <Play className="w-3 h-3" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-6 w-6 p-0 text-red-400 hover:text-red-600"
-                      onClick={() => onDelete(entry.id)}
+                    </span>
+                    <span
+                      role="button"
+                      className="inline-flex items-center justify-center h-6 w-6 rounded text-red-400 hover:text-red-600 hover:bg-red-50"
+                      onClick={(e) => { e.stopPropagation(); onDelete(entry.id); }}
                       title="Supprimer"
                     >
                       <Trash2 className="w-3 h-3" />
-                    </Button>
+                    </span>
                   </div>
                 </div>
 
@@ -134,7 +132,7 @@ export const SearchHistory: React.FC<SearchHistoryProps> = ({
                     {countFilters(entry.filters_snapshot)} filtres
                   </Badge>
                 </div>
-              </div>
+              </button>
             ))}
           </div>
         </ScrollArea>
