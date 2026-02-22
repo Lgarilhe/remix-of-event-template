@@ -148,7 +148,7 @@ function mapScoringResult(raw: any): JobMatchResult {
   };
   return {
     profile_name: raw.name || raw.profile_name || '',
-    match_score: raw.score ?? raw.match_score ?? 0,
+    match_score: Math.max(0, Math.min(100, Number(raw.score ?? raw.match_score) || 0)),
     matching_skills: raw.matching_skills || raw.matchedSkills || [],
     missing_skills: raw.missing_skills || raw.missingSkills || [],
     experience_match: (expMap[raw.experienceMatch] || raw.experience_match || 'incertain') as JobMatchResult['experience_match'],
@@ -294,11 +294,12 @@ export function useLinkedInScoring({
         });
 
         if (error) {
-          if (error.message?.includes('CREDITS_EXHAUSTED') || error.message?.includes('402')) {
+          const errMsg = error.message || '';
+          if (errMsg.includes('CREDITS_EXHAUSTED') || errMsg.includes('402')) {
             toast.error('Crédits IA épuisés.', { duration: 8000 });
             return;
           }
-          if (error.message?.includes('RATE_LIMITED') || error.message?.includes('429')) {
+          if (errMsg.includes('RATE_LIMITED') || errMsg.includes('429')) {
             rateLimited = true;
             // Fill fallback for this batch
             batch.forEach(() => allResults.push({
@@ -312,10 +313,13 @@ export function useLinkedInScoring({
             } as any));
             break;
           }
-          throw error;
+          // For other errors (including Failed to fetch), skip this batch gracefully
+          console.error(`Batch ${batchIndex} error:`, error);
+          toast.warning(`Lot ${batchIndex}/${totalBatches} échoué, passage au suivant...`);
+          continue;
         }
 
-        if (data?.results) {
+        if (data?.results && Array.isArray(data.results)) {
           allResults.push(...data.results);
         }
 

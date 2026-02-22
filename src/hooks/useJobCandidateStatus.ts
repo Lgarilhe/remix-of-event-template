@@ -170,7 +170,12 @@ export function useJobCandidateStatus(jobId: string | null) {
         return;
       }
 
-      const records = candidates.map(c => ({
+      // Dedupe by candidate_id to avoid Postgres "cannot affect row a second time" error
+      const uniqueCandidates = Array.from(
+        new Map(candidates.map(c => [c.id, c])).values()
+      );
+
+      const records = uniqueCandidates.map(c => ({
         job_id: jobId,
         candidate_id: c.id,
         linkedin_profile_url: c.profileUrl || null,
