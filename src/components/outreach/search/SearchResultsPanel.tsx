@@ -12,9 +12,11 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { Progress } from '@/components/ui/progress';
 import {
   Search, Loader2, Users, Mail, Archive,
-  Eye, FolderPlus, Target, Sparkles, Maximize2, Minimize2
+  Eye, FolderPlus, Target, Sparkles, Maximize2, Minimize2,
+  ChevronRight, CheckCircle2
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -170,7 +172,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
         {/* Left side: Search button + count */}
         <div className="flex items-center gap-3 min-w-0">
           <Button
-            onClick={hasSearched && cursor ? onLoadMore : onSearch}
+            onClick={onSearch}
             disabled={loading || !selectedJob}
             size="sm"
             className="bg-primary hover:bg-primary/90 shrink-0"
@@ -180,7 +182,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
             ) : (
               <Search className="w-3.5 h-3.5 mr-1.5" />
             )}
-            {loading ? 'Recherche...' : hasSearched && cursor ? 'Charger +' : 'Rechercher'}
+            {loading ? 'Recherche...' : 'Rechercher'}
           </Button>
 
           {hasSearched && (
@@ -510,60 +512,77 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
           </div>
         ) : (
           <div className="p-2 sm:p-4 space-y-3 min-w-0">
-            {/* Results stats banner */}
+            {/* Batch workflow banner */}
             {hasSearched && total !== null && total > 0 && (
-              <div className="bg-primary/5 rounded-lg p-2 sm:p-3 mb-4 flex items-center gap-2 sm:gap-3">
-                <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
-                  <Users className="w-5 h-5 text-primary" />
+              <div className="bg-primary/5 rounded-lg p-2 sm:p-3 mb-4 space-y-2">
+                <div className="flex items-center gap-2 sm:gap-3">
+                  <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                    <Users className="w-5 h-5 text-primary" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-foreground">
+                      {total.toLocaleString()} candidats correspondent à vos critères
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {results.length} profils chargés
+                      {statusCounts.untreated === 0 && results.length > 0 && cursor && (
+                        <span className="text-green-600 font-medium ml-1">
+                          — Lot traité ✓
+                        </span>
+                      )}
+                    </p>
+                  </div>
+                  <div className="hidden sm:flex items-center gap-1.5 shrink-0">
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => onRefineSearch('expand')}
+                            disabled={refineLoading}
+                            className="h-8 px-2.5 gap-1.5 text-xs border-green-300 text-green-700 hover:bg-green-50"
+                          >
+                            {refineLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Maximize2 className="w-3.5 h-3.5" />}
+                            Élargir
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>IA: ajuster les filtres pour obtenir plus de résultats</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => onRefineSearch('narrow')}
+                            disabled={refineLoading}
+                            className="h-8 px-2.5 gap-1.5 text-xs border-orange-300 text-orange-700 hover:bg-orange-50"
+                          >
+                            {refineLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Minimize2 className="w-3.5 h-3.5" />}
+                            Affiner
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>IA: ajuster les filtres pour des résultats plus ciblés</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  </div>
                 </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-foreground">
-                    {total.toLocaleString()} candidats correspondent à vos critères
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    {results.length} profils chargés
-                  </p>
-                </div>
-                <div className="hidden sm:flex items-center gap-1.5 shrink-0">
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => onRefineSearch('expand')}
-                          disabled={refineLoading}
-                          className="h-8 px-2.5 gap-1.5 text-xs border-green-300 text-green-700 hover:bg-green-50"
-                        >
-                          {refineLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Maximize2 className="w-3.5 h-3.5" />}
-                          Élargir
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p>IA: ajuster les filtres pour obtenir plus de résultats</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => onRefineSearch('narrow')}
-                          disabled={refineLoading}
-                          className="h-8 px-2.5 gap-1.5 text-xs border-orange-300 text-orange-700 hover:bg-orange-50"
-                        >
-                          {refineLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Minimize2 className="w-3.5 h-3.5" />}
-                          Affiner
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p>IA: ajuster les filtres pour des résultats plus ciblés</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-                </div>
+
+                {/* Batch progress bar */}
+                {total > results.length && (
+                  <div className="flex items-center gap-2">
+                    <Progress value={(results.length / total) * 100} className="flex-1 h-1.5" />
+                    <span className="text-[10px] text-muted-foreground whitespace-nowrap">
+                      {results.length}/{total}
+                    </span>
+                  </div>
+                )}
               </div>
             )}
 
@@ -600,20 +619,40 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
               />
             ))}
 
-            {/* Infinite scroll trigger */}
+            {/* Next batch / Load more */}
             <div ref={loadMoreTriggerRef} className="py-4">
               {loadingMore && (
                 <div className="flex items-center justify-center gap-2 py-4">
                   <Loader2 className="w-5 h-5 animate-spin text-primary" />
-                  <span className="text-sm text-muted-foreground">Chargement...</span>
+                  <span className="text-sm text-muted-foreground">Chargement du lot suivant...</span>
                 </div>
               )}
               {!loadingMore && hasMoreResults && cursor && (
-                <div className="flex justify-center">
-                  <Button variant="outline" size="sm" onClick={onLoadMore} className="gap-2">
-                    <Search className="w-3.5 h-3.5" />
-                    Charger 25 profils de plus
-                  </Button>
+                <div className="flex flex-col items-center gap-2 py-2">
+                  {statusCounts.untreated === 0 && results.length > 0 ? (
+                    <>
+                      <div className="flex items-center gap-2 text-sm text-green-600 font-medium">
+                        <CheckCircle2 className="w-4 h-4" />
+                        Lot actuel traité !
+                      </div>
+                      <Button
+                        onClick={onLoadMore}
+                        className="gap-2 bg-primary hover:bg-primary/90"
+                        size="default"
+                      >
+                        Lot suivant
+                        <ChevronRight className="w-4 h-4" />
+                      </Button>
+                      <span className="text-[11px] text-muted-foreground">
+                        {results.length} chargés sur {total?.toLocaleString() || '?'}
+                      </span>
+                    </>
+                  ) : (
+                    <Button variant="outline" size="sm" onClick={onLoadMore} className="gap-2">
+                      <ChevronRight className="w-3.5 h-3.5" />
+                      Charger le lot suivant (25 profils)
+                    </Button>
+                  )}
                 </div>
               )}
               {!hasMoreResults && results.length > 0 && (
