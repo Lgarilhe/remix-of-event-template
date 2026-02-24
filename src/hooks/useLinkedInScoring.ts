@@ -276,7 +276,14 @@ export function useLinkedInScoring({
     }
 
     setScoringInProgress(true);
-    const profilesToScore = results.filter(p => selectedProfiles.has(p.id));
+    // Exclude profiles that already have a score to avoid re-scoring
+    const profilesToScore = results.filter(p => selectedProfiles.has(p.id) && !jobScores[p.id]);
+
+    if (profilesToScore.length === 0) {
+      toast.info('Tous les profils sélectionnés sont déjà scorés');
+      setScoringInProgress(false);
+      return;
+    }
 
     // Batch settings to avoid AI rate limits
     const BATCH_SIZE = 5;
