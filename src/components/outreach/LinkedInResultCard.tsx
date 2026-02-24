@@ -534,15 +534,20 @@ export const LinkedInResultCard: React.FC<LinkedInResultCardProps> = ({
                           <span className="hidden sm:inline">
                             {airtableMatch.match_type === 'fuzzy' ? 'Airtable ?' : 'Airtable'}
                           </span>
-                          {historyData && (historyData.placements.length > 0 || historyData.shortlists.length > 0) && (
-                            <span className="font-bold">
-                              {historyData.placements.length > 0 ? `🏆${historyData.placements.length}` : ''}
-                              {historyData.shortlists.length > 0 ? `${historyData.placements.length > 0 ? ' · ' : ''}⭐${historyData.shortlists.length}` : ''}
-                            </span>
-                          )}
                           {airtableMatch.status && (
                             <span className={`text-[9px] ${airtableMatch.match_type !== 'fuzzy' ? 'opacity-80' : ''}`}>
                               ({airtableMatch.status})
+                            </span>
+                          )}
+                          {historyLoading && (
+                            <Loader2 className="w-2.5 h-2.5 animate-spin" />
+                          )}
+                          {historyData && (
+                            <span className="font-bold">
+                              {historyData.placements.length > 0 && `🏆${historyData.placements.length}`}
+                              {historyData.shortlists.length > 0 && ` ⭐${historyData.shortlists.length}`}
+                              {historyData.notes.length > 0 && ` 📝${historyData.notes.length}`}
+                              {historyData.appointments.length > 0 && ` 📅${historyData.appointments.length}`}
                             </span>
                           )}
                         </Badge>
