@@ -523,47 +523,27 @@ export const LinkedInResultCard: React.FC<LinkedInResultCardProps> = ({
                         </Badge>
                       )}
                       {airtableMatch && (
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Badge className={`text-[10px] px-1.5 py-0 h-4 sm:h-5 shrink-0 gap-1 ${
-                              airtableMatch.match_type === 'fuzzy' 
-                                ? 'bg-teal-100 text-teal-700 border border-dashed border-teal-400 hover:bg-teal-200' 
-                                : 'bg-teal-500 text-white hover:bg-teal-600'
-                            }`}>
-                              <img src={airtableLogo} alt="Airtable" className="w-3 h-3 object-contain" style={{ filter: airtableMatch.match_type !== 'fuzzy' ? 'brightness(10)' : 'none' }} />
-                              <span className="hidden sm:inline">
-                                {airtableMatch.match_type === 'fuzzy' ? 'Airtable ?' : 'Airtable'}
-                              </span>
-                              {historyData && (historyData.placements.length > 0 || historyData.shortlists.length > 0) && (
-                                <span className="font-bold">
-                                  {historyData.placements.length > 0 ? `${historyData.placements.length}P` : ''}
-                                  {historyData.shortlists.length > 0 ? `${historyData.placements.length > 0 ? '·' : ''}${historyData.shortlists.length}S` : ''}
-                                </span>
-                              )}
-                            </Badge>
-                          </TooltipTrigger>
-                          <TooltipContent side="top" className="max-w-xs">
-                            <p className="text-xs font-medium">
-                              {airtableMatch.match_type === 'fuzzy' ? 'Probablement dans Airtable' : 'Déjà dans Airtable'}
-                            </p>
-                            {airtableMatch.full_name && airtableMatch.match_type === 'fuzzy' && (
-                              <p className="text-xs text-muted-foreground">Corrélation nom + entreprise : {airtableMatch.full_name}</p>
-                            )}
-                            {airtableMatch.status && <p className="text-xs text-muted-foreground">Statut : {airtableMatch.status}</p>}
-                            {historyData && historyData.placements.length > 0 && (
-                              <p className="text-xs text-amber-600 font-medium">🏆 {historyData.placements.length} placement{historyData.placements.length > 1 ? 's' : ''}</p>
-                            )}
-                            {historyData && historyData.shortlists.length > 0 && (
-                              <p className="text-xs text-blue-600">⭐ {historyData.shortlists.length} shortlist{historyData.shortlists.length > 1 ? 's' : ''}</p>
-                            )}
-                            {historyData && historyData.appointments.length > 0 && (
-                              <p className="text-xs text-purple-600">📅 {historyData.appointments.length} RDV</p>
-                            )}
-                            {historyData && historyData.notes.length > 0 && (
-                              <p className="text-xs text-muted-foreground">📝 {historyData.notes.length} note{historyData.notes.length > 1 ? 's' : ''}</p>
-                            )}
-                          </TooltipContent>
-                        </Tooltip>
+                        <Badge className={`text-[10px] px-1.5 py-0 h-4 sm:h-5 shrink-0 gap-1 cursor-default ${
+                          airtableMatch.match_type === 'fuzzy' 
+                            ? 'bg-teal-100 text-teal-700 border border-dashed border-teal-400' 
+                            : 'bg-teal-500 text-white'
+                        }`}>
+                          <img src={airtableLogo} alt="Airtable" className="w-3 h-3 object-contain" style={{ filter: airtableMatch.match_type !== 'fuzzy' ? 'brightness(10)' : 'none' }} />
+                          <span className="hidden sm:inline">
+                            {airtableMatch.match_type === 'fuzzy' ? 'Airtable ?' : 'Airtable'}
+                          </span>
+                          {historyData && (historyData.placements.length > 0 || historyData.shortlists.length > 0) && (
+                            <span className="font-bold">
+                              {historyData.placements.length > 0 ? `🏆${historyData.placements.length}` : ''}
+                              {historyData.shortlists.length > 0 ? `${historyData.placements.length > 0 ? ' · ' : ''}⭐${historyData.shortlists.length}` : ''}
+                            </span>
+                          )}
+                          {airtableMatch.status && (
+                            <span className={`text-[9px] ${airtableMatch.match_type !== 'fuzzy' ? 'opacity-80' : ''}`}>
+                              ({airtableMatch.status})
+                            </span>
+                          )}
+                        </Badge>
                       )}
                       {notionMatch && (
                         <Tooltip>
