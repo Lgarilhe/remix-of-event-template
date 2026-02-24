@@ -56,9 +56,38 @@ function extractLinkedInSlug(url: string): string | null {
 
 function normalizeDate(value: string | null | undefined): string | null {
   if (!value) return null;
-  const date = new Date(value);
+
+  const trimmed = value.trim();
+
+  const isoMatch = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (isoMatch) return `${isoMatch[1]}-${isoMatch[2]}-${isoMatch[3]}`;
+
+  const frMatch = trimmed.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (frMatch) return `${frMatch[3]}-${frMatch[2]}-${frMatch[1]}`;
+
+  const timestampMatch = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})[T\s].*$/);
+  if (timestampMatch) return `${timestampMatch[1]}-${timestampMatch[2]}-${timestampMatch[3]}`;
+
+  const date = new Date(trimmed);
   if (isNaN(date.getTime())) return null;
   return date.toISOString().slice(0, 10);
+}
+
+function extractDateFromRawData(rawData: unknown, keys: string[]): string | null {
+  if (!rawData || typeof rawData !== 'object' || Array.isArray(rawData)) return null;
+
+  const data = rawData as Record<string, unknown>;
+
+  for (const key of keys) {
+    const rawValue = data[key];
+    const value = Array.isArray(rawValue) ? rawValue[0] : rawValue;
+    if (typeof value === 'string') {
+      const normalized = normalizeDate(value);
+      if (normalized) return normalized;
+    }
+  }
+
+  return null;
 }
 
 interface UseCandidateHistoryOptions {
@@ -163,21 +192,21 @@ export function useCandidateHistory(
       const [shortlistsRes, placementsRes, notesRes, appointmentsRes] = await Promise.all([
         supabase
           .from('airtable_shortlists')
-          .select('airtable_id, status, date_added, created_at, salary_proposed, job_airtable_id, company_airtable_id')
+          .select('airtable_id, status, date_added, salary_proposed, job_airtable_id, company_airtable_id, raw_data')
           .eq('candidate_airtable_id', candidateAirtableId),
         supabase
           .from('airtable_placements')
-          .select('airtable_id, name, status, start_date, created_at, salary, contract_type, company_airtable_id')
+          .select('airtable_id, name, status, start_date, salary, contract_type, company_airtable_id, raw_data')
           .eq('candidate_airtable_id', candidateAirtableId),
         supabase
           .from('airtable_notes')
-          .select('airtable_id, title, detail, note_type, note_date, created_at, author')
+          .select('airtable_id, title, detail, note_type, note_date, author, raw_data')
           .eq('candidate_airtable_id', candidateAirtableId)
           .order('note_date', { ascending: false })
           .limit(20),
         supabase
           .from('airtable_appointments')
-          .select('airtable_id, title, appointment_date, created_at, appointment_type, status, notes')
+          .select('airtable_id, title, appointment_date, appointment_type, status, notes, raw_data')
           .eq('candidate_airtable_id', candidateAirtableId)
           .order('appointment_date', { ascending: false })
           .limit(20),
@@ -212,7 +241,9 @@ export function useCandidateHistory(
         shortlists: (shortlistsRes.data || []).map(s => ({
           airtable_id: s.airtable_id,
           status: s.status,
-          date_added: normalizeDate(s.date_added) || normalizeDate(s.created_at),
+          date_added:
+            normalizeDate(s.date_added) ||
+            extractDateFromRawData(s.raw_data, ["Date d'ajout", 'Date', 'Date ajout Bullhorn', 'Date de création']),
           job_title: s.job_airtable_id ? jobMap.get(s.job_airtable_id) || null : null,
           company_name: s.company_airtable_id ? companyMap.get(s.company_airtable_id) || null : null,
           salary_proposed: s.salary_proposed,
@@ -221,7 +252,9 @@ export function useCandidateHistory(
           airtable_id: p.airtable_id,
           name: p.name,
           status: p.status,
-          start_date: normalizeDate(p.start_date) || normalizeDate(p.created_at),
+          start_date:
+            normalizeDate(p.start_date) ||
+            extractDateFromRawData(p.raw_data, ['Date de démarrage', 'Date']),
           salary: p.salary,
           contract_type: p.contract_type,
           company_name: p.company_airtable_id ? companyMap.get(p.company_airtable_id) || null : null,
@@ -231,13 +264,15 @@ export function useCandidateHistory(
           title: n.title,
           detail: n.detail,
           note_type: n.note_type,
-          note_date: normalizeDate(n.note_date) || normalizeDate(n.created_at),
+          note_date: normalizeDate(n.note_date) || extractDateFromRawData(n.raw_data, ['Date', 'Date de création']),
           author: n.author,
         })),
         appointments: (appointmentsRes.data || []).map(a => ({
           airtable_id: a.airtable_id,
           title: a.title,
-          appointment_date: normalizeDate(a.appointment_date) || normalizeDate(a.created_at),
+          appointment_date:
+            normalizeDate(a.appointment_date) ||
+            extractDateFromRawData(a.raw_data, ['Date', 'Date du RDV', 'Date de création']),
           appointment_type: a.appointment_type,
           status: a.status,
           notes: a.notes,
