@@ -367,69 +367,92 @@ export function useLinkedInSearchActions(
 
     try {
       const currentFilters = context.filtersRef.current;
-      const baseParams = buildSearchParams(currentFilters, selectedAccount);
-      const params: Record<string, unknown> = {
-        ...baseParams,
-        limit: RESULTS_PER_BATCH,
-        ...(appendMode && cursor ? { cursor } : {}),
-      };
-
-      console.log('[LinkedInSearch] Search params:', params);
-
-      const response = await supabase.functions.invoke('unipile-search', {
-        body: params,
-      });
-
-      if (response.error) throw response.error;
-      if (!response.data?.success) throw new Error(response.data?.error);
-
-      const batch: LinkedInProfile[] = response.data.results || [];
-      const batchCursor: string | null = response.data.cursor || null;
-      const fetchedTotal: number | null = response.data.total || null;
-
-      quota.recordAction('searchResultsFetched', batch.length);
-
-      // Apply client-side experience filter
-      const filteredBatch = filterByCalculatedExperience(
-        batch,
-        filters.calculated_experience_min,
-        filters.calculated_experience_max
-      );
-
-      // Dedupe and filter treated profiles
+      
+      // Accumulate profiles across multiple API calls until we reach the target batch size
+      let allCollected: LinkedInProfile[] = [];
+      let currentCursor = appendMode ? cursor : null;
+      let latestTotal: number | null = null;
+      let exhausted = false;
       const seen = new Set<string>();
+      const MAX_FETCH_ROUNDS = 5; // Safety limit to prevent infinite loops
 
+      // Pre-populate seen set with existing results for dedup
       if (appendMode) {
         results.forEach((p) => p?.id && seen.add(p.id));
       }
 
-      const collected: LinkedInProfile[] = [];
+      for (let round = 0; round < MAX_FETCH_ROUNDS; round++) {
+        const baseParams = buildSearchParams(currentFilters, selectedAccount);
+        const params: Record<string, unknown> = {
+          ...baseParams,
+          limit: RESULTS_PER_BATCH,
+          ...(currentCursor ? { cursor: currentCursor } : {}),
+        };
 
-      for (const p of filteredBatch) {
-        if (!p?.id) continue;
-        if (seen.has(p.id)) continue;
-        seen.add(p.id);
-        collected.push(p);
+        if (round === 0) {
+          console.log('[LinkedInSearch] Search params:', params);
+        }
+
+        const response = await supabase.functions.invoke('unipile-search', {
+          body: params,
+        });
+
+        if (response.error) throw response.error;
+        if (!response.data?.success) throw new Error(response.data?.error);
+
+        const batch: LinkedInProfile[] = response.data.results || [];
+        const batchCursor: string | null = response.data.cursor || null;
+        const fetchedTotal: number | null = response.data.total || null;
+
+        if (fetchedTotal !== null) latestTotal = fetchedTotal;
+        quota.recordAction('searchResultsFetched', batch.length);
+
+        // Apply client-side experience filter
+        const filteredBatch = filterByCalculatedExperience(
+          batch,
+          currentFilters.calculated_experience_min,
+          currentFilters.calculated_experience_max
+        );
+
+        // Dedupe
+        for (const p of filteredBatch) {
+          if (!p?.id) continue;
+          if (seen.has(p.id)) continue;
+          seen.add(p.id);
+          allCollected.push(p);
+        }
+
+        // Check if API is exhausted
+        if (batch.length === 0 || !batchCursor) {
+          exhausted = true;
+          currentCursor = null;
+          break;
+        }
+
+        currentCursor = batchCursor;
+
+        // If we've collected enough, stop
+        if (allCollected.length >= RESULTS_PER_BATCH) {
+          break;
+        }
+
+        // Check quota before next round
+        if (!quota.canPerformAction('searchResultsFetched', RESULTS_PER_BATCH)) {
+          console.log('[LinkedInSearch] Quota limit reached, stopping auto-fetch');
+          break;
+        }
+
+        console.log(`[LinkedInSearch] Round ${round + 1}: only ${allCollected.length} after filtering, fetching more...`);
       }
 
-      // Only mark as exhausted when API explicitly returns no cursor AND no results,
-      // OR when we've loaded all results according to total count
-      const totalLoaded = appendMode ? results.length + collected.length : collected.length;
-      const reachedTotal = fetchedTotal !== null && totalLoaded >= fetchedTotal;
+      // Determine if there are more results
+      const totalLoaded = appendMode ? results.length + allCollected.length : allCollected.length;
+      const reachedTotal = latestTotal !== null && totalLoaded >= latestTotal;
       
-      if ((batch.length === 0 && !batchCursor) || reachedTotal) {
+      if (exhausted || reachedTotal) {
         setHasMoreResults(false);
-      } else if (!batchCursor && batch.length > 0) {
-        // API returned results but no cursor — might be a pagination quirk
-        // Only stop if we're close to total
-        if (fetchedTotal !== null && totalLoaded >= fetchedTotal * 0.95) {
-          setHasMoreResults(false);
-        } else {
-          // Keep hasMoreResults true but clear cursor so we can't load more
-          // This prevents the "all loaded" message from showing prematurely
-          console.warn(`[LinkedInSearch] No cursor returned but only ${totalLoaded}/${fetchedTotal} loaded`);
-          setHasMoreResults(false);
-        }
+      } else {
+        setHasMoreResults(true);
       }
 
       if (quota.isNearLimit('searchResultsFetched')) {
@@ -437,15 +460,15 @@ export function useLinkedInSearchActions(
       }
 
       if (appendMode) {
-        setResults(prev => [...prev, ...collected]);
+        setResults(prev => [...prev, ...allCollected]);
       } else {
-        setResults(collected);
+        setResults(allCollected);
         setHasSearched(true);
       }
 
-      setCursor(batchCursor);
+      setCursor(currentCursor);
       if (!appendMode) {
-        setTotal(fetchedTotal);
+        setTotal(latestTotal);
       }
 
     } catch (error: any) {
