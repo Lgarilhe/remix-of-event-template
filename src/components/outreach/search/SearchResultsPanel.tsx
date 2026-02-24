@@ -7,6 +7,7 @@ import { JobMatchResult } from '@/components/outreach/JobScoreDisplay';
 import { JobCandidateStatus } from '@/hooks/useJobCandidateStatus';
 import { Job } from '@/pages/JobSpace';
 import { SourcingProject } from '@/hooks/useSourcingProjects';
+import { useAirtableMatch } from '@/hooks/useAirtableMatch';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
@@ -136,6 +137,12 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
 }) => {
   const treatedCount_db = treatedCandidates.size;
 
+  // Airtable match - collect all profile URLs
+  const profileUrls = useMemo(() => 
+    results.map(r => r.profile_url || r.public_profile_url || '').filter(Boolean),
+    [results]
+  );
+  const { getMatch: getAirtableMatch } = useAirtableMatch(profileUrls);
   // Count by status for filter badges
   const statusCounts = React.useMemo(() => {
     const counts = { scored: 0, scored_go: 0, scored_maybe: 0, scored_contacted: 0, scored_not_contacted: 0, messaged: 0, dismissed: 0, untreated: 0 };
@@ -616,6 +623,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
                   recommendation: treatedCandidates.get(profile.id)!.recommendation,
                   updated_at: treatedCandidates.get(profile.id)!.updated_at,
                 } : null}
+                airtableMatch={getAirtableMatch(profile.profile_url || profile.public_profile_url)}
               />
             ))}
 

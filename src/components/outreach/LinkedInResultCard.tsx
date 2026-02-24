@@ -62,6 +62,7 @@ interface LinkedInResultCardProps {
   onProfileTreated?: () => void;
   onArchive?: () => void;
   candidateStatus?: { status: string; score?: number | null; recommendation?: string | null; updated_at?: string } | null;
+  airtableMatch?: { source_base: string; full_name: string | null; status: string | null } | null;
 }
 
 interface ChatMessage {
@@ -94,6 +95,7 @@ export const LinkedInResultCard: React.FC<LinkedInResultCardProps> = ({
   onProfileTreated,
   onArchive,
   candidateStatus,
+  airtableMatch,
 }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const [showMessageModal, setShowMessageModal] = useState(false);
@@ -508,6 +510,23 @@ export const LinkedInResultCard: React.FC<LinkedInResultCardProps> = ({
                           <Sparkles className="w-3 h-3 mr-0.5" />
                           Réactif
                         </Badge>
+                      )}
+                      {airtableMatch && (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Badge variant="outline" className="text-[10px] px-1 sm:px-1.5 py-0 h-4 sm:h-5 text-teal-700 border-teal-300 bg-teal-50 shrink-0 gap-0.5">
+                              <FileText className="w-2.5 h-2.5" />
+                              <span className="hidden sm:inline">
+                                {airtableMatch.source_base === 'konekt' ? 'Konekt' : 'Prospect'}
+                              </span>
+                              <span className="sm:hidden">AT</span>
+                            </Badge>
+                          </TooltipTrigger>
+                          <TooltipContent side="top" className="max-w-xs">
+                            <p className="text-xs font-medium">Déjà dans Airtable ({airtableMatch.source_base === 'konekt' ? 'Konekt' : 'Konekt prospect'})</p>
+                            {airtableMatch.status && <p className="text-xs text-muted-foreground">Statut : {airtableMatch.status}</p>}
+                          </TooltipContent>
+                        </Tooltip>
                       )}
                       {/* Salary adequacy badge from job scoring */}
                       {jobScore?.salary_analysis && (
