@@ -18,7 +18,7 @@ import { Progress } from '@/components/ui/progress';
 import {
   Search, Loader2, Users, Mail, Archive,
   Eye, FolderPlus, Target, Sparkles, Maximize2, Minimize2,
-  ChevronRight, CheckCircle2
+  ChevronRight, CheckCircle2, Database
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -45,7 +45,7 @@ interface SearchResultsPanelProps {
   // Status
   autoHideTreated: boolean;
   showDismissed: boolean;
-  statusFilter: 'all' | 'untreated' | 'scored' | 'scored_go' | 'scored_maybe' | 'scored_not_contacted' | 'messaged' | 'dismissed';
+  statusFilter: 'all' | 'untreated' | 'scored' | 'scored_go' | 'scored_maybe' | 'scored_not_contacted' | 'messaged' | 'dismissed' | 'known';
   treatedCount: number;
   dismissedCount: number;
   
@@ -71,7 +71,7 @@ interface SearchResultsPanelProps {
   onBulkAddToProject: () => void;
   onSetAutoHideTreated: (v: boolean) => void;
   onSetShowDismissed: (v: boolean) => void;
-  onSetStatusFilter: (v: 'all' | 'untreated' | 'scored' | 'scored_go' | 'scored_maybe' | 'scored_not_contacted' | 'messaged' | 'dismissed') => void;
+  onSetStatusFilter: (v: 'all' | 'untreated' | 'scored' | 'scored_go' | 'scored_maybe' | 'scored_not_contacted' | 'messaged' | 'dismissed' | 'known') => void;
   onSetSortByScore: (v: boolean) => void;
   onSetShowBulkInMailModal: (v: boolean) => void;
   onProfileTreated: (id: string) => void;
@@ -152,8 +152,13 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
   const { getMatch: getNotionMatch } = useNotionMatch(profileUrls);
   // Count by status for filter badges
   const statusCounts = React.useMemo(() => {
-    const counts = { scored: 0, scored_go: 0, scored_maybe: 0, scored_contacted: 0, scored_not_contacted: 0, messaged: 0, dismissed: 0, untreated: 0 };
+    const counts = { scored: 0, scored_go: 0, scored_maybe: 0, scored_contacted: 0, scored_not_contacted: 0, messaged: 0, dismissed: 0, untreated: 0, known: 0 };
     for (const r of results) {
+      const profileUrl = r.profile_url || r.public_profile_url;
+      // Count "known" (in Airtable or Notion)
+      if (getAirtableMatch(profileUrl) || getNotionMatch(profileUrl)) {
+        counts.known++;
+      }
       const s = treatedCandidates.get(r.id);
       if (!s) { counts.untreated++; continue; }
       if (s.status === 'scored') {
@@ -165,7 +170,6 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
       }
       else if (s.status === 'messaged' || s.status === 'replied') {
         counts.messaged++;
-        // If this messaged profile also has a score, count it in scored totals
         if (jobScores[r.id] || s.score != null) {
           counts.scored++;
           counts.scored_contacted++;
@@ -177,7 +181,16 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
       else if (s.status === 'dismissed') counts.dismissed++;
     }
     return counts;
-  }, [results, treatedCandidates, jobScores]);
+  }, [results, treatedCandidates, jobScores, getAirtableMatch, getNotionMatch]);
+
+  // Apply "known" filter to filteredResults
+  const displayResults = React.useMemo(() => {
+    if (statusFilter !== 'known') return filteredResults;
+    return filteredResults.filter(r => {
+      const profileUrl = r.profile_url || r.public_profile_url;
+      return !!(getAirtableMatch(profileUrl) || getNotionMatch(profileUrl));
+    });
+  }, [filteredResults, statusFilter, getAirtableMatch, getNotionMatch]);
 
   return (
     <div className="bg-white rounded-xl border border-border flex flex-col h-[calc(100vh-200px)] lg:h-[calc(100vh-120px)] lg:sticky lg:top-24 min-w-0 overflow-hidden">
@@ -202,10 +215,10 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
           {hasSearched && (
             <div className="flex items-center gap-2 text-sm">
               <span className="font-semibold text-foreground">
-                {filteredResults.length}
+                {displayResults.length}
               </span>
               <span className="text-muted-foreground">
-                profil{filteredResults.length > 1 ? 's' : ''}
+                profil{displayResults.length > 1 ? 's' : ''}
               </span>
               {total !== null && (
                 <span className="text-xs text-muted-foreground/60">
@@ -227,6 +240,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
                   { value: 'untreated' as const, label: 'Nouveaux', icon: Eye, count: statusCounts.untreated },
                   { value: 'scored' as const, label: 'Scorés', icon: Target, count: statusCounts.scored },
                   { value: 'messaged' as const, label: 'Contactés', icon: Mail, count: statusCounts.messaged },
+                  { value: 'known' as const, label: 'Connus', icon: Database, count: statusCounts.known },
                   { value: 'dismissed' as const, label: 'Archivés', icon: Archive, count: statusCounts.dismissed },
                 ]).map(({ value, label, icon: Icon, count }) => {
                   const isActive = statusFilter === value || 
@@ -601,7 +615,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
             )}
 
             {/* Profile cards */}
-            {filteredResults.map((profile, index) => (
+            {displayResults.map((profile, index) => (
               <LinkedInResultCard
                 key={profile.id || `profile-${index}`}
                 profile={profile}

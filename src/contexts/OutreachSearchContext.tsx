@@ -34,8 +34,8 @@ interface OutreachSearchState {
   setSelectedProfiles: React.Dispatch<React.SetStateAction<Set<string>>>;
   
   // View state
-  statusFilter: 'all' | 'untreated' | 'messaged' | 'dismissed';
-  setStatusFilter: React.Dispatch<React.SetStateAction<'all' | 'untreated' | 'messaged' | 'dismissed'>>;
+  statusFilter: 'all' | 'untreated' | 'messaged' | 'dismissed' | 'known';
+  setStatusFilter: React.Dispatch<React.SetStateAction<'all' | 'untreated' | 'messaged' | 'dismissed' | 'known'>>;
   showDismissed: boolean;
   setShowDismissed: React.Dispatch<React.SetStateAction<boolean>>;
 }
@@ -71,7 +71,7 @@ export const OutreachSearchProvider: React.FC<{ children: ReactNode }> = ({ chil
   const [selectedProfiles, setSelectedProfiles] = useState<Set<string>>(new Set());
   
   // View state
-  const [statusFilter, setStatusFilter] = useState<'all' | 'untreated' | 'messaged' | 'dismissed'>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'untreated' | 'messaged' | 'dismissed' | 'known'>('all');
   const [showDismissed, setShowDismissed] = useState(false);
   
   const value: OutreachSearchState = {
