@@ -197,12 +197,12 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
           </div>
 
           {/* Profiles preview */}
-          <ScrollArea className="h-[200px]">
-            <div className="space-y-2">
+          <ScrollArea className="h-[240px] rounded-lg border bg-muted/30 p-1">
+            <div className="space-y-1.5">
               {profiles.map((profile) => (
                 <div
                   key={profile.id}
-                  className="flex items-center gap-3 p-2 rounded-lg bg-background border"
+                  className="flex items-center gap-3 p-2.5 rounded-lg bg-background border border-border/60 shadow-sm"
                 >
                   {profile.profile_picture_url ? (
                     <img
