@@ -409,29 +409,20 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
     }
   }, [selectedAccount, search.selectedJob, search.filters, search.total, search.results.length, search.setFilters, search.setResults, search.setCursor, search.setHasMoreResults, search.setHasSearched, search.setTotal]);
 
-  // Infinite scroll observer
+  // No auto-infinite scroll — batch workflow uses manual "Lot suivant" button
+  // The loadMoreTriggerRef is kept for the button placement in SearchResultsPanel
+
+  // Auto-switch to "Nouveaux" filter when new batch loads and there are untreated profiles
+  const prevResultsLengthRef = useRef(0);
   useEffect(() => {
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (
-          entries[0].isIntersecting &&
-          search.hasMoreResults &&
-          !search.loading &&
-          !search.loadingMore &&
-          search.cursor
-        ) {
-          handleLoadMore();
-        }
-      },
-      { threshold: 0.1 }
-    );
-
-    if (loadMoreTriggerRef.current) {
-      observer.observe(loadMoreTriggerRef.current);
+    if (search.results.length > prevResultsLengthRef.current && search.hasSearched) {
+      // New batch loaded — switch to untreated view
+      if (search.statusFilter !== 'untreated' && search.statusFilter !== 'all') {
+        search.setStatusFilter('untreated');
+      }
     }
-
-    return () => observer.disconnect();
-  }, [search.hasMoreResults, search.loading, search.loadingMore, search.cursor, handleLoadMore]);
+    prevResultsLengthRef.current = search.results.length;
+  }, [search.results.length, search.hasSearched]);
 
   const [filtersOpen, setFiltersOpen] = useState(false);
 
