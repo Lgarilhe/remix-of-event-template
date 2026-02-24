@@ -135,6 +135,12 @@ export const LinkedInResultCard: React.FC<LinkedInResultCardProps> = ({
 
   const formatHistoryDate = (dateStr: string | null | undefined) => {
     if (!dateStr) return null;
+
+    const isoMatch = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (isoMatch) {
+      return `${isoMatch[3]}/${isoMatch[2]}/${isoMatch[1].slice(2)}`;
+    }
+
     const date = new Date(dateStr);
     if (isNaN(date.getTime())) return null;
     return date.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: '2-digit' });
@@ -148,13 +154,9 @@ export const LinkedInResultCard: React.FC<LinkedInResultCardProps> = ({
         ...historyData.appointments.map((a) => a.appointment_date),
       ]
         .filter((d): d is string => Boolean(d))
-        .map((d) => new Date(d))
-        .filter((d) => !isNaN(d.getTime()))
-        .sort((a, b) => b.getTime() - a.getTime())[0]
+        .sort((a, b) => (a > b ? -1 : a < b ? 1 : 0))[0] ?? null
     : null;
-  const historyLatestDateLabel = historyLatestDate
-    ? formatHistoryDate(historyLatestDate.toISOString())
-    : null;
+  const historyLatestDateLabel = formatHistoryDate(historyLatestDate);
 
   // Handle both API formats
   const firstName = profile.first_name || profile.name?.split(' ')[0] || '';
