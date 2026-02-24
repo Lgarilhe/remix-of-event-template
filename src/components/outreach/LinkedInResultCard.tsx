@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { LinkedInProfile } from './types';
+import { useCandidateHistory } from '@/hooks/useCandidateHistory';
+import { CandidateHistoryPanel } from './CandidateHistoryPanel';
 import { JobScoreDisplay, JobMatchResult, SalaryBadge } from './JobScoreDisplay';
 import { OutreachMessageModal } from './OutreachMessageModal';
 import { Job } from '@/pages/JobSpace';
@@ -122,6 +124,12 @@ export const LinkedInResultCard: React.FC<LinkedInResultCardProps> = ({
   // Reply state
   const [replyText, setReplyText] = useState('');
   const [isSending, setIsSending] = useState(false);
+
+  // Airtable history - only fetch when expanded and airtableMatch exists
+  const candidateProfileUrl = profile.profile_url || profile.public_profile_url;
+  const { data: historyData, loading: historyLoading } = useCandidateHistory(
+    isExpanded && airtableMatch ? candidateProfileUrl : null
+  );
 
   // Handle both API formats
   const firstName = profile.first_name || profile.name?.split(' ')[0] || '';
@@ -847,6 +855,13 @@ export const LinkedInResultCard: React.FC<LinkedInResultCardProps> = ({
                       </span>
                     )}
                   </div>
+                </div>
+              )}
+
+              {/* Airtable History */}
+              {isExpanded && airtableMatch && (historyLoading || historyData) && (
+                <div className="mt-3 rounded-lg border border-teal-200/50 bg-teal-50/30 overflow-hidden">
+                  <CandidateHistoryPanel data={historyData} loading={historyLoading} />
                 </div>
               )}
 
