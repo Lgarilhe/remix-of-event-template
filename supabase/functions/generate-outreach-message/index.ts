@@ -492,37 +492,55 @@ ${statusInstructions[candidateStatus] || statusInstructions.other}
    - 200-400 CARACTÈRES pour le message (hors signature) = 3-5 phrases
    - Phrases courtes et percutantes, PAS de tirets, PAS de listes
    - SAUTS DE LIGNE entre chaque idée (2-3 paragraphes courts)
-   - Structure: Accroche perso (1 phrase) → Ce que le candidat y gagne (1-2 phrases) → CTA non-engageant (1 phrase)
+   - Structure: 
+     PHRASE 1 = PERSONNALISATION PURE (obligatoire). Une phrase naturelle qui montre que tu as lu le profil.
+     PAS de structure "Du X au Y", PAS de "Ton parcours de X à Y", PAS de résumé de carrière.
+     C'est une OBSERVATION SPÉCIFIQUE: quelque chose que tu as remarqué, une question sur un choix de carrière, une référence à un post ou au À propos.
+     → PHRASE 2-3 = Ce que le candidat y gagne (1-2 phrases)
+     → PHRASE 4 = CTA non-engageant (1 phrase)
    - Signature: "${senderName || '[Prénom]'}"
    
    IMPORTANT: \\n\\n entre les paragraphes. Jamais de bloc massif.
+
+   ⛔ STRUCTURES D'ACCROCHE INTERDITES:
+   - "Du [entreprise] au [entreprise]..." ❌
+   - "Ton parcours de [X] à [Y]..." ❌  
+   - "De [rôle] à [rôle]..." ❌
+   - "Après [N] ans chez [entreprise]..." ❌ (trop résumé CV)
+   - Toute formulation qui RÉSUME le parcours au lieu de RÉAGIR à un élément précis ❌
+
+   ✅ BONNES ACCROCHES (phrase 1):
+   - "Tu mentionnes [X] dans ton profil, c'est exactement le genre de mindset qu'on cherche." (réf À propos)
+   - "J'ai vu ton post sur [sujet], ça résonne avec ce qu'on construit." (réf post)
+   - "Ton passage chez [entreprise] m'intrigue, comment tu gérais [problème spécifique] ?" (question sur une XP)
+   - "Le fait que tu sois passé de [techno] à [techno], c'est rare et c'est ce qu'il nous faut." (observation précise)
 
 === EXEMPLES (BONNES PRATIQUES 2025) ===
 
 EXEMPLE 1 - MODE RPO, accroche "À propos":
 "Salut Thomas,
 
-Tu parles de DDD et d'ownership dans ton profil. On monte le cloud souverain chez ${clientName}, stack Go/K8s, tu définirais l'archi toi-même.
+Tu mentionnes le DDD et l'ownership dans ton profil, c'est pile le mindset qu'on cherche chez ${clientName}. On monte le cloud souverain, stack Go/K8s, tu définirais l'archi toi-même.
 
-Dispo pour un call de 15 min ?
+Curieux d'avoir ton avis, même si t'es pas en recherche.
 
 Marc"
 
-EXEMPLE 2 - MODE SUCCÈS, ancien employeur commun:
+EXEMPLE 2 - MODE SUCCÈS, accroche parcours:
 "Salut Julie,
 
-Ex-Doctolib aussi ? Je recrute pour Alan, Data Engineer senior. Stack dbt/BigQuery, full remote, équipe de 4 seniors. Impact direct sur les décisions produit.
+Le fait que tu sois restée 4 ans chez Doctolib sur la data pipeline, ça montre que tu aimes creuser un sujet. Chez Alan ils cherchent exactement ça, Data Engineer senior, stack dbt/BigQuery, full remote.
 
-On se cale un call cette semaine ?
+Tu recommanderais quelqu'un pour ce type de poste ?
 
 Marc"
 
-EXEMPLE 3 - Accroche question ouverte (peu d'infos sur le profil):
+EXEMPLE 3 - Accroche post LinkedIn:
 "Salut Alex,
 
-Qu'est-ce qui te ferait bouger aujourd'hui ? Je recrute un Lead Backend pour ${clientName}, projet greenfield, stack moderne.
+Ton post sur les micro-services m'a bien parlé. On a un projet greenfield chez ${clientName} qui part sur cette approche, Lead Backend, stack moderne.
 
-Curieux d'avoir ton avis, même si tu n'es pas en recherche active.
+Ça t'inspire un avis ?
 
 Marc"
 
