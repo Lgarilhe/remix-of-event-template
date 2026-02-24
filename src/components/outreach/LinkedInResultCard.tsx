@@ -65,7 +65,7 @@ interface LinkedInResultCardProps {
   onProfileTreated?: () => void;
   onArchive?: () => void;
   candidateStatus?: { status: string; score?: number | null; recommendation?: string | null; updated_at?: string } | null;
-  airtableMatch?: { source_base: string; full_name: string | null; status: string | null; match_type?: 'url' | 'fuzzy' } | null;
+  airtableMatch?: { airtable_id: string; source_base: string; full_name: string | null; status: string | null; match_type?: 'url' | 'fuzzy' } | null;
   notionMatch?: { id: string; name: string } | null;
 }
 
@@ -125,10 +125,12 @@ export const LinkedInResultCard: React.FC<LinkedInResultCardProps> = ({
   const [replyText, setReplyText] = useState('');
   const [isSending, setIsSending] = useState(false);
 
-  // Airtable history - fetch when airtableMatch exists (not just when expanded)
+  // Airtable history - use airtable_id directly when available (fuzzy matches may not have linkedin_url)
   const candidateProfileUrl = profile.profile_url || profile.public_profile_url;
   const { data: historyData, loading: historyLoading } = useCandidateHistory(
-    airtableMatch ? candidateProfileUrl : null
+    airtableMatch
+      ? { linkedinUrl: candidateProfileUrl, airtableId: airtableMatch.airtable_id }
+      : null
   );
 
   // Handle both API formats

@@ -46,7 +46,7 @@ export interface CandidateHistoryData {
   }>;
 }
 
-// Global cache by linkedin URL
+// Global cache by key (linkedin url or airtable_id)
 const historyCache = new Map<string, CandidateHistoryData | null>();
 
 function extractLinkedInSlug(url: string): string | null {
@@ -54,15 +54,44 @@ function extractLinkedInSlug(url: string): string | null {
   return match ? match[1].toLowerCase() : null;
 }
 
-export function useCandidateHistory(linkedinUrl: string | null | undefined) {
+interface UseCandidateHistoryOptions {
+  linkedinUrl?: string | null;
+  airtableId?: string | null;
+}
+
+/**
+ * Fetch candidate history from Airtable cache tables.
+ * Accepts either a LinkedIn URL or a direct Airtable ID (for fuzzy-matched candidates without LinkedIn URL).
+ */
+export function useCandidateHistory(
+  linkedinUrlOrOptions: string | null | undefined | UseCandidateHistoryOptions
+) {
+  // Normalize input: support both old string API and new options API
+  let resolvedOptions: UseCandidateHistoryOptions;
+  if (linkedinUrlOrOptions == null || typeof linkedinUrlOrOptions === 'string') {
+    resolvedOptions = { linkedinUrl: linkedinUrlOrOptions as string | null | undefined };
+  } else {
+    resolvedOptions = linkedinUrlOrOptions;
+  }
+
+  const { linkedinUrl, airtableId } = resolvedOptions;
+
+  
+
   const [data, setData] = useState<CandidateHistoryData | null>(null);
   const [loading, setLoading] = useState(false);
   const [loaded, setLoaded] = useState(false);
 
-  const fetchHistory = useCallback(async () => {
-    if (!linkedinUrl || loaded || loading) return;
+  const cacheKey = airtableId
+    ? `at:${airtableId}`
+    : linkedinUrl
+      ? linkedinUrl.toLowerCase().replace(/\/$/, '')
+      : null;
 
-    const cacheKey = linkedinUrl.toLowerCase().replace(/\/$/, '');
+  const fetchHistory = useCallback(async () => {
+    if ((!linkedinUrl && !airtableId) || loaded || loading) return;
+    if (!cacheKey) return;
+
     const cached = historyCache.get(cacheKey);
     if (cached !== undefined) {
       setData(cached);
@@ -72,51 +101,82 @@ export function useCandidateHistory(linkedinUrl: string | null | undefined) {
 
     setLoading(true);
     try {
-      // Step 1: Find the candidate by LinkedIn URL slug
-      const slug = extractLinkedInSlug(linkedinUrl);
-      if (!slug) { setLoading(false); setLoaded(true); return; }
+      let candidateAirtableId = airtableId || null;
 
-      const { data: candidates, error: candError } = await supabase
-        .from('airtable_candidates')
-        .select('airtable_id, full_name, status, email, phone, source_base, skills, linkedin_url')
-        .ilike('linkedin_url', `%${slug}%`)
-        .limit(1);
+      // If no direct airtable_id, look up by LinkedIn URL
+      if (!candidateAirtableId && linkedinUrl) {
+        const slug = extractLinkedInSlug(linkedinUrl);
+        if (!slug) { setLoading(false); setLoaded(true); return; }
 
-      if (candError || !candidates?.length) {
+        const { data: candidates, error: candError } = await supabase
+          .from('airtable_candidates')
+          .select('airtable_id, full_name, status, email, phone, source_base, skills, linkedin_url')
+          .ilike('linkedin_url', `%${slug}%`)
+          .limit(1);
+
+        if (candError || !candidates?.length) {
+          historyCache.set(cacheKey, null);
+          setLoaded(true);
+          setLoading(false);
+          return;
+        }
+
+        candidateAirtableId = candidates[0].airtable_id;
+      }
+
+      if (!candidateAirtableId) {
         historyCache.set(cacheKey, null);
         setLoaded(true);
         setLoading(false);
         return;
       }
 
-      const candidate = candidates[0];
-      const airtableId = candidate.airtable_id;
+      // Fetch candidate info (if we don't have it yet from URL lookup)
+      let candidateInfo: CandidateHistoryData['candidate'] = null;
+      const { data: candData } = await supabase
+        .from('airtable_candidates')
+        .select('airtable_id, full_name, status, email, phone, source_base, skills')
+        .eq('airtable_id', candidateAirtableId)
+        .limit(1);
 
-      // Step 2: Fetch all related data in parallel
+      if (candData?.length) {
+        const c = candData[0];
+        candidateInfo = {
+          airtable_id: c.airtable_id,
+          full_name: c.full_name,
+          status: c.status,
+          email: c.email,
+          phone: c.phone,
+          source_base: c.source_base,
+          skills: c.skills,
+        };
+      }
+
+      // Fetch all related data in parallel
       const [shortlistsRes, placementsRes, notesRes, appointmentsRes] = await Promise.all([
         supabase
           .from('airtable_shortlists')
           .select('airtable_id, status, date_added, salary_proposed, job_airtable_id, company_airtable_id')
-          .eq('candidate_airtable_id', airtableId),
+          .eq('candidate_airtable_id', candidateAirtableId),
         supabase
           .from('airtable_placements')
           .select('airtable_id, name, status, start_date, salary, contract_type, company_airtable_id')
-          .eq('candidate_airtable_id', airtableId),
+          .eq('candidate_airtable_id', candidateAirtableId),
         supabase
           .from('airtable_notes')
           .select('airtable_id, title, detail, note_type, note_date, author')
-          .eq('candidate_airtable_id', airtableId)
+          .eq('candidate_airtable_id', candidateAirtableId)
           .order('note_date', { ascending: false })
           .limit(20),
         supabase
           .from('airtable_appointments')
           .select('airtable_id, title, appointment_date, appointment_type, status, notes')
-          .eq('candidate_airtable_id', airtableId)
+          .eq('candidate_airtable_id', candidateAirtableId)
           .order('appointment_date', { ascending: false })
           .limit(20),
       ]);
 
-      // Step 3: Resolve company & job names
+      // Resolve company & job names
       const companyIds = new Set<string>();
       const jobIds = new Set<string>();
 
@@ -141,15 +201,7 @@ export function useCandidateHistory(linkedinUrl: string | null | undefined) {
       const jobMap = new Map((jobsRes.data || []).map(j => [j.airtable_id, j.title]));
 
       const result: CandidateHistoryData = {
-        candidate: {
-          airtable_id: candidate.airtable_id,
-          full_name: candidate.full_name,
-          status: candidate.status,
-          email: candidate.email,
-          phone: candidate.phone,
-          source_base: candidate.source_base,
-          skills: candidate.skills,
-        },
+        candidate: candidateInfo,
         shortlists: (shortlistsRes.data || []).map(s => ({
           airtable_id: s.airtable_id,
           status: s.status,
@@ -193,13 +245,13 @@ export function useCandidateHistory(linkedinUrl: string | null | undefined) {
     } finally {
       setLoading(false);
     }
-  }, [linkedinUrl, loaded, loading]);
+  }, [linkedinUrl, airtableId, cacheKey, loaded, loading]);
 
   useEffect(() => {
-    if (linkedinUrl && !loaded) {
+    if ((linkedinUrl || airtableId) && !loaded) {
       fetchHistory();
     }
-  }, [linkedinUrl]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [linkedinUrl, airtableId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return { data, loading, loaded, refetch: fetchHistory };
 }
