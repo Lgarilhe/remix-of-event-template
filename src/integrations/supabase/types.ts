@@ -14,6 +14,60 @@ export type Database = {
   }
   public: {
     Tables: {
+      airtable_appointments: {
+        Row: {
+          airtable_id: string
+          appointment_date: string | null
+          appointment_type: string | null
+          candidate_airtable_id: string | null
+          contact_airtable_id: string | null
+          created_at: string
+          id: string
+          job_airtable_id: string | null
+          notes: string | null
+          raw_data: Json | null
+          shortlist_airtable_id: string | null
+          source_base: string
+          status: string | null
+          synced_at: string
+          title: string | null
+        }
+        Insert: {
+          airtable_id: string
+          appointment_date?: string | null
+          appointment_type?: string | null
+          candidate_airtable_id?: string | null
+          contact_airtable_id?: string | null
+          created_at?: string
+          id?: string
+          job_airtable_id?: string | null
+          notes?: string | null
+          raw_data?: Json | null
+          shortlist_airtable_id?: string | null
+          source_base?: string
+          status?: string | null
+          synced_at?: string
+          title?: string | null
+        }
+        Update: {
+          airtable_id?: string
+          appointment_date?: string | null
+          appointment_type?: string | null
+          candidate_airtable_id?: string | null
+          contact_airtable_id?: string | null
+          created_at?: string
+          id?: string
+          job_airtable_id?: string | null
+          notes?: string | null
+          raw_data?: Json | null
+          shortlist_airtable_id?: string | null
+          source_base?: string
+          status?: string | null
+          synced_at?: string
+          title?: string | null
+        }
+        Relationships: []
+      }
       airtable_candidates: {
         Row: {
           airtable_id: string
@@ -30,6 +84,7 @@ export type Database = {
           preferred_contract: string | null
           raw_data: Json | null
           skills: string[] | null
+          source_base: string
           status: string | null
           synced_at: string
         }
@@ -48,6 +103,7 @@ export type Database = {
           preferred_contract?: string | null
           raw_data?: Json | null
           skills?: string[] | null
+          source_base?: string
           status?: string | null
           synced_at?: string
         }
@@ -66,6 +122,7 @@ export type Database = {
           preferred_contract?: string | null
           raw_data?: Json | null
           skills?: string[] | null
+          source_base?: string
           status?: string | null
           synced_at?: string
         }
@@ -82,6 +139,7 @@ export type Database = {
           id: string
           name: string
           raw_data: Json | null
+          source_base: string
           synced_at: string
           tech_stack: string[] | null
           year_founded: string | null
@@ -96,6 +154,7 @@ export type Database = {
           id?: string
           name: string
           raw_data?: Json | null
+          source_base?: string
           synced_at?: string
           tech_stack?: string[] | null
           year_founded?: string | null
@@ -110,6 +169,7 @@ export type Database = {
           id?: string
           name?: string
           raw_data?: Json | null
+          source_base?: string
           synced_at?: string
           tech_stack?: string[] | null
           year_founded?: string | null
@@ -127,6 +187,7 @@ export type Database = {
           full_name: string | null
           id: string
           raw_data: Json | null
+          source_base: string
           status: string | null
           synced_at: string
           title: string | null
@@ -141,6 +202,7 @@ export type Database = {
           full_name?: string | null
           id?: string
           raw_data?: Json | null
+          source_base?: string
           status?: string | null
           synced_at?: string
           title?: string | null
@@ -155,9 +217,46 @@ export type Database = {
           full_name?: string | null
           id?: string
           raw_data?: Json | null
+          source_base?: string
           status?: string | null
           synced_at?: string
           title?: string | null
+        }
+        Relationships: []
+      }
+      airtable_glossary: {
+        Row: {
+          airtable_id: string
+          category: string | null
+          created_at: string
+          description: string | null
+          id: string
+          raw_data: Json | null
+          source_base: string
+          synced_at: string
+          term: string | null
+        }
+        Insert: {
+          airtable_id: string
+          category?: string | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          raw_data?: Json | null
+          source_base?: string
+          synced_at?: string
+          term?: string | null
+        }
+        Update: {
+          airtable_id?: string
+          category?: string | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          raw_data?: Json | null
+          source_base?: string
+          synced_at?: string
+          term?: string | null
         }
         Relationships: []
       }
@@ -173,6 +272,7 @@ export type Database = {
           id: string
           raw_data: Json | null
           salary: string | null
+          source_base: string
           status: string | null
           synced_at: string
           title: string | null
@@ -188,6 +288,7 @@ export type Database = {
           id?: string
           raw_data?: Json | null
           salary?: string | null
+          source_base?: string
           status?: string | null
           synced_at?: string
           title?: string | null
@@ -203,9 +304,49 @@ export type Database = {
           id?: string
           raw_data?: Json | null
           salary?: string | null
+          source_base?: string
           status?: string | null
           synced_at?: string
           title?: string | null
+        }
+        Relationships: []
+      }
+      airtable_kpi: {
+        Row: {
+          airtable_id: string
+          category: string | null
+          created_at: string
+          id: string
+          name: string | null
+          period: string | null
+          raw_data: Json | null
+          source_base: string
+          synced_at: string
+          value: string | null
+        }
+        Insert: {
+          airtable_id: string
+          category?: string | null
+          created_at?: string
+          id?: string
+          name?: string | null
+          period?: string | null
+          raw_data?: Json | null
+          source_base?: string
+          synced_at?: string
+          value?: string | null
+        }
+        Update: {
+          airtable_id?: string
+          category?: string | null
+          created_at?: string
+          id?: string
+          name?: string | null
+          period?: string | null
+          raw_data?: Json | null
+          source_base?: string
+          synced_at?: string
+          value?: string | null
         }
         Relationships: []
       }
@@ -223,6 +364,7 @@ export type Database = {
           note_type: string | null
           raw_data: Json | null
           shortlist_airtable_id: string | null
+          source_base: string
           synced_at: string
           title: string | null
         }
@@ -239,6 +381,7 @@ export type Database = {
           note_type?: string | null
           raw_data?: Json | null
           shortlist_airtable_id?: string | null
+          source_base?: string
           synced_at?: string
           title?: string | null
         }
@@ -255,6 +398,7 @@ export type Database = {
           note_type?: string | null
           raw_data?: Json | null
           shortlist_airtable_id?: string | null
+          source_base?: string
           synced_at?: string
           title?: string | null
         }
@@ -272,6 +416,7 @@ export type Database = {
           name: string | null
           raw_data: Json | null
           salary: string | null
+          source_base: string
           start_date: string | null
           status: string | null
           synced_at: string
@@ -287,6 +432,7 @@ export type Database = {
           name?: string | null
           raw_data?: Json | null
           salary?: string | null
+          source_base?: string
           start_date?: string | null
           status?: string | null
           synced_at?: string
@@ -302,6 +448,7 @@ export type Database = {
           name?: string | null
           raw_data?: Json | null
           salary?: string | null
+          source_base?: string
           start_date?: string | null
           status?: string | null
           synced_at?: string
@@ -321,6 +468,7 @@ export type Database = {
           job_airtable_id: string | null
           raw_data: Json | null
           salary_proposed: string | null
+          source_base: string
           status: string | null
           synced_at: string
         }
@@ -336,6 +484,7 @@ export type Database = {
           job_airtable_id?: string | null
           raw_data?: Json | null
           salary_proposed?: string | null
+          source_base?: string
           status?: string | null
           synced_at?: string
         }
@@ -351,8 +500,48 @@ export type Database = {
           job_airtable_id?: string | null
           raw_data?: Json | null
           salary_proposed?: string | null
+          source_base?: string
           status?: string | null
           synced_at?: string
+        }
+        Relationships: []
+      }
+      airtable_shortlists_cumulated: {
+        Row: {
+          airtable_id: string
+          candidate_airtable_id: string | null
+          company_airtable_id: string | null
+          created_at: string
+          id: string
+          last_shortlist_date: string | null
+          raw_data: Json | null
+          source_base: string
+          synced_at: string
+          total_shortlists: number | null
+        }
+        Insert: {
+          airtable_id: string
+          candidate_airtable_id?: string | null
+          company_airtable_id?: string | null
+          created_at?: string
+          id?: string
+          last_shortlist_date?: string | null
+          raw_data?: Json | null
+          source_base?: string
+          synced_at?: string
+          total_shortlists?: number | null
+        }
+        Update: {
+          airtable_id?: string
+          candidate_airtable_id?: string | null
+          company_airtable_id?: string | null
+          created_at?: string
+          id?: string
+          last_shortlist_date?: string | null
+          raw_data?: Json | null
+          source_base?: string
+          synced_at?: string
+          total_shortlists?: number | null
         }
         Relationships: []
       }
@@ -361,6 +550,7 @@ export type Database = {
           id: string
           last_synced_at: string
           records_count: number | null
+          source_base: string
           status: string | null
           table_name: string
         }
@@ -368,6 +558,7 @@ export type Database = {
           id?: string
           last_synced_at?: string
           records_count?: number | null
+          source_base?: string
           status?: string | null
           table_name: string
         }
@@ -375,8 +566,66 @@ export type Database = {
           id?: string
           last_synced_at?: string
           records_count?: number | null
+          source_base?: string
           status?: string | null
           table_name?: string
+        }
+        Relationships: []
+      }
+      airtable_tasks: {
+        Row: {
+          airtable_id: string
+          assignee: string | null
+          candidate_airtable_id: string | null
+          contact_airtable_id: string | null
+          created_at: string
+          description: string | null
+          due_date: string | null
+          id: string
+          job_airtable_id: string | null
+          raw_data: Json | null
+          shortlist_airtable_id: string | null
+          source_base: string
+          status: string | null
+          synced_at: string
+          task_type: string | null
+          title: string | null
+        }
+        Insert: {
+          airtable_id: string
+          assignee?: string | null
+          candidate_airtable_id?: string | null
+          contact_airtable_id?: string | null
+          created_at?: string
+          description?: string | null
+          due_date?: string | null
+          id?: string
+          job_airtable_id?: string | null
+          raw_data?: Json | null
+          shortlist_airtable_id?: string | null
+          source_base?: string
+          status?: string | null
+          synced_at?: string
+          task_type?: string | null
+          title?: string | null
+        }
+        Update: {
+          airtable_id?: string
+          assignee?: string | null
+          candidate_airtable_id?: string | null
+          contact_airtable_id?: string | null
+          created_at?: string
+          description?: string | null
+          due_date?: string | null
+          id?: string
+          job_airtable_id?: string | null
+          raw_data?: Json | null
+          shortlist_airtable_id?: string | null
+          source_base?: string
+          status?: string | null
+          synced_at?: string
+          task_type?: string | null
+          title?: string | null
         }
         Relationships: []
       }
