@@ -199,9 +199,28 @@ export function useJobCandidateStatus(jobId: string | null) {
       // Update local state
       const newDismissed = new Set(dismissedIds);
       const newTreated = new Set(treatedIds);
-      candidates.forEach(c => {
-        newDismissed.add(c.id);
-        newTreated.add(c.id);
+      setStatuses(prev => {
+        const next = new Map(prev);
+        uniqueCandidates.forEach(c => {
+          newDismissed.add(c.id);
+          newTreated.add(c.id);
+          next.set(c.id, {
+            id: '',
+            job_id: jobId,
+            candidate_id: c.id,
+            linkedin_profile_url: c.profileUrl || null,
+            candidate_name: c.name || null,
+            candidate_headline: c.headline || null,
+            status: 'dismissed',
+            score: c.score || null,
+            recommendation: c.recommendation || null,
+            skip_reason: c.skipReason || null,
+            created_by: user.id,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          });
+        });
+        return next;
       });
       setDismissedIds(newDismissed);
       setTreatedIds(newTreated);
