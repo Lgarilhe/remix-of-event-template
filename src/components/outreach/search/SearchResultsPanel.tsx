@@ -8,6 +8,7 @@ import { JobCandidateStatus } from '@/hooks/useJobCandidateStatus';
 import { Job } from '@/pages/JobSpace';
 import { SourcingProject } from '@/hooks/useSourcingProjects';
 import { useAirtableMatch } from '@/hooks/useAirtableMatch';
+import { useNotionMatch } from '@/hooks/useNotionMatch';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
@@ -143,6 +144,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
     [results]
   );
   const { getMatch: getAirtableMatch } = useAirtableMatch(profileUrls);
+  const { getMatch: getNotionMatch } = useNotionMatch(profileUrls);
   // Count by status for filter badges
   const statusCounts = React.useMemo(() => {
     const counts = { scored: 0, scored_go: 0, scored_maybe: 0, scored_contacted: 0, scored_not_contacted: 0, messaged: 0, dismissed: 0, untreated: 0 };
@@ -624,6 +626,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
                   updated_at: treatedCandidates.get(profile.id)!.updated_at,
                 } : null}
                 airtableMatch={getAirtableMatch(profile.profile_url || profile.public_profile_url)}
+                notionMatch={getNotionMatch(profile.profile_url || profile.public_profile_url)}
               />
             ))}
 
