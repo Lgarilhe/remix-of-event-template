@@ -39,10 +39,13 @@ interface AirtableRecord {
   createdTime: string;
 }
 
-// Fetch all records from an Airtable table (handles pagination)
-async function fetchAirtableTable(baseId: string, tableName: string): Promise<AirtableRecord[]> {
+// Fetch records from an Airtable table with pagination support
+// skipPages: number of 100-record pages to skip before starting collection
+// maxRecords: max records to collect after skipping
+async function fetchAirtableTable(baseId: string, tableName: string, skipPages = 0, maxRecords?: number): Promise<AirtableRecord[]> {
   const records: AirtableRecord[] = [];
   let offset: string | undefined;
+  let pageCount = 0;
 
   do {
     const url = new URL(`https://api.airtable.com/v0/${baseId}/${encodeURIComponent(tableName)}`);
@@ -59,7 +62,18 @@ async function fetchAirtableTable(baseId: string, tableName: string): Promise<Ai
     }
 
     const data = await response.json();
-    records.push(...(data.records || []));
+    
+    // Only collect records after we've skipped enough pages
+    if (pageCount >= skipPages) {
+      records.push(...(data.records || []));
+      
+      // Stop early if we've reached the max
+      if (maxRecords && records.length >= maxRecords) {
+        return records.slice(0, maxRecords);
+      }
+    }
+    
+    pageCount++;
     offset = data.offset;
   } while (offset);
 
@@ -458,7 +472,7 @@ serve(async (req) => {
       });
     }
 
-    // Sync tables
+    // Maps used by both sync_chunked and sync_all
     const transformMap: Record<string, (r: AirtableRecord, sourceBase: string) => Record<string, unknown>> = {
       companies: transformCompany,
       contacts: transformContact,
@@ -488,6 +502,61 @@ serve(async (req) => {
       glossary: 'airtable_glossary',
       kpi: 'airtable_kpi',
     };
+
+    // Chunked sync: sync a single table in pages
+    // skip_pages: how many 100-record Airtable pages to skip
+    // max_records: max records to fetch after skipping (default 5000)
+    if (action === 'sync_chunked') {
+      const tableKey = body.table;
+      const baseKey = body.base || 'konekt';
+      const maxRecords = body.max_records || 5000;
+      const skipPages = body.skip_pages || 0;
+
+      const baseConfig = BASES[baseKey];
+      if (!baseConfig?.baseId) throw new Error(`Base ${baseKey} not configured`);
+
+      const airtableName = TABLE_MAP[tableKey];
+      const transform = transformMap[tableKey];
+      const supabaseTable = supabaseTableMap[tableKey];
+      if (!airtableName || !transform || !supabaseTable) {
+        throw new Error(`Unknown table: ${tableKey}`);
+      }
+
+      console.log(`Chunked sync: ${baseConfig.label} > ${airtableName} (skip ${skipPages} pages, max ${maxRecords})...`);
+      const records = await fetchAirtableTable(baseConfig.baseId, airtableName, skipPages, maxRecords);
+      const transformed = records.map(r => transform(r, baseKey));
+      const count = await upsertRecords(supabase, supabaseTable, transformed);
+
+      // Get total count from DB for progress tracking
+      const { count: totalInDb } = await supabase
+        .from(supabaseTable)
+        .select('*', { count: 'exact', head: true })
+        .eq('source_base', baseKey);
+
+      await supabase.from('airtable_sync_meta').upsert({
+        table_name: tableKey,
+        source_base: baseKey,
+        last_synced_at: new Date().toISOString(),
+        records_count: totalInDb || count,
+        status: records.length >= maxRecords ? 'partial' : 'synced',
+      }, { onConflict: 'table_name,source_base' });
+
+      return new Response(JSON.stringify({
+        success: true,
+        table: tableKey,
+        base: baseKey,
+        records_synced: count,
+        records_fetched: records.length,
+        skip_pages_used: skipPages,
+        next_skip_pages: records.length >= maxRecords ? skipPages + Math.ceil(maxRecords / 100) : null,
+        is_complete: records.length < maxRecords,
+        total_in_db: totalInDb,
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // Sync all tables
 
     const results: Record<string, Record<string, { count: number; status: string }>> = {};
 
