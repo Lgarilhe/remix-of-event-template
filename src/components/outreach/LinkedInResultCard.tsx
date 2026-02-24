@@ -63,7 +63,7 @@ interface LinkedInResultCardProps {
   onProfileTreated?: () => void;
   onArchive?: () => void;
   candidateStatus?: { status: string; score?: number | null; recommendation?: string | null; updated_at?: string } | null;
-  airtableMatch?: { source_base: string; full_name: string | null; status: string | null } | null;
+  airtableMatch?: { source_base: string; full_name: string | null; status: string | null; match_type?: 'url' | 'fuzzy' } | null;
   notionMatch?: { id: string; name: string } | null;
 }
 
@@ -517,12 +517,21 @@ export const LinkedInResultCard: React.FC<LinkedInResultCardProps> = ({
                       {airtableMatch && (
                         <Tooltip>
                           <TooltipTrigger asChild>
-                            <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 sm:h-5 border-teal-300 bg-teal-50 shrink-0">
+                            <Badge variant="outline" className={`text-[10px] px-1 py-0 h-4 sm:h-5 shrink-0 ${
+                              airtableMatch.match_type === 'fuzzy' 
+                                ? 'border-dashed border-teal-300 bg-teal-50/50' 
+                                : 'border-teal-300 bg-teal-50'
+                            }`}>
                               <img src={airtableLogo} alt="Airtable" className="w-3.5 h-3.5 object-contain" />
                             </Badge>
                           </TooltipTrigger>
                           <TooltipContent side="top" className="max-w-xs">
-                            <p className="text-xs font-medium">Déjà dans Airtable</p>
+                            <p className="text-xs font-medium">
+                              {airtableMatch.match_type === 'fuzzy' ? 'Probablement dans Airtable' : 'Déjà dans Airtable'}
+                            </p>
+                            {airtableMatch.full_name && airtableMatch.match_type === 'fuzzy' && (
+                              <p className="text-xs text-muted-foreground">Corrélation nom + entreprise : {airtableMatch.full_name}</p>
+                            )}
                             {airtableMatch.status && <p className="text-xs text-muted-foreground">Statut : {airtableMatch.status}</p>}
                           </TooltipContent>
                         </Tooltip>
