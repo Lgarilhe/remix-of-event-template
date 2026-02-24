@@ -18,6 +18,7 @@ export interface CandidateHistoryData {
     job_title: string | null;
     company_name: string | null;
     salary_proposed: string | null;
+    consultant: string | null;
   }>;
   placements: Array<{
     airtable_id: string;
@@ -27,6 +28,7 @@ export interface CandidateHistoryData {
     salary: string | null;
     contract_type: string | null;
     company_name: string | null;
+    consultant: string | null;
   }>;
   notes: Array<{
     airtable_id: string;
@@ -35,6 +37,7 @@ export interface CandidateHistoryData {
     note_type: string | null;
     note_date: string | null;
     author: string | null;
+    consultant: string | null;
   }>;
   appointments: Array<{
     airtable_id: string;
@@ -87,6 +90,20 @@ function extractDateFromRawData(rawData: unknown, keys: string[]): string | null
     }
   }
 
+  return null;
+}
+
+function extractStringFromRawData(rawData: unknown, keys: string[]): string | null {
+  if (!rawData || typeof rawData !== 'object' || Array.isArray(rawData)) return null;
+  const data = rawData as Record<string, unknown>;
+  for (const key of keys) {
+    const rawValue = data[key];
+    if (typeof rawValue === 'string' && rawValue.trim()) return rawValue.trim();
+    if (rawValue && typeof rawValue === 'object' && !Array.isArray(rawValue)) {
+      const obj = rawValue as Record<string, unknown>;
+      if (typeof obj.name === 'string') return obj.name;
+    }
+  }
   return null;
 }
 
@@ -247,6 +264,7 @@ export function useCandidateHistory(
           job_title: s.job_airtable_id ? jobMap.get(s.job_airtable_id) || null : null,
           company_name: s.company_airtable_id ? companyMap.get(s.company_airtable_id) || null : null,
           salary_proposed: s.salary_proposed,
+          consultant: extractStringFromRawData(s.raw_data, ['Ajouté par', 'Assignee', 'Created By']),
         })),
         placements: (placementsRes.data || []).map(p => ({
           airtable_id: p.airtable_id,
@@ -258,6 +276,7 @@ export function useCandidateHistory(
           salary: p.salary,
           contract_type: p.contract_type,
           company_name: p.company_airtable_id ? companyMap.get(p.company_airtable_id) || null : null,
+          consultant: extractStringFromRawData(p.raw_data, ['Assignee', 'Ajouté par', 'Created By']),
         })),
         notes: (notesRes.data || []).map(n => ({
           airtable_id: n.airtable_id,
@@ -266,6 +285,7 @@ export function useCandidateHistory(
           note_type: n.note_type,
           note_date: normalizeDate(n.note_date) || extractDateFromRawData(n.raw_data, ['Date', 'Date de la note', 'Date de création', 'Date de création (Bullhorn)']),
           author: n.author,
+          consultant: extractStringFromRawData(n.raw_data, ['Identité auteur', 'Créée par', 'Auteur']),
         })),
         appointments: (appointmentsRes.data || []).map(a => ({
           airtable_id: a.airtable_id,
