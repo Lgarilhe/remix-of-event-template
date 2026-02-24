@@ -41,7 +41,7 @@ interface SearchResultsPanelProps {
   // Status
   autoHideTreated: boolean;
   showDismissed: boolean;
-  statusFilter: 'all' | 'untreated' | 'scored' | 'scored_go' | 'scored_maybe' | 'messaged' | 'dismissed';
+  statusFilter: 'all' | 'untreated' | 'scored' | 'scored_go' | 'scored_maybe' | 'scored_not_contacted' | 'messaged' | 'dismissed';
   treatedCount: number;
   dismissedCount: number;
   
@@ -67,7 +67,7 @@ interface SearchResultsPanelProps {
   onBulkAddToProject: () => void;
   onSetAutoHideTreated: (v: boolean) => void;
   onSetShowDismissed: (v: boolean) => void;
-  onSetStatusFilter: (v: 'all' | 'untreated' | 'scored' | 'scored_go' | 'scored_maybe' | 'messaged' | 'dismissed') => void;
+  onSetStatusFilter: (v: 'all' | 'untreated' | 'scored' | 'scored_go' | 'scored_maybe' | 'scored_not_contacted' | 'messaged' | 'dismissed') => void;
   onSetSortByScore: (v: boolean) => void;
   onSetShowBulkInMailModal: (v: boolean) => void;
   onProfileTreated: (id: string) => void;
@@ -136,17 +136,28 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
 
   // Count by status for filter badges
   const statusCounts = React.useMemo(() => {
-    const counts = { scored: 0, scored_go: 0, scored_maybe: 0, messaged: 0, dismissed: 0, untreated: 0 };
+    const counts = { scored: 0, scored_go: 0, scored_maybe: 0, scored_contacted: 0, scored_not_contacted: 0, messaged: 0, dismissed: 0, untreated: 0 };
     for (const r of results) {
       const s = treatedCandidates.get(r.id);
       if (!s) { counts.untreated++; continue; }
       if (s.status === 'scored') {
         counts.scored++;
+        counts.scored_not_contacted++;
         const score = jobScores[r.id];
         if (score?.recommendation === 'go') counts.scored_go++;
         else if (score?.recommendation === 'maybe') counts.scored_maybe++;
       }
-      else if (s.status === 'messaged' || s.status === 'replied') counts.messaged++;
+      else if (s.status === 'messaged' || s.status === 'replied') {
+        counts.messaged++;
+        // If this messaged profile also has a score, count it in scored totals
+        if (jobScores[r.id]) {
+          counts.scored++;
+          counts.scored_contacted++;
+          const score = jobScores[r.id];
+          if (score?.recommendation === 'go') counts.scored_go++;
+          else if (score?.recommendation === 'maybe') counts.scored_maybe++;
+        }
+      }
       else if (s.status === 'dismissed') counts.dismissed++;
     }
     return counts;
@@ -203,7 +214,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
                   { value: 'dismissed' as const, label: 'Archivés', icon: Archive, count: statusCounts.dismissed },
                 ]).map(({ value, label, icon: Icon, count }) => {
                   const isActive = statusFilter === value || 
-                    (value === 'scored' && (statusFilter === 'scored_go' || statusFilter === 'scored_maybe'));
+                    (value === 'scored' && (statusFilter === 'scored_go' || statusFilter === 'scored_maybe' || statusFilter === 'scored_not_contacted'));
                   return (
                     <Button
                       key={value}
@@ -227,12 +238,13 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
                   );
                 })}
               </div>
-              {(statusFilter === 'scored' || statusFilter === 'scored_go' || statusFilter === 'scored_maybe') && statusCounts.scored > 0 && (
+              {(statusFilter === 'scored' || statusFilter === 'scored_go' || statusFilter === 'scored_maybe' || statusFilter === 'scored_not_contacted') && statusCounts.scored > 0 && (
                 <div className="flex items-center gap-0.5 bg-muted/30 rounded-md p-0.5 border border-border/50">
                   {([
                     { value: 'scored' as const, label: 'Tous', count: statusCounts.scored },
                     { value: 'scored_go' as const, label: '✅ À contacter', count: statusCounts.scored_go },
                     { value: 'scored_maybe' as const, label: '🤔 À évaluer', count: statusCounts.scored_maybe },
+                    { value: 'scored_not_contacted' as const, label: '🆕 Non contactés', count: statusCounts.scored_not_contacted },
                   ]).map(({ value, label, count }) => (
                     <Button
                       key={value}

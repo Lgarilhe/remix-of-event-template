@@ -10,7 +10,7 @@ interface FilteredResultsOptions {
   selectedJob: Job | null;
   autoHideTreated: boolean;
   showDismissed: boolean;
-  statusFilter: 'all' | 'untreated' | 'scored' | 'scored_go' | 'scored_maybe' | 'messaged' | 'dismissed';
+  statusFilter: 'all' | 'untreated' | 'scored' | 'scored_go' | 'scored_maybe' | 'scored_not_contacted' | 'messaged' | 'dismissed';
   candidateStatus: {
     treatedIds: Set<string>;
     dismissedIds: Set<string>;
@@ -46,17 +46,22 @@ export function useFilteredResults({
           case 'untreated':
             return !status;
           case 'scored':
-            return status?.status === 'scored';
+            // Show scored profiles AND messaged profiles that have a score
+            return status?.status === 'scored' || ((status?.status === 'messaged' || status?.status === 'replied') && !!jobScores[p.id]);
           case 'scored_go': {
-            if (status?.status !== 'scored') return false;
+            const isScored = status?.status === 'scored' || ((status?.status === 'messaged' || status?.status === 'replied') && !!jobScores[p.id]);
+            if (!isScored) return false;
             const score = jobScores[p.id];
             return score?.recommendation === 'go';
           }
           case 'scored_maybe': {
-            if (status?.status !== 'scored') return false;
+            const isScored = status?.status === 'scored' || ((status?.status === 'messaged' || status?.status === 'replied') && !!jobScores[p.id]);
+            if (!isScored) return false;
             const score = jobScores[p.id];
             return score?.recommendation === 'maybe';
           }
+          case 'scored_not_contacted':
+            return status?.status === 'scored';
           case 'messaged':
             return status?.status === 'messaged' || status?.status === 'replied';
           case 'dismissed':
