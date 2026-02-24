@@ -10,7 +10,7 @@ interface FilteredResultsOptions {
   selectedJob: Job | null;
   autoHideTreated: boolean;
   showDismissed: boolean;
-  statusFilter: 'all' | 'untreated' | 'scored' | 'messaged' | 'dismissed';
+  statusFilter: 'all' | 'untreated' | 'scored' | 'scored_go' | 'scored_maybe' | 'messaged' | 'dismissed';
   candidateStatus: {
     treatedIds: Set<string>;
     dismissedIds: Set<string>;
@@ -47,6 +47,16 @@ export function useFilteredResults({
             return !status;
           case 'scored':
             return status?.status === 'scored';
+          case 'scored_go': {
+            if (status?.status !== 'scored') return false;
+            const score = jobScores[p.id];
+            return score?.recommendation === 'go';
+          }
+          case 'scored_maybe': {
+            if (status?.status !== 'scored') return false;
+            const score = jobScores[p.id];
+            return score?.recommendation === 'maybe';
+          }
           case 'messaged':
             return status?.status === 'messaged' || status?.status === 'replied';
           case 'dismissed':
