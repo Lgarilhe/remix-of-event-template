@@ -656,9 +656,28 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
                 </div>
               )}
               {!hasMoreResults && results.length > 0 && (
-                <p className="text-center text-xs text-muted-foreground/60 py-2">
-                  Tous les profils ont été chargés ({results.length})
-                </p>
+                <div className="text-center py-2">
+                  {total !== null && results.length < total ? (
+                    <div className="flex flex-col items-center gap-2">
+                      <p className="text-xs text-muted-foreground">
+                        {results.length} profils chargés sur {total} disponibles
+                      </p>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={onSearch}
+                        className="gap-1.5 text-xs"
+                      >
+                        <Search className="w-3 h-3" />
+                        Relancer la recherche
+                      </Button>
+                    </div>
+                  ) : (
+                    <p className="text-xs text-muted-foreground/60">
+                      Tous les profils ont été chargés ({results.length})
+                    </p>
+                  )}
+                </div>
               )}
             </div>
           </div>
