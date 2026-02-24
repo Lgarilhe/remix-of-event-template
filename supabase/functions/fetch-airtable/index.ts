@@ -7,13 +7,17 @@ const corsHeaders = {
 };
 
 const RAW_AIRTABLE_API_KEY = Deno.env.get("AIRTABLE_API_KEY");
-const RAW_AIRTABLE_BASE_ID = Deno.env.get("AIRTABLE_BASE_ID");
 const AIRTABLE_API_KEY = RAW_AIRTABLE_API_KEY?.trim();
-const AIRTABLE_BASE_ID = RAW_AIRTABLE_BASE_ID?.trim();
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 
-// Airtable table names - adjust these to match your actual table names
+// Base configs
+const BASES: Record<string, { baseId: string | undefined; label: string }> = {
+  konekt: { baseId: Deno.env.get("AIRTABLE_BASE_ID")?.trim(), label: 'Konekt' },
+  prospect: { baseId: Deno.env.get("AIRTABLE_BASE_ID_2")?.trim(), label: 'Konekt prospect' },
+};
+
+// Airtable table names per base (both bases share similar French table names)
 const TABLE_MAP: Record<string, string> = {
   companies: "Entreprises",
   contacts: "Contacts",
@@ -22,6 +26,11 @@ const TABLE_MAP: Record<string, string> = {
   shortlists: "Shortlists",
   placements: "Placements",
   notes: "Notes",
+  appointments: "Rendez-vous",
+  tasks: "Tâches",
+  shortlists_cumulated: "Shortlists cumulées",
+  glossary: "Glossaire tech",
+  kpi: "KPI",
 };
 
 interface AirtableRecord {
@@ -31,12 +40,12 @@ interface AirtableRecord {
 }
 
 // Fetch all records from an Airtable table (handles pagination)
-async function fetchAirtableTable(tableName: string): Promise<AirtableRecord[]> {
+async function fetchAirtableTable(baseId: string, tableName: string): Promise<AirtableRecord[]> {
   const records: AirtableRecord[] = [];
   let offset: string | undefined;
 
   do {
-    const url = new URL(`https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${encodeURIComponent(tableName)}`);
+    const url = new URL(`https://api.airtable.com/v0/${baseId}/${encodeURIComponent(tableName)}`);
     url.searchParams.set("pageSize", "100");
     if (offset) url.searchParams.set("offset", offset);
 
@@ -57,7 +66,6 @@ async function fetchAirtableTable(tableName: string): Promise<AirtableRecord[]> 
   return records;
 }
 
-// Extract first linked record ID from Airtable relation field
 function firstLinked(field: unknown): string | null {
   if (Array.isArray(field) && field.length > 0) return String(field[0]);
   return null;
@@ -81,11 +89,12 @@ function maskValue(value: string | null | undefined): string | null {
   return `${value.slice(0, 4)}...${value.slice(-4)}`;
 }
 
-// Transform functions for each table
-function transformCompany(record: AirtableRecord) {
+// Transform functions
+function transformCompany(record: AirtableRecord, sourceBase: string) {
   const f = record.fields;
   return {
     airtable_id: record.id,
+    source_base: sourceBase,
     name: getString(f["Nom de la société"] ?? f["Nom"] ?? f["Name"]) || "Sans nom",
     city: getString(f["Ville"] ?? f["City"]),
     description: getString(f["Présentation activité"] ?? f["Description"]),
@@ -98,10 +107,11 @@ function transformCompany(record: AirtableRecord) {
   };
 }
 
-function transformContact(record: AirtableRecord) {
+function transformContact(record: AirtableRecord, sourceBase: string) {
   const f = record.fields;
   return {
     airtable_id: record.id,
+    source_base: sourceBase,
     full_name: getString(f["Nom complet"] ?? f["Nom"] ?? f["Name"]),
     email: getString(f["Email professionnel"] ?? f["Email"]),
     title: getString(f["Titre"] ?? f["Title"]),
@@ -114,10 +124,11 @@ function transformContact(record: AirtableRecord) {
   };
 }
 
-function transformJob(record: AirtableRecord) {
+function transformJob(record: AirtableRecord, sourceBase: string) {
   const f = record.fields;
   return {
     airtable_id: record.id,
+    source_base: sourceBase,
     title: getString(f["Intitulé du poste"] ?? f["Intitulé"] ?? f["Nom"] ?? f["Name"]),
     status: getString(f["Statut"] ?? f["Status"]),
     contract_type: getString(f["Type de contrat"] ?? f["Contrat"]),
@@ -131,13 +142,10 @@ function transformJob(record: AirtableRecord) {
   };
 }
 
-function transformCandidate(record: AirtableRecord) {
+function transformCandidate(record: AirtableRecord, sourceBase: string) {
   const f = record.fields;
   
-  // Try to extract LinkedIn URL from various possible field names
   let linkedinUrl = getString(f["LinkedIn"] ?? f["Linkedin"] ?? f["linkedin"] ?? f["URL LinkedIn"] ?? f["Profil LinkedIn"]);
-  
-  // Also check raw_data for any field containing linkedin
   if (!linkedinUrl) {
     for (const [key, val] of Object.entries(f)) {
       if (key.toLowerCase().includes('linkedin') && typeof val === 'string' && val.includes('linkedin.com')) {
@@ -153,6 +161,7 @@ function transformCandidate(record: AirtableRecord) {
 
   return {
     airtable_id: record.id,
+    source_base: sourceBase,
     first_name: firstName,
     last_name: lastName,
     full_name: fullName,
@@ -169,10 +178,11 @@ function transformCandidate(record: AirtableRecord) {
   };
 }
 
-function transformShortlist(record: AirtableRecord) {
+function transformShortlist(record: AirtableRecord, sourceBase: string) {
   const f = record.fields;
   return {
     airtable_id: record.id,
+    source_base: sourceBase,
     status: getString(f["Statut"] ?? f["Status"]),
     date_added: getString(f["Date d'ajout"] ?? f["Date"]),
     salary_proposed: getString(f["Salaire proposé"] ?? f["Salaire"]),
@@ -186,10 +196,11 @@ function transformShortlist(record: AirtableRecord) {
   };
 }
 
-function transformPlacement(record: AirtableRecord) {
+function transformPlacement(record: AirtableRecord, sourceBase: string) {
   const f = record.fields;
   return {
     airtable_id: record.id,
+    source_base: sourceBase,
     name: getString(f["Nom"] ?? f["Name"]),
     status: getString(f["Statut"] ?? f["Status"]),
     salary: getString(f["Salaire retenu"] ?? f["Salaire"]),
@@ -203,10 +214,11 @@ function transformPlacement(record: AirtableRecord) {
   };
 }
 
-function transformNote(record: AirtableRecord) {
+function transformNote(record: AirtableRecord, sourceBase: string) {
   const f = record.fields;
   return {
     airtable_id: record.id,
+    source_base: sourceBase,
     title: getString(f["Nom de la note"] ?? f["Nom"] ?? f["Name"] ?? f["Titre"]),
     detail: getString(f["Détail"] ?? f["Detail"] ?? f["Notes"] ?? f["Description"]),
     note_type: getString(f["Type"]),
@@ -221,6 +233,86 @@ function transformNote(record: AirtableRecord) {
   };
 }
 
+function transformAppointment(record: AirtableRecord, sourceBase: string) {
+  const f = record.fields;
+  return {
+    airtable_id: record.id,
+    source_base: sourceBase,
+    title: getString(f["Nom"] ?? f["Name"] ?? f["Titre"]),
+    appointment_date: getString(f["Date"] ?? f["Date du RDV"]),
+    appointment_type: getString(f["Type"] ?? f["Type de RDV"]),
+    status: getString(f["Statut"] ?? f["Status"]),
+    notes: getString(f["Notes"] ?? f["Commentaire"]),
+    candidate_airtable_id: firstLinked(f["Candidats"] ?? f["Candidat"]),
+    contact_airtable_id: firstLinked(f["Contacts"] ?? f["Contact"]),
+    job_airtable_id: firstLinked(f["Jobs"] ?? f["Job"] ?? f["Poste"]),
+    shortlist_airtable_id: firstLinked(f["Shortlists"] ?? f["Shortlist"]),
+    raw_data: f,
+    synced_at: new Date().toISOString(),
+  };
+}
+
+function transformTask(record: AirtableRecord, sourceBase: string) {
+  const f = record.fields;
+  return {
+    airtable_id: record.id,
+    source_base: sourceBase,
+    title: getString(f["Nom"] ?? f["Name"] ?? f["Titre"]),
+    description: getString(f["Description"] ?? f["Détail"]),
+    due_date: getString(f["Date d'échéance"] ?? f["Date"] ?? f["Deadline"]),
+    status: getString(f["Statut"] ?? f["Status"]),
+    task_type: getString(f["Type"]),
+    assignee: getString(f["Assigné à"] ?? f["Responsable"]),
+    candidate_airtable_id: firstLinked(f["Candidats"] ?? f["Candidat"]),
+    contact_airtable_id: firstLinked(f["Contacts"] ?? f["Contact"]),
+    job_airtable_id: firstLinked(f["Jobs"] ?? f["Job"] ?? f["Poste"]),
+    shortlist_airtable_id: firstLinked(f["Shortlists"] ?? f["Shortlist"]),
+    raw_data: f,
+    synced_at: new Date().toISOString(),
+  };
+}
+
+function transformShortlistCumulated(record: AirtableRecord, sourceBase: string) {
+  const f = record.fields;
+  return {
+    airtable_id: record.id,
+    source_base: sourceBase,
+    candidate_airtable_id: firstLinked(f["Candidats"] ?? f["Candidat"]),
+    company_airtable_id: firstLinked(f["Entreprises"] ?? f["Entreprise"]),
+    total_shortlists: typeof f["Total"] === 'number' ? f["Total"] : null,
+    last_shortlist_date: getString(f["Dernière date"] ?? f["Date"]),
+    raw_data: f,
+    synced_at: new Date().toISOString(),
+  };
+}
+
+function transformGlossary(record: AirtableRecord, sourceBase: string) {
+  const f = record.fields;
+  return {
+    airtable_id: record.id,
+    source_base: sourceBase,
+    term: getString(f["Nom"] ?? f["Name"] ?? f["Terme"]),
+    category: getString(f["Catégorie"] ?? f["Category"] ?? f["Type"]),
+    description: getString(f["Description"]),
+    raw_data: f,
+    synced_at: new Date().toISOString(),
+  };
+}
+
+function transformKpi(record: AirtableRecord, sourceBase: string) {
+  const f = record.fields;
+  return {
+    airtable_id: record.id,
+    source_base: sourceBase,
+    name: getString(f["Nom"] ?? f["Name"]),
+    value: getString(f["Valeur"] ?? f["Value"]),
+    period: getString(f["Période"] ?? f["Period"]),
+    category: getString(f["Catégorie"] ?? f["Category"]),
+    raw_data: f,
+    synced_at: new Date().toISOString(),
+  };
+}
+
 // Upsert records into Supabase
 async function upsertRecords(
   supabase: ReturnType<typeof createClient>,
@@ -229,13 +321,12 @@ async function upsertRecords(
 ) {
   if (records.length === 0) return 0;
 
-  // Upsert in batches of 50
   let count = 0;
   for (let i = 0; i < records.length; i += 50) {
     const batch = records.slice(i, i + 50);
     const { error } = await supabase
       .from(tableName)
-      .upsert(batch, { onConflict: 'airtable_id' });
+      .upsert(batch, { onConflict: 'airtable_id,source_base' });
 
     if (error) {
       console.error(`Error upserting ${tableName}:`, error);
@@ -253,7 +344,6 @@ serve(async (req) => {
 
   try {
     if (!AIRTABLE_API_KEY) throw new Error('AIRTABLE_API_KEY is not configured');
-    if (!AIRTABLE_BASE_ID) throw new Error('AIRTABLE_BASE_ID is not configured');
     if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) throw new Error('Supabase config missing');
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
@@ -261,10 +351,17 @@ serve(async (req) => {
     const body = await req.json().catch(() => ({}));
     const action = body.action || 'sync_all';
     const tables = body.tables || Object.keys(TABLE_MAP);
+    // Which bases to sync: 'all', 'konekt', or 'prospect'
+    const targetBases: string[] = body.base
+      ? [body.base]
+      : Object.keys(BASES);
 
     if (action === 'list_tables') {
-      // Discover actual table names from Airtable base
-      const url = `https://api.airtable.com/v0/meta/bases/${AIRTABLE_BASE_ID}/tables`;
+      const baseKey = body.base || 'konekt';
+      const baseId = BASES[baseKey]?.baseId;
+      if (!baseId) throw new Error(`Base ${baseKey} not configured`);
+      
+      const url = `https://api.airtable.com/v0/meta/bases/${baseId}/tables`;
       const response = await fetch(url, {
         headers: { Authorization: `Bearer ${AIRTABLE_API_KEY}` },
       });
@@ -275,13 +372,13 @@ serve(async (req) => {
         });
       }
       const data = await response.json();
-      return new Response(JSON.stringify({ success: true, tables: data.tables?.map((t: any) => ({ id: t.id, name: t.name, fields: t.fields?.map((f: any) => f.name) })) }), {
+      return new Response(JSON.stringify({ success: true, base: baseKey, tables: data.tables?.map((t: any) => ({ id: t.id, name: t.name, fields: t.fields?.map((f: any) => f.name) })) }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
     if (action === 'debug_airtable') {
-      const diagnosticBaseId = typeof body.base_id === 'string' ? body.base_id.trim() : AIRTABLE_BASE_ID;
+      const diagnosticBaseId = typeof body.base_id === 'string' ? body.base_id.trim() : BASES.konekt.baseId;
       const tableIdOrName = typeof body.table_id_or_name === 'string' ? body.table_id_or_name.trim() : null;
 
       const metaUrl = `https://api.airtable.com/v0/meta/bases/${diagnosticBaseId}/tables`;
@@ -290,14 +387,8 @@ serve(async (req) => {
         : null;
 
       const [metaResponse, tableResponse] = await Promise.all([
-        fetch(metaUrl, {
-          headers: { Authorization: `Bearer ${AIRTABLE_API_KEY}` },
-        }),
-        tableUrl
-          ? fetch(tableUrl, {
-              headers: { Authorization: `Bearer ${AIRTABLE_API_KEY}` },
-            })
-          : Promise.resolve(null),
+        fetch(metaUrl, { headers: { Authorization: `Bearer ${AIRTABLE_API_KEY}` } }),
+        tableUrl ? fetch(tableUrl, { headers: { Authorization: `Bearer ${AIRTABLE_API_KEY}` } }) : Promise.resolve(null),
       ]);
 
       const [metaPayload, tablePayload] = await Promise.all([
@@ -310,40 +401,20 @@ serve(async (req) => {
         debug: {
           has_api_key: !!AIRTABLE_API_KEY,
           token_prefix: AIRTABLE_API_KEY?.slice(0, 4) ?? null,
-          token_length: AIRTABLE_API_KEY?.length ?? 0,
-          api_key_has_wrapping_whitespace: RAW_AIRTABLE_API_KEY !== AIRTABLE_API_KEY,
-          configured_base_id_masked: maskValue(AIRTABLE_BASE_ID),
-          base_id_has_wrapping_whitespace: RAW_AIRTABLE_BASE_ID !== AIRTABLE_BASE_ID,
+          configured_bases: Object.fromEntries(Object.entries(BASES).map(([k, v]) => [k, { configured: !!v.baseId, masked: maskValue(v.baseId) }])),
           used_base_id_masked: maskValue(diagnosticBaseId),
           table_id_or_name: tableIdOrName,
-          meta: {
-            url: metaUrl,
-            status: metaResponse.status,
-            ok: metaResponse.ok,
-            body: metaPayload,
-          },
-          table: tableUrl
-            ? {
-                url: tableUrl,
-                status: tableResponse?.status ?? null,
-                ok: tableResponse?.ok ?? false,
-                body: tablePayload,
-              }
-            : null,
+          meta: { url: metaUrl, status: metaResponse.status, ok: metaResponse.ok, body: metaPayload },
+          table: tableUrl ? { url: tableUrl, status: tableResponse?.status ?? null, ok: tableResponse?.ok ?? false, body: tablePayload } : null,
         },
-      }), {
-        status: 200,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+      }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
     if (action === 'search_candidate') {
-      // Search local cache for a candidate by LinkedIn URL or name
       const { linkedin_url, name, email } = body;
       let query = supabase.from('airtable_candidates').select('*');
       
       if (linkedin_url) {
-        // Normalize LinkedIn URL for matching
         const normalized = linkedin_url.replace(/\/$/, '').toLowerCase();
         query = query.ilike('linkedin_url', `%${normalized.split('/in/')[1]?.split('/')[0] || normalized}%`);
       } else if (email) {
@@ -359,7 +430,6 @@ serve(async (req) => {
       const { data: candidates, error } = await query.limit(5);
       if (error) throw error;
 
-      // For each candidate, fetch related shortlists, placements, notes
       const enriched = await Promise.all((candidates || []).map(async (candidate: any) => {
         const [shortlists, placements, notes] = await Promise.all([
           supabase.from('airtable_shortlists').select('*').eq('candidate_airtable_id', candidate.airtable_id),
@@ -367,11 +437,10 @@ serve(async (req) => {
           supabase.from('airtable_notes').select('*').eq('candidate_airtable_id', candidate.airtable_id),
         ]);
 
-        // Enrich shortlists with job and company info
         const enrichedShortlists = await Promise.all((shortlists.data || []).map(async (sl: any) => {
           const [job, company] = await Promise.all([
-            sl.job_airtable_id ? supabase.from('airtable_jobs').select('title, status').eq('airtable_id', sl.job_airtable_id).single() : null,
-            sl.company_airtable_id ? supabase.from('airtable_companies').select('name').eq('airtable_id', sl.company_airtable_id).single() : null,
+            sl.job_airtable_id ? supabase.from('airtable_jobs').select('title, status').eq('airtable_id', sl.job_airtable_id).maybeSingle() : null,
+            sl.company_airtable_id ? supabase.from('airtable_companies').select('name').eq('airtable_id', sl.company_airtable_id).maybeSingle() : null,
           ]);
           return { ...sl, job: job?.data, company: company?.data };
         }));
@@ -390,9 +459,7 @@ serve(async (req) => {
     }
 
     // Sync tables
-    const results: Record<string, { count: number; status: string }> = {};
-
-    const transformMap: Record<string, (r: AirtableRecord) => Record<string, unknown>> = {
+    const transformMap: Record<string, (r: AirtableRecord, sourceBase: string) => Record<string, unknown>> = {
       companies: transformCompany,
       contacts: transformContact,
       jobs: transformJob,
@@ -400,6 +467,11 @@ serve(async (req) => {
       shortlists: transformShortlist,
       placements: transformPlacement,
       notes: transformNote,
+      appointments: transformAppointment,
+      tasks: transformTask,
+      shortlists_cumulated: transformShortlistCumulated,
+      glossary: transformGlossary,
+      kpi: transformKpi,
     };
 
     const supabaseTableMap: Record<string, string> = {
@@ -410,38 +482,55 @@ serve(async (req) => {
       shortlists: 'airtable_shortlists',
       placements: 'airtable_placements',
       notes: 'airtable_notes',
+      appointments: 'airtable_appointments',
+      tasks: 'airtable_tasks',
+      shortlists_cumulated: 'airtable_shortlists_cumulated',
+      glossary: 'airtable_glossary',
+      kpi: 'airtable_kpi',
     };
 
-    for (const tableKey of tables) {
-      const airtableName = TABLE_MAP[tableKey];
-      const transform = transformMap[tableKey];
-      const supabaseTable = supabaseTableMap[tableKey];
+    const results: Record<string, Record<string, { count: number; status: string }>> = {};
 
-      if (!airtableName || !transform || !supabaseTable) {
-        results[tableKey] = { count: 0, status: 'skipped - unknown table' };
+    for (const baseKey of targetBases) {
+      const baseConfig = BASES[baseKey];
+      if (!baseConfig?.baseId) {
+        results[baseKey] = { _error: { count: 0, status: `Base ${baseKey} not configured` } };
         continue;
       }
 
-      try {
-        console.log(`Syncing ${airtableName}...`);
-        const records = await fetchAirtableTable(airtableName);
-        const transformed = records.map(transform);
-        const count = await upsertRecords(supabase, supabaseTable, transformed);
+      results[baseKey] = {};
 
-        // Update sync meta
-        await supabase.from('airtable_sync_meta').upsert({
-          table_name: tableKey,
-          last_synced_at: new Date().toISOString(),
-          records_count: count,
-          status: 'synced',
-        }, { onConflict: 'table_name' });
+      for (const tableKey of tables) {
+        const airtableName = TABLE_MAP[tableKey];
+        const transform = transformMap[tableKey];
+        const supabaseTable = supabaseTableMap[tableKey];
 
-        results[tableKey] = { count, status: 'synced' };
-        console.log(`${airtableName}: ${count} records synced`);
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : 'Unknown error';
-        console.error(`Error syncing ${airtableName}:`, msg);
-        results[tableKey] = { count: 0, status: `error: ${msg}` };
+        if (!airtableName || !transform || !supabaseTable) {
+          results[baseKey][tableKey] = { count: 0, status: 'skipped - unknown table' };
+          continue;
+        }
+
+        try {
+          console.log(`Syncing ${baseConfig.label} > ${airtableName}...`);
+          const records = await fetchAirtableTable(baseConfig.baseId, airtableName);
+          const transformed = records.map(r => transform(r, baseKey));
+          const count = await upsertRecords(supabase, supabaseTable, transformed);
+
+          await supabase.from('airtable_sync_meta').upsert({
+            table_name: tableKey,
+            source_base: baseKey,
+            last_synced_at: new Date().toISOString(),
+            records_count: count,
+            status: 'synced',
+          }, { onConflict: 'table_name,source_base' });
+
+          results[baseKey][tableKey] = { count, status: 'synced' };
+          console.log(`${baseConfig.label} > ${airtableName}: ${count} records synced`);
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : 'Unknown error';
+          console.error(`Error syncing ${baseConfig.label} > ${airtableName}:`, msg);
+          results[baseKey][tableKey] = { count: 0, status: `error: ${msg}` };
+        }
       }
     }
 
