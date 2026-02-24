@@ -78,7 +78,7 @@ interface SearchResultsPanelProps {
   onSequenceEnrollSuccess: () => void;
   
   // Refine
-  onRefineSearch: (direction: 'expand' | 'narrow') => Promise<void>;
+  onRefineSearch: (direction: 'expand' | 'narrow') => void;
   refineLoading: boolean;
   
   // Refs

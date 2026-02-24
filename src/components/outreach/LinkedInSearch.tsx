@@ -3,6 +3,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { LinkedInAccount } from '@/pages/Outreach';
 import { SearchFiltersPanel } from './search/SearchFiltersPanel';
 import { SearchResultsPanel } from './search/SearchResultsPanel';
+import { RefineSearchModal, RefineAdjustment, AdjustmentDecision } from './search/RefineSearchModal';
 import { useLinkedInSearch } from '@/hooks/useLinkedInSearch';
 import { useLinkedInSearchActions, buildSearchParams } from '@/hooks/useLinkedInSearchActions';
 import { useLinkedInScoring } from '@/hooks/useLinkedInScoring';
@@ -301,10 +302,26 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
 
   // Refine search state and handler
   const [refineLoading, setRefineLoading] = useState(false);
+  const [refineModalOpen, setRefineModalOpen] = useState(false);
+  const [refineDirection, setRefineDirection] = useState<'expand' | 'narrow'>('expand');
+  const [refineAdjustments, setRefineAdjustments] = useState<RefineAdjustment[]>([]);
+  const [refineSummary, setRefineSummary] = useState<string | null>(null);
+  const [refineExpectedImpact, setRefineExpectedImpact] = useState<string | null>(null);
 
-  const handleRefineSearch = useCallback(async (direction: 'expand' | 'narrow') => {
+  const arrayFields = useMemo(() => new Set([
+    'role', 'location', 'school', 'company', 'industry', 'function',
+    'degree', 'skills', 'job_title', 'seniority', 'network_distance',
+    'profile_language', 'open_to', 'groups', 'company_location',
+    'past_company', 'past_job_title', 'company_headcount', 'company_type',
+    'company_keywords', 'tags',
+  ]), []);
+
+  const fetchRefineSuggestions = useCallback(async () => {
     if (!selectedAccount || !search.selectedJob) return;
     setRefineLoading(true);
+    setRefineAdjustments([]);
+    setRefineSummary(null);
+    setRefineExpectedImpact(null);
     try {
       const currentSearchParams = buildSearchParams(search.filters, selectedAccount);
       const { data, error } = await supabase.functions.invoke('refine-search-filters', {
@@ -323,91 +340,129 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
           resultCount: search.results.length,
           jobTitle: search.selectedJob.title,
           jobLocation: search.selectedJob.location,
-          direction,
+          direction: refineDirection,
         },
       });
 
       if (error) throw error;
       if (!data?.success) throw new Error(data?.error || 'Erreur inconnue');
 
-      // Apply adjustments
-      const adjustments = data.adjustments || [];
-      if (adjustments.length === 0) {
+      setRefineAdjustments(data.adjustments || []);
+      setRefineSummary(data.summary || null);
+      setRefineExpectedImpact(data.expectedImpact || null);
+
+      if (!data.adjustments || data.adjustments.length === 0) {
         toast.info('Aucun ajustement suggéré');
-        return;
       }
-
-      // Fields that MUST remain arrays in the filter state
-      const arrayFields = new Set([
-        'role', 'location', 'school', 'company', 'industry', 'function',
-        'degree', 'skills', 'job_title', 'seniority', 'network_distance',
-        'profile_language', 'open_to', 'groups', 'company_location',
-        'past_company', 'past_job_title', 'company_headcount', 'company_type',
-        'company_keywords', 'tags',
-      ]);
-
-      search.setFilters(prev => {
-        const updated = { ...prev };
-        for (const adj of adjustments) {
-          const field = adj.field as string;
-          const value = adj.value;
-
-          // Special case: years_of_experience as {min, max} → split into two fields
-          if (field === 'years_of_experience' && value && typeof value === 'object' && !Array.isArray(value)) {
-            if ('min' in value) (updated as any).years_of_experience_min = value.min;
-            if ('max' in value) (updated as any).years_of_experience_max = value.max;
-            continue;
-          }
-
-          // Special case: skills_keywords (string[]) → convert to skills (PriorityFilterItem[])
-          if (field === 'skills_keywords') {
-            if (Array.isArray(value)) {
-              updated.skills = value.map((s: string) => ({
-                id: s.toLowerCase().replace(/\s+/g, '-'),
-                name: s,
-                keywords: s,
-                priority: 'CAN_HAVE' as const,
-              }));
-            }
-            continue;
-          }
-
-          if (!(field in updated)) continue;
-          
-          // Ensure array fields stay arrays
-          if (arrayFields.has(field)) {
-            if (Array.isArray(value)) {
-              (updated as any)[field] = value;
-            } else if (value && typeof value === 'object') {
-              // AI returned a single object instead of an array — wrap it
-              (updated as any)[field] = [value];
-            }
-          } else {
-            (updated as any)[field] = value;
-          }
-        }
-        return updated;
-      });
-
-      // Reset search state for new search
-      search.setResults([]);
-      search.setCursor(null);
-      search.setHasMoreResults(true);
-      search.setHasSearched(false);
-      search.setTotal(null);
-
-      const reasons = adjustments.map((a: any) => `• ${a.reason}`).join('\n');
-      toast.success(data.summary || `${adjustments.length} filtre(s) ajusté(s)`, {
-        description: reasons,
-        duration: 6000,
-      });
     } catch (err: any) {
       console.error('[RefineSearch] Error:', err);
-      toast.error(err.message || 'Erreur lors de l\'affinage');
+      toast.error(err.message || 'Erreur lors de l\'analyse');
     } finally {
       setRefineLoading(false);
     }
-  }, [selectedAccount, search.selectedJob, search.filters, search.total, search.results.length, search.setFilters, search.setResults, search.setCursor, search.setHasMoreResults, search.setHasSearched, search.setTotal]);
+  }, [selectedAccount, search.selectedJob, search.filters, search.total, search.results.length, refineDirection]);
+
+  const handleOpenRefineModal = useCallback((direction: 'expand' | 'narrow') => {
+    setRefineDirection(direction);
+    setRefineAdjustments([]);
+    setRefineSummary(null);
+    setRefineExpectedImpact(null);
+    setRefineModalOpen(true);
+  }, []);
+
+  const handleApplyRefinements = useCallback((decisions: Record<number, AdjustmentDecision>) => {
+    const accepted = refineAdjustments.filter((_, i) => {
+      const d = decisions[i];
+      return d === 'accept' || d === 'cautious';
+    });
+
+    if (accepted.length === 0) {
+      setRefineModalOpen(false);
+      return;
+    }
+
+    const cautiousIndices = new Set(
+      Object.entries(decisions)
+        .filter(([, d]) => d === 'cautious')
+        .map(([i]) => Number(i))
+    );
+
+    search.setFilters(prev => {
+      const updated = { ...prev };
+      for (let i = 0; i < refineAdjustments.length; i++) {
+        const d = decisions[i];
+        if (d !== 'accept' && d !== 'cautious') continue;
+
+        const adj = refineAdjustments[i];
+        const field = adj.field as string;
+        let value = adj.value;
+
+        if (cautiousIndices.has(i)) {
+          if (typeof value === 'number' && field in prev) {
+            const current = (prev as any)[field];
+            if (typeof current === 'number') {
+              value = Math.round(current + (value as number - current) * 0.5);
+            }
+          }
+          if (typeof value === 'object' && value && !Array.isArray(value) && ('min' in (value as any) || 'max' in (value as any))) {
+            const v = { ...(value as { min?: number; max?: number }) };
+            const currentMin = (prev as any)[`${field}_min`] ?? (prev as any).calculated_experience_min;
+            const currentMax = (prev as any)[`${field}_max`] ?? (prev as any).calculated_experience_max;
+            if (v.min != null && typeof currentMin === 'number') v.min = Math.round(currentMin + (v.min - currentMin) * 0.5);
+            if (v.max != null && typeof currentMax === 'number') v.max = Math.round(currentMax + (v.max - currentMax) * 0.5);
+            value = v;
+          }
+        }
+
+        if (field === 'years_of_experience' && value && typeof value === 'object' && !Array.isArray(value)) {
+          const v = value as { min?: number; max?: number };
+          if ('min' in v) (updated as any).years_of_experience_min = v.min;
+          if ('max' in v) (updated as any).years_of_experience_max = v.max;
+          continue;
+        }
+
+        if (field === 'skills_keywords') {
+          if (Array.isArray(value)) {
+            updated.skills = (value as string[]).map((s: string) => ({
+              id: s.toLowerCase().replace(/\s+/g, '-'),
+              name: s,
+              keywords: s,
+              priority: 'CAN_HAVE' as const,
+            }));
+          }
+          continue;
+        }
+
+        if (!(field in updated)) continue;
+
+        if (arrayFields.has(field)) {
+          if (Array.isArray(value)) {
+            (updated as any)[field] = value;
+          } else if (value && typeof value === 'object') {
+            (updated as any)[field] = [value];
+          }
+        } else {
+          (updated as any)[field] = value;
+        }
+      }
+      return updated;
+    });
+
+    search.setResults([]);
+    search.setCursor(null);
+    search.setHasMoreResults(true);
+    search.setHasSearched(false);
+    search.setTotal(null);
+
+    const appliedCount = accepted.length;
+    const cautiousCount = cautiousIndices.size;
+    toast.success(
+      `${appliedCount} ajustement${appliedCount > 1 ? 's' : ''} appliqué${appliedCount > 1 ? 's' : ''}${cautiousCount > 0 ? ` (${cautiousCount} avec prudence)` : ''}`,
+      { duration: 4000 }
+    );
+
+    setRefineModalOpen(false);
+  }, [refineAdjustments, search.setFilters, search.setResults, search.setCursor, search.setHasMoreResults, search.setHasSearched, search.setTotal, arrayFields]);
 
   // No auto-infinite scroll — batch workflow uses manual "Lot suivant" button
   // The loadMoreTriggerRef is kept for the button placement in SearchResultsPanel
@@ -559,12 +614,25 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
           onArchive={handleArchive}
           onMessageSent={handleMessageSent}
           onSequenceEnrollSuccess={handleSequenceEnrollSuccess}
-          onRefineSearch={handleRefineSearch}
+          onRefineSearch={handleOpenRefineModal}
           refineLoading={refineLoading}
           scrollAreaRef={scrollAreaRef}
           loadMoreTriggerRef={loadMoreTriggerRef}
         />
       </div>
+
+      {/* Refine Search Modal */}
+      <RefineSearchModal
+        open={refineModalOpen}
+        onOpenChange={setRefineModalOpen}
+        direction={refineDirection}
+        loading={refineLoading}
+        adjustments={refineAdjustments}
+        summary={refineSummary}
+        expectedImpact={refineExpectedImpact}
+        onFetchSuggestions={fetchRefineSuggestions}
+        onApply={handleApplyRefinements}
+      />
     </div>
   );
 };
