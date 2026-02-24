@@ -95,20 +95,54 @@ function sanitizeMessage(message: string): string {
 }
 
 function tryParseModelJson(content: string): ModelJson | null {
+  // Try direct parse first
   try {
     const result = JSON.parse(content);
-    if (!result || typeof result !== 'object') return null;
-    if (typeof (result as any).message !== 'string') return null;
-    return {
-      subject: String((result as any).subject || ''),
-      message: String((result as any).message || ''),
-      personalization_points: Array.isArray((result as any).personalization_points)
-        ? (result as any).personalization_points.filter((x: unknown) => typeof x === 'string')
-        : [],
-    };
+    if (result && typeof result === 'object' && typeof (result as any).message === 'string') {
+      return {
+        subject: String((result as any).subject || ''),
+        message: String((result as any).message || ''),
+        personalization_points: Array.isArray((result as any).personalization_points)
+          ? (result as any).personalization_points.filter((x: unknown) => typeof x === 'string')
+          : [],
+      };
+    }
   } catch {
-    return null;
+    // Direct parse failed, try to extract JSON from the content
   }
+
+  // Try to extract JSON object from surrounding text/markdown
+  try {
+    const jsonMatch = content.match(/\{[\s\S]*"message"\s*:\s*"[\s\S]*?\}(?:\s*\]?\s*\})?/);
+    if (jsonMatch) {
+      // Find the balanced braces
+      let braceCount = 0;
+      let start = content.indexOf('{');
+      if (start === -1) return null;
+      for (let i = start; i < content.length; i++) {
+        if (content[i] === '{') braceCount++;
+        if (content[i] === '}') braceCount--;
+        if (braceCount === 0) {
+          const extracted = content.slice(start, i + 1);
+          const result = JSON.parse(extracted);
+          if (result && typeof result === 'object' && typeof (result as any).message === 'string') {
+            return {
+              subject: String((result as any).subject || ''),
+              message: String((result as any).message || ''),
+              personalization_points: Array.isArray((result as any).personalization_points)
+                ? (result as any).personalization_points.filter((x: unknown) => typeof x === 'string')
+                : [],
+            };
+          }
+          break;
+        }
+      }
+    }
+  } catch {
+    // Extraction also failed
+  }
+
+  return null;
 }
 
 // Fetch recent LinkedIn posts for a candidate via Unipile
