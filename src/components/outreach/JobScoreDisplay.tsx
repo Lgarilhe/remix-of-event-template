@@ -236,7 +236,7 @@ export const JobScoreDisplay: React.FC<JobScoreDisplayProps> = ({
             <p className="text-sm font-medium text-[#1A1A1A]">{result.summary}</p>
           </div>
         </div>
-        <div className="flex flex-col items-end gap-1">
+        <div className="flex flex-col items-end gap-1 shrink-0">
           {getRecommendationBadge(result.recommendation)}
           <SalaryBadge analysis={result.salary_analysis} />
         </div>
