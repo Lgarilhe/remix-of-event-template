@@ -264,7 +264,7 @@ export function useCandidateHistory(
           title: n.title,
           detail: n.detail,
           note_type: n.note_type,
-          note_date: normalizeDate(n.note_date) || extractDateFromRawData(n.raw_data, ['Date', 'Date de création']),
+          note_date: normalizeDate(n.note_date) || extractDateFromRawData(n.raw_data, ['Date', 'Date de la note', 'Date de création', 'Date de création (Bullhorn)']),
           author: n.author,
         })),
         appointments: (appointmentsRes.data || []).map(a => ({
