@@ -197,42 +197,66 @@ export const CandidateHistoryPanel: React.FC<CandidateHistoryPanelProps> = ({
   );
 };
 
+function formatShortDate(dateStr: string | null | undefined): string | null {
+  if (!dateStr) return null;
+  try {
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return null;
+    return d.toLocaleDateString('fr-FR', { month: 'short', year: '2-digit' });
+  } catch { return null; }
+}
+
+function getMostRecentDate(dates: (string | null | undefined)[]): string | null {
+  const valid = dates.filter(Boolean).map(d => new Date(d!)).filter(d => !isNaN(d.getTime()));
+  if (!valid.length) return null;
+  valid.sort((a, b) => b.getTime() - a.getTime());
+  return formatShortDate(valid[0].toISOString());
+}
+
 // Compact summary for search result cards
 const CompactHistory: React.FC<{ data: CandidateHistoryData }> = ({ data }) => {
   const items: React.ReactNode[] = [];
 
   if (data.placements.length > 0) {
+    const date = getMostRecentDate(data.placements.map(p => p.start_date));
     items.push(
       <Badge key="placements" className="bg-amber-100 text-amber-700 border-amber-200 text-[10px] px-1.5 py-0 h-4 gap-0.5">
         <Trophy className="w-2.5 h-2.5" />
         {data.placements.length} placement{data.placements.length > 1 ? 's' : ''}
+        {date && <span className="opacity-70">· {date}</span>}
       </Badge>
     );
   }
 
   if (data.shortlists.length > 0) {
+    const date = getMostRecentDate(data.shortlists.map(s => s.date_added));
     items.push(
       <Badge key="shortlists" variant="outline" className="border-blue-200 bg-blue-50 text-blue-600 text-[10px] px-1.5 py-0 h-4 gap-0.5">
         <Star className="w-2.5 h-2.5" />
         {data.shortlists.length} shortlist{data.shortlists.length > 1 ? 's' : ''}
+        {date && <span className="opacity-70">· {date}</span>}
       </Badge>
     );
   }
 
   if (data.appointments.length > 0) {
+    const date = getMostRecentDate(data.appointments.map(a => a.appointment_date));
     items.push(
       <Badge key="rdv" variant="outline" className="border-purple-200 bg-purple-50 text-purple-600 text-[10px] px-1.5 py-0 h-4 gap-0.5">
         <Calendar className="w-2.5 h-2.5" />
         {data.appointments.length} RDV
+        {date && <span className="opacity-70">· {date}</span>}
       </Badge>
     );
   }
 
   if (data.notes.length > 0) {
+    const date = getMostRecentDate(data.notes.map(n => n.note_date));
     items.push(
       <Badge key="notes" variant="outline" className="border-teal-200 bg-teal-50 text-teal-600 text-[10px] px-1.5 py-0 h-4 gap-0.5">
         <FileText className="w-2.5 h-2.5" />
         {data.notes.length} note{data.notes.length > 1 ? 's' : ''}
+        {date && <span className="opacity-70">· {date}</span>}
       </Badge>
     );
   }
