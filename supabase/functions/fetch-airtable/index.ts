@@ -6,8 +6,10 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 };
 
-const AIRTABLE_API_KEY = Deno.env.get("AIRTABLE_API_KEY");
-const AIRTABLE_BASE_ID = Deno.env.get("AIRTABLE_BASE_ID");
+const RAW_AIRTABLE_API_KEY = Deno.env.get("AIRTABLE_API_KEY");
+const RAW_AIRTABLE_BASE_ID = Deno.env.get("AIRTABLE_BASE_ID");
+const AIRTABLE_API_KEY = RAW_AIRTABLE_API_KEY?.trim();
+const AIRTABLE_BASE_ID = RAW_AIRTABLE_BASE_ID?.trim();
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 
@@ -71,6 +73,12 @@ function getArray(field: unknown): string[] {
   if (Array.isArray(field)) return field.map(String);
   if (typeof field === 'string') return [field];
   return [];
+}
+
+function maskValue(value: string | null | undefined): string | null {
+  if (!value) return null;
+  if (value.length <= 8) return value;
+  return `${value.slice(0, 4)}...${value.slice(-4)}`;
 }
 
 // Transform functions for each table
@@ -268,6 +276,63 @@ serve(async (req) => {
       }
       const data = await response.json();
       return new Response(JSON.stringify({ success: true, tables: data.tables?.map((t: any) => ({ id: t.id, name: t.name, fields: t.fields?.map((f: any) => f.name) })) }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    if (action === 'debug_airtable') {
+      const diagnosticBaseId = typeof body.base_id === 'string' ? body.base_id.trim() : AIRTABLE_BASE_ID;
+      const tableIdOrName = typeof body.table_id_or_name === 'string' ? body.table_id_or_name.trim() : null;
+
+      const metaUrl = `https://api.airtable.com/v0/meta/bases/${diagnosticBaseId}/tables`;
+      const tableUrl = tableIdOrName
+        ? `https://api.airtable.com/v0/${diagnosticBaseId}/${encodeURIComponent(tableIdOrName)}?maxRecords=1`
+        : null;
+
+      const [metaResponse, tableResponse] = await Promise.all([
+        fetch(metaUrl, {
+          headers: { Authorization: `Bearer ${AIRTABLE_API_KEY}` },
+        }),
+        tableUrl
+          ? fetch(tableUrl, {
+              headers: { Authorization: `Bearer ${AIRTABLE_API_KEY}` },
+            })
+          : Promise.resolve(null),
+      ]);
+
+      const [metaPayload, tablePayload] = await Promise.all([
+        metaResponse.text(),
+        tableResponse ? tableResponse.text() : Promise.resolve(null),
+      ]);
+
+      return new Response(JSON.stringify({
+        success: metaResponse.ok || !!tableResponse?.ok,
+        debug: {
+          has_api_key: !!AIRTABLE_API_KEY,
+          token_prefix: AIRTABLE_API_KEY?.slice(0, 4) ?? null,
+          token_length: AIRTABLE_API_KEY?.length ?? 0,
+          api_key_has_wrapping_whitespace: RAW_AIRTABLE_API_KEY !== AIRTABLE_API_KEY,
+          configured_base_id_masked: maskValue(AIRTABLE_BASE_ID),
+          base_id_has_wrapping_whitespace: RAW_AIRTABLE_BASE_ID !== AIRTABLE_BASE_ID,
+          used_base_id_masked: maskValue(diagnosticBaseId),
+          table_id_or_name: tableIdOrName,
+          meta: {
+            url: metaUrl,
+            status: metaResponse.status,
+            ok: metaResponse.ok,
+            body: metaPayload,
+          },
+          table: tableUrl
+            ? {
+                url: tableUrl,
+                status: tableResponse?.status ?? null,
+                ok: tableResponse?.ok ?? false,
+                body: tablePayload,
+              }
+            : null,
+        },
+      }), {
+        status: 200,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
