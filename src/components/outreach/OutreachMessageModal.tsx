@@ -66,6 +66,24 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
     const workExperience = profile.work_experience || [];
     const currentJob = workExperience.find(exp => !exp.end) || workExperience[0];
     const pastJobs = workExperience.filter(exp => exp.end).slice(0, 3);
+    const education = profile.education || [];
+    
+    // Calculate years of experience from earliest work or diploma
+    const calcYearsOfExperience = (): number | undefined => {
+      const years = workExperience
+        .filter((exp: any) => exp.start?.year)
+        .map((exp: any) => exp.start.year);
+      if (years.length > 0) {
+        return new Date().getFullYear() - Math.min(...years);
+      }
+      const eduYears = education
+        .filter((edu: any) => edu.end?.year)
+        .map((edu: any) => edu.end.year);
+      if (eduYears.length > 0) {
+        return new Date().getFullYear() - Math.max(...eduYears);
+      }
+      return undefined;
+    };
     
     return {
       name: profile.name || `${profile.first_name || ''} ${profile.last_name || ''}`.trim(),
@@ -74,7 +92,11 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
       currentCompany: currentJob?.company,
       location: profile.location,
       skills: profile.skills?.map((s: any) => s.name || s).slice(0, 10) || [],
-      pastPositions: pastJobs.map(p => `${p.role} chez ${p.company}`),
+      pastPositions: pastJobs.map(p => `${p.role} chez ${p.company}${p.start?.year ? ` (${p.start.year}${p.end?.year ? `-${p.end.year}` : ''})` : ''}`),
+      education: education.slice(0, 3).map((edu: any) => 
+        `${edu.degree || edu.field_of_study || 'Diplôme'} – ${edu.school || 'École'}${edu.end?.year ? ` (${edu.end.year})` : ''}`
+      ),
+      yearsOfExperience: calcYearsOfExperience(),
       summary: profile.summary || '', // LinkedIn "About" section
     };
   };

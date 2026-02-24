@@ -530,7 +530,7 @@ Réponds UNIQUEMENT en JSON valide:
 {
   "subject": "Objet court (max 40 car, mobile-first)",
   "message": "Le message complet avec des \\n\\n entre les paragraphes. 200-400 caractères hors signature.",
-  "personalization_points": ["Élément précis du profil utilisé", "Technique de personnalisation appliquée (ex: ancien employeur commun, passion du À propos, question ouverte)"]
+  "personalization_points": ["HOOK 1: citation EXACTE ou fait PRÉCIS du profil utilisé comme accroche (ex: 'Post LinkedIn du 15/01 sur le DDD', 'Transition Doctolib→startup après 4 ans', 'Formation GOBELINS + parcours Rails/iOS')", "HOOK 2: lien CONCRET entre cet élément et le poste (ex: 'Expérience cloud souverain → projet infra greenfield', 'Double casquette dev/design → rôle VP Experience Design')"]
 }`;
 
     const callAnthropic = async (userPrompt: string): Promise<{ ok: true; content: string } | { ok: false; response: Response }> => {
