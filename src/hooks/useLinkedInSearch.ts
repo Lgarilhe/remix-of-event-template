@@ -45,7 +45,7 @@ export function useLinkedInSearch({
 
   // View state
   const [showDismissed, setShowDismissed] = useState(false);
-  const [statusFilter, setStatusFilter] = useState<'all' | 'untreated' | 'scored' | 'scored_go' | 'scored_maybe' | 'scored_not_contacted' | 'messaged' | 'dismissed'>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'untreated' | 'scored' | 'scored_go' | 'scored_maybe' | 'scored_not_contacted' | 'messaged' | 'dismissed' | 'known'>('all');
   const [autoHideTreated, setAutoHideTreated] = useState(true);
   const autoHideTreatedRef = useRef(true);
 
