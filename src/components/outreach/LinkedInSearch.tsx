@@ -462,7 +462,10 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
     );
 
     setRefineModalOpen(false);
-  }, [refineAdjustments, search.setFilters, search.setResults, search.setCursor, search.setHasMoreResults, search.setHasSearched, search.setTotal, arrayFields]);
+
+    // Auto-trigger search with updated filters
+    queueMicrotask(() => handleSearch(false));
+  }, [refineAdjustments, search.setFilters, search.setResults, search.setCursor, search.setHasMoreResults, search.setHasSearched, search.setTotal, arrayFields, handleSearch]);
 
   // No auto-infinite scroll — batch workflow uses manual "Lot suivant" button
   // The loadMoreTriggerRef is kept for the button placement in SearchResultsPanel
