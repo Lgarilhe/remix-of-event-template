@@ -18,6 +18,8 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Chat, Message, SequenceEnrollmentInfo, JobData } from '@/hooks/useMessagesInbox';
+import { useCandidateHistory } from '@/hooks/useCandidateHistory';
+import { CandidateHistoryPanel } from '../CandidateHistoryPanel';
 import {
   getChatDisplayName,
   getChatHeadline,
@@ -182,7 +184,8 @@ export const MessageView: React.FC<MessageViewProps> = ({
         )}
       </div>
 
-      {/* AI analysis is now on-demand via NurturingPanel buttons */}
+      {/* Airtable History Panel */}
+      <AirtableHistorySection profileUrl={selectedChat.attendees?.[0]?.profile_url} />
 
       {/* Messages Area */}
       <ScrollArea 
@@ -320,5 +323,16 @@ export const MessageView: React.FC<MessageViewProps> = ({
         </div>
       </div>
     </div>
+  );
+};
+
+// Separate component to safely use hooks
+const AirtableHistorySection: React.FC<{ profileUrl?: string | null }> = ({ profileUrl }) => {
+  const { data, loading } = useCandidateHistory(profileUrl);
+  if (!loading && !data) return null;
+  return (
+    <ScrollArea className="max-h-[200px]">
+      <CandidateHistoryPanel data={data} loading={loading} />
+    </ScrollArea>
   );
 };
