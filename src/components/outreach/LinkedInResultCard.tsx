@@ -1510,6 +1510,12 @@ export const LinkedInResultCard: React.FC<LinkedInResultCardProps> = ({
             profile={profile}
             job={selectedJob}
             selectedAccount={accountId}
+            candidateHistory={historyData ? {
+              shortlists: historyData.shortlists,
+              placements: historyData.placements,
+              notes: historyData.notes?.slice(0, 5),
+              appointments: historyData.appointments?.slice(0, 3),
+            } : undefined}
             onMessageSent={async () => {
               // Save candidate as "messaged" in job_candidate_status
               try {

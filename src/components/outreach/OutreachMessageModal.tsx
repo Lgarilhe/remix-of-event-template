@@ -23,6 +23,13 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 
+interface CandidateHistoryForPrompt {
+  shortlists?: Array<{ job_title?: string | null; company_name?: string | null; status?: string | null; date_added?: string | null; consultant?: string | null }>;
+  placements?: Array<{ company_name?: string | null; status?: string | null; start_date?: string | null; contract_type?: string | null; consultant?: string | null }>;
+  notes?: Array<{ title?: string | null; detail?: string | null; note_date?: string | null; consultant?: string | null }>;
+  appointments?: Array<{ title?: string | null; appointment_date?: string | null; appointment_type?: string | null; status?: string | null }>;
+}
+
 interface OutreachMessageModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -30,6 +37,7 @@ interface OutreachMessageModalProps {
   job: Job;
   selectedAccount?: string | null;
   onMessageSent?: () => void | Promise<void>;
+  candidateHistory?: CandidateHistoryForPrompt | null;
 }
 
 type Tone = 'professional' | 'casual' | 'enthusiastic';
@@ -41,6 +49,7 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
   job,
   selectedAccount,
   onMessageSent,
+  candidateHistory,
 }) => {
   const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
@@ -138,6 +147,7 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
           senderName: senderName.trim() || undefined,
           accountId: selectedAccount || undefined,
           profileId: candidateProviderId || undefined,
+          candidateHistory: candidateHistory || undefined,
         }
       });
 

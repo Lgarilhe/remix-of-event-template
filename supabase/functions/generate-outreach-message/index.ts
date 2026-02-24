@@ -18,6 +18,13 @@ interface ProfileData {
   summary?: string; // LinkedIn "About" section
 }
 
+interface CandidateHistoryData {
+  shortlists?: Array<{ job_title?: string | null; company_name?: string | null; status?: string | null; date_added?: string | null; consultant?: string | null }>;
+  placements?: Array<{ company_name?: string | null; status?: string | null; start_date?: string | null; contract_type?: string | null; consultant?: string | null }>;
+  notes?: Array<{ title?: string | null; detail?: string | null; note_date?: string | null; consultant?: string | null }>;
+  appointments?: Array<{ title?: string | null; appointment_date?: string | null; appointment_type?: string | null; status?: string | null }>;
+}
+
 interface JobData {
   title: string;
   client?: { name: string; sector: string } | null;
@@ -216,7 +223,7 @@ serve(async (req) => {
   }
 
   try {
-    const { profile, job, tone = "professional", senderName, candidateStatus = "to_evaluate", accountId, profileId } = await req.json() as {
+    const { profile, job, tone = "professional", senderName, candidateStatus = "to_evaluate", accountId, profileId, candidateHistory } = await req.json() as {
       profile: ProfileData;
       job: JobData;
       tone?: "professional" | "casual" | "enthusiastic";
@@ -224,6 +231,7 @@ serve(async (req) => {
       candidateStatus?: CandidateStatus;
       accountId?: string;
       profileId?: string;
+      candidateHistory?: CandidateHistoryData | null;
     };
     
     const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
@@ -348,6 +356,64 @@ UTILISATION DES POSTS:
 - Le ton de ses posts te renseigne aussi sur son style de communication → adapte-toi`
       : '';
 
+    // Build candidate history section (from ATS/Airtable data)
+    const historySection = (() => {
+      if (!candidateHistory) return '';
+      const parts: string[] = [];
+
+      const shortlists = candidateHistory.shortlists?.filter(s => s.job_title || s.company_name) || [];
+      if (shortlists.length > 0) {
+        parts.push('SHORTLISTS (postes pour lesquels ce candidat a été présenté):');
+        shortlists.forEach(s => {
+          const info = [s.job_title, s.company_name, s.status, s.date_added, s.consultant ? `par ${s.consultant}` : ''].filter(Boolean).join(' | ');
+          parts.push(`  - ${info}`);
+        });
+      }
+
+      const placements = candidateHistory.placements?.filter(p => p.company_name) || [];
+      if (placements.length > 0) {
+        parts.push('PLACEMENTS (missions passées via notre cabinet):');
+        placements.forEach(p => {
+          const info = [p.company_name, p.contract_type, p.start_date, p.status, p.consultant ? `par ${p.consultant}` : ''].filter(Boolean).join(' | ');
+          parts.push(`  - ${info}`);
+        });
+      }
+
+      const notes = candidateHistory.notes?.filter(n => n.detail || n.title) || [];
+      if (notes.length > 0) {
+        parts.push('NOTES INTERNES (observations passées de nos consultants):');
+        notes.slice(0, 3).forEach(n => {
+          const info = [n.note_date, n.consultant ? `par ${n.consultant}` : '', n.title, n.detail?.slice(0, 150)].filter(Boolean).join(' | ');
+          parts.push(`  - ${info}`);
+        });
+      }
+
+      const appointments = candidateHistory.appointments?.filter(a => a.title) || [];
+      if (appointments.length > 0) {
+        parts.push('RENDEZ-VOUS PASSÉS:');
+        appointments.slice(0, 2).forEach(a => {
+          const info = [a.appointment_date, a.appointment_type, a.title, a.status].filter(Boolean).join(' | ');
+          parts.push(`  - ${info}`);
+        });
+      }
+
+      if (parts.length === 0) return '';
+
+      return `
+=== HISTORIQUE INTERNE AVEC CE CANDIDAT (ATS/CRM) ===
+${parts.join('\n')}
+=== FIN HISTORIQUE ===
+
+UTILISATION DE L'HISTORIQUE:
+- Ce candidat est DÉJÀ CONNU de notre cabinet. C'est une information PRÉCIEUSE.
+- SI une shortlist ou un placement est pertinent par rapport au poste actuel → mentionne-le naturellement ("on avait échangé pour [poste/client]", "tu avais bossé avec [consultant]")
+- SI un ancien collègue/consultant a laissé une note positive → tu peux t'en inspirer pour le ton
+- SI le candidat a déjà été placé chez un client → c'est un signal fort de confiance, mentionne-le
+- ATTENTION: ne cite JAMAIS le contenu exact des notes internes, ce sont des infos confidentielles. Utilise-les pour ORIENTER ton message, pas pour les citer.
+- ATTENTION: ne mentionne l'historique QUE si c'est PERTINENT et NATUREL. Un historique ancien ou sans rapport avec le poste actuel ne doit PAS être forcé dans le message.
+- Le but: montrer que tu n'es pas un inconnu, que le candidat a déjà un lien avec le cabinet/l'équipe.`;
+    })();
+
     const prompt = `Tu es un recruteur tech senior. Tu écris des messages LinkedIn ULTRA personnalisés et percutants.
 ${engagementInstructions}
 
@@ -371,6 +437,7 @@ IMPORTANT - ANALYSE LE STYLE D'ÉCRITURE DU CANDIDAT:
 - Son ton est-il corporate, startup, créatif, technique ?
 - ADAPTE TON MESSAGE À SON STYLE pour créer une résonance naturelle` : ''}
 ${postsSection}
+${historySection}
 
 POSTE À POURVOIR:
 - Titre: ${job.title}
@@ -405,6 +472,13 @@ ${statusInstructions[candidateStatus] || statusInstructions.other}
       - Une prise de position sur un enjeu du secteur → montre que tu l'as lu
       - Un partage d'expérience professionnelle → fais le lien avec le poste
       - ATTENTION: n'utilise un post QUE s'il est pertinent par rapport au poste. Sinon ignore-le.
+   
+   a-bis) HISTORIQUE INTERNE (si fourni, TRÈS FORT pour personnaliser):
+      - Le candidat a déjà été en shortlist ou placé via le cabinet → "on avait échangé il y a quelque temps pour [poste/client]"
+      - Un consultant a déjà eu un contact → mentionne le lien existant naturellement
+      - ATTENTION: utilise l'historique UNIQUEMENT quand c'est pertinent et récent. Ne force pas.
+      - JAMAIS citer les notes internes textuellement, ce sont des infos confidentielles.
+      - Le but: transformer un cold outreach en warm intro grâce à la relation existante.
    
    b) SECTION "À PROPOS" (mine d'or si pas de posts pertinents):
       - Une passion technique ("j'aime les systèmes distribués")
