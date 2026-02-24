@@ -46,7 +46,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { SourcingProject } from '@/hooks/useSourcingProjects';
-
+import airtableLogo from '@/assets/airtable-logo.svg';
+import notionLogo from '@/assets/notion-logo.png';
 
 interface LinkedInResultCardProps {
   profile: LinkedInProfile;
@@ -63,6 +64,7 @@ interface LinkedInResultCardProps {
   onArchive?: () => void;
   candidateStatus?: { status: string; score?: number | null; recommendation?: string | null; updated_at?: string } | null;
   airtableMatch?: { source_base: string; full_name: string | null; status: string | null } | null;
+  notionMatch?: { id: string; name: string } | null;
 }
 
 interface ChatMessage {
@@ -96,6 +98,7 @@ export const LinkedInResultCard: React.FC<LinkedInResultCardProps> = ({
   onArchive,
   candidateStatus,
   airtableMatch,
+  notionMatch,
 }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const [showMessageModal, setShowMessageModal] = useState(false);
@@ -514,17 +517,26 @@ export const LinkedInResultCard: React.FC<LinkedInResultCardProps> = ({
                       {airtableMatch && (
                         <Tooltip>
                           <TooltipTrigger asChild>
-                            <Badge variant="outline" className="text-[10px] px-1 sm:px-1.5 py-0 h-4 sm:h-5 text-teal-700 border-teal-300 bg-teal-50 shrink-0 gap-0.5">
-                              <FileText className="w-2.5 h-2.5" />
-                              <span className="hidden sm:inline">
-                                {airtableMatch.source_base === 'konekt' ? 'Konekt' : 'Prospect'}
-                              </span>
-                              <span className="sm:hidden">AT</span>
+                            <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 sm:h-5 border-teal-300 bg-teal-50 shrink-0">
+                              <img src={airtableLogo} alt="Airtable" className="w-3.5 h-3.5 object-contain" />
                             </Badge>
                           </TooltipTrigger>
                           <TooltipContent side="top" className="max-w-xs">
-                            <p className="text-xs font-medium">Déjà dans Airtable ({airtableMatch.source_base === 'konekt' ? 'Konekt' : 'Konekt prospect'})</p>
+                            <p className="text-xs font-medium">Déjà dans Airtable</p>
                             {airtableMatch.status && <p className="text-xs text-muted-foreground">Statut : {airtableMatch.status}</p>}
+                          </TooltipContent>
+                        </Tooltip>
+                      )}
+                      {notionMatch && (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 sm:h-5 border-gray-300 bg-gray-50 shrink-0">
+                              <img src={notionLogo} alt="Notion" className="w-3.5 h-3.5 object-contain" />
+                            </Badge>
+                          </TooltipTrigger>
+                          <TooltipContent side="top" className="max-w-xs">
+                            <p className="text-xs font-medium">Déjà dans Notion</p>
+                            <p className="text-xs text-muted-foreground">{notionMatch.name}</p>
                           </TooltipContent>
                         </Tooltip>
                       )}
