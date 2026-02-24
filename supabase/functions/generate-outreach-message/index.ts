@@ -472,7 +472,7 @@ ${statusInstructions[candidateStatus] || statusInstructions.other}
 
 8. INTERDITS (MARQUEURS IA À BANNIR):
    - "j'ai parcouru ton profil", "a retenu mon attention", "m'a tapé dans l'œil"
-   - Superlatifs: exceptionnel, remarquable, impressionnant
+   - Superlatifs: exceptionnel, remarquable, impressionnant, brillant, solide parcours
    - "parfaitement", "exactement", "idéalement" → trop vendeur
    - Questions génériques: "ça t'intéresserait ?", "tu serais ouvert ?"
    - FORMAT: JAMAIS "20+", "10+" → "plus de 20", "plus de 10"
@@ -482,6 +482,16 @@ ${statusInstructions[candidateStatus] || statusInstructions.other}
    - JARGON STARTUP: "ton taf", "mise gros", "c'est chaud", "le kiff"
    - FORMULES CREUSES: "projet passionnant", "belle aventure", "super équipe"
    - "ton profil colle parfaitement" ❌ → "ton profil colle bien" ou "ça matche"
+   
+   ⛔ FLATTERIE = INTERDIT (ça sonne fake et IA):
+   - "c'est rare et c'est ce qu'il nous faut" ❌
+   - "ça montre que tu aimes creuser" ❌ (tu ne connais pas la personne)
+   - "c'est exactement le mindset qu'on cherche" ❌
+   - "ton expertise en [X] est précieuse" ❌
+   - "ta maîtrise de [X]" ❌
+   - Toute phrase qui JUGE ou VALORISE le candidat ❌
+   → Tu OBSERVES ou tu POSES UNE QUESTION, tu ne fais PAS de compliment.
+   → Ton = pair curieux, pas recruteur qui vend du rêve.
    
    EN MODE RPO - ABSOLUMENT INTERDIT:
    - "je recrute pour eux" ❌
@@ -509,18 +519,18 @@ ${statusInstructions[candidateStatus] || statusInstructions.other}
    - "Après [N] ans chez [entreprise]..." ❌ (trop résumé CV)
    - Toute formulation qui RÉSUME le parcours au lieu de RÉAGIR à un élément précis ❌
 
-   ✅ BONNES ACCROCHES (phrase 1):
-   - "Tu mentionnes [X] dans ton profil, c'est exactement le genre de mindset qu'on cherche." (réf À propos)
-   - "J'ai vu ton post sur [sujet], ça résonne avec ce qu'on construit." (réf post)
-   - "Ton passage chez [entreprise] m'intrigue, comment tu gérais [problème spécifique] ?" (question sur une XP)
-   - "Le fait que tu sois passé de [techno] à [techno], c'est rare et c'est ce qu'il nous faut." (observation précise)
+   ✅ BONNES ACCROCHES (phrase 1) — factuel, jamais flatteur:
+   - "Tu mentionnes [X] dans ton À propos, on bosse justement sur [Y] chez ${clientName}." (lien direct)
+   - "J'ai vu ton post sur [sujet], on part sur la même approche chez ${clientName}." (réf post)
+   - "Ton passage chez [entreprise] m'intrigue, comment tu gérais [problème spécifique] ?" (question)
+   - "Tu bosses sur [techno] depuis [entreprise], on cherche quelqu'un sur ce créneau." (observation neutre)
 
 === EXEMPLES (BONNES PRATIQUES 2025) ===
 
 EXEMPLE 1 - MODE RPO, accroche "À propos":
 "Salut Thomas,
 
-Tu mentionnes le DDD et l'ownership dans ton profil, c'est pile le mindset qu'on cherche chez ${clientName}. On monte le cloud souverain, stack Go/K8s, tu définirais l'archi toi-même.
+Tu parles de DDD et d'ownership dans ton À propos. On monte justement le cloud souverain chez ${clientName}, stack Go/K8s, tu définirais l'archi toi-même.
 
 Curieux d'avoir ton avis, même si t'es pas en recherche.
 
@@ -529,16 +539,16 @@ Marc"
 EXEMPLE 2 - MODE SUCCÈS, accroche parcours:
 "Salut Julie,
 
-Le fait que tu sois restée 4 ans chez Doctolib sur la data pipeline, ça montre que tu aimes creuser un sujet. Chez Alan ils cherchent exactement ça, Data Engineer senior, stack dbt/BigQuery, full remote.
+4 ans sur la data pipeline chez Doctolib, tu connais bien le sujet. Chez Alan ils ouvrent un poste Data Engineer senior, stack dbt/BigQuery, full remote.
 
-Tu recommanderais quelqu'un pour ce type de poste ?
+Tu recommanderais quelqu'un pour ce type de rôle ?
 
 Marc"
 
 EXEMPLE 3 - Accroche post LinkedIn:
 "Salut Alex,
 
-Ton post sur les micro-services m'a bien parlé. On a un projet greenfield chez ${clientName} qui part sur cette approche, Lead Backend, stack moderne.
+Ton post sur les micro-services m'a donné une idée. On a un projet greenfield chez ${clientName} qui part sur cette approche, Lead Backend, stack moderne.
 
 Ça t'inspire un avis ?
 
