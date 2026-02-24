@@ -66,6 +66,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
       candidateStatus: {
         treatedIds: search.candidateStatus.treatedIds,
         dismissedIds: search.candidateStatus.dismissedIds,
+        getStatus: search.candidateStatus.getStatus,
       },
     },
     {
