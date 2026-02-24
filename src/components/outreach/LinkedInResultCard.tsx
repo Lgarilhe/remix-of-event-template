@@ -125,10 +125,10 @@ export const LinkedInResultCard: React.FC<LinkedInResultCardProps> = ({
   const [replyText, setReplyText] = useState('');
   const [isSending, setIsSending] = useState(false);
 
-  // Airtable history - only fetch when expanded and airtableMatch exists
+  // Airtable history - fetch when airtableMatch exists (not just when expanded)
   const candidateProfileUrl = profile.profile_url || profile.public_profile_url;
   const { data: historyData, loading: historyLoading } = useCandidateHistory(
-    isExpanded && airtableMatch ? candidateProfileUrl : null
+    airtableMatch ? candidateProfileUrl : null
   );
 
   // Handle both API formats
@@ -525,12 +525,21 @@ export const LinkedInResultCard: React.FC<LinkedInResultCardProps> = ({
                       {airtableMatch && (
                         <Tooltip>
                           <TooltipTrigger asChild>
-                            <Badge variant="outline" className={`text-[10px] px-1 py-0 h-4 sm:h-5 shrink-0 ${
+                            <Badge className={`text-[10px] px-1.5 py-0 h-4 sm:h-5 shrink-0 gap-1 ${
                               airtableMatch.match_type === 'fuzzy' 
-                                ? 'border-dashed border-teal-300 bg-teal-50/50' 
-                                : 'border-teal-300 bg-teal-50'
+                                ? 'bg-teal-100 text-teal-700 border border-dashed border-teal-400 hover:bg-teal-200' 
+                                : 'bg-teal-500 text-white hover:bg-teal-600'
                             }`}>
-                              <img src={airtableLogo} alt="Airtable" className="w-3.5 h-3.5 object-contain" />
+                              <img src={airtableLogo} alt="Airtable" className="w-3 h-3 object-contain" style={{ filter: airtableMatch.match_type !== 'fuzzy' ? 'brightness(10)' : 'none' }} />
+                              <span className="hidden sm:inline">
+                                {airtableMatch.match_type === 'fuzzy' ? 'Airtable ?' : 'Airtable'}
+                              </span>
+                              {historyData && (historyData.placements.length > 0 || historyData.shortlists.length > 0) && (
+                                <span className="font-bold">
+                                  {historyData.placements.length > 0 ? `${historyData.placements.length}P` : ''}
+                                  {historyData.shortlists.length > 0 ? `${historyData.placements.length > 0 ? '·' : ''}${historyData.shortlists.length}S` : ''}
+                                </span>
+                              )}
                             </Badge>
                           </TooltipTrigger>
                           <TooltipContent side="top" className="max-w-xs">
@@ -541,6 +550,18 @@ export const LinkedInResultCard: React.FC<LinkedInResultCardProps> = ({
                               <p className="text-xs text-muted-foreground">Corrélation nom + entreprise : {airtableMatch.full_name}</p>
                             )}
                             {airtableMatch.status && <p className="text-xs text-muted-foreground">Statut : {airtableMatch.status}</p>}
+                            {historyData && historyData.placements.length > 0 && (
+                              <p className="text-xs text-amber-600 font-medium">🏆 {historyData.placements.length} placement{historyData.placements.length > 1 ? 's' : ''}</p>
+                            )}
+                            {historyData && historyData.shortlists.length > 0 && (
+                              <p className="text-xs text-blue-600">⭐ {historyData.shortlists.length} shortlist{historyData.shortlists.length > 1 ? 's' : ''}</p>
+                            )}
+                            {historyData && historyData.appointments.length > 0 && (
+                              <p className="text-xs text-purple-600">📅 {historyData.appointments.length} RDV</p>
+                            )}
+                            {historyData && historyData.notes.length > 0 && (
+                              <p className="text-xs text-muted-foreground">📝 {historyData.notes.length} note{historyData.notes.length > 1 ? 's' : ''}</p>
+                            )}
                           </TooltipContent>
                         </Tooltip>
                       )}
@@ -567,6 +588,10 @@ export const LinkedInResultCard: React.FC<LinkedInResultCardProps> = ({
                     <p className="text-xs sm:text-sm text-[#1A1A1A]/70 line-clamp-2 mt-0.5 sm:mt-1 leading-snug">
                       {profile.headline || currentRole || 'Profil LinkedIn'}
                     </p>
+                    {/* Compact Airtable history on card */}
+                    {historyData && !historyLoading && (
+                      <CandidateHistoryPanel data={historyData} loading={false} compact />
+                    )}
                   </div>
 
                   {/* Actions - desktop: inline, mobile: compact */}
