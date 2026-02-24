@@ -101,6 +101,12 @@ export const CandidateHistoryPanel: React.FC<CandidateHistoryPanelProps> = ({
                     {p.status && <Badge variant="outline" className="text-[9px] h-3.5 px-1">{p.status}</Badge>}
                     {p.start_date && <span>{p.start_date}</span>}
                     {p.salary && <span className="text-emerald-600 font-medium">{p.salary}</span>}
+                    {p.consultant && (
+                      <span className="flex items-center gap-0.5">
+                        <User className="w-2.5 h-2.5" />
+                        {p.consultant}
+                      </span>
+                    )}
                   </div>
                 </div>
               </div>
@@ -128,6 +134,12 @@ export const CandidateHistoryPanel: React.FC<CandidateHistoryPanelProps> = ({
                     {s.status && <Badge variant="outline" className="text-[9px] h-3.5 px-1">{s.status}</Badge>}
                     {s.date_added && <span>{s.date_added}</span>}
                     {s.salary_proposed && <span className="text-emerald-600 font-medium">{s.salary_proposed}</span>}
+                    {s.consultant && (
+                      <span className="flex items-center gap-0.5">
+                        <User className="w-2.5 h-2.5" />
+                        {s.consultant}
+                      </span>
+                    )}
                   </div>
                 </div>
               </div>
@@ -169,10 +181,10 @@ export const CandidateHistoryPanel: React.FC<CandidateHistoryPanelProps> = ({
             {data.notes.slice(0, 5).map((n, i) => (
               <div key={i} className="py-1.5 border-b border-border/30 last:border-0">
                 <div className="flex items-center gap-2 text-[10px] text-muted-foreground mb-0.5">
-                  {n.author && (
+                  {(n.author || n.consultant) && (
                     <span className="flex items-center gap-0.5">
                       <User className="w-2.5 h-2.5" />
-                      {n.author}
+                      {n.consultant || n.author}
                     </span>
                   )}
                   {n.note_date && <span>{n.note_date}</span>}
