@@ -567,6 +567,29 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
           </div>
         )}
       </ScrollArea>
+      {/* Bulk InMail Modal */}
+      {selectedAccount && (
+        <BulkInMailModal
+          isOpen={showBulkInMailModal}
+          onClose={() => onSetShowBulkInMailModal(false)}
+          recipients={Array.from(selectedProfiles)
+            .map(id => {
+              const p = results.find(r => r.id === id);
+              if (!p) return null;
+              return {
+                id: p.id,
+                name: p.name || `${p.first_name || ''} ${p.last_name || ''}`.trim(),
+                headline: p.headline,
+                profile_id: p.id,
+                network_distance: p.network_distance,
+                profile: p,
+              };
+            })
+            .filter(Boolean) as any[]}
+          accountId={selectedAccount}
+          selectedJob={selectedJob}
+        />
+      )}
     </div>
   );
 };
