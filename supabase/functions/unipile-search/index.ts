@@ -680,24 +680,48 @@ async function handleSearch(
   console.log('Search URL:', searchUrl);
   console.log('Search body:', JSON.stringify(searchBody));
 
-  const response = await fetch(searchUrl, {
-    method: 'POST',
-    headers: {
-      'X-API-KEY': apiKey,
-      'Accept': 'application/json',
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(searchBody),
-  });
+  // Retry logic for multiple_sessions errors (server-side)
+  const MAX_RETRIES = 3;
+  const RETRY_DELAYS = [0, 6000, 15000]; // ms: immediate, 6s, 15s
+  let response: globalThis.Response | null = null;
+  let data: Record<string, unknown> = {};
 
-  const data = await response.json();
+  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+    if (attempt > 0) {
+      console.log(`[search] Retry attempt ${attempt + 1}/${MAX_RETRIES} after multiple_sessions error, waiting ${RETRY_DELAYS[attempt]}ms`);
+      await new Promise(r => setTimeout(r, RETRY_DELAYS[attempt]));
+    }
 
-  if (!response.ok) {
+    response = await fetch(searchUrl, {
+      method: 'POST',
+      headers: {
+        'X-API-KEY': apiKey,
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(searchBody),
+    });
+
+    data = await response.json();
+
+    // If success or non-retryable error, break
+    if (response.ok) break;
+    
+    const isMultipleSessions = data.type?.toString().includes('multiple_sessions') || 
+      data.detail?.toString().includes('multiple sessions') ||
+      data.message?.toString().includes('multiple sessions');
+    
+    if (!isMultipleSessions) break; // non-retryable error
+    
+    console.log(`[search] multiple_sessions error on attempt ${attempt + 1}`);
+  }
+
+  if (!response!.ok) {
     console.error('Search error:', JSON.stringify(data, null, 2));
     console.error('Request body was:', JSON.stringify(searchBody, null, 2));
     
     // Handle content_too_large (400) - payload rejected by LinkedIn
-    if (response.status === 400 && data.type?.includes('content_too_large')) {
+    if (response!.status === 400 && data.type?.toString().includes('content_too_large')) {
       return new Response(
         JSON.stringify({ 
           success: false, 
@@ -709,10 +733,10 @@ async function handleSearch(
     }
     
     // Handle rate limiting (429) and server errors (500)
-    if (response.status === 429 || response.status === 500) {
-      const isRateLimit = response.status === 429 || 
-        (data.detail && data.detail.toLowerCase().includes('limit')) ||
-        (data.detail && data.detail.toLowerCase().includes('quota'));
+    if (response!.status === 429 || response!.status === 500) {
+      const isRateLimit = response!.status === 429 || 
+        (data.detail && String(data.detail).toLowerCase().includes('limit')) ||
+        (data.detail && String(data.detail).toLowerCase().includes('quota'));
       
       if (isRateLimit) {
         return new Response(
@@ -730,11 +754,10 @@ async function handleSearch(
     // Try to extract more useful error info
     let errorMessage = 'Erreur de recherche';
     if (data.detail) {
-      // Extract just the main error message, not the full schema
-      const detailMatch = data.detail.match(/^([^\n{]+)/);
-      errorMessage = detailMatch ? detailMatch[1].trim() : data.detail.substring(0, 200);
+      const detailMatch = String(data.detail).match(/^([^\n{]+)/);
+      errorMessage = detailMatch ? detailMatch[1].trim() : String(data.detail).substring(0, 200);
     } else if (data.message) {
-      errorMessage = data.message;
+      errorMessage = String(data.message);
     }
     
     return new Response(
@@ -742,7 +765,7 @@ async function handleSearch(
         success: false, 
         error: errorMessage,
         errorType: data.type,
-        debug: { status: response.status, body: searchBody }
+        debug: { status: response!.status, body: searchBody }
       }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
