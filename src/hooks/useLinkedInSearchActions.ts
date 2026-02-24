@@ -408,12 +408,6 @@ export function useLinkedInSearchActions(
       for (const p of filteredBatch) {
         if (!p?.id) continue;
         if (seen.has(p.id)) continue;
-        // Exclude treated profiles EXCEPT scored ones (so they stay visible with their scores)
-        if (selectedJob && candidateStatus.treatedIds.has(p.id)) {
-          const status = candidateStatus.getStatus?.(p.id);
-          // Keep scored profiles in results, exclude dismissed/messaged/etc.
-          if (status?.status !== 'scored') continue;
-        }
         seen.add(p.id);
         collected.push(p);
       }
