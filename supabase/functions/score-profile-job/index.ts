@@ -340,7 +340,7 @@ Réponds UNIQUEMENT en JSON valide avec cette structure exacte:
                   "anthropic-version": "2023-06-01",
                 },
                 body: JSON.stringify({
-                  model: "claude-opus-4-6",
+                  model: "claude-sonnet-4-6-20250514",
                   max_tokens: 1024,
                   messages: [
                     {
