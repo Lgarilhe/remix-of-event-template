@@ -412,8 +412,24 @@ export function useLinkedInSearchActions(
         collected.push(p);
       }
 
-      if (!batchCursor || batch.length === 0) {
+      // Only mark as exhausted when API explicitly returns no cursor AND no results,
+      // OR when we've loaded all results according to total count
+      const totalLoaded = appendMode ? results.length + collected.length : collected.length;
+      const reachedTotal = fetchedTotal !== null && totalLoaded >= fetchedTotal;
+      
+      if ((batch.length === 0 && !batchCursor) || reachedTotal) {
         setHasMoreResults(false);
+      } else if (!batchCursor && batch.length > 0) {
+        // API returned results but no cursor — might be a pagination quirk
+        // Only stop if we're close to total
+        if (fetchedTotal !== null && totalLoaded >= fetchedTotal * 0.95) {
+          setHasMoreResults(false);
+        } else {
+          // Keep hasMoreResults true but clear cursor so we can't load more
+          // This prevents the "all loaded" message from showing prematurely
+          console.warn(`[LinkedInSearch] No cursor returned but only ${totalLoaded}/${fetchedTotal} loaded`);
+          setHasMoreResults(false);
+        }
       }
 
       if (quota.isNearLimit('searchResultsFetched')) {
