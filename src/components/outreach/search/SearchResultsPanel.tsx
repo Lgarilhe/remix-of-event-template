@@ -168,9 +168,9 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
   return (
     <div className="bg-white rounded-xl border border-border flex flex-col h-[calc(100vh-200px)] lg:h-[calc(100vh-120px)] lg:sticky lg:top-24 min-w-0 overflow-hidden">
       {/* Results header */}
-      <div className="flex items-center justify-between px-3 sm:px-4 py-2 sm:py-3 border-b border-border shrink-0 gap-2 sm:gap-3 flex-wrap">
+      <div className="flex items-center justify-between px-3 sm:px-4 py-2 sm:py-3 border-b border-border shrink-0 gap-2 sm:gap-3 overflow-x-auto no-scrollbar">
         {/* Left side: Search button + count */}
-        <div className="flex items-center gap-3 min-w-0">
+        <div className="flex items-center gap-3 min-w-0 shrink-0">
           <Button
             onClick={onSearch}
             disabled={loading || !selectedJob}
@@ -203,7 +203,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
         </div>
 
         {/* Right side: Filters + Actions */}
-        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0 flex-wrap">
+        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
           {/* Unified status filter */}
           {selectedJob && hasSearched && results.length > 0 && (
             <>
