@@ -7,70 +7,148 @@ export interface AirtableMatchInfo {
   full_name: string | null;
   status: string | null;
   linkedin_url: string | null;
+  match_type: 'url' | 'fuzzy'; // url = certain, fuzzy = name + company correlation
+}
+
+export interface ProfileMatchInput {
+  url: string;
+  name?: string;
+  companies?: string[]; // companies from work_experience
 }
 
 // Global cache to avoid re-fetching across component re-renders
 const matchCache = new Map<string, AirtableMatchInfo | null>();
 
 /**
- * Hook that batch-checks LinkedIn profile URLs against the local airtable_candidates table
- * to show a "Déjà dans Airtable" badge on search results.
+ * Hook that batch-checks LinkedIn profiles against the local airtable_candidates table.
+ * First tries URL matching, then falls back to name + company correlation.
  */
-export function useAirtableMatch(profileUrls: string[]) {
+export function useAirtableMatch(profiles: ProfileMatchInput[]) {
   const [matches, setMatches] = useState<Map<string, AirtableMatchInfo>>(new Map());
   const [loading, setLoading] = useState(false);
   const checkedRef = useRef<Set<string>>(new Set());
 
-  const checkProfiles = useCallback(async (urls: string[]) => {
-    // Filter to only URLs we haven't checked yet
-    const unchecked = urls.filter(url => url && !checkedRef.current.has(normalizeLinkedInUrl(url)));
+  const checkProfiles = useCallback(async (toCheck: ProfileMatchInput[]) => {
+    const unchecked = toCheck.filter(p => p.url && !checkedRef.current.has(normalizeLinkedInUrl(p.url)));
     if (unchecked.length === 0) return;
 
     setLoading(true);
     try {
-      // Extract LinkedIn slugs for matching
+      // --- PASS 1: URL-based matching (certain) ---
       const slugs = unchecked
-        .map(url => extractLinkedInSlug(url))
+        .map(p => extractLinkedInSlug(p.url))
         .filter(Boolean) as string[];
 
-      if (slugs.length === 0) return;
+      const urlResults: (AirtableMatchInfo & { _raw?: any })[] = [];
+      if (slugs.length > 0) {
+        for (let i = 0; i < slugs.length; i += 50) {
+          const batch = slugs.slice(i, i + 50);
+          const { data, error } = await supabase
+            .from('airtable_candidates')
+            .select('airtable_id, source_base, full_name, status, linkedin_url')
+            .or(batch.map(s => `linkedin_url.ilike.%${s}%`).join(','));
 
-      // Query in batches of 50
-      const allResults: AirtableMatchInfo[] = [];
-      for (let i = 0; i < slugs.length; i += 50) {
-        const batch = slugs.slice(i, i + 50);
-        // Use ilike with each slug to find matches
-        // We search for any candidate whose linkedin_url contains the slug
-        const { data, error } = await supabase
-          .from('airtable_candidates')
-          .select('airtable_id, source_base, full_name, status, linkedin_url')
-          .or(batch.map(s => `linkedin_url.ilike.%${s}%`).join(','));
-
-        if (error) {
-          console.error('Error checking Airtable matches:', error);
-          continue;
+          if (error) { console.error('Error checking Airtable URL matches:', error); continue; }
+          if (data) urlResults.push(...data.map(d => ({ ...d, match_type: 'url' as const })));
         }
-        if (data) allResults.push(...(data as AirtableMatchInfo[]));
       }
 
-      // Map results back to original URLs
+      // Build result map from URL matches
       const newMatches = new Map(matches);
-      for (const url of unchecked) {
-        const slug = extractLinkedInSlug(url);
-        const normalizedUrl = normalizeLinkedInUrl(url);
-        checkedRef.current.add(normalizedUrl);
+      const unmatchedProfiles: ProfileMatchInput[] = [];
 
-        if (!slug) continue;
+      for (const profile of unchecked) {
+        const slug = extractLinkedInSlug(profile.url);
+        const normalizedUrl = normalizeLinkedInUrl(profile.url);
 
-        const match = allResults.find(r => 
-          r.linkedin_url && r.linkedin_url.toLowerCase().includes(slug.toLowerCase())
-        );
+        if (slug) {
+          const match = urlResults.find(r =>
+            r.linkedin_url && r.linkedin_url.toLowerCase().includes(slug.toLowerCase())
+          );
+          if (match) {
+            const info: AirtableMatchInfo = { ...match, match_type: 'url' };
+            newMatches.set(normalizedUrl, info);
+            matchCache.set(normalizedUrl, info);
+            checkedRef.current.add(normalizedUrl);
+            continue;
+          }
+        }
 
-        if (match) {
-          newMatches.set(normalizedUrl, match);
-          matchCache.set(normalizedUrl, match);
+        // No URL match — try fuzzy if we have name + companies
+        if (profile.name && profile.companies && profile.companies.length > 0) {
+          unmatchedProfiles.push(profile);
         } else {
           matchCache.set(normalizedUrl, null);
+          checkedRef.current.add(normalizedUrl);
+        }
+      }
+
+      // --- PASS 2: Name + company fuzzy matching ---
+      if (unmatchedProfiles.length > 0) {
+        // Collect unique normalized names for batch query
+        const nameQueries = [...new Set(
+          unmatchedProfiles.map(p => normalizeName(p.name!)).filter(Boolean)
+        )];
+
+        if (nameQueries.length > 0) {
+          const nameResults: Array<{
+            airtable_id: string; source_base: string; full_name: string | null;
+            status: string | null; linkedin_url: string | null; raw_data: any;
+          }> = [];
+
+          for (let i = 0; i < nameQueries.length; i += 20) {
+            const batch = nameQueries.slice(i, i + 20);
+            const { data, error } = await supabase
+              .from('airtable_candidates')
+              .select('airtable_id, source_base, full_name, status, linkedin_url, raw_data')
+              .or(batch.map(n => `full_name.ilike.%${n}%`).join(','));
+
+            if (error) { console.error('Error checking Airtable name matches:', error); continue; }
+            if (data) nameResults.push(...data);
+          }
+
+          // For each unmatched profile, check if any name match also has a company overlap
+          for (const profile of unmatchedProfiles) {
+            const normalizedUrl = normalizeLinkedInUrl(profile.url);
+            const profileNameNorm = normalizeName(profile.name!);
+            const profileCompanies = (profile.companies || []).map(c => normalizeCompany(c));
+
+            const nameMatches = nameResults.filter(r => {
+              if (!r.full_name) return false;
+              const airtableName = normalizeName(r.full_name);
+              // Check exact name match (normalized)
+              return airtableName === profileNameNorm;
+            });
+
+            // Among name matches, find one with a company in common
+            const fuzzyMatch = nameMatches.find(r => {
+              const airtableCompany = extractCompanyFromRawData(r.raw_data);
+              if (!airtableCompany) return false;
+              const normalizedAirtableCompany = normalizeCompany(airtableCompany);
+              // Check if any LinkedIn company matches the Airtable company
+              return profileCompanies.some(pc => 
+                pc === normalizedAirtableCompany || 
+                pc.includes(normalizedAirtableCompany) || 
+                normalizedAirtableCompany.includes(pc)
+              );
+            });
+
+            if (fuzzyMatch) {
+              const info: AirtableMatchInfo = {
+                airtable_id: fuzzyMatch.airtable_id,
+                source_base: fuzzyMatch.source_base,
+                full_name: fuzzyMatch.full_name,
+                status: fuzzyMatch.status,
+                linkedin_url: fuzzyMatch.linkedin_url,
+                match_type: 'fuzzy',
+              };
+              newMatches.set(normalizedUrl, info);
+              matchCache.set(normalizedUrl, info);
+            } else {
+              matchCache.set(normalizedUrl, null);
+            }
+            checkedRef.current.add(normalizedUrl);
+          }
         }
       }
 
@@ -83,20 +161,19 @@ export function useAirtableMatch(profileUrls: string[]) {
   }, [matches]);
 
   useEffect(() => {
-    if (profileUrls.length === 0) return;
+    if (profiles.length === 0) return;
 
-    // First, load from cache
     const newMatches = new Map(matches);
-    const toCheck: string[] = [];
+    const toCheck: ProfileMatchInput[] = [];
 
-    for (const url of profileUrls) {
-      if (!url) continue;
-      const normalized = normalizeLinkedInUrl(url);
+    for (const profile of profiles) {
+      if (!profile.url) continue;
+      const normalized = normalizeLinkedInUrl(profile.url);
       const cached = matchCache.get(normalized);
       if (cached !== undefined) {
         if (cached) newMatches.set(normalized, cached);
       } else {
-        toCheck.push(url);
+        toCheck.push(profile);
       }
     }
 
@@ -107,7 +184,7 @@ export function useAirtableMatch(profileUrls: string[]) {
     if (toCheck.length > 0) {
       checkProfiles(toCheck);
     }
-  }, [profileUrls.join(',')]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [profiles.map(p => p.url).join(',')]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const getMatch = useCallback((profileUrl: string | undefined): AirtableMatchInfo | null => {
     if (!profileUrl) return null;
@@ -124,4 +201,39 @@ function normalizeLinkedInUrl(url: string): string {
 function extractLinkedInSlug(url: string): string | null {
   const match = url.match(/linkedin\.com\/in\/([^/?#]+)/i);
   return match ? match[1].toLowerCase() : null;
+}
+
+/** Normalize a name for comparison: lowercase, remove accents, trim */
+function normalizeName(name: string): string {
+  return name
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z\s-]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/** Normalize a company name for comparison */
+function normalizeCompany(company: string): string {
+  return company
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/\b(sas|sarl|sa|sasu|inc|ltd|llc|gmbh|group|groupe)\b/g, '')
+    .replace(/[^a-z0-9\s]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/** Extract company name from Airtable raw_data */
+function extractCompanyFromRawData(rawData: any): string | null {
+  if (!rawData) return null;
+  // Try common Airtable field names for current company
+  return rawData['Nom de la société actuelle']
+    || rawData['Société actuelle']
+    || rawData['Entreprise']
+    || rawData['Company']
+    || rawData['Current Company']
+    || null;
 }

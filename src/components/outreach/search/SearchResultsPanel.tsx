@@ -138,12 +138,17 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
 }) => {
   const treatedCount_db = treatedCandidates.size;
 
-  // Airtable match - collect all profile URLs
-  const profileUrls = useMemo(() => 
-    results.map(r => r.profile_url || r.public_profile_url || '').filter(Boolean),
+  // Airtable match - collect profile info for URL + fuzzy matching
+  const profileMatchInputs = useMemo(() => 
+    results.map(r => ({
+      url: r.profile_url || r.public_profile_url || '',
+      name: r.name || `${r.first_name || ''} ${r.last_name || ''}`.trim() || undefined,
+      companies: (r.work_experience || []).map((w: any) => w.company).filter(Boolean) as string[],
+    })).filter(p => p.url),
     [results]
   );
-  const { getMatch: getAirtableMatch } = useAirtableMatch(profileUrls);
+  const { getMatch: getAirtableMatch } = useAirtableMatch(profileMatchInputs);
+  const profileUrls = useMemo(() => profileMatchInputs.map(p => p.url), [profileMatchInputs]);
   const { getMatch: getNotionMatch } = useNotionMatch(profileUrls);
   // Count by status for filter badges
   const statusCounts = React.useMemo(() => {
