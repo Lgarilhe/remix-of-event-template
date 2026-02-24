@@ -136,19 +136,19 @@ export function useLinkedInSearch({
     });
   }, []);
 
-  // Select/deselect all visible profiles
-  const toggleSelectAll = useCallback(() => {
-    const selectableProfiles = results.filter(p => {
+  // Select/deselect all visible profiles (accepts filtered list from caller)
+  const toggleSelectAll = useCallback((filteredSelectableProfiles?: LinkedInProfile[]) => {
+    const selectable = filteredSelectableProfiles || results.filter(p => {
       const score = jobScores[p.id];
       return !score || score.recommendation !== 'skip';
     });
     
-    const currentlySelected = selectableProfiles.filter(p => selectedProfiles.has(p.id));
+    const currentlySelected = selectable.filter(p => selectedProfiles.has(p.id));
     
-    if (currentlySelected.length === selectableProfiles.length && selectableProfiles.length > 0) {
+    if (currentlySelected.length === selectable.length && selectable.length > 0) {
       setSelectedProfiles(new Set());
     } else {
-      setSelectedProfiles(new Set(selectableProfiles.map(p => p.id)));
+      setSelectedProfiles(new Set(selectable.map(p => p.id)));
     }
   }, [results, selectedProfiles, jobScores]);
 
