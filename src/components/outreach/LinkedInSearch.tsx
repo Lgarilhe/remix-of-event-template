@@ -554,7 +554,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
           onSearch={() => handleSearch(false)}
           onLoadMore={handleLoadMore}
           onToggleProfileSelection={search.toggleProfileSelection}
-          onToggleSelectAll={search.toggleSelectAll}
+          onToggleSelectAll={() => search.toggleSelectAll(selectableProfiles)}
           onScoreProfile={scoring.scoreProfile}
           onBatchScore={scoring.handleBatchScore}
           onBulkDismiss={handleBulkDismiss}
