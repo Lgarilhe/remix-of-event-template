@@ -41,7 +41,7 @@ interface SearchResultsPanelProps {
   // Status
   autoHideTreated: boolean;
   showDismissed: boolean;
-  statusFilter: 'all' | 'untreated' | 'scored' | 'messaged' | 'dismissed';
+  statusFilter: 'all' | 'untreated' | 'scored' | 'scored_go' | 'scored_maybe' | 'messaged' | 'dismissed';
   treatedCount: number;
   dismissedCount: number;
   
@@ -67,7 +67,7 @@ interface SearchResultsPanelProps {
   onBulkAddToProject: () => void;
   onSetAutoHideTreated: (v: boolean) => void;
   onSetShowDismissed: (v: boolean) => void;
-  onSetStatusFilter: (v: 'all' | 'untreated' | 'scored' | 'messaged' | 'dismissed') => void;
+  onSetStatusFilter: (v: 'all' | 'untreated' | 'scored' | 'scored_go' | 'scored_maybe' | 'messaged' | 'dismissed') => void;
   onSetSortByScore: (v: boolean) => void;
   onSetShowBulkInMailModal: (v: boolean) => void;
   onProfileTreated: (id: string) => void;
@@ -136,16 +136,21 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
 
   // Count by status for filter badges
   const statusCounts = React.useMemo(() => {
-    const counts = { scored: 0, messaged: 0, dismissed: 0, untreated: 0 };
+    const counts = { scored: 0, scored_go: 0, scored_maybe: 0, messaged: 0, dismissed: 0, untreated: 0 };
     for (const r of results) {
       const s = treatedCandidates.get(r.id);
       if (!s) { counts.untreated++; continue; }
-      if (s.status === 'scored') counts.scored++;
+      if (s.status === 'scored') {
+        counts.scored++;
+        const score = jobScores[r.id];
+        if (score?.recommendation === 'go') counts.scored_go++;
+        else if (score?.recommendation === 'maybe') counts.scored_maybe++;
+      }
       else if (s.status === 'messaged' || s.status === 'replied') counts.messaged++;
       else if (s.status === 'dismissed') counts.dismissed++;
     }
     return counts;
-  }, [results, treatedCandidates]);
+  }, [results, treatedCandidates, jobScores]);
 
   return (
     <div className="bg-white rounded-xl border border-border flex flex-col h-[calc(100vh-200px)] lg:h-[calc(100vh-120px)] lg:sticky lg:top-24 min-w-0 overflow-hidden">
@@ -188,35 +193,67 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
         <div className="flex items-center gap-1.5 sm:gap-2 shrink-0 flex-wrap">
           {/* Unified status filter */}
           {selectedJob && hasSearched && results.length > 0 && (
-            <div className="flex items-center gap-0.5 bg-muted/50 rounded-lg p-0.5">
-              {([
-                { value: 'all', label: 'Tous', icon: Users, count: results.length },
-                { value: 'untreated', label: 'Nouveaux', icon: Eye, count: statusCounts.untreated },
-                { value: 'scored', label: 'Scorés', icon: Target, count: statusCounts.scored },
-                { value: 'messaged', label: 'Contactés', icon: Mail, count: statusCounts.messaged },
-                { value: 'dismissed', label: 'Archivés', icon: Archive, count: statusCounts.dismissed },
-              ] as const).map(({ value, label, icon: Icon, count }) => (
-                <Button
-                  key={value}
-                  variant={statusFilter === value ? 'default' : 'ghost'}
-                  size="sm"
-                  onClick={() => onSetStatusFilter(value)}
-                  className={`h-7 px-2 text-[11px] gap-1 ${
-                    statusFilter === value
-                      ? 'bg-primary text-primary-foreground shadow-sm'
-                      : 'text-muted-foreground hover:text-foreground'
-                  }`}
-                >
-                  <Icon className="w-3 h-3" />
-                  <span className="hidden sm:inline">{label}</span>
-                  {count > 0 && (
-                    <span className={`text-[10px] font-medium ${statusFilter === value ? 'text-primary-foreground/80' : 'text-muted-foreground/60'}`}>
-                      {count}
-                    </span>
-                  )}
-                </Button>
-              ))}
-            </div>
+            <>
+              <div className="flex items-center gap-0.5 bg-muted/50 rounded-lg p-0.5">
+                {([
+                  { value: 'all' as const, label: 'Tous', icon: Users, count: results.length },
+                  { value: 'untreated' as const, label: 'Nouveaux', icon: Eye, count: statusCounts.untreated },
+                  { value: 'scored' as const, label: 'Scorés', icon: Target, count: statusCounts.scored },
+                  { value: 'messaged' as const, label: 'Contactés', icon: Mail, count: statusCounts.messaged },
+                  { value: 'dismissed' as const, label: 'Archivés', icon: Archive, count: statusCounts.dismissed },
+                ]).map(({ value, label, icon: Icon, count }) => {
+                  const isActive = statusFilter === value || 
+                    (value === 'scored' && (statusFilter === 'scored_go' || statusFilter === 'scored_maybe'));
+                  return (
+                    <Button
+                      key={value}
+                      variant={isActive ? 'default' : 'ghost'}
+                      size="sm"
+                      onClick={() => onSetStatusFilter(value)}
+                      className={`h-7 px-2 text-[11px] gap-1 ${
+                        isActive
+                          ? 'bg-primary text-primary-foreground shadow-sm'
+                          : 'text-muted-foreground hover:text-foreground'
+                      }`}
+                    >
+                      <Icon className="w-3 h-3" />
+                      <span className="hidden sm:inline">{label}</span>
+                      {count > 0 && (
+                        <span className={`text-[10px] font-medium ${isActive ? 'text-primary-foreground/80' : 'text-muted-foreground/60'}`}>
+                          {count}
+                        </span>
+                      )}
+                    </Button>
+                  );
+                })}
+              </div>
+              {(statusFilter === 'scored' || statusFilter === 'scored_go' || statusFilter === 'scored_maybe') && statusCounts.scored > 0 && (
+                <div className="flex items-center gap-0.5 bg-muted/30 rounded-md p-0.5 border border-border/50">
+                  {([
+                    { value: 'scored' as const, label: 'Tous', count: statusCounts.scored },
+                    { value: 'scored_go' as const, label: '✅ À contacter', count: statusCounts.scored_go },
+                    { value: 'scored_maybe' as const, label: '🤔 À évaluer', count: statusCounts.scored_maybe },
+                  ]).map(({ value, label, count }) => (
+                    <Button
+                      key={value}
+                      variant={statusFilter === value ? 'secondary' : 'ghost'}
+                      size="sm"
+                      onClick={() => onSetStatusFilter(value)}
+                      className={`h-6 px-2 text-[10px] gap-1 ${
+                        statusFilter === value
+                          ? 'bg-secondary text-secondary-foreground shadow-sm'
+                          : 'text-muted-foreground hover:text-foreground'
+                      }`}
+                    >
+                      {label}
+                      {count > 0 && (
+                        <span className="text-[9px] font-medium opacity-70">{count}</span>
+                      )}
+                    </Button>
+                  ))}
+                </div>
+              )}
+            </>
           )}
 
           {/* Sort by score toggle */}
