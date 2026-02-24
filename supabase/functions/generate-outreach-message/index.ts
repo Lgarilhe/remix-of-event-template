@@ -192,10 +192,10 @@ serve(async (req) => {
       profileId?: string;
     };
     
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+    const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
 
-    if (!LOVABLE_API_KEY) {
-      throw new Error("LOVABLE_API_KEY is not configured");
+    if (!ANTHROPIC_API_KEY) {
+      throw new Error("ANTHROPIC_API_KEY is not configured");
     }
 
     if (!profile || !job) {
@@ -499,23 +499,20 @@ Réponds UNIQUEMENT en JSON valide:
   "personalization_points": ["Élément précis du profil utilisé", "Technique de personnalisation appliquée (ex: ancien employeur commun, passion du À propos, question ouverte)"]
 }`;
 
-    const callAI = async (userPrompt: string): Promise<{ ok: true; content: string } | { ok: false; response: Response }> => {
-      const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    const callAnthropic = async (userPrompt: string): Promise<{ ok: true; content: string } | { ok: false; response: Response }> => {
+      const response = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${LOVABLE_API_KEY}`,
+          "x-api-key": ANTHROPIC_API_KEY,
+          "anthropic-version": "2023-06-01",
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          model: "google/gemini-2.5-pro",
-          messages: [
-            {
-              role: "system",
-              content: "Tu es un recruteur tech senior. Tu écris des messages LinkedIn courts, directs, humains. JAMAIS de superlatifs, JAMAIS de tournures IA. Tu réponds TOUJOURS en JSON valide, sans markdown ni code blocks.",
-            },
-            { role: "user", content: userPrompt },
-          ],
+          model: "claude-opus-4-6",
           max_tokens: 450,
+          system:
+            "Tu es un recruteur tech senior. Tu écris des messages LinkedIn courts, directs, humains. JAMAIS de superlatifs, JAMAIS de tournures IA. Tu réponds TOUJOURS en JSON valide, sans markdown ni code blocks.",
+          messages: [{ role: "user", content: userPrompt }],
         }),
       });
 
@@ -533,7 +530,7 @@ Réponds UNIQUEMENT en JSON valide:
           return {
             ok: false,
             response: new Response(
-              JSON.stringify({ error: "Crédits IA épuisés. Ajoutez des crédits dans Settings > Workspace > Usage." }),
+              JSON.stringify({ error: "Crédits IA épuisés." }),
               { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } },
             ),
           };
@@ -544,12 +541,12 @@ Réponds UNIQUEMENT en JSON valide:
       }
 
       const data = await response.json();
-      let content = data.choices?.[0]?.message?.content || "";
+      let content = data.content?.[0]?.text || "";
       content = content.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
       return { ok: true, content };
     };
 
-    const first = await callAI(prompt);
+    const first = await callAnthropic(prompt);
     if (!first.ok) return first.response;
 
     let parsed = tryParseModelJson(first.content);
@@ -567,7 +564,7 @@ Réponds UNIQUEMENT en JSON valide:
       console.warn('[generate-outreach-message] Violations detected, retrying:', violations);
       const correctionPrompt = `${prompt}\n\n=== CORRECTION STRICTE (OBLIGATOIRE) ===\nLe draft ci-dessous viole ces règles: ${violations.join(' ; ')}.\n\nRÈGLES CRITIQUES À RESPECTER:\n- Si MODE RPO: jamais \"ils\", \"leur\", \"mon client\", \"je recrute\". Toujours \"on\", \"nous\", \"notre\" + \"chez ${job.client?.name || 'nous'}\".\n- Aucun tiret (—, –, -) nulle part.\n\nDRAFT_JSON:\n${JSON.stringify(parsed)}\n\nRéponds UNIQUEMENT en JSON valide avec les 3 clés: subject, message, personalization_points.`;
 
-      const second = await callAI(correctionPrompt);
+      const second = await callAnthropic(correctionPrompt);
       if (!second.ok) return second.response;
       const parsed2 = tryParseModelJson(second.content);
       if (parsed2) parsed = parsed2;
