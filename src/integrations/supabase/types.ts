@@ -14,6 +14,372 @@ export type Database = {
   }
   public: {
     Tables: {
+      airtable_candidates: {
+        Row: {
+          airtable_id: string
+          created_at: string
+          education_level: string | null
+          email: string | null
+          experience: string | null
+          first_name: string | null
+          full_name: string | null
+          id: string
+          last_name: string | null
+          linkedin_url: string | null
+          phone: string | null
+          preferred_contract: string | null
+          raw_data: Json | null
+          skills: string[] | null
+          status: string | null
+          synced_at: string
+        }
+        Insert: {
+          airtable_id: string
+          created_at?: string
+          education_level?: string | null
+          email?: string | null
+          experience?: string | null
+          first_name?: string | null
+          full_name?: string | null
+          id?: string
+          last_name?: string | null
+          linkedin_url?: string | null
+          phone?: string | null
+          preferred_contract?: string | null
+          raw_data?: Json | null
+          skills?: string[] | null
+          status?: string | null
+          synced_at?: string
+        }
+        Update: {
+          airtable_id?: string
+          created_at?: string
+          education_level?: string | null
+          email?: string | null
+          experience?: string | null
+          first_name?: string | null
+          full_name?: string | null
+          id?: string
+          last_name?: string | null
+          linkedin_url?: string | null
+          phone?: string | null
+          preferred_contract?: string | null
+          raw_data?: Json | null
+          skills?: string[] | null
+          status?: string | null
+          synced_at?: string
+        }
+        Relationships: []
+      }
+      airtable_companies: {
+        Row: {
+          airtable_id: string
+          benefits: string | null
+          city: string | null
+          created_at: string
+          description: string | null
+          headcount: string | null
+          id: string
+          name: string
+          raw_data: Json | null
+          synced_at: string
+          tech_stack: string[] | null
+          year_founded: string | null
+        }
+        Insert: {
+          airtable_id: string
+          benefits?: string | null
+          city?: string | null
+          created_at?: string
+          description?: string | null
+          headcount?: string | null
+          id?: string
+          name: string
+          raw_data?: Json | null
+          synced_at?: string
+          tech_stack?: string[] | null
+          year_founded?: string | null
+        }
+        Update: {
+          airtable_id?: string
+          benefits?: string | null
+          city?: string | null
+          created_at?: string
+          description?: string | null
+          headcount?: string | null
+          id?: string
+          name?: string
+          raw_data?: Json | null
+          synced_at?: string
+          tech_stack?: string[] | null
+          year_founded?: string | null
+        }
+        Relationships: []
+      }
+      airtable_contacts: {
+        Row: {
+          airtable_id: string
+          city: string | null
+          company_airtable_id: string | null
+          contact_type: string | null
+          created_at: string
+          email: string | null
+          full_name: string | null
+          id: string
+          raw_data: Json | null
+          status: string | null
+          synced_at: string
+          title: string | null
+        }
+        Insert: {
+          airtable_id: string
+          city?: string | null
+          company_airtable_id?: string | null
+          contact_type?: string | null
+          created_at?: string
+          email?: string | null
+          full_name?: string | null
+          id?: string
+          raw_data?: Json | null
+          status?: string | null
+          synced_at?: string
+          title?: string | null
+        }
+        Update: {
+          airtable_id?: string
+          city?: string | null
+          company_airtable_id?: string | null
+          contact_type?: string | null
+          created_at?: string
+          email?: string | null
+          full_name?: string | null
+          id?: string
+          raw_data?: Json | null
+          status?: string | null
+          synced_at?: string
+          title?: string | null
+        }
+        Relationships: []
+      }
+      airtable_jobs: {
+        Row: {
+          airtable_id: string
+          city: string | null
+          company_airtable_id: string | null
+          contract_type: string | null
+          created_at: string
+          criteria: string | null
+          description: string | null
+          id: string
+          raw_data: Json | null
+          salary: string | null
+          status: string | null
+          synced_at: string
+          title: string | null
+        }
+        Insert: {
+          airtable_id: string
+          city?: string | null
+          company_airtable_id?: string | null
+          contract_type?: string | null
+          created_at?: string
+          criteria?: string | null
+          description?: string | null
+          id?: string
+          raw_data?: Json | null
+          salary?: string | null
+          status?: string | null
+          synced_at?: string
+          title?: string | null
+        }
+        Update: {
+          airtable_id?: string
+          city?: string | null
+          company_airtable_id?: string | null
+          contract_type?: string | null
+          created_at?: string
+          criteria?: string | null
+          description?: string | null
+          id?: string
+          raw_data?: Json | null
+          salary?: string | null
+          status?: string | null
+          synced_at?: string
+          title?: string | null
+        }
+        Relationships: []
+      }
+      airtable_notes: {
+        Row: {
+          airtable_id: string
+          author: string | null
+          candidate_airtable_id: string | null
+          contact_airtable_id: string | null
+          created_at: string
+          detail: string | null
+          id: string
+          job_airtable_id: string | null
+          note_date: string | null
+          note_type: string | null
+          raw_data: Json | null
+          shortlist_airtable_id: string | null
+          synced_at: string
+          title: string | null
+        }
+        Insert: {
+          airtable_id: string
+          author?: string | null
+          candidate_airtable_id?: string | null
+          contact_airtable_id?: string | null
+          created_at?: string
+          detail?: string | null
+          id?: string
+          job_airtable_id?: string | null
+          note_date?: string | null
+          note_type?: string | null
+          raw_data?: Json | null
+          shortlist_airtable_id?: string | null
+          synced_at?: string
+          title?: string | null
+        }
+        Update: {
+          airtable_id?: string
+          author?: string | null
+          candidate_airtable_id?: string | null
+          contact_airtable_id?: string | null
+          created_at?: string
+          detail?: string | null
+          id?: string
+          job_airtable_id?: string | null
+          note_date?: string | null
+          note_type?: string | null
+          raw_data?: Json | null
+          shortlist_airtable_id?: string | null
+          synced_at?: string
+          title?: string | null
+        }
+        Relationships: []
+      }
+      airtable_placements: {
+        Row: {
+          airtable_id: string
+          candidate_airtable_id: string | null
+          company_airtable_id: string | null
+          contract_type: string | null
+          created_at: string
+          fees: string | null
+          id: string
+          name: string | null
+          raw_data: Json | null
+          salary: string | null
+          start_date: string | null
+          status: string | null
+          synced_at: string
+        }
+        Insert: {
+          airtable_id: string
+          candidate_airtable_id?: string | null
+          company_airtable_id?: string | null
+          contract_type?: string | null
+          created_at?: string
+          fees?: string | null
+          id?: string
+          name?: string | null
+          raw_data?: Json | null
+          salary?: string | null
+          start_date?: string | null
+          status?: string | null
+          synced_at?: string
+        }
+        Update: {
+          airtable_id?: string
+          candidate_airtable_id?: string | null
+          company_airtable_id?: string | null
+          contract_type?: string | null
+          created_at?: string
+          fees?: string | null
+          id?: string
+          name?: string | null
+          raw_data?: Json | null
+          salary?: string | null
+          start_date?: string | null
+          status?: string | null
+          synced_at?: string
+        }
+        Relationships: []
+      }
+      airtable_shortlists: {
+        Row: {
+          airtable_id: string
+          candidate_airtable_id: string | null
+          company_airtable_id: string | null
+          contact_airtable_id: string | null
+          created_at: string
+          date_added: string | null
+          estimated_fees: string | null
+          id: string
+          job_airtable_id: string | null
+          raw_data: Json | null
+          salary_proposed: string | null
+          status: string | null
+          synced_at: string
+        }
+        Insert: {
+          airtable_id: string
+          candidate_airtable_id?: string | null
+          company_airtable_id?: string | null
+          contact_airtable_id?: string | null
+          created_at?: string
+          date_added?: string | null
+          estimated_fees?: string | null
+          id?: string
+          job_airtable_id?: string | null
+          raw_data?: Json | null
+          salary_proposed?: string | null
+          status?: string | null
+          synced_at?: string
+        }
+        Update: {
+          airtable_id?: string
+          candidate_airtable_id?: string | null
+          company_airtable_id?: string | null
+          contact_airtable_id?: string | null
+          created_at?: string
+          date_added?: string | null
+          estimated_fees?: string | null
+          id?: string
+          job_airtable_id?: string | null
+          raw_data?: Json | null
+          salary_proposed?: string | null
+          status?: string | null
+          synced_at?: string
+        }
+        Relationships: []
+      }
+      airtable_sync_meta: {
+        Row: {
+          id: string
+          last_synced_at: string
+          records_count: number | null
+          status: string | null
+          table_name: string
+        }
+        Insert: {
+          id?: string
+          last_synced_at?: string
+          records_count?: number | null
+          status?: string | null
+          table_name: string
+        }
+        Update: {
+          id?: string
+          last_synced_at?: string
+          records_count?: number | null
+          status?: string | null
+          table_name?: string
+        }
+        Relationships: []
+      }
       candidate_notes: {
         Row: {
           candidate_id: string
