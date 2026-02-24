@@ -143,19 +143,19 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
       if (s.status === 'scored') {
         counts.scored++;
         counts.scored_not_contacted++;
-        const score = jobScores[r.id];
-        if (score?.recommendation === 'go') counts.scored_go++;
-        else if (score?.recommendation === 'maybe') counts.scored_maybe++;
+        const rec = jobScores[r.id]?.recommendation || s.recommendation;
+        if (rec === 'go') counts.scored_go++;
+        else if (rec === 'maybe') counts.scored_maybe++;
       }
       else if (s.status === 'messaged' || s.status === 'replied') {
         counts.messaged++;
         // If this messaged profile also has a score, count it in scored totals
-        if (jobScores[r.id]) {
+        if (jobScores[r.id] || s.score != null) {
           counts.scored++;
           counts.scored_contacted++;
-          const score = jobScores[r.id];
-          if (score?.recommendation === 'go') counts.scored_go++;
-          else if (score?.recommendation === 'maybe') counts.scored_maybe++;
+          const rec = jobScores[r.id]?.recommendation || s.recommendation;
+          if (rec === 'go') counts.scored_go++;
+          else if (rec === 'maybe') counts.scored_maybe++;
         }
       }
       else if (s.status === 'dismissed') counts.dismissed++;
@@ -575,7 +575,16 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
                 selectedJob={selectedJob}
                 isSelected={selectedProfiles.has(profile.id)}
                 onToggleSelect={() => onToggleProfileSelection(profile.id)}
-                jobScore={jobScores[profile.id]}
+                jobScore={jobScores[profile.id] || (treatedCandidates.get(profile.id)?.score != null ? {
+                  profile_name: treatedCandidates.get(profile.id)!.candidate_name || profile.name || '',
+                  match_score: treatedCandidates.get(profile.id)!.score!,
+                  matching_skills: [],
+                  missing_skills: [],
+                  experience_match: 'incertain' as const,
+                  location_match: false,
+                  summary: '',
+                  recommendation: (treatedCandidates.get(profile.id)!.recommendation || 'maybe') as 'go' | 'maybe' | 'skip',
+                } : undefined)}
                 onScoreProfile={() => onScoreProfile(profile)}
                 accountId={selectedAccount || undefined}
                 onMessageSent={onMessageSent}
