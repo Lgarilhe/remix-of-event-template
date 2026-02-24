@@ -133,6 +133,29 @@ export const LinkedInResultCard: React.FC<LinkedInResultCardProps> = ({
       : null
   );
 
+  const formatHistoryDate = (dateStr: string | null | undefined) => {
+    if (!dateStr) return null;
+    const date = new Date(dateStr);
+    if (isNaN(date.getTime())) return null;
+    return date.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: '2-digit' });
+  };
+
+  const historyLatestDate = historyData
+    ? [
+        ...historyData.placements.map((p) => p.start_date),
+        ...historyData.shortlists.map((s) => s.date_added),
+        ...historyData.notes.map((n) => n.note_date),
+        ...historyData.appointments.map((a) => a.appointment_date),
+      ]
+        .filter((d): d is string => Boolean(d))
+        .map((d) => new Date(d))
+        .filter((d) => !isNaN(d.getTime()))
+        .sort((a, b) => b.getTime() - a.getTime())[0]
+    : null;
+  const historyLatestDateLabel = historyLatestDate
+    ? formatHistoryDate(historyLatestDate.toISOString())
+    : null;
+
   // Handle both API formats
   const firstName = profile.first_name || profile.name?.split(' ')[0] || '';
   const lastName = profile.last_name || profile.name?.split(' ').slice(1).join(' ') || '';
@@ -543,11 +566,12 @@ export const LinkedInResultCard: React.FC<LinkedInResultCardProps> = ({
                             <Loader2 className="w-2.5 h-2.5 animate-spin" />
                           )}
                           {historyData && (
-                            <span className="font-bold">
+                            <span className="font-bold whitespace-nowrap">
                               {historyData.placements.length > 0 && `🏆${historyData.placements.length}`}
                               {historyData.shortlists.length > 0 && ` ⭐${historyData.shortlists.length}`}
                               {historyData.notes.length > 0 && ` 📝${historyData.notes.length}`}
                               {historyData.appointments.length > 0 && ` 📅${historyData.appointments.length}`}
+                              {historyLatestDateLabel && <span className="hidden sm:inline"> · {historyLatestDateLabel}</span>}
                             </span>
                           )}
                         </Badge>
