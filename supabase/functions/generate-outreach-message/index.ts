@@ -430,7 +430,8 @@ ${parts.join('\n')}
 UTILISATION DE L'HISTORIQUE:
 - Ce candidat est DÉJÀ CONNU de notre cabinet. C'est une information PRÉCIEUSE.
 ${senderIsInHistory ? `- TU ES le consultant qui a interagi avec ce candidat → parle en PREMIÈRE PERSONNE: "on avait échangé", "je t'avais contacté", "la dernière fois qu'on s'était parlé"
-- C'est un ÉNORME avantage: ce n'est PAS un cold outreach, c'est une reprise de contact. Exploite-le.` : `- Un COLLÈGUE a interagi avec ce candidat → tu peux dire "un collègue m'avait parlé de toi" ou "on avait échangé avec l'équipe"`}
+- C'est un ÉNORME avantage: ce n'est PAS un cold outreach, c'est une reprise de contact. Exploite-le.` : `- Un COLLÈGUE a interagi avec ce candidat → CITE SON PRÉNOM pour personnaliser: "mon collègue [Prénom] m'avait parlé de toi" ou "[Prénom] de l'équipe avait échangé avec toi sur [poste]"
+- Le prénom du collègue est indiqué dans l'historique (champ "par [Nom]"). Utilise-le, ça crée un lien humain et crédible.`}
 - SI une shortlist ou un placement est pertinent par rapport au poste actuel → mentionne-le naturellement
 - SI le candidat a déjà été placé chez un client → c'est un signal fort de confiance, mentionne-le
 - ATTENTION: ne cite JAMAIS le contenu exact des notes internes, ce sont des infos confidentielles. Utilise-les pour ORIENTER ton message, pas pour les citer.
