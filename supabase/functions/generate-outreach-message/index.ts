@@ -361,11 +361,31 @@ UTILISATION DES POSTS:
       if (!candidateHistory) return '';
       const parts: string[] = [];
 
+      // Detect if the sender is one of the consultants in the history
+      const senderLower = (senderName || '').toLowerCase().trim();
+      const isSenderConsultant = (consultantName: string | null | undefined): boolean => {
+        if (!consultantName || !senderLower) return false;
+        const cLower = consultantName.toLowerCase().trim();
+        // Match on first name or full name
+        return cLower === senderLower || 
+               cLower.startsWith(senderLower.split(' ')[0]) || 
+               senderLower.startsWith(cLower.split(' ')[0]);
+      };
+
+      // Collect all consultant names and check if sender is involved
+      const allConsultants = [
+        ...(candidateHistory.shortlists || []).map(s => s.consultant),
+        ...(candidateHistory.placements || []).map(p => p.consultant),
+        ...(candidateHistory.notes || []).map(n => n.consultant),
+      ].filter(Boolean);
+      const senderIsInHistory = allConsultants.some(c => isSenderConsultant(c));
+
       const shortlists = candidateHistory.shortlists?.filter(s => s.job_title || s.company_name) || [];
       if (shortlists.length > 0) {
         parts.push('SHORTLISTS (postes pour lesquels ce candidat a été présenté):');
         shortlists.forEach(s => {
-          const info = [s.job_title, s.company_name, s.status, s.date_added, s.consultant ? `par ${s.consultant}` : ''].filter(Boolean).join(' | ');
+          const isMine = isSenderConsultant(s.consultant);
+          const info = [s.job_title, s.company_name, s.status, s.date_added, s.consultant ? `par ${s.consultant}${isMine ? ' (= TOI, l\'expéditeur)' : ''}` : ''].filter(Boolean).join(' | ');
           parts.push(`  - ${info}`);
         });
       }
@@ -374,7 +394,8 @@ UTILISATION DES POSTS:
       if (placements.length > 0) {
         parts.push('PLACEMENTS (missions passées via notre cabinet):');
         placements.forEach(p => {
-          const info = [p.company_name, p.contract_type, p.start_date, p.status, p.consultant ? `par ${p.consultant}` : ''].filter(Boolean).join(' | ');
+          const isMine = isSenderConsultant(p.consultant);
+          const info = [p.company_name, p.contract_type, p.start_date, p.status, p.consultant ? `par ${p.consultant}${isMine ? ' (= TOI, l\'expéditeur)' : ''}` : ''].filter(Boolean).join(' | ');
           parts.push(`  - ${info}`);
         });
       }
@@ -383,7 +404,8 @@ UTILISATION DES POSTS:
       if (notes.length > 0) {
         parts.push('NOTES INTERNES (observations passées de nos consultants):');
         notes.slice(0, 3).forEach(n => {
-          const info = [n.note_date, n.consultant ? `par ${n.consultant}` : '', n.title, n.detail?.slice(0, 150)].filter(Boolean).join(' | ');
+          const isMine = isSenderConsultant(n.consultant);
+          const info = [n.note_date, n.consultant ? `par ${n.consultant}${isMine ? ' (= TOI, l\'expéditeur)' : ''}` : '', n.title, n.detail?.slice(0, 150)].filter(Boolean).join(' | ');
           parts.push(`  - ${info}`);
         });
       }
@@ -401,17 +423,19 @@ UTILISATION DES POSTS:
 
       return `
 === HISTORIQUE INTERNE AVEC CE CANDIDAT (ATS/CRM) ===
+${senderIsInHistory ? `⚠️ IMPORTANT: TU (${senderName}) as personnellement interagi avec ce candidat dans le passé. Les entrées marquées "(= TOI, l'expéditeur)" sont les TIENNES. Parle à la PREMIÈRE PERSONNE ("on avait échangé", "je t'avais contacté pour [poste]") et NON à la troisième personne.` : ''}
 ${parts.join('\n')}
 === FIN HISTORIQUE ===
 
 UTILISATION DE L'HISTORIQUE:
 - Ce candidat est DÉJÀ CONNU de notre cabinet. C'est une information PRÉCIEUSE.
-- SI une shortlist ou un placement est pertinent par rapport au poste actuel → mentionne-le naturellement ("on avait échangé pour [poste/client]", "tu avais bossé avec [consultant]")
-- SI un ancien collègue/consultant a laissé une note positive → tu peux t'en inspirer pour le ton
+${senderIsInHistory ? `- TU ES le consultant qui a interagi avec ce candidat → parle en PREMIÈRE PERSONNE: "on avait échangé", "je t'avais contacté", "la dernière fois qu'on s'était parlé"
+- C'est un ÉNORME avantage: ce n'est PAS un cold outreach, c'est une reprise de contact. Exploite-le.` : `- Un COLLÈGUE a interagi avec ce candidat → tu peux dire "un collègue m'avait parlé de toi" ou "on avait échangé avec l'équipe"`}
+- SI une shortlist ou un placement est pertinent par rapport au poste actuel → mentionne-le naturellement
 - SI le candidat a déjà été placé chez un client → c'est un signal fort de confiance, mentionne-le
 - ATTENTION: ne cite JAMAIS le contenu exact des notes internes, ce sont des infos confidentielles. Utilise-les pour ORIENTER ton message, pas pour les citer.
 - ATTENTION: ne mentionne l'historique QUE si c'est PERTINENT et NATUREL. Un historique ancien ou sans rapport avec le poste actuel ne doit PAS être forcé dans le message.
-- Le but: montrer que tu n'es pas un inconnu, que le candidat a déjà un lien avec le cabinet/l'équipe.`;
+- Le but: montrer que tu n'es pas un inconnu, que le candidat a déjà un lien avec toi/le cabinet.`;
     })();
 
     const prompt = `Tu es un recruteur tech senior. Tu écris des messages LinkedIn ULTRA personnalisés et percutants.
