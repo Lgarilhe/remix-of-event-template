@@ -398,7 +398,12 @@ export function useLinkedInSearchActions(
         });
 
         if (response.error) throw response.error;
-        if (!response.data?.success) throw new Error(response.data?.error);
+        if (!response.data?.success) {
+          const apiError = new Error(response.data?.error || 'Erreur lors de la recherche');
+          (apiError as Error & { errorType?: string; retryable?: boolean }).errorType = response.data?.errorType;
+          (apiError as Error & { errorType?: string; retryable?: boolean }).retryable = response.data?.retryable;
+          throw apiError;
+        }
 
         const batch: LinkedInProfile[] = response.data.results || [];
         const batchCursor: string | null = response.data.cursor || null;
@@ -473,11 +478,23 @@ export function useLinkedInSearchActions(
 
     } catch (error: any) {
       console.error('[LinkedInSearch] Search error:', error);
-      
-      // Detect LinkedIn multiple sessions error and auto-retry
-      const isMultipleSessionsError = error.message?.includes('multiple sessions') || error.message?.includes('unable to process');
-      
-      if (isMultipleSessionsError && retryCount < 3) {
+
+      const errorMessage = String(error?.message || '');
+      const errorType = String(error?.errorType || '').toLowerCase();
+      const isMultipleSessionsError =
+        errorType.includes('multiple_sessions') ||
+        errorMessage.toLowerCase().includes('multiple sessions') ||
+        errorMessage.toLowerCase().includes('unable to process');
+
+      // Le backend gère déjà les retries sur multiple_sessions :
+      // côté client on n'insiste pas si l'erreur est explicite.
+      const shouldRetry =
+        isMultipleSessionsError &&
+        !errorType.includes('multiple_sessions') &&
+        error?.retryable !== false &&
+        retryCount < 3;
+
+      if (shouldRetry) {
         const delays = [8, 20, 35]; // longer progressive delays
         const delay = delays[retryCount];
         toast.info(`Conflit de session LinkedIn détecté. Tentative ${retryCount + 2}/4 dans ${delay}s...`, { id: 'search-retry', duration: delay * 1000 });
@@ -489,11 +506,14 @@ export function useLinkedInSearchActions(
         }
         return handleSearch(appendMode, retryCount + 1);
       }
-      
+
       if (isMultipleSessionsError) {
-        toast.error('Conflit de session LinkedIn persistant. Fermez LinkedIn Recruiter dans votre navigateur (ou utilisez un onglet privé) puis réessayez.', { id: 'search-error', duration: 15000 });
+        toast.error(
+          'Session Recruiter verrouillée. Passez temporairement en « LinkedIn Classic » ou reconnectez le compte dans l’onglet « Comptes ».',
+          { id: 'search-error', duration: 15000 }
+        );
       } else {
-        toast.error(error.message || 'Erreur lors de la recherche', { id: 'search-error' });
+        toast.error(errorMessage || 'Erreur lors de la recherche', { id: 'search-error' });
       }
       // Stop infinite scroll from retrying on error
       setHasMoreResults(false);
