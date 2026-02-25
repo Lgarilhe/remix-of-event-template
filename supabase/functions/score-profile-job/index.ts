@@ -188,8 +188,8 @@ serve(async (req) => {
       return parts.length > 0 ? parts.join('\n') : 'Rémunération: Non spécifiée (à estimer)';
     };
 
-    const BATCH_SIZE = 3;
-    const DELAY_BETWEEN_BATCHES_MS = 1500;
+    const BATCH_SIZE = 5;
+    const DELAY_BETWEEN_BATCHES_MS = 500;
     const results: any[] = [];
 
     for (let i = 0; i < profilesToScore.length; i += BATCH_SIZE) {
@@ -341,7 +341,7 @@ Réponds UNIQUEMENT en JSON valide avec cette structure exacte:
                 },
                 body: JSON.stringify({
                   model: "claude-sonnet-4-6",
-                  max_tokens: 1024,
+                  max_tokens: 600,
                   messages: [
                     {
                       role: "user",
