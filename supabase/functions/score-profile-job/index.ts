@@ -126,7 +126,6 @@ interface JobData {
   bodyContent?: string;
 }
 
-// Sanitize strings to remove unpaired surrogates that break JSON serialization
 function sanitizeText(text: string | undefined | null): string {
   if (!text) return '';
   try {
@@ -136,6 +135,48 @@ function sanitizeText(text: string | undefined | null): string {
   } catch {
     return text.replace(/[\uD800-\uDFFF]/g, '');
   }
+}
+
+// Robust JSON extraction with truncation repair
+function extractJsonRobust(raw: string): any {
+  // Strip markdown code blocks
+  let content = raw.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
+
+  const startIdx = content.indexOf('{');
+  if (startIdx === -1) throw new Error("No JSON found in response");
+
+  // Find balanced closing brace
+  let depth = 0;
+  let endIdx = -1;
+  for (let i = startIdx; i < content.length; i++) {
+    if (content[i] === '{') depth++;
+    else if (content[i] === '}') { depth--; if (depth === 0) { endIdx = i; break; } }
+  }
+
+  let jsonStr: string;
+  if (endIdx !== -1) {
+    jsonStr = content.substring(startIdx, endIdx + 1);
+  } else {
+    // Truncated — attempt repair by closing open arrays/objects
+    jsonStr = content.substring(startIdx);
+    // Remove trailing incomplete value
+    jsonStr = jsonStr.replace(/,\s*"[^"]*"?\s*:?\s*[^,}\]]*$/, '');
+    // Close any open arrays
+    const openBrackets = (jsonStr.match(/\[/g) || []).length - (jsonStr.match(/\]/g) || []).length;
+    for (let i = 0; i < openBrackets; i++) jsonStr += ']';
+    // Close any open objects
+    const openBraces = (jsonStr.match(/\{/g) || []).length - (jsonStr.match(/\}/g) || []).length;
+    for (let i = 0; i < openBraces; i++) jsonStr += '}';
+    console.warn(`[score] Repaired truncated JSON (added ${openBrackets} ] and ${openBraces} })`);
+  }
+
+  // Clean common issues
+  jsonStr = jsonStr
+    .replace(/,\s*}/g, '}')
+    .replace(/,\s*]/g, ']')
+    .replace(/[\x00-\x1F\x7F]/g, '');
+
+  return JSON.parse(jsonStr);
 }
 
 serve(async (req) => {
@@ -166,26 +207,22 @@ serve(async (req) => {
       const parts: string[] = [];
       if (job.salaryMin || job.salaryMax) {
         if (job.salaryMin && job.salaryMax) {
-          parts.push(`Salaire: ${job.salaryMin}k€ - ${job.salaryMax}k€ brut/an`);
+          parts.push(`Salaire: ${job.salaryMin}k-${job.salaryMax}k brut/an`);
         } else if (job.salaryMin) {
-          parts.push(`Salaire minimum: ${job.salaryMin}k€ brut/an`);
+          parts.push(`Salaire min: ${job.salaryMin}k brut/an`);
         } else if (job.salaryMax) {
-          parts.push(`Salaire maximum: ${job.salaryMax}k€ brut/an`);
+          parts.push(`Salaire max: ${job.salaryMax}k brut/an`);
         }
       }
       if (job.tjmMin || job.tjmMax) {
         if (job.tjmMin && job.tjmMax) {
-          parts.push(`TJM: ${job.tjmMin}€ - ${job.tjmMax}€/jour`);
+          parts.push(`TJM: ${job.tjmMin}-${job.tjmMax}€/j`);
         } else if (job.tjmMin) {
-          parts.push(`TJM minimum: ${job.tjmMin}€/jour`);
-        } else if (job.tjmMax) {
-          parts.push(`TJM maximum: ${job.tjmMax}€/jour`);
+          parts.push(`TJM min: ${job.tjmMin}€/j`);
         }
       }
-      if (job.contractType) {
-        parts.push(`Type de contrat: ${job.contractType}`);
-      }
-      return parts.length > 0 ? parts.join('\n') : 'Rémunération: Non spécifiée (à estimer)';
+      if (job.contractType) parts.push(`Contrat: ${job.contractType}`);
+      return parts.length > 0 ? parts.join(', ') : 'Rémunération: Non spécifiée';
     };
 
     const BATCH_SIZE = 5;
@@ -202,133 +239,39 @@ serve(async (req) => {
             const jobSkills = (job.skills || []).map(s => s.toLowerCase());
             
             const skillsMatch = (profileSkill: string, jobSkill: string): boolean => {
-              if (profileSkill.includes(jobSkill) || jobSkill.includes(profileSkill)) {
-                return true;
-              }
+              if (profileSkill.includes(jobSkill) || jobSkill.includes(profileSkill)) return true;
               for (const [canonical, synonyms] of Object.entries(SKILL_SYNONYMS)) {
                 const allVariants = [canonical, ...synonyms];
                 const profileMatches = allVariants.some(v => profileSkill.includes(v) || v.includes(profileSkill));
                 const jobMatches = allVariants.some(v => jobSkill.includes(v) || v.includes(jobSkill));
-                if (profileMatches && jobMatches) {
-                  return true;
-                }
+                if (profileMatches && jobMatches) return true;
               }
               return false;
             };
 
-            const matchedSkills = jobSkills.filter(js => 
-              profileSkills.some(ps => skillsMatch(ps, js))
-            );
-            const missingSkills = jobSkills.filter(js => 
-              !profileSkills.some(ps => skillsMatch(ps, js))
-            );
+            const matchedSkills = jobSkills.filter(js => profileSkills.some(ps => skillsMatch(ps, js)));
+            const missingSkills = jobSkills.filter(js => !profileSkills.some(ps => skillsMatch(ps, js)));
 
-            // Build work experience text
             let workExpText = '';
             if (p.workExperience && p.workExperience.length > 0) {
               workExpText = p.workExperience.map(w => {
                 let line = `- ${w.role} @ ${w.company}`;
                 if (w.duration) line += ` (${w.duration})`;
-                if (w.durationMonths) line += ` [${w.durationMonths} mois]`;
-                if (w.description) line += `\n  ${w.description.substring(0, 200)}`;
-                if (w.skills && w.skills.length > 0) line += `\n  Skills: ${w.skills.join(', ')}`;
+                if (w.description) line += ` | ${w.description.substring(0, 150)}`;
                 return line;
               }).join('\n');
             } else if (p.pastPositions && p.pastPositions.length > 0) {
-              workExpText = p.pastPositions.map(pp => `- ${pp}`).join('\n');
+              workExpText = p.pastPositions.slice(0, 3).map(pp => `- ${pp}`).join('\n');
             }
 
-            // Build transversal criteria text
             let transversalText = '';
             if (job.transversalCriteria) {
               const tc = job.transversalCriteria;
-              if (tc.context) transversalText += `Contexte entreprise: ${tc.context}\n`;
-              if (tc.must) transversalText += `Critères transversaux OBLIGATOIRES: ${tc.must}\n`;
-              if (tc.should) transversalText += `Critères transversaux IMPORTANTS: ${tc.should}\n`;
-              if (tc.niceToHave) transversalText += `Critères transversaux BONUS: ${tc.niceToHave}\n`;
-              if (tc.bodyContent) transversalText += `Contenu détaillé critères transverses:\n${tc.bodyContent.substring(0, 500)}\n`;
+              if (tc.must) transversalText += `Must transversal: ${tc.must}\n`;
+              if (tc.should) transversalText += `Should transversal: ${tc.should}\n`;
             }
 
-            const prompt = sanitizeText(`Tu es un expert en recrutement tech. Évalue la correspondance entre ce profil LinkedIn et cette offre d'emploi.
-
-POSTE:
-- Titre: ${job.title}
-- Client/Entreprise: ${job.client?.name || 'Non spécifié'} (Secteur: ${job.client?.sector || 'Non spécifié'})
-- Séniorité recherchée: ${job.seniority || 'Non spécifiée'}
-- Localisation: ${job.location || 'Non spécifiée'}
-- Remote: ${job.remote || 'Non spécifié'}
-- Expérience: ${job.xpMin || '?'} - ${job.xpMax || '?'} ans
-- ${formatSalaryInfo(job)}
-- Compétences requises: ${job.skills.join(', ')}
-${job.mustHave ? '- Critères OBLIGATOIRES (must-have): ' + job.mustHave : ''}
-${job.shouldHave ? '- Critères IMPORTANTS (should-have): ' + job.shouldHave : ''}
-${job.niceToHave ? '- Critères BONUS (nice-to-have): ' + job.niceToHave : ''}
-${job.requirements ? '- Exigences détaillées: ' + job.requirements : ''}
-${job.description ? '- Description du poste: ' + job.description.substring(0, 500) : ''}
-${job.bodyContent ? '- Contenu détaillé de la page du poste:\n' + job.bodyContent.substring(0, 800) : ''}
-${transversalText ? '\nCRITÈRES TRANSVERSAUX (appliqués à tous les postes):\n' + transversalText : ''}
-
-PROFIL CANDIDAT:
-- Nom: ${p.name}
-- Titre actuel: ${p.headline || p.currentRole || 'Non spécifié'}
-- Entreprise actuelle: ${p.currentCompany || 'Non spécifiée'}
-- Localisation: ${p.location || 'Non spécifiée'}
-- Années d'expérience: ${p.yearsOfExperience ?? 'Non spécifié'}
-- Tenure moyenne: ${p.averageTenureMonths ? Math.round(p.averageTenureMonths) + ' mois' : 'Non calculée'}
-- Open to Work: ${p.openToWork ? 'Oui' : 'Non/Inconnu'}
-- Open Profile (InMail gratuit): ${p.openProfile ? 'Oui' : 'Non'}
-- Réseau: ${p.networkDistance ? p.networkDistance + 'ème degré' : 'Inconnu'}
-${p.summary ? '- Résumé: ' + p.summary.substring(0, 300) : ''}
-- Compétences LinkedIn: ${profileSkills.join(', ') || 'Aucune'}
-- Compétences matchées avec le poste: ${matchedSkills.join(', ') || 'Aucune'}
-- Compétences manquantes: ${missingSkills.join(', ') || 'Aucune'}
-${p.education ? '- Formation: ' + p.education.join(', ') : ''}
-${workExpText ? '\nEXPÉRIENCE PROFESSIONNELLE:\n' + workExpText : ''}
-
-RÈGLES DE SCORING CRITIQUES (à appliquer STRICTEMENT) :
-
-1. DÉTECTION DE SÉNIORITÉ (ÉLIMINATOIRE):
-   - Si le poste est un rôle de contributeur technique (Engineer, Developer, SRE, DevOps, etc.) et que le candidat occupe un rôle de direction/management (CTO, VP Engineering, Head of, Director, etc.) -> Score <= 30, recommendation = NO_MATCH
-   - Si le poste est un rôle de direction et que le candidat est un contributeur junior/mid -> Score <= 35, recommendation = NO_MATCH
-   - Les promotions internes au sein d'une même entreprise comptent comme UNE SEULE période de tenure
-
-2. CRITÈRES MUST-HAVE / OBLIGATOIRES (ÉLIMINATOIRE - TOLÉRANCE ZÉRO):
-   - Les critères "must-have", "obligatoires" et "critères transversaux OBLIGATOIRES" sont des PRÉ-REQUIS ABSOLUS.
-   - Analyse chaque critère must-have INDIVIDUELLEMENT. Si le candidat ne remplit pas ne serait-ce qu'UN SEUL critère must-have clairement identifiable -> Score <= 35, recommendation = NO_MATCH ou WEAK_MATCH.
-   - Ne cherche PAS à compenser un must-have manquant par d'autres qualités. Un must-have manquant = élimination, point final.
-   - Exemples de must-have typiques: technologie spécifique (ex: "Golang obligatoire"), certification (ex: "AWS Solutions Architect"), expérience sectorielle (ex: "expérience bancaire impérative"), niveau d'expérience minimum, langue obligatoire.
-   - Si le candidat ne remplit AUCUN must-have -> Score <= 20, recommendation = NO_MATCH.
-
-3. ADÉQUATION GÉOGRAPHIQUE: Évalue si la localisation du candidat est compatible avec le poste (en tenant compte du remote). Incompatibilité géographique sans remote possible = pénalité forte.
-
-4. EXPÉRIENCE: Compare les années d'expérience du candidat avec la fourchette demandée. Un écart de +5 ans au-dessus ou en-dessous = pénalité significative.
-
-5. RÉMUNÉRATION: Si des indices de rémunération sont disponibles, note les risques de mismatch.
-
-6. SEUILS DE RECOMMENDATION (STRICT):
-   - NO_MATCH (score 0-30): Un ou plusieurs critères éliminatoires non remplis (must-have manquant, mismatch de séniorité)
-   - WEAK_MATCH (score 31-45): Lacunes majeures mais pas totalement hors sujet
-   - POSSIBLE_MATCH (score 46-60): Profil intéressant mais avec des manques significatifs
-   - GOOD_MATCH (score 61-79): Bon profil, quelques ajustements mineurs
-   - STRONG_MATCH (score 80-100): Excellent match, tous les must-have remplis
-
-IMPORTANT: Sois SÉVÈRE. Un profil "à qualifier" (POSSIBLE_MATCH) doit avoir de réelles chances d'être pertinent. En cas de doute sur un must-have, penche vers le rejet plutôt que l'indulgence.
-
-Réponds UNIQUEMENT en JSON valide avec cette structure exacte:
-{
-  "score": <nombre entre 0 et 100>,
-  "recommendation": "<STRONG_MATCH|GOOD_MATCH|POSSIBLE_MATCH|WEAK_MATCH|NO_MATCH>",
-  "summary": "<1-2 phrases résumant l'évaluation>",
-  "strengths": ["<point fort 1>", "<point fort 2>"],
-  "concerns": ["<point faible 1>", "<point faible 2>"],
-  "missingSkills": ["<compétence manquante 1>"],
-  "seniorityMatch": "<MATCH|OVERQUALIFIED|UNDERQUALIFIED|MISMATCH>",
-  "locationMatch": "<MATCH|PARTIAL|REMOTE_OK|MISMATCH|UNKNOWN>",
-  "experienceMatch": "<MATCH|OVER|UNDER|UNKNOWN>",
-  "tenureAnalysis": "<STABLE|MODERATE|JOB_HOPPER|UNKNOWN>",
-  "receptivityScore": <nombre entre 0 et 100>,
-  "skipReason": "<null ou raison du rejet si score < 40>"
-}`);
+            const prompt = sanitizeText(`Expert recruteur tech. Évalue profil vs poste.\n\nPOSTE: ${job.title} | ${job.client?.name || '?'} (${job.client?.sector || '?'}) | Séniorité: ${job.seniority || '?'} | Loc: ${job.location || '?'} | Remote: ${job.remote || '?'} | XP: ${job.xpMin || '?'} - ${job.xpMax || '?'} ans | ${formatSalaryInfo(job)}\nSkills requis: ${job.skills.join(', ')}\n${job.mustHave ? 'MUST-HAVE: ' + job.mustHave : ''}\n${job.shouldHave ? 'SHOULD-HAVE: ' + job.shouldHave : ''}\n${job.requirements ? 'Exigences: ' + job.requirements.substring(0, 300) : ''}\n${job.description ? 'Desc: ' + job.description.substring(0, 300) : ''}\n${transversalText}\n\nPROFIL: ${p.name} | ${p.headline || p.currentRole || '?'} @ ${p.currentCompany || '?'} | Loc: ${p.location || '?'} | XP: ${p.yearsOfExperience ?? '?'} ans | Tenure moy: ${p.averageTenureMonths ? Math.round(p.averageTenureMonths) + 'mois' : '?'} | OTW: ${p.openToWork ? 'Oui' : 'Non'} | OpenProfile: ${p.openProfile ? 'Oui' : 'Non'} | Réseau: ${p.networkDistance || '?'}\nSkills: ${profileSkills.join(', ') || 'Aucune'}\nMatchées: ${matchedSkills.join(', ') || 'Aucune'} | Manquantes: ${missingSkills.join(', ') || 'Aucune'}\n${p.education ? 'Formation: ' + p.education.join(', ') : ''}\n${workExpText}\n\nRÈGLES STRICTES:\n1. Mismatch séniorité (IC vs Director) -> score<=30, NO_MATCH\n2. Must-have manquant -> score<=35, WEAK_MATCH ou NO_MATCH (tolérance zéro)\n3. Seuils: NO_MATCH(0-30) WEAK_MATCH(31-45) POSSIBLE_MATCH(46-60) GOOD_MATCH(61-79) STRONG_MATCH(80-100)\n4. Sois SÉVÈRE.\n\nRéponds en JSON COMPACT sur UNE SEULE LIGNE sans retour à la ligne. Max 3 strengths/concerns/missingSkills. Chaque texte max 50 chars. Summary max 20 mots.\n{\\"score\\":N,\\"recommendation\\":\\"X\\",\\"summary\\":\\"...\\",\\"strengths\\":[\\"...\\"],\\"concerns\\":[\\"...\\"],\\"missingSkills\\":[\\"...\\"],\\"seniorityMatch\\":\\"X\\",\\"locationMatch\\":\\"X\\",\\"experienceMatch\\":\\"X\\",\\"tenureAnalysis\\":\\"X\\",\\"receptivityScore\\":N,\\"skipReason\\":null}`);
 
             const res = await fetchWithRetry(
               "https://api.anthropic.com/v1/messages",
@@ -341,7 +284,7 @@ Réponds UNIQUEMENT en JSON valide avec cette structure exacte:
                 },
                 body: JSON.stringify({
                   model: "claude-sonnet-4-6",
-                  max_tokens: 800,
+                  max_tokens: 1200,
                   messages: [
                     {
                       role: "user",
@@ -357,29 +300,20 @@ Réponds UNIQUEMENT en JSON valide avec cette structure exacte:
               const errorBody = await res.text();
               console.error(`Anthropic API error:`, { status: res.status, body: errorBody });
               
-              if (res.status === 429) {
-                throw new Error("RATE_LIMITED");
-              }
-              if (res.status === 402) {
-                throw new Error("CREDITS_EXHAUSTED");
-              }
+              if (res.status === 429) throw new Error("RATE_LIMITED");
+              if (res.status === 402) throw new Error("CREDITS_EXHAUSTED");
               throw new Error(`Anthropic API error: ${res.status}`);
             }
 
             const data = await res.json();
-            let content = data.content?.[0]?.text || '';
-            
-            // Strip markdown code blocks
-            content = content.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
-            
-            // Extract JSON from response
-            const jsonMatch = content.match(/\{[\s\S]*\}/);
-            if (!jsonMatch) {
-              console.error(`Failed to parse scoring response for ${p.name}:`, content);
-              throw new Error("Invalid AI response format");
+            const rawContent = data.content?.[0]?.text || '';
+            const stopReason = data.stop_reason;
+
+            if (stopReason === 'max_tokens') {
+              console.warn(`[score] Response truncated for ${p.name}, will attempt repair`);
             }
 
-            const scoring = JSON.parse(jsonMatch[0]);
+            const scoring = extractJsonRobust(rawContent);
 
             return {
               name: p.name,
@@ -417,7 +351,6 @@ Réponds UNIQUEMENT en JSON valide avec cette structure exacte:
 
       results.push(...batchResults);
 
-      // Delay between batches to avoid rate limits
       if (i + BATCH_SIZE < profilesToScore.length) {
         await sleep(DELAY_BETWEEN_BATCHES_MS);
       }
@@ -430,10 +363,16 @@ Réponds UNIQUEMENT en JSON valide avec cette structure exacte:
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error) {
-    console.error("Error in score-profile-job:", error);
+    console.error("Score profile error:", error);
+    
+    const message = error instanceof Error ? error.message : "Unknown error";
+    const status = message.includes("RATE_LIMITED") ? 429 
+                 : message.includes("CREDITS_EXHAUSTED") ? 402 
+                 : 500;
+
     return new Response(
-      JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      JSON.stringify({ error: message }),
+      { status, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
 });
