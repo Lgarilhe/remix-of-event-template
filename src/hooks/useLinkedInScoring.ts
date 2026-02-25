@@ -286,8 +286,8 @@ export function useLinkedInScoring({
     }
 
     // Batch settings to avoid AI rate limits
-    const BATCH_SIZE = 5;
-    const DELAY_BETWEEN_BATCHES_MS = 2000;
+    const BATCH_SIZE = 10;
+    const DELAY_BETWEEN_BATCHES_MS = 500;
 
     try {
       const profilesData = profilesToScore.map(buildProfileData);
