@@ -125,7 +125,8 @@ async function handleProcess(supabase: any, force = false) {
 
     if (fetchError) throw fetchError;
 
-    const results = { processed: 0, skipped: 0, failed: 0, quota_blocked: 0 };
+    const results = { processed: 0, skipped: 0, failed: 0, retried: 0, quota_blocked: 0 };
+    const failedSequenceIds = new Set<string>();
 
     // Deduplicate: only process one execution per profile per batch to preserve natural spacing
     const seenProfiles = new Set<string>();
@@ -207,12 +208,56 @@ async function handleProcess(supabase: any, force = false) {
           console.log(`[process] Sleeping ${Math.round(delay / 1000)}s after ${step.action_type}`);
           await sleep(delay);
         } else {
-          await supabase.from('sequence_step_executions').update({ status: 'failed', error_message: executeResult.error, executed_at: now, final_message: finalMessage || null, final_subject: finalSubject || null }).eq('id', exec.id);
-          results.failed++;
+          // Retry logic: if error is retryable and retry_count < MAX_RETRIES, reschedule
+          const currentRetryCount = exec.retry_count || 0;
+          if (isRetryableError(executeResult.error) && currentRetryCount < MAX_RETRIES) {
+            const retryAt = new Date(Date.now() + RETRY_DELAY_MS).toISOString();
+            await supabase.from('sequence_step_executions').update({ 
+              status: 'scheduled', 
+              retry_count: currentRetryCount + 1, 
+              error_message: `Retry ${currentRetryCount + 1}/${MAX_RETRIES}: ${executeResult.error}`,
+              scheduled_at: retryAt,
+            }).eq('id', exec.id);
+            console.log(`[process] Retryable error for ${enrollment.profile_id}, retry ${currentRetryCount + 1}/${MAX_RETRIES} scheduled at ${retryAt}`);
+            results.retried++;
+          } else {
+            await supabase.from('sequence_step_executions').update({ status: 'failed', error_message: executeResult.error, executed_at: now, final_message: finalMessage || null, final_subject: finalSubject || null }).eq('id', exec.id);
+            results.failed++;
+            if (enrollment.sequence_id) failedSequenceIds.add(enrollment.sequence_id);
+          }
         }
       } catch (err) {
-        await supabase.from('sequence_step_executions').update({ status: 'failed', error_message: err instanceof Error ? err.message : 'Unknown' }).eq('id', exec.id);
-        results.failed++;
+        const errorMsg = err instanceof Error ? err.message : 'Unknown';
+        const currentRetryCount = exec.retry_count || 0;
+        if (isRetryableError(errorMsg) && currentRetryCount < MAX_RETRIES) {
+          await supabase.from('sequence_step_executions').update({ 
+            status: 'scheduled', retry_count: currentRetryCount + 1,
+            error_message: `Retry ${currentRetryCount + 1}/${MAX_RETRIES}: ${errorMsg}`,
+            scheduled_at: new Date(Date.now() + RETRY_DELAY_MS).toISOString(),
+          }).eq('id', exec.id);
+          results.retried++;
+        } else {
+          await supabase.from('sequence_step_executions').update({ status: 'failed', error_message: errorMsg }).eq('id', exec.id);
+          results.failed++;
+        }
+      }
+    }
+
+    // Auto-pause: if >30% of batch actions failed definitively, pause affected sequences
+    const totalActioned = results.processed + results.failed;
+    if (totalActioned >= 2 && results.failed / totalActioned > 0.3) {
+      console.warn(`[process] ⚠️ HIGH FAILURE RATE: ${results.failed}/${totalActioned} failed (${Math.round(results.failed / totalActioned * 100)}%). Auto-pausing affected sequences.`);
+      for (const seqId of failedSequenceIds) {
+        await supabase.from('outreach_sequences').update({ is_active: false }).eq('id', seqId);
+        // Cancel remaining scheduled executions for this sequence
+        const { data: enrollments } = await supabase.from('sequence_enrollments').select('id').eq('sequence_id', seqId).eq('status', 'active');
+        if (enrollments?.length) {
+          for (const enr of enrollments) {
+            await supabase.from('sequence_step_executions').update({ status: 'cancelled', skip_reason: 'Auto-paused: high failure rate' }).eq('enrollment_id', enr.id).eq('status', 'scheduled');
+          }
+          await supabase.from('sequence_enrollments').update({ status: 'paused' }).eq('sequence_id', seqId).eq('status', 'active');
+        }
+        console.warn(`[process] Sequence ${seqId} paused due to high failure rate`);
       }
     }
 
@@ -291,6 +336,17 @@ async function handleCheckWaitEvents(supabase: any) {
 
 function sleep(ms: number): Promise<void> { return new Promise(r => setTimeout(r, ms)); }
 function needsMessage(actionType: string): boolean { return ['message', 'inmail', 'smart_message'].includes(actionType); }
+
+const MAX_RETRIES = 3;
+const RETRY_DELAY_MS = 30 * 60 * 1000; // 30 minutes
+
+function isRetryableError(error: string | undefined): boolean {
+  if (!error) return false;
+  const e = error.toLowerCase();
+  return e.includes('429') || e.includes('500') || e.includes('502') || e.includes('503') || e.includes('504')
+    || e.includes('timeout') || e.includes('rate limit') || e.includes('temporarily') || e.includes('econnreset')
+    || e.includes('fetch failed') || e.includes('network');
+}
 
 function isWithinBusinessHours(timezone: string): boolean {
   try {
