@@ -60,6 +60,9 @@ All colors MUST be HSL.
     --skalr-blue: 217 91% 60%;
     --skalr-cyan: 187 85% 53%;
     --skalr-green: 142 71% 45%;
+
+    /* Brutal accent */
+    --brutal-accent: 297 100% 73%;
   }
 
   .dark {
