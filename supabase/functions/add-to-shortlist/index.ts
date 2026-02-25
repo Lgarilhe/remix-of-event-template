@@ -263,7 +263,7 @@ serve(async (req) => {
       // Update existing shortlist etape if needed
       if (data.etape) {
         await updateNotionPage(existingShortlistId, {
-          'Etape': { select: { name: data.etape } },
+          'Etape': { status: { name: data.etape } },
         });
       }
       return new Response(
@@ -288,7 +288,7 @@ serve(async (req) => {
     const shortlistProps: Record<string, unknown> = {
       'Nom': { title: [{ text: { content: shortlistTitle } }] },
       'Candidats': { relation: [{ id: candidateId }] },
-      'Etape': { select: { name: data.etape || 'Pressenti' } },
+      'Etape': { status: { name: data.etape || 'Pressenti' } },
     };
 
     // Entité
