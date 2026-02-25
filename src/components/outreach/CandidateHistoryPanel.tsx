@@ -79,7 +79,7 @@ export const CandidateHistoryPanel: React.FC<CandidateHistoryPanelProps> = ({
         )}
 
         {/* Contact info */}
-        {(data.candidate?.email || data.candidate?.phone) && (
+        {(data?.candidate?.email || data?.candidate?.phone) && (
           <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
             {data.candidate.email && (
               <span className="flex items-center gap-1">
@@ -97,7 +97,7 @@ export const CandidateHistoryPanel: React.FC<CandidateHistoryPanelProps> = ({
         )}
 
         {/* Placements */}
-        {data.placements.length > 0 && (
+        {data && data.placements.length > 0 && (
           <HistorySection
             icon={<Trophy className="w-3.5 h-3.5 text-amber-500" />}
             title="Placements"
@@ -128,7 +128,7 @@ export const CandidateHistoryPanel: React.FC<CandidateHistoryPanelProps> = ({
         )}
 
         {/* Shortlists */}
-        {data.shortlists.length > 0 && (
+        {data && data.shortlists.length > 0 && (
           <HistorySection
             icon={<Star className="w-3.5 h-3.5 text-blue-500" />}
             title="Shortlists"
@@ -161,7 +161,7 @@ export const CandidateHistoryPanel: React.FC<CandidateHistoryPanelProps> = ({
         )}
 
         {/* Appointments */}
-        {data.appointments.length > 0 && (
+        {data && data.appointments.length > 0 && (
           <HistorySection
             icon={<Calendar className="w-3.5 h-3.5 text-purple-500" />}
             title="Rendez-vous"
@@ -184,7 +184,7 @@ export const CandidateHistoryPanel: React.FC<CandidateHistoryPanelProps> = ({
         )}
 
         {/* Notes */}
-        {data.notes.length > 0 && (
+        {data && data.notes.length > 0 && (
           <HistorySection
             icon={<FileText className="w-3.5 h-3.5 text-teal-500" />}
             title="Notes"
