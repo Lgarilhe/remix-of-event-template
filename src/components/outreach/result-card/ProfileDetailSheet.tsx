@@ -3,7 +3,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sh
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { ScrollArea } from '@/components/ui/scroll-area';
+
 import { Separator } from '@/components/ui/separator';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { LinkedInProfile } from '../types';
@@ -165,7 +165,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
   return (
     <>
       <Sheet open={open} onOpenChange={onOpenChange}>
-        <SheetContent side="right" className="!w-full !max-w-[100vw] min-w-0 sm:!w-[95vw] sm:!max-w-[820px] p-0 flex flex-col overflow-x-hidden overflow-y-hidden rounded-none border-l-0 sm:border-l border-foreground">
+        <SheetContent side="right" className="!w-full !max-w-[100vw] min-w-0 sm:!w-[95vw] sm:!max-w-[820px] p-0 flex flex-col overflow-x-auto overflow-y-hidden rounded-none border-l-0 sm:border-l border-foreground">
           {/* ─── HEADER ─── */}
           <SheetHeader className="px-3 sm:px-6 pt-4 sm:pt-5 pb-3 sm:pb-4 bg-muted/30 border-b border-foreground shrink-0">
             <div className="flex items-start gap-2.5 sm:gap-4">
@@ -314,8 +314,8 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
           </SheetHeader>
 
           {/* ─── CONTENT ─── */}
-          <ScrollArea className="flex-1">
-            <div className="p-3 sm:p-6 space-y-4 sm:space-y-6 min-w-0 max-w-full overflow-x-hidden">
+          <div className="flex-1 overflow-y-auto overflow-x-auto">
+            <div className="p-3 sm:p-6 space-y-4 sm:space-y-6 min-w-0 max-w-full">
               {/* Job Score */}
               {jobScore && (
                 <div className="border border-foreground p-5 bg-muted/20">
@@ -401,7 +401,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
                 onProfileTreated={onProfileTreated}
               />
             </div>
-          </ScrollArea>
+          </div>
         </SheetContent>
       </Sheet>
 
