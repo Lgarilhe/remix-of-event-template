@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { LinkedInProfile } from './types';
 import { Job } from '@/pages/JobSpace';
 import { supabase } from '@/integrations/supabase/client';
@@ -63,6 +63,17 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
   const [senderName, setSenderName] = useState(() => {
     return localStorage.getItem('outreach_sender_name') || '';
   });
+
+  // Reset state when profile changes
+  const profileKey = profile?.id || `${profile?.first_name}-${profile?.last_name}`;
+  useEffect(() => {
+    setMessage('');
+    setSubject('');
+    setPersonalizationPoints([]);
+    setHasGenerated(false);
+    setMessageSent(false);
+    setCopied(false);
+  }, [profileKey]);
 
   // Save sender name to localStorage
   const handleSenderNameChange = (name: string) => {
