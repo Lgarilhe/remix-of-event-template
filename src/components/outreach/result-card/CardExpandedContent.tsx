@@ -100,9 +100,17 @@ export const CardExpandedContent: React.FC<CardExpandedContentProps> = ({
                       </Badge>
                     )}
                     <div className="flex items-start gap-3">
+                      {exp.logo ? (
+                        <img
+                          src={exp.logo}
+                          alt={exp.company || ''}
+                          className="mt-0.5 w-10 h-10 rounded-xl object-contain bg-white border border-border/40 shrink-0 p-0.5"
+                          onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; (e.target as HTMLImageElement).nextElementSibling && ((e.target as HTMLImageElement).nextElementSibling as HTMLElement).classList.remove('hidden'); }}
+                        />
+                      ) : null}
                       <div className={`mt-0.5 w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
                         isCurrent ? 'bg-primary/10' : 'bg-muted/60'
-                      }`}>
+                      } ${exp.logo ? 'hidden' : ''}`}>
                         <Briefcase className={`w-4.5 h-4.5 ${isCurrent ? 'text-primary' : 'text-muted-foreground'}`} />
                       </div>
                       <div className="flex-1 min-w-0 pr-16">
@@ -136,10 +144,20 @@ export const CardExpandedContent: React.FC<CardExpandedContentProps> = ({
         <TabsContent value="education" className="mt-0 p-4">
           {education.length > 0 ? (
             <div className="space-y-3">
-              {education.map((edu: any, index: number) => (
+              {education.map((edu: any, index: number) => {
+                const schoolLogo = edu.logo || edu.school_logo;
+                return (
                 <div key={index} className="p-4 rounded-xl border border-border/50 bg-background hover:border-border transition-colors">
                   <div className="flex items-start gap-3">
-                    <div className="mt-0.5 w-10 h-10 rounded-xl bg-amber-100/60 flex items-center justify-center shrink-0">
+                    {schoolLogo ? (
+                      <img
+                        src={schoolLogo}
+                        alt={edu.school || ''}
+                        className="mt-0.5 w-10 h-10 rounded-xl object-contain bg-white border border-border/40 shrink-0 p-0.5"
+                        onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; (e.target as HTMLImageElement).nextElementSibling && ((e.target as HTMLImageElement).nextElementSibling as HTMLElement).classList.remove('hidden'); }}
+                      />
+                    ) : null}
+                    <div className={`mt-0.5 w-10 h-10 rounded-xl bg-amber-100/60 flex items-center justify-center shrink-0 ${schoolLogo ? 'hidden' : ''}`}>
                       <GraduationCap className="w-4.5 h-4.5 text-amber-600" />
                     </div>
                     <div className="flex-1 min-w-0">
@@ -156,7 +174,8 @@ export const CardExpandedContent: React.FC<CardExpandedContentProps> = ({
                     </div>
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
           ) : (
             <EmptyState icon={GraduationCap} text="Aucune formation disponible" />
