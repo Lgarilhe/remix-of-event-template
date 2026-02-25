@@ -200,7 +200,7 @@ serve(async (req) => {
         props['Entité'] = { select: { name: data.entity } };
       }
       if (data.accompagnement) {
-        props['Type d\u2019accompagnement'] = { select: { name: data.accompagnement } };
+        props['Type d\u2019accompagnement'] = { multi_select: [{ name: data.accompagnement }] };
       }
       if (data.clientId) {
         props['Client'] = { relation: [{ id: data.clientId }] };
@@ -300,7 +300,7 @@ serve(async (req) => {
 
     // Type d'accompagnement
     if (data.accompagnement) {
-      shortlistProps['Type d\u2019accompagnement'] = { select: { name: data.accompagnement } };
+      shortlistProps['Type d\u2019accompagnement'] = { multi_select: [{ name: data.accompagnement }] };
     }
 
     // Relation poste
