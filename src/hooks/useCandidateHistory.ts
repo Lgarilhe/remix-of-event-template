@@ -141,8 +141,25 @@ export function useCandidateHistory(
   const [loading, setLoading] = useState(false);
   const [loadedKey, setLoadedKey] = useState<string | null>(null);
 
-  // Reset when input changes
   const isLoaded = loadedKey === cacheKey;
+
+  useEffect(() => {
+    if (!cacheKey) {
+      setData(null);
+      setLoadedKey(null);
+      setLoading(false);
+      return;
+    }
+
+    const cached = historyCache.get(cacheKey);
+    if (cached !== undefined) {
+      setData(cached);
+      setLoadedKey(cacheKey);
+    } else {
+      setData(null);
+      setLoadedKey(null);
+    }
+  }, [cacheKey]);
 
   const fetchHistory = useCallback(async () => {
     if ((!linkedinUrl && !airtableId) || isLoaded || loading) return;
@@ -162,7 +179,13 @@ export function useCandidateHistory(
       // If no direct airtable_id, look up by LinkedIn URL
       if (!candidateAirtableId && linkedinUrl) {
         const slug = extractLinkedInSlug(linkedinUrl);
-        if (!slug) { setLoading(false); setLoadedKey(cacheKey); return; }
+        if (!slug) {
+          historyCache.set(cacheKey, null);
+          setData(null);
+          setLoadedKey(cacheKey);
+          setLoading(false);
+          return;
+        }
 
         const { data: candidates, error: candError } = await supabase
           .from('airtable_candidates')
@@ -172,6 +195,7 @@ export function useCandidateHistory(
 
         if (candError || !candidates?.length) {
           historyCache.set(cacheKey, null);
+          setData(null);
           setLoadedKey(cacheKey);
           setLoading(false);
           return;
@@ -182,6 +206,7 @@ export function useCandidateHistory(
 
       if (!candidateAirtableId) {
         historyCache.set(cacheKey, null);
+        setData(null);
         setLoadedKey(cacheKey);
         setLoading(false);
         return;
@@ -307,6 +332,7 @@ export function useCandidateHistory(
       setLoadedKey(cacheKey);
     } catch (err) {
       console.error('Error fetching candidate history:', err);
+      setData(null);
     } finally {
       setLoading(false);
     }
@@ -316,7 +342,7 @@ export function useCandidateHistory(
     if ((linkedinUrl || airtableId) && !isLoaded) {
       fetchHistory();
     }
-  }, [linkedinUrl, airtableId, isLoaded]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [linkedinUrl, airtableId, isLoaded, fetchHistory]);
 
   return { data, loading, loaded: isLoaded, refetch: fetchHistory };
 }

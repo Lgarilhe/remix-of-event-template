@@ -87,7 +87,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
 
   const dummyProfile = { id: '', name: '' } as LinkedInProfile;
   const profileData = useProfileData(profile || dummyProfile);
-  const candidateProfileUrl = (profile || dummyProfile).profile_url || (profile || dummyProfile).public_profile_url;
+  const candidateProfileUrl = (profile || dummyProfile).public_profile_url || (profile || dummyProfile).profile_url;
 
   // Airtable history — fetch by both URL and direct airtable_id for reliability
   const { data: historyData, loading: historyLoading } = useCandidateHistory(
