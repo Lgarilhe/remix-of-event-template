@@ -125,7 +125,7 @@ export const MessageView: React.FC<MessageViewProps> = ({
   };
 
   return (
-    <div className="flex-1 flex flex-col min-w-0">
+    <div className="flex-1 flex flex-col min-w-0 min-h-0">
       {/* Chat Header */}
       <div className="p-3 border-b border-foreground flex items-center gap-3 bg-background shrink-0">
         <Button
@@ -188,7 +188,7 @@ export const MessageView: React.FC<MessageViewProps> = ({
       </div>
 
       {/* Messages Area */}
-      <div className="flex-1 min-h-0 overflow-y-auto p-4" ref={messagesContainerRef}>
+      <div className="flex-1 min-h-0 overflow-y-auto overscroll-y-contain touch-pan-y p-4" ref={messagesContainerRef} style={{ WebkitOverflowScrolling: 'touch' }}>
         {loadingMessages && messages.length === 0 ? (
           <div className="flex items-center justify-center h-full">
             <Loader2 className="w-6 h-6 animate-spin text-foreground" />
