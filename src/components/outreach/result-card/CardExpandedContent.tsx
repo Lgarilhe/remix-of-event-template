@@ -145,7 +145,7 @@ export const CardExpandedContent: React.FC<CardExpandedContentProps> = ({
           {education.length > 0 ? (
             <div className="space-y-3">
               {education.map((edu: any, index: number) => {
-                const schoolLogo = edu.logo || edu.school_logo;
+                const schoolLogo = edu.logo || edu.school_logo || edu.school_details?.logo;
                 return (
                 <div key={index} className="p-4 rounded-xl border border-border/50 bg-background hover:border-border transition-colors">
                   <div className="flex items-start gap-3">
