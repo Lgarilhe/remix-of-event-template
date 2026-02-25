@@ -6,7 +6,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Linkedin, Loader2, Trash2, CheckCircle, AlertCircle, Key, Cookie, RefreshCw, Building2, Info, ToggleLeft, ToggleRight } from 'lucide-react';
+import { Loader2, Trash2, CheckCircle, AlertCircle, Key, Cookie, RefreshCw, Building2, Info, ToggleLeft, ToggleRight } from 'lucide-react';
+import linkedInLogo from '@/assets/linkedin-logo.png';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { TooltipProvider, Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
@@ -250,7 +251,7 @@ export const LinkedInAccountManager: React.FC<LinkedInAccountManagerProps> = ({
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <Linkedin className="w-5 h-5 text-[#0077B5]" />
+            <img src={linkedInLogo} alt="LinkedIn" className="w-5 h-5 object-contain" />
             Comptes connectés
           </CardTitle>
           <CardDescription>
@@ -270,8 +271,8 @@ export const LinkedInAccountManager: React.FC<LinkedInAccountManagerProps> = ({
                   className="flex items-center justify-between p-3 bg-muted/50 rounded-none border border-foreground"
                 >
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-[#0077B5] rounded-full flex items-center justify-center">
-                      <Linkedin className="w-5 h-5 text-white" />
+                    <div className="w-10 h-10 bg-[#0077B5] rounded-sm flex items-center justify-center">
+                      <img src={linkedInLogo} alt="LinkedIn" className="w-6 h-6 object-contain" />
                     </div>
                     <div>
                       <p className="font-medium text-[#1A1A1A]">{account.name || account.identifier}</p>
@@ -519,7 +520,7 @@ export const LinkedInAccountManager: React.FC<LinkedInAccountManagerProps> = ({
                   disabled={connecting || !liAtCookie.trim()}
                   className="w-full bg-[#0077B5] hover:bg-[#005E93]"
                 >
-                  {connecting ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Linkedin className="w-4 h-4 mr-2" />}
+                  {connecting ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <img src={linkedInLogo} alt="LinkedIn" className="w-4 h-4 object-contain mr-2" />}
                   Connecter
                 </Button>
               </TabsContent>
@@ -557,7 +558,7 @@ export const LinkedInAccountManager: React.FC<LinkedInAccountManagerProps> = ({
                   disabled={connecting || !email.trim() || !password}
                   className="w-full bg-[#0077B5] hover:bg-[#005E93]"
                 >
-                  {connecting ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Linkedin className="w-4 h-4 mr-2" />}
+                  {connecting ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <img src={linkedInLogo} alt="LinkedIn" className="w-4 h-4 object-contain mr-2" />}
                   Connecter
                 </Button>
               </TabsContent>

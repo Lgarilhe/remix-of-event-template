@@ -12,9 +12,9 @@ import {
   GitBranch,
   UserPlus,
   Mail,
-  Linkedin,
   X,
 } from 'lucide-react';
+import linkedInLogo from '@/assets/linkedin-logo.png';
 
 interface CreateSequenceModalProps {
   isOpen: boolean;
@@ -57,7 +57,7 @@ export const CreateSequenceModal: React.FC<CreateSequenceModalProps> = ({
                       <Sparkles className="w-7 h-7 text-white" />
                     </div>
                     <div className="absolute -bottom-4 left-[-30px] w-8 h-8 rounded-lg bg-white shadow-md flex items-center justify-center text-[#0077B5] rotate-[-10deg]">
-                      <Linkedin className="w-4 h-4" />
+                      <img src={linkedInLogo} alt="LinkedIn" className="w-4 h-4 object-contain" />
                     </div>
                     <div className="absolute -bottom-6 right-[-20px] w-8 h-8 rounded-lg bg-white shadow-md flex items-center justify-center text-emerald-500 rotate-[10deg]">
                       <UserPlus className="w-4 h-4" />
@@ -115,7 +115,7 @@ export const CreateSequenceModal: React.FC<CreateSequenceModalProps> = ({
                   <div className="flex items-center gap-1">
                     <div className="w-32 h-3 rounded-full bg-gray-200" />
                     <div className="w-6 h-6 rounded bg-white shadow-sm flex items-center justify-center">
-                      <Linkedin className="w-3.5 h-3.5 text-[#0077B5]" />
+                      <img src={linkedInLogo} alt="LinkedIn" className="w-3.5 h-3.5 object-contain" />
                     </div>
                   </div>
                   <div className="flex items-center gap-1">
