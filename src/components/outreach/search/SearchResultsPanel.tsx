@@ -204,7 +204,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
   }, [filteredResults, statusFilter, getAirtableMatch, getNotionMatch]);
 
   return (
-    <div className="bg-background border border-foreground/10 flex flex-col h-[calc(100vh-200px)] lg:h-[calc(100vh-120px)] lg:sticky lg:top-24 min-w-0 overflow-hidden">
+    <div className="bg-background border border-foreground flex flex-col h-[calc(100vh-200px)] lg:h-[calc(100vh-120px)] lg:sticky lg:top-24 min-w-0 overflow-hidden">
       {/* ROW 1: Search button + count + status filters */}
       <div className="flex items-center justify-between px-3 sm:px-4 py-2 border-b border-border shrink-0 gap-2 overflow-x-auto no-scrollbar">
         <div className="flex items-center gap-3 shrink-0">
@@ -283,7 +283,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
       {/* ROW 1.5: Scored sub-filters (only when scored filter active) */}
       {(statusFilter === 'scored' || statusFilter === 'scored_go' || statusFilter === 'scored_maybe' || statusFilter === 'scored_not_contacted') && statusCounts.scored > 0 && (
         <div className="flex items-center gap-1 px-3 sm:px-4 py-1.5 border-b border-border/50 bg-muted/20 shrink-0">
-          <div className="flex items-center gap-0.5 bg-muted/30 p-0.5 border border-foreground/10">
+          <div className="flex items-center gap-0.5 bg-muted/30 p-0.5 border border-foreground">
             {([
               { value: 'scored' as const, label: 'Tous', count: statusCounts.scored },
               { value: 'scored_go' as const, label: '✅ À contacter', count: statusCounts.scored_go },
@@ -736,7 +736,7 @@ const SearchWelcomeMessage: React.FC = () => (
     </div>
 
     <div className="space-y-4">
-      <div className="bg-muted/50 border border-foreground/10 p-4">
+      <div className="bg-muted/50 border border-foreground p-4">
         <h4 className="font-medium text-foreground mb-3 flex items-center gap-2">
           <span className="w-6 h-6 bg-foreground text-background text-xs flex items-center justify-center">1</span>
           Sélectionnez un poste
@@ -746,7 +746,7 @@ const SearchWelcomeMessage: React.FC = () => (
         </p>
       </div>
 
-      <div className="bg-muted/30 border border-foreground/10 p-4">
+      <div className="bg-muted/30 border border-foreground p-4">
         <h4 className="font-medium text-foreground mb-3 flex items-center gap-2">
           <span className="w-6 h-6 bg-foreground text-background text-xs flex items-center justify-center">2</span>
           Recherchez des profils

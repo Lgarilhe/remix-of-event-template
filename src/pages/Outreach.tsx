@@ -168,14 +168,14 @@ export default function Outreach() {
 
           {/* Tab panels */}
           <div className={cn("mt-0 min-w-0", activeTab !== 'projects' && 'hidden')}>
-            <div className="bg-background border border-foreground/10 p-3 sm:p-6 overflow-hidden">
+            <div className="bg-background border border-foreground p-3 sm:p-6 overflow-hidden">
               <ProjectsList onResumeSearch={handleResumeSearch} />
             </div>
           </div>
 
           <div className={cn("mt-0 min-w-0", activeTab !== 'search' && 'hidden')}>
             {accounts.length === 0 ? (
-              <div className="bg-background border border-foreground/10 p-12 text-center">
+              <div className="bg-background border border-foreground p-12 text-center">
                 <div className="h-14 w-14 bg-foreground text-background flex items-center justify-center mx-auto mb-4">
                   <Users className="w-7 h-7" />
                 </div>
@@ -216,7 +216,7 @@ export default function Outreach() {
           </div>
 
           <div className={cn("mt-0", activeTab !== 'sequences' && 'hidden')}>
-            <div className="bg-background border border-foreground/10 p-3 sm:p-6">
+            <div className="bg-background border border-foreground p-3 sm:p-6">
               <SequencesList
                 accounts={accounts}
                 selectedAccount={selectedAccount}

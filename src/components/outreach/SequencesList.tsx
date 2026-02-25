@@ -446,7 +446,7 @@ export const SequencesList: React.FC<SequencesListProps> = ({
         <div className="flex items-center gap-0 overflow-x-auto no-scrollbar">
           <button 
             onClick={() => setShowGlobalAnalytics(true)}
-            className="relative overflow-hidden flex items-center gap-1.5 h-[34px] px-3 sm:px-4 text-[11px] sm:text-xs font-medium uppercase tracking-wider border border-foreground/20 bg-background text-foreground group shrink-0"
+            className="relative overflow-hidden flex items-center gap-1.5 h-[34px] px-3 sm:px-4 text-[11px] sm:text-xs font-medium uppercase tracking-wider border border-foreground bg-background text-foreground group shrink-0"
           >
             <BarChart3 className="w-3.5 h-3.5 relative z-10" />
             <span className="hidden sm:inline relative z-10">Analytics</span>
@@ -454,7 +454,7 @@ export const SequencesList: React.FC<SequencesListProps> = ({
           </button>
           <button 
             onClick={() => setShowActivityLog(true)}
-            className="relative overflow-hidden flex items-center gap-1.5 h-[34px] px-3 sm:px-4 text-[11px] sm:text-xs font-medium uppercase tracking-wider border border-foreground/20 border-l-0 bg-background text-foreground group shrink-0"
+            className="relative overflow-hidden flex items-center gap-1.5 h-[34px] px-3 sm:px-4 text-[11px] sm:text-xs font-medium uppercase tracking-wider border border-foreground border-l-0 bg-background text-foreground group shrink-0"
           >
             <Activity className="w-3.5 h-3.5 relative z-10" />
             <span className="hidden sm:inline relative z-10">Journal</span>
@@ -462,7 +462,7 @@ export const SequencesList: React.FC<SequencesListProps> = ({
           </button>
           <button 
             onClick={handleCreateNew}
-            className="relative overflow-hidden flex items-center gap-1.5 h-[34px] px-3 sm:px-4 text-[11px] sm:text-xs font-medium uppercase tracking-wider border border-foreground/20 border-l-0 bg-foreground text-background group shrink-0"
+            className="relative overflow-hidden flex items-center gap-1.5 h-[34px] px-3 sm:px-4 text-[11px] sm:text-xs font-medium uppercase tracking-wider border border-foreground border-l-0 bg-foreground text-background group shrink-0"
           >
             <Send className="w-3.5 h-3.5 relative z-10" />
             <span className="hidden sm:inline relative z-10">Créer une séquence</span>
@@ -479,14 +479,14 @@ export const SequencesList: React.FC<SequencesListProps> = ({
             placeholder="Rechercher une séquence..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-9 bg-background border-foreground/10 rounded-none"
+            className="pl-9 bg-background border-foreground rounded-none"
           />
         </div>
       </div>
 
       {/* Selected profiles banner */}
       {selectedProfiles.length > 0 && (
-        <div className="p-3 bg-blue-50 border border-blue-100 rounded-lg flex items-center justify-between">
+        <div className="p-3 bg-blue-50 border border-foreground flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Users className="w-5 h-5 text-blue-600" />
             <span className="font-medium text-blue-900">{selectedProfiles.length} candidat(s) sélectionné(s)</span>
@@ -502,7 +502,7 @@ export const SequencesList: React.FC<SequencesListProps> = ({
 
       {/* Table */}
       {sequences.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-16 bg-background border border-foreground/10">
+        <div className="flex flex-col items-center justify-center py-16 bg-background border border-foreground">
           <div className="h-16 w-16 bg-foreground text-background flex items-center justify-center mb-4">
             <Send className="w-8 h-8" />
           </div>
@@ -518,9 +518,9 @@ export const SequencesList: React.FC<SequencesListProps> = ({
           </button>
         </div>
       ) : (
-        <div className="bg-background border border-foreground/10 overflow-hidden">
+        <div className="bg-background border border-foreground overflow-hidden">
           {/* Table header - hidden on mobile */}
-          <div className="hidden sm:grid grid-cols-[auto_auto_1fr_100px_100px_100px_80px] gap-4 px-4 py-3 bg-muted border-b border-foreground/10 text-xs font-medium text-muted-foreground uppercase tracking-wide">
+          <div className="hidden sm:grid grid-cols-[auto_auto_1fr_100px_100px_100px_80px] gap-4 px-4 py-3 bg-muted border-b border-foreground text-xs font-medium text-muted-foreground uppercase tracking-wide">
             <div className="w-5" />
             <div>Statut</div>
             <div>Nom de la séquence</div>
@@ -562,7 +562,7 @@ export const SequencesList: React.FC<SequencesListProps> = ({
                   </div>
                 </div>
                 <button 
-                  className="inline-flex items-center justify-center gap-1.5 px-2.5 py-1.5 text-sm bg-muted text-foreground hover:bg-brutal-accent/20 transition-colors cursor-pointer border border-foreground/10"
+                  className="inline-flex items-center justify-center gap-1.5 px-2.5 py-1.5 text-sm bg-muted text-foreground hover:bg-brutal-accent/20 transition-colors cursor-pointer border border-foreground"
                   onClick={(e) => { e.stopPropagation(); setEnrollmentsPanelSequence(seq); }}
                   title="Voir et gérer les candidats inscrits"
                 >
@@ -592,7 +592,7 @@ export const SequencesList: React.FC<SequencesListProps> = ({
                       <MoreHorizontal className="w-4 h-4" />
                     </button>
                   </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="bg-background border-foreground/10">
+                  <DropdownMenuContent align="end" className="bg-background border-foreground">
                     <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleEdit(seq); }}>
                       <Edit2 className="w-4 h-4 mr-2" />
                       Modifier
@@ -647,7 +647,7 @@ export const SequencesList: React.FC<SequencesListProps> = ({
                           <MoreHorizontal className="w-4 h-4" />
                         </button>
                       </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="bg-background border-foreground/10">
+                      <DropdownMenuContent align="end" className="bg-background border-foreground">
                         <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleEdit(seq); }}>
                           <Edit2 className="w-4 h-4 mr-2" />
                           Modifier
@@ -670,7 +670,7 @@ export const SequencesList: React.FC<SequencesListProps> = ({
                 </div>
                 <div className="flex items-center gap-2">
                   <button 
-                    className="inline-flex items-center gap-1.5 px-2 py-1 text-xs bg-muted text-foreground hover:bg-brutal-accent/20 border border-foreground/10"
+                    className="inline-flex items-center gap-1.5 px-2 py-1 text-xs bg-muted text-foreground hover:bg-brutal-accent/20 border border-foreground"
                     onClick={(e) => { e.stopPropagation(); setEnrollmentsPanelSequence(seq); }}
                   >
                     <Users className="w-3 h-3" />
@@ -746,7 +746,7 @@ export const SequencesList: React.FC<SequencesListProps> = ({
 
       {/* Delete confirmation */}
       <AlertDialog open={!!deleteConfirmId} onOpenChange={() => setDeleteConfirmId(null)}>
-        <AlertDialogContent className="bg-background border-foreground/10 rounded-none">
+        <AlertDialogContent className="bg-background border-foreground rounded-none">
           <AlertDialogHeader>
             <AlertDialogTitle>Supprimer cette séquence ?</AlertDialogTitle>
             <AlertDialogDescription>

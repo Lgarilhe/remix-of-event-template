@@ -34,7 +34,7 @@ export const FilterSection: React.FC<FilterSectionProps> = ({
   activeFiltersPreview,
   bgColorClass = '',
 }) => (
-  <Collapsible open={isOpen} onOpenChange={onToggle} className={`border-b border-foreground/10 ${bgColorClass}`}>
+  <Collapsible open={isOpen} onOpenChange={onToggle} className={`border-b border-foreground ${bgColorClass}`}>
     <CollapsibleTrigger className="flex flex-col items-start w-full p-4 hover:bg-muted/50 transition-colors">
       <div className="flex items-center justify-between w-full">
         <div className="flex items-center gap-2">
@@ -55,7 +55,7 @@ export const FilterSection: React.FC<FilterSectionProps> = ({
              <Badge 
               key={index} 
               variant="outline" 
-              className="text-[10px] h-5 px-1.5 bg-background/60 text-foreground/70 border-foreground/10 font-normal"
+              className="text-[10px] h-5 px-1.5 bg-background/60 text-foreground/70 border-foreground font-normal"
             >
               {String(filter).length > 20 ? `${String(filter).slice(0, 20)}...` : String(filter)}
             </Badge>
@@ -97,7 +97,7 @@ export const FilterGroup: React.FC<FilterGroupProps> = ({
   unsupported = false,
   unsupportedTooltip,
 }) => (
-  <div className={`border border-foreground/10 bg-muted/30 p-2 ${unsupported ? 'opacity-60' : ''}`}>
+  <div className={`border border-foreground bg-muted/30 p-2 ${unsupported ? 'opacity-60' : ''}`}>
     <div className="flex items-center gap-1.5 mb-1.5">
       {icon && icon}
       <span className="text-[11px] font-medium text-foreground/70 uppercase tracking-wide">{title}</span>
@@ -169,7 +169,7 @@ export const AutocompleteInput: React.FC<AutocompleteInputProps> = ({
         )}
       </div>
       {options.length > 0 && !disabled && (
-        <div className="absolute z-50 w-full mt-1 bg-background border border-foreground/10 shadow-lg max-h-48 overflow-auto">
+        <div className="absolute z-50 w-full mt-1 bg-background border border-foreground shadow-lg max-h-48 overflow-auto">
           {options.map((option, index) => (
             <button
               key={`${option.id}-${index}`}
@@ -284,7 +284,7 @@ export const LocationBadges: React.FC<LocationBadgesProps> = ({
         return (
           <div 
             key={item.id} 
-            className="bg-muted/30 border border-foreground/10 p-3"
+            className="bg-muted/30 border border-foreground p-3"
           >
             {/* Location name and remove button */}
             <div className="flex items-center justify-between mb-2">
@@ -325,7 +325,7 @@ export const LocationBadges: React.FC<LocationBadgesProps> = ({
                 value={item.scope}
                 onValueChange={(val) => onUpdateScope(item.id, val as LocationScope)}
               >
-                <SelectTrigger className="h-7 flex-1 text-[11px] border border-foreground/10 bg-background">
+                <SelectTrigger className="h-7 flex-1 text-[11px] border border-foreground bg-background">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent className="bg-background z-50">

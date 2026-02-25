@@ -47,11 +47,11 @@ export const ChatListSidebar: React.FC<ChatListSidebarProps> = ({
 
   return (
     <div className={cn(
-      "w-full md:w-80 border-r border-foreground/10 flex flex-col flex-shrink-0 bg-background",
+      "w-full md:w-80 border-r border-foreground flex flex-col flex-shrink-0 bg-background",
       selectedChat ? "hidden md:flex" : "flex"
     )}>
       {/* Search Header */}
-      <div className="p-3 border-b border-foreground/10 space-y-2">
+      <div className="p-3 border-b border-foreground space-y-2">
         <div className="flex items-center justify-between">
           <h3 className="font-semibold text-foreground uppercase tracking-wide text-xs">Messages</h3>
           <Button 
@@ -70,7 +70,7 @@ export const ChatListSidebar: React.FC<ChatListSidebarProps> = ({
             placeholder="Rechercher une conversation..."
             value={searchQuery}
             onChange={(e) => onSearchChange(e.target.value)}
-            className="pl-9 h-9 border-foreground/10 rounded-none"
+            className="pl-9 h-9 border-foreground rounded-none"
           />
         </div>
         
@@ -85,7 +85,7 @@ export const ChatListSidebar: React.FC<ChatListSidebarProps> = ({
               key={tab.key}
               onClick={() => onSourceFilterChange(tab.key)}
               className={cn(
-                "relative overflow-hidden flex-1 h-7 text-[10px] font-medium uppercase tracking-wider border border-foreground/20 transition-colors group",
+                "relative overflow-hidden flex-1 h-7 text-[10px] font-medium uppercase tracking-wider border border-foreground transition-colors group",
                 index > 0 && "border-l-0",
                 sourceFilter === tab.key
                   ? "bg-foreground text-background"
@@ -104,7 +104,7 @@ export const ChatListSidebar: React.FC<ChatListSidebarProps> = ({
         <button
           onClick={() => onShowUnreadOnlyChange(!showUnreadOnly)}
           className={cn(
-            "relative overflow-hidden w-full h-7 text-[10px] font-medium uppercase tracking-wider border border-foreground/20 flex items-center justify-center gap-2 transition-colors group",
+            "relative overflow-hidden w-full h-7 text-[10px] font-medium uppercase tracking-wider border border-foreground flex items-center justify-center gap-2 transition-colors group",
             showUnreadOnly
               ? "bg-foreground text-background"
               : "bg-background text-foreground"

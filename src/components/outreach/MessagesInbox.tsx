@@ -22,7 +22,7 @@ export const MessagesInbox: React.FC<MessagesInboxProps> = (props) => {
 
   if (!selectedAccount) {
     return (
-      <div className="flex items-center justify-center h-96 text-muted-foreground border border-foreground/10 bg-background">
+      <div className="flex items-center justify-center h-96 text-muted-foreground border border-foreground bg-background">
         <div className="text-center">
           <div className="h-14 w-14 bg-foreground text-background flex items-center justify-center mx-auto mb-4">
             <MessageSquare className="w-6 h-6" />
@@ -47,7 +47,7 @@ const MessagesInboxInner: React.FC<
   const candidateProfile = getCurrentCandidateProfile(inbox.selectedChat);
 
   return (
-    <div className="flex h-[calc(100vh-220px)] min-h-[400px] md:min-h-[500px] bg-background border border-foreground/10 overflow-hidden relative">
+    <div className="flex h-[calc(100vh-220px)] min-h-[400px] md:min-h-[500px] bg-background border border-foreground overflow-hidden relative">
       {/* Chat List Sidebar */}
       <ChatListSidebar
         chats={inbox.chats}
@@ -101,7 +101,7 @@ const MessagesInboxInner: React.FC<
       {/* Sequence Selection Modal */}
       {inbox.showSequenceSelect && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="bg-background border border-foreground/10 p-4 max-w-sm w-full mx-4 shadow-xl">
+          <div className="bg-background border border-foreground p-4 max-w-sm w-full mx-4 shadow-xl">
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-semibold uppercase tracking-wide text-sm">Choisir une séquence</h3>
               <Button
@@ -118,7 +118,7 @@ const MessagesInboxInner: React.FC<
                 <button
                   key={sequence.id}
                   onClick={() => inbox.enrollInSequence(sequence)}
-                  className="w-full p-3 text-left border border-foreground/10 hover:bg-brutal-accent/20 transition-colors"
+                  className="w-full p-3 text-left border border-foreground hover:bg-brutal-accent/20 transition-colors"
                 >
                   <div className="flex items-center gap-2">
                     <GitBranch className="w-4 h-4 text-foreground" />
