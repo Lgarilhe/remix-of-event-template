@@ -101,14 +101,19 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
     >
       {/* Scoring overlay */}
       {showScoringOverlay && (
-        <div className="absolute inset-0 z-20 flex items-center justify-center bg-background/60 backdrop-blur-[6px]">
-          <div className="flex flex-col items-center gap-3">
-            <div className="relative h-10 w-10">
-              <div className="absolute inset-0 border-2 border-foreground/20 animate-ping" />
-              <div className="absolute inset-0 border-2 border-t-primary border-r-transparent border-b-transparent border-l-transparent animate-spin" style={{ animationDuration: '1s' }} />
-              <div className="absolute inset-[6px] border border-t-transparent border-r-primary border-b-transparent border-l-transparent animate-spin" style={{ animationDuration: '1.5s', animationDirection: 'reverse' }} />
+        <div className="absolute inset-0 z-20 flex items-center justify-center bg-background/70 backdrop-blur-[8px]">
+          {/* Shimmer sweep across the card */}
+          <div className="absolute inset-0 overflow-hidden">
+            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-foreground/[0.06] to-transparent animate-[shimmer_1.8s_infinite]" />
+          </div>
+          <div className="relative flex items-center gap-2.5 px-4 py-2 bg-background/80 border border-border shadow-sm">
+            {/* Three pulsing dots */}
+            <div className="flex items-center gap-1">
+              <div className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" style={{ animationDelay: '0ms' }} />
+              <div className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" style={{ animationDelay: '300ms' }} />
+              <div className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" style={{ animationDelay: '600ms' }} />
             </div>
-            <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground animate-pulse">
+            <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
               Scoring…
             </span>
           </div>
