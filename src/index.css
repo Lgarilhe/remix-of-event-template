@@ -110,7 +110,7 @@ All colors MUST be HSL.
   }
 
   html, body {
-    @apply bg-background text-foreground font-sans;
+    @apply bg-background text-foreground font-sans font-medium;
     overflow-x: hidden;
     max-width: 100vw;
   }
