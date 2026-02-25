@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { Link, useNavigate } from 'react-router-dom';
 import { Menu, X } from 'lucide-react';
@@ -9,8 +9,25 @@ export const Navbar: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isCollapsed, setIsCollapsed] = useState(false);
   const navigate = useNavigate();
   const [pendingRoute, setPendingRoute] = useState<string | null>(null);
+  const lastScrollY = useRef(0);
+
+  // Auto-hide on scroll down, show on scroll up
+  useEffect(() => {
+    const handleScroll = () => {
+      const currentY = window.scrollY;
+      if (currentY > 80 && currentY > lastScrollY.current) {
+        setIsCollapsed(true);
+      } else if (currentY < lastScrollY.current) {
+        setIsCollapsed(false);
+      }
+      lastScrollY.current = currentY;
+    };
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -34,7 +51,18 @@ export const Navbar: React.FC = () => {
 
   return createPortal(
     <>
-      <nav className="fixed top-8 left-4 md:left-8 z-[2000] flex items-center gap-0" >
+      {/* Hover zone to bring navbar back */}
+      {isCollapsed && (
+        <div
+          className="fixed top-0 left-0 right-0 h-6 z-[1999]"
+          onMouseEnter={() => setIsCollapsed(false)}
+        />
+      )}
+      <nav
+        className={`fixed left-4 md:left-8 z-[2000] flex items-center gap-0 transition-all duration-300 ease-in-out ${
+          isCollapsed ? '-top-12 opacity-0 pointer-events-none' : 'top-8 opacity-100'
+        }`}
+      >
       {/* Logo */}
       <div className="bg-black text-white h-[34px] w-[34px] border border-black flex items-center justify-center">
         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 14 14" className="w-4 h-4">
