@@ -1,8 +1,9 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { LinkedInProfile } from '@/components/outreach/types';
 import { LinkedInResultCard } from '@/components/outreach/LinkedInResultCard';
 import { BulkInMailModal } from '@/components/outreach/BulkInMailModal';
 import { SequenceEnrollButton } from '@/components/outreach/SequenceEnrollButton';
+import { ProfileDetailSheet } from '@/components/outreach/result-card/ProfileDetailSheet';
 import { JobMatchResult } from '@/components/outreach/JobScoreDisplay';
 import { JobCandidateStatus } from '@/hooks/useJobCandidateStatus';
 import { Job } from '@/pages/JobSpace';
@@ -11,7 +12,6 @@ import { useAirtableMatch } from '@/hooks/useAirtableMatch';
 import { useNotionMatch } from '@/hooks/useNotionMatch';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Progress } from '@/components/ui/progress';
@@ -136,7 +136,14 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
   scrollAreaRef,
   loadMoreTriggerRef,
 }) => {
-  const treatedCount_db = treatedCandidates.size;
+  // Profile detail sheet state
+  const [detailProfile, setDetailProfile] = useState<LinkedInProfile | null>(null);
+  const [detailOpen, setDetailOpen] = useState(false);
+
+  const openProfileDetail = (profile: LinkedInProfile) => {
+    setDetailProfile(profile);
+    setDetailOpen(true);
+  };
 
   // Airtable match - collect profile info for URL + fuzzy matching
   const profileMatchInputs = useMemo(() => 
@@ -193,11 +200,10 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
   }, [filteredResults, statusFilter, getAirtableMatch, getNotionMatch]);
 
   return (
-    <div className="bg-white rounded-xl border border-border flex flex-col h-[calc(100vh-200px)] lg:h-[calc(100vh-120px)] lg:sticky lg:top-24 min-w-0 overflow-hidden">
-      {/* Results header */}
-      <div className="flex items-center justify-between px-3 sm:px-4 py-2 sm:py-3 border-b border-border shrink-0 gap-2 sm:gap-3 overflow-x-auto no-scrollbar">
-        {/* Left side: Search button + count */}
-        <div className="flex items-center gap-3 min-w-0 shrink-0">
+    <div className="bg-background rounded-xl border border-border flex flex-col h-[calc(100vh-200px)] lg:h-[calc(100vh-120px)] lg:sticky lg:top-24 min-w-0 overflow-hidden">
+      {/* ROW 1: Search button + count + status filters */}
+      <div className="flex items-center justify-between px-3 sm:px-4 py-2 border-b border-border shrink-0 gap-2 overflow-x-auto no-scrollbar">
+        <div className="flex items-center gap-3 shrink-0">
           <Button
             onClick={onSearch}
             disabled={loading || !selectedJob}
@@ -229,202 +235,209 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
           )}
         </div>
 
-        {/* Right side: Filters + Actions */}
-        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
-          {/* Unified status filter */}
-          {selectedJob && hasSearched && results.length > 0 && (
-            <>
-              <div className="flex items-center gap-0.5 bg-muted/50 rounded-lg p-0.5">
-                {([
-                  { value: 'all' as const, label: 'Tous', icon: Users, count: results.length },
-                  { value: 'untreated' as const, label: 'Nouveaux', icon: Eye, count: statusCounts.untreated },
-                  { value: 'scored' as const, label: 'Scorés', icon: Target, count: statusCounts.scored },
-                  { value: 'messaged' as const, label: 'Contactés', icon: Mail, count: statusCounts.messaged },
-                  { value: 'known' as const, label: 'Connus', icon: Database, count: statusCounts.known },
-                  { value: 'dismissed' as const, label: 'Archivés', icon: Archive, count: statusCounts.dismissed },
-                ]).map(({ value, label, icon: Icon, count }) => {
-                  const isActive = statusFilter === value || 
-                    (value === 'scored' && (statusFilter === 'scored_go' || statusFilter === 'scored_maybe' || statusFilter === 'scored_not_contacted'));
-                  return (
-                    <Button
-                      key={value}
-                      variant={isActive ? 'default' : 'ghost'}
-                      size="sm"
-                      onClick={() => onSetStatusFilter(value)}
-                      className={`h-7 px-2 text-[11px] gap-1 ${
-                        isActive
-                          ? 'bg-primary text-primary-foreground shadow-sm'
-                          : 'text-muted-foreground hover:text-foreground'
-                      }`}
-                    >
-                      <Icon className="w-3 h-3" />
-                      <span className="hidden sm:inline">{label}</span>
-                      {count > 0 && (
-                        <span className={`text-[10px] font-medium ${isActive ? 'text-primary-foreground/80' : 'text-muted-foreground/60'}`}>
-                          {count}
-                        </span>
-                      )}
-                    </Button>
-                  );
-                })}
-              </div>
-              {(statusFilter === 'scored' || statusFilter === 'scored_go' || statusFilter === 'scored_maybe' || statusFilter === 'scored_not_contacted') && statusCounts.scored > 0 && (
-                <div className="flex items-center gap-0.5 bg-muted/30 rounded-md p-0.5 border border-border/50">
-                  {([
-                    { value: 'scored' as const, label: 'Tous', count: statusCounts.scored },
-                    { value: 'scored_go' as const, label: '✅ À contacter', count: statusCounts.scored_go },
-                    { value: 'scored_maybe' as const, label: '🤔 À évaluer', count: statusCounts.scored_maybe },
-                    { value: 'scored_not_contacted' as const, label: '🆕 Non contactés', count: statusCounts.scored_not_contacted },
-                  ]).map(({ value, label, count }) => (
-                    <Button
-                      key={value}
-                      variant={statusFilter === value ? 'secondary' : 'ghost'}
-                      size="sm"
-                      onClick={() => onSetStatusFilter(value)}
-                      className={`h-6 px-2 text-[10px] gap-1 ${
-                        statusFilter === value
-                          ? 'bg-secondary text-secondary-foreground shadow-sm'
-                          : 'text-muted-foreground hover:text-foreground'
-                      }`}
-                    >
-                      {label}
-                      {count > 0 && (
-                        <span className="text-[9px] font-medium opacity-70">{count}</span>
-                      )}
-                    </Button>
-                  ))}
-                </div>
-              )}
-            </>
-          )}
-
-          {/* Sort by score toggle */}
-          {Object.keys(jobScores).length > 0 && (
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
+        {/* Status filters */}
+        {selectedJob && hasSearched && results.length > 0 && (
+          <div className="flex items-center gap-1 shrink-0">
+            <div className="flex items-center gap-0.5 bg-muted/50 rounded-lg p-0.5">
+              {([
+                { value: 'all' as const, label: 'Tous', icon: Users, count: results.length },
+                { value: 'untreated' as const, label: 'Nouveaux', icon: Eye, count: statusCounts.untreated },
+                { value: 'scored' as const, label: 'Scorés', icon: Target, count: statusCounts.scored },
+                { value: 'messaged' as const, label: 'Contactés', icon: Mail, count: statusCounts.messaged },
+                { value: 'known' as const, label: 'Connus', icon: Database, count: statusCounts.known },
+                { value: 'dismissed' as const, label: 'Archivés', icon: Archive, count: statusCounts.dismissed },
+              ]).map(({ value, label, icon: Icon, count }) => {
+                const isActive = statusFilter === value || 
+                  (value === 'scored' && (statusFilter === 'scored_go' || statusFilter === 'scored_maybe' || statusFilter === 'scored_not_contacted'));
+                return (
                   <Button
-                    variant={sortByScore ? "default" : "ghost"}
+                    key={value}
+                    variant={isActive ? 'default' : 'ghost'}
                     size="sm"
-                    onClick={() => onSetSortByScore(!sortByScore)}
-                    className={`h-8 px-2 ${sortByScore ? "bg-primary hover:bg-primary/90" : ""}`}
+                    onClick={() => onSetStatusFilter(value)}
+                    className={`h-7 px-2 text-[11px] gap-1 ${
+                      isActive
+                        ? 'bg-primary text-primary-foreground shadow-sm'
+                        : 'text-muted-foreground hover:text-foreground'
+                    }`}
                   >
-                    <Sparkles className="w-3.5 h-3.5" />
+                    <Icon className="w-3 h-3" />
+                    <span className="hidden sm:inline">{label}</span>
+                    {count > 0 && (
+                      <span className={`text-[10px] font-medium ${isActive ? 'text-primary-foreground/80' : 'text-muted-foreground/60'}`}>
+                        {count}
+                      </span>
+                    )}
                   </Button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>{sortByScore ? 'Tri par score actif' : 'Trier par score'}</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          )}
-
-          {/* Bulk actions - desktop inline */}
-          {selectedProfiles.size > 0 && (
-            <div className="hidden sm:flex items-center gap-1.5 pl-2 border-l border-border">
-              <span className="text-xs font-medium text-muted-foreground">
-                {selectedProfiles.size}
-              </span>
-
-              {/* Batch score */}
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={onBatchScore}
-                      disabled={scoringInProgress}
-                      className="h-8 px-2"
-                    >
-                      {scoringInProgress ? (
-                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                      ) : (
-                        <Target className="w-3.5 h-3.5" />
-                      )}
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>Scorer les profils sélectionnés</p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-
-              {/* Add to project */}
-              {activeProject && (
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={onBulkAddToProject}
-                        className="h-8 px-2 text-green-600 hover:text-green-700"
-                      >
-                        <FolderPlus className="w-3.5 h-3.5" />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>Ajouter au projet</p>
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-              )}
-
-              {/* Bulk dismiss */}
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={onBulkDismiss}
-                      className="h-8 px-2 text-red-500 hover:text-red-600"
-                    >
-                      <Archive className="w-3.5 h-3.5" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>Archiver les profils sélectionnés</p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-
-              {/* Bulk InMail */}
-              {selectedAccount && (
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => onSetShowBulkInMailModal(true)}
-                        className="h-8 px-2"
-                      >
-                        <Mail className="w-3.5 h-3.5" />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>Envoyer InMail groupé</p>
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-              )}
-
-              {/* Sequence enroll */}
-              {selectedAccount && (
-                <SequenceEnrollButton
-                  selectedProfiles={selectableProfiles.filter(p => selectedProfiles.has(p.id))}
-                  accountId={selectedAccount}
-                  selectedJob={selectedJob}
-                  onSuccess={onSequenceEnrollSuccess}
-                />
-              )}
+                );
+              })}
             </div>
-          )}
+          </div>
+        )}
+      </div>
 
-          {/* Select all checkbox */}
-          {selectedJob && results.length > 0 && (
+      {/* ROW 1.5: Scored sub-filters (only when scored filter active) */}
+      {(statusFilter === 'scored' || statusFilter === 'scored_go' || statusFilter === 'scored_maybe' || statusFilter === 'scored_not_contacted') && statusCounts.scored > 0 && (
+        <div className="flex items-center gap-1 px-3 sm:px-4 py-1.5 border-b border-border/50 bg-muted/20 shrink-0">
+          <div className="flex items-center gap-0.5 bg-muted/30 rounded-md p-0.5 border border-border/50">
+            {([
+              { value: 'scored' as const, label: 'Tous', count: statusCounts.scored },
+              { value: 'scored_go' as const, label: '✅ À contacter', count: statusCounts.scored_go },
+              { value: 'scored_maybe' as const, label: '🤔 À évaluer', count: statusCounts.scored_maybe },
+              { value: 'scored_not_contacted' as const, label: '🆕 Non contactés', count: statusCounts.scored_not_contacted },
+            ]).map(({ value, label, count }) => (
+              <Button
+                key={value}
+                variant={statusFilter === value ? 'secondary' : 'ghost'}
+                size="sm"
+                onClick={() => onSetStatusFilter(value)}
+                className={`h-6 px-2 text-[10px] gap-1 ${
+                  statusFilter === value
+                    ? 'bg-secondary text-secondary-foreground shadow-sm'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                {label}
+                {count > 0 && (
+                  <span className="text-[9px] font-medium opacity-70">{count}</span>
+                )}
+              </Button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ROW 2: Bulk actions + sort + select all (only when relevant) */}
+      {selectedJob && results.length > 0 && (
+        <div className="flex items-center justify-between px-3 sm:px-4 py-1.5 border-b border-border/50 bg-muted/10 shrink-0 gap-2">
+          {/* Left: Bulk actions */}
+          <div className="flex items-center gap-1.5">
+            {selectedProfiles.size > 0 ? (
+              <>
+                <span className="text-xs font-medium text-primary">{selectedProfiles.size} sél.</span>
+
+                {/* Batch score */}
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={onBatchScore}
+                        disabled={scoringInProgress}
+                        className="h-7 px-2"
+                      >
+                        {scoringInProgress ? (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        ) : (
+                          <Target className="w-3.5 h-3.5" />
+                        )}
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Scorer les profils sélectionnés</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+
+                {/* Add to project */}
+                {activeProject && (
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={onBulkAddToProject}
+                          className="h-7 px-2 text-green-600 hover:text-green-700"
+                        >
+                          <FolderPlus className="w-3.5 h-3.5" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>Ajouter au projet</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                )}
+
+                {/* Bulk dismiss */}
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={onBulkDismiss}
+                        className="h-7 px-2 text-destructive hover:text-destructive/80"
+                      >
+                        <Archive className="w-3.5 h-3.5" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Archiver</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+
+                {/* Bulk InMail */}
+                {selectedAccount && (
+                  <>
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => onSetShowBulkInMailModal(true)}
+                            className="h-7 px-2"
+                          >
+                            <Mail className="w-3.5 h-3.5" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>InMail groupé</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                    <SequenceEnrollButton
+                      selectedProfiles={selectableProfiles.filter(p => selectedProfiles.has(p.id))}
+                      accountId={selectedAccount}
+                      selectedJob={selectedJob}
+                      onSuccess={onSequenceEnrollSuccess}
+                    />
+                  </>
+                )}
+              </>
+            ) : (
+              <span className="text-xs text-muted-foreground">Sélectionnez des profils pour les actions groupées</span>
+            )}
+          </div>
+
+          {/* Right: Sort + Select all */}
+          <div className="flex items-center gap-2 shrink-0">
+            {/* Sort by score toggle */}
+            {Object.keys(jobScores).length > 0 && (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant={sortByScore ? "default" : "ghost"}
+                      size="sm"
+                      onClick={() => onSetSortByScore(!sortByScore)}
+                      className={`h-7 px-2 ${sortByScore ? "bg-primary hover:bg-primary/90" : ""}`}
+                    >
+                      <Sparkles className="w-3.5 h-3.5" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>{sortByScore ? 'Tri par score actif' : 'Trier par score'}</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
+
+            {/* Select all checkbox */}
             <div className="flex items-center gap-1.5 pl-2 border-l border-border">
               <Checkbox
                 checked={allSelectableSelected && selectableProfiles.length > 0}
@@ -436,69 +449,6 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
                 Tout
               </label>
             </div>
-          )}
-        </div>
-      </div>
-
-      {/* Mobile bulk actions bar - sticky below header */}
-      {selectedProfiles.size > 0 && (
-        <div className="sm:hidden flex items-center gap-2 px-3 py-2 border-b border-border bg-primary/5 shrink-0 overflow-x-auto">
-          <span className="text-xs font-semibold text-primary whitespace-nowrap">
-            {selectedProfiles.size} sélectionné{selectedProfiles.size > 1 ? 's' : ''}
-          </span>
-          <div className="flex items-center gap-1">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={onBatchScore}
-              disabled={scoringInProgress}
-              className="h-8 px-2.5 text-xs gap-1"
-            >
-              {scoringInProgress ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Target className="w-3.5 h-3.5" />}
-              Score
-            </Button>
-
-            {activeProject && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={onBulkAddToProject}
-                className="h-8 px-2.5 text-xs gap-1 text-green-600"
-              >
-                <FolderPlus className="w-3.5 h-3.5" />
-                Projet
-              </Button>
-            )}
-
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={onBulkDismiss}
-              className="h-8 px-2.5 text-xs gap-1 text-red-500"
-            >
-              <Archive className="w-3.5 h-3.5" />
-            </Button>
-
-            {selectedAccount && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => onSetShowBulkInMailModal(true)}
-                className="h-8 px-2.5 text-xs gap-1 text-[#0077B5]"
-              >
-                <Mail className="w-3.5 h-3.5" />
-                InMail
-              </Button>
-            )}
-
-            {selectedAccount && (
-              <SequenceEnrollButton
-                selectedProfiles={selectableProfiles.filter(p => selectedProfiles.has(p.id))}
-                accountId={selectedAccount}
-                selectedJob={selectedJob}
-                onSuccess={onSequenceEnrollSuccess}
-              />
-            )}
           </div>
         </div>
       )}
@@ -539,10 +489,10 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
             )}
           </div>
         ) : (
-          <div className="p-2 sm:p-4 space-y-3 min-w-0">
+          <div className="p-2 sm:p-4 space-y-2 min-w-0">
             {/* Batch workflow banner */}
             {hasSearched && total !== null && total > 0 && (
-              <div className="bg-primary/5 rounded-lg p-2 sm:p-3 mb-4 space-y-2">
+              <div className="bg-primary/5 rounded-lg p-2 sm:p-3 mb-3 space-y-2">
                 <div className="flex items-center gap-2 sm:gap-3">
                   <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
                     <Users className="w-5 h-5 text-primary" />
@@ -646,6 +596,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
                 } : null}
                 airtableMatch={getAirtableMatch(profile.profile_url || profile.public_profile_url)}
                 notionMatch={getNotionMatch(profile.profile_url || profile.public_profile_url)}
+                onOpenDetail={() => openProfileDetail(profile)}
               />
             ))}
 
@@ -713,6 +664,31 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
           </div>
         )}
       </ScrollArea>
+
+      {/* Profile Detail Sheet */}
+      <ProfileDetailSheet
+        profile={detailProfile}
+        open={detailOpen}
+        onOpenChange={setDetailOpen}
+        selectedJob={selectedJob}
+        jobScore={detailProfile ? jobScores[detailProfile.id] : undefined}
+        accountId={selectedAccount || undefined}
+        activeProject={activeProject}
+        candidateStatus={detailProfile ? (treatedCandidates.get(detailProfile.id) ? {
+          status: treatedCandidates.get(detailProfile.id)!.status,
+          score: treatedCandidates.get(detailProfile.id)!.score,
+          recommendation: treatedCandidates.get(detailProfile.id)!.recommendation,
+          updated_at: treatedCandidates.get(detailProfile.id)!.updated_at,
+        } : null) : null}
+        airtableMatch={detailProfile ? getAirtableMatch(detailProfile.profile_url || detailProfile.public_profile_url) : undefined}
+        notionMatch={detailProfile ? getNotionMatch(detailProfile.profile_url || detailProfile.public_profile_url) : undefined}
+        onScoreProfile={detailProfile ? () => onScoreProfile(detailProfile) : undefined}
+        onArchive={detailProfile && selectedJob ? () => onArchive(detailProfile) : undefined}
+        onMessageSent={onMessageSent}
+        onSequenceEnroll={onSequenceEnrollSuccess}
+        onProfileTreated={detailProfile ? () => onProfileTreated(detailProfile.id) : undefined}
+      />
+
       {/* Bulk InMail Modal */}
       {selectedAccount && (
         <BulkInMailModal
