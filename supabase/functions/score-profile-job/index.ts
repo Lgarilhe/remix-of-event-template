@@ -150,10 +150,11 @@ serve(async (req) => {
   }
 
   try {
-    const { profile, job, profiles } = await req.json() as {
+    const { profile, job, profiles, customScoringInstructions } = await req.json() as {
       profile?: ProfileData;
       job: JobData;
       profiles?: ProfileData[];
+      customScoringInstructions?: string;
     };
     
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
@@ -312,6 +313,7 @@ ${workExpText || 'Non disponible'}
 20. Tenure moyenne <12 mois → concern stabilité.
 21. Gaps inexpliqués → concern modérée.
 
+${customScoringInstructions ? `\n=== CONSIGNES SUPPLÉMENTAIRES DU RECRUTEUR (PRIORITÉ HAUTE) ===\n${customScoringInstructions.slice(0, 500)}\n=== FIN CONSIGNES ===\n` : ''}
 Réponds en JSON COMPACT sur UNE SEULE LIGNE. Max 3 items par array. Textes courts (max 50 chars). Summary max 20 mots.
 {"score":N,"recommendation":"X","summary":"...","strengths":["..."],"concerns":["..."],"missingSkills":["..."],"seniorityMatch":"X","locationMatch":"X","experienceMatch":"X","tenureAnalysis":"X","receptivityScore":N,"foreignDiplomaRisk":"none|low|medium|high","locationCompatibility":"compatible|partial|incompatible","candidatePreferencesConflict":null,"contractMismatch":null,"skipReason":"raison si score<40 sinon null"}`);
 

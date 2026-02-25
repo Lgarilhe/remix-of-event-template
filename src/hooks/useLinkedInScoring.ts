@@ -16,6 +16,7 @@ interface ScoringOptions {
   setResults?: React.Dispatch<React.SetStateAction<LinkedInProfile[]>>;
   setSelectedProfiles?: React.Dispatch<React.SetStateAction<Set<string>>>;
   autoHideTreatedRef?: React.MutableRefObject<boolean>;
+  customScoringInstructions?: string;
   candidateStatus?: {
     batchDismiss: (profiles: Array<{
       id: string;
@@ -186,6 +187,7 @@ export function useLinkedInScoring({
   setSelectedProfiles,
   autoHideTreatedRef,
   candidateStatus,
+  customScoringInstructions,
 }: ScoringOptions) {
 
   // Score a single profile
@@ -217,7 +219,8 @@ export function useLinkedInScoring({
             salaryMax: selectedJob.salaryMax,
             tjmMin: selectedJob.tjm,
             contractType: selectedJob.contractType,
-          }
+          },
+          customScoringInstructions,
         }
       });
 
@@ -261,7 +264,7 @@ export function useLinkedInScoring({
       console.error('Score error:', err);
       toast.error('Erreur lors du scoring');
     }
-  }, [selectedJob, setJobScores, candidateStatus, setSelectedProfiles]);
+  }, [selectedJob, setJobScores, candidateStatus, setSelectedProfiles, customScoringInstructions]);
 
   // Batch score selected profiles
   const handleBatchScore = useCallback(async () => {
@@ -322,7 +325,7 @@ export function useLinkedInScoring({
         }
 
         const { data, error } = await supabase.functions.invoke('score-profile-job', {
-          body: { profiles: batch, job: jobPayload }
+          body: { profiles: batch, job: jobPayload, customScoringInstructions }
         });
 
         if (error) {
@@ -449,7 +452,7 @@ export function useLinkedInScoring({
     } finally {
       setScoringInProgress(false);
     }
-  }, [selectedJob, selectedProfiles, results, autoHideTreatedRef, candidateStatus, setJobScores, setScoringInProgress, setSortByScore, setResults, setSelectedProfiles]);
+  }, [selectedJob, selectedProfiles, results, autoHideTreatedRef, candidateStatus, setJobScores, setScoringInProgress, setSortByScore, setResults, setSelectedProfiles, customScoringInstructions]);
 
   return {
     scoreProfile,
