@@ -1368,6 +1368,7 @@ export type Database = {
           final_message: string | null
           final_subject: string | null
           id: string
+          retry_count: number
           scheduled_at: string
           skip_reason: string | null
           status: string
@@ -1383,6 +1384,7 @@ export type Database = {
           final_message?: string | null
           final_subject?: string | null
           id?: string
+          retry_count?: number
           scheduled_at: string
           skip_reason?: string | null
           status?: string
@@ -1398,6 +1400,7 @@ export type Database = {
           final_message?: string | null
           final_subject?: string | null
           id?: string
+          retry_count?: number
           scheduled_at?: string
           skip_reason?: string | null
           status?: string
