@@ -241,7 +241,7 @@ export function NurturingDashboard({ accounts, selectedAccount }: NurturingDashb
 
   if (accounts.length === 0) {
     return (
-      <div className="bg-background border border-foreground/10 p-12 text-center">
+      <div className="bg-background border border-foreground p-12 text-center">
         <AlertCircle className="w-12 h-12 text-foreground/30 mx-auto mb-4" />
         <h3 className="text-lg font-semibold mb-2 uppercase tracking-wide">Connectez un compte LinkedIn</h3>
         <p className="text-muted-foreground">Le nurturing nécessite un compte LinkedIn connecté.</p>
@@ -252,7 +252,7 @@ export function NurturingDashboard({ accounts, selectedAccount }: NurturingDashb
   return (
     <div className="space-y-4">
       {/* Compact Stats Bar */}
-      <div className="flex items-center justify-between bg-background border border-foreground/10 p-3">
+      <div className="flex items-center justify-between bg-background border border-foreground p-3">
         <div className="flex items-center gap-6">
           <div className="flex items-center gap-2">
             <Sparkles className="w-4 h-4 text-foreground" />
@@ -497,13 +497,13 @@ export function NurturingDashboard({ accounts, selectedAccount }: NurturingDashb
 
                       {/* Expanded Section */}
                       {isExpanded && (
-                        <div className="px-4 pb-4 pt-1 bg-muted/30 border-t border-foreground/10">
+                        <div className="px-4 pb-4 pt-1 bg-muted/30 border-t border-foreground">
                           <div className="grid md:grid-cols-2 gap-4">
                             {/* Left: Context */}
                             <div className="space-y-3">
                               {/* Last Message Preview */}
                               {lastMessagePreview && (
-                                <div className="bg-background border border-foreground/10 p-3">
+                                <div className="bg-background border border-foreground p-3">
                                   <div className="text-xs font-medium text-muted-foreground mb-1">Dernier message</div>
                                   <p className="text-sm italic line-clamp-3">"{lastMessagePreview}"</p>
                                 </div>
@@ -511,7 +511,7 @@ export function NurturingDashboard({ accounts, selectedAccount }: NurturingDashb
 
                               {/* Job Match */}
                               {opp.job_title && (
-                                <div className="bg-background border border-foreground/10 p-3">
+                                <div className="bg-background border border-foreground p-3">
                                   <div className="flex items-center gap-2">
                                     <Briefcase className="w-4 h-4 text-foreground" />
                                     <span className="text-sm font-medium">{opp.job_title}</span>
@@ -521,7 +521,7 @@ export function NurturingDashboard({ accounts, selectedAccount }: NurturingDashb
 
                               {/* Intent */}
                               {opp.detected_intent && (
-                                <div className="bg-background border border-foreground/10 p-3">
+                                <div className="bg-background border border-foreground p-3">
                                   <div className="text-xs font-medium text-muted-foreground mb-1">Intent détecté</div>
                                   <Badge variant="secondary" className="text-xs">
                                     {opp.detected_intent}
@@ -531,7 +531,7 @@ export function NurturingDashboard({ accounts, selectedAccount }: NurturingDashb
                             </div>
 
                             {/* Right: Message Editor */}
-                            <div className="space-y-3 bg-background border border-foreground/10 p-3">
+                            <div className="space-y-3 bg-background border border-foreground p-3">
                               <div>
                                 <label className="text-xs font-medium text-muted-foreground">Objet</label>
                                 <Input

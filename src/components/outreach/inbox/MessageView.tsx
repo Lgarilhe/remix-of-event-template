@@ -136,7 +136,7 @@ export const MessageView: React.FC<MessageViewProps> = ({
       !selectedChat ? "hidden md:flex" : "flex"
     )}>
       {/* Chat Header */}
-      <div className="p-3 border-b border-foreground/10 flex items-center gap-3 bg-background">
+      <div className="p-3 border-b border-foreground flex items-center gap-3 bg-background">
         <Button
           variant="ghost"
           size="icon"
@@ -221,7 +221,7 @@ export const MessageView: React.FC<MessageViewProps> = ({
                     "max-w-[75%] px-4 py-2.5",
                     msg.is_sender
                       ? "bg-foreground text-background"
-                      : "bg-muted text-foreground border border-foreground/10"
+                      : "bg-muted text-foreground border border-foreground"
                   )}
                 >
                   <p className="text-sm whitespace-pre-wrap break-words">
@@ -291,7 +291,7 @@ export const MessageView: React.FC<MessageViewProps> = ({
       )}
 
       {/* Separator before input */}
-      <div className="border-t border-foreground/10" />
+      <div className="border-t border-foreground" />
 
       {/* Message Input */}
       <div className="px-3 pb-3">

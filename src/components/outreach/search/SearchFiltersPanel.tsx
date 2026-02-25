@@ -113,7 +113,7 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
       )}
 
       {/* Account selector */}
-      <div className="bg-background border border-foreground/10 p-3 space-y-2">
+      <div className="bg-background border border-foreground p-3 space-y-2">
         <div className="flex items-center justify-between">
           <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Compte</label>
           <QuotaDisplay
@@ -256,7 +256,7 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
       )}
 
       {/* Keywords preview + edit dialog */}
-      <div className="bg-background border border-foreground/10 p-4">
+      <div className="bg-background border border-foreground p-4">
         <label className="text-sm font-medium text-foreground mb-2 block uppercase tracking-wide">
           Mots-clés
         </label>

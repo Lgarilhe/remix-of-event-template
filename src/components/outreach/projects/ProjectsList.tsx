@@ -118,20 +118,20 @@ export const ProjectsList: React.FC<ProjectsListProps> = ({ onResumeSearch }) =>
               placeholder="Rechercher un projet..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10 border-foreground/10 rounded-none"
+              className="pl-10 border-foreground rounded-none"
             />
           </div>
           
           {/* Status filter */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <button className="relative overflow-hidden flex items-center gap-2 h-[34px] px-3 text-xs font-medium uppercase tracking-wider border border-foreground/20 bg-background text-foreground group shrink-0">
+              <button className="relative overflow-hidden flex items-center gap-2 h-[34px] px-3 text-xs font-medium uppercase tracking-wider border border-foreground bg-background text-foreground group shrink-0">
                 <Filter className="w-3.5 h-3.5 relative z-10" />
                 <span className="hidden sm:inline relative z-10">{statusFilter ? statusConfig[statusFilter as keyof typeof statusConfig].label : 'Tous'}</span>
                 <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
               </button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent className="border-foreground/10">
+            <DropdownMenuContent className="border-foreground">
               <DropdownMenuItem onClick={() => setStatusFilter(null)}>
                 Tous les statuts
               </DropdownMenuItem>
@@ -157,7 +157,7 @@ export const ProjectsList: React.FC<ProjectsListProps> = ({ onResumeSearch }) =>
 
       {/* Projects grid */}
       {filteredProjects.length === 0 ? (
-        <div className="bg-background border border-foreground/10 p-12 text-center">
+        <div className="bg-background border border-foreground p-12 text-center">
           <div className="h-16 w-16 bg-foreground text-background flex items-center justify-center mx-auto mb-4">
             <FolderOpen className="w-8 h-8" />
           </div>
@@ -187,7 +187,7 @@ export const ProjectsList: React.FC<ProjectsListProps> = ({ onResumeSearch }) =>
             return (
               <div
                 key={project.id}
-                className="bg-background border border-foreground/10 p-5 hover:border-foreground/30 hover:bg-brutal-accent/5 transition-all cursor-pointer"
+                className="bg-background border border-foreground p-5 hover:bg-brutal-accent/5 transition-all cursor-pointer"
                 onClick={() => setSelectedProject(project)}
               >
                 <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
