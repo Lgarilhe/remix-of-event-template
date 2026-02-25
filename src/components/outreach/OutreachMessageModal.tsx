@@ -63,6 +63,7 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
   const [senderName, setSenderName] = useState(() => {
     return localStorage.getItem('outreach_sender_name') || '';
   });
+  const [customInstructions, setCustomInstructions] = useState('');
 
   // Reset state when profile changes
   const profileKey = profile?.id || `${profile?.first_name}-${profile?.last_name}`;
@@ -159,6 +160,7 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
           accountId: selectedAccount || undefined,
           profileId: candidateProviderId || undefined,
           candidateHistory: candidateHistory || undefined,
+          customInstructions: customInstructions.trim() || undefined,
         }
       });
 
@@ -439,6 +441,20 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
                 ))}
               </div>
             </div>
+          </div>
+
+          {/* Custom instructions (optional) */}
+          <div>
+            <label className="text-[10px] font-bold text-muted-foreground mb-1.5 block uppercase tracking-widest">
+              Instructions supplémentaires <span className="font-normal text-muted-foreground/60">(optionnel)</span>
+            </label>
+            <textarea
+              value={customInstructions}
+              onChange={(e) => setCustomInstructions(e.target.value)}
+              placeholder="Ex: Mentionne son article récent sur le DDD, propose un call mardi, insiste sur le full remote..."
+              rows={2}
+              className="w-full px-3 py-2 text-sm border border-foreground/30 bg-background placeholder:text-muted-foreground/50 focus:outline-none focus:border-foreground resize-none"
+            />
           </div>
 
           {/* Generate button */}

@@ -223,7 +223,7 @@ serve(async (req) => {
   }
 
   try {
-    const { profile, job, tone = "professional", senderName, candidateStatus = "to_evaluate", accountId, profileId, candidateHistory } = await req.json() as {
+    const { profile, job, tone = "professional", senderName, candidateStatus = "to_evaluate", accountId, profileId, candidateHistory, customInstructions } = await req.json() as {
       profile: ProfileData;
       job: JobData;
       tone?: "professional" | "casual" | "enthusiastic";
@@ -232,6 +232,7 @@ serve(async (req) => {
       accountId?: string;
       profileId?: string;
       candidateHistory?: CandidateHistoryData | null;
+      customInstructions?: string;
     };
     
     const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
@@ -654,7 +655,11 @@ Ton post sur les micro-services m'a donné une idée. On a un projet greenfield 
 Ça t'inspire un avis ?
 
 Marc"
-
+${customInstructions ? `
+=== INSTRUCTIONS SUPPLÉMENTAIRES DU RECRUTEUR (PRIORITÉ HAUTE) ===
+${customInstructions.slice(0, 500)}
+=== FIN INSTRUCTIONS SUPPLÉMENTAIRES ===
+` : ''}
 Réponds UNIQUEMENT en JSON valide:
 {
   "subject": "Objet court (max 40 car, mobile-first)",
