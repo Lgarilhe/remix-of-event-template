@@ -130,6 +130,15 @@ export default {
             transform: "translate3d(-50%, 0, 0)"
           }
         },
+        "scan": {
+          "0%": { top: "0%", opacity: "0.3" },
+          "50%": { top: "100%", opacity: "1" },
+          "100%": { top: "0%", opacity: "0.3" },
+        },
+        "shimmer": {
+          "0%": { transform: "translateX(-100%)" },
+          "100%": { transform: "translateX(100%)" },
+        },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
