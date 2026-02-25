@@ -295,10 +295,13 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
               </div>
             )}
 
-            {/* "Voir détails" hint on hover */}
-            <div className="mt-2 text-[10px] text-primary/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1">
+            {/* "Voir détails" - visible on mobile, hover on desktop */}
+            <div
+              className="mt-2 text-[10px] text-primary font-medium sm:text-primary/60 sm:opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1 cursor-pointer py-1"
+              onClick={(e) => { e.stopPropagation(); onOpenDetail?.(); }}
+            >
               <ExternalLink className="w-3 h-3" />
-              Cliquer pour voir les détails
+              Voir les détails
             </div>
           </div>
         </div>
