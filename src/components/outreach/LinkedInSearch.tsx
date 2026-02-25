@@ -551,11 +551,11 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
       <div className="lg:hidden">
         <Sheet open={filtersOpen} onOpenChange={setFiltersOpen}>
           <SheetTrigger asChild>
-            <Button variant="outline" className="w-full gap-2 border-[#0077B5] text-[#0077B5]">
+            <Button variant="outline" className="w-full gap-2 border-primary text-primary">
               <SlidersHorizontal className="w-4 h-4" />
               Filtres de recherche
               {search.selectedJob && (
-                <span className="text-xs bg-[#0077B5]/10 px-2 py-0.5 rounded-full">
+                <span className="text-xs bg-primary/10 px-2 py-0.5 rounded-full">
                   {search.selectedJob.title}
                 </span>
               )}
