@@ -84,23 +84,23 @@ interface SequenceActivityLogProps {
 }
 
 const actionTypeConfig: Record<string, { label: string; icon: React.ReactNode; color: string; bgColor: string }> = {
-  profile_visit: { label: 'Visite profil', icon: <Eye className="w-4 h-4" />, color: 'text-gray-600', bgColor: 'bg-gray-100' },
-  connection_request: { label: 'Invitation', icon: <UserPlus className="w-4 h-4" />, color: 'text-green-600', bgColor: 'bg-green-100' },
-  message: { label: 'Message', icon: <Send className="w-4 h-4" />, color: 'text-blue-600', bgColor: 'bg-blue-100' },
-  inmail: { label: 'InMail', icon: <Mail className="w-4 h-4" />, color: 'text-purple-600', bgColor: 'bg-purple-100' },
-  smart_message: { label: 'Smart Message', icon: <MessageSquare className="w-4 h-4" />, color: 'text-indigo-600', bgColor: 'bg-indigo-100' },
-  check_connection: { label: 'Check connexion', icon: <Users className="w-4 h-4" />, color: 'text-orange-600', bgColor: 'bg-orange-100' },
-  wait_connection: { label: 'Attente connexion', icon: <Timer className="w-4 h-4" />, color: 'text-amber-600', bgColor: 'bg-amber-100' },
-  wait_reply: { label: 'Attente réponse', icon: <Timer className="w-4 h-4" />, color: 'text-amber-600', bgColor: 'bg-amber-100' },
+  profile_visit: { label: 'Visite profil', icon: <Eye className="w-4 h-4" />, color: 'text-foreground', bgColor: 'bg-muted' },
+  connection_request: { label: 'Invitation', icon: <UserPlus className="w-4 h-4" />, color: 'text-emerald-900', bgColor: 'bg-emerald-400' },
+  message: { label: 'Message', icon: <Send className="w-4 h-4" />, color: 'text-blue-900', bgColor: 'bg-blue-400' },
+  inmail: { label: 'InMail', icon: <Mail className="w-4 h-4" />, color: 'text-purple-900', bgColor: 'bg-purple-400' },
+  smart_message: { label: 'Smart Message', icon: <MessageSquare className="w-4 h-4" />, color: 'text-indigo-900', bgColor: 'bg-indigo-400' },
+  check_connection: { label: 'Check connexion', icon: <Users className="w-4 h-4" />, color: 'text-orange-900', bgColor: 'bg-orange-400' },
+  wait_connection: { label: 'Attente connexion', icon: <Timer className="w-4 h-4" />, color: 'text-amber-900', bgColor: 'bg-amber-400' },
+  wait_reply: { label: 'Attente réponse', icon: <Timer className="w-4 h-4" />, color: 'text-amber-900', bgColor: 'bg-amber-400' },
 };
 
 const statusConfig: Record<string, { label: string; icon: React.ReactNode; className: string }> = {
-  scheduled: { label: 'Planifié', icon: <Clock className="w-3.5 h-3.5" />, className: 'bg-blue-50 text-blue-700 border-blue-200' },
-  sent: { label: 'Envoyé', icon: <CheckCircle2 className="w-3.5 h-3.5" />, className: 'bg-green-50 text-green-700 border-green-200' },
-  skipped: { label: 'Ignoré', icon: <SkipForward className="w-3.5 h-3.5" />, className: 'bg-gray-50 text-gray-600 border-gray-200' },
-  failed: { label: 'Échoué', icon: <XCircle className="w-3.5 h-3.5" />, className: 'bg-red-50 text-red-700 border-red-200' },
-  cancelled: { label: 'Annulé', icon: <XCircle className="w-3.5 h-3.5" />, className: 'bg-gray-50 text-gray-500 border-gray-200' },
-  replied: { label: 'Répondu', icon: <MessageSquare className="w-3.5 h-3.5" />, className: 'bg-purple-50 text-purple-700 border-purple-200' },
+  scheduled: { label: 'Planifié', icon: <Clock className="w-3.5 h-3.5" />, className: 'bg-blue-500 text-white border-blue-600' },
+  sent: { label: 'Envoyé', icon: <CheckCircle2 className="w-3.5 h-3.5" />, className: 'bg-emerald-500 text-white border-emerald-600' },
+  skipped: { label: 'Ignoré', icon: <SkipForward className="w-3.5 h-3.5" />, className: 'bg-muted text-muted-foreground border-foreground/20' },
+  failed: { label: 'Échoué', icon: <XCircle className="w-3.5 h-3.5" />, className: 'bg-red-500 text-white border-red-600' },
+  cancelled: { label: 'Annulé', icon: <XCircle className="w-3.5 h-3.5" />, className: 'bg-muted text-muted-foreground border-foreground/20' },
+  replied: { label: 'Répondu', icon: <MessageSquare className="w-3.5 h-3.5" />, className: 'bg-purple-500 text-white border-purple-600' },
 };
 
 type FilterStatus = 'all' | 'scheduled' | 'sent' | 'failed' | 'skipped';
@@ -321,49 +321,49 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
 
   return (
     <Sheet open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <SheetContent className="w-full sm:w-[600px] sm:max-w-[600px] bg-white p-0">
-        <SheetHeader className="p-6 pb-4 border-b">
+        <SheetContent className="w-full sm:w-[600px] sm:max-w-[600px] bg-background p-0 rounded-none border-l border-foreground">
+        <SheetHeader className="p-6 pb-4 border-b border-foreground">
           <SheetTitle className="flex items-center gap-2">
-            <Activity className="w-5 h-5 text-blue-600" />
+            <Activity className="w-5 h-5" />
             Journal d'activité
           </SheetTitle>
         </SheetHeader>
 
         <div className="p-4 space-y-4">
           {/* Stats */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-            <div className="p-2.5 sm:p-3 rounded-lg bg-blue-50 text-center">
-              <div className="text-lg sm:text-xl font-bold text-blue-700">{stats.scheduled}</div>
-              <div className="text-[10px] sm:text-xs text-blue-600">À venir</div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-0">
+            <div className="p-2.5 sm:p-3 border border-foreground text-center">
+              <div className="text-lg sm:text-xl font-bold text-blue-600">{stats.scheduled}</div>
+              <div className="text-[10px] sm:text-xs text-muted-foreground uppercase font-medium">À venir</div>
             </div>
-            <div className="p-2.5 sm:p-3 rounded-lg bg-amber-50 text-center">
-              <div className="text-lg sm:text-xl font-bold text-amber-700">{stats.pending}</div>
-              <div className="text-[10px] sm:text-xs text-amber-600">En retard</div>
+            <div className="p-2.5 sm:p-3 border border-foreground border-l-0 text-center bg-amber-400/10">
+              <div className="text-lg sm:text-xl font-bold text-red-600">{stats.pending}</div>
+              <div className="text-[10px] sm:text-xs text-muted-foreground uppercase font-medium">En retard</div>
             </div>
-            <div className="p-2.5 sm:p-3 rounded-lg bg-green-50 text-center">
-              <div className="text-lg sm:text-xl font-bold text-green-700">{stats.sent}</div>
-              <div className="text-[10px] sm:text-xs text-green-600">Envoyés</div>
+            <div className="p-2.5 sm:p-3 border border-foreground border-l-0 text-center">
+              <div className="text-lg sm:text-xl font-bold text-emerald-600">{stats.sent}</div>
+              <div className="text-[10px] sm:text-xs text-muted-foreground uppercase font-medium">Envoyés</div>
             </div>
-            <div className="p-2.5 sm:p-3 rounded-lg bg-red-50 text-center">
-              <div className="text-lg sm:text-xl font-bold text-red-700">{stats.failed}</div>
-              <div className="text-[10px] sm:text-xs text-red-600">Échoués</div>
+            <div className="p-2.5 sm:p-3 border border-foreground border-l-0 text-center">
+              <div className="text-lg sm:text-xl font-bold text-red-500">{stats.failed}</div>
+              <div className="text-[10px] sm:text-xs text-muted-foreground uppercase font-medium">Échoués</div>
             </div>
           </div>
 
           {/* Filters */}
           <div className="space-y-2 sm:space-y-0 sm:flex sm:gap-2">
             <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input
                 placeholder="Rechercher..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-9 bg-white"
+                className="pl-9 bg-background border-foreground rounded-none"
               />
             </div>
             <div className="flex gap-2">
               <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as FilterStatus)}>
-                <SelectTrigger className="flex-1 sm:w-[130px]">
+                <SelectTrigger className="flex-1 sm:w-[130px] border-foreground rounded-none">
                   <SelectValue placeholder="Statut" />
                 </SelectTrigger>
                 <SelectContent>
@@ -375,7 +375,7 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
                 </SelectContent>
               </Select>
               <Select value={periodFilter} onValueChange={(v) => setPeriodFilter(v as FilterPeriod)}>
-                <SelectTrigger className="flex-1 sm:w-[130px]">
+                <SelectTrigger className="flex-1 sm:w-[130px] border-foreground rounded-none">
                   <SelectValue placeholder="Période" />
                 </SelectTrigger>
                 <SelectContent>
@@ -385,7 +385,7 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
                   <SelectItem value="upcoming">À venir</SelectItem>
                 </SelectContent>
               </Select>
-              <Button variant="outline" size="icon" className="shrink-0" onClick={fetchExecutions} disabled={loading}>
+              <Button variant="outline" size="icon" className="shrink-0 border-foreground rounded-none" onClick={fetchExecutions} disabled={loading}>
                 <RefreshCw className={cn("w-4 h-4", loading && "animate-spin")} />
               </Button>
             </div>
@@ -396,9 +396,9 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
         <ScrollArea className="h-[calc(100vh-320px)]">
           <div className="px-4 pb-6 space-y-4">
             {loading ? (
-              <div className="text-center py-12 text-gray-500">Chargement...</div>
+              <div className="text-center py-12 text-muted-foreground">Chargement...</div>
             ) : groupedExecutions.length === 0 ? (
-              <div className="text-center py-12 text-gray-500">
+              <div className="text-center py-12 text-muted-foreground">
                 Aucune activité trouvée
               </div>
             ) : (
@@ -406,12 +406,12 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
                 <div key={date} className="space-y-2">
                   {/* Date header */}
                   <div className="flex items-center gap-2 py-2">
-                    <Calendar className="w-4 h-4 text-gray-400" />
-                    <span className="text-sm font-medium text-gray-600 capitalize">
+                    <Calendar className="w-4 h-4 text-muted-foreground" />
+                    <span className="text-sm font-semibold text-foreground uppercase tracking-wide">
                       {formatDateHeader(date)}
                     </span>
-                    <div className="flex-1 h-px bg-gray-200" />
-                    <span className="text-xs text-gray-400">{items.length} action(s)</span>
+                    <div className="flex-1 h-px bg-foreground/20" />
+                    <span className="text-xs text-muted-foreground font-medium">{items.length} action(s)</span>
                   </div>
 
                   {/* Items */}
@@ -436,17 +436,14 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
                         onOpenChange={() => toggleExpanded(exec.id)}
                       >
                         <div className={cn(
-                          "border rounded-lg overflow-hidden transition-colors",
-                          isOverdue && "border-amber-300 bg-amber-50/30",
-                          exec.status === 'failed' && "border-red-200 bg-red-50/20",
-                          exec.status === 'sent' && "border-green-200 bg-green-50/20",
-                          exec.status === 'skipped' && "border-gray-200 bg-gray-50/50",
-                          !isOverdue && exec.status === 'scheduled' && "border-blue-200 bg-blue-50/20",
+                          "border border-foreground rounded-none overflow-hidden transition-colors",
+                          isOverdue && "border-amber-500 bg-amber-400/5",
+                          exec.status === 'failed' && "border-red-500 bg-red-500/5",
                         )}>
                           <CollapsibleTrigger className="w-full">
                             <div className="p-3 flex items-start gap-3 hover:bg-muted/30 transition-colors">
                               {/* Action icon */}
-                              <div className={cn("w-9 h-9 rounded-lg flex items-center justify-center shrink-0", actionConfig.bgColor)}>
+                              <div className={cn("w-9 h-9 rounded-none flex items-center justify-center shrink-0", actionConfig.bgColor)}>
                                 <span className={actionConfig.color}>{actionConfig.icon}</span>
                               </div>
 
@@ -495,10 +492,10 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
                           </CollapsibleTrigger>
 
                           <CollapsibleContent>
-                            <div className="px-3 pb-3 pt-2 space-y-2 border-t bg-muted/20">
+                            <div className="px-3 pb-3 pt-2 space-y-2 border-t border-foreground bg-muted/30">
                               {/* Error message */}
                               {hasError && (
-                                <div className="p-2.5 bg-red-50 border border-red-200 rounded-lg text-sm">
+                                <div className="p-2.5 bg-red-500/10 border border-red-500 rounded-none text-sm">
                                   <div className="flex items-center gap-2 font-medium text-red-700">
                                     <AlertCircle className="w-4 h-4" />
                                     {exec.status === 'failed' ? 'Erreur' : 'Raison'}
@@ -511,7 +508,7 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
 
                               {/* Message preview */}
                               {hasMessage && (
-                                <div className="p-3 bg-white border rounded-lg mt-2">
+                                <div className="p-3 bg-background border border-foreground rounded-none mt-2">
                                   {(exec.final_subject || exec.step?.subject_template) && (
                                     <div className="text-xs text-muted-foreground mb-2 pb-2 border-b">
                                       <span className="font-medium">Objet :</span>{' '}
