@@ -91,46 +91,44 @@ const statusConfig: Record<string, { label: string; icon: React.ReactNode; class
   active: { 
     label: 'Active', 
     icon: <Clock className="w-3 h-3" />, 
-    className: 'bg-blue-100 text-blue-700' 
+    className: 'bg-blue-500 text-white border border-blue-600' 
   },
   paused: { 
     label: 'En pause', 
     icon: <StopCircle className="w-3 h-3" />, 
-    className: 'bg-yellow-100 text-yellow-700' 
+    className: 'bg-amber-500 text-white border border-amber-600' 
   },
   completed: { 
     label: 'Terminée', 
     icon: <CheckCircle className="w-3 h-3" />, 
-    className: 'bg-green-100 text-green-700' 
+    className: 'bg-emerald-500 text-white border border-emerald-600' 
   },
   replied: { 
     label: 'Répondu', 
     icon: <MessageCircle className="w-3 h-3" />, 
-    className: 'bg-purple-100 text-purple-700' 
+    className: 'bg-purple-500 text-white border border-purple-600' 
   },
   cancelled: { 
     label: 'Annulée', 
     icon: <XCircle className="w-3 h-3" />, 
-    className: 'bg-gray-100 text-gray-600' 
+    className: 'bg-muted text-muted-foreground border border-foreground/20' 
   },
 };
 
 const actionTypeConfig: Record<string, { label: string; icon: React.ReactNode; color: string; bgColor: string }> = {
-  // Standard action names
-  send_inmail: { label: 'InMail', icon: <Mail className="w-3.5 h-3.5" />, color: 'text-purple-600', bgColor: 'bg-purple-100' },
-  send_message: { label: 'Message', icon: <Send className="w-3.5 h-3.5" />, color: 'text-blue-600', bgColor: 'bg-blue-100' },
-  send_invitation: { label: 'Invitation', icon: <UserPlus className="w-3.5 h-3.5" />, color: 'text-green-600', bgColor: 'bg-green-100' },
-  visit_profile: { label: 'Visite du profil', icon: <Eye className="w-3.5 h-3.5" />, color: 'text-gray-600', bgColor: 'bg-gray-100' },
-  smart_message: { label: 'Message intelligent', icon: <MessageCircle className="w-3.5 h-3.5" />, color: 'text-indigo-600', bgColor: 'bg-indigo-100' },
-  check_connection: { label: 'Vérification connexion', icon: <Users className="w-3.5 h-3.5" />, color: 'text-orange-600', bgColor: 'bg-orange-100' },
-  wait_for_event: { label: 'Attente événement', icon: <Timer className="w-3.5 h-3.5" />, color: 'text-amber-600', bgColor: 'bg-amber-100' },
-  // Alternative action names (used in some steps)
-  profile_visit: { label: 'Visite du profil', icon: <Eye className="w-3.5 h-3.5" />, color: 'text-gray-600', bgColor: 'bg-gray-100' },
-  connection_request: { label: 'Demande de connexion', icon: <UserPlus className="w-3.5 h-3.5" />, color: 'text-green-600', bgColor: 'bg-green-100' },
-  message: { label: 'Message', icon: <Send className="w-3.5 h-3.5" />, color: 'text-blue-600', bgColor: 'bg-blue-100' },
-  inmail: { label: 'InMail', icon: <Mail className="w-3.5 h-3.5" />, color: 'text-purple-600', bgColor: 'bg-purple-100' },
-  wait_connection: { label: 'Attente connexion', icon: <Timer className="w-3.5 h-3.5" />, color: 'text-amber-600', bgColor: 'bg-amber-100' },
-  wait_reply: { label: 'Attente réponse', icon: <Timer className="w-3.5 h-3.5" />, color: 'text-amber-600', bgColor: 'bg-amber-100' },
+  send_inmail: { label: 'InMail', icon: <Mail className="w-3.5 h-3.5" />, color: 'text-purple-700', bgColor: 'bg-purple-500' },
+  send_message: { label: 'Message', icon: <Send className="w-3.5 h-3.5" />, color: 'text-blue-700', bgColor: 'bg-blue-500' },
+  send_invitation: { label: 'Invitation', icon: <UserPlus className="w-3.5 h-3.5" />, color: 'text-emerald-700', bgColor: 'bg-emerald-500' },
+  visit_profile: { label: 'Visite du profil', icon: <Eye className="w-3.5 h-3.5" />, color: 'text-foreground', bgColor: 'bg-muted' },
+  smart_message: { label: 'Message intelligent', icon: <MessageCircle className="w-3.5 h-3.5" />, color: 'text-indigo-700', bgColor: 'bg-indigo-500' },
+  check_connection: { label: 'Vérification connexion', icon: <Users className="w-3.5 h-3.5" />, color: 'text-orange-700', bgColor: 'bg-orange-500' },
+  wait_for_event: { label: 'Attente événement', icon: <Timer className="w-3.5 h-3.5" />, color: 'text-amber-700', bgColor: 'bg-amber-500' },
+  profile_visit: { label: 'Visite du profil', icon: <Eye className="w-3.5 h-3.5" />, color: 'text-foreground', bgColor: 'bg-muted' },
+  connection_request: { label: 'Demande de connexion', icon: <UserPlus className="w-3.5 h-3.5" />, color: 'text-emerald-700', bgColor: 'bg-emerald-500' },
+  message: { label: 'Message', icon: <Send className="w-3.5 h-3.5" />, color: 'text-blue-700', bgColor: 'bg-blue-500' },
+  inmail: { label: 'InMail', icon: <Mail className="w-3.5 h-3.5" />, color: 'text-purple-700', bgColor: 'bg-purple-500' },
+  wait_connection: { label: 'Attente connexion', icon: <Timer className="w-3.5 h-3.5" />, color: 'text-amber-700', bgColor: 'bg-amber-500' },
+  wait_reply: { label: 'Attente réponse', icon: <Timer className="w-3.5 h-3.5" />, color: 'text-amber-700', bgColor: 'bg-amber-500' },
 };
 
 // Helper to format error messages nicely
@@ -156,13 +154,13 @@ const formatErrorMessage = (error: string | null): string => {
 };
 
 const executionStatusConfig: Record<string, { label: string; icon: React.ReactNode; className: string }> = {
-  pending: { label: 'À venir', icon: <Clock className="w-3 h-3" />, className: 'bg-gray-50 text-gray-400 border-gray-200 border-dashed' },
-  scheduled: { label: 'Planifié', icon: <Clock className="w-3 h-3" />, className: 'bg-blue-50 text-blue-600 border-blue-200' },
-  executed: { label: 'Exécuté', icon: <CheckCircle2 className="w-3 h-3" />, className: 'bg-green-50 text-green-600 border-green-200' },
-  sent: { label: 'Envoyé', icon: <CheckCircle2 className="w-3 h-3" />, className: 'bg-green-50 text-green-600 border-green-200' },
-  skipped: { label: 'Ignoré', icon: <SkipForward className="w-3 h-3" />, className: 'bg-gray-50 text-gray-500 border-gray-200' },
-  failed: { label: 'Échoué', icon: <AlertCircle className="w-3 h-3" />, className: 'bg-red-50 text-red-600 border-red-200' },
-  cancelled: { label: 'Annulé', icon: <XCircle className="w-3 h-3" />, className: 'bg-gray-50 text-gray-500 border-gray-200' },
+  pending: { label: 'À venir', icon: <Clock className="w-3 h-3" />, className: 'bg-muted text-muted-foreground border-foreground/10 border-dashed' },
+  scheduled: { label: 'Planifié', icon: <Clock className="w-3 h-3" />, className: 'bg-blue-500/10 text-blue-700 border-blue-500/30' },
+  executed: { label: 'Exécuté', icon: <CheckCircle2 className="w-3 h-3" />, className: 'bg-emerald-500/10 text-emerald-700 border-emerald-500/30' },
+  sent: { label: 'Envoyé', icon: <CheckCircle2 className="w-3 h-3" />, className: 'bg-emerald-500/10 text-emerald-700 border-emerald-500/30' },
+  skipped: { label: 'Ignoré', icon: <SkipForward className="w-3 h-3" />, className: 'bg-muted text-muted-foreground border-foreground/10' },
+  failed: { label: 'Échoué', icon: <AlertCircle className="w-3 h-3" />, className: 'bg-destructive/10 text-destructive border-destructive/30' },
+  cancelled: { label: 'Annulé', icon: <XCircle className="w-3 h-3" />, className: 'bg-muted text-muted-foreground border-foreground/10' },
 };
 
 interface SequenceStep {
@@ -381,10 +379,12 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
 
   return (
     <Sheet open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <SheetContent className="w-full sm:w-[500px] sm:max-w-[500px] bg-white">
+      <SheetContent className="w-full sm:w-[500px] sm:max-w-[500px] bg-background rounded-none border-l border-foreground">
         <SheetHeader>
-          <SheetTitle className="flex items-center gap-2">
-            <Users className="w-5 h-5 text-blue-600" />
+          <SheetTitle className="flex items-center gap-2 uppercase tracking-wide">
+            <div className="h-7 w-7 bg-foreground text-background flex items-center justify-center">
+              <Users className="w-4 h-4" />
+            </div>
             {sequenceName}
           </SheetTitle>
         </SheetHeader>
@@ -392,67 +392,67 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
         <div className="mt-6 space-y-4">
           {/* Process now button - always show if there are pending tasks */}
           {pendingExecutions.length > 0 && (
-            <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
+            <div className="p-3 bg-background border border-foreground">
               <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2 text-amber-700">
+                <div className="flex items-center gap-2 text-foreground">
                   <AlertCircle className="w-4 h-4" />
                   <span className="text-sm font-medium">
                     {pendingExecutions.length} action(s) en attente
                   </span>
                 </div>
-                <Button
-                  size="sm"
+                <button
                   onClick={processSequencesNow}
                   disabled={processingSequences}
-                  className="bg-amber-600 hover:bg-amber-700 text-white"
+                  className="relative overflow-hidden h-[30px] px-4 bg-foreground text-background border border-foreground text-[11px] font-medium uppercase tracking-wider group disabled:opacity-50"
                 >
-                  {processingSequences ? (
-                    <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
-                  ) : (
-                    <Zap className="w-4 h-4 mr-2" />
-                  )}
-                  Traiter maintenant
-                </Button>
+                  <span className="relative z-10 flex items-center gap-1.5">
+                    {processingSequences ? (
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <Zap className="w-3.5 h-3.5" />
+                    )}
+                    Traiter maintenant
+                  </span>
+                </button>
               </div>
             </div>
           )}
 
           {/* Stats */}
-          <div className="flex gap-3">
-            <div className="flex-1 p-3 rounded-lg bg-blue-50 text-center">
-              <div className="text-xl font-bold text-blue-700">{activeCount}</div>
-              <div className="text-xs text-blue-600">Actifs</div>
+          <div className="grid grid-cols-3 gap-0 border border-foreground">
+            <div className="p-3 text-center border-r border-foreground">
+              <div className="text-xl font-bold text-foreground">{activeCount}</div>
+              <div className="text-[10px] text-muted-foreground uppercase tracking-wider">Actifs</div>
             </div>
-            <div className="flex-1 p-3 rounded-lg bg-yellow-50 text-center">
-              <div className="text-xl font-bold text-yellow-700">{pausedCount}</div>
-              <div className="text-xs text-yellow-600">En pause</div>
+            <div className="p-3 text-center border-r border-foreground">
+              <div className="text-xl font-bold text-foreground">{pausedCount}</div>
+              <div className="text-[10px] text-muted-foreground uppercase tracking-wider">En pause</div>
             </div>
-            <div className="flex-1 p-3 rounded-lg bg-green-50 text-center">
-              <div className="text-xl font-bold text-green-700">{completedCount}</div>
-              <div className="text-xs text-green-600">Terminés</div>
+            <div className="p-3 text-center">
+              <div className="text-xl font-bold text-foreground">{completedCount}</div>
+              <div className="text-[10px] text-muted-foreground uppercase tracking-wider">Terminés</div>
             </div>
           </div>
 
           {/* Bulk actions */}
           {activeCount > 0 && (
-            <Button 
-              variant="outline" 
-              size="sm" 
+            <button 
               onClick={bulkStopActive}
-              className="w-full text-orange-600 border-orange-200 hover:bg-orange-50"
+              className="w-full relative overflow-hidden h-[34px] px-4 bg-background text-destructive border border-destructive text-[11px] font-medium uppercase tracking-wider group flex items-center justify-center gap-2"
             >
-              <StopCircle className="w-4 h-4 mr-2" />
-              Arrêter toutes les séquences actives ({activeCount})
-            </Button>
+              <StopCircle className="w-3.5 h-3.5 relative z-10" />
+              <span className="relative z-10">Arrêter toutes les séquences actives ({activeCount})</span>
+              <span className="absolute inset-0 bg-destructive/10 translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
+            </button>
           )}
 
           {/* Enrollments list */}
           <ScrollArea className="h-[calc(100vh-300px)]">
             <div className="space-y-2">
               {loading ? (
-                <div className="text-center py-8 text-gray-500">Chargement...</div>
+                <div className="text-center py-8 text-muted-foreground">Chargement...</div>
               ) : enrollments.length === 0 ? (
-                <div className="text-center py-8 text-gray-500">
+                <div className="text-center py-8 text-muted-foreground">
                   Aucun candidat inscrit
                 </div>
               ) : (
@@ -467,21 +467,21 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
                       open={isExpanded}
                       onOpenChange={() => toggleExpanded(enrollment.id)}
                     >
-                      <div className="border border-gray-200 rounded-lg overflow-hidden">
+                      <div className="border border-foreground overflow-hidden">
                         {/* Header - always visible */}
-                        <div className="p-3 bg-white hover:bg-gray-50 group">
+                        <div className="p-3 bg-background hover:bg-brutal-accent/10 group">
                           <div className="flex items-start justify-between gap-3">
                             <CollapsibleTrigger className="flex items-start gap-2 flex-1 min-w-0 text-left">
                               <div className="mt-0.5">
                                 {isExpanded ? (
-                                  <ChevronDown className="w-4 h-4 text-gray-400" />
+                                  <ChevronDown className="w-4 h-4 text-muted-foreground" />
                                 ) : (
-                                  <ChevronRight className="w-4 h-4 text-gray-400" />
+                                  <ChevronRight className="w-4 h-4 text-muted-foreground" />
                                 )}
                               </div>
                               <div className="flex-1 min-w-0">
                                 <div className="flex items-center gap-2">
-                                  <span className="font-medium text-gray-900 truncate">
+                                  <span className="font-medium text-foreground truncate">
                                     {enrollment.profile_name || 'Candidat'}
                                   </span>
                                   {enrollment.profile_url && (
@@ -489,7 +489,7 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
                                       href={enrollment.profile_url}
                                       target="_blank"
                                       rel="noopener noreferrer"
-                                      className="text-gray-400 hover:text-[#0077B5]"
+                                      className="text-muted-foreground hover:text-[#0077B5]"
                                       onClick={(e) => e.stopPropagation()}
                                     >
                                       <ExternalLink className="w-3.5 h-3.5" />
@@ -497,19 +497,19 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
                                   )}
                                 </div>
                                 {enrollment.profile_headline && (
-                                  <p className="text-xs text-gray-500 truncate mt-0.5">
+                                  <p className="text-xs text-muted-foreground truncate mt-0.5">
                                     {enrollment.profile_headline}
                                   </p>
                                 )}
                                 <div className="flex items-center gap-2 mt-1.5">
-                                  <Badge className={`text-[10px] ${status.className}`}>
+                                  <Badge className={`text-[10px] rounded-none ${status.className}`}>
                                     {status.icon}
                                     <span className="ml-1">{status.label}</span>
                                   </Badge>
-                                  <span className="text-[10px] text-gray-400">
+                                  <span className="text-[10px] text-muted-foreground">
                                     {executions.length} étape(s)
                                   </span>
-                                  <span className="text-[10px] text-gray-400">
+                                  <span className="text-[10px] text-muted-foreground">
                                     · {formatDistanceToNow(new Date(enrollment.created_at), { 
                                       addSuffix: true, 
                                       locale: fr 
@@ -531,7 +531,7 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
                                   <MoreHorizontal className="w-4 h-4" />
                                 </Button>
                               </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end" className="bg-white">
+                              <DropdownMenuContent align="end" className="bg-background border-foreground rounded-none">
                                 {enrollment.status === 'active' ? (
                                   <DropdownMenuItem 
                                     onClick={() => stopEnrollment(enrollment.id)}
@@ -568,14 +568,14 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
 
                         {/* Expanded content - Full workflow timeline */}
                         <CollapsibleContent>
-                          <div className="border-t border-gray-100 bg-gray-50 p-3">
+                          <div className="border-t border-foreground bg-muted p-3">
                             {allSteps.length === 0 ? (
-                              <p className="text-xs text-gray-500 text-center py-2">
+                              <p className="text-xs text-muted-foreground text-center py-2">
                                 Aucune étape dans la séquence
                               </p>
                             ) : (
                               <div className="space-y-2">
-                                <p className="text-xs font-medium text-gray-600 mb-2">
+                                <p className="text-xs font-medium text-foreground mb-2 uppercase tracking-wide">
                                   Workflow complet ({allSteps.length} étapes) :
                                 </p>
                                 {allSteps.map((step, idx) => {
@@ -599,17 +599,16 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
                                     <div 
                                       key={step.id}
                                       className={cn(
-                                        "flex items-start gap-3 p-2.5 rounded-lg border transition-colors",
-                                        isFailed && "bg-red-50/70 border-red-200",
-                                        isSkipped && "bg-gray-50/70 border-gray-200",
+                                        "flex items-start gap-3 p-2.5 border transition-colors",
+                                        isFailed && "bg-destructive/5 border-destructive/30",
+                                        isSkipped && "bg-muted border-foreground/10",
                                         !isFailed && !isSkipped && execStatus.className
                                       )}
                                     >
                                       {/* Step number with icon */}
                                       <div className={cn(
-                                        "flex-shrink-0 w-7 h-7 rounded-lg flex items-center justify-center",
-                                        isPending ? 'bg-gray-100 text-gray-400' : actionConfig.bgColor,
-                                        !isPending && actionConfig.color
+                                        "flex-shrink-0 w-7 h-7 flex items-center justify-center",
+                                        isPending ? 'bg-muted text-muted-foreground' : `${actionConfig.bgColor} text-white`
                                       )}>
                                         {actionConfig.icon}
                                       </div>
@@ -640,7 +639,7 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
 
                                         {/* Contextual info for wait/check steps */}
                                         {(step.action_type === 'wait_connection' || step.action_type === 'wait_reply') && (
-                                          <div className="mt-1.5 text-[10px] text-amber-700 bg-amber-50 rounded-md px-2 py-1.5 border border-amber-200 space-y-0.5">
+                                          <div className="mt-1.5 text-[10px] text-foreground bg-amber-500/10 px-2 py-1.5 border border-amber-500/30 space-y-0.5">
                                             <div className="font-medium">
                                               ⏳ {step.timeout_days 
                                                 ? `Timeout : ${step.timeout_days} jour${step.timeout_days > 1 ? 's' : ''}`
@@ -658,7 +657,7 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
                                               <div>→ Si non accepté : fin de séquence</div>
                                             )}
                                             {exec?.status === 'scheduled' && step.timeout_days && (
-                                              <div className="text-amber-600">
+                                              <div className="text-muted-foreground">
                                                 📅 Expire le {format(
                                                   new Date(new Date(exec.scheduled_at).getTime() + (step.timeout_days * 24 * 60 * 60 * 1000)),
                                                   'dd/MM/yyyy à HH:mm',
@@ -670,7 +669,7 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
                                         )}
 
                                         {step.action_type === 'check_connection' && (
-                                          <div className="mt-1.5 text-[10px] text-indigo-700 bg-indigo-50 rounded-md px-2 py-1.5 border border-indigo-200 space-y-0.5">
+                                          <div className="mt-1.5 text-[10px] text-foreground bg-indigo-500/10 px-2 py-1.5 border border-indigo-500/30 space-y-0.5">
                                             <div className="font-medium">🔀 Branchement</div>
                                             {step.if_true_goto_step && (() => {
                                               const trueStep = allSteps.find(s => s.id === step.if_true_goto_step);
@@ -694,22 +693,22 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
                                               </span>
                                             )}
                                             {(exec.status === 'executed' || exec.status === 'sent') && exec.executed_at && (
-                                              <span className="text-green-600">
+                                              <span className="text-emerald-600">
                                                 ✓ {format(new Date(exec.executed_at), 'dd/MM HH:mm', { locale: fr })}
                                               </span>
                                             )}
                                             {exec.status === 'skipped' && exec.skip_reason && (
-                                              <span className="text-gray-500">
+                                              <span className="text-muted-foreground">
                                                 {exec.skip_reason}
                                               </span>
                                             )}
                                             {exec.status === 'cancelled' && exec.skip_reason && (
-                                              <span className="text-gray-500">
+                                              <span className="text-muted-foreground">
                                                 {exec.skip_reason}
                                               </span>
                                             )}
                                             {exec.status === 'failed' && exec.error_message && (
-                                              <div className="text-red-600 mt-1 p-2 bg-red-100/50 rounded text-[10px]">
+                                              <div className="text-destructive mt-1 p-2 bg-destructive/10 border border-destructive/20 text-[10px]">
                                                 <strong>Erreur :</strong> {formatErrorMessage(exec.error_message)}
                                               </div>
                                             )}
@@ -718,7 +717,7 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
 
                                         {/* Message preview if executed/sent */}
                                         {(exec?.status === 'executed' || exec?.status === 'sent') && exec.final_message && (
-                                          <div className="mt-2 p-2 bg-white rounded-lg border text-[11px] text-muted-foreground">
+                                          <div className="mt-2 p-2 bg-background border border-foreground/10 text-[11px] text-muted-foreground">
                                             {exec.final_subject && (
                                               <p className="font-medium text-foreground mb-1 pb-1 border-b text-xs">
                                                 {exec.final_subject}
