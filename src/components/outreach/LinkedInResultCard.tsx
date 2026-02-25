@@ -67,7 +67,7 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
   );
 
   // Notion shortlist data for this candidate
-  const { data: notionShortlistData } = useNotionShortlist();
+  const { data: notionShortlistData, isLoading: notionShortlistLoading, isFetching: notionShortlistFetching } = useNotionShortlist();
   const notionShortlistsForCandidate: NotionShortlistHistoryItem[] = React.useMemo(() => {
     if (!notionShortlistData) return [];
 
@@ -144,6 +144,7 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
   const historyLatestDateLabel = formatHistoryDate(historyLatestDate);
 
   const showScoringOverlay = isBatchScoring && isSelected;
+  const historyPanelLoading = historyLoading || notionShortlistLoading || notionShortlistFetching;
 
   return (
     <div
@@ -274,8 +275,8 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
                   <p className="text-xs sm:text-sm text-muted-foreground line-clamp-2 mt-0.5 sm:mt-1 leading-snug break-words">
                     {profile.headline || currentRole || 'Profil LinkedIn'}
                   </p>
-                  {(historyData || notionShortlistsForCandidate.length > 0) && !historyLoading && (
-                    <CandidateHistoryPanel data={historyData} loading={false} compact notionShortlists={notionShortlistsForCandidate} />
+                  {(historyData || notionShortlistsForCandidate.length > 0 || historyPanelLoading) && (
+                    <CandidateHistoryPanel data={historyData} loading={historyPanelLoading} compact notionShortlists={notionShortlistsForCandidate} />
                   )}
                 </div>
 

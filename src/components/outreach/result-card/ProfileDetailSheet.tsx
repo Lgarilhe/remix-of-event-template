@@ -101,7 +101,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
   );
 
   // Notion shortlist data for this candidate
-  const { data: notionShortlistData } = useNotionShortlist();
+  const { data: notionShortlistData, isLoading: notionShortlistLoading, isFetching: notionShortlistFetching } = useNotionShortlist();
   const notionShortlistsForCandidate: NotionShortlistHistoryItem[] = React.useMemo(() => {
     if (!notionShortlistData) return [];
 
@@ -212,6 +212,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
     }
   };
 
+  const historyPanelLoading = historyLoading || notionShortlistLoading || notionShortlistFetching;
   const hasHistory = notionShortlistsForCandidate.length > 0 || (historyData && (
     historyData.placements.length > 0 ||
     historyData.shortlists.length > 0 ||
@@ -428,9 +429,9 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
               )}
 
               {/* Airtable History Panel — always show if we have data or are loading */}
-              {(historyLoading || hasHistory) && (
+              {(historyPanelLoading || hasHistory) && (
                 <div className="border border-foreground/20 overflow-hidden bg-background">
-                  <CandidateHistoryPanel data={historyData} loading={historyLoading} compact={false} notionShortlists={notionShortlistsForCandidate} />
+                  <CandidateHistoryPanel data={historyData} loading={historyPanelLoading} compact={false} notionShortlists={notionShortlistsForCandidate} />
                 </div>
               )}
 
