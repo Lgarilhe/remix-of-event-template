@@ -181,7 +181,7 @@ serve(async (req) => {
         updates['💼 Postes'] = { relation: [{ id: data.jobId }] };
       }
       // Update etape & etat if provided
-      if (data.etape) updates['Etape'] = { status: { name: data.etape } };
+      if (data.etape) updates['Etape'] = { select: { name: data.etape } };
       if (data.etat) updates['Etat'] = { select: { name: data.etat } };
 
       if (Object.keys(updates).length > 0) {
@@ -248,7 +248,7 @@ serve(async (req) => {
       }
 
       // Etape & Etat
-      if (data.etape) props['Etape'] = { status: { name: data.etape } };
+      if (data.etape) props['Etape'] = { select: { name: data.etape } };
       if (data.etat) props['Etat'] = { select: { name: data.etat } };
 
       console.log('Creating new candidate...');
@@ -263,7 +263,7 @@ serve(async (req) => {
       // Update existing shortlist etape if needed
       if (data.etape) {
         await updateNotionPage(existingShortlistId, {
-          'Etape': { status: { name: data.etape } },
+          'Etape': { select: { name: data.etape } },
         });
       }
       return new Response(
@@ -288,7 +288,7 @@ serve(async (req) => {
     const shortlistProps: Record<string, unknown> = {
       'Nom': { title: [{ text: { content: shortlistTitle } }] },
       'Candidats': { relation: [{ id: candidateId }] },
-      'Etape': { status: { name: data.etape || 'Pressenti' } },
+      'Etape': { select: { name: data.etape || 'Pressenti' } },
     };
 
     // Entité
