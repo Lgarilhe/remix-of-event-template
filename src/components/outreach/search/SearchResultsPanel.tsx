@@ -200,7 +200,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
   }, [filteredResults, statusFilter, getAirtableMatch, getNotionMatch]);
 
   return (
-    <div className="bg-background rounded-xl border border-border flex flex-col h-[calc(100vh-200px)] lg:h-[calc(100vh-120px)] lg:sticky lg:top-24 min-w-0 overflow-hidden">
+    <div className="bg-background border border-foreground/10 flex flex-col h-[calc(100vh-200px)] lg:h-[calc(100vh-120px)] lg:sticky lg:top-24 min-w-0 overflow-hidden">
       {/* ROW 1: Search button + count + status filters */}
       <div className="flex items-center justify-between px-3 sm:px-4 py-2 border-b border-border shrink-0 gap-2 overflow-x-auto no-scrollbar">
         <div className="flex items-center gap-3 shrink-0">
@@ -238,7 +238,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
         {/* Status filters */}
         {selectedJob && hasSearched && results.length > 0 && (
           <div className="flex items-center gap-1 shrink-0">
-            <div className="flex items-center gap-0.5 bg-muted/50 rounded-lg p-0.5">
+            <div className="flex items-center gap-0.5 bg-muted/50 p-0.5">
               {([
                 { value: 'all' as const, label: 'Tous', icon: Users, count: results.length },
                 { value: 'untreated' as const, label: 'Nouveaux', icon: Eye, count: statusCounts.untreated },
@@ -279,7 +279,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
       {/* ROW 1.5: Scored sub-filters (only when scored filter active) */}
       {(statusFilter === 'scored' || statusFilter === 'scored_go' || statusFilter === 'scored_maybe' || statusFilter === 'scored_not_contacted') && statusCounts.scored > 0 && (
         <div className="flex items-center gap-1 px-3 sm:px-4 py-1.5 border-b border-border/50 bg-muted/20 shrink-0">
-          <div className="flex items-center gap-0.5 bg-muted/30 rounded-md p-0.5 border border-border/50">
+          <div className="flex items-center gap-0.5 bg-muted/30 p-0.5 border border-foreground/10">
             {([
               { value: 'scored' as const, label: 'Tous', count: statusCounts.scored },
               { value: 'scored_go' as const, label: '✅ À contacter', count: statusCounts.scored_go },
@@ -464,7 +464,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
           <div className="flex flex-col items-center justify-center py-12 text-muted-foreground px-8">
             {hasSearched ? (
               <>
-                <div className="w-20 h-20 rounded-full bg-muted flex items-center justify-center mb-6">
+                <div className="w-20 h-20 bg-muted flex items-center justify-center mb-6">
                   <Search className="w-10 h-10" />
                 </div>
                 <p className="text-lg font-medium text-foreground/60 mb-2">
@@ -477,7 +477,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
                   <Button
                     onClick={() => onRefineSearch('expand')}
                     disabled={refineLoading}
-                    className="gap-2 bg-green-600 hover:bg-green-700"
+                    className="gap-2 bg-foreground text-background hover:bg-foreground/90"
                   >
                     {refineLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Maximize2 className="w-4 h-4" />}
                     Élargir les filtres avec l'IA
@@ -492,10 +492,10 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
           <div className="p-2 sm:p-4 space-y-2 min-w-0">
             {/* Batch workflow banner */}
             {hasSearched && total !== null && total > 0 && (
-              <div className="bg-primary/5 rounded-lg p-2 sm:p-3 mb-3 space-y-2">
+              <div className="bg-foreground/5 p-2 sm:p-3 mb-3 space-y-2">
                 <div className="flex items-center gap-2 sm:gap-3">
-                  <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
-                    <Users className="w-5 h-5 text-primary" />
+                  <div className="w-10 h-10 bg-foreground/10 flex items-center justify-center shrink-0">
+                    <Users className="w-5 h-5 text-foreground" />
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-foreground">
@@ -519,7 +519,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
                             size="sm"
                             onClick={() => onRefineSearch('expand')}
                             disabled={refineLoading}
-                            className="h-8 px-2.5 gap-1.5 text-xs border-green-300 text-green-700 hover:bg-green-50"
+                            className="h-8 px-2.5 gap-1.5 text-xs border-foreground/20 text-foreground hover:bg-accent"
                           >
                             {refineLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Maximize2 className="w-3.5 h-3.5" />}
                             Élargir
@@ -538,7 +538,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
                             size="sm"
                             onClick={() => onRefineSearch('narrow')}
                             disabled={refineLoading}
-                            className="h-8 px-2.5 gap-1.5 text-xs border-orange-300 text-orange-700 hover:bg-orange-50"
+                            className="h-8 px-2.5 gap-1.5 text-xs border-foreground/20 text-foreground hover:bg-accent"
                           >
                             {refineLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Minimize2 className="w-3.5 h-3.5" />}
                             Affiner
@@ -720,8 +720,8 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
 const SearchWelcomeMessage: React.FC = () => (
   <div className="w-full max-w-lg">
     <div className="text-center mb-8">
-      <div className="w-16 h-16 rounded-full bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center mx-auto mb-4">
-        <Search className="w-8 h-8 text-primary" />
+      <div className="w-16 h-16 bg-foreground text-background flex items-center justify-center mx-auto mb-4">
+        <Search className="w-8 h-8" />
       </div>
       <h3 className="text-xl font-semibold text-foreground mb-2">
         Recherche LinkedIn
@@ -732,19 +732,19 @@ const SearchWelcomeMessage: React.FC = () => (
     </div>
 
     <div className="space-y-4">
-      <div className="bg-amber-50 rounded-xl p-4 border border-amber-200/50">
-        <h4 className="font-medium text-amber-800 mb-3 flex items-center gap-2">
-          <span className="w-6 h-6 rounded-full bg-amber-500 text-white text-xs flex items-center justify-center">1</span>
+      <div className="bg-muted/50 border border-foreground/10 p-4">
+        <h4 className="font-medium text-foreground mb-3 flex items-center gap-2">
+          <span className="w-6 h-6 bg-foreground text-background text-xs flex items-center justify-center">1</span>
           Sélectionnez un poste
         </h4>
-        <p className="text-sm text-amber-700/80 ml-8">
+        <p className="text-sm text-muted-foreground ml-8">
           Choisissez un <strong>poste de référence</strong> dans le panneau de gauche.
         </p>
       </div>
 
-      <div className="bg-primary/5 rounded-xl p-4 border border-primary/10">
+      <div className="bg-muted/30 border border-foreground/10 p-4">
         <h4 className="font-medium text-foreground mb-3 flex items-center gap-2">
-          <span className="w-6 h-6 rounded-full bg-primary text-white text-xs flex items-center justify-center">2</span>
+          <span className="w-6 h-6 bg-foreground text-background text-xs flex items-center justify-center">2</span>
           Recherchez des profils
         </h4>
         <ul className="text-sm text-muted-foreground space-y-2 ml-8">
@@ -753,9 +753,9 @@ const SearchWelcomeMessage: React.FC = () => (
         </ul>
       </div>
 
-      <div className="bg-muted rounded-xl p-4 border border-border">
+      <div className="bg-muted border border-foreground/10 p-4">
         <h4 className="font-medium text-foreground mb-3 flex items-center gap-2">
-          <span className="w-6 h-6 rounded-full bg-foreground text-background text-xs flex items-center justify-center">3</span>
+          <span className="w-6 h-6 bg-foreground text-background text-xs flex items-center justify-center">3</span>
           Sélectionnez et scorez
         </h4>
         <p className="text-sm text-muted-foreground ml-8">
@@ -763,12 +763,12 @@ const SearchWelcomeMessage: React.FC = () => (
         </p>
       </div>
 
-      <div className="bg-green-50 rounded-xl p-4 border border-green-200/50">
-        <h4 className="font-medium text-green-800 mb-3 flex items-center gap-2">
-          <span className="w-6 h-6 rounded-full bg-green-500 text-white text-xs flex items-center justify-center">4</span>
+      <div className="bg-muted/50 border border-foreground/10 p-4">
+        <h4 className="font-medium text-foreground mb-3 flex items-center gap-2">
+          <span className="w-6 h-6 bg-foreground text-background text-xs flex items-center justify-center">4</span>
           Ajoutez ou archivez
         </h4>
-        <ul className="text-sm text-green-700/80 space-y-1 ml-8">
+        <ul className="text-sm text-muted-foreground space-y-1 ml-8">
           <li>• <strong><FolderPlus className="w-3 h-3 inline" /> Ajouter au projet</strong></li>
           <li>• <strong><Archive className="w-3 h-3 inline" /> Archiver</strong></li>
         </ul>

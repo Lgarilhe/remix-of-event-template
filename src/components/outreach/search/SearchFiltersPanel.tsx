@@ -103,19 +103,19 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
     <div className="space-y-4 lg:sticky lg:top-24">
       {/* Reconnection alert */}
       {needsReconnection && (
-        <Alert variant="destructive" className="bg-amber-50 border-amber-200">
-          <AlertTriangle className="h-4 w-4 text-amber-600" />
-          <AlertTitle className="text-amber-800">Reconnexion requise</AlertTitle>
-          <AlertDescription className="text-amber-700">
+        <Alert variant="destructive" className="bg-destructive/10 border-destructive/30">
+          <AlertTriangle className="h-4 w-4 text-destructive" />
+          <AlertTitle className="text-destructive">Reconnexion requise</AlertTitle>
+          <AlertDescription className="text-destructive/80">
             Le compte <strong>{selectedAccountData?.name || selectedAccountData?.identifier}</strong> est déconnecté.
           </AlertDescription>
         </Alert>
       )}
 
       {/* Account selector */}
-      <div className="bg-white rounded-lg border border-[#1A1A1A]/10 p-3 space-y-2">
+      <div className="bg-background border border-foreground/10 p-3 space-y-2">
         <div className="flex items-center justify-between">
-          <label className="text-xs font-medium text-[#1A1A1A]/70">Compte</label>
+          <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Compte</label>
           <QuotaDisplay
             searchResultsFetched={quota.quotas.searchResultsFetched}
             profileVisits={quota.quotas.profileVisits}
@@ -132,18 +132,18 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
             <SelectTrigger className="h-8 text-sm flex-1">
               <SelectValue placeholder="Sélectionner" />
             </SelectTrigger>
-            <SelectContent className="bg-white">
-              {accounts.map((account) => (
-                <SelectItem key={account.id} value={account.id}>
-                  <div className="flex items-center gap-2">
-                    <span>{account.name || account.identifier}</span>
-                    <div className="flex gap-1">
-                      {account.subscriptions?.recruiter && (
-                        <span className="text-[9px] px-1.5 py-0.5 rounded bg-[#0077B5]/10 text-[#0077B5] font-medium">R</span>
-                      )}
-                      {account.subscriptions?.sales_navigator && (
-                        <span className="text-[9px] px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 font-medium">SN</span>
-                      )}
+              <SelectContent className="bg-background">
+                {accounts.map((account) => (
+                  <SelectItem key={account.id} value={account.id}>
+                    <div className="flex items-center gap-2">
+                      <span>{account.name || account.identifier}</span>
+                      <div className="flex gap-1">
+                        {account.subscriptions?.recruiter && (
+                          <span className="text-[9px] px-1.5 py-0.5 bg-foreground/10 text-foreground font-medium">R</span>
+                        )}
+                        {account.subscriptions?.sales_navigator && (
+                          <span className="text-[9px] px-1.5 py-0.5 bg-foreground/10 text-foreground font-medium">SN</span>
+                        )}
                     </div>
                   </div>
                 </SelectItem>
@@ -153,7 +153,7 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
 
           {/* Mode selector */}
           <TooltipProvider>
-            <div className="flex gap-0.5 p-0.5 bg-gray-100 rounded-md shrink-0">
+            <div className="flex gap-0.5 p-0.5 bg-muted shrink-0">
               {API_TYPE_OPTIONS.map((option) => {
                 let isAvailable: boolean;
                 if (option.value === 'classic') {
@@ -174,12 +174,12 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
                     type="button"
                     onClick={() => isAvailable && setFilters(f => ({ ...f, api: option.value as LinkedInApiType }))}
                     disabled={!isAvailable}
-                    className={`w-7 h-7 text-[10px] font-medium rounded transition-all ${
+                    className={`w-7 h-7 text-[10px] font-medium transition-all ${
                       !isAvailable
-                        ? 'text-[#1A1A1A]/20 cursor-not-allowed'
+                        ? 'text-foreground/20 cursor-not-allowed'
                         : filters.api === option.value
-                          ? 'bg-white text-[#0077B5] shadow-sm'
-                          : 'text-[#1A1A1A]/50 hover:text-[#1A1A1A] hover:bg-white/50'
+                          ? 'bg-background text-foreground shadow-sm'
+                          : 'text-foreground/50 hover:text-foreground hover:bg-background/50'
                     }`}
                   >
                     {!isAvailable ? <Lock className="w-2.5 h-2.5 mx-auto" /> : shortLabel}
@@ -207,10 +207,10 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
 
         {/* License warning */}
         {!isApiModeAvailable && (
-          <Alert variant="destructive" className="bg-red-50 border-red-200">
-            <Lock className="h-4 w-4 text-red-600" />
-            <AlertTitle className="text-red-800">Licence non disponible</AlertTitle>
-            <AlertDescription className="text-red-700">
+          <Alert variant="destructive" className="bg-destructive/10 border-destructive/30">
+            <Lock className="h-4 w-4 text-destructive" />
+            <AlertTitle className="text-destructive">Licence non disponible</AlertTitle>
+            <AlertDescription className="text-destructive/80">
               Votre compte n'a pas de licence {filters.api === 'recruiter' ? 'Recruiter' : 'Sales Navigator'}.
             </AlertDescription>
           </Alert>
@@ -256,14 +256,14 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
       )}
 
       {/* Keywords preview + edit dialog */}
-      <div className="bg-white rounded-lg border border-[#1A1A1A]/10 p-4">
-        <label className="text-sm font-medium text-[#1A1A1A] mb-2 block">
+      <div className="bg-background border border-foreground/10 p-4">
+        <label className="text-sm font-medium text-foreground mb-2 block uppercase tracking-wide">
           Mots-clés
         </label>
         <button
           type="button"
           onClick={() => { setKeywordsDraft(filters.keywords); setKeywordsDialogOpen(true); }}
-          className="w-full text-left flex items-center gap-2 px-3 py-2 rounded-md border border-input bg-background hover:bg-accent/50 transition-colors min-h-[40px] group"
+          className="w-full text-left flex items-center gap-2 px-3 py-2 border border-input bg-background hover:bg-accent/50 transition-colors min-h-[40px] group"
         >
           {filters.keywords ? (
             <span className="text-sm truncate flex-1">{filters.keywords}</span>
@@ -319,7 +319,7 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
         <Button
           onClick={onSearch}
           disabled={loading || !selectedAccount || !selectedJob || needsReconnection || !isApiModeAvailable}
-          className="flex-1 bg-[#0077B5] hover:bg-[#005E93]"
+          className="flex-1 bg-foreground text-background hover:bg-foreground/90"
         >
           {loading ? (
             <Loader2 className="w-4 h-4 animate-spin mr-2" />

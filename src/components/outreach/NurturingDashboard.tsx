@@ -241,10 +241,10 @@ export function NurturingDashboard({ accounts, selectedAccount }: NurturingDashb
 
   if (accounts.length === 0) {
     return (
-      <div className="bg-white rounded-xl border border-[#1A1A1A]/10 p-12 text-center">
-        <AlertCircle className="w-12 h-12 text-[#1A1A1A]/30 mx-auto mb-4" />
-        <h3 className="text-lg font-semibold mb-2">Connectez un compte LinkedIn</h3>
-        <p className="text-[#1A1A1A]/60">Le nurturing nécessite un compte LinkedIn connecté.</p>
+      <div className="bg-background border border-foreground/10 p-12 text-center">
+        <AlertCircle className="w-12 h-12 text-foreground/30 mx-auto mb-4" />
+        <h3 className="text-lg font-semibold mb-2 uppercase tracking-wide">Connectez un compte LinkedIn</h3>
+        <p className="text-muted-foreground">Le nurturing nécessite un compte LinkedIn connecté.</p>
       </div>
     );
   }
@@ -252,25 +252,25 @@ export function NurturingDashboard({ accounts, selectedAccount }: NurturingDashb
   return (
     <div className="space-y-4">
       {/* Compact Stats Bar */}
-      <div className="flex items-center justify-between bg-white rounded-lg border p-3">
+      <div className="flex items-center justify-between bg-background border border-foreground/10 p-3">
         <div className="flex items-center gap-6">
           <div className="flex items-center gap-2">
-            <Sparkles className="w-4 h-4 text-blue-600" />
+            <Sparkles className="w-4 h-4 text-foreground" />
             <span className="font-semibold">{stats.total}</span>
             <span className="text-xs text-muted-foreground">opportunités</span>
           </div>
           <div className="flex items-center gap-2">
-            <MessageSquare className="w-4 h-4 text-green-600" />
+            <MessageSquare className="w-4 h-4 text-foreground" />
             <span className="font-semibold">{withMessages}</span>
             <span className="text-xs text-muted-foreground">avec message</span>
           </div>
           <div className="flex items-center gap-2">
-            <Clock className="w-4 h-4 text-orange-600" />
+            <Clock className="w-4 h-4 text-foreground" />
             <span className="font-semibold">{stats.byTrigger.silence || 0}</span>
             <span className="text-xs text-muted-foreground">à relancer</span>
           </div>
           <div className="flex items-center gap-2">
-            <TrendingUp className="w-4 h-4 text-purple-600" />
+            <TrendingUp className="w-4 h-4 text-foreground" />
             <span className="font-semibold">{stats.avgPriority}%</span>
             <span className="text-xs text-muted-foreground">priorité moy.</span>
           </div>
@@ -339,7 +339,7 @@ export function NurturingDashboard({ accounts, selectedAccount }: NurturingDashb
                 className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
               >
                 {selectedIds.size === opportunities.length && opportunities.length > 0 ? (
-                  <CheckSquare className="w-4 h-4 text-[#0077B5]" />
+                  <CheckSquare className="w-4 h-4 text-foreground" />
                 ) : (
                   <Square className="w-4 h-4" />
                 )}
@@ -362,7 +362,7 @@ export function NurturingDashboard({ accounts, selectedAccount }: NurturingDashb
                 <Button
                   size="sm"
                   onClick={handleBulkSend}
-                  className="bg-[#0077B5] hover:bg-[#005E93]"
+                  className="bg-foreground text-background hover:bg-foreground/90"
                 >
                   <Send className="w-4 h-4 mr-1" />
                   Envoyer ({selectedIds.size})
@@ -381,7 +381,7 @@ export function NurturingDashboard({ accounts, selectedAccount }: NurturingDashb
             </div>
           ) : opportunities.length === 0 ? (
             <div className="text-center py-12">
-              <Sparkles className="w-12 h-12 text-[#1A1A1A]/20 mx-auto mb-4" />
+              <Sparkles className="w-12 h-12 text-foreground/20 mx-auto mb-4" />
               <h3 className="font-medium mb-2">Aucune opportunité</h3>
               <p className="text-sm text-muted-foreground mb-4">
                 Lancez une analyse pour détecter des opportunités avec messages pré-générés
@@ -403,7 +403,7 @@ export function NurturingDashboard({ accounts, selectedAccount }: NurturingDashb
                   return (
                     <div 
                       key={opp.id} 
-                      className={`transition-colors ${isSelected ? 'bg-blue-50/50' : 'hover:bg-gray-50/50'}`}
+                      className={`transition-colors ${isSelected ? 'bg-accent/50' : 'hover:bg-muted/50'}`}
                     >
                       {/* Main Row - Always Visible */}
                       <div className="flex items-center gap-3 px-4 py-3">
@@ -411,12 +411,12 @@ export function NurturingDashboard({ accounts, selectedAccount }: NurturingDashb
                         <Checkbox
                           checked={isSelected}
                           onCheckedChange={() => toggleSelect(opp.id)}
-                          className="data-[state=checked]:bg-[#0077B5] data-[state=checked]:border-[#0077B5]"
+                          className="data-[state=checked]:bg-foreground data-[state=checked]:border-foreground"
                         />
 
                         {/* Priority Bar */}
                         <div 
-                          className={`w-1.5 h-10 rounded-full ${getPriorityColor(opp.priority_score)}`}
+                          className={`w-1.5 h-10 ${getPriorityColor(opp.priority_score)}`}
                           title={`Priorité: ${opp.priority_score}%`}
                         />
 
@@ -431,7 +431,7 @@ export function NurturingDashboard({ accounts, selectedAccount }: NurturingDashb
                                 href={opp.candidate_profile_url} 
                                 target="_blank" 
                                 rel="noopener noreferrer"
-                                className="text-[#0077B5] hover:underline shrink-0"
+                                className="text-foreground hover:underline shrink-0"
                               >
                                 <ExternalLink className="w-3 h-3" />
                               </a>
@@ -484,7 +484,7 @@ export function NurturingDashboard({ accounts, selectedAccount }: NurturingDashb
                             size="sm"
                             onClick={() => handleSend(opp)}
                             disabled={isSending || !msg.message.trim()}
-                            className="bg-[#0077B5] hover:bg-[#005E93] h-8"
+                            className="bg-foreground text-background hover:bg-foreground/90 h-8"
                           >
                             {isSending ? (
                               <RefreshCw className="w-4 h-4 animate-spin" />
@@ -497,13 +497,13 @@ export function NurturingDashboard({ accounts, selectedAccount }: NurturingDashb
 
                       {/* Expanded Section */}
                       {isExpanded && (
-                        <div className="px-4 pb-4 pt-1 bg-gray-50/50 border-t">
+                        <div className="px-4 pb-4 pt-1 bg-muted/30 border-t border-foreground/10">
                           <div className="grid md:grid-cols-2 gap-4">
                             {/* Left: Context */}
                             <div className="space-y-3">
                               {/* Last Message Preview */}
                               {lastMessagePreview && (
-                                <div className="bg-white rounded-lg border p-3">
+                                <div className="bg-background border border-foreground/10 p-3">
                                   <div className="text-xs font-medium text-muted-foreground mb-1">Dernier message</div>
                                   <p className="text-sm italic line-clamp-3">"{lastMessagePreview}"</p>
                                 </div>
@@ -511,9 +511,9 @@ export function NurturingDashboard({ accounts, selectedAccount }: NurturingDashb
 
                               {/* Job Match */}
                               {opp.job_title && (
-                                <div className="bg-white rounded-lg border p-3">
+                                <div className="bg-background border border-foreground/10 p-3">
                                   <div className="flex items-center gap-2">
-                                    <Briefcase className="w-4 h-4 text-[#0077B5]" />
+                                    <Briefcase className="w-4 h-4 text-foreground" />
                                     <span className="text-sm font-medium">{opp.job_title}</span>
                                   </div>
                                 </div>
@@ -521,7 +521,7 @@ export function NurturingDashboard({ accounts, selectedAccount }: NurturingDashb
 
                               {/* Intent */}
                               {opp.detected_intent && (
-                                <div className="bg-white rounded-lg border p-3">
+                                <div className="bg-background border border-foreground/10 p-3">
                                   <div className="text-xs font-medium text-muted-foreground mb-1">Intent détecté</div>
                                   <Badge variant="secondary" className="text-xs">
                                     {opp.detected_intent}
@@ -531,7 +531,7 @@ export function NurturingDashboard({ accounts, selectedAccount }: NurturingDashb
                             </div>
 
                             {/* Right: Message Editor */}
-                            <div className="space-y-3 bg-white rounded-lg border p-3">
+                            <div className="space-y-3 bg-background border border-foreground/10 p-3">
                               <div>
                                 <label className="text-xs font-medium text-muted-foreground">Objet</label>
                                 <Input
@@ -570,7 +570,7 @@ export function NurturingDashboard({ accounts, selectedAccount }: NurturingDashb
                                   size="sm"
                                   onClick={() => handleSend(opp)}
                                   disabled={isSending || !msg.message.trim()}
-                                  className="bg-[#0077B5] hover:bg-[#005E93]"
+                                  className="bg-foreground text-background hover:bg-foreground/90"
                                 >
                                   {isSending ? (
                                     <RefreshCw className="w-4 h-4 animate-spin mr-1" />
