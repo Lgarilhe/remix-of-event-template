@@ -1286,6 +1286,7 @@ async function handleMarkAsRead(
       },
       body: JSON.stringify({
         action: 'setAllMessagesAsRead',
+        value: true,
       }),
     });
 
