@@ -205,7 +205,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
   }, [filteredResults, statusFilter, getAirtableMatch, getNotionMatch]);
 
   return (
-    <div className="bg-background border border-foreground flex flex-col min-h-[420px] lg:h-full min-w-0 overflow-hidden">
+    <div className="bg-background border border-foreground flex flex-col min-h-[420px] lg:h-full min-w-0 overflow-y-hidden">
       {/* ROW 1: Search button + count */}
       <div className="flex flex-wrap items-center justify-between px-3 sm:px-4 py-2 border-b border-border shrink-0 gap-2 min-w-0">
         <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-wrap">
@@ -496,7 +496,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
             )}
           </div>
         ) : (
-          <div className="p-2 sm:p-4 space-y-2 min-w-0 overflow-hidden">
+          <div className="p-2 sm:p-4 space-y-2 min-w-0">
             {/* Batch workflow banner */}
             {hasSearched && total !== null && total > 0 && (
               <div className="border border-foreground bg-brutal-accent/15 mb-3 overflow-hidden">
