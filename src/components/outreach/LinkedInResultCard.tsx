@@ -124,14 +124,14 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
 
           {/* Avatar */}
           <div className="relative shrink-0">
-            <Avatar className="w-10 h-10 sm:w-14 sm:h-14 border-2 border-foreground rounded-none">
+            <Avatar className="w-10 h-10 sm:w-14 sm:h-14 border-2 border-border shadow-md">
               <AvatarImage src={profile.profile_picture_url} alt={fullName} className="object-cover" />
-              <AvatarFallback className="bg-foreground text-background text-lg font-medium rounded-none">
+              <AvatarFallback className="bg-gradient-to-br from-primary to-primary/80 text-primary-foreground text-lg font-medium">
                 {initials || '?'}
               </AvatarFallback>
             </Avatar>
             {networkDistance && networkDistance <= 3 && (
-              <span className="absolute -bottom-1 -right-1 w-5 h-5 bg-background border border-foreground flex items-center justify-center text-[10px] font-bold text-foreground">
+              <span className="absolute -bottom-1 -right-1 w-5 h-5 bg-background border-2 border-primary rounded-full flex items-center justify-center text-[10px] font-bold text-primary">
                 {networkDistance}°
               </span>
             )}
@@ -260,7 +260,7 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
 
             {/* Experience preview - compact */}
             {(otherCurrentJobs.length > 0 || pastJobs.length > 0) && (
-              <div className="mt-2 pt-2 border-t border-foreground/20">
+              <div className="mt-2 pt-2 border-t border-border/50">
               <div className="space-y-1.5">
                   {[...otherCurrentJobs.slice(0, 1), ...pastJobs.slice(0, 1)].map((pos: any, index: number) => (
                     <div key={index} className="flex items-center gap-2 text-xs min-w-0">
@@ -289,12 +289,12 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
             {skills.length > 0 && (
               <div className="flex flex-wrap gap-1 mt-2 overflow-hidden">
                 {skills.slice(0, 4).map((skill: any, index: number) => (
-                  <Badge key={index} variant="secondary" className="text-[10px] px-1.5 py-0 bg-muted text-muted-foreground font-normal rounded-none border border-foreground/10">
+                  <Badge key={index} variant="secondary" className="text-[10px] px-1.5 py-0 bg-muted text-muted-foreground font-normal">
                     {skill.name || skill}
                   </Badge>
                 ))}
                 {skills.length > 4 && (
-                  <Badge variant="secondary" className="text-[10px] px-1.5 py-0 bg-primary/10 text-primary font-medium rounded-none border border-primary/20">
+                  <Badge variant="secondary" className="text-[10px] px-1.5 py-0 bg-primary/10 text-primary font-medium">
                     +{skills.length - 4}
                   </Badge>
                 )}
