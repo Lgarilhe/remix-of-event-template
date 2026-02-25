@@ -41,21 +41,21 @@ export const ChatListItem: React.FC<ChatListItemProps> = ({
     <button
       onClick={onClick}
       className={cn(
-        "w-full p-3 flex items-start gap-3 text-left hover:bg-[#1A1A1A]/3 transition-colors",
-        isSelected && "bg-[#0077B5]/5",
-        unread && "bg-[#0077B5]/3"
+        "w-full p-3 flex items-start gap-3 text-left hover:bg-brutal-accent/10 transition-colors",
+        isSelected && "bg-brutal-accent/15 border-l-2 border-l-foreground",
+        unread && !isSelected && "bg-muted/50"
       )}
     >
       {/* Avatar with unread indicator */}
       <div className="relative shrink-0">
-        <Avatar className="w-12 h-12">
+        <Avatar className="w-12 h-12 rounded-none">
           <AvatarImage src={avatar} />
-          <AvatarFallback className="bg-[#0077B5]/10 text-[#0077B5] font-medium">
+          <AvatarFallback className="bg-foreground/10 text-foreground font-medium rounded-none">
             {getInitials(displayName)}
           </AvatarFallback>
         </Avatar>
         {unread && (
-          <span className="absolute -top-0.5 -right-0.5 w-4 h-4 bg-[#0077B5] rounded-full flex items-center justify-center text-[9px] text-white font-bold">
+          <span className="absolute -top-0.5 -right-0.5 w-4 h-4 bg-destructive flex items-center justify-center text-[9px] text-destructive-foreground font-bold">
             {unreadCount}
           </span>
         )}
@@ -66,14 +66,14 @@ export const ChatListItem: React.FC<ChatListItemProps> = ({
           <div className="flex items-center gap-1.5 min-w-0">
             <span className={cn(
               "text-sm truncate",
-              unread ? "font-semibold text-[#1A1A1A]" : "font-medium text-[#1A1A1A]"
+              unread ? "font-semibold text-foreground" : "font-medium text-foreground"
             )}>
               {displayName}
             </span>
             {/* Source type badge */}
             {sourceType && (
               <span className={cn(
-                "shrink-0 px-1.5 py-0.5 text-[9px] font-medium rounded border",
+                "shrink-0 px-1.5 py-0.5 text-[9px] font-medium border uppercase tracking-wider",
                 sourceType.color
               )}>
                 {sourceType.label}

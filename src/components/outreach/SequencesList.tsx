@@ -433,7 +433,7 @@ export const SequencesList: React.FC<SequencesListProps> = ({
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
+        <div className="animate-spin h-8 w-8 border-b-2 border-foreground" />
       </div>
     );
   }
@@ -442,47 +442,44 @@ export const SequencesList: React.FC<SequencesListProps> = ({
     <div className="space-y-4">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <h1 className="text-xl sm:text-2xl font-semibold text-gray-900">Séquences</h1>
-        <div className="flex items-center gap-2 overflow-x-auto no-scrollbar">
-          <Button 
-            variant="outline"
-            size="sm"
+        <h1 className="text-lg sm:text-xl font-bold text-foreground uppercase tracking-tight">Séquences</h1>
+        <div className="flex items-center gap-0 overflow-x-auto no-scrollbar">
+          <button 
             onClick={() => setShowGlobalAnalytics(true)}
-            className="border-gray-200 shrink-0"
+            className="relative overflow-hidden flex items-center gap-1.5 h-[34px] px-3 sm:px-4 text-[11px] sm:text-xs font-medium uppercase tracking-wider border border-foreground/20 bg-background text-foreground group shrink-0"
           >
-            <BarChart3 className="w-4 h-4 sm:mr-2" />
-            <span className="hidden sm:inline">Analytics</span>
-          </Button>
-          <Button 
-            variant="outline"
-            size="sm"
+            <BarChart3 className="w-3.5 h-3.5 relative z-10" />
+            <span className="hidden sm:inline relative z-10">Analytics</span>
+            <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
+          </button>
+          <button 
             onClick={() => setShowActivityLog(true)}
-            className="border-gray-200 shrink-0"
+            className="relative overflow-hidden flex items-center gap-1.5 h-[34px] px-3 sm:px-4 text-[11px] sm:text-xs font-medium uppercase tracking-wider border border-foreground/20 border-l-0 bg-background text-foreground group shrink-0"
           >
-            <Activity className="w-4 h-4 sm:mr-2" />
-            <span className="hidden sm:inline">Journal d'activité</span>
-          </Button>
-          <Button 
-            size="sm"
+            <Activity className="w-3.5 h-3.5 relative z-10" />
+            <span className="hidden sm:inline relative z-10">Journal</span>
+            <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
+          </button>
+          <button 
             onClick={handleCreateNew}
-            className="bg-blue-600 hover:bg-blue-700 text-white rounded-lg shrink-0"
+            className="relative overflow-hidden flex items-center gap-1.5 h-[34px] px-3 sm:px-4 text-[11px] sm:text-xs font-medium uppercase tracking-wider border border-foreground/20 border-l-0 bg-foreground text-background group shrink-0"
           >
-            <Send className="w-4 h-4 sm:mr-2" />
-            <span className="hidden sm:inline">Créer une séquence</span>
-            <span className="sm:hidden">Créer</span>
-          </Button>
+            <Send className="w-3.5 h-3.5 relative z-10" />
+            <span className="hidden sm:inline relative z-10">Créer une séquence</span>
+            <span className="sm:hidden relative z-10">Créer</span>
+          </button>
         </div>
       </div>
 
       {/* Search & Filters */}
       <div className="flex items-center gap-3">
         <div className="relative flex-1 max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <Input
             placeholder="Rechercher une séquence..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-9 bg-white border-gray-200"
+            className="pl-9 bg-background border-foreground/10 rounded-none"
           />
         </div>
       </div>
@@ -505,26 +502,25 @@ export const SequencesList: React.FC<SequencesListProps> = ({
 
       {/* Table */}
       {sequences.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-16 bg-white rounded-xl border border-gray-100">
-          <div className="w-16 h-16 rounded-full bg-gray-100 flex items-center justify-center mb-4">
-            <Send className="w-8 h-8 text-gray-400" />
+        <div className="flex flex-col items-center justify-center py-16 bg-background border border-foreground/10">
+          <div className="h-16 w-16 bg-foreground text-background flex items-center justify-center mb-4">
+            <Send className="w-8 h-8" />
           </div>
-          <h3 className="font-semibold text-lg text-gray-900 mb-2">Aucune séquence</h3>
-          <p className="text-gray-500 text-center mb-6 max-w-md">
+          <h3 className="font-bold text-lg text-foreground mb-2 uppercase tracking-wide">Aucune séquence</h3>
+          <p className="text-muted-foreground text-center mb-6 max-w-md text-sm">
             Créez votre première séquence d'outreach pour automatiser vos prises de contact LinkedIn.
           </p>
-          <Button 
+          <button 
             onClick={handleCreateNew}
-            className="bg-blue-600 hover:bg-blue-700"
+            className="relative overflow-hidden h-[34px] px-6 bg-foreground text-background border border-foreground text-xs font-medium uppercase tracking-wider group"
           >
-            <Plus className="w-4 h-4 mr-2" />
-            Créer une séquence
-          </Button>
+            <span className="relative z-10 flex items-center gap-2"><Plus className="w-4 h-4" /> Créer une séquence</span>
+          </button>
         </div>
       ) : (
-        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+        <div className="bg-background border border-foreground/10 overflow-hidden">
           {/* Table header - hidden on mobile */}
-          <div className="hidden sm:grid grid-cols-[auto_auto_1fr_100px_100px_100px_80px] gap-4 px-4 py-3 bg-gray-50 border-b border-gray-200 text-xs font-medium text-gray-500 uppercase tracking-wide">
+          <div className="hidden sm:grid grid-cols-[auto_auto_1fr_100px_100px_100px_80px] gap-4 px-4 py-3 bg-muted border-b border-foreground/10 text-xs font-medium text-muted-foreground uppercase tracking-wide">
             <div className="w-5" />
             <div>Statut</div>
             <div>Nom de la séquence</div>
@@ -535,13 +531,12 @@ export const SequencesList: React.FC<SequencesListProps> = ({
           </div>
 
           {/* Table body */}
-          <div className="divide-y divide-gray-100">
+          <div className="divide-y divide-foreground/5">
             {filteredSequences.map((seq, index) => (
               <div
                 key={seq.id}
                 className={cn(
-                  // Desktop: grid table row
-                  "hidden sm:grid grid-cols-[auto_auto_1fr_100px_100px_100px_80px] gap-4 px-4 py-3 items-center hover:bg-gray-50 transition-colors",
+                  "hidden sm:grid grid-cols-[auto_auto_1fr_100px_100px_100px_80px] gap-4 px-4 py-3 items-center hover:bg-brutal-accent/10 transition-colors",
                   selectedProfiles.length > 0 && "cursor-pointer"
                 )}
                 onClick={() => {
@@ -560,31 +555,31 @@ export const SequencesList: React.FC<SequencesListProps> = ({
                 <div className="flex items-center gap-3 min-w-0">
                   <span className="text-lg">{getSequenceEmoji(index)}</span>
                   <div className="flex-1 min-w-0">
-                    <div className="font-medium text-gray-900 truncate">{seq.name}</div>
+                    <div className="font-medium text-foreground truncate">{seq.name}</div>
                     {seq.description && (
-                      <div className="text-xs text-gray-500 truncate">{seq.description}</div>
+                      <div className="text-xs text-muted-foreground truncate">{seq.description}</div>
                     )}
                   </div>
                 </div>
                 <button 
-                  className="inline-flex items-center justify-center gap-1.5 px-2.5 py-1.5 text-sm bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 transition-colors cursor-pointer border border-blue-200"
+                  className="inline-flex items-center justify-center gap-1.5 px-2.5 py-1.5 text-sm bg-muted text-foreground hover:bg-brutal-accent/20 transition-colors cursor-pointer border border-foreground/10"
                   onClick={(e) => { e.stopPropagation(); setEnrollmentsPanelSequence(seq); }}
                   title="Voir et gérer les candidats inscrits"
                 >
                   <Users className="w-3.5 h-3.5" />
                   <span className="font-medium">{seq.enrollments.active}</span>
-                  <span className="text-blue-400">/</span>
+                  <span className="text-muted-foreground">/</span>
                   <span>{seq.enrollments.total}</span>
                 </button>
-                <div className="text-center text-sm text-gray-500">
+                <div className="text-center text-sm text-muted-foreground">
                   {formatDistanceToNow(new Date(seq.created_at), { addSuffix: false, locale: fr })}
                 </div>
                 <div className="flex items-center justify-center gap-1">
-                  <button className="p-1.5 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600">
+                  <button className="p-1.5 hover:bg-brutal-accent/20 text-muted-foreground hover:text-foreground transition-colors">
                     <Star className="w-4 h-4" />
                   </button>
                   <button 
-                    className="p-1.5 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600"
+                    className="p-1.5 hover:bg-brutal-accent/20 text-muted-foreground hover:text-foreground transition-colors"
                     onClick={(e) => { e.stopPropagation(); setAnalyticsSequence(seq); }}
                     title="Voir les analytics"
                   >
@@ -593,11 +588,11 @@ export const SequencesList: React.FC<SequencesListProps> = ({
                 </div>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-                    <button className="p-1.5 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600">
+                    <button className="p-1.5 hover:bg-brutal-accent/20 text-muted-foreground hover:text-foreground transition-colors">
                       <MoreHorizontal className="w-4 h-4" />
                     </button>
                   </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="bg-white">
+                  <DropdownMenuContent align="end" className="bg-background border-foreground/10">
                     <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleEdit(seq); }}>
                       <Edit2 className="w-4 h-4 mr-2" />
                       Modifier
@@ -620,7 +615,7 @@ export const SequencesList: React.FC<SequencesListProps> = ({
               <div
                 key={`mobile-${seq.id}`}
                 className={cn(
-                  "sm:hidden p-3 space-y-2.5",
+                  "sm:hidden p-3 space-y-2.5 hover:bg-brutal-accent/10 transition-colors",
                   selectedProfiles.length > 0 && "cursor-pointer"
                 )}
                 onClick={() => {
@@ -633,9 +628,9 @@ export const SequencesList: React.FC<SequencesListProps> = ({
                   <div className="flex items-center gap-2 min-w-0 flex-1">
                     <span className="text-base">{getSequenceEmoji(index)}</span>
                     <div className="min-w-0 flex-1">
-                      <div className="font-medium text-sm text-gray-900 truncate">{seq.name}</div>
+                      <div className="font-medium text-sm text-foreground truncate">{seq.name}</div>
                       {seq.description && (
-                        <div className="text-xs text-gray-500 truncate">{seq.description}</div>
+                        <div className="text-xs text-muted-foreground truncate">{seq.description}</div>
                       )}
                     </div>
                   </div>
@@ -648,11 +643,11 @@ export const SequencesList: React.FC<SequencesListProps> = ({
                     />
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-                        <button className="p-1 rounded hover:bg-gray-100 text-gray-400">
+                        <button className="p-1 hover:bg-brutal-accent/20 text-muted-foreground">
                           <MoreHorizontal className="w-4 h-4" />
                         </button>
                       </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="bg-white">
+                      <DropdownMenuContent align="end" className="bg-background border-foreground/10">
                         <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleEdit(seq); }}>
                           <Edit2 className="w-4 h-4 mr-2" />
                           Modifier
@@ -675,13 +670,13 @@ export const SequencesList: React.FC<SequencesListProps> = ({
                 </div>
                 <div className="flex items-center gap-2">
                   <button 
-                    className="inline-flex items-center gap-1.5 px-2 py-1 text-xs bg-blue-50 text-blue-700 rounded-md hover:bg-blue-100 border border-blue-200"
+                    className="inline-flex items-center gap-1.5 px-2 py-1 text-xs bg-muted text-foreground hover:bg-brutal-accent/20 border border-foreground/10"
                     onClick={(e) => { e.stopPropagation(); setEnrollmentsPanelSequence(seq); }}
                   >
                     <Users className="w-3 h-3" />
                     <span className="font-medium">{seq.enrollments.active}/{seq.enrollments.total}</span>
                   </button>
-                  <span className="text-xs text-gray-400">
+                  <span className="text-xs text-muted-foreground">
                     {formatDistanceToNow(new Date(seq.created_at), { addSuffix: true, locale: fr })}
                   </span>
                 </div>
@@ -751,7 +746,7 @@ export const SequencesList: React.FC<SequencesListProps> = ({
 
       {/* Delete confirmation */}
       <AlertDialog open={!!deleteConfirmId} onOpenChange={() => setDeleteConfirmId(null)}>
-        <AlertDialogContent className="bg-white">
+        <AlertDialogContent className="bg-background border-foreground/10 rounded-none">
           <AlertDialogHeader>
             <AlertDialogTitle>Supprimer cette séquence ?</AlertDialogTitle>
             <AlertDialogDescription>

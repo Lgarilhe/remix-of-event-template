@@ -47,13 +47,13 @@ export const ChatListSidebar: React.FC<ChatListSidebarProps> = ({
 
   return (
     <div className={cn(
-      "w-full md:w-80 border-r border-[#1A1A1A]/10 flex flex-col flex-shrink-0",
+      "w-full md:w-80 border-r border-foreground/10 flex flex-col flex-shrink-0 bg-background",
       selectedChat ? "hidden md:flex" : "flex"
     )}>
       {/* Search Header */}
-      <div className="p-3 border-b border-[#1A1A1A]/10 space-y-2">
+      <div className="p-3 border-b border-foreground/10 space-y-2">
         <div className="flex items-center justify-between">
-          <h3 className="font-semibold text-[#1A1A1A]">Messages</h3>
+          <h3 className="font-semibold text-foreground uppercase tracking-wide text-xs">Messages</h3>
           <Button 
             variant="ghost" 
             size="icon" 
@@ -70,68 +70,62 @@ export const ChatListSidebar: React.FC<ChatListSidebarProps> = ({
             placeholder="Rechercher une conversation..."
             value={searchQuery}
             onChange={(e) => onSearchChange(e.target.value)}
-            className="pl-9 h-9"
+            className="pl-9 h-9 border-foreground/10 rounded-none"
           />
         </div>
         
-        {/* Source filter tabs */}
-        <div className="flex gap-1">
-          <Button
-            variant={sourceFilter === 'all' ? "default" : "outline"}
-            size="sm"
-            className={cn(
-              "flex-1 h-7 text-[10px] px-2",
-              sourceFilter === 'all' && "bg-[#0077B5] hover:bg-[#005E93]"
-            )}
-            onClick={() => onSourceFilterChange('all')}
-          >
-            Tous ({chats.length})
-          </Button>
-          <Button
-            variant={sourceFilter === 'classic' ? "default" : "outline"}
-            size="sm"
-            className={cn(
-              "flex-1 h-7 text-[10px] px-2",
-              sourceFilter === 'classic' && "bg-slate-600 hover:bg-slate-700"
-            )}
-            onClick={() => onSourceFilterChange('classic')}
-          >
-            Classic ({classicCount})
-          </Button>
-          <Button
-            variant={sourceFilter === 'recruiter' ? "default" : "outline"}
-            size="sm"
-            className={cn(
-              "flex-1 h-7 text-[10px] px-2",
-              sourceFilter === 'recruiter' && "bg-amber-600 hover:bg-amber-700"
-            )}
-            onClick={() => onSourceFilterChange('recruiter')}
-          >
-            Recruiter ({recruiterCount})
-          </Button>
+        {/* Source filter tabs — brutal style */}
+        <div className="flex gap-0">
+          {([
+            { key: 'all' as const, label: `Tous (${chats.length})` },
+            { key: 'classic' as const, label: `Classic (${classicCount})` },
+            { key: 'recruiter' as const, label: `Recruiter (${recruiterCount})` },
+          ]).map((tab, index) => (
+            <button
+              key={tab.key}
+              onClick={() => onSourceFilterChange(tab.key)}
+              className={cn(
+                "relative overflow-hidden flex-1 h-7 text-[10px] font-medium uppercase tracking-wider border border-foreground/20 transition-colors group",
+                index > 0 && "border-l-0",
+                sourceFilter === tab.key
+                  ? "bg-foreground text-background"
+                  : "bg-background text-foreground"
+              )}
+            >
+              <span className="relative z-10">{tab.label}</span>
+              {sourceFilter !== tab.key && (
+                <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
+              )}
+            </button>
+          ))}
         </div>
         
         {/* Unread filter toggle */}
-        <Button
-          variant={showUnreadOnly ? "default" : "outline"}
-          size="sm"
-          className={cn(
-            "w-full h-7 text-[10px] gap-2",
-            showUnreadOnly && "bg-[#0077B5] hover:bg-[#005E93]"
-          )}
+        <button
           onClick={() => onShowUnreadOnlyChange(!showUnreadOnly)}
+          className={cn(
+            "relative overflow-hidden w-full h-7 text-[10px] font-medium uppercase tracking-wider border border-foreground/20 flex items-center justify-center gap-2 transition-colors group",
+            showUnreadOnly
+              ? "bg-foreground text-background"
+              : "bg-background text-foreground"
+          )}
         >
-          <Reply className="w-3 h-3" />
-          Non lus uniquement
+          <Reply className="w-3 h-3 relative z-10" />
+          <span className="relative z-10">Non lus uniquement</span>
           {unreadCount > 0 && (
-            <Badge variant="secondary" className={cn(
-              "ml-auto h-5 px-1.5 text-[10px]",
-              showUnreadOnly && "bg-white/20 text-white"
+            <span className={cn(
+              "ml-1 px-1.5 py-0.5 text-[9px] font-bold min-w-[16px] text-center relative z-10",
+              showUnreadOnly 
+                ? "bg-background/20 text-background" 
+                : "bg-destructive text-destructive-foreground rounded-full"
             )}>
               {unreadCount}
-            </Badge>
+            </span>
           )}
-        </Button>
+          {!showUnreadOnly && (
+            <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
+          )}
+        </button>
       </div>
 
       {/* Chat List */}
@@ -140,7 +134,7 @@ export const ChatListSidebar: React.FC<ChatListSidebarProps> = ({
           <div className="p-3 space-y-3">
             {[1, 2, 3, 4, 5].map(i => (
               <div key={i} className="flex items-center gap-3">
-                <Skeleton className="w-12 h-12 rounded-full" />
+                <Skeleton className="w-12 h-12 rounded-none" />
                 <div className="flex-1 space-y-2">
                   <Skeleton className="h-4 w-3/4" />
                   <Skeleton className="h-3 w-1/2" />
@@ -156,7 +150,7 @@ export const ChatListSidebar: React.FC<ChatListSidebarProps> = ({
             </p>
           </div>
         ) : (
-          <div className="divide-y divide-[#1A1A1A]/5">
+          <div className="divide-y divide-foreground/5">
             {filteredChats.map(chat => (
               <ChatListItem
                 key={chat.id}
