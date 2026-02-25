@@ -207,7 +207,7 @@ export const MessageAISheet: React.FC<MessageAISheetProps> = ({
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
         side="right"
-        className="w-full sm:max-w-md p-0 rounded-none border-l-2 border-foreground bg-background"
+        className="w-[100vw] sm:w-[420px] sm:max-w-md p-0 rounded-none border-l-2 border-foreground bg-background overflow-hidden"
       >
         <SheetTitle className="sr-only">Assistant IA</SheetTitle>
 
@@ -259,20 +259,20 @@ export const MessageAISheet: React.FC<MessageAISheetProps> = ({
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
               className={cn(
-                "flex-1 flex items-center justify-center gap-1.5 py-2.5 text-xs font-medium uppercase tracking-wide transition-colors border-b-2 -mb-px",
+                "flex-1 flex items-center justify-center gap-1 py-2.5 text-[11px] font-medium uppercase tracking-wide transition-colors border-b-2 -mb-px",
                 activeTab === tab.id
                   ? "border-foreground text-foreground bg-brutal-accent/10"
                   : "border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/50"
               )}
             >
               {tab.icon}
-              <span className="hidden sm:inline">{tab.label}</span>
+              <span>{tab.label}</span>
             </button>
           ))}
         </div>
 
         {/* Content */}
-        <ScrollArea className="h-[calc(100vh-140px)]">
+        <ScrollArea className="h-[calc(100dvh-130px)]">
           <div className="p-4 space-y-3">
             {/* Loading */}
             {loading && !analysis && activeTab !== 'history' ? (
@@ -396,20 +396,20 @@ const AnalyzePanel: React.FC<{ analysis: AnalysisResult; onRefresh: () => void }
             <button
               key={i}
               className={cn(
-                "w-full flex items-center gap-3 p-2.5 border text-left transition-colors hover:bg-brutal-accent/10",
+                "w-full flex flex-col gap-1 p-2.5 border text-left transition-colors hover:bg-brutal-accent/10",
                 action.priority === 'high' && "border-destructive/50 bg-destructive/5",
                 action.priority === 'medium' && "border-foreground/30",
                 action.priority === 'low' && "border-foreground/10"
               )}
               onClick={() => toast.info(action.label, { description: action.description })}
             >
-              <div className="flex-1 min-w-0">
+              <div className="flex items-center justify-between gap-2 w-full">
                 <p className="text-xs font-medium">{action.label}</p>
-                <p className="text-[10px] text-muted-foreground truncate">{action.description}</p>
+                <Badge variant="outline" className="text-[9px] rounded-none shrink-0">
+                  {action.priority === 'high' ? '🔴' : action.priority === 'medium' ? '🟡' : '⚪'}
+                </Badge>
               </div>
-              <Badge variant="outline" className="text-[9px] rounded-none shrink-0">
-                {action.priority === 'high' ? '🔴' : action.priority === 'medium' ? '🟡' : '⚪'} {action.priority}
-              </Badge>
+              <p className="text-[10px] text-muted-foreground leading-relaxed">{action.description}</p>
             </button>
           ))}
         </div>
