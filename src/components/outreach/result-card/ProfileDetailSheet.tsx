@@ -315,17 +315,8 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
             <div className="p-6 space-y-6">
               {/* Job Score */}
               {jobScore && (
-                <div className="rounded-xl border border-border/60 p-4 bg-background">
+                <div className="rounded-xl border border-border/50 p-5 bg-muted/20">
                   <JobScoreDisplay result={jobScore} jobTitle={selectedJob?.title} compact={false} />
-                  {jobScore.recommendation === 'skip' && jobScore.summary && (
-                    <div className="mt-3 flex items-start gap-2 p-3 rounded-lg bg-destructive/5 border border-destructive/15 text-xs text-destructive">
-                      <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
-                      <div>
-                        <span className="font-semibold">Raison du rejet : </span>
-                        <span>{jobScore.summary}</span>
-                      </div>
-                    </div>
-                  )}
                 </div>
               )}
 

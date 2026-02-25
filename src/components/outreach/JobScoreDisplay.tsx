@@ -1,5 +1,5 @@
 import React from 'react';
-import { CheckCircle2, XCircle, AlertCircle, Target, MapPin, Briefcase, TrendingUp, TrendingDown, DollarSign, HelpCircle } from 'lucide-react';
+import { CheckCircle2, XCircle, AlertCircle, Target, MapPin, Briefcase, TrendingUp, TrendingDown, DollarSign } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 
@@ -120,6 +120,66 @@ export const SalaryBadge: React.FC<{ analysis?: SalaryAnalysis }> = ({ analysis 
   );
 };
 
+// ── Circular Score Ring ──
+const ScoreRing: React.FC<{ score: number; size?: number }> = ({ score, size = 64 }) => {
+  const strokeWidth = 5;
+  const radius = (size - strokeWidth) / 2;
+  const circumference = 2 * Math.PI * radius;
+  const offset = circumference - (score / 100) * circumference;
+
+  const strokeColor = score >= 75 ? '#10b981' : score >= 50 ? '#f59e0b' : '#ef4444';
+  const bgStroke = score >= 75 ? '#d1fae5' : score >= 50 ? '#fef3c7' : '#fee2e2';
+
+  return (
+    <div className="relative" style={{ width: size, height: size }}>
+      <svg width={size} height={size} className="-rotate-90">
+        <circle
+          cx={size / 2} cy={size / 2} r={radius}
+          fill="none" stroke={bgStroke} strokeWidth={strokeWidth}
+        />
+        <circle
+          cx={size / 2} cy={size / 2} r={radius}
+          fill="none" stroke={strokeColor} strokeWidth={strokeWidth}
+          strokeDasharray={circumference} strokeDashoffset={offset}
+          strokeLinecap="round"
+          className="transition-all duration-700 ease-out"
+        />
+      </svg>
+      <div className="absolute inset-0 flex items-center justify-center">
+        <span className="text-lg font-bold text-foreground">{score}</span>
+      </div>
+    </div>
+  );
+};
+
+// ── Recommendation pill ──
+const RecommendationPill: React.FC<{ rec: string }> = ({ rec }) => {
+  const config = {
+    go: { icon: CheckCircle2, label: 'À contacter', cls: 'bg-emerald-100 text-emerald-700 border-emerald-200' },
+    maybe: { icon: AlertCircle, label: 'À évaluer', cls: 'bg-amber-100 text-amber-700 border-amber-200' },
+    skip: { icon: XCircle, label: 'Peu adapté', cls: 'bg-red-100 text-red-600 border-red-200' },
+  }[rec] || { icon: AlertCircle, label: 'Inconnu', cls: 'bg-muted text-muted-foreground border-border' };
+
+  const Icon = config.icon;
+  return (
+    <span className={cn("inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold border", config.cls)}>
+      <Icon className="w-3.5 h-3.5" />
+      {config.label}
+    </span>
+  );
+};
+
+// ── Meta pill (experience / location) ──
+const MetaPill: React.FC<{ icon: React.ElementType; label: string; ok: boolean }> = ({ icon: Icon, label, ok }) => (
+  <span className={cn(
+    "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium border",
+    ok ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-amber-50 text-amber-700 border-amber-200"
+  )}>
+    <Icon className="w-3 h-3" />
+    {label}
+  </span>
+);
+
 export const JobScoreDisplay: React.FC<JobScoreDisplayProps> = ({ 
   result, 
   jobTitle,
@@ -127,74 +187,27 @@ export const JobScoreDisplay: React.FC<JobScoreDisplayProps> = ({
 }) => {
   if (result.error) {
     return (
-      <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-600">
+      <div className="bg-destructive/10 border border-destructive/20 rounded-lg p-3 text-sm text-destructive">
         Erreur: {result.error}
       </div>
     );
   }
 
-  const getScoreColor = (score: number) => {
-    if (score >= 75) return 'bg-emerald-500';
-    if (score >= 50) return 'bg-amber-500';
-    return 'bg-red-400';
-  };
+  const expLabel = {
+    compatible: { text: 'XP compatible', ok: true },
+    trop_junior: { text: 'Trop junior', ok: false },
+    trop_senior: { text: 'Trop senior', ok: false },
+    incertain: { text: 'XP à vérifier', ok: false },
+  }[result.experience_match] || { text: 'À vérifier', ok: false };
 
-  const getScoreBgColor = (score: number) => {
-    if (score >= 75) return 'bg-emerald-50 border-emerald-200';
-    if (score >= 50) return 'bg-amber-50 border-amber-200';
-    return 'bg-red-50 border-red-200';
-  };
-
-  const getRecommendationBadge = (rec: string) => {
-    switch (rec) {
-      case 'go':
-        return (
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700">
-            <CheckCircle2 className="w-3 h-3" /> À contacter
-          </span>
-        );
-      case 'maybe':
-        return (
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700">
-            <AlertCircle className="w-3 h-3" /> À évaluer
-          </span>
-        );
-      default:
-        return (
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
-            <XCircle className="w-3 h-3" /> Peu adapté
-          </span>
-        );
-    }
-  };
-
-  const getExperienceLabel = (exp: string) => {
-    switch (exp) {
-      case 'compatible': return { text: 'Expérience compatible', color: 'text-emerald-600' };
-      case 'trop_junior': return { text: 'Trop junior', color: 'text-amber-600' };
-      case 'trop_senior': return { text: 'Trop senior', color: 'text-amber-600' };
-      default: return { text: 'À vérifier', color: 'text-gray-500' };
-    }
-  };
-
-  const expLabel = getExperienceLabel(result.experience_match);
-
+  // ── Compact mode (used on result cards) ──
   if (compact) {
     return (
-      <div className={cn(
-        "flex items-center gap-3 p-2 rounded-lg border",
-        getScoreBgColor(result.match_score)
-      )}>
-        <div className={cn(
-          "w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-sm",
-          getScoreColor(result.match_score)
-        )}>
-          {result.match_score}%
-        </div>
+      <div className="flex items-center gap-3 p-2 rounded-lg border border-border/60 bg-muted/30">
+        <ScoreRing score={result.match_score} size={40} />
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            {getRecommendationBadge(result.recommendation)}
-            {/* Salary badge */}
+            <RecommendationPill rec={result.recommendation} />
             <SalaryBadge analysis={result.salary_analysis} />
             {result.matching_skills.slice(0, 2).map((skill, i) => (
               <span key={i} className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700">
@@ -202,7 +215,7 @@ export const JobScoreDisplay: React.FC<JobScoreDisplayProps> = ({
               </span>
             ))}
             {result.matching_skills.length > 2 && (
-              <span className="text-[10px] text-gray-400">
+              <span className="text-[10px] text-muted-foreground">
                 +{result.matching_skills.length - 2}
               </span>
             )}
@@ -212,116 +225,82 @@ export const JobScoreDisplay: React.FC<JobScoreDisplayProps> = ({
     );
   }
 
+  // ── Full mode (used in profile detail sheet) ──
   return (
-    <div className={cn(
-      "rounded-lg border p-4 space-y-3",
-      getScoreBgColor(result.match_score)
-    )}>
-      {/* Header with score and job title */}
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <div className={cn(
-            "w-14 h-14 rounded-full flex items-center justify-center text-white font-bold text-lg shadow-md",
-            getScoreColor(result.match_score)
-          )}>
-            {result.match_score}%
-          </div>
-          <div>
-            {jobTitle && (
-              <div className="flex items-center gap-1.5 text-xs text-gray-500 mb-0.5">
-                <Target className="w-3 h-3" />
-                Match pour: {jobTitle}
-              </div>
-            )}
-            <p className="text-sm font-medium text-[#1A1A1A]">{result.summary}</p>
-          </div>
-        </div>
-        <div className="flex flex-col items-end gap-1 shrink-0">
-          {getRecommendationBadge(result.recommendation)}
-          <SalaryBadge analysis={result.salary_analysis} />
-        </div>
-      </div>
-
-      {/* Skills match */}
-      <div className="grid grid-cols-2 gap-3">
-        {/* Matching skills */}
-        <div className="space-y-1.5">
-          <div className="flex items-center gap-1.5 text-xs font-medium text-emerald-700">
-            <CheckCircle2 className="w-3 h-3" />
-            Skills matchés ({result.matching_skills.length})
-          </div>
-          <div className="flex flex-wrap gap-1">
-            {result.matching_skills.length > 0 ? (
-              result.matching_skills.map((skill, i) => (
-                <span key={i} className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 border border-emerald-200">
-                  ✓ {skill}
-                </span>
-              ))
-            ) : (
-              <span className="text-xs text-gray-400 italic">Aucun match direct</span>
-            )}
-          </div>
-        </div>
-
-        {/* Missing skills */}
-        <div className="space-y-1.5">
-          <div className="flex items-center gap-1.5 text-xs font-medium text-red-600">
-            <XCircle className="w-3 h-3" />
-            Skills manquants ({result.missing_skills.length})
-          </div>
-          <div className="flex flex-wrap gap-1">
-            {result.missing_skills.length > 0 ? (
-              result.missing_skills.map((skill, i) => (
-                <span key={i} className="text-[10px] px-1.5 py-0.5 rounded bg-red-50 text-red-600 border border-red-200">
-                  ✗ {skill}
-                </span>
-              ))
-            ) : (
-              <span className="text-xs text-emerald-600 italic">Tous les skills requis ✓</span>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Salary analysis section */}
-      {result.salary_analysis && result.salary_analysis.status !== 'unknown' && (
-        <div className="bg-white/50 rounded-lg p-2.5 space-y-1.5">
-          <div className="flex items-center gap-2">
-            <DollarSign className="w-3.5 h-3.5 text-gray-500" />
-            <span className="text-xs font-medium text-gray-700">Analyse salaire</span>
-            <SalaryBadge analysis={result.salary_analysis} />
-          </div>
-          {result.salary_analysis.explanation && (
-            <p className="text-xs text-gray-600 pl-5">{result.salary_analysis.explanation}</p>
-          )}
-          {result.salary_analysis.estimated_market_salary && (
-            <div className="flex items-center gap-4 pl-5 text-xs text-gray-500">
-              <span>
-                Marché estimé: {result.salary_analysis.estimated_market_salary.min}-{result.salary_analysis.estimated_market_salary.max} {result.salary_analysis.estimated_market_salary.currency}
-              </span>
-              {result.salary_analysis.job_salary?.min && (
-                <span>
-                  Poste: {result.salary_analysis.job_salary.min}-{result.salary_analysis.job_salary.max || '?'} {result.salary_analysis.job_salary.currency}
-                </span>
-              )}
+    <div className="space-y-4">
+      {/* ── Top: Score ring + Summary + Badges ── */}
+      <div className="flex items-start gap-4">
+        <ScoreRing score={result.match_score} size={72} />
+        <div className="flex-1 min-w-0 space-y-2">
+          {jobTitle && (
+            <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground font-medium">
+              <Target className="w-3 h-3" />
+              Match pour: <span className="text-foreground/80">{jobTitle}</span>
             </div>
           )}
+          <p className="text-sm text-foreground/90 leading-relaxed">{result.summary}</p>
+          <div className="flex flex-wrap items-center gap-1.5">
+            <RecommendationPill rec={result.recommendation} />
+            <MetaPill icon={Briefcase} label={expLabel.text} ok={expLabel.ok} />
+            <MetaPill icon={MapPin} label={result.location_match ? 'Localisation OK' : 'Localisation ?' } ok={result.location_match} />
+            <SalaryBadge analysis={result.salary_analysis} />
+          </div>
+        </div>
+      </div>
+
+      {/* ── Skills: visual bars ── */}
+      {(result.matching_skills.length > 0 || result.missing_skills.length > 0) && (
+        <div className="grid grid-cols-2 gap-4">
+          {/* Matched */}
+          <div className="space-y-2">
+            <p className="text-[11px] font-semibold text-emerald-700 uppercase tracking-wider flex items-center gap-1">
+              <CheckCircle2 className="w-3 h-3" />
+              Matchés ({result.matching_skills.length})
+            </p>
+            {result.matching_skills.length > 0 ? (
+              <div className="flex flex-wrap gap-1">
+                {result.matching_skills.map((skill, i) => (
+                  <span key={i} className="text-[11px] px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 font-medium">
+                    {skill}
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground italic">Aucun match direct</p>
+            )}
+          </div>
+          {/* Missing */}
+          <div className="space-y-2">
+            <p className="text-[11px] font-semibold text-red-600 uppercase tracking-wider flex items-center gap-1">
+              <XCircle className="w-3 h-3" />
+              Manquants ({result.missing_skills.length})
+            </p>
+            {result.missing_skills.length > 0 ? (
+              <div className="flex flex-wrap gap-1">
+                {result.missing_skills.map((skill, i) => (
+                  <span key={i} className="text-[11px] px-2 py-0.5 rounded-full bg-red-50 text-red-600 border border-red-200 font-medium">
+                    {skill}
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs text-emerald-600 italic">Tous les skills requis ✓</p>
+            )}
+          </div>
         </div>
       )}
 
-      {/* Experience and location */}
-      <div className="flex items-center gap-4 pt-2 border-t border-current/10">
-        <div className="flex items-center gap-1.5 text-xs">
-          <Briefcase className="w-3 h-3 text-gray-400" />
-          <span className={expLabel.color}>{expLabel.text}</span>
+      {/* ── Salary analysis (collapsed into a subtle line) ── */}
+      {result.salary_analysis && result.salary_analysis.status !== 'unknown' && (
+        <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/30 rounded-lg px-3 py-2 border border-border/40">
+          <DollarSign className="w-3.5 h-3.5 shrink-0" />
+          <span className="font-medium text-foreground/70">Salaire</span>
+          <SalaryBadge analysis={result.salary_analysis} />
+          {result.salary_analysis.explanation && (
+            <span className="text-muted-foreground truncate">{result.salary_analysis.explanation}</span>
+          )}
         </div>
-        <div className="flex items-center gap-1.5 text-xs">
-          <MapPin className="w-3 h-3 text-gray-400" />
-          <span className={result.location_match ? 'text-emerald-600' : 'text-amber-600'}>
-            {result.location_match ? 'Localisation OK' : 'Localisation à vérifier'}
-          </span>
-        </div>
-      </div>
+      )}
     </div>
   );
 };
