@@ -53,109 +53,173 @@ serve(async (req) => {
 // ============ ACTION HANDLERS ============
 
 // deno-lint-ignore no-explicit-any
-async function handleProcess(supabase: any, force = false) {
-  const now = new Date().toISOString();
-  
-  const { data: executions, error: fetchError } = await supabase
-    .from('sequence_step_executions')
-    .select(`*, enrollment:sequence_enrollments(*, sequence:outreach_sequences(*)), step:sequence_steps(*)`)
-    .eq('status', 'scheduled')
-    .lte('scheduled_at', now)
-    .limit(10);
+// Action-type-specific delays (ms) to simulate natural human behavior
+function getActionDelay(actionType: string): number {
+  switch (actionType) {
+    case 'profile_visit':
+    case 'check_connection':
+      return 5000 + Math.random() * 10000;   // 5-15s — passive actions
+    case 'connection_request':
+      return 20000 + Math.random() * 25000;  // 20-45s
+    case 'message':
+      return 15000 + Math.random() * 15000;  // 15-30s
+    case 'inmail':
+    case 'smart_message':
+      return 30000 + Math.random() * 30000;  // 30-60s
+    default:
+      return 5000 + Math.random() * 10000;   // 5-15s default
+  }
+}
 
-  if (fetchError) throw fetchError;
+const LOCK_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes — consider stale after this
 
-  const results = { processed: 0, skipped: 0, failed: 0, quota_blocked: 0 };
+async function acquireLock(supabase: any, runId: string): Promise<boolean> {
+  // Try to acquire lock only if it's free or stale
+  const { data } = await supabase
+    .from('sequence_processing_lock')
+    .select('locked_at')
+    .eq('id', 'process')
+    .single();
 
-  // Deduplicate: only process one execution per profile per batch to preserve natural spacing
-  const seenProfiles = new Set<string>();
-  const dedupedExecutions = (executions || []).filter((exec: { enrollment?: { profile_id?: string } }) => {
-    const profileId = exec.enrollment?.profile_id;
-    if (!profileId || seenProfiles.has(profileId)) return false;
-    seenProfiles.add(profileId);
-    return true;
-  });
-
-  for (const exec of dedupedExecutions) {
-    try {
-      const enrollment = exec.enrollment;
-      const step = exec.step;
-      
-      if (!enrollment || enrollment.status !== 'active') {
-        await supabase.from('sequence_step_executions').update({ status: 'skipped', skip_reason: 'Enrollment inactive' }).eq('id', exec.id);
-        results.skipped++;
-        continue;
-      }
-
-      const quotaCheck = await checkQuotaForAction(supabase, step.action_type, enrollment.account_id);
-      if (!quotaCheck.allowed) {
-        await supabase.from('sequence_step_executions').update({ 
-          status: 'quota_blocked', skip_reason: quotaCheck.reason,
-          scheduled_at: new Date(Date.now() + 86400000).toISOString(),
-        }).eq('id', exec.id);
-        results.quota_blocked++;
-        continue;
-      }
-
-      const userTimezone = enrollment.user_timezone || 'Europe/Paris';
-      if (!force && !isWithinBusinessHours(userTimezone)) {
-        const nextSlot = getNextBusinessHourSlot(userTimezone);
-        await supabase.from('sequence_step_executions').update({ scheduled_at: nextSlot.toISOString() }).eq('id', exec.id);
-        results.skipped++;
-        continue;
-      }
-
-      const conditionResult = await checkStepCondition(step.condition_type, enrollment.account_id, enrollment.profile_id, step.wait_for_event, enrollment.profile_url);
-      if (conditionResult === 'wait') {
-        await supabase.from('sequence_step_executions').update({ status: 'waiting_event' }).eq('id', exec.id);
-        results.skipped++;
-        continue;
-      }
-      if (!conditionResult) {
-        await supabase.from('sequence_step_executions').update({ status: 'skipped', skip_reason: `Condition: ${step.condition_type}`, executed_at: now }).eq('id', exec.id);
-        results.skipped++;
-        await scheduleNextStep(supabase, enrollment, step.step_order);
-        continue;
-      }
-
-      const { data: lockResult, error: lockError } = await supabase
-        .from('sequence_step_executions').update({ status: 'sending' }).eq('id', exec.id).eq('status', 'scheduled').select().single();
-
-      if (lockError || !lockResult) { results.skipped++; continue; }
-
-      let finalMessage = (exec.final_message || step.message_template || '') as string;
-      let finalSubject = (step.subject_template || '') as string;
-      
-      if (step.use_ai_personalization && needsMessage(step.action_type)) {
-        const personalized = await generatePersonalizedMessage(supabase, enrollment, step, exec);
-        if (personalized) { finalMessage = personalized.message; finalSubject = personalized.subject || finalSubject; }
-      }
-
-      const executeResult = await executeStepAction(step.action_type, enrollment, step, 
-        { ...exec, final_message: finalMessage, final_subject: finalSubject }, supabase);
-
-      if (executeResult.success) {
-        await supabase.from('sequence_step_executions').update({ 
-          status: 'sent', executed_at: now, final_subject: executeResult.subject || finalSubject, final_message: executeResult.message || finalMessage,
-        }).eq('id', exec.id);
-        await supabase.from('sequence_enrollments').update({ current_step_order: step.step_order + 1 }).eq('id', enrollment.id);
-        if (step.action_type !== 'check_connection') await scheduleNextStep(supabase, enrollment, step.step_order);
-        results.processed++;
-        
-        if (['profile_visit', 'connection_request', 'message', 'inmail', 'smart_message'].includes(step.action_type)) {
-          await sleep(30000 + Math.random() * 90000);
-        }
-      } else {
-        await supabase.from('sequence_step_executions').update({ status: 'failed', error_message: executeResult.error, executed_at: now, final_message: finalMessage || null, final_subject: finalSubject || null }).eq('id', exec.id);
-        results.failed++;
-      }
-    } catch (err) {
-      await supabase.from('sequence_step_executions').update({ status: 'failed', error_message: err instanceof Error ? err.message : 'Unknown' }).eq('id', exec.id);
-      results.failed++;
+  if (data?.locked_at) {
+    const lockedAge = Date.now() - new Date(data.locked_at).getTime();
+    if (lockedAge < LOCK_TIMEOUT_MS) {
+      console.log(`[process] Lock held by another instance (${Math.round(lockedAge / 1000)}s ago), skipping`);
+      return false;
     }
+    console.log(`[process] Stale lock detected (${Math.round(lockedAge / 1000)}s), taking over`);
   }
 
-  return new Response(JSON.stringify({ success: true, results }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+  await supabase
+    .from('sequence_processing_lock')
+    .update({ locked_at: new Date().toISOString(), locked_by: runId })
+    .eq('id', 'process');
+
+  return true;
+}
+
+async function releaseLock(supabase: any) {
+  await supabase
+    .from('sequence_processing_lock')
+    .update({ locked_at: null, locked_by: null })
+    .eq('id', 'process');
+}
+
+async function handleProcess(supabase: any, force = false) {
+  const runId = crypto.randomUUID().slice(0, 8);
+
+  // Global lock: prevent concurrent cron executions
+  if (!await acquireLock(supabase, runId)) {
+    return new Response(JSON.stringify({ success: true, skipped_reason: 'lock_held' }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+  }
+
+  try {
+    const now = new Date().toISOString();
+    
+    const { data: executions, error: fetchError } = await supabase
+      .from('sequence_step_executions')
+      .select(`*, enrollment:sequence_enrollments(*, sequence:outreach_sequences(*)), step:sequence_steps(*)`)
+      .eq('status', 'scheduled')
+      .lte('scheduled_at', now)
+      .limit(5);
+
+    if (fetchError) throw fetchError;
+
+    const results = { processed: 0, skipped: 0, failed: 0, quota_blocked: 0 };
+
+    // Deduplicate: only process one execution per profile per batch to preserve natural spacing
+    const seenProfiles = new Set<string>();
+    const dedupedExecutions = (executions || []).filter((exec: { enrollment?: { profile_id?: string } }) => {
+      const profileId = exec.enrollment?.profile_id;
+      if (!profileId || seenProfiles.has(profileId)) return false;
+      seenProfiles.add(profileId);
+      return true;
+    });
+
+    for (const exec of dedupedExecutions) {
+      try {
+        const enrollment = exec.enrollment;
+        const step = exec.step;
+        
+        if (!enrollment || enrollment.status !== 'active') {
+          await supabase.from('sequence_step_executions').update({ status: 'skipped', skip_reason: 'Enrollment inactive' }).eq('id', exec.id);
+          results.skipped++;
+          continue;
+        }
+
+        const quotaCheck = await checkQuotaForAction(supabase, step.action_type, enrollment.account_id);
+        if (!quotaCheck.allowed) {
+          await supabase.from('sequence_step_executions').update({ 
+            status: 'quota_blocked', skip_reason: quotaCheck.reason,
+            scheduled_at: new Date(Date.now() + 86400000).toISOString(),
+          }).eq('id', exec.id);
+          results.quota_blocked++;
+          continue;
+        }
+
+        const userTimezone = enrollment.user_timezone || 'Europe/Paris';
+        if (!force && !isWithinBusinessHours(userTimezone)) {
+          const nextSlot = getNextBusinessHourSlot(userTimezone);
+          await supabase.from('sequence_step_executions').update({ scheduled_at: nextSlot.toISOString() }).eq('id', exec.id);
+          results.skipped++;
+          continue;
+        }
+
+        const conditionResult = await checkStepCondition(step.condition_type, enrollment.account_id, enrollment.profile_id, step.wait_for_event, enrollment.profile_url);
+        if (conditionResult === 'wait') {
+          await supabase.from('sequence_step_executions').update({ status: 'waiting_event' }).eq('id', exec.id);
+          results.skipped++;
+          continue;
+        }
+        if (!conditionResult) {
+          await supabase.from('sequence_step_executions').update({ status: 'skipped', skip_reason: `Condition: ${step.condition_type}`, executed_at: now }).eq('id', exec.id);
+          results.skipped++;
+          await scheduleNextStep(supabase, enrollment, step.step_order);
+          continue;
+        }
+
+        const { data: lockResult, error: lockError } = await supabase
+          .from('sequence_step_executions').update({ status: 'sending' }).eq('id', exec.id).eq('status', 'scheduled').select().single();
+
+        if (lockError || !lockResult) { results.skipped++; continue; }
+
+        let finalMessage = (exec.final_message || step.message_template || '') as string;
+        let finalSubject = (step.subject_template || '') as string;
+        
+        if (step.use_ai_personalization && needsMessage(step.action_type)) {
+          const personalized = await generatePersonalizedMessage(supabase, enrollment, step, exec);
+          if (personalized) { finalMessage = personalized.message; finalSubject = personalized.subject || finalSubject; }
+        }
+
+        const executeResult = await executeStepAction(step.action_type, enrollment, step, 
+          { ...exec, final_message: finalMessage, final_subject: finalSubject }, supabase);
+
+        if (executeResult.success) {
+          await supabase.from('sequence_step_executions').update({ 
+            status: 'sent', executed_at: now, final_subject: executeResult.subject || finalSubject, final_message: executeResult.message || finalMessage,
+          }).eq('id', exec.id);
+          await supabase.from('sequence_enrollments').update({ current_step_order: step.step_order + 1 }).eq('id', enrollment.id);
+          if (step.action_type !== 'check_connection') await scheduleNextStep(supabase, enrollment, step.step_order);
+          results.processed++;
+          
+          // Action-type-specific delay to simulate natural human behavior
+          const delay = getActionDelay(step.action_type);
+          console.log(`[process] Sleeping ${Math.round(delay / 1000)}s after ${step.action_type}`);
+          await sleep(delay);
+        } else {
+          await supabase.from('sequence_step_executions').update({ status: 'failed', error_message: executeResult.error, executed_at: now, final_message: finalMessage || null, final_subject: finalSubject || null }).eq('id', exec.id);
+          results.failed++;
+        }
+      } catch (err) {
+        await supabase.from('sequence_step_executions').update({ status: 'failed', error_message: err instanceof Error ? err.message : 'Unknown' }).eq('id', exec.id);
+        results.failed++;
+      }
+    }
+
+    return new Response(JSON.stringify({ success: true, results }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+  } finally {
+    await releaseLock(supabase);
+  }
 }
 
 // deno-lint-ignore no-explicit-any

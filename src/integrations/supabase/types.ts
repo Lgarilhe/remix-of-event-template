@@ -1341,6 +1341,24 @@ export type Database = {
           },
         ]
       }
+      sequence_processing_lock: {
+        Row: {
+          id: string
+          locked_at: string | null
+          locked_by: string | null
+        }
+        Insert: {
+          id?: string
+          locked_at?: string | null
+          locked_by?: string | null
+        }
+        Update: {
+          id?: string
+          locked_at?: string | null
+          locked_by?: string | null
+        }
+        Relationships: []
+      }
       sequence_step_executions: {
         Row: {
           created_at: string
