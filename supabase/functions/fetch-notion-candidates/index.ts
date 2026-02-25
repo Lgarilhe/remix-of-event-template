@@ -333,7 +333,7 @@ serve(async (req) => {
       );
     } else {
       // Fetch shortlist (candidatures with pipeline)
-      const data = await queryNotionDatabase(SHORTLIST_DATABASE_ID);
+      const data = await queryNotionDatabase(SHORTLIST_DATABASE_ID, { fetchAll: true });
       
       // Cache for Notion pages/positions to avoid duplicate fetches
       const positionCache: Record<string, string> = {};
