@@ -671,7 +671,7 @@ Réponds UNIQUEMENT en JSON valide:
           },
           body: JSON.stringify({
             model: "claude-opus-4-6",
-            max_tokens: 450,
+            max_tokens: 2048,
             system:
               "Tu es un recruteur tech senior. Tu écris des messages LinkedIn courts, directs, humains. JAMAIS de superlatifs, JAMAIS de tournures IA. Tu réponds TOUJOURS en JSON valide, sans markdown ni code blocks.",
             messages: [{ role: "user", content: userPrompt }],
