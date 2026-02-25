@@ -52,7 +52,7 @@ export const CandidateHistoryPanel: React.FC<CandidateHistoryPanelProps> = ({
   }
 
   return (
-    <div className="border-t border-border/50">
+    <div className="border-t border-foreground/20">
       <div className="p-3 space-y-2">
         {/* Header */}
         <div className="flex items-center gap-2">

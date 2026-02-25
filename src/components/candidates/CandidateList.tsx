@@ -9,8 +9,8 @@ interface CandidateListProps {
 export const CandidateList: React.FC<CandidateListProps> = ({ entries }) => {
   if (entries.length === 0) {
     return (
-      <div className="bg-white border border-[#1A1A1A]/10 rounded-lg p-12 text-center">
-        <p className="text-[#1A1A1A]/60">Aucune candidature ne correspond à vos critères</p>
+      <div className="bg-background border border-foreground p-12 text-center">
+        <p className="text-muted-foreground">Aucune candidature ne correspond à vos critères</p>
       </div>
     );
   }

@@ -46,14 +46,14 @@ export const DroppableColumn: React.FC<DroppableColumnProps> = ({ id, stage, ent
   return (
     <div
       ref={setNodeRef}
-      className={`w-[300px] flex-shrink-0 rounded-lg border-2 ${stage.color} p-3 transition-all duration-200 ${
-        isOver ? 'ring-2 ring-[#1A1A1A]/30 shadow-lg' : ''
+      className={`w-[300px] flex-shrink-0 border border-foreground p-3 transition-all duration-200 bg-background ${
+        isOver ? 'ring-2 ring-foreground/30 shadow-lg bg-muted/20' : ''
       }`}
     >
       {/* Stage header */}
       <div className="flex items-center justify-between mb-3 px-1">
-        <h3 className="font-semibold text-[#1A1A1A]">{stage.label}</h3>
-        <span className="text-sm text-[#1A1A1A]/60 bg-white px-2 py-0.5 rounded-full border">
+        <h3 className="font-semibold text-foreground uppercase tracking-wide text-sm">{stage.label}</h3>
+        <span className="text-sm text-foreground font-bold bg-muted px-2 py-0.5 border border-foreground/20">
           {entries.length}
         </span>
       </div>
@@ -61,8 +61,8 @@ export const DroppableColumn: React.FC<DroppableColumnProps> = ({ id, stage, ent
       {/* Cards */}
       <div className="space-y-2 min-h-[100px]">
         {entries.length === 0 ? (
-          <div className={`text-center py-8 text-[#1A1A1A]/40 text-sm border-2 border-dashed rounded-lg transition-colors ${
-            isOver ? 'border-[#1A1A1A]/40 bg-white/70 text-[#1A1A1A]/60' : 'border-transparent'
+          <div className={`text-center py-8 text-muted-foreground text-sm border-2 border-dashed transition-colors ${
+            isOver ? 'border-foreground/40 bg-muted/30 text-foreground' : 'border-foreground/10'
           }`}>
             {isOver ? 'Déposer ici' : 'Aucun candidat'}
           </div>
@@ -77,7 +77,7 @@ export const DroppableColumn: React.FC<DroppableColumnProps> = ({ id, stage, ent
                 variant="ghost"
                 size="sm"
                 onClick={handleLoadMore}
-                className="w-full text-[#1A1A1A]/60 hover:text-[#1A1A1A] hover:bg-white/50 gap-1"
+                className="w-full text-muted-foreground hover:text-foreground hover:bg-muted/50 gap-1"
               >
                 <ChevronDown className="w-4 h-4" />
                 Voir {Math.min(remainingCount, LOAD_MORE_INCREMENT)} de plus ({remainingCount} restants)
@@ -89,7 +89,7 @@ export const DroppableColumn: React.FC<DroppableColumnProps> = ({ id, stage, ent
                 variant="ghost"
                 size="sm"
                 onClick={handleCollapse}
-                className="w-full text-[#1A1A1A]/60 hover:text-[#1A1A1A] hover:bg-white/50 gap-1"
+                className="w-full text-muted-foreground hover:text-foreground hover:bg-muted/50 gap-1"
               >
                 <ChevronUp className="w-4 h-4" />
                 Réduire

@@ -159,12 +159,12 @@ export const CandidatePipeline: React.FC<CandidatePipelineProps> = ({ data, stag
       <DragOverlay dropAnimation={null}>
         {activeEntry ? (
           <div className="w-[280px] opacity-90">
-            <div className="bg-white rounded-lg border border-primary/40 p-3 shadow-lg">
-              <h4 className="font-medium text-[#1A1A1A] truncate">
+            <div className="bg-background border border-foreground p-3 shadow-lg">
+              <h4 className="font-medium text-foreground truncate">
                 {activeEntry.candidate?.name || activeEntry.name}
               </h4>
               {activeEntry.candidate?.expertise && activeEntry.candidate.expertise.length > 0 && (
-                <p className="text-xs text-[#1A1A1A]/60 truncate">
+                <p className="text-xs text-muted-foreground truncate">
                   {activeEntry.candidate.expertise.slice(0, 2).join(', ')}
                 </p>
               )}

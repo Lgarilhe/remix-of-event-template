@@ -165,11 +165,11 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
   return (
     <>
       <Sheet open={open} onOpenChange={onOpenChange}>
-        <SheetContent side="right" className="w-[95vw] max-w-[820px] p-0 flex flex-col overflow-hidden">
+        <SheetContent side="right" className="w-[95vw] max-w-[820px] p-0 flex flex-col overflow-hidden rounded-none border-l border-foreground">
           {/* ─── HEADER ─── */}
-          <SheetHeader className="px-6 pt-5 pb-4 bg-gradient-to-b from-muted/50 to-background border-b border-border shrink-0">
+          <SheetHeader className="px-6 pt-5 pb-4 bg-muted/30 border-b border-foreground shrink-0">
             <div className="flex items-start gap-4">
-              <Avatar className="w-16 h-16 border-2 border-background shadow-lg ring-2 ring-primary/10 shrink-0">
+               <Avatar className="w-16 h-16 border-2 border-border shadow-md shrink-0">
                 <AvatarImage src={profile.profile_picture_url} alt={fullName} className="object-cover" />
                 <AvatarFallback className="bg-gradient-to-br from-primary to-primary/80 text-primary-foreground text-xl font-semibold">
                   {initials || '?'}
@@ -220,13 +220,13 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
             </div>
 
             {/* ─── ACTIONS BAR ─── */}
-            <div className="flex items-center gap-2 mt-4 pt-3 border-t border-border/30 flex-wrap">
+            <div className="flex items-center gap-2 mt-4 pt-3 border-t border-foreground/20 flex-wrap">
               {/* Primary actions */}
               {selectedJob && (
                 <Button
                   size="sm"
                   onClick={() => setShowMessageModal(true)}
-                  className="h-8 gap-1.5 text-xs rounded-lg"
+                   className="h-8 gap-1.5 text-xs rounded-none border border-foreground"
                 >
                   <PenLine className="w-3.5 h-3.5" />
                   Message
@@ -239,7 +239,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
                   size="sm"
                   onClick={handleScore}
                   disabled={isScoring}
-                  className="h-8 gap-1.5 text-xs rounded-lg text-purple-600 border-purple-200 hover:bg-purple-50"
+                   className="h-8 gap-1.5 text-xs rounded-none text-purple-600 border-purple-300 hover:bg-purple-50"
                 >
                   {isScoring ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Target className="w-3.5 h-3.5" />}
                   {isScoring ? 'Scoring...' : 'Scorer'}
@@ -251,7 +251,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
                 size="sm"
                 onClick={handleAiAnalysis}
                 disabled={isAnalyzing}
-                className="h-8 gap-1.5 text-xs rounded-lg text-purple-600 border-purple-200 hover:bg-purple-50"
+                className="h-8 gap-1.5 text-xs rounded-none text-purple-600 border-purple-300 hover:bg-purple-50"
               >
                 {isAnalyzing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Bot className="w-3.5 h-3.5" />}
                 {aiAnalysis ? 'Masquer IA' : 'Analyse IA'}
@@ -300,7 +300,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
               )}
 
               {profileUrl && (
-                <Button variant="outline" size="sm" asChild className="h-8 gap-1.5 text-xs rounded-lg">
+                <Button variant="outline" size="sm" asChild className="h-8 gap-1.5 text-xs rounded-none">
                   <a href={profileUrl} target="_blank" rel="noopener noreferrer">
                     <ExternalLink className="w-3.5 h-3.5" />
                     LinkedIn
@@ -315,14 +315,14 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
             <div className="p-6 space-y-6">
               {/* Job Score */}
               {jobScore && (
-                <div className="rounded-xl border border-border/50 p-5 bg-muted/20">
+                <div className="border border-foreground p-5 bg-muted/20">
                   <JobScoreDisplay result={jobScore} jobTitle={selectedJob?.title} compact={false} />
                 </div>
               )}
 
               {/* AI Analysis */}
               {aiAnalysis && (
-                <div className="p-4 bg-gradient-to-br from-accent/40 via-accent/20 to-background rounded-xl border border-primary/10">
+                <div className="p-4 bg-accent/20 border border-foreground/20">
                   <div className="flex items-center justify-between mb-3">
                     <div className="flex items-center gap-2">
                       <Bot className="w-4 h-4 text-primary" />
@@ -342,7 +342,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
                         <CheckCircle2 className="w-3 h-3" /> Points forts
                       </p>
                       {(aiAnalysis.strengths || []).map((s, i) => (
-                        <div key={i} className="flex items-start gap-2 text-xs text-foreground/70 bg-emerald-50/50 px-2.5 py-1.5 rounded-lg border border-emerald-100">
+                        <div key={i} className="flex items-start gap-2 text-xs text-foreground/70 bg-emerald-50/50 px-2.5 py-1.5 border border-emerald-200">
                           <span className="text-emerald-500 mt-0.5 shrink-0">✓</span><span>{s}</span>
                         </div>
                       ))}
@@ -352,7 +352,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
                         <AlertTriangle className="w-3 h-3" /> À vérifier
                       </p>
                       {(aiAnalysis.concerns || []).map((c, i) => (
-                        <div key={i} className="flex items-start gap-2 text-xs text-foreground/70 bg-amber-50/50 px-2.5 py-1.5 rounded-lg border border-amber-100">
+                        <div key={i} className="flex items-start gap-2 text-xs text-foreground/70 bg-amber-50/50 px-2.5 py-1.5 border border-amber-200">
                           <span className="text-amber-500 mt-0.5 shrink-0">!</span><span>{c}</span>
                         </div>
                       ))}
@@ -368,7 +368,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
 
               {/* Airtable History Panel — always show if we have data or are loading */}
               {(historyLoading || hasHistory) && (
-                <div className="rounded-xl border border-border/60 overflow-hidden bg-background">
+                <div className="border border-foreground/20 overflow-hidden bg-background">
                   <CandidateHistoryPanel data={historyData} loading={historyLoading} compact={false} />
                 </div>
               )}
