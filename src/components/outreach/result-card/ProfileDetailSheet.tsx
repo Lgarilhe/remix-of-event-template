@@ -373,6 +373,14 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
                 </div>
               )}
 
+              {/* À propos */}
+              {profile.summary && (
+                <div className="rounded-xl border border-border/60 bg-background p-4">
+                  <h3 className="text-sm font-semibold text-foreground mb-2">À propos</h3>
+                  <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-line">{profile.summary}</p>
+                </div>
+              )}
+
               {/* Tabs: experience, education, skills, messages, posts */}
               <CardExpandedContent
                 profile={profile}
