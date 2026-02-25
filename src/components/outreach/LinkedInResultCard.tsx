@@ -144,7 +144,8 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
   const historyLatestDateLabel = formatHistoryDate(historyLatestDate);
 
   const showScoringOverlay = isBatchScoring && isSelected;
-  const historyPanelLoading = historyLoading || notionShortlistLoading;
+  const shouldWaitForNotionHistory = Boolean(notionMatch) && notionShortlistsForCandidate.length === 0 && !historyData;
+  const historyPanelLoading = historyLoading || (shouldWaitForNotionHistory && notionShortlistLoading);
 
   return (
     <div

@@ -212,7 +212,8 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
     }
   };
 
-  const historyPanelLoading = historyLoading || notionShortlistLoading;
+  const shouldWaitForNotionHistory = Boolean(notionMatch) && notionShortlistsForCandidate.length === 0 && !historyData;
+  const historyPanelLoading = historyLoading || (shouldWaitForNotionHistory && notionShortlistLoading);
   const hasHistory = notionShortlistsForCandidate.length > 0 || (historyData && (
     historyData.placements.length > 0 ||
     historyData.shortlists.length > 0 ||
