@@ -31,7 +31,9 @@ async function fetchWithRetry(
     const shouldRetry = retryStatusCodes.includes(res.status);
     if (!shouldRetry || attempt === retries) return res;
 
-    const delay = Math.round(baseDelayMs * Math.pow(2, attempt));
+    // Use longer delays for 529 (API overloaded)
+    const effectiveBase = res.status === 529 ? Math.max(baseDelayMs, 2000) : baseDelayMs;
+    const delay = Math.round(effectiveBase * Math.pow(2, attempt));
     console.warn(`[score-profile-job] transient AI error ${res.status}, retrying in ${delay}ms (attempt ${attempt + 1}/${retries})`);
     await sleep(delay);
   }
