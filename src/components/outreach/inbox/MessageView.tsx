@@ -226,7 +226,7 @@ export const MessageView: React.FC<MessageViewProps> = ({
                     )}>
                       {formatMessageTime(msg.timestamp)}
                     </span>
-                    {msg.is_sender && (
+                    {!!msg.is_sender && (
                       (msg.read || msg.seen === 1) ? (
                         <CheckCheck className="w-3 h-3 text-background/70" />
                       ) : msg.delivered ? (
