@@ -597,7 +597,7 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange }: UseMe
     });
   }, [selectedChat]);
 
-  // Helper: mark a chat as read locally (set unread_count/unread to 0)
+  // Helper: mark a chat as read locally AND via the Unipile API
   // Plain function (not a hook) to avoid changing hook count
   const markChatAsReadLocally = (chatId: string) => {
     setChats(prev => prev.map(c =>
@@ -606,6 +606,21 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange }: UseMe
     setSelectedChat(prev =>
       prev && prev.id === chatId ? { ...prev, unread_count: 0, unread: 0 } : prev
     );
+
+    // Fire-and-forget: tell Unipile to mark the chat as read server-side
+    supabase.functions.invoke('unipile-search', {
+      body: {
+        action: 'mark_as_read',
+        account_id: selectedAccount,
+        chat_id: chatId,
+      },
+    }).then(res => {
+      if (res.error || !res.data?.success) {
+        console.warn('Failed to mark chat as read via API:', res.error || res.data?.error);
+      }
+    }).catch(err => {
+      console.warn('Error marking chat as read:', err);
+    });
   };
 
   // Filter chats effect
