@@ -49,19 +49,7 @@ export const CardExpandedContent: React.FC<CardExpandedContentProps> = ({
   const workExperience = profile.work_experience || [];
 
   return (
-    <div className="px-2.5 sm:px-4 pb-4 border-t border-border pt-4 overflow-hidden">
-      <div className="flex items-center justify-between mb-3">
-        <h4 className="text-sm font-semibold text-foreground">Détails du profil</h4>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={onClose}
-          className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground"
-        >
-          <X className="w-4 h-4" />
-        </Button>
-      </div>
-
+    <div className="pb-4 overflow-hidden">
       {/* Candidate Activity Timeline */}
       {candidateStatus && (
         <div className="mb-3 p-2.5 bg-muted/30 rounded-lg border border-border/50">
@@ -126,59 +114,59 @@ export const CardExpandedContent: React.FC<CardExpandedContentProps> = ({
       )}
 
       <Tabs defaultValue="experience" className="w-full">
-        <TabsList className="w-full justify-start bg-muted/50 p-1 h-auto flex-wrap gap-1">
-          <TabsTrigger value="experience" className="text-[10px] sm:text-xs px-2 sm:px-3 py-1 sm:py-1.5 data-[state=active]:bg-background gap-1">
-            <Briefcase className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
-            Exp.
+        <TabsList className="w-full justify-start bg-muted/30 p-1 h-auto flex-wrap gap-1 rounded-lg">
+          <TabsTrigger value="experience" className="text-xs px-3 py-1.5 data-[state=active]:bg-background data-[state=active]:shadow-sm gap-1.5 rounded-md">
+            <Briefcase className="w-3.5 h-3.5" />
+            Expérience
           </TabsTrigger>
-          <TabsTrigger value="education" className="text-[10px] sm:text-xs px-2 sm:px-3 py-1 sm:py-1.5 data-[state=active]:bg-background gap-1">
-            <GraduationCap className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
-            Form.
+          <TabsTrigger value="education" className="text-xs px-3 py-1.5 data-[state=active]:bg-background data-[state=active]:shadow-sm gap-1.5 rounded-md">
+            <GraduationCap className="w-3.5 h-3.5" />
+            Formation
           </TabsTrigger>
-          <TabsTrigger value="skills" className="text-[10px] sm:text-xs px-2 sm:px-3 py-1 sm:py-1.5 data-[state=active]:bg-background gap-1">
-            <Zap className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
+          <TabsTrigger value="skills" className="text-xs px-3 py-1.5 data-[state=active]:bg-background data-[state=active]:shadow-sm gap-1.5 rounded-md">
+            <Zap className="w-3.5 h-3.5" />
             Skills
           </TabsTrigger>
-          <TabsTrigger value="messages" className="text-[10px] sm:text-xs px-2 sm:px-3 py-1 sm:py-1.5 data-[state=active]:bg-background gap-1">
-            <MessageSquare className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
-            Msg
+          <TabsTrigger value="messages" className="text-xs px-3 py-1.5 data-[state=active]:bg-background data-[state=active]:shadow-sm gap-1.5 rounded-md">
+            <MessageSquare className="w-3.5 h-3.5" />
+            Messages
           </TabsTrigger>
-          <TabsTrigger value="posts" className="text-[10px] sm:text-xs px-2 sm:px-3 py-1 sm:py-1.5 data-[state=active]:bg-background gap-1">
-            <Newspaper className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
+          <TabsTrigger value="posts" className="text-xs px-3 py-1.5 data-[state=active]:bg-background data-[state=active]:shadow-sm gap-1.5 rounded-md">
+            <Newspaper className="w-3.5 h-3.5" />
             Posts
           </TabsTrigger>
         </TabsList>
 
         {/* Experience Tab */}
-        <TabsContent value="experience" className="mt-4 space-y-4">
+        <TabsContent value="experience" className="mt-4 space-y-1">
           {workExperience.length > 0 ? (
-            <div className="space-y-4">
+            <div className="space-y-1">
               {workExperience.map((exp: any, index: number) => (
-                <div key={index} className="flex gap-3">
+                <div key={index} className="flex gap-3 group/exp">
                   <div className="flex flex-col items-center">
-                    <div className={`w-2.5 h-2.5 rounded-full mt-1.5 ${!exp.end ? 'bg-green-500' : 'bg-primary/40'}`} />
-                    {index < workExperience.length - 1 && <div className="w-px flex-1 bg-border mt-1" />}
+                    <div className={`w-2.5 h-2.5 rounded-full mt-2 ring-2 ring-background ${!exp.end ? 'bg-green-500' : 'bg-primary/30'}`} />
+                    {index < workExperience.length - 1 && <div className="w-px flex-1 bg-border/60 mt-1" />}
                   </div>
-                  <div className="flex-1 pb-4">
-                    <p className="font-medium text-foreground">{exp.role}</p>
-                    <p className="text-sm text-muted-foreground">{exp.company}</p>
+                  <div className="flex-1 pb-4 pt-0.5">
+                    <p className="font-semibold text-foreground text-sm">{exp.role}</p>
+                    <p className="text-sm text-muted-foreground font-medium">{exp.company}</p>
                     {(exp.start?.year || exp.end?.year) && (
-                      <p className="text-xs text-muted-foreground/60 mt-1">
+                      <p className="text-xs text-muted-foreground/50 mt-0.5">
                         {exp.start?.year && `${exp.start.year}`}
-                        {' - '}
-                        {exp.end?.year ? `${exp.end.year}` : 'Présent'}
+                        {' → '}
+                        {exp.end?.year ? `${exp.end.year}` : <span className="text-green-600 font-medium">Présent</span>}
                       </p>
                     )}
                     {exp.description && (
-                      <p className="text-xs text-muted-foreground mt-2 line-clamp-3">{exp.description}</p>
+                      <p className="text-xs text-muted-foreground/70 mt-2 leading-relaxed line-clamp-3">{exp.description}</p>
                     )}
                   </div>
                 </div>
               ))}
             </div>
           ) : (
-            <div className="text-center py-8 text-muted-foreground">
-              <Briefcase className="w-8 h-8 mx-auto mb-2 opacity-50" />
+            <div className="text-center py-10 text-muted-foreground">
+              <Briefcase className="w-9 h-9 mx-auto mb-2 opacity-40" />
               <p className="text-sm">Aucune expérience disponible</p>
             </div>
           )}
@@ -220,27 +208,27 @@ export const CardExpandedContent: React.FC<CardExpandedContentProps> = ({
         </TabsContent>
 
         {/* Skills Tab */}
-        <TabsContent value="skills" className="mt-4 space-y-4">
+        <TabsContent value="skills" className="mt-4">
           {skills.length > 0 ? (
             <div className="flex flex-wrap gap-2">
               {skills.map((skill: any, index: number) => (
                 <Badge
                   key={index}
                   variant="secondary"
-                  className="text-xs px-3 py-1.5 bg-primary/10 text-primary font-normal"
+                  className="text-xs px-3 py-1.5 bg-primary/5 text-primary border border-primary/15 font-medium hover:bg-primary/10 transition-colors"
                 >
                   {skill.name || skill}
                   {skill.endorsement_count && (
-                    <span className="ml-1.5 text-[10px] text-primary/60">
-                      ({skill.endorsement_count})
+                    <span className="ml-1.5 text-[10px] text-primary/50 font-normal">
+                      {skill.endorsement_count}
                     </span>
                   )}
                 </Badge>
               ))}
             </div>
           ) : (
-            <div className="text-center py-8 text-muted-foreground">
-              <Zap className="w-8 h-8 mx-auto mb-2 opacity-50" />
+            <div className="text-center py-10 text-muted-foreground">
+              <Zap className="w-9 h-9 mx-auto mb-2 opacity-40" />
               <p className="text-sm">Aucune compétence disponible</p>
             </div>
           )}
