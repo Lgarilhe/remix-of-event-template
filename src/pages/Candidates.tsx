@@ -7,9 +7,10 @@ import { CandidatePipeline } from '@/components/candidates/CandidatePipeline';
 import { PipelineStats } from '@/components/candidates/PipelineStats';
 import { CandidateList } from '@/components/candidates/CandidateList';
 import { CandidateFilters } from '@/components/candidates/CandidateFilters';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Tabs, TabsContent } from '@/components/ui/tabs';
 import { Loader2, LayoutGrid, List, Users } from 'lucide-react';
 import { useNotionShortlist, useNotionCandidates } from '@/hooks/useNotionCandidates';
+import { cn } from '@/lib/utils';
 
 export interface Candidate {
   id: string;
@@ -59,7 +60,6 @@ export interface ShortlistEntry {
   } | null;
 }
 
-// Pipeline stages in order
 export const PIPELINE_STAGES = [
   { key: 'Pressenti', label: 'Pressenti', color: 'bg-gray-100 border-gray-300' },
   { key: 'CV envoyé', label: 'CV envoyé', color: 'bg-blue-50 border-blue-300' },
@@ -69,33 +69,24 @@ export const PIPELINE_STAGES = [
   { key: 'Perdu', label: 'Perdu', color: 'bg-red-50 border-red-300' },
 ];
 
+const viewTabs = [
+  { value: 'pipeline', label: 'Pipeline', icon: LayoutGrid },
+  { value: 'list', label: 'Liste', icon: List },
+] as const;
+
 export default function Candidates() {
   const [user, setUser] = useState<User | null>(null);
   const [activeTab, setActiveTab] = useState<'pipeline' | 'list'>('pipeline');
   
-  // Use React Query for cached data
-  const { 
-    data: shortlistData = [], 
-    isLoading: shortlistLoading, 
-    error: shortlistError 
-  } = useNotionShortlist();
+  const { data: shortlistData = [], isLoading: shortlistLoading, error: shortlistError } = useNotionShortlist();
+  const { data: candidatesData = [] } = useNotionCandidates();
   
-  const { 
-    data: candidatesData = [], 
-    isLoading: candidatesLoading 
-  } = useNotionCandidates();
-  
-  // Local state for optimistic updates
   const [shortlist, setShortlist] = useState<ShortlistEntry[]>([]);
   
-  // Sync shortlist data from query
   useEffect(() => {
-    if (shortlistData.length > 0) {
-      setShortlist(shortlistData);
-    }
+    if (shortlistData.length > 0) setShortlist(shortlistData);
   }, [shortlistData]);
   
-  // Filters
   const [filters, setFilters] = useState({
     search: '',
     stage: [] as string[],
@@ -104,16 +95,9 @@ export default function Candidates() {
     position: [] as string[],
   });
 
-  // Check auth
   useEffect(() => {
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      setUser(user);
-    });
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
-    });
-
+    supabase.auth.getUser().then(({ data: { user } }) => setUser(user));
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => setUser(session?.user ?? null));
     return () => subscription.unsubscribe();
   }, []);
 
@@ -123,18 +107,12 @@ export default function Candidates() {
     const expertise = new Set<string>();
     const entities = new Set<string>();
     const positionsMap = new Map<string, string>();
-
     shortlist.forEach(entry => {
       if (entry.stage) stages.add(entry.stage);
       if (entry.entity) entities.add(entry.entity);
       entry.candidate?.expertise?.forEach(e => expertise.add(e));
-      entry.positions?.forEach(pos => {
-        if (!positionsMap.has(pos.id)) {
-          positionsMap.set(pos.id, pos.name);
-        }
-      });
+      entry.positions?.forEach(pos => { if (!positionsMap.has(pos.id)) positionsMap.set(pos.id, pos.name); });
     });
-
     return {
       stages: Array.from(stages),
       expertise: Array.from(expertise),
@@ -146,7 +124,6 @@ export default function Candidates() {
   // Filter shortlist
   const filteredShortlist = useMemo(() => {
     return shortlist.filter(entry => {
-      // Search filter
       if (filters.search) {
         const search = filters.search.toLowerCase();
         const matchName = entry.name?.toLowerCase().includes(search);
@@ -155,33 +132,16 @@ export default function Candidates() {
         const matchPosition = entry.positions?.some(p => p.name.toLowerCase().includes(search));
         if (!matchName && !matchCandidate && !matchEmail && !matchPosition) return false;
       }
-
-      // Stage filter
-      if (filters.stage.length > 0 && entry.stage && !filters.stage.includes(entry.stage)) {
-        return false;
-      }
-
-      // Entity filter
-      if (filters.entity.length > 0 && entry.entity && !filters.entity.includes(entry.entity)) {
-        return false;
-      }
-
-      // Expertise filter
+      if (filters.stage.length > 0 && entry.stage && !filters.stage.includes(entry.stage)) return false;
+      if (filters.entity.length > 0 && entry.entity && !filters.entity.includes(entry.entity)) return false;
       if (filters.expertise.length > 0) {
         const candidateExpertise = entry.candidate?.expertise || [];
-        if (!filters.expertise.some(e => candidateExpertise.includes(e))) {
-          return false;
-        }
+        if (!filters.expertise.some(e => candidateExpertise.includes(e))) return false;
       }
-
-      // Position filter
       if (filters.position.length > 0) {
         const entryPositionIds = entry.positions?.map(p => p.id) || [];
-        if (!filters.position.some(posId => entryPositionIds.includes(posId))) {
-          return false;
-        }
+        if (!filters.position.some(posId => entryPositionIds.includes(posId))) return false;
       }
-
       return true;
     });
   }, [shortlist, filters]);
@@ -189,31 +149,22 @@ export default function Candidates() {
   // Group by stage for pipeline
   const pipelineData = useMemo(() => {
     const grouped: Record<string, ShortlistEntry[]> = {};
-    PIPELINE_STAGES.forEach(stage => {
-      grouped[stage.key] = [];
-    });
-
+    PIPELINE_STAGES.forEach(stage => { grouped[stage.key] = []; });
     filteredShortlist.forEach(entry => {
       const stage = entry.stage || 'Pressenti';
-      if (grouped[stage]) {
-        grouped[stage].push(entry);
-      } else {
-        grouped['Pressenti'].push(entry);
-      }
+      if (grouped[stage]) grouped[stage].push(entry);
+      else grouped['Pressenti'].push(entry);
     });
-
     return grouped;
   }, [filteredShortlist]);
 
   // Handle stage change (optimistic update)
   const handleStageChange = (entryId: string, newStage: string) => {
-    setShortlist(prev => prev.map(entry => 
-      entry.id === entryId ? { ...entry, stage: newStage } : entry
-    ));
+    setShortlist(prev => prev.map(entry => entry.id === entryId ? { ...entry, stage: newStage } : entry));
   };
 
   return (
-    <div className="min-h-screen bg-[#FAFAFA]">
+    <div className="min-h-screen bg-background">
       <SEOHead
         title="Gestion des candidats | Konekt"
         description="Gérez vos candidats et suivez leur progression dans le pipeline de recrutement"
@@ -225,13 +176,15 @@ export default function Candidates() {
           {/* Header */}
           <div className="mb-8">
             <div className="flex items-center gap-3 mb-2">
-              <Users className="w-8 h-8 text-[#1A1A1A]" />
-              <h1 className="text-3xl font-bold text-[#1A1A1A]">Candidats</h1>
+              <div className="h-10 w-10 bg-foreground text-background flex items-center justify-center border border-foreground">
+                <Users className="w-5 h-5" />
+              </div>
+              <h1 className="text-3xl font-bold text-foreground uppercase tracking-tight">Candidats</h1>
               {shortlistLoading && (
-                <span className="text-sm text-[#1A1A1A]/50 animate-pulse">Chargement...</span>
+                <span className="text-sm text-muted-foreground animate-pulse">Chargement...</span>
               )}
             </div>
-            <p className="text-[#1A1A1A]/60">
+            <p className="text-muted-foreground ml-[52px]">
               {shortlist.length} candidature{shortlist.length > 1 ? 's' : ''} • {candidatesData.length} candidat{candidatesData.length > 1 ? 's' : ''} en base
             </p>
           </div>
@@ -240,16 +193,30 @@ export default function Candidates() {
           <div className="mb-6">
             <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'pipeline' | 'list')}>
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
-                <TabsList className="bg-white border border-[#1A1A1A]/10">
-                  <TabsTrigger value="pipeline" className="gap-2 data-[state=active]:bg-[#1A1A1A] data-[state=active]:text-white">
-                    <LayoutGrid className="w-4 h-4" />
-                    Pipeline
-                  </TabsTrigger>
-                  <TabsTrigger value="list" className="gap-2 data-[state=active]:bg-[#1A1A1A] data-[state=active]:text-white">
-                    <List className="w-4 h-4" />
-                    Liste
-                  </TabsTrigger>
-                </TabsList>
+                {/* Brutal tabs */}
+                <div className="flex gap-0">
+                  {viewTabs.map((tab, index) => {
+                    const Icon = tab.icon;
+                    const isActive = activeTab === tab.value;
+                    return (
+                      <button
+                        key={tab.value}
+                        onClick={() => setActiveTab(tab.value as any)}
+                        className={cn(
+                          "relative overflow-hidden flex items-center gap-1.5 h-[34px] px-4 text-[11px] font-medium uppercase tracking-wider border border-foreground transition-colors duration-200 group",
+                          index > 0 && "border-l-0",
+                          isActive ? "bg-brutal-accent text-foreground" : "bg-background text-foreground"
+                        )}
+                      >
+                        <Icon className="w-3.5 h-3.5 shrink-0 relative z-10" />
+                        <span className="relative z-10">{tab.label}</span>
+                        {!isActive && (
+                          <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
 
                 <CandidateFilters
                   filters={filters}
@@ -260,11 +227,11 @@ export default function Candidates() {
 
               {shortlistLoading && shortlist.length === 0 ? (
                 <div className="flex items-center justify-center py-20">
-                  <Loader2 className="w-8 h-8 animate-spin text-[#1A1A1A]/40" />
+                  <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
                 </div>
               ) : shortlistError ? (
-                <div className="bg-red-50 border border-red-200 rounded-lg p-6 text-center">
-                  <p className="text-red-600">{shortlistError instanceof Error ? shortlistError.message : 'Error'}</p>
+                <div className="bg-destructive/10 border border-destructive/30 p-6 text-center">
+                  <p className="text-destructive">{shortlistError instanceof Error ? shortlistError.message : 'Error'}</p>
                 </div>
               ) : (
                 <>

@@ -89,17 +89,17 @@ const Auth = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-white px-4">
+    <div className="min-h-screen flex items-center justify-center bg-background px-4">
       <SEOHead 
         title={isLogin ? 'Sign In' : 'Sign Up'}
         description={isLogin ? 'Sign in to manage your events and registrations' : 'Create an account to manage events and register for upcoming events'}
       />
       <div className="w-full max-w-md space-y-8">
         <div>
-          <h2 className="text-4xl font-normal text-[#1A1A1A] tracking-[-0.02em]">
+          <h2 className="text-4xl font-normal text-foreground tracking-[-0.02em] uppercase">
             {isResettingPassword ? 'Nouveau mot de passe' : isForgotPassword ? 'Mot de passe oublié' : isLogin ? 'Sign In' : 'Sign Up'}
           </h2>
-          <p className="mt-2 text-sm text-[#1A1A1A] opacity-50">
+          <p className="mt-2 text-sm text-muted-foreground">
             {isResettingPassword
               ? 'Entrez votre nouveau mot de passe'
               : isForgotPassword 
@@ -117,7 +117,7 @@ const Auth = () => {
                 onChange={(e) => setNewPassword(e.target.value)}
                 required
                 minLength={6}
-                className="border-[#1A1A1A] text-[#1A1A1A]"
+                className="border-foreground text-foreground"
               />
             </div>
           ) : (
@@ -129,7 +129,7 @@ const Auth = () => {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
-                  className="border-[#1A1A1A] text-[#1A1A1A]"
+                  className="border-foreground text-foreground"
                 />
               </div>
               {!isForgotPassword && (
@@ -140,34 +140,37 @@ const Auth = () => {
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     required
-                    className="border-[#1A1A1A] text-[#1A1A1A]"
+                    className="border-foreground text-foreground"
                   />
                 </div>
               )}
             </>
           )}
-          <Button
+          <button
             type="submit"
             disabled={loading}
-            className="w-full bg-[#1A1A1A] text-white hover:bg-opacity-90"
+            className="relative overflow-hidden w-full h-[44px] bg-foreground text-background border border-foreground text-xs font-medium uppercase tracking-wider group disabled:opacity-50"
           >
-            {loading ? 'Loading...' : isResettingPassword ? 'Mettre à jour' : isForgotPassword ? 'Envoyer le lien' : isLogin ? 'Sign In' : 'Sign Up'}
-          </Button>
+            <span className="relative z-10">
+              {loading ? 'Loading...' : isResettingPassword ? 'Mettre à jour' : isForgotPassword ? 'Envoyer le lien' : isLogin ? 'Sign In' : 'Sign Up'}
+            </span>
+            <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
+          </button>
         </form>
         {!isResettingPassword && !isForgotPassword && (
           <>
             <div className="relative">
               <div className="absolute inset-0 flex items-center">
-                <span className="w-full border-t border-[#1A1A1A]/20" />
+                <span className="w-full border-t border-foreground/20" />
               </div>
               <div className="relative flex justify-center text-xs uppercase">
-                <span className="bg-white px-2 text-[#1A1A1A]/50">ou</span>
+                <span className="bg-background px-2 text-muted-foreground">ou</span>
               </div>
             </div>
             <Button
               type="button"
               variant="outline"
-              className="w-full border-[#1A1A1A] text-[#1A1A1A]"
+              className="w-full border-foreground text-foreground"
               onClick={async () => {
                 const { error } = await lovable.auth.signInWithOAuth('google', {
                   redirect_uri: window.location.origin,
@@ -192,14 +195,14 @@ const Auth = () => {
             {isLogin && !isForgotPassword && (
               <button
                 onClick={() => setIsForgotPassword(true)}
-                className="text-sm text-[#1A1A1A]/60 hover:opacity-70 transition-opacity"
+                className="text-sm text-muted-foreground hover:opacity-70 transition-opacity"
               >
                 Mot de passe oublié ?
               </button>
             )}
             <button
               onClick={() => { setIsLogin(!isLogin); setIsForgotPassword(false); }}
-              className="text-sm text-[#1A1A1A] hover:opacity-70 transition-opacity"
+              className="text-sm text-foreground hover:opacity-70 transition-opacity"
             >
               {isForgotPassword ? 'Retour à la connexion' : isLogin ? "Don't have an account? Sign up" : 'Already have an account? Sign in'}
             </button>
