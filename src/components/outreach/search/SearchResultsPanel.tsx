@@ -243,7 +243,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
         {/* Status filters */}
         {selectedJob && hasSearched && results.length > 0 && (
           <div className="flex items-center gap-1 shrink-0">
-            <div className="flex items-center gap-0.5 bg-muted/50 p-0.5">
+            <div className="flex items-center gap-0.5 bg-muted/50 p-0.5 border border-foreground/20">
               {([
                 { value: 'all' as const, label: 'Tous', icon: Users, count: results.length },
                 { value: 'untreated' as const, label: 'Nouveaux', icon: Eye, count: statusCounts.untreated },
@@ -494,9 +494,9 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
           <div className="p-2 sm:p-4 space-y-2 min-w-0">
             {/* Batch workflow banner */}
             {hasSearched && total !== null && total > 0 && (
-              <div className="bg-foreground/5 p-2 sm:p-3 mb-3 space-y-2">
+              <div className="bg-foreground/5 border border-foreground/20 p-2 sm:p-3 mb-3 space-y-2">
                 <div className="flex items-center gap-2 sm:gap-3">
-                  <div className="w-10 h-10 bg-foreground/10 flex items-center justify-center shrink-0">
+                  <div className="w-10 h-10 bg-foreground/10 border border-foreground/20 flex items-center justify-center shrink-0">
                     <Users className="w-5 h-5 text-foreground" />
                   </div>
                   <div className="flex-1 min-w-0">
