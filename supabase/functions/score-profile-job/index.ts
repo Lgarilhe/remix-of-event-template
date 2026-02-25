@@ -229,14 +229,67 @@ serve(async (req) => {
               workExpText = p.pastPositions.slice(0, 3).map(pp => `- ${pp}`).join('\n');
             }
 
+            // Build transversal criteria context
             let transversalText = '';
             if (job.transversalCriteria) {
               const tc = job.transversalCriteria;
-              if (tc.must) transversalText += `Must transversal: ${tc.must}\n`;
-              if (tc.should) transversalText += `Should transversal: ${tc.should}\n`;
+              if (tc.must) transversalText += `\nCRITÈRES TRANSVERSAUX MUST: ${tc.must}`;
+              if (tc.should) transversalText += `\nCRITÈRES TRANSVERSAUX SHOULD: ${tc.should}`;
+              if (tc.niceToHave) transversalText += `\nCRITÈRES TRANSVERSAUX NICE-TO-HAVE: ${tc.niceToHave}`;
+              if (tc.context) transversalText += `\nCONTEXTE TRANSVERSAL: ${tc.context}`;
+              if (tc.bodyContent) transversalText += `\nDÉTAILS TRANSVERSAUX: ${tc.bodyContent.substring(0, 500)}`;
             }
 
-            const prompt = sanitizeText(`Expert recruteur tech. Évalue profil vs poste.\n\nPOSTE: ${job.title} | ${job.client?.name || '?'} (${job.client?.sector || '?'}) | Séniorité: ${job.seniority || '?'} | Loc: ${job.location || '?'} | Remote: ${job.remote || '?'} | XP: ${job.xpMin || '?'} - ${job.xpMax || '?'} ans | ${formatSalaryInfo(job)}\nSkills requis: ${job.skills.join(', ')}\n${job.mustHave ? 'MUST-HAVE: ' + job.mustHave : ''}\n${job.shouldHave ? 'SHOULD-HAVE: ' + job.shouldHave : ''}\n${job.requirements ? 'Exigences: ' + job.requirements.substring(0, 300) : ''}\n${job.description ? 'Desc: ' + job.description.substring(0, 300) : ''}\n${transversalText}\n\nPROFIL: ${p.name} | ${p.headline || p.currentRole || '?'} @ ${p.currentCompany || '?'} | Loc: ${p.location || '?'} | XP: ${p.yearsOfExperience ?? '?'} ans | Tenure moy: ${p.averageTenureMonths ? Math.round(p.averageTenureMonths) + 'mois' : '?'} | OTW: ${p.openToWork ? 'Oui' : 'Non'} | OpenProfile: ${p.openProfile ? 'Oui' : 'Non'} | Réseau: ${p.networkDistance || '?'}\nSkills: ${profileSkills.join(', ') || 'Aucune'}\nMatchées: ${matchedSkills.join(', ') || 'Aucune'} | Manquantes: ${missingSkills.join(', ') || 'Aucune'}\n${p.education ? 'Formation: ' + p.education.join(', ') : ''}\n${workExpText}\n\nRÈGLES STRICTES:\n1. Mismatch séniorité (IC vs Director) -> score<=30, NO_MATCH\n2. Must-have manquant -> score<=35, WEAK_MATCH ou NO_MATCH (tolérance zéro)\n3. Seuils: NO_MATCH(0-30) WEAK_MATCH(31-45) POSSIBLE_MATCH(46-60) GOOD_MATCH(61-79) STRONG_MATCH(80-100)\n4. Sois SÉVÈRE.\n\nRéponds en JSON COMPACT sur UNE SEULE LIGNE sans retour à la ligne. Max 3 strengths/concerns/missingSkills. Chaque texte max 50 chars. Summary max 20 mots.\n{"score":N,"recommendation":"X","summary":"...","strengths":["..."],"concerns":["..."],"missingSkills":["..."],"seniorityMatch":"X","locationMatch":"X","experienceMatch":"X","tenureAnalysis":"X","receptivityScore":N,"skipReason":null}`);
+            // Build job body content (rich Notion description)
+            let bodyContentText = '';
+            if (job.bodyContent) {
+              bodyContentText = `\nDESCRIPTION DÉTAILLÉE DU POSTE:\n${job.bodyContent.substring(0, 800)}`;
+            }
+
+            const prompt = sanitizeText(`Expert recruteur tech senior. Évalue ce profil candidat vs ce poste avec RIGUEUR et PRÉCISION.
+
+=== POSTE ===
+Titre: ${job.title}
+Client: ${job.client?.name || '?'} (Secteur: ${job.client?.sector || '?'})
+Séniorité requise: ${job.seniority || '?'}
+Localisation: ${job.location || '?'} | Remote: ${job.remote || '?'}
+XP requise: ${job.xpMin || '?'} - ${job.xpMax || '?'} ans
+${formatSalaryInfo(job)}
+Contrat: ${job.contractType || '?'}
+Skills requis: ${job.skills.join(', ')}
+${job.mustHave ? 'MUST-HAVE (OBLIGATOIRE - tolérance zéro): ' + job.mustHave : ''}
+${job.shouldHave ? 'SHOULD-HAVE (Important): ' + job.shouldHave : ''}
+${job.niceToHave ? 'NICE-TO-HAVE (Bonus): ' + job.niceToHave : ''}
+${job.requirements ? 'Exigences: ' + job.requirements.substring(0, 400) : ''}
+${job.description ? 'Description: ' + job.description.substring(0, 400) : ''}${transversalText}${bodyContentText}
+
+=== PROFIL CANDIDAT ===
+Nom: ${p.name}
+Titre: ${p.headline || p.currentRole || '?'} @ ${p.currentCompany || '?'}
+Localisation: ${p.location || '?'}
+XP totale: ${p.yearsOfExperience ?? '?'} ans
+Tenure moyenne: ${p.averageTenureMonths ? Math.round(p.averageTenureMonths) + ' mois' : '?'}
+Open to Work: ${p.openToWork ? 'Oui' : 'Non'} | Open Profile: ${p.openProfile ? 'Oui' : 'Non'}
+Distance réseau: ${p.networkDistance || '?'}
+Skills déclarés: ${profileSkills.join(', ') || 'Aucun'}
+Skills matchés avec le poste: ${matchedSkills.join(', ') || 'Aucun'}
+Skills manquants: ${missingSkills.join(', ') || 'Aucun'}
+${p.education ? 'Formation: ' + p.education.join(', ') : ''}
+${p.summary ? 'Résumé: ' + p.summary.substring(0, 200) : ''}
+Expériences:
+${workExpText || 'Non disponible'}
+
+=== RÈGLES DE SCORING STRICTES ===
+1. MUST-HAVE manquant (skill, secteur, séniorité) → score ≤ 35, WEAK_MATCH ou NO_MATCH. TOLÉRANCE ZÉRO.
+2. Mismatch séniorité flagrant (ex: Director/VP vs IC junior, Data Scientist vs Manager) → score ≤ 30, NO_MATCH.
+3. Profil trop vague (headline générique, pas de skills identifiables) → score ≤ 40, ne PAS mettre "go".
+4. Profil dans un domaine DIFFÉRENT (ex: Data Science vs Développement, Product vs Engineering) → score ≤ 40.
+5. Seuils stricts: NO_MATCH(0-30) WEAK_MATCH(31-45) POSSIBLE_MATCH(46-60) GOOD_MATCH(61-79) STRONG_MATCH(80-100)
+6. GOOD_MATCH/STRONG_MATCH = profil qui coche TOUS les must-have ET la majorité des should-have.
+7. Sois SÉVÈRE. En cas de doute, sous-évalue plutôt que surévalue. Un "go" doit être un candidat qu'on VEUT contacter.
+
+Réponds en JSON COMPACT sur UNE SEULE LIGNE. Max 3 items par array. Textes courts (max 50 chars). Summary max 20 mots.
+{"score":N,"recommendation":"X","summary":"...","strengths":["..."],"concerns":["..."],"missingSkills":["..."],"seniorityMatch":"X","locationMatch":"X","experienceMatch":"X","tenureAnalysis":"X","receptivityScore":N,"skipReason":"raison si score<40 sinon null"}`);
 
             const res = await fetch(
               "https://ai.gateway.lovable.dev/v1/chat/completions",
