@@ -141,18 +141,18 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
   return (
     <>
       <Sheet open={open} onOpenChange={onOpenChange}>
-        <SheetContent side="right" className="w-[95vw] max-w-[600px] p-0 flex flex-col">
-          <SheetHeader className="px-4 pt-4 pb-3 border-b border-border shrink-0">
-            <div className="flex items-start gap-3">
-              <Avatar className="w-12 h-12 border-2 border-background shadow-md shrink-0">
+        <SheetContent side="right" className="w-[95vw] max-w-[720px] p-0 flex flex-col">
+          <SheetHeader className="px-5 pt-5 pb-4 bg-gradient-to-b from-muted/40 to-background border-b border-border shrink-0">
+            <div className="flex items-start gap-4">
+              <Avatar className="w-14 h-14 border-2 border-background shadow-lg ring-2 ring-primary/10 shrink-0">
                 <AvatarImage src={profile.profile_picture_url} alt={fullName} className="object-cover" />
-                <AvatarFallback className="bg-gradient-to-br from-primary to-primary/80 text-primary-foreground text-lg font-medium">
+                <AvatarFallback className="bg-gradient-to-br from-primary to-primary/80 text-primary-foreground text-lg font-semibold">
                   {initials || '?'}
                 </AvatarFallback>
               </Avatar>
               <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <SheetTitle className="text-base font-semibold text-foreground truncate">
+                <div className="flex items-center gap-2.5 flex-wrap">
+                  <SheetTitle className="text-lg font-bold text-foreground truncate">
                     {fullName || 'Profil LinkedIn'}
                   </SheetTitle>
                   <CardStatusBadges
@@ -167,25 +167,25 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
                     historyLatestDateLabel={historyLatestDateLabel}
                   />
                 </div>
-                <p className="text-sm text-muted-foreground line-clamp-2 mt-0.5">
+                <p className="text-sm text-muted-foreground line-clamp-2 mt-1 leading-relaxed">
                   {profile.headline || currentRole || 'Profil LinkedIn'}
                 </p>
-                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-2 text-xs text-muted-foreground">
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 mt-2.5 text-xs text-muted-foreground">
                   {currentCompany && (
-                    <span className="flex items-center gap-1 font-medium text-foreground/80">
+                    <span className="flex items-center gap-1.5 font-medium text-foreground/80">
                       <Building2 className="w-3.5 h-3.5 text-primary" />
                       {currentCompany}
-                      {currentJobTenure && <span className="text-muted-foreground/40 font-normal">• {currentJobTenure}</span>}
+                      {currentJobTenure && <span className="text-muted-foreground/50 font-normal">• {currentJobTenure}</span>}
                     </span>
                   )}
                   {profile.location && (
-                    <span className="flex items-center gap-1">
+                    <span className="flex items-center gap-1.5">
                       <MapPin className="w-3.5 h-3.5" />
                       {profile.location}
                     </span>
                   )}
                   {totalExperience && (
-                    <span className="flex items-center gap-1 text-emerald-600 font-medium">
+                    <span className="flex items-center gap-1.5 text-emerald-600 font-medium">
                       <TrendingUp className="w-3.5 h-3.5" />
                       {totalExperience}
                     </span>
@@ -194,7 +194,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
               </div>
             </div>
             {/* Actions bar */}
-            <div className="flex items-center justify-between mt-3 pt-3 border-t border-border/50">
+            <div className="flex items-center justify-between mt-3 pt-3 border-t border-border/30">
               <CardActions
                 profile={profile}
                 profileUrl={profileUrl}
@@ -224,7 +224,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
           </SheetHeader>
 
           <ScrollArea className="flex-1">
-            <div className="p-4 space-y-4">
+            <div className="p-5 space-y-5">
               {/* Job Score */}
               {jobScore && (
                 <div>
