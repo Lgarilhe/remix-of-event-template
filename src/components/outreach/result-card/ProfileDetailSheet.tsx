@@ -101,7 +101,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
   );
 
   // Notion shortlist data for this candidate
-  const { data: notionShortlistData, isLoading: notionShortlistLoading, isFetching: notionShortlistFetching } = useNotionShortlist();
+  const { data: notionShortlistData, isLoading: notionShortlistLoading } = useNotionShortlist();
   const notionShortlistsForCandidate: NotionShortlistHistoryItem[] = React.useMemo(() => {
     if (!notionShortlistData) return [];
 
@@ -212,7 +212,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
     }
   };
 
-  const historyPanelLoading = historyLoading || notionShortlistLoading || notionShortlistFetching;
+  const historyPanelLoading = historyLoading || notionShortlistLoading;
   const hasHistory = notionShortlistsForCandidate.length > 0 || (historyData && (
     historyData.placements.length > 0 ||
     historyData.shortlists.length > 0 ||
