@@ -13,7 +13,6 @@ import { useAirtableMatch } from '@/hooks/useAirtableMatch';
 import { useNotionMatch } from '@/hooks/useNotionMatch';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Progress } from '@/components/ui/progress';
 import {
@@ -464,7 +463,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
       )}
 
       {/* Results list */}
-      <ScrollArea className="flex-1" ref={scrollAreaRef}>
+      <div className="flex-1 overflow-x-auto overflow-y-auto" ref={scrollAreaRef}>
         {loading && results.length === 0 ? (
           <BrutalLoader variant="search" rows={5} />
         ) : results.length === 0 ? (
@@ -687,7 +686,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
             </div>
           </div>
         )}
-      </ScrollArea>
+      </div>
 
       {/* Profile Detail Sheet */}
       <ProfileDetailSheet
