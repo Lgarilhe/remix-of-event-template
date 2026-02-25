@@ -104,15 +104,15 @@ export default function Outreach() {
   };
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen w-full max-w-full bg-background">
       <SEOHead
         title="Outreach LinkedIn | Konekt"
         description="Recherchez et contactez des candidats sur LinkedIn avec les filtres Recruiter avancés"
       />
       <Navbar />
 
-      <main className="pt-20 pb-0">
-        <div className="max-w-[1600px] mx-auto px-3 sm:px-6 lg:px-8">
+      <main className="pt-20 pb-0 w-full max-w-full">
+        <div className="max-w-[1600px] mx-auto w-full min-w-0 px-3 sm:px-6 lg:px-8">
           {/* Header */}
           <div className="mb-6 sm:mb-8">
             <div className="flex items-center justify-between">
