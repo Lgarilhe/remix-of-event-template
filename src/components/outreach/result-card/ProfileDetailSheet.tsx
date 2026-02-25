@@ -64,6 +64,16 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
   const [showMessageModal, setShowMessageModal] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isScoring, setIsScoring] = useState(false);
+
+  const handleScore = async () => {
+    if (!onScoreProfile) return;
+    setIsScoring(true);
+    try {
+      await onScoreProfile();
+    } finally {
+      setIsScoring(false);
+    }
+  };
   const [aiAnalysis, setAiAnalysis] = useState<{
     summary: string;
     strengths: string[];
@@ -227,12 +237,12 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={onScoreProfile}
+                  onClick={handleScore}
                   disabled={isScoring}
                   className="h-8 gap-1.5 text-xs rounded-lg text-purple-600 border-purple-200 hover:bg-purple-50"
                 >
                   {isScoring ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Target className="w-3.5 h-3.5" />}
-                  Scorer
+                  {isScoring ? 'Scoring...' : 'Scorer'}
                 </Button>
               )}
 
