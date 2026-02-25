@@ -111,7 +111,7 @@ export default function Outreach() {
       />
       <Navbar />
 
-      <main className="pt-20 pb-12">
+      <main className="pt-20 pb-0">
         <div className="max-w-[1600px] mx-auto px-3 sm:px-6 lg:px-8">
           {/* Header */}
           <div className="mb-6 sm:mb-8">
