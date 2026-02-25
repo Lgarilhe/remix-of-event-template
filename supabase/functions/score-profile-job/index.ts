@@ -275,7 +275,7 @@ Skills déclarés: ${profileSkills.join(', ') || 'Aucun'}
 Skills matchés avec le poste: ${matchedSkills.join(', ') || 'Aucun'}
 Skills manquants: ${missingSkills.join(', ') || 'Aucun'}
 ${p.education ? 'Formation: ' + p.education.join(', ') : ''}
-${p.summary ? 'Résumé: ' + p.summary.substring(0, 200) : ''}
+${p.summary ? 'Résumé/About: ' + p.summary.substring(0, 400) : ''}
 Expériences:
 ${workExpText || 'Non disponible'}
 
@@ -288,8 +288,26 @@ ${workExpText || 'Non disponible'}
 6. GOOD_MATCH/STRONG_MATCH = profil qui coche TOUS les must-have ET la majorité des should-have.
 7. Sois SÉVÈRE. En cas de doute, sous-évalue plutôt que surévalue. Un "go" doit être un candidat qu'on VEUT contacter.
 
+=== ANALYSE LOCALISATION (CRITIQUE) ===
+8. Si poste on-site/hybride, candidat DOIT être dans la zone géographique ou proximité raisonnable.
+9. Candidat à 500km+ d'un poste on-site sans mobilité → pénalité -15 à -25 pts.
+10. Préférences localisation incompatibles dans résumé/headline → concern majeure.
+11. Remote OK côté poste → localisation moins critique, fuseau horaire pertinent.
+
+=== ANALYSE DU RÉSUMÉ/ABOUT DU CANDIDAT ===
+12. Critères explicites du candidat (remote only, freelance only, secteur, taille entreprise) qui CONTREDISENT le poste → pénalité -15 à -20 pts, concern explicite.
+13. Ex: "full remote uniquement" vs poste on-site → -20. "Startups only" vs grand groupe → concern modérée.
+
+=== ANALYSE PARCOURS ET SIGNAUX DE RISQUE ===
+14. Évalue COHÉRENCE parcours : progression logique, spécialisation claire.
+15. DIPLÔMES/XP ÉTRANGER : Vigilance sur parcours académiques dans pays où diplômes moins reconnus marché français (Maghreb, Inde, Afrique subsaharienne, certains pays Asie). NON éliminatoire mais signal dans concerns.
+16. Diplômes étrangers + XP significative France/Europe entreprises reconnues → signal atténué.
+17. UNIQUEMENT diplômes/XP étrangères sans validation marché local → concern forte, -10 à -15 pts.
+18. Tenure moyenne <12 mois → concern stabilité.
+19. Gaps inexpliqués → concern modérée.
+
 Réponds en JSON COMPACT sur UNE SEULE LIGNE. Max 3 items par array. Textes courts (max 50 chars). Summary max 20 mots.
-{"score":N,"recommendation":"X","summary":"...","strengths":["..."],"concerns":["..."],"missingSkills":["..."],"seniorityMatch":"X","locationMatch":"X","experienceMatch":"X","tenureAnalysis":"X","receptivityScore":N,"skipReason":"raison si score<40 sinon null"}`);
+{"score":N,"recommendation":"X","summary":"...","strengths":["..."],"concerns":["..."],"missingSkills":["..."],"seniorityMatch":"X","locationMatch":"X","experienceMatch":"X","tenureAnalysis":"X","receptivityScore":N,"foreignDiplomaRisk":"none|low|medium|high","locationCompatibility":"compatible|partial|incompatible","candidatePreferencesConflict":null,"skipReason":"raison si score<40 sinon null"}`);
 
             const res = await fetch(
               "https://ai.gateway.lovable.dev/v1/chat/completions",
@@ -344,6 +362,9 @@ Réponds en JSON COMPACT sur UNE SEULE LIGNE. Max 3 items par array. Textes cour
               experienceMatch: scoring.experienceMatch || 'UNKNOWN',
               tenureAnalysis: scoring.tenureAnalysis || 'UNKNOWN',
               receptivityScore: scoring.receptivityScore ?? null,
+              foreignDiplomaRisk: scoring.foreignDiplomaRisk || 'none',
+              locationCompatibility: scoring.locationCompatibility || 'unknown',
+              candidatePreferencesConflict: scoring.candidatePreferencesConflict || null,
               skipReason: scoring.score < 40 ? (scoring.skipReason || scoring.summary) : null,
               matchedSkills: matchedSkills,
               matchedSkillCount: matchedSkills.length,
