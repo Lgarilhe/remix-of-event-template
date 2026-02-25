@@ -294,20 +294,26 @@ ${workExpText || 'Non disponible'}
 10. Préférences localisation incompatibles dans résumé/headline → concern majeure.
 11. Remote OK côté poste → localisation moins critique, fuseau horaire pertinent.
 
-=== ANALYSE DU RÉSUMÉ/ABOUT DU CANDIDAT ===
-12. Critères explicites du candidat (remote only, freelance only, secteur, taille entreprise) qui CONTREDISENT le poste → pénalité -15 à -20 pts, concern explicite.
-13. Ex: "full remote uniquement" vs poste on-site → -20. "Startups only" vs grand groupe → concern modérée.
+=== ANALYSE DU TITRE LINKEDIN ET RÉSUMÉ/ABOUT ===
+12. ANALYSE DU HEADLINE : Le titre LinkedIn est un signal FORT sur les intentions du candidat. Détecte :
+  - Statut contractuel : "Freelance", "Consultant indépendant", "Auto-entrepreneur", "Disponible" → si le poste est CDI/CDD, c'est une concern forte (le candidat ne cherche probablement pas de salariat).
+  - Recherche active : "Open to work", "En recherche", "Disponible immédiatement" → strength (réceptivité).
+  - Spécialisation revendiquée : si le headline indique un domaine différent du poste → concern.
+  - Niveau affiché : "Senior", "Lead", "Head of", "Director", "Junior" → vérifier cohérence avec séniorité requise.
+13. Si headline dit "Freelance" et poste = CDI → pénalité -10 à -15 pts, concern "Profil freelance vs poste salarié".
+14. Critères explicites dans le résumé/about (remote only, freelance only, secteur, taille entreprise) qui CONTREDISENT le poste → pénalité -15 à -20 pts, concern explicite.
+15. Ex: "full remote uniquement" vs poste on-site → -20. "Startups only" vs grand groupe → concern modérée.
 
 === ANALYSE PARCOURS ET SIGNAUX DE RISQUE ===
-14. Évalue COHÉRENCE parcours : progression logique, spécialisation claire.
-15. DIPLÔMES/XP ÉTRANGER : Vigilance sur parcours académiques dans pays où diplômes moins reconnus marché français (Maghreb, Inde, Afrique subsaharienne, certains pays Asie). NON éliminatoire mais signal dans concerns.
-16. Diplômes étrangers + XP significative France/Europe entreprises reconnues → signal atténué.
-17. UNIQUEMENT diplômes/XP étrangères sans validation marché local → concern forte, -10 à -15 pts.
-18. Tenure moyenne <12 mois → concern stabilité.
-19. Gaps inexpliqués → concern modérée.
+16. Évalue COHÉRENCE parcours : progression logique, spécialisation claire.
+17. DIPLÔMES/XP ÉTRANGER : Vigilance sur parcours académiques dans pays où diplômes moins reconnus marché français (Maghreb, Inde, Afrique subsaharienne, certains pays Asie). NON éliminatoire mais signal dans concerns.
+18. Diplômes étrangers + XP significative France/Europe entreprises reconnues → signal atténué.
+19. UNIQUEMENT diplômes/XP étrangères sans validation marché local → concern forte, -10 à -15 pts.
+20. Tenure moyenne <12 mois → concern stabilité.
+21. Gaps inexpliqués → concern modérée.
 
 Réponds en JSON COMPACT sur UNE SEULE LIGNE. Max 3 items par array. Textes courts (max 50 chars). Summary max 20 mots.
-{"score":N,"recommendation":"X","summary":"...","strengths":["..."],"concerns":["..."],"missingSkills":["..."],"seniorityMatch":"X","locationMatch":"X","experienceMatch":"X","tenureAnalysis":"X","receptivityScore":N,"foreignDiplomaRisk":"none|low|medium|high","locationCompatibility":"compatible|partial|incompatible","candidatePreferencesConflict":null,"skipReason":"raison si score<40 sinon null"}`);
+{"score":N,"recommendation":"X","summary":"...","strengths":["..."],"concerns":["..."],"missingSkills":["..."],"seniorityMatch":"X","locationMatch":"X","experienceMatch":"X","tenureAnalysis":"X","receptivityScore":N,"foreignDiplomaRisk":"none|low|medium|high","locationCompatibility":"compatible|partial|incompatible","candidatePreferencesConflict":null,"contractMismatch":null,"skipReason":"raison si score<40 sinon null"}`);
 
             const res = await fetch(
               "https://ai.gateway.lovable.dev/v1/chat/completions",
@@ -365,6 +371,7 @@ Réponds en JSON COMPACT sur UNE SEULE LIGNE. Max 3 items par array. Textes cour
               foreignDiplomaRisk: scoring.foreignDiplomaRisk || 'none',
               locationCompatibility: scoring.locationCompatibility || 'unknown',
               candidatePreferencesConflict: scoring.candidatePreferencesConflict || null,
+              contractMismatch: scoring.contractMismatch || null,
               skipReason: scoring.score < 40 ? (scoring.skipReason || scoring.summary) : null,
               matchedSkills: matchedSkills,
               matchedSkillCount: matchedSkills.length,
