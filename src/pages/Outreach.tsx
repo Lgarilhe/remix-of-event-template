@@ -104,7 +104,7 @@ export default function Outreach() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-blue-50/30 overflow-x-hidden">
+    <div className="min-h-screen bg-background overflow-x-hidden">
       <SEOHead
         title="Outreach LinkedIn | Konekt"
         description="Recherchez et contactez des candidats sur LinkedIn avec les filtres Recruiter avancés"
@@ -118,10 +118,10 @@ export default function Outreach() {
             <div className="flex items-center justify-between">
               <div>
                 <div className="flex items-center gap-2.5 sm:gap-3 mb-1">
-                  <div className="p-1.5 sm:p-2 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-600/20">
+                  <div className="h-9 w-9 sm:h-10 sm:w-10 bg-foreground text-background flex items-center justify-center border border-foreground">
                     <Search className="w-4 h-4 sm:w-5 sm:h-5" />
                   </div>
-                  <h1 className="text-xl sm:text-2xl font-bold text-foreground tracking-tight">Outreach</h1>
+                  <h1 className="text-xl sm:text-2xl font-bold text-foreground tracking-tight uppercase">Outreach</h1>
                 </div>
                 <p className="text-xs sm:text-sm text-muted-foreground hidden sm:block ml-[44px] sm:ml-[52px]">
                   Sourcing, séquences & suivi candidats
@@ -131,10 +131,10 @@ export default function Outreach() {
             </div>
           </div>
 
-          {/* Tabs */}
+          {/* Tabs — brutal style */}
           <div className="overflow-x-auto -mx-3 px-3 sm:mx-0 sm:px-0 mb-5 sm:mb-6">
-            <div className="flex gap-1 p-1 bg-white/80 backdrop-blur-sm border border-border rounded-2xl shadow-sm w-max sm:w-auto">
-              {tabs.map((tab) => {
+            <div className="flex gap-0 w-max sm:w-auto">
+              {tabs.map((tab, index) => {
                 const Icon = tab.icon;
                 const isActive = activeTab === tab.value;
                 return (
@@ -142,19 +142,23 @@ export default function Outreach() {
                     key={tab.value}
                     onClick={() => setActiveTab(tab.value)}
                     className={cn(
-                      "flex items-center gap-1.5 px-3 py-2 sm:px-4 sm:py-2.5 rounded-xl text-xs sm:text-sm font-medium transition-all duration-200",
+                      "relative overflow-hidden flex items-center gap-1.5 h-[34px] px-3 sm:px-4 text-[11px] sm:text-xs font-medium uppercase tracking-wider border border-foreground transition-colors duration-200 group",
+                      index > 0 && "border-l-0",
                       isActive
-                        ? "bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md shadow-blue-600/25"
-                        : "text-muted-foreground hover:text-foreground hover:bg-accent/50"
+                        ? "bg-brutal-accent text-foreground"
+                        : "bg-background text-foreground"
                     )}
                   >
-                    <Icon className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
-                    <span className="hidden sm:inline">{tab.label}{tab.value === 'accounts' ? ` (${accounts.length})` : ''}</span>
-                    <span className="sm:hidden">{tab.shortLabel || tab.label}{tab.value === 'accounts' ? ` (${accounts.length})` : ''}</span>
+                    <Icon className="w-3.5 h-3.5 shrink-0 relative z-10" />
+                    <span className="hidden sm:inline relative z-10">{tab.label}{tab.value === 'accounts' ? ` (${accounts.length})` : ''}</span>
+                    <span className="sm:hidden relative z-10">{tab.shortLabel || tab.label}{tab.value === 'accounts' ? ` (${accounts.length})` : ''}</span>
                     {tab.value === 'messages' && unreadMessageCount > 0 && (
-                      <span className="ml-0.5 px-1.5 py-0.5 text-[9px] sm:text-[10px] font-bold bg-red-500 text-white rounded-full min-w-[16px] text-center shadow-sm">
+                      <span className="ml-0.5 px-1.5 py-0.5 text-[9px] sm:text-[10px] font-bold bg-destructive text-destructive-foreground rounded-full min-w-[16px] text-center relative z-10">
                         {unreadMessageCount > 99 ? '99+' : unreadMessageCount}
                       </span>
+                    )}
+                    {!isActive && (
+                      <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out"></span>
                     )}
                   </button>
                 );
@@ -164,18 +168,18 @@ export default function Outreach() {
 
           {/* Tab panels */}
           <div className={cn("mt-0 min-w-0", activeTab !== 'projects' && 'hidden')}>
-            <div className="bg-white/90 backdrop-blur-sm rounded-2xl border border-border/60 p-3 sm:p-6 overflow-hidden shadow-sm">
+            <div className="bg-background border border-foreground/10 p-3 sm:p-6 overflow-hidden">
               <ProjectsList onResumeSearch={handleResumeSearch} />
             </div>
           </div>
 
           <div className={cn("mt-0 min-w-0", activeTab !== 'search' && 'hidden')}>
             {accounts.length === 0 ? (
-              <div className="bg-white/90 backdrop-blur-sm rounded-2xl border border-border/60 p-12 text-center shadow-sm">
-                <div className="p-4 rounded-2xl bg-blue-50 w-fit mx-auto mb-4">
-                  <Users className="w-12 h-12 text-blue-400" />
+              <div className="bg-background border border-foreground/10 p-12 text-center">
+                <div className="h-14 w-14 bg-foreground text-background flex items-center justify-center mx-auto mb-4">
+                  <Users className="w-7 h-7" />
                 </div>
-                <h2 className="text-lg font-semibold text-foreground mb-2">
+                <h2 className="text-lg font-semibold text-foreground mb-2 uppercase tracking-wide">
                   Connectez votre compte LinkedIn
                 </h2>
                 <p className="text-muted-foreground text-sm mb-6 max-w-md mx-auto">
@@ -183,9 +187,10 @@ export default function Outreach() {
                 </p>
                 <button
                   onClick={() => setActiveTab('accounts')}
-                  className="px-6 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl hover:shadow-lg hover:shadow-blue-600/25 transition-all duration-200 font-medium text-sm"
+                  className="relative overflow-hidden h-[34px] px-6 bg-background text-foreground border border-foreground text-xs font-medium uppercase tracking-wider group"
                 >
-                  Connecter un compte
+                  <span className="relative z-10">Connecter un compte</span>
+                  <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out"></span>
                 </button>
               </div>
             ) : (
@@ -211,7 +216,7 @@ export default function Outreach() {
           </div>
 
           <div className={cn("mt-0", activeTab !== 'sequences' && 'hidden')}>
-            <div className="bg-white/90 backdrop-blur-sm rounded-2xl border border-border/60 p-3 sm:p-6 shadow-sm">
+            <div className="bg-background border border-foreground/10 p-3 sm:p-6">
               <SequencesList
                 accounts={accounts}
                 selectedAccount={selectedAccount}
