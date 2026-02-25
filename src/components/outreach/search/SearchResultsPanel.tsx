@@ -494,7 +494,8 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
           <div className="p-2 sm:p-4 space-y-2 min-w-0">
             {/* Batch workflow banner */}
             {hasSearched && total !== null && total > 0 && (
-              <div className="border border-foreground/15 bg-background mb-3 overflow-hidden">
+              <div className="border border-foreground bg-brutal-accent/15 mb-3 overflow-hidden">
+                <div className="h-0.5 bg-brutal-accent" />
                 <div className="p-3 sm:p-4">
                   <div className="flex items-center justify-between gap-4">
                     {/* Left: bold typographic count */}
