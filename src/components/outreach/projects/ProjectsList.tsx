@@ -113,24 +113,25 @@ export const ProjectsList: React.FC<ProjectsListProps> = ({ onResumeSearch }) =>
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
         <div className="flex items-center gap-3 flex-1 min-w-0">
           <div className="relative flex-1 max-w-md min-w-0">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <Input
               placeholder="Rechercher un projet..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10"
+              className="pl-10 border-foreground/10 rounded-none"
             />
           </div>
           
           {/* Status filter */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm" className="gap-2 shrink-0">
-                <Filter className="w-4 h-4" />
-                <span className="hidden sm:inline">{statusFilter ? statusConfig[statusFilter as keyof typeof statusConfig].label : 'Tous'}</span>
-              </Button>
+              <button className="relative overflow-hidden flex items-center gap-2 h-[34px] px-3 text-xs font-medium uppercase tracking-wider border border-foreground/20 bg-background text-foreground group shrink-0">
+                <Filter className="w-3.5 h-3.5 relative z-10" />
+                <span className="hidden sm:inline relative z-10">{statusFilter ? statusConfig[statusFilter as keyof typeof statusConfig].label : 'Tous'}</span>
+                <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
+              </button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent>
+            <DropdownMenuContent className="border-foreground/10">
               <DropdownMenuItem onClick={() => setStatusFilter(null)}>
                 Tous les statuts
               </DropdownMenuItem>
@@ -145,29 +146,36 @@ export const ProjectsList: React.FC<ProjectsListProps> = ({ onResumeSearch }) =>
           </DropdownMenu>
         </div>
 
-        <Button onClick={() => setShowCreateModal(true)} className="gap-2 bg-[#0077B5] hover:bg-[#005E93] shrink-0">
-          <Plus className="w-4 h-4" />
-          <span className="sm:inline">Nouveau projet</span>
-        </Button>
+        <button 
+          onClick={() => setShowCreateModal(true)} 
+          className="relative overflow-hidden flex items-center gap-2 h-[34px] px-4 text-xs font-medium uppercase tracking-wider border border-foreground bg-foreground text-background shrink-0 group"
+        >
+          <Plus className="w-3.5 h-3.5 relative z-10" />
+          <span className="relative z-10">Nouveau projet</span>
+        </button>
       </div>
 
       {/* Projects grid */}
       {filteredProjects.length === 0 ? (
-        <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
-          <FolderOpen className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-          <h3 className="text-lg font-medium text-gray-900 mb-2">
+        <div className="bg-background border border-foreground/10 p-12 text-center">
+          <div className="h-16 w-16 bg-foreground text-background flex items-center justify-center mx-auto mb-4">
+            <FolderOpen className="w-8 h-8" />
+          </div>
+          <h3 className="text-lg font-bold text-foreground mb-2 uppercase tracking-wide">
             {searchQuery || statusFilter ? 'Aucun projet trouvé' : 'Aucun projet de sourcing'}
           </h3>
-          <p className="text-gray-500 mb-6">
+          <p className="text-muted-foreground mb-6 text-sm">
             {searchQuery || statusFilter 
               ? 'Essayez de modifier vos filtres de recherche'
               : 'Créez un projet pour organiser vos recherches de candidats'}
           </p>
           {!searchQuery && !statusFilter && (
-            <Button onClick={() => setShowCreateModal(true)} className="gap-2">
-              <Plus className="w-4 h-4" />
-              Créer mon premier projet
-            </Button>
+            <button 
+              onClick={() => setShowCreateModal(true)} 
+              className="relative overflow-hidden h-[34px] px-6 bg-foreground text-background border border-foreground text-xs font-medium uppercase tracking-wider group"
+            >
+              <span className="relative z-10 flex items-center gap-2"><Plus className="w-4 h-4" /> Créer mon premier projet</span>
+            </button>
           )}
         </div>
       ) : (
@@ -179,14 +187,14 @@ export const ProjectsList: React.FC<ProjectsListProps> = ({ onResumeSearch }) =>
             return (
               <div
                 key={project.id}
-                className="bg-white rounded-xl border border-gray-200 p-5 hover:border-[#0077B5]/30 hover:shadow-md transition-all cursor-pointer"
+                className="bg-background border border-foreground/10 p-5 hover:border-foreground/30 hover:bg-brutal-accent/5 transition-all cursor-pointer"
                 onClick={() => setSelectedProject(project)}
               >
                 <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
                   {/* Left: Main info */}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 sm:gap-3 mb-2 flex-wrap">
-                      <h3 className="text-base sm:text-lg font-semibold text-gray-900 truncate max-w-[200px] sm:max-w-none">
+                      <h3 className="text-base sm:text-lg font-bold text-foreground truncate max-w-[200px] sm:max-w-none uppercase tracking-wide">
                         {project.name}
                       </h3>
                       <Badge className={statusConfig[project.status].color}>
@@ -196,53 +204,52 @@ export const ProjectsList: React.FC<ProjectsListProps> = ({ onResumeSearch }) =>
                     </div>
                     
                     {project.client_name && (
-                      <div className="flex items-center gap-2 text-sm text-gray-500 mb-3">
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground mb-3">
                         <Building2 className="w-4 h-4 shrink-0" />
                         <span className="truncate">{project.client_name}</span>
                       </div>
                     )}
 
                     {project.description && (
-                      <p className="text-sm text-gray-600 line-clamp-2 mb-3">
+                      <p className="text-sm text-muted-foreground line-clamp-2 mb-3">
                         {project.description}
                       </p>
                     )}
 
-                    {/* Stats - using dynamic counts from job_candidate_status */}
+                    {/* Stats */}
                     <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs sm:text-sm">
-                      <div className="flex items-center gap-1.5 text-gray-600">
-                        <Users className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-blue-500 shrink-0" />
+                      <div className="flex items-center gap-1.5 text-muted-foreground">
+                        <Users className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
                         <span>{stats.total || project.stats_total_found} trouvés</span>
                       </div>
-                      <div className="flex items-center gap-1.5 text-gray-600">
-                        <MessageSquare className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-green-500 shrink-0" />
+                      <div className="flex items-center gap-1.5 text-muted-foreground">
+                        <MessageSquare className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
                         <span>{stats.messaged} contactés</span>
                       </div>
-                      <div className="flex items-center gap-1.5 text-gray-600">
-                        <UserCheck className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-purple-500 shrink-0" />
+                      <div className="flex items-center gap-1.5 text-muted-foreground">
+                        <UserCheck className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
                         <span>{stats.shortlisted} shortlistés</span>
                       </div>
-                      <div className="flex items-center gap-1.5 text-gray-600">
-                        <UserX className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-red-400 shrink-0" />
+                      <div className="flex items-center gap-1.5 text-muted-foreground">
+                        <UserX className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
                         <span>{stats.dismissed} écartés</span>
                       </div>
                     </div>
                   </div>
 
                   {/* Right: Actions & Meta */}
-                  <div className="flex sm:flex-col items-center sm:items-end justify-between sm:justify-start gap-3 pt-2 sm:pt-0 border-t sm:border-t-0 border-gray-100">
+                  <div className="flex sm:flex-col items-center sm:items-end justify-between sm:justify-start gap-3 pt-2 sm:pt-0 border-t sm:border-t-0 border-foreground/5">
                     <div className="flex items-center gap-2">
-                      <Button
-                        size="sm"
+                      <button
                         onClick={(e) => {
                           e.stopPropagation();
                           onResumeSearch(project);
                         }}
-                        className="gap-1.5 bg-[#0077B5] hover:bg-[#005E93]"
+                        className="relative overflow-hidden flex items-center gap-1.5 h-[30px] px-3 text-[11px] font-medium uppercase tracking-wider border border-foreground bg-foreground text-background group"
                       >
-                        <Play className="w-3.5 h-3.5" />
-                        Reprendre
-                      </Button>
+                        <Play className="w-3.5 h-3.5 relative z-10" />
+                        <span className="relative z-10">Reprendre</span>
+                      </button>
 
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
@@ -288,7 +295,7 @@ export const ProjectsList: React.FC<ProjectsListProps> = ({ onResumeSearch }) =>
                       </DropdownMenu>
                     </div>
 
-                    <div className="flex items-center gap-1.5 text-xs text-gray-400">
+                    <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                       <Calendar className="w-3.5 h-3.5 shrink-0" />
                       <span className="truncate">
                         {project.last_search_at 

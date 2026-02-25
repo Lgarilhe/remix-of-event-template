@@ -114,8 +114,10 @@ export const MessageView: React.FC<MessageViewProps> = ({
     return (
       <div className="flex-1 flex items-center justify-center text-muted-foreground">
         <div className="text-center">
-          <MessageSquare className="w-12 h-12 mx-auto mb-4 opacity-30" />
-          <p>Sélectionnez une conversation</p>
+          <div className="h-14 w-14 bg-foreground text-background flex items-center justify-center mx-auto mb-4">
+            <MessageSquare className="w-6 h-6" />
+          </div>
+          <p className="text-sm uppercase tracking-wide">Sélectionnez une conversation</p>
         </div>
       </div>
     );
@@ -134,7 +136,7 @@ export const MessageView: React.FC<MessageViewProps> = ({
       !selectedChat ? "hidden md:flex" : "flex"
     )}>
       {/* Chat Header */}
-      <div className="p-3 border-b border-[#1A1A1A]/10 flex items-center gap-3">
+      <div className="p-3 border-b border-foreground/10 flex items-center gap-3 bg-background">
         <Button
           variant="ghost"
           size="icon"
@@ -143,14 +145,14 @@ export const MessageView: React.FC<MessageViewProps> = ({
         >
           <ChevronLeft className="w-5 h-5" />
         </Button>
-        <Avatar className="w-10 h-10">
+        <Avatar className="w-10 h-10 rounded-none">
           <AvatarImage src={avatar} />
-          <AvatarFallback className="bg-[#0077B5]/10 text-[#0077B5] font-medium">
+          <AvatarFallback className="bg-foreground/10 text-foreground font-medium rounded-none">
             {getInitials(displayName)}
           </AvatarFallback>
         </Avatar>
         <div className="flex-1 min-w-0">
-          <h4 className="font-medium text-[#1A1A1A] truncate">
+          <h4 className="font-semibold text-foreground truncate text-sm uppercase tracking-wide">
             {displayName}
           </h4>
           {headline && (
@@ -159,7 +161,7 @@ export const MessageView: React.FC<MessageViewProps> = ({
             </p>
           )}
           {subject && (
-            <p className="text-[10px] text-[#0077B5] truncate flex items-center gap-1">
+            <p className="text-[10px] text-muted-foreground truncate flex items-center gap-1">
               <span>📧</span> {subject}
             </p>
           )}
@@ -172,15 +174,16 @@ export const MessageView: React.FC<MessageViewProps> = ({
         />
 
         {selectedChat.attendees?.[0]?.profile_url && (
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-8 text-xs"
+          <button
+            className="relative overflow-hidden h-8 px-3 text-xs font-medium uppercase tracking-wider border border-foreground/20 bg-background text-foreground group"
             onClick={() => window.open(selectedChat.attendees?.[0]?.profile_url, '_blank')}
           >
-            <User className="w-3 h-3 mr-1" />
-            Profil
-          </Button>
+            <span className="relative z-10 flex items-center gap-1">
+              <User className="w-3 h-3" />
+              Profil
+            </span>
+            <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
+          </button>
         )}
       </div>
 
@@ -194,7 +197,7 @@ export const MessageView: React.FC<MessageViewProps> = ({
       >
         {loadingMessages && messages.length === 0 ? (
           <div className="flex items-center justify-center h-full">
-            <Loader2 className="w-6 h-6 animate-spin text-[#0077B5]" />
+            <Loader2 className="w-6 h-6 animate-spin text-foreground" />
           </div>
         ) : messages.length === 0 ? (
           <div className="flex items-center justify-center h-full text-muted-foreground">
@@ -215,10 +218,10 @@ export const MessageView: React.FC<MessageViewProps> = ({
               >
                 <div
                   className={cn(
-                    "max-w-[75%] rounded-2xl px-4 py-2.5",
+                    "max-w-[75%] px-4 py-2.5",
                     msg.is_sender
-                      ? "bg-[#0077B5] text-white rounded-br-md"
-                      : "bg-[#1A1A1A]/5 text-[#1A1A1A] rounded-bl-md"
+                      ? "bg-foreground text-background"
+                      : "bg-muted text-foreground border border-foreground/10"
                   )}
                 >
                   <p className="text-sm whitespace-pre-wrap break-words">
@@ -230,17 +233,17 @@ export const MessageView: React.FC<MessageViewProps> = ({
                   )}>
                     <span className={cn(
                       "text-[10px]",
-                      msg.is_sender ? "text-white/70" : "text-muted-foreground"
+                      msg.is_sender ? "text-background/70" : "text-muted-foreground"
                     )}>
                       {formatMessageTime(msg.timestamp)}
                     </span>
                     {msg.is_sender && (
                       (msg.read || msg.seen === 1) ? (
-                        <CheckCheck className="w-3 h-3 text-white/70" />
+                        <CheckCheck className="w-3 h-3 text-background/70" />
                       ) : msg.delivered ? (
-                        <Check className="w-3 h-3 text-white/70" />
+                        <Check className="w-3 h-3 text-background/70" />
                       ) : (
-                        <Clock className="w-3 h-3 text-white/50" />
+                        <Clock className="w-3 h-3 text-background/50" />
                       )
                     )}
                   </div>
@@ -288,7 +291,7 @@ export const MessageView: React.FC<MessageViewProps> = ({
       )}
 
       {/* Separator before input */}
-      <div className="border-t border-[#1A1A1A]/10" />
+      <div className="border-t border-foreground/10" />
 
       {/* Message Input */}
       <div className="px-3 pb-3">
@@ -307,19 +310,19 @@ export const MessageView: React.FC<MessageViewProps> = ({
               autoResize={true}
             />
           </div>
-          <Button
+          <button
             onClick={onSendMessage}
             disabled={sending || !newMessage.trim()}
-            className="bg-[#0077B5] hover:bg-[#005E93] h-10 w-10 p-0 mb-[2px]"
+            className="relative overflow-hidden h-10 w-10 bg-foreground text-background border border-foreground flex items-center justify-center mb-[2px] disabled:opacity-50 disabled:pointer-events-none group"
           >
             {sending ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
+              <Loader2 className="w-4 h-4 animate-spin relative z-10" />
             ) : (
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <svg className="w-4 h-4 relative z-10" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
               </svg>
             )}
-          </Button>
+          </button>
         </div>
       </div>
     </div>
