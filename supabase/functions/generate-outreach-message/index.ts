@@ -660,24 +660,31 @@ Réponds UNIQUEMENT en JSON valide:
   "personalization_points": ["HOOK 1: citation EXACTE ou fait PRÉCIS du profil utilisé comme accroche (ex: 'Post LinkedIn du 15/01 sur le DDD', 'Transition Doctolib→startup après 4 ans', 'Formation GOBELINS + parcours Rails/iOS')", "HOOK 2: lien CONCRET entre cet élément et le poste (ex: 'Expérience cloud souverain → projet infra greenfield', 'Double casquette dev/design → rôle VP Experience Design')"]
 }`;
 
-    const callAnthropic = async (userPrompt: string): Promise<{ ok: true; content: string } | { ok: false; response: Response }> => {
-      const response = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: {
-          "x-api-key": ANTHROPIC_API_KEY,
-          "anthropic-version": "2023-06-01",
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "claude-opus-4-6",
-          max_tokens: 450,
-          system:
-            "Tu es un recruteur tech senior. Tu écris des messages LinkedIn courts, directs, humains. JAMAIS de superlatifs, JAMAIS de tournures IA. Tu réponds TOUJOURS en JSON valide, sans markdown ni code blocks.",
-          messages: [{ role: "user", content: userPrompt }],
-        }),
-      });
+    const callAnthropic = async (userPrompt: string, maxRetries = 3): Promise<{ ok: true; content: string } | { ok: false; response: Response }> => {
+      for (let attempt = 0; attempt < maxRetries; attempt++) {
+        const response = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: {
+            "x-api-key": ANTHROPIC_API_KEY,
+            "anthropic-version": "2023-06-01",
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            model: "claude-opus-4-6",
+            max_tokens: 450,
+            system:
+              "Tu es un recruteur tech senior. Tu écris des messages LinkedIn courts, directs, humains. JAMAIS de superlatifs, JAMAIS de tournures IA. Tu réponds TOUJOURS en JSON valide, sans markdown ni code blocks.",
+            messages: [{ role: "user", content: userPrompt }],
+          }),
+        });
 
-      if (!response.ok) {
+        if (response.ok) {
+          const data = await response.json();
+          let content = data.content?.[0]?.text || "";
+          content = content.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+          return { ok: true, content };
+        }
+
         if (response.status === 429) {
           return {
             ok: false,
@@ -696,15 +703,21 @@ Réponds UNIQUEMENT en JSON valide:
             ),
           };
         }
+
+        // Retry on 5xx errors
+        if (response.status >= 500 && attempt < maxRetries - 1) {
+          const errorText = await response.text();
+          const waitMs = Math.pow(2, attempt + 1) * 1000; // 2s, 4s, 8s
+          console.warn(`[generate-outreach-message] Anthropic ${response.status}, retry ${attempt + 1}/${maxRetries - 1} in ${waitMs}ms. Body: ${errorText.slice(0, 200)}`);
+          await new Promise(r => setTimeout(r, waitMs));
+          continue;
+        }
+
         const errorText = await response.text();
         console.error("AI gateway error:", response.status, errorText);
         throw new Error(`AI gateway error: ${response.status}`);
       }
-
-      const data = await response.json();
-      let content = data.content?.[0]?.text || "";
-      content = content.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
-      return { ok: true, content };
+      throw new Error("All AI retries exhausted");
     };
 
     const first = await callAnthropic(prompt);
