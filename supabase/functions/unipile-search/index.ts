@@ -146,6 +146,10 @@ Deno.serve(async (req) => {
         return await handleSendMessage(baseUrl, apiKey, account_id, params);
       }
 
+      case 'mark_as_read': {
+        return await handleMarkAsRead(baseUrl, apiKey, params);
+      }
+
       default:
         return new Response(
           JSON.stringify({ success: false, error: 'Action non reconnue' }),
@@ -1249,4 +1253,61 @@ async function handleSendMessage(
     }),
     { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
   );
+}
+
+/**
+ * Mark a chat as read via Unipile PATCH /chats/{chat_id}
+ * API Docs: https://developer.unipile.com/reference/chatscontroller_patchchat
+ */
+async function handleMarkAsRead(
+  baseUrl: string,
+  apiKey: string,
+  params: Record<string, unknown>
+): Promise<Response> {
+  const { chat_id } = params;
+
+  if (!chat_id) {
+    return new Response(
+      JSON.stringify({ success: false, error: 'Chat ID requis' }),
+      { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  }
+
+  try {
+    const url = `${baseUrl}/chats/${chat_id}`;
+    console.log('Mark as read URL:', url);
+
+    const response = await fetch(url, {
+      method: 'PATCH',
+      headers: {
+        'X-API-KEY': apiKey,
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        action: 'setAllMessagesAsRead',
+      }),
+    });
+
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      console.error('Mark as read error:', data);
+      return new Response(
+        JSON.stringify({ success: false, error: data.detail || data.message || 'Erreur' }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    console.log('Chat marked as read:', chat_id);
+    return new Response(
+      JSON.stringify({ success: true }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  } catch (error) {
+    console.error('Mark as read exception:', error);
+    return new Response(
+      JSON.stringify({ success: false, error: error instanceof Error ? error.message : 'Erreur' }),
+      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  }
 }
