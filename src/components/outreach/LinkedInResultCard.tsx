@@ -166,7 +166,7 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
             <div className="flex flex-col gap-1">
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+                  <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap min-w-0 max-w-full">
                     <h3 className="font-semibold text-foreground text-sm sm:text-base leading-tight break-words sm:truncate">
                       {fullName || 'Profil LinkedIn'}
                     </h3>
