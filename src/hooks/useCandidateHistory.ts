@@ -1,6 +1,18 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 
+export interface NotionShortlistHistoryItem {
+  id: string;
+  name: string;
+  stage: string | null;
+  entity: string | null;
+  positions: { id: string; name: string }[];
+  createdAt: string | null;
+  preQualifDate: string | null;
+  cvPresentationDate: string | null;
+  startDate: string | null;
+}
+
 export interface CandidateHistoryData {
   candidate: {
     airtable_id: string;
@@ -47,6 +59,7 @@ export interface CandidateHistoryData {
     status: string | null;
     notes: string | null;
   }>;
+  notionShortlists: NotionShortlistHistoryItem[];
 }
 
 // Global cache by key (linkedin url or airtable_id)
@@ -325,6 +338,7 @@ export function useCandidateHistory(
           status: a.status,
           notes: a.notes,
         })),
+        notionShortlists: [],
       };
 
       historyCache.set(cacheKey, result);

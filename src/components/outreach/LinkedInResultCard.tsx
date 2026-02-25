@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { LinkedInProfile } from './types';
-import { useCandidateHistory } from '@/hooks/useCandidateHistory';
+import { useCandidateHistory, NotionShortlistHistoryItem } from '@/hooks/useCandidateHistory';
 import { CandidateHistoryPanel } from './CandidateHistoryPanel';
+import { useNotionShortlist } from '@/hooks/useNotionCandidates';
 import { JobScoreDisplay, JobMatchResult } from './JobScoreDisplay';
 import { Job } from '@/pages/JobSpace';
 import { Badge } from '@/components/ui/badge';
@@ -64,6 +65,26 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
       ? { linkedinUrl: candidateProfileUrl, airtableId: airtableMatch.airtable_id }
       : null
   );
+
+  // Notion shortlist data for this candidate
+  const { data: notionShortlistData } = useNotionShortlist();
+  const notionShortlistsForCandidate: NotionShortlistHistoryItem[] = React.useMemo(() => {
+    if (!notionMatch || !notionShortlistData) return [];
+    const candidateId = notionMatch.id;
+    return notionShortlistData
+      .filter((s: any) => s.candidate?.id === candidateId)
+      .map((s: any) => ({
+        id: s.id,
+        name: s.name,
+        stage: s.stage,
+        entity: s.entity,
+        positions: s.positions || [],
+        createdAt: s.createdAt,
+        preQualifDate: s.preQualifDate,
+        cvPresentationDate: s.cvPresentationDate,
+        startDate: s.startDate,
+      }));
+  }, [notionMatch, notionShortlistData]);
 
   const formatHistoryDate = (dateStr: string | null | undefined) => {
     if (!dateStr) return null;
@@ -217,8 +238,8 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
                   <p className="text-xs sm:text-sm text-muted-foreground line-clamp-2 mt-0.5 sm:mt-1 leading-snug break-words">
                     {profile.headline || currentRole || 'Profil LinkedIn'}
                   </p>
-                  {historyData && !historyLoading && (
-                    <CandidateHistoryPanel data={historyData} loading={false} compact />
+                  {(historyData || notionShortlistsForCandidate.length > 0) && !historyLoading && (
+                    <CandidateHistoryPanel data={historyData} loading={false} compact notionShortlists={notionShortlistsForCandidate} />
                   )}
                 </div>
 
