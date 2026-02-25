@@ -24,6 +24,7 @@ import { LinkedInResultCardProps } from './result-card/types';
 
 interface ExtendedResultCardProps extends LinkedInResultCardProps {
   onOpenDetail?: () => void;
+  isBatchScoring?: boolean;
 }
 
 export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
@@ -43,6 +44,7 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
   airtableMatch,
   notionMatch,
   onOpenDetail,
+  isBatchScoring = false,
 }) => {
   const [isScoring, setIsScoring] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -84,19 +86,36 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
     : null;
   const historyLatestDateLabel = formatHistoryDate(historyLatestDate);
 
+  const showScoringOverlay = isBatchScoring && isSelected;
+
   return (
     <div
-      className={`bg-background border border-foreground transition-all overflow-hidden max-w-full cursor-pointer group hover:shadow-md`}
+      className={`relative bg-background border border-foreground transition-all overflow-hidden max-w-full cursor-pointer group hover:shadow-md`}
       style={{ wordBreak: 'break-word' }}
       onClick={(e) => {
-        // Don't open detail if clicking on interactive elements
+        if (showScoringOverlay) return;
         const target = e.target as HTMLElement;
         if (target.closest('button, a, input, [role="checkbox"], [data-no-detail]')) return;
         onOpenDetail?.();
       }}
     >
+      {/* Scoring overlay */}
+      {showScoringOverlay && (
+        <div className="absolute inset-0 z-20 flex items-center justify-center bg-background/60 backdrop-blur-[6px]">
+          <div className="flex flex-col items-center gap-3">
+            <div className="relative h-10 w-10">
+              <div className="absolute inset-0 border-2 border-foreground/20 animate-ping" />
+              <div className="absolute inset-0 border-2 border-t-primary border-r-transparent border-b-transparent border-l-transparent animate-spin" style={{ animationDuration: '1s' }} />
+              <div className="absolute inset-[6px] border border-t-transparent border-r-primary border-b-transparent border-l-transparent animate-spin" style={{ animationDuration: '1.5s', animationDirection: 'reverse' }} />
+            </div>
+            <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground animate-pulse">
+              Scoring…
+            </span>
+          </div>
+        </div>
+      )}
       {/* Main card content */}
-      <div className="p-2.5 sm:p-4 overflow-hidden">
+      <div className={`p-2.5 sm:p-4 overflow-hidden transition-all duration-300 ${showScoringOverlay ? 'select-none pointer-events-none' : ''}`}>
         <div className="flex items-start gap-2 sm:gap-4 min-w-0">
           {/* Checkbox */}
           {selectedJob && onToggleSelect && (

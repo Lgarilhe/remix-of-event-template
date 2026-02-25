@@ -4,6 +4,7 @@ import { Job } from '@/pages/JobSpace';
 import { SourcingProject } from '@/hooks/useSourcingProjects';
 
 export interface LinkedInResultCardProps {
+  isBatchScoring?: boolean;
   profile: LinkedInProfile;
   selectedJob?: Job | null;
   isSelected?: boolean;
