@@ -341,7 +341,7 @@ Réponds UNIQUEMENT en JSON valide avec cette structure exacte:
                 },
                 body: JSON.stringify({
                   model: "claude-sonnet-4-6",
-                  max_tokens: 600,
+                  max_tokens: 800,
                   messages: [
                     {
                       role: "user",
@@ -367,7 +367,10 @@ Réponds UNIQUEMENT en JSON valide avec cette structure exacte:
             }
 
             const data = await res.json();
-            const content = data.content?.[0]?.text || '';
+            let content = data.content?.[0]?.text || '';
+            
+            // Strip markdown code blocks
+            content = content.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
             
             // Extract JSON from response
             const jsonMatch = content.match(/\{[\s\S]*\}/);
