@@ -11,6 +11,7 @@ import { Job } from '@/pages/JobSpace';
 import { SourcingProject } from '@/hooks/useSourcingProjects';
 import { useAirtableMatch } from '@/hooks/useAirtableMatch';
 import { useNotionMatch } from '@/hooks/useNotionMatch';
+import { useNotionShortlist } from '@/hooks/useNotionCandidates';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
@@ -161,6 +162,8 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
   const { getMatch: getAirtableMatch } = useAirtableMatch(profileMatchInputs);
   const profileUrls = useMemo(() => profileMatchInputs.map(p => p.url), [profileMatchInputs]);
   const { getMatch: getNotionMatch } = useNotionMatch(profileUrls);
+  // Pre-fetch Notion shortlist data so it's available in ProfileDetailSheet & LinkedInResultCard
+  useNotionShortlist();
   // Count by status for filter badges
   const statusCounts = React.useMemo(() => {
     const counts = { scored: 0, scored_go: 0, scored_maybe: 0, scored_contacted: 0, scored_not_contacted: 0, messaged: 0, dismissed: 0, untreated: 0, known: 0 };
