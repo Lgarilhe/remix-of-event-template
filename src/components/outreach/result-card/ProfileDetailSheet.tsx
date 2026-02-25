@@ -165,7 +165,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
   return (
     <>
       <Sheet open={open} onOpenChange={onOpenChange}>
-        <SheetContent side="right" className="w-full max-w-[100vw] min-w-0 sm:w-[95vw] sm:max-w-[820px] p-0 flex flex-col overflow-x-hidden overflow-y-hidden rounded-none border-l border-foreground">
+        <SheetContent side="right" className="!w-full !max-w-[100vw] min-w-0 sm:!w-[95vw] sm:!max-w-[820px] p-0 flex flex-col overflow-x-hidden overflow-y-hidden rounded-none border-l-0 sm:border-l border-foreground">
           {/* ─── HEADER ─── */}
           <SheetHeader className="px-3 sm:px-6 pt-4 sm:pt-5 pb-3 sm:pb-4 bg-muted/30 border-b border-foreground shrink-0">
             <div className="flex items-start gap-2.5 sm:gap-4">
