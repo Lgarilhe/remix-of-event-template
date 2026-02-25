@@ -494,75 +494,80 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
           <div className="p-2 sm:p-4 space-y-2 min-w-0">
             {/* Batch workflow banner */}
             {hasSearched && total !== null && total > 0 && (
-              <div className="bg-foreground/5 border border-foreground/20 p-2 sm:p-3 mb-3 space-y-2">
-                <div className="flex items-center gap-2 sm:gap-3">
-                  <div className="w-10 h-10 bg-foreground/10 border border-foreground/20 flex items-center justify-center shrink-0">
-                    <Users className="w-5 h-5 text-foreground" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-foreground">
-                      {total.toLocaleString()} candidats correspondent à vos critères
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      {results.length} profils chargés
-                      {statusCounts.untreated === 0 && results.length > 0 && cursor && (
-                        <span className="text-green-600 font-medium ml-1">
-                          — Lot traité ✓
-                        </span>
-                      )}
-                    </p>
-                  </div>
-                  <div className="hidden sm:flex items-center gap-1.5 shrink-0">
-                    <TooltipProvider>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => onRefineSearch('expand')}
-                            disabled={refineLoading}
-                            className="h-8 px-2.5 gap-1.5 text-xs border-foreground/20 text-foreground hover:bg-accent"
-                          >
-                            {refineLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Maximize2 className="w-3.5 h-3.5" />}
-                            Élargir
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <p>IA: ajuster les filtres pour obtenir plus de résultats</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
-                    <TooltipProvider>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => onRefineSearch('narrow')}
-                            disabled={refineLoading}
-                            className="h-8 px-2.5 gap-1.5 text-xs border-foreground/20 text-foreground hover:bg-accent"
-                          >
-                            {refineLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Minimize2 className="w-3.5 h-3.5" />}
-                            Affiner
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <p>IA: ajuster les filtres pour des résultats plus ciblés</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
-                  </div>
-                </div>
+              <div className="border border-foreground bg-background mb-3 overflow-hidden">
+                {/* Top accent strip */}
+                <div className="h-1 bg-foreground" />
+                
+                <div className="p-3 sm:p-4 space-y-3">
+                  <div className="flex items-center justify-between gap-3">
+                    {/* Left: count block */}
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="relative shrink-0">
+                        <div className="w-12 h-12 bg-foreground text-background flex items-center justify-center">
+                          <Users className="w-5 h-5" />
+                        </div>
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-lg sm:text-xl font-bold text-foreground tracking-tight leading-none">
+                          {total.toLocaleString()}
+                          <span className="text-sm font-medium text-muted-foreground ml-1.5">
+                            candidats
+                          </span>
+                        </p>
+                        <div className="flex items-center gap-1.5 mt-1">
+                          <span className="text-xs text-muted-foreground font-medium">
+                            {results.length} chargés
+                          </span>
+                          {statusCounts.untreated === 0 && results.length > 0 && cursor && (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider bg-emerald-500 text-white px-1.5 py-0.5">
+                              <CheckCircle2 className="w-3 h-3" />
+                              Lot traité
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
 
-                {/* Batch progress bar */}
-                {total > results.length && (
-                  <div className="flex items-center gap-2">
-                    <Progress value={(results.length / total) * 100} className="flex-1 h-1.5" />
-                    <span className="text-[10px] text-muted-foreground whitespace-nowrap">
-                      {results.length}/{total}
-                    </span>
+                    {/* Right: refine actions */}
+                    <div className="hidden sm:flex items-center gap-2 shrink-0">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => onRefineSearch('expand')}
+                        disabled={refineLoading}
+                        className="h-9 px-3 gap-1.5 text-xs font-bold uppercase tracking-wider border-foreground text-foreground hover:bg-foreground hover:text-background transition-colors"
+                      >
+                        {refineLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Maximize2 className="w-3.5 h-3.5" />}
+                        Élargir
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => onRefineSearch('narrow')}
+                        disabled={refineLoading}
+                        className="h-9 px-3 gap-1.5 text-xs font-bold uppercase tracking-wider border-foreground text-foreground hover:bg-foreground hover:text-background transition-colors"
+                      >
+                        {refineLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Minimize2 className="w-3.5 h-3.5" />}
+                        Affiner
+                      </Button>
+                    </div>
                   </div>
-                )}
+
+                  {/* Progress bar */}
+                  {total > results.length && (
+                    <div className="flex items-center gap-3">
+                      <div className="flex-1 h-2 bg-foreground/10 overflow-hidden">
+                        <div 
+                          className="h-full bg-foreground transition-all duration-500 ease-out"
+                          style={{ width: `${(results.length / total) * 100}%` }}
+                        />
+                      </div>
+                      <span className="text-xs font-bold text-foreground tabular-nums whitespace-nowrap">
+                        {results.length}<span className="text-muted-foreground font-medium">/{total}</span>
+                      </span>
+                    </div>
+                  )}
+                </div>
               </div>
             )}
 
