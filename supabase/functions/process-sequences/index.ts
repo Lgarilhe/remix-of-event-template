@@ -381,42 +381,39 @@ async function scheduleNextStep(supabase: any, enrollment: any, currentStepOrder
       const { data } = await supabase.from('sequence_steps').select('*').eq('id', currentStep.next_step_id).maybeSingle();
       nextStep = data;
     } else {
-      // Before falling back to step_order + 1, check if the current step was reached via branching
-      // (i.e. another step references it as a branch target). If so, this branch ends here.
-      if (currentStep?.id) {
-        const { data: referencingSteps } = await supabase.from('sequence_steps')
-          .select('id')
-          .eq('sequence_id', enrollment.sequence_id)
-          .or(`timeout_branch_step_id.eq.${currentStep.id},if_true_goto_step.eq.${currentStep.id},if_false_goto_step.eq.${currentStep.id}`);
-        
-        if (referencingSteps && referencingSteps.length > 0) {
-          // This step is a branch target with no next_step_id — branch ends, complete the sequence
-          console.log(`[scheduleNextStep] Step ${currentStepOrder} is a branch target with no next_step_id, completing sequence`);
-          await supabase.from('sequence_enrollments').update({ status: 'completed', completed_at: new Date().toISOString() }).eq('id', enrollment.id);
-          return;
-        }
-      }
-      
       // Safe fallback to step_order + 1 for linear sequences
       const { data: candidateNext } = await supabase.from('sequence_steps').select('*').eq('sequence_id', enrollment.sequence_id).eq('step_order', currentStepOrder + 1).maybeSingle();
       
-      // Guard: if the candidate next step has a branch-specific condition, verify compatibility
-      if (candidateNext && candidateNext.condition_type) {
-        const connStatus = enrollment.connection_status;
-        if (candidateNext.condition_type === 'if_connected' && connStatus !== 'connected') {
-          console.log(`[scheduleNextStep] Skipping step ${candidateNext.step_order} (if_connected) — enrollment connection_status is '${connStatus}'`);
-          // Don't schedule this cross-branch step, complete the sequence
-          await supabase.from('sequence_enrollments').update({ status: 'completed', completed_at: new Date().toISOString() }).eq('id', enrollment.id);
-          return;
+      if (candidateNext) {
+        // Guard: if the candidate next step has a branch-specific condition, verify compatibility
+        if (candidateNext.condition_type) {
+          const connStatus = enrollment.connection_status;
+          if (candidateNext.condition_type === 'if_connected' && connStatus !== 'connected') {
+            console.log(`[scheduleNextStep] Skipping step ${candidateNext.step_order} (if_connected) — enrollment connection_status is '${connStatus}'`);
+            await supabase.from('sequence_enrollments').update({ status: 'completed', completed_at: new Date().toISOString() }).eq('id', enrollment.id);
+            return;
+          }
+          if (candidateNext.condition_type === 'if_not_connected' && connStatus === 'connected') {
+            console.log(`[scheduleNextStep] Skipping step ${candidateNext.step_order} (if_not_connected) — enrollment is connected`);
+            await supabase.from('sequence_enrollments').update({ status: 'completed', completed_at: new Date().toISOString() }).eq('id', enrollment.id);
+            return;
+          }
         }
-        if (candidateNext.condition_type === 'if_not_connected' && connStatus === 'connected') {
-          console.log(`[scheduleNextStep] Skipping step ${candidateNext.step_order} (if_not_connected) — enrollment is connected`);
-          await supabase.from('sequence_enrollments').update({ status: 'completed', completed_at: new Date().toISOString() }).eq('id', enrollment.id);
-          return;
+        nextStep = candidateNext;
+      } else {
+        // No step_order+1 found. Check if we're on a branch target with no explicit continuation.
+        if (currentStep?.id) {
+          const { data: referencingSteps } = await supabase.from('sequence_steps')
+            .select('id')
+            .eq('sequence_id', enrollment.sequence_id)
+            .or(`timeout_branch_step_id.eq.${currentStep.id},if_true_goto_step.eq.${currentStep.id},if_false_goto_step.eq.${currentStep.id}`);
+          
+          if (referencingSteps && referencingSteps.length > 0) {
+            console.log(`[scheduleNextStep] Step ${currentStepOrder} is a branch target with no next_step_id and no step_order+1, completing sequence`);
+          }
         }
+        // No next step found — sequence complete
       }
-      
-      nextStep = candidateNext;
     }
   }
 
@@ -982,13 +979,20 @@ ${senderIsInHistory ? `- TU ES le consultant → première personne: "on avait �
 === FIN HISTORIQUE ===`;
     })();
 
-    const prompt = `Tu es un recruteur tech senior. Écris un message LinkedIn ULTRA personnalisé et percutant.
+    const prompt = `Tu es un recruteur tech senior. Tu écris des messages LinkedIn ULTRA personnalisés et percutants.
 ${engagementBlock}
 
 PROFIL CANDIDAT:
 - Prénom: ${profile?.first_name || profile?.name?.split(' ')[0] || 'Candidat'}
 - Titre: ${profile?.headline || 'N/A'}
-${profile?.summary ? `- À propos: "${(profile.summary as string).slice(0, 500)}"` : ''}
+${profile?.summary ? `
+=== SECTION "À PROPOS" DU CANDIDAT (SOURCE CLÉ DE PERSONNALISATION ET DE STYLE) ===
+"${(profile.summary as string).slice(0, 800)}"
+=== FIN À PROPOS ===
+
+IMPORTANT - ANALYSE LE STYLE D'ÉCRITURE DU CANDIDAT:
+- Observe comment il écrit: phrases courtes ou longues ? Formel ou décontracté ?
+- ADAPTE TON MESSAGE À SON STYLE pour créer une résonance naturelle` : ''}
 ${profile?.current_company_name ? `- Entreprise actuelle: ${profile.current_company_name}` : ''}
 ${expContext ? `- Expériences récentes:\n${expContext}` : ''}
 ${postsSection}
@@ -1001,19 +1005,54 @@ ${toneInstructions}
 
 ${prevMsgContext ? `MESSAGES PRÉCÉDENTS ENVOYÉS (ne te répète pas, apporte du neuf):\n${prevMsgContext}` : ''}
 
-=== STRATÉGIE LINKEDIN 2025 ===
-1. PERSONNALISATION: Utilise les posts LinkedIn > À propos > parcours comme accroche
-2. LONGUEUR: 200-400 caractères MAX. Chaque mot doit mériter sa place. SI le message dépasse 400 caractères, COUPE.
-3. CE QUE LE CANDIDAT Y GAGNE, pas un descriptif de poste
-4. CTA: NON-ENGAGEANT. Demande un AVIS ou une OPINION, jamais un call/rdv/dispo. Exemples: "Ça te parlerait ?", "C'est un sujet pour toi ?", "T'aurais quelqu'un en tête ?"
+=== STRATÉGIE LINKEDIN 2025 – RÈGLES ABSOLUES ===
+
+1. PERSONNALISATION = FACTEUR N°1 (NON NÉGOCIABLE)
+   Chaque message DOIT contenir au moins UN élément hyper-spécifique au candidat. Cherche dans cet ordre:
+   a) PUBLICATIONS LINKEDIN RÉCENTES → "j'ai vu ton post sur [sujet]"
+   a-bis) HISTORIQUE INTERNE → "on avait échangé pour [poste/client]"
+   b) SECTION "À PROPOS" → passion technique, side project, motivation
+   c) PARCOURS PROFESSIONNEL → ancien employeur commun, transition intéressante
+   ⚠️ SI rien de spécifique → utilise une QUESTION OUVERTE comme accroche
+
+2. LONGUEUR = COURT (CRITIQUE)
+   200-400 CARACTÈRES pour le corps du message (hors signature). 3-5 phrases MAX.
+
+3. CE QUE LE CANDIDAT Y GAGNE, PAS UN DESCRIPTIF DE POSTE
+   "Tu définirais l'archi toi-même" > "Nous cherchons un architecte"
+
+4. CTA = SIMPLE ET NON-ENGAGEANT
+   Exemples: "Ça te parlerait ?", "C'est un sujet pour toi ?", "T'aurais quelqu'un en tête ?"
+   ❌ JAMAIS: proposer un call, un rdv, une dispo
+
+5. FORMAT OBLIGATOIRE:
+   PHRASE 1 = PERSONNALISATION PURE. Une observation spécifique, PAS un résumé de carrière.
+   PHRASE 2-3 = Ce que le candidat y gagne
+   PHRASE 4 = CTA non-engageant
+   Signature: "${senderName}"
+
+   ⛔ STRUCTURES D'ACCROCHE INTERDITES:
+   - "Du [entreprise] au [entreprise]..." ❌
+   - "Ton parcours de [X] à [Y]..." ❌
+   - "Après [N] ans chez [entreprise]..." ❌
+
+8. INTERDITS (MARQUEURS IA À BANNIR):
+   - "j'ai parcouru ton profil", "a retenu mon attention"
+   - Superlatifs: exceptionnel, remarquable, impressionnant, brillant, solide parcours
+   - "parfaitement", "exactement" → trop vendeur
+   - TIRETS: JAMAIS de "- ..." ni "A – B"
+   - LISTES À PUCES: JAMAIS
+   - JARGON: "ton taf", "mise gros", "c'est chaud"
+   - FORMULES CREUSES: "projet passionnant", "belle aventure"
+   - "ton profil colle parfaitement" ❌ → "ça matche" ou "ton profil colle bien"
+   ⛔ FLATTERIE = INTERDIT (ça sonne fake et IA):
+   - "c'est rare et c'est ce qu'il nous faut" ❌
+   - "ça montre que tu aimes creuser" ❌
+   - "ton expertise en [X] est précieuse" ❌
+   → Tu OBSERVES ou tu POSES UNE QUESTION, tu ne fais PAS de compliment.
 
 RÈGLES ABSOLUES:
-- JAMAIS de tirets (—, –, -), bullet points, ni listes
-- JAMAIS de superlatifs IA: "exceptionnel", "impressionnant", "remarquable"
-- JAMAIS de "j'ai parcouru ton profil", "a retenu mon attention"
-- JAMAIS "ton profil colle parfaitement" → "ça matche" ou "ton profil colle bien"
 - JAMAIS mentionner le salaire, la rémunération, le TJM, le package ou tout montant en €
-- JAMAIS proposer un call, un rdv, une dispo, un échange téléphonique. Le CTA doit être une question d'OPINION.
 - Sauts de ligne entre les paragraphes (\\n\\n)
 - Signe TOUJOURS avec ton prénom "${senderName}" (jamais "Recruteur", jamais de titre)
 
@@ -1023,7 +1062,12 @@ Réponds UNIQUEMENT en JSON valide: {"subject": "objet si InMail, sinon vide", "
       const res = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-api-key': ANTHROPIC_API_KEY!, 'anthropic-version': '2023-06-01' },
-        body: JSON.stringify({ model: 'claude-opus-4-6', max_tokens: 500, messages: [{ role: 'user', content: userPrompt }] }),
+        body: JSON.stringify({ 
+          model: 'claude-opus-4-6', 
+          max_tokens: 500, 
+          system: 'Tu es un recruteur tech senior. Tu écris des messages LinkedIn courts, directs, humains. JAMAIS de superlatifs, JAMAIS de tournures IA. Tu réponds TOUJOURS en JSON valide, sans markdown ni code blocks.',
+          messages: [{ role: 'user', content: userPrompt }] 
+        }),
       });
       if (!res.ok) return null;
       const data = await res.json();
