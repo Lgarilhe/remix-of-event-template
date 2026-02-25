@@ -3,8 +3,8 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { InMailTextEditor } from '../InMailTextEditor';
-import { NurturingPanel } from '../NurturingPanel';
 import { ToneSelector, AITone } from './ToneSelector';
+import { MessageAISheet } from './MessageAISheet';
 import { 
   ChevronLeft,
   User,
@@ -13,13 +13,10 @@ import {
   Clock,
   CheckCheck,
   Check,
-  Sparkles,
   Zap,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Chat, Message, SequenceEnrollmentInfo, JobData } from '@/hooks/useMessagesInbox';
-import { useCandidateHistory } from '@/hooks/useCandidateHistory';
-import { CandidateHistoryPanel } from '../CandidateHistoryPanel';
 import {
   getChatDisplayName,
   getChatHeadline,
@@ -31,23 +28,6 @@ import {
   getAttendeeProfileId,
   formatMessageTime,
 } from '@/hooks/useMessagesInboxHelpers';
-
-interface AnalysisData {
-  intent: string;
-  intentConfidence: number;
-  sentiment: 'positive' | 'neutral' | 'negative';
-  engagement: 'high' | 'medium' | 'low';
-  summary: string;
-  qualificationQuestions?: string[];
-  detectedLanguage?: 'fr' | 'en' | 'other';
-  topJobMatch?: {
-    jobId: string;
-    jobTitle: string;
-    clientName?: string;
-    matchScore: number;
-    recommendation: 'go' | 'maybe' | 'skip';
-  };
-}
 
 interface MessageViewProps {
   selectedChat: Chat | null;
@@ -62,7 +42,7 @@ interface MessageViewProps {
   availableJobs: JobData[];
   messagesEndRef: React.RefObject<HTMLDivElement>;
   messagesContainerRef: React.RefObject<HTMLDivElement>;
-  analysisData?: AnalysisData | null;
+  analysisData?: any;
   loadingAnalysis?: boolean;
   selectedTone?: AITone;
   onToneChange?: (tone: AITone) => void;
@@ -84,15 +64,10 @@ export const MessageView: React.FC<MessageViewProps> = ({
   loadingMessages,
   newMessage,
   sending,
-  replySuggestions,
-  loadingSuggestions,
-  suggestionsLoaded,
   enrollmentsMap,
   availableJobs,
   messagesEndRef,
   messagesContainerRef,
-  analysisData,
-  loadingAnalysis,
   selectedTone = 'casual',
   onToneChange,
   onBack,
@@ -100,16 +75,16 @@ export const MessageView: React.FC<MessageViewProps> = ({
   onSendMessage,
   onSuggestionClick,
   onSuggestionSend,
-  onFetchSuggestions,
-  onClearSuggestions,
   onAddToPipeline,
   onEnrollInSequence,
   onScheduleCall,
 }) => {
-  // Local tone state if not controlled
   const [localTone, setLocalTone] = useState<AITone>(selectedTone);
   const currentTone = onToneChange ? selectedTone : localTone;
   const handleToneChange = onToneChange || setLocalTone;
+
+  const [aiSheetOpen, setAiSheetOpen] = useState(false);
+
   if (!selectedChat) {
     return (
       <div className="flex-1 flex items-center justify-center text-muted-foreground">
@@ -129,6 +104,26 @@ export const MessageView: React.FC<MessageViewProps> = ({
   const avatar = getChatAvatar(selectedChat);
   const jobInfo = getChatJobInfo(selectedChat, enrollmentsMap);
   const profileId = getAttendeeProfileId(selectedChat);
+  const hasCandidateMessage = messages.some(m => !m.is_sender);
+
+  const aiContext = {
+    recipientName: displayName,
+    recipientHeadline: headline,
+    messages: messages.map(m => ({
+      text: getMessageText(m),
+      is_sender: !!m.is_sender,
+      timestamp: m.timestamp,
+    })),
+    jobContext: jobInfo ? { title: jobInfo.job_title || 'Poste non spécifié' } : undefined,
+    profileData: {
+      name: displayName,
+      headline: headline,
+      currentRole: headline?.split(' at ')[0] || headline?.split(' chez ')[0],
+      currentCompany: headline?.split(' at ')[1] || headline?.split(' chez ')[1],
+      skills: headline?.split(/[|,·]/).map(s => s.trim()).filter(Boolean) || [],
+    },
+    availableJobs: availableJobs,
+  };
 
   return (
     <div className={cn(
@@ -156,9 +151,7 @@ export const MessageView: React.FC<MessageViewProps> = ({
             {displayName}
           </h4>
           {headline && (
-            <p className="text-xs text-muted-foreground truncate">
-              {headline}
-            </p>
+            <p className="text-xs text-muted-foreground truncate">{headline}</p>
           )}
           {subject && (
             <p className="text-[10px] text-muted-foreground truncate flex items-center gap-1">
@@ -168,10 +161,21 @@ export const MessageView: React.FC<MessageViewProps> = ({
         </div>
         
         {/* Tone Selector */}
-        <ToneSelector
-          selectedTone={currentTone}
-          onToneChange={handleToneChange}
-        />
+        <ToneSelector selectedTone={currentTone} onToneChange={handleToneChange} />
+
+        {/* AI Sheet trigger */}
+        {hasCandidateMessage && messages.length > 0 && (
+          <button
+            className="relative overflow-hidden h-8 px-3 text-xs font-medium uppercase tracking-wider border border-foreground bg-foreground text-background group"
+            onClick={() => setAiSheetOpen(true)}
+          >
+            <span className="relative z-10 flex items-center gap-1.5">
+              <Zap className="w-3.5 h-3.5" />
+              IA
+            </span>
+            <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
+          </button>
+        )}
 
         {selectedChat.attendees?.[0]?.profile_url && (
           <button
@@ -187,14 +191,8 @@ export const MessageView: React.FC<MessageViewProps> = ({
         )}
       </div>
 
-      {/* Airtable History Panel */}
-      <AirtableHistorySection profileUrl={selectedChat.attendees?.[0]?.profile_url} />
-
       {/* Messages Area */}
-      <ScrollArea 
-        className="flex-1 p-4"
-        ref={messagesContainerRef}
-      >
+      <ScrollArea className="flex-1 p-4" ref={messagesContainerRef}>
         {loadingMessages && messages.length === 0 ? (
           <div className="flex items-center justify-center h-full">
             <Loader2 className="w-6 h-6 animate-spin text-foreground" />
@@ -211,10 +209,7 @@ export const MessageView: React.FC<MessageViewProps> = ({
             {messages.map((msg, idx) => (
               <div
                 key={msg.id || idx}
-                className={cn(
-                  "flex",
-                  msg.is_sender ? "justify-end" : "justify-start"
-                )}
+                className={cn("flex", msg.is_sender ? "justify-end" : "justify-start")}
               >
                 <div
                   className={cn(
@@ -224,9 +219,7 @@ export const MessageView: React.FC<MessageViewProps> = ({
                       : "bg-muted text-foreground border border-foreground"
                   )}
                 >
-                  <p className="text-sm whitespace-pre-wrap break-words">
-                    {getMessageText(msg)}
-                  </p>
+                  <p className="text-sm whitespace-pre-wrap break-words">{getMessageText(msg)}</p>
                   <div className={cn(
                     "flex items-center gap-1 mt-1",
                     msg.is_sender ? "justify-end" : "justify-start"
@@ -254,41 +247,6 @@ export const MessageView: React.FC<MessageViewProps> = ({
           </div>
         )}
       </ScrollArea>
-
-      {/* AI Nurturing Panel */}
-      {messages.length > 0 && selectedChat && (
-        <NurturingPanel
-          context={{
-            recipientName: displayName,
-            recipientHeadline: headline,
-            messages: messages.map(m => ({
-              text: getMessageText(m),
-              is_sender: !!m.is_sender,
-              timestamp: m.timestamp,
-            })),
-            jobContext: jobInfo ? {
-              title: jobInfo.job_title || 'Poste non spécifié',
-            } : undefined,
-            profileData: {
-              name: displayName,
-              headline: headline,
-              currentRole: headline?.split(' at ')[0] || headline?.split(' chez ')[0],
-              currentCompany: headline?.split(' at ')[1] || headline?.split(' chez ')[1],
-              skills: headline?.split(/[|,·]/).map(s => s.trim()).filter(Boolean) || [],
-            },
-            availableJobs: availableJobs,
-          }}
-          onSuggestionSelect={onSuggestionClick}
-          onSuggestionSend={onSuggestionSend}
-          onJobSelect={onAddToPipeline}
-          onAddToPipeline={onAddToPipeline}
-          onEnrollInSequence={onEnrollInSequence}
-          onScheduleCall={onScheduleCall}
-          profileId={profileId || undefined}
-          profileUrl={selectedChat.attendees?.[0]?.profile_url}
-          sending={sending}
-        />
-      )}
 
       {/* Separator before input */}
       <div className="border-t border-foreground" />
@@ -325,17 +283,21 @@ export const MessageView: React.FC<MessageViewProps> = ({
           </button>
         </div>
       </div>
-    </div>
-  );
-};
 
-// Separate component to safely use hooks
-const AirtableHistorySection: React.FC<{ profileUrl?: string | null }> = ({ profileUrl }) => {
-  const { data, loading } = useCandidateHistory(profileUrl);
-  if (!loading && !data) return null;
-  return (
-    <ScrollArea className="max-h-[200px]">
-      <CandidateHistoryPanel data={data} loading={loading} />
-    </ScrollArea>
+      {/* AI Side Sheet */}
+      <MessageAISheet
+        open={aiSheetOpen}
+        onOpenChange={setAiSheetOpen}
+        context={aiContext}
+        profileUrl={selectedChat.attendees?.[0]?.profile_url}
+        onSuggestionSelect={(text) => { onSuggestionClick(text); }}
+        onSuggestionSend={(text) => { onSuggestionSend(text); }}
+        onJobSelect={onAddToPipeline}
+        onAddToPipeline={onAddToPipeline}
+        onEnrollInSequence={onEnrollInSequence}
+        onScheduleCall={onScheduleCall}
+        sending={sending}
+      />
+    </div>
   );
 };
