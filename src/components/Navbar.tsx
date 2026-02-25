@@ -73,33 +73,12 @@ export const Navbar: React.FC = () => {
       </div>
 
       {/* Desktop Navigation */}
-      <div className="hidden md:flex items-center">
-        <Link 
-          to="/" 
-          className="relative overflow-hidden bg-white text-black h-[34px] px-3 flex items-center text-[11px] font-medium uppercase border border-black leading-none group"
-        >
-          <span className="relative z-10">DISCOVER</span>
-          <span className="absolute inset-0 bg-[#FA76FF] translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out"></span>
-        </Link>
-        <button 
-          onClick={() => {
-            if (user) {
-              navigate('/create-event');
-            } else {
-              setPendingRoute('/create-event');
-              setIsAuthOpen(true);
-            }
-          }}
-          className="relative overflow-hidden bg-white text-black h-[34px] px-3 flex items-center text-[11px] font-medium uppercase border-l-0 border border-black leading-none group"
-        >
-          <span className="relative z-10">CREATE EVENT</span>
-          <span className="absolute inset-0 bg-[#FA76FF] translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out"></span>
-        </button>
+      <div className="hidden md:flex items-center h-[34px]">
         {user ? (
           <>
             <Link 
               to="/jobs" 
-              className="relative overflow-hidden bg-[#FA76FF] text-black h-[34px] px-3 flex items-center text-[11px] font-medium uppercase border-l-0 border border-black leading-none group"
+              className="relative overflow-hidden bg-[#FA76FF] text-black h-[34px] px-3 flex items-center text-[11px] font-medium uppercase border border-l-0 border-black leading-none group"
             >
               <span className="relative z-10">JOB SPACE</span>
               <span className="absolute inset-0 bg-white translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out"></span>
@@ -125,13 +104,6 @@ export const Navbar: React.FC = () => {
               <span className="relative z-10">ATS</span>
               <span className="absolute inset-0 bg-white translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out"></span>
             </Link>
-            <Link 
-              to="/my-events" 
-              className="relative overflow-hidden bg-white text-black h-[34px] px-3 flex items-center text-[11px] font-medium uppercase border-l-0 border border-black leading-none group"
-            >
-              <span className="relative z-10">MY EVENTS</span>
-              <span className="absolute inset-0 bg-[#FA76FF] translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out"></span>
-            </Link>
             <button 
               onClick={async () => {
                 await supabase.auth.signOut();
@@ -145,7 +117,7 @@ export const Navbar: React.FC = () => {
         ) : (
           <button 
             onClick={() => setIsAuthOpen(true)}
-            className="relative overflow-hidden bg-white text-black h-[34px] px-3 flex items-center text-[11px] font-medium uppercase border-l-0 border border-black leading-none group"
+            className="relative overflow-hidden bg-white text-black h-[34px] px-3 flex items-center text-[11px] font-medium uppercase border border-l-0 border-black leading-none group"
           >
             <span className="relative z-10">SIGN IN</span>
             <span className="absolute inset-0 bg-[#FA76FF] translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out"></span>
@@ -168,36 +140,13 @@ export const Navbar: React.FC = () => {
           
           {/* Menu items */}
           <div className="flex-1 flex flex-col bg-white">
-            <Link 
-              to="/" 
-              onClick={() => setIsMobileMenuOpen(false)}
-              className="flex-1 flex items-center justify-center text-[#1A1A1A] text-[17px] font-medium uppercase border-b border-black tracking-[-0.34px] animate-fade-in"
-              style={{ animationDelay: '0.1s', animationFillMode: 'both' }}
-            >
-              DISCOVER
-            </Link>
-            <button 
-              onClick={() => {
-                if (user) {
-                  navigate('/create-event');
-                } else {
-                  setPendingRoute('/create-event');
-                  setIsAuthOpen(true);
-                }
-                setIsMobileMenuOpen(false);
-              }}
-              className="flex-1 flex items-center justify-center text-[#1A1A1A] text-[17px] font-medium uppercase border-b border-black tracking-[-0.34px] animate-fade-in"
-              style={{ animationDelay: '0.2s', animationFillMode: 'both' }}
-            >
-              CREATE EVENT
-            </button>
             {user ? (
               <>
                 <Link 
                   to="/jobs" 
                   onClick={() => setIsMobileMenuOpen(false)}
                   className="flex-1 flex items-center justify-center bg-[#FA76FF] text-[#1A1A1A] text-[17px] font-medium uppercase border-b border-black tracking-[-0.34px] animate-fade-in"
-                  style={{ animationDelay: '0.3s', animationFillMode: 'both' }}
+                  style={{ animationDelay: '0.1s', animationFillMode: 'both' }}
                 >
                   JOB SPACE
                 </Link>
@@ -205,7 +154,7 @@ export const Navbar: React.FC = () => {
                   to="/candidates" 
                   onClick={() => setIsMobileMenuOpen(false)}
                   className="flex-1 flex items-center justify-center text-[#1A1A1A] text-[17px] font-medium uppercase border-b border-black tracking-[-0.34px] animate-fade-in"
-                  style={{ animationDelay: '0.35s', animationFillMode: 'both' }}
+                  style={{ animationDelay: '0.2s', animationFillMode: 'both' }}
                 >
                   CANDIDATS
                 </Link>
@@ -213,7 +162,7 @@ export const Navbar: React.FC = () => {
                   to="/outreach" 
                   onClick={() => setIsMobileMenuOpen(false)}
                   className="flex-1 flex items-center justify-center bg-[#0077B5] text-white text-[17px] font-medium uppercase border-b border-black tracking-[-0.34px] animate-fade-in"
-                  style={{ animationDelay: '0.37s', animationFillMode: 'both' }}
+                  style={{ animationDelay: '0.3s', animationFillMode: 'both' }}
                 >
                   OUTREACH
                 </Link>
@@ -221,17 +170,9 @@ export const Navbar: React.FC = () => {
                   to="/ats" 
                   onClick={() => setIsMobileMenuOpen(false)}
                   className="flex-1 flex items-center justify-center bg-amber-400 text-[#1A1A1A] text-[17px] font-medium uppercase border-b border-black tracking-[-0.34px] animate-fade-in"
-                  style={{ animationDelay: '0.38s', animationFillMode: 'both' }}
+                  style={{ animationDelay: '0.35s', animationFillMode: 'both' }}
                 >
                   ATS
-                </Link>
-                <Link 
-                  to="/my-events" 
-                  onClick={() => setIsMobileMenuOpen(false)}
-                  className="flex-1 flex items-center justify-center text-[#1A1A1A] text-[17px] font-medium uppercase border-b border-black tracking-[-0.34px] animate-fade-in"
-                  style={{ animationDelay: '0.4s', animationFillMode: 'both' }}
-                >
-                  MY EVENTS
                 </Link>
                 <button 
                   onClick={async () => {
@@ -239,7 +180,7 @@ export const Navbar: React.FC = () => {
                     setIsMobileMenuOpen(false);
                   }}
                   className="flex-1 flex items-center justify-center text-[#1A1A1A] text-[17px] font-medium uppercase tracking-[-0.34px] animate-fade-in"
-                  style={{ animationDelay: '0.5s', animationFillMode: 'both' }}
+                  style={{ animationDelay: '0.4s', animationFillMode: 'both' }}
                 >
                   SIGN OUT
                 </button>
@@ -251,7 +192,7 @@ export const Navbar: React.FC = () => {
                   setIsMobileMenuOpen(false);
                 }}
                 className="flex-1 flex items-center justify-center text-[#1A1A1A] text-[17px] font-medium uppercase tracking-[-0.34px] animate-fade-in"
-                style={{ animationDelay: '0.3s', animationFillMode: 'both' }}
+                style={{ animationDelay: '0.1s', animationFillMode: 'both' }}
               >
                 SIGN IN
               </button>
