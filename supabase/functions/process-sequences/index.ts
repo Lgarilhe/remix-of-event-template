@@ -707,7 +707,83 @@ async function generatePersonalizedMessage(supabase: any, enrollment: Record<str
       } catch { /* ignore */ }
     }
 
-    const [profile, recentPosts] = await Promise.all([profilePromise, postsPromise]);
+    // Fetch candidate history from Airtable cache
+    const historyPromise = (async () => {
+      try {
+        const profileUrl = enrollment.profile_url as string || '';
+        const slugMatch = profileUrl.match(/linkedin\.com\/in\/([^/?#]+)/i);
+        const slug = slugMatch ? slugMatch[1].toLowerCase() : null;
+        if (!slug) return null;
+
+        const { data: candidates } = await supabase
+          .from('airtable_candidates')
+          .select('airtable_id, full_name, status, email, phone, source_base, skills')
+          .ilike('linkedin_url', `%${slug}%`)
+          .limit(1);
+
+        if (!candidates?.length) return null;
+        const candidateAirtableId = candidates[0].airtable_id;
+
+        const [shortlistsRes, placementsRes, notesRes, appointmentsRes] = await Promise.all([
+          supabase.from('airtable_shortlists').select('airtable_id, status, date_added, salary_proposed, job_airtable_id, company_airtable_id, raw_data').eq('candidate_airtable_id', candidateAirtableId),
+          supabase.from('airtable_placements').select('airtable_id, name, status, start_date, salary, contract_type, company_airtable_id, raw_data').eq('candidate_airtable_id', candidateAirtableId),
+          supabase.from('airtable_notes').select('airtable_id, title, detail, note_type, note_date, author, raw_data').eq('candidate_airtable_id', candidateAirtableId).order('note_date', { ascending: false }).limit(5),
+          supabase.from('airtable_appointments').select('airtable_id, title, appointment_date, appointment_type, status, raw_data').eq('candidate_airtable_id', candidateAirtableId).order('appointment_date', { ascending: false }).limit(3),
+        ]);
+
+        // Resolve company & job names
+        const companyIds = new Set<string>();
+        const jobIds = new Set<string>();
+        // deno-lint-ignore no-explicit-any
+        shortlistsRes.data?.forEach((s: any) => { if (s.company_airtable_id) companyIds.add(s.company_airtable_id); if (s.job_airtable_id) jobIds.add(s.job_airtable_id); });
+        // deno-lint-ignore no-explicit-any
+        placementsRes.data?.forEach((p: any) => { if (p.company_airtable_id) companyIds.add(p.company_airtable_id); });
+
+        const [companiesRes, jobsRes] = await Promise.all([
+          companyIds.size > 0 ? supabase.from('airtable_companies').select('airtable_id, name').in('airtable_id', [...companyIds]) : { data: [] },
+          jobIds.size > 0 ? supabase.from('airtable_jobs').select('airtable_id, title').in('airtable_id', [...jobIds]) : { data: [] },
+        ]);
+        // deno-lint-ignore no-explicit-any
+        const companyMap = new Map((companiesRes.data || []).map((c: any) => [c.airtable_id, c.name]));
+        // deno-lint-ignore no-explicit-any
+        const jobMap = new Map((jobsRes.data || []).map((j: any) => [j.airtable_id, j.title]));
+
+        // deno-lint-ignore no-explicit-any
+        const extractConsultant = (rawData: any): string | null => {
+          if (!rawData || typeof rawData !== 'object') return null;
+          for (const key of ['Ajouté par', 'Assignee', 'Created By', 'Identité auteur', 'Créée par', 'Auteur']) {
+            const v = rawData[key];
+            if (typeof v === 'string' && v.trim()) return v.trim();
+            if (v && typeof v === 'object' && typeof v.name === 'string') return v.name;
+          }
+          return null;
+        };
+
+        return {
+          // deno-lint-ignore no-explicit-any
+          shortlists: (shortlistsRes.data || []).map((s: any) => ({
+            job_title: s.job_airtable_id ? jobMap.get(s.job_airtable_id) || null : null,
+            company_name: s.company_airtable_id ? companyMap.get(s.company_airtable_id) || null : null,
+            status: s.status, date_added: s.date_added, consultant: extractConsultant(s.raw_data),
+          })),
+          // deno-lint-ignore no-explicit-any
+          placements: (placementsRes.data || []).map((p: any) => ({
+            company_name: p.company_airtable_id ? companyMap.get(p.company_airtable_id) || null : null,
+            contract_type: p.contract_type, start_date: p.start_date, status: p.status, consultant: extractConsultant(p.raw_data),
+          })),
+          // deno-lint-ignore no-explicit-any
+          notes: (notesRes.data || []).map((n: any) => ({
+            title: n.title, detail: n.detail, note_date: n.note_date, consultant: extractConsultant(n.raw_data) || n.author,
+          })),
+          // deno-lint-ignore no-explicit-any
+          appointments: (appointmentsRes.data || []).map((a: any) => ({
+            title: a.title, appointment_date: a.appointment_date, appointment_type: a.appointment_type, status: a.status,
+          })),
+        };
+      } catch { return null; }
+    })();
+
+    const [profile, recentPosts, candidateHistory] = await Promise.all([profilePromise, postsPromise, historyPromise]);
 
     const { data: prevSteps } = await supabase.from('sequence_step_executions').select('*, step:sequence_steps(*)').eq('enrollment_id', enrollment.id).eq('status', 'sent').order('step_order');
     // deno-lint-ignore no-explicit-any
@@ -838,6 +914,74 @@ ${jobBodyContent ? `- Détails poste:\n${jobBodyContent.slice(0, 400)}` : ''}`;
       return `  • ${title} @ ${company}${desc ? `: ${desc.slice(0, 120)}` : ''}`;
     }).join('\n') : '';
 
+    // Build candidate history section
+    const historySection = (() => {
+      if (!candidateHistory) return '';
+      const parts: string[] = [];
+      const senderLower = (senderName || '').toLowerCase().trim();
+      const isSenderConsultant = (name: string | null): boolean => {
+        if (!name || !senderLower) return false;
+        const cLower = name.toLowerCase().trim();
+        return cLower === senderLower || cLower.startsWith(senderLower.split(' ')[0]) || senderLower.startsWith(cLower.split(' ')[0]);
+      };
+      const allConsultants = [
+        ...candidateHistory.shortlists.map((s: { consultant: string | null }) => s.consultant),
+        ...candidateHistory.placements.map((p: { consultant: string | null }) => p.consultant),
+        ...candidateHistory.notes.map((n: { consultant: string | null }) => n.consultant),
+      ].filter(Boolean);
+      const senderIsInHistory = allConsultants.some((c: string | null) => isSenderConsultant(c));
+
+      // deno-lint-ignore no-explicit-any
+      const shortlists = candidateHistory.shortlists.filter((s: any) => s.job_title || s.company_name);
+      if (shortlists.length > 0) {
+        parts.push('SHORTLISTS:');
+        // deno-lint-ignore no-explicit-any
+        shortlists.forEach((s: any) => {
+          const isMine = isSenderConsultant(s.consultant);
+          parts.push(`  - ${[s.job_title, s.company_name, s.status, s.date_added, s.consultant ? `par ${s.consultant}${isMine ? ' (= TOI)' : ''}` : ''].filter(Boolean).join(' | ')}`);
+        });
+      }
+      // deno-lint-ignore no-explicit-any
+      const placements = candidateHistory.placements.filter((p: any) => p.company_name);
+      if (placements.length > 0) {
+        parts.push('PLACEMENTS:');
+        // deno-lint-ignore no-explicit-any
+        placements.forEach((p: any) => {
+          const isMine = isSenderConsultant(p.consultant);
+          parts.push(`  - ${[p.company_name, p.contract_type, p.start_date, p.status, p.consultant ? `par ${p.consultant}${isMine ? ' (= TOI)' : ''}` : ''].filter(Boolean).join(' | ')}`);
+        });
+      }
+      // deno-lint-ignore no-explicit-any
+      const notes = candidateHistory.notes.filter((n: any) => n.detail || n.title);
+      if (notes.length > 0) {
+        parts.push('NOTES INTERNES:');
+        // deno-lint-ignore no-explicit-any
+        notes.slice(0, 3).forEach((n: any) => {
+          const isMine = isSenderConsultant(n.consultant);
+          parts.push(`  - ${[n.note_date, n.consultant ? `par ${n.consultant}${isMine ? ' (= TOI)' : ''}` : '', n.title, n.detail?.slice(0, 150)].filter(Boolean).join(' | ')}`);
+        });
+      }
+      // deno-lint-ignore no-explicit-any
+      const appts = candidateHistory.appointments.filter((a: any) => a.title);
+      if (appts.length > 0) {
+        parts.push('RENDEZ-VOUS:');
+        // deno-lint-ignore no-explicit-any
+        appts.forEach((a: any) => { parts.push(`  - ${[a.appointment_date, a.appointment_type, a.title, a.status].filter(Boolean).join(' | ')}`); });
+      }
+      if (parts.length === 0) return '';
+
+      return `
+=== HISTORIQUE INTERNE AVEC CE CANDIDAT ===
+${senderIsInHistory ? `⚠️ TU (${senderName}) as personnellement interagi avec ce candidat. Parle à la PREMIÈRE PERSONNE.` : ''}
+${parts.join('\n')}
+
+UTILISATION DE L'HISTORIQUE:
+- Ce candidat est DÉJÀ CONNU du cabinet.
+${senderIsInHistory ? `- TU ES le consultant → première personne: "on avait échangé", "je t'avais contacté"` : `- Un COLLÈGUE a interagi → CITE SON PRÉNOM: "mon collègue [Prénom] m'avait parlé de toi"`}
+- Mentionne l'historique QUE si pertinent et naturel. Ne cite JAMAIS les notes internes verbatim.
+=== FIN HISTORIQUE ===`;
+    })();
+
     const prompt = `Tu es un recruteur tech senior. Écris un message LinkedIn ULTRA personnalisé et percutant.
 ${engagementBlock}
 
@@ -848,6 +992,7 @@ ${profile?.summary ? `- À propos: "${(profile.summary as string).slice(0, 500)}
 ${profile?.current_company_name ? `- Entreprise actuelle: ${profile.current_company_name}` : ''}
 ${expContext ? `- Expériences récentes:\n${expContext}` : ''}
 ${postsSection}
+${historySection}
 
 ${jobContextBlock}
 
