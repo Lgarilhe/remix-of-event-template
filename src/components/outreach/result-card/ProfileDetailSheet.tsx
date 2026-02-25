@@ -402,6 +402,12 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
           profile={profile}
           job={selectedJob}
           selectedAccount={accountId}
+          candidateHistory={historyData ? {
+            shortlists: historyData.shortlists,
+            placements: historyData.placements,
+            notes: historyData.notes,
+            appointments: historyData.appointments,
+          } : undefined}
           onMessageSent={async () => {
             try {
               const { data: { user } } = await supabase.auth.getUser();
