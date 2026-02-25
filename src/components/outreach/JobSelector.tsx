@@ -238,14 +238,16 @@ export const JobSelector: React.FC<JobSelectorProps> = ({ selectedJob, onJobChan
         </div>
       </div>
       
-      <Popover open={popoverOpen} onOpenChange={(open) => { setPopoverOpen(open); if (!open) setSearchQuery(''); }}>
+      <Popover open={popoverOpen} onOpenChange={(open) => { setPopoverOpen(open); if (!open) setSearchQuery(''); }} modal={true}>
         <PopoverTrigger asChild>
           <button
+            type="button"
             className={cn(
               "flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background",
               "focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2",
               "border-purple-200 bg-white"
             )}
+            onClick={(e) => { e.preventDefault(); e.stopPropagation(); setPopoverOpen(!popoverOpen); }}
           >
             <span className={cn("truncate", !selectedJob && "text-muted-foreground")}>
               {selectedJob ? selectedJob.title : "Sélectionner un poste pour le scoring"}
@@ -253,7 +255,11 @@ export const JobSelector: React.FC<JobSelectorProps> = ({ selectedJob, onJobChan
             <ChevronDown className="h-4 w-4 opacity-50 shrink-0 ml-2" />
           </button>
         </PopoverTrigger>
-        <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0 z-50" align="start">
+        <PopoverContent 
+          className="w-[var(--radix-popover-trigger-width)] p-0 z-50" 
+          align="start"
+          onOpenAutoFocus={(e) => e.preventDefault()}
+        >
           {/* Search input */}
           <div className="p-2 border-b border-border">
             <div className="relative">
