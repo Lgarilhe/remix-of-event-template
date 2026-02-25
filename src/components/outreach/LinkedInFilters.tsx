@@ -183,9 +183,41 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
           return;
         }
 
+        let items: ParameterOption[] = response.data.items || [];
+
+        // For location searches, inject known country-level entries that LinkedIn API doesn't return
+        if (key === 'location') {
+          const KNOWN_COUNTRIES: ParameterOption[] = [
+            { id: '105015875', title: 'France' },
+            { id: '101165590', title: 'United Kingdom' },
+            { id: '101174742', title: 'Germany' },
+            { id: '102713980', title: 'India' },
+            { id: '103644278', title: 'United States' },
+            { id: '106155005', title: 'Spain' },
+            { id: '103350119', title: 'Italy' },
+            { id: '100565514', title: 'Belgium' },
+            { id: '103883259', title: 'Switzerland' },
+            { id: '102890719', title: 'Netherlands' },
+            { id: '100364837', title: 'Portugal' },
+            { id: '104738515', title: 'Canada' },
+            { id: '101620260', title: 'Australia' },
+            { id: '102478259', title: 'Singapore' },
+            { id: '104305776', title: 'Luxembourg' },
+            { id: '105646813', title: 'Morocco' },
+          ];
+          const normalizedQuery = keywords.trim().toLowerCase();
+          const existingIds = new Set(items.map(i => i.id));
+          const matchingCountries = KNOWN_COUNTRIES.filter(c =>
+            c.title.toLowerCase().includes(normalizedQuery) && !existingIds.has(c.id)
+          );
+          if (matchingCountries.length > 0) {
+            items = [...matchingCountries, ...items];
+          }
+        }
+
         setParameterOptions((prev) => ({
           ...prev,
-          [key]: response.data.items || [],
+          [key]: items,
         }));
       } catch (error) {
         if (error instanceof Error && error.name === 'AbortError') return;
