@@ -47,7 +47,7 @@ export const ChatListSidebar: React.FC<ChatListSidebarProps> = ({
 
   return (
     <div className={cn(
-      "w-full md:w-80 border-r border-foreground flex flex-col flex-shrink-0 bg-background",
+      "w-full md:w-80 border-r border-foreground flex flex-col flex-shrink-0 bg-background min-h-0",
       selectedChat ? "hidden md:flex" : "flex"
     )}>
       {/* Search Header */}
@@ -129,7 +129,7 @@ export const ChatListSidebar: React.FC<ChatListSidebarProps> = ({
       </div>
 
       {/* Chat List */}
-      <ScrollArea className="flex-1">
+      <ScrollArea className="flex-1 min-h-0">
         {loadingChats ? (
           <div className="p-3">
             <BrutalLoader compact messages={['Chargement des messages…', 'Synchronisation inbox…', 'Récupération des conversations…']} />

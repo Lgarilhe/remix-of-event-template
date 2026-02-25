@@ -192,7 +192,7 @@ export const MessageView: React.FC<MessageViewProps> = ({
       </div>
 
       {/* Messages Area */}
-      <ScrollArea className="flex-1 p-4" ref={messagesContainerRef}>
+      <ScrollArea className="flex-1 min-h-0 p-4" ref={messagesContainerRef}>
         {loadingMessages && messages.length === 0 ? (
           <div className="flex items-center justify-center h-full">
             <Loader2 className="w-6 h-6 animate-spin text-foreground" />
