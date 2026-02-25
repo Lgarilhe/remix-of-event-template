@@ -14,7 +14,9 @@ import { CardExpandedContent } from './CardExpandedContent';
 import { CardStatusBadges } from './CardStatusBadges';
 import { useProfileData } from './useProfileData';
 import { useCandidateHistory } from '@/hooks/useCandidateHistory';
+import { NotionShortlistHistoryItem } from '@/hooks/useCandidateHistory';
 import { CandidateHistoryPanel } from '../CandidateHistoryPanel';
+import { useNotionShortlist } from '@/hooks/useNotionCandidates';
 import { OutreachMessageModal } from '../OutreachMessageModal';
 import { SequenceEnrollButton } from '../SequenceEnrollButton';
 import { AddToProjectButton } from '../projects/AddToProjectButton';
@@ -98,6 +100,26 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
         : null
   );
 
+  // Notion shortlist data for this candidate
+  const { data: notionShortlistData } = useNotionShortlist();
+  const notionShortlistsForCandidate: NotionShortlistHistoryItem[] = React.useMemo(() => {
+    if (!notionMatch || !notionShortlistData) return [];
+    const candidateId = notionMatch.id;
+    return notionShortlistData
+      .filter((s: any) => s.candidate?.id === candidateId)
+      .map((s: any) => ({
+        id: s.id,
+        name: s.name,
+        stage: s.stage,
+        entity: s.entity,
+        positions: s.positions || [],
+        createdAt: s.createdAt,
+        preQualifDate: s.preQualifDate,
+        cvPresentationDate: s.cvPresentationDate,
+        startDate: s.startDate,
+      }));
+  }, [notionMatch, notionShortlistData]);
+
   const formatHistoryDate = (dateStr: string | null | undefined) => {
     if (!dateStr) return null;
     const isoMatch = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})$/);
@@ -154,13 +176,13 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
     }
   };
 
-  const hasHistory = historyData && (
+  const hasHistory = notionShortlistsForCandidate.length > 0 || (historyData && (
     historyData.placements.length > 0 ||
     historyData.shortlists.length > 0 ||
     historyData.notes.length > 0 ||
     historyData.appointments.length > 0 ||
     historyData.candidate
-  );
+  ));
 
   return (
     <>
@@ -372,7 +394,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
               {/* Airtable History Panel — always show if we have data or are loading */}
               {(historyLoading || hasHistory) && (
                 <div className="border border-foreground/20 overflow-hidden bg-background">
-                  <CandidateHistoryPanel data={historyData} loading={historyLoading} compact={false} />
+                  <CandidateHistoryPanel data={historyData} loading={historyLoading} compact={false} notionShortlists={notionShortlistsForCandidate} />
                 </div>
               )}
 
