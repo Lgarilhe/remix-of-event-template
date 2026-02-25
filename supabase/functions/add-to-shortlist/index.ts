@@ -10,55 +10,61 @@ const CANDIDATS_DATABASE_ID = "2787e1816fb4812b8ebddfcb3ab95510";
 const SHORTLIST_DATABASE_ID = "2787e1816fb4811986a7e6075bc63a23";
 
 interface AddToShortlistData {
-  // Candidate info from LinkedIn
+  // Candidate info
   name: string;
   headline?: string;
   linkedinUrl?: string;
   linkedinId?: string;
-  // Job association (now required for proper pipeline tracking)
+  email?: string;
+  phone?: string;
+  // Enriched profile data
+  currentRole?: string;       // Titre du poste actuel
+  seniority?: string;         // Junior, Confirmé, Sénior, Lead, Staff, Manager, Directeur
+  domains?: string[];         // Domaine d'expertise (multi-select)
+  yearsOfExperience?: number; // Nombre d'année d'expérience
+  educationLevel?: string;    // Niveau d'étude
+  // Job association
   jobId?: string;
   jobTitle?: string;
   clientName?: string;
-  clientId?: string; // Notion page ID of the client for relation
+  clientId?: string;
   // Organization context
-  entity?: string;
-  // Optional source info
+  entity?: string;            // Konekt or Skalr
+  accompagnement?: string;    // RPO, Succès, Coaching Skalr
+  // Pipeline state
+  etape?: string;             // Pressenti, Contacté, etc.
+  etat?: string;              // Message à envoyer, En attente de réponse, etc.
+  // Optional
   source?: string;
+  commentaire?: string;       // Commentaires pressenti
 }
 
-async function searchCandidateByLinkedIn(linkedinUrl: string): Promise<string | null> {
-  // Search for existing candidate by LinkedIn URL
-  const response = await fetch(`https://api.notion.com/v1/databases/${CANDIDATS_DATABASE_ID}/query`, {
+// ── Notion API helpers ──────────────────────────────────────────────
+
+async function notionQuery(databaseId: string, filter: Record<string, unknown>) {
+  const response = await fetch(`https://api.notion.com/v1/databases/${databaseId}/query`, {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${NOTION_API_KEY}`,
       'Notion-Version': '2022-06-28',
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({
-      filter: {
-        property: 'URL Linkedin',
-        url: {
-          equals: linkedinUrl,
-        },
-      },
-      page_size: 1,
-    }),
+    body: JSON.stringify({ filter, page_size: 1 }),
   });
-
   if (!response.ok) {
-    console.error('Error searching candidates:', await response.text());
+    console.error('Notion query error:', await response.text());
     return null;
   }
-
-  const data = await response.json();
-  if (data.results && data.results.length > 0) {
-    return data.results[0].id;
-  }
-  return null;
+  return response.json();
 }
 
-async function createNotionPage(databaseId: string, properties: Record<string, unknown>) {
+async function createNotionPage(databaseId: string, properties: Record<string, unknown>, children?: unknown[]) {
+  const body: Record<string, unknown> = {
+    parent: { database_id: databaseId },
+    properties,
+  };
+  if (children?.length) body.children = children;
+
   const response = await fetch('https://api.notion.com/v1/pages', {
     method: 'POST',
     headers: {
@@ -66,65 +72,75 @@ async function createNotionPage(databaseId: string, properties: Record<string, u
       'Notion-Version': '2022-06-28',
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({
-      parent: { database_id: databaseId },
-      properties,
-    }),
+    body: JSON.stringify(body),
   });
-
   if (!response.ok) {
     const error = await response.text();
     console.error('Notion API error:', error);
     throw new Error(`Failed to create Notion page: ${error}`);
   }
-
   return response.json();
 }
 
-async function checkExistingShortlist(candidateId: string, jobId?: string): Promise<boolean> {
-  // Check if candidate already has a shortlist entry for this job
-  const filter: Record<string, unknown> = {
-    and: [
-      {
-        property: 'Candidats',
-        relation: {
-          contains: candidateId,
-        },
-      },
-    ],
-  };
-
-  // If jobId provided, also filter by job
-  if (jobId) {
-    (filter.and as unknown[]).push({
-      property: '💼 Postes',
-      relation: {
-        contains: jobId,
-      },
-    });
-  }
-
-  const response = await fetch(`https://api.notion.com/v1/databases/${SHORTLIST_DATABASE_ID}/query`, {
-    method: 'POST',
+async function updateNotionPage(pageId: string, properties: Record<string, unknown>) {
+  const response = await fetch(`https://api.notion.com/v1/pages/${pageId}`, {
+    method: 'PATCH',
     headers: {
       'Authorization': `Bearer ${NOTION_API_KEY}`,
       'Notion-Version': '2022-06-28',
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({
-      filter,
-      page_size: 1,
-    }),
+    body: JSON.stringify({ properties }),
   });
-
   if (!response.ok) {
-    console.error('Error checking shortlist:', await response.text());
-    return false;
+    const error = await response.text();
+    console.error('Notion update error:', error);
+    // Non-blocking — log but don't throw
   }
-
-  const data = await response.json();
-  return data.results && data.results.length > 0;
+  return response.ok;
 }
+
+// ── Search helpers ──────────────────────────────────────────────────
+
+async function searchCandidateByLinkedIn(linkedinUrl: string): Promise<string | null> {
+  const data = await notionQuery(CANDIDATS_DATABASE_ID, {
+    property: 'URL Linkedin',
+    url: { equals: linkedinUrl },
+  });
+  return data?.results?.[0]?.id ?? null;
+}
+
+async function searchCandidateByName(name: string): Promise<string | null> {
+  const data = await notionQuery(CANDIDATS_DATABASE_ID, {
+    property: 'Nom',
+    title: { equals: name },
+  });
+  return data?.results?.[0]?.id ?? null;
+}
+
+async function checkExistingShortlist(candidateId: string, jobId?: string): Promise<string | null> {
+  const filters: unknown[] = [
+    { property: 'Candidats', relation: { contains: candidateId } },
+  ];
+  if (jobId) {
+    filters.push({ property: '💼 Postes', relation: { contains: jobId } });
+  }
+  const data = await notionQuery(SHORTLIST_DATABASE_ID, { and: filters });
+  return data?.results?.[0]?.id ?? null;
+}
+
+// ── Seniority mapper ────────────────────────────────────────────────
+
+function computeSeniority(years?: number): string | null {
+  if (years == null) return null;
+  if (years <= 2) return 'Junior';
+  if (years <= 5) return 'Confirmé';
+  if (years <= 8) return 'Sénior';
+  if (years <= 12) return 'Lead';
+  return 'Staff';
+}
+
+// ── Main handler ────────────────────────────────────────────────────
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -132,105 +148,180 @@ serve(async (req) => {
   }
 
   try {
-    if (!NOTION_API_KEY) {
-      throw new Error('NOTION_API_KEY is not configured');
-    }
+    if (!NOTION_API_KEY) throw new Error('NOTION_API_KEY is not configured');
 
     const data: AddToShortlistData = await req.json();
+    if (!data.name) throw new Error('Name is required');
 
-    // Validate required fields
-    if (!data.name) {
-      throw new Error('Name is required');
-    }
+    console.log('Adding to shortlist:', data.name, 'for job:', data.jobTitle);
 
-    console.log('Adding to shortlist:', data.name);
-
+    // ── 1. Anti-doublon candidat ─────────────────────────────────
     let candidateId: string | null = null;
+    let candidateExisted = false;
 
-    // Step 1: Check if candidate already exists (by LinkedIn URL)
     if (data.linkedinUrl) {
       candidateId = await searchCandidateByLinkedIn(data.linkedinUrl);
-      if (candidateId) {
-        console.log('Found existing candidate:', candidateId);
+    }
+    if (!candidateId) {
+      candidateId = await searchCandidateByName(data.name);
+    }
+
+    if (candidateId) {
+      candidateExisted = true;
+      console.log('Found existing candidate:', candidateId);
+
+      // Update existing candidate with new data if available
+      const updates: Record<string, unknown> = {};
+      if (data.linkedinUrl) updates['URL Linkedin'] = { url: data.linkedinUrl };
+      if (data.email) updates['E-mail'] = { email: data.email };
+      if (data.phone) updates['Téléphone'] = { phone_number: data.phone };
+      if (data.currentRole) updates['Titre du poste'] = { rich_text: [{ text: { content: data.currentRole } }] };
+      if (data.jobId) {
+        // Add job relation (append, Notion handles dedup)
+        updates['💼 Postes'] = { relation: [{ id: data.jobId }] };
+      }
+      // Update etape & etat if provided
+      if (data.etape) updates['Etape'] = { select: { name: data.etape } };
+      if (data.etat) updates['Etat'] = { select: { name: data.etat } };
+
+      if (Object.keys(updates).length > 0) {
+        await updateNotionPage(candidateId, updates);
       }
     }
 
-    // Step 2: Create candidate if not found
+    // ── 2. Créer le candidat si nécessaire ───────────────────────
     if (!candidateId) {
-      const candidatProperties: Record<string, unknown> = {
-        'Nom': {
-          title: [{ text: { content: data.name } }]
-        },
+      const props: Record<string, unknown> = {
+        'Nom': { title: [{ text: { content: data.name } }] },
       };
 
-      // Add LinkedIn URL if provided
-      if (data.linkedinUrl) {
-        candidatProperties['URL Linkedin'] = { url: data.linkedinUrl };
+      // Obligatoires
+      if (data.entity) {
+        props['Entité'] = { select: { name: data.entity } };
+      }
+      if (data.accompagnement) {
+        props['Type d\'accompagnement'] = { select: { name: data.accompagnement } };
+      }
+      if (data.clientId) {
+        props['Client'] = { relation: [{ id: data.clientId }] };
       }
 
-      // Note: We don't add headline as it requires a specific Notion property
-      // The headline is stored in the shortlist entry title instead
+      // Optionnels enrichis
+      if (data.linkedinUrl) props['URL Linkedin'] = { url: data.linkedinUrl };
+      if (data.email) props['E-mail'] = { email: data.email };
+      if (data.phone) props['Téléphone'] = { phone_number: data.phone };
+      if (data.currentRole) {
+        props['Titre du poste'] = { rich_text: [{ text: { content: data.currentRole } }] };
+      }
+
+      // Séniorité — use provided or compute from years
+      const seniority = data.seniority || computeSeniority(data.yearsOfExperience);
+      if (seniority) {
+        props['Séniorité'] = { select: { name: seniority } };
+      }
+
+      // Domaine d'expertise (multi-select)
+      if (data.domains?.length) {
+        props['Domaine d\'expertise'] = {
+          multi_select: data.domains.map(d => ({ name: d })),
+        };
+      }
+
+      // Nombre d'années d'expérience
+      if (data.yearsOfExperience != null) {
+        props['Nombre d\'année d\'expérience'] = { number: data.yearsOfExperience };
+      }
+
+      // Niveau d'étude
+      if (data.educationLevel) {
+        props['Niveau d\'étude'] = { select: { name: data.educationLevel } };
+      }
+
+      // Lien source
+      if (data.linkedinUrl) {
+        props['Lien source'] = { url: data.linkedinUrl };
+      }
+
+      // Relation poste
+      if (data.jobId) {
+        props['💼 Postes'] = { relation: [{ id: data.jobId }] };
+      }
+
+      // Etape & Etat
+      if (data.etape) props['Etape'] = { select: { name: data.etape } };
+      if (data.etat) props['Etat'] = { select: { name: data.etat } };
 
       console.log('Creating new candidate...');
-      const candidatResult = await createNotionPage(CANDIDATS_DATABASE_ID, candidatProperties);
-      candidateId = candidatResult.id;
+      const result = await createNotionPage(CANDIDATS_DATABASE_ID, props);
+      candidateId = result.id;
       console.log('Candidate created:', candidateId);
     }
 
-    // Step 3: Check if shortlist entry already exists
-    const shortlistExists = await checkExistingShortlist(candidateId!, data.jobId);
-    if (shortlistExists) {
+    // ── 3. Anti-doublon shortlist ────────────────────────────────
+    const existingShortlistId = await checkExistingShortlist(candidateId!, data.jobId);
+    if (existingShortlistId) {
+      // Update existing shortlist etape if needed
+      if (data.etape) {
+        await updateNotionPage(existingShortlistId, {
+          'Etape': { select: { name: data.etape } },
+        });
+      }
       return new Response(
         JSON.stringify({
           success: true,
-          message: 'Candidate already in shortlist',
+          message: 'Candidate already in shortlist — updated',
           candidateId,
+          shortlistId: existingShortlistId,
           alreadyExists: true,
+          candidateExisted,
         }),
-        {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          status: 200,
-        }
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
       );
     }
 
-    // Step 4: Create Shortlist entry with validated fields only
-    // Note: Only using properties that exist in the Notion Shortlist database
-    const shortlistTitle = data.jobTitle 
-      ? `${data.name} - ${data.jobTitle}`
+    // ── 4. Créer la Shortlist ────────────────────────────────────
+    // Format: [Nom candidat] X [Titre du poste]
+    const shortlistTitle = data.jobTitle
+      ? `${data.name} X ${data.jobTitle}`
       : data.name;
 
-    const shortlistProperties: Record<string, unknown> = {
-      'Nom': {
-        title: [{ text: { content: shortlistTitle } }]
-      },
-      'Candidats': {
-        relation: [{ id: candidateId }]
-      },
-      'Etape': {
-        select: { name: 'Pressenti' }
-      },
-      'Entité': {
-        select: { name: data.entity || 'Konekt' }
-      },
+    const shortlistProps: Record<string, unknown> = {
+      'Nom': { title: [{ text: { content: shortlistTitle } }] },
+      'Candidats': { relation: [{ id: candidateId }] },
+      'Etape': { select: { name: data.etape || 'Pressenti' } },
     };
 
-    // Add job relation if provided
-    if (data.jobId) {
-      shortlistProperties['💼 Postes'] = {
-        relation: [{ id: data.jobId }]
-      };
+    // Entité
+    if (data.entity) {
+      shortlistProps['Entité'] = { select: { name: data.entity } };
+    } else {
+      shortlistProps['Entité'] = { select: { name: 'Konekt' } };
     }
 
-    // Add client relation if provided (using client's Notion page ID)
+    // Type d'accompagnement
+    if (data.accompagnement) {
+      shortlistProps['Type d\'accompagnement'] = { select: { name: data.accompagnement } };
+    }
+
+    // Relation poste
+    if (data.jobId) {
+      shortlistProps['💼 Postes'] = { relation: [{ id: data.jobId }] };
+    }
+
+    // Relation client
     if (data.clientId) {
-      shortlistProperties['Client'] = {
-        relation: [{ id: data.clientId }]
+      shortlistProps['Client'] = { relation: [{ id: data.clientId }] };
+    }
+
+    // Commentaires pressenti
+    if (data.commentaire) {
+      shortlistProps['Commentaires pressenti'] = {
+        rich_text: [{ text: { content: data.commentaire } }],
       };
     }
 
     console.log('Creating shortlist entry...');
-    const shortlistResult = await createNotionPage(SHORTLIST_DATABASE_ID, shortlistProperties);
+    const shortlistResult = await createNotionPage(SHORTLIST_DATABASE_ID, shortlistProps);
     console.log('Shortlist created:', shortlistResult.id);
 
     return new Response(
@@ -240,25 +331,17 @@ serve(async (req) => {
         candidateId,
         shortlistId: shortlistResult.id,
         alreadyExists: false,
+        candidateExisted,
       }),
-      {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 200,
-      }
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
     );
 
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     console.error('Error adding to shortlist:', errorMessage);
     return new Response(
-      JSON.stringify({
-        success: false,
-        error: errorMessage,
-      }),
-      {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 500,
-      }
+      JSON.stringify({ success: false, error: errorMessage }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
     );
   }
 });

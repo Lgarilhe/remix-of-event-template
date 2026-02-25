@@ -246,7 +246,6 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
       try {
         const { data: { user } } = await supabase.auth.getUser();
         if (user) {
-          const profileAnyLocal = profile as any;
           await supabase.from('inmail_queue').insert({
             account_id: selectedAccount,
             recipient_profile_id: recipientId,
@@ -262,7 +261,91 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
         }
       } catch (trackErr) {
         console.error('Error tracking message in ATS:', trackErr);
-        // Non-blocking - don't fail the send
+      }
+
+      // Create candidate + shortlist in Notion automatically
+      try {
+        const profileData = buildProfileData();
+        const workExp = profile.work_experience || [];
+        const currentJob = workExp.find(exp => !exp.end) || workExp[0];
+        
+        // Compute years of experience
+        const earliestYear = workExp
+          .filter(exp => exp.start?.year)
+          .map(exp => exp.start!.year!)
+          .sort((a, b) => a - b)[0];
+        const yearsOfExperience = earliestYear ? new Date().getFullYear() - earliestYear : undefined;
+
+        // Extract domains from headline/skills
+        const domainKeywords: Record<string, string[]> = {
+          'Backend': ['backend', 'java', 'python', 'node', 'go', 'rust', 'c#', '.net', 'php', 'ruby', 'spring'],
+          'Frontend': ['frontend', 'front-end', 'react', 'vue', 'angular', 'typescript', 'javascript', 'css'],
+          'Fullstack': ['fullstack', 'full-stack', 'full stack'],
+          'DevOps': ['devops', 'sre', 'infrastructure', 'kubernetes', 'docker', 'ci/cd', 'terraform', 'aws', 'gcp', 'azure', 'cloud'],
+          'Data': ['data', 'machine learning', 'ml', 'ai', 'deep learning', 'nlp', 'analytics'],
+          'Data Engineering': ['data engineer', 'etl', 'spark', 'airflow', 'dbt'],
+          'Mobile': ['mobile', 'ios', 'android', 'react native', 'flutter', 'swift', 'kotlin'],
+          'Product': ['product', 'product manager', 'product owner', 'po', 'pm'],
+          'Design': ['design', 'ux', 'ui', 'figma', 'user experience'],
+          'QA': ['qa', 'quality', 'test', 'testing', 'sdet'],
+          'Security': ['security', 'cybersecurity', 'infosec', 'pentest'],
+          'Management': ['engineering manager', 'vp engineering', 'cto', 'tech lead', 'head of'],
+        };
+        const headlineLower = (profile.headline || '').toLowerCase();
+        const skillNames = (profile.skills || []).map(s => (typeof s === 'string' ? s : s.name).toLowerCase());
+        const searchText = `${headlineLower} ${skillNames.join(' ')}`;
+        const domains = Object.entries(domainKeywords)
+          .filter(([_, keywords]) => keywords.some(k => searchText.includes(k)))
+          .map(([domain]) => domain)
+          .slice(0, 3); // Max 3 domains
+
+        // Education level mapping
+        const education = profile.education || [];
+        let educationLevel: string | undefined;
+        const degreeText = education.map(e => `${e.degree || ''} ${e.field_of_study || ''}`).join(' ').toLowerCase();
+        if (degreeText.includes('phd') || degreeText.includes('doctorat')) educationLevel = 'Doctorat';
+        else if (degreeText.includes('master') || degreeText.includes('msc') || degreeText.includes('mba') || degreeText.includes('ingénieur') || degreeText.includes('engineer')) educationLevel = 'Bac +5';
+        else if (degreeText.includes('bachelor') || degreeText.includes('licence') || degreeText.includes('bsc')) educationLevel = 'Bac +3';
+
+        // Determine accompagnement from job
+        const accompagnementRaw = job.accompagnement || [];
+        let accompagnement: string | undefined;
+        if (accompagnementRaw.some(a => a.toLowerCase().includes('rpo') || a.toLowerCase().includes('embedded'))) {
+          accompagnement = 'RPO';
+        } else if (accompagnementRaw.some(a => a.toLowerCase().includes('succès') || a.toLowerCase().includes('succes'))) {
+          accompagnement = 'Succès';
+        }
+
+        // Build LinkedIn URL
+        const linkedinUrl = profile.public_profile_url 
+          || profile.profile_url 
+          || (profile as any).linkedin_url
+          || undefined;
+
+        await supabase.functions.invoke('add-to-shortlist', {
+          body: {
+            name: profileData.name,
+            headline: profile.headline,
+            linkedinUrl,
+            currentRole: currentJob ? `${currentJob.role || ''}${currentJob.company ? ` chez ${currentJob.company}` : ''}`.trim() : undefined,
+            seniority: undefined, // Let the edge function compute from yearsOfExperience
+            domains: domains.length > 0 ? domains : undefined,
+            yearsOfExperience,
+            educationLevel,
+            jobId: job.id,
+            jobTitle: job.title,
+            clientName: job.client?.name,
+            clientId: job.client?.id,
+            entity: 'Konekt',
+            accompagnement,
+            etape: 'Contacté',
+            etat: 'En attente de réponse',
+          }
+        });
+        console.log('Notion candidate + shortlist created/updated');
+      } catch (notionErr) {
+        console.error('Error creating Notion records:', notionErr);
+        // Non-blocking — don't fail the message send
       }
       
       // Notify parent that message was sent (await to ensure DB upsert completes)
