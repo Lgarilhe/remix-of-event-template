@@ -85,29 +85,34 @@ export const CardStatusBadges: React.FC<CardStatusBadgesProps> = ({
         </Badge>
       )}
       {airtableMatch && (
-        <Badge className={`text-[10px] px-1.5 py-0 h-4 sm:h-5 shrink-0 gap-1 cursor-default ${
+        <Badge className={`text-[10px] px-1.5 py-0 h-4 sm:h-5 shrink-0 gap-1 cursor-default max-w-full min-w-0 ${
           airtableMatch.match_type === 'fuzzy'
             ? 'bg-teal-100 text-teal-700 border border-dashed border-teal-400'
             : 'bg-teal-500 text-white'
         }`}>
-          <img src={airtableLogo} alt="Airtable" className="w-3 h-3 object-contain" style={{ filter: airtableMatch.match_type !== 'fuzzy' ? 'brightness(10)' : 'none' }} />
-          <span className="hidden sm:inline">
+          <img src={airtableLogo} alt="Airtable" className="w-3 h-3 object-contain shrink-0" style={{ filter: airtableMatch.match_type !== 'fuzzy' ? 'brightness(10)' : 'none' }} />
+          <span className="hidden sm:inline shrink-0">
             {airtableMatch.match_type === 'fuzzy' ? 'Airtable ?' : 'Airtable'}
           </span>
           {airtableMatch.status && (
-            <span className={`text-[9px] ${airtableMatch.match_type !== 'fuzzy' ? 'opacity-80' : ''}`}>
+            <span className={`hidden sm:inline text-[9px] truncate max-w-[72px] ${airtableMatch.match_type !== 'fuzzy' ? 'opacity-80' : ''}`}>
               ({airtableMatch.status})
             </span>
           )}
-          {historyLoading && <Loader2 className="w-2.5 h-2.5 animate-spin" />}
+          {historyLoading && <Loader2 className="w-2.5 h-2.5 animate-spin shrink-0" />}
           {historyData && (
-            <span className="font-bold whitespace-nowrap">
-              {historyData.placements.length > 0 && `🏆${historyData.placements.length}`}
-              {historyData.shortlists.length > 0 && ` ⭐${historyData.shortlists.length}`}
-              {historyData.notes.length > 0 && ` 📝${historyData.notes.length}`}
-              {historyData.appointments.length > 0 && ` 📅${historyData.appointments.length}`}
-              {historyLatestDateLabel && <span className="hidden sm:inline"> · {historyLatestDateLabel}</span>}
-            </span>
+            <>
+              <span className="sm:hidden font-bold shrink-0">
+                {historyData.placements.length + historyData.shortlists.length + historyData.notes.length + historyData.appointments.length}
+              </span>
+              <span className="hidden sm:inline font-bold whitespace-nowrap">
+                {historyData.placements.length > 0 && `🏆${historyData.placements.length}`}
+                {historyData.shortlists.length > 0 && ` ⭐${historyData.shortlists.length}`}
+                {historyData.notes.length > 0 && ` 📝${historyData.notes.length}`}
+                {historyData.appointments.length > 0 && ` 📅${historyData.appointments.length}`}
+                {historyLatestDateLabel && <span className="hidden md:inline"> · {historyLatestDateLabel}</span>}
+              </span>
+            </>
           )}
         </Badge>
       )}
