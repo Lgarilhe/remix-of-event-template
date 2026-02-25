@@ -346,7 +346,9 @@ export function useCandidateHistory(
       setLoadedKey(cacheKey);
     } catch (err) {
       console.error('Error fetching candidate history:', err);
+      historyCache.set(cacheKey, null);
       setData(null);
+      setLoadedKey(cacheKey);
     } finally {
       setLoading(false);
     }

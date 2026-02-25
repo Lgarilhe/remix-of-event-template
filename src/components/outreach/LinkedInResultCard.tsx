@@ -67,7 +67,7 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
   );
 
   // Notion shortlist data for this candidate
-  const { data: notionShortlistData, isLoading: notionShortlistLoading, isFetching: notionShortlistFetching } = useNotionShortlist();
+  const { data: notionShortlistData, isLoading: notionShortlistLoading } = useNotionShortlist();
   const notionShortlistsForCandidate: NotionShortlistHistoryItem[] = React.useMemo(() => {
     if (!notionShortlistData) return [];
 
@@ -144,7 +144,7 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
   const historyLatestDateLabel = formatHistoryDate(historyLatestDate);
 
   const showScoringOverlay = isBatchScoring && isSelected;
-  const historyPanelLoading = historyLoading || notionShortlistLoading || notionShortlistFetching;
+  const historyPanelLoading = historyLoading || notionShortlistLoading;
 
   return (
     <div
