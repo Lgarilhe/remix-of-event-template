@@ -9,7 +9,6 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { 
   Mail, 
@@ -19,6 +18,7 @@ import {
   Loader2,
   RefreshCw,
   Calendar,
+  Ban,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -41,6 +41,14 @@ interface QueueItem {
   sent_at: string | null;
   error_message: string | null;
 }
+
+const STAT_BLOCKS: { key: string; label: string; getValue: (s: QueueStats) => number; color: string; iconColor: string }[] = [
+  { key: 'planned', label: 'PLANIFIÉS', getValue: s => s.pending + s.scheduled, color: 'border-foreground/20', iconColor: 'text-foreground' },
+  { key: 'sending', label: 'EN COURS', getValue: s => s.sending, color: 'border-foreground/20', iconColor: 'text-foreground' },
+  { key: 'sent', label: 'ENVOYÉS', getValue: s => s.sent, color: 'border-emerald-500', iconColor: 'text-emerald-500' },
+  { key: 'failed', label: 'ÉCHOUÉS', getValue: s => s.failed, color: 'border-destructive', iconColor: 'text-destructive' },
+  { key: 'cancelled', label: 'ANNULÉS', getValue: s => s.cancelled, color: 'border-muted-foreground/40', iconColor: 'text-muted-foreground' },
+];
 
 export const InMailQueueStatus: React.FC = () => {
   const [isOpen, setIsOpen] = useState(false);
@@ -69,21 +77,16 @@ export const InMailQueueStatus: React.FC = () => {
     }
   }, []);
 
-  // Fetch on mount and when dialog opens
   useEffect(() => {
     fetchQueueStatus();
   }, [fetchQueueStatus]);
 
   useEffect(() => {
-    if (isOpen) {
-      fetchQueueStatus();
-    }
+    if (isOpen) fetchQueueStatus();
   }, [isOpen, fetchQueueStatus]);
 
-  // Auto-refresh every 30 seconds when dialog is open
   useEffect(() => {
     if (!isOpen) return;
-    
     const interval = setInterval(fetchQueueStatus, 30000);
     return () => clearInterval(interval);
   }, [isOpen, fetchQueueStatus]);
@@ -128,28 +131,27 @@ export const InMailQueueStatus: React.FC = () => {
     }
   };
 
-  const getStatusBadge = (status: string) => {
+  const getStatusIndicator = (status: string) => {
     switch (status) {
       case 'pending':
       case 'scheduled':
-        return <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200"><Clock className="w-3 h-3 mr-1" />Planifié</Badge>;
+        return <Clock className="w-3.5 h-3.5 text-muted-foreground" />;
       case 'sending':
-        return <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200"><Loader2 className="w-3 h-3 mr-1 animate-spin" />Envoi...</Badge>;
+        return <Loader2 className="w-3.5 h-3.5 text-foreground animate-spin" />;
       case 'sent':
-        return <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200"><CheckCircle className="w-3 h-3 mr-1" />Envoyé</Badge>;
+        return <CheckCircle className="w-3.5 h-3.5 text-emerald-500" />;
       case 'failed':
-        return <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200"><XCircle className="w-3 h-3 mr-1" />Échoué</Badge>;
+        return <XCircle className="w-3.5 h-3.5 text-destructive" />;
       case 'cancelled':
-        return <Badge variant="outline" className="bg-gray-50 text-gray-700 border-gray-200"><XCircle className="w-3 h-3 mr-1" />Annulé</Badge>;
+        return <Ban className="w-3.5 h-3.5 text-muted-foreground" />;
       default:
-        return <Badge variant="outline">{status}</Badge>;
+        return <Clock className="w-3.5 h-3.5 text-muted-foreground" />;
     }
   };
 
-  const totalPending = queueStats 
-    ? queueStats.pending + queueStats.scheduled + queueStats.sending 
+  const totalPending = queueStats
+    ? queueStats.pending + queueStats.scheduled + queueStats.sending
     : 0;
-
   const hasPendingItems = totalPending > 0;
 
   return (
@@ -158,114 +160,119 @@ export const InMailQueueStatus: React.FC = () => {
         <Button
           variant="outline"
           size="sm"
-          className="gap-2 relative"
+          className="gap-2 relative rounded-none border-foreground/20 hover:bg-[hsl(var(--brutal-accent)/0.1)] transition-colors"
         >
           <Mail className="w-4 h-4" />
-          <span className="hidden sm:inline">File InMails</span>
+          <span className="hidden sm:inline text-xs uppercase tracking-wider font-semibold">File InMails</span>
           {hasPendingItems && (
-            <Badge 
-              variant="default" 
-              className="absolute -top-2 -right-2 h-5 min-w-[20px] px-1.5 text-[10px] bg-[#0077B5] hover:bg-[#0077B5]"
-            >
+            <span className="absolute -top-1.5 -right-1.5 h-5 min-w-[20px] px-1 flex items-center justify-center text-[10px] font-bold bg-foreground text-background rounded-none border border-foreground">
               {totalPending}
-            </Badge>
+            </span>
           )}
         </Button>
       </DialogTrigger>
-      
-      <DialogContent className="max-w-2xl max-h-[80vh] overflow-hidden flex flex-col">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Mail className="w-5 h-5 text-[#0077B5]" />
-            File d'attente InMails
-          </DialogTitle>
-          <DialogDescription>
-            Suivi des InMails planifiés et envoyés
-          </DialogDescription>
-        </DialogHeader>
 
-        <div className="flex-1 overflow-hidden flex flex-col gap-4">
+      <DialogContent className="max-w-2xl max-h-[85vh] overflow-hidden flex flex-col rounded-none border border-foreground bg-background p-0">
+        {/* Header */}
+        <div className="border-b border-foreground px-6 py-5">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-3 text-lg uppercase tracking-wider font-bold">
+              <Mail className="w-5 h-5" />
+              File d'attente InMails
+            </DialogTitle>
+            <DialogDescription className="text-xs uppercase tracking-wider text-muted-foreground mt-1">
+              Suivi des InMails planifiés et envoyés
+            </DialogDescription>
+          </DialogHeader>
+        </div>
+
+        <div className="flex-1 overflow-hidden flex flex-col">
           {/* Stats Row */}
           {queueStats && (
-            <div className="grid grid-cols-5 gap-2 text-center">
-              <div className="p-2 rounded-lg bg-blue-50">
-                <div className="text-lg font-bold text-blue-700">
-                  {queueStats.pending + queueStats.scheduled}
-                </div>
-                <div className="text-xs text-blue-600">Planifiés</div>
-              </div>
-              <div className="p-2 rounded-lg bg-amber-50">
-                <div className="text-lg font-bold text-amber-700">{queueStats.sending}</div>
-                <div className="text-xs text-amber-600">En cours</div>
-              </div>
-              <div className="p-2 rounded-lg bg-green-50">
-                <div className="text-lg font-bold text-green-700">{queueStats.sent}</div>
-                <div className="text-xs text-green-600">Envoyés</div>
-              </div>
-              <div className="p-2 rounded-lg bg-red-50">
-                <div className="text-lg font-bold text-red-700">{queueStats.failed}</div>
-                <div className="text-xs text-red-600">Échoués</div>
-              </div>
-              <div className="p-2 rounded-lg bg-gray-50">
-                <div className="text-lg font-bold text-gray-700">{queueStats.cancelled}</div>
-                <div className="text-xs text-gray-600">Annulés</div>
-              </div>
+            <div className="grid grid-cols-5 gap-0 border-b border-foreground">
+              {STAT_BLOCKS.map((block) => {
+                const value = block.getValue(queueStats);
+                return (
+                  <div
+                    key={block.key}
+                    className={`flex flex-col items-center justify-center py-4 border-r last:border-r-0 border-foreground/10 ${value > 0 ? '' : 'opacity-40'}`}
+                  >
+                    <span className={`text-2xl font-black tabular-nums ${block.iconColor}`}>
+                      {value}
+                    </span>
+                    <span className="text-[9px] uppercase tracking-[0.15em] text-muted-foreground font-semibold mt-1">
+                      {block.label}
+                    </span>
+                  </div>
+                );
+              })}
             </div>
           )}
 
-          {/* Refresh Button */}
-          <div className="flex justify-end">
+          {/* Actions bar */}
+          <div className="flex items-center justify-between px-6 py-3 border-b border-foreground/10">
+            <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
+              {queueItems.length} élément{queueItems.length !== 1 ? 's' : ''}
+            </span>
             <Button
               variant="ghost"
               size="sm"
               onClick={fetchQueueStatus}
               disabled={loading}
-              className="gap-2"
+              className="gap-2 rounded-none text-xs uppercase tracking-wider h-7 px-3 hover:bg-[hsl(var(--brutal-accent)/0.1)]"
             >
-              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+              <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
               Actualiser
             </Button>
           </div>
 
           {/* Queue Items List */}
-          <ScrollArea className="flex-1 border rounded-lg">
+          <ScrollArea className="flex-1">
             {queueItems.length === 0 ? (
-              <div className="p-8 text-center text-muted-foreground">
-                <Mail className="w-12 h-12 mx-auto mb-3 opacity-20" />
-                <p>Aucun InMail dans la file d'attente</p>
+              <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
+                <Mail className="w-10 h-10 mb-3 opacity-15" strokeWidth={1} />
+                <p className="text-xs uppercase tracking-wider">Aucun InMail dans la file</p>
               </div>
             ) : (
-              <div className="divide-y">
+              <div className="divide-y divide-foreground/5">
                 {queueItems.map((item) => (
-                  <div key={item.id} className="p-3 hover:bg-muted/30">
-                    <div className="flex items-start justify-between gap-3">
+                  <div
+                    key={item.id}
+                    className="px-6 py-3.5 hover:bg-[hsl(var(--brutal-accent)/0.04)] transition-colors group"
+                  >
+                    <div className="flex items-start gap-3">
+                      {/* Status icon */}
+                      <div className="mt-0.5 flex-shrink-0">
+                        {getStatusIndicator(item.status)}
+                      </div>
+
+                      {/* Content */}
                       <div className="min-w-0 flex-1">
-                        <div className="font-medium text-sm truncate">
+                        <div className="font-semibold text-sm truncate">
                           {item.recipient_name || 'Candidat inconnu'}
                         </div>
-                        <div className="text-xs text-muted-foreground truncate">
+                        <div className="text-xs text-muted-foreground truncate mt-0.5">
                           {item.subject}
                         </div>
                         {item.recipient_headline && (
-                          <div className="text-xs text-muted-foreground truncate mt-0.5">
+                          <div className="text-[11px] text-muted-foreground/70 truncate mt-0.5">
                             {item.recipient_headline}
                           </div>
                         )}
-                        <div className="flex items-center gap-1 mt-1 text-xs text-[#0077B5]">
-                          <Calendar className="w-3 h-3" />
-                          {item.status === 'sent' && item.sent_at 
-                            ? formatScheduledTime(item.sent_at)
-                            : formatScheduledTime(item.scheduled_at)
-                          }
-                        </div>
                         {item.error_message && (
-                          <div className="text-xs text-red-500 mt-1">
+                          <div className="text-[11px] text-destructive mt-1 truncate">
                             {item.error_message}
                           </div>
                         )}
                       </div>
-                      <div className="flex-shrink-0">
-                        {getStatusBadge(item.status)}
+
+                      {/* Timestamp */}
+                      <div className="flex items-center gap-1 text-[11px] text-muted-foreground flex-shrink-0 tabular-nums">
+                        <Calendar className="w-3 h-3" />
+                        {item.status === 'sent' && item.sent_at
+                          ? formatScheduledTime(item.sent_at)
+                          : formatScheduledTime(item.scheduled_at)
+                        }
                       </div>
                     </div>
                   </div>
@@ -274,15 +281,18 @@ export const InMailQueueStatus: React.FC = () => {
             )}
           </ScrollArea>
 
-          {/* Cancel Button */}
+          {/* Cancel Footer */}
           {hasPendingItems && (
-            <Button
-              variant="outline"
-              onClick={handleCancelPending}
-              className="text-red-500 border-red-200 hover:bg-red-50 hover:text-red-600"
-            >
-              Annuler les envois en attente
-            </Button>
+            <div className="border-t border-foreground px-6 py-4">
+              <Button
+                variant="outline"
+                onClick={handleCancelPending}
+                className="w-full rounded-none border-destructive text-destructive hover:bg-destructive hover:text-destructive-foreground uppercase tracking-wider text-xs font-semibold h-9"
+              >
+                <Ban className="w-3.5 h-3.5 mr-2" />
+                Annuler les envois en attente
+              </Button>
+            </div>
           )}
         </div>
       </DialogContent>
