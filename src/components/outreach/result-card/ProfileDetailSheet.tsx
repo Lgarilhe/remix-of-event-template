@@ -165,19 +165,19 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
   return (
     <>
       <Sheet open={open} onOpenChange={onOpenChange}>
-        <SheetContent side="right" className="w-[95vw] max-w-[820px] p-0 flex flex-col overflow-hidden rounded-none border-l border-foreground">
+        <SheetContent side="right" className="w-full sm:w-[95vw] sm:max-w-[820px] p-0 flex flex-col overflow-hidden rounded-none border-l border-foreground">
           {/* ─── HEADER ─── */}
-          <SheetHeader className="px-6 pt-5 pb-4 bg-muted/30 border-b border-foreground shrink-0">
-            <div className="flex items-start gap-4">
-               <Avatar className="w-16 h-16 border-2 border-border shadow-md shrink-0">
+          <SheetHeader className="px-3 sm:px-6 pt-4 sm:pt-5 pb-3 sm:pb-4 bg-muted/30 border-b border-foreground shrink-0">
+            <div className="flex items-start gap-2.5 sm:gap-4">
+               <Avatar className="w-11 h-11 sm:w-16 sm:h-16 border-2 border-border shadow-md shrink-0">
                 <AvatarImage src={profile.profile_picture_url} alt={fullName} className="object-cover" />
-                <AvatarFallback className="bg-gradient-to-br from-primary to-primary/80 text-primary-foreground text-xl font-semibold">
+                <AvatarFallback className="bg-gradient-to-br from-primary to-primary/80 text-primary-foreground text-base sm:text-xl font-semibold">
                   {initials || '?'}
                 </AvatarFallback>
               </Avatar>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <SheetTitle className="text-xl font-bold text-foreground truncate">
+                  <SheetTitle className="text-base sm:text-xl font-bold text-foreground truncate">
                     {fullName || 'Profil LinkedIn'}
                   </SheetTitle>
                   <CardStatusBadges
@@ -192,26 +192,26 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
                     historyLatestDateLabel={historyLatestDateLabel}
                   />
                 </div>
-                <p className="text-sm text-muted-foreground line-clamp-2 mt-1 leading-relaxed">
+                <p className="text-xs sm:text-sm text-muted-foreground line-clamp-2 mt-0.5 sm:mt-1 leading-relaxed">
                   {profile.headline || currentRole || 'Profil LinkedIn'}
                 </p>
-                <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 mt-2.5 text-xs text-muted-foreground">
+                <div className="flex flex-wrap items-center gap-x-3 sm:gap-x-4 gap-y-1 mt-1.5 sm:mt-2.5 text-[11px] sm:text-xs text-muted-foreground">
                   {currentCompany && (
-                    <span className="flex items-center gap-1.5 font-medium text-foreground/80">
-                      <Building2 className="w-3.5 h-3.5 text-primary" />
-                      {currentCompany}
-                      {currentJobTenure && <span className="text-muted-foreground/50 font-normal">• {currentJobTenure}</span>}
+                    <span className="flex items-center gap-1 font-medium text-foreground/80">
+                      <Building2 className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-primary" />
+                      <span className="truncate max-w-[120px] sm:max-w-none">{currentCompany}</span>
+                      {currentJobTenure && <span className="text-muted-foreground/50 font-normal hidden sm:inline">• {currentJobTenure}</span>}
                     </span>
                   )}
                   {profile.location && (
-                    <span className="flex items-center gap-1.5">
-                      <MapPin className="w-3.5 h-3.5" />
-                      {profile.location}
+                    <span className="flex items-center gap-1">
+                      <MapPin className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
+                      <span className="truncate max-w-[100px] sm:max-w-none">{profile.location}</span>
                     </span>
                   )}
                   {totalExperience && (
-                    <span className="flex items-center gap-1.5 text-emerald-600 font-medium">
-                      <TrendingUp className="w-3.5 h-3.5" />
+                    <span className="flex items-center gap-1 text-emerald-600 font-medium">
+                      <TrendingUp className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
                       {totalExperience}
                     </span>
                   )}
@@ -220,16 +220,17 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
             </div>
 
             {/* ─── ACTIONS BAR ─── */}
-            <div className="flex items-center gap-2 mt-4 pt-3 border-t border-foreground/20 flex-wrap">
+            <div className="flex items-center gap-1.5 sm:gap-2 mt-3 sm:mt-4 pt-2.5 sm:pt-3 border-t border-foreground/20 flex-wrap">
               {/* Primary actions */}
               {selectedJob && (
                 <Button
                   size="sm"
                   onClick={() => setShowMessageModal(true)}
-                   className="h-8 gap-1.5 text-xs rounded-none border border-foreground"
+                   className="h-7 sm:h-8 gap-1 sm:gap-1.5 text-[11px] sm:text-xs rounded-none border border-foreground px-2 sm:px-3"
                 >
-                  <PenLine className="w-3.5 h-3.5" />
-                  Message
+                  <PenLine className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
+                  <span className="hidden sm:inline">Message</span>
+                  <span className="sm:hidden">Msg</span>
                 </Button>
               )}
 
@@ -239,10 +240,10 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
                   size="sm"
                   onClick={handleScore}
                   disabled={isScoring}
-                   className="h-8 gap-1.5 text-xs rounded-none text-purple-600 border-purple-300 hover:bg-purple-50"
+                   className="h-7 sm:h-8 gap-1 sm:gap-1.5 text-[11px] sm:text-xs rounded-none text-purple-600 border-purple-300 hover:bg-purple-50 px-2 sm:px-3"
                 >
-                  {isScoring ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Target className="w-3.5 h-3.5" />}
-                  {isScoring ? 'Scoring...' : 'Scorer'}
+                  {isScoring ? <Loader2 className="w-3 h-3 sm:w-3.5 sm:h-3.5 animate-spin" /> : <Target className="w-3 h-3 sm:w-3.5 sm:h-3.5" />}
+                  {isScoring ? '...' : 'Scorer'}
                 </Button>
               )}
 
@@ -251,10 +252,11 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
                 size="sm"
                 onClick={handleAiAnalysis}
                 disabled={isAnalyzing}
-                className="h-8 gap-1.5 text-xs rounded-none text-purple-600 border-purple-300 hover:bg-purple-50"
+                className="h-7 sm:h-8 gap-1 sm:gap-1.5 text-[11px] sm:text-xs rounded-none text-purple-600 border-purple-300 hover:bg-purple-50 px-2 sm:px-3"
               >
-                {isAnalyzing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Bot className="w-3.5 h-3.5" />}
-                {aiAnalysis ? 'Masquer IA' : 'Analyse IA'}
+                {isAnalyzing ? <Loader2 className="w-3 h-3 sm:w-3.5 sm:h-3.5 animate-spin" /> : <Bot className="w-3 h-3 sm:w-3.5 sm:h-3.5" />}
+                <span className="hidden sm:inline">{aiAnalysis ? 'Masquer IA' : 'Analyse IA'}</span>
+                <span className="sm:hidden">{aiAnalysis ? 'IA ✕' : 'IA'}</span>
               </Button>
 
               {/* Sequence enroll */}
@@ -291,8 +293,8 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
               {onArchive && (
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <Button variant="ghost" size="sm" onClick={onArchive} className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive">
-                      <Archive className="w-4 h-4" />
+                    <Button variant="ghost" size="sm" onClick={onArchive} className="h-7 sm:h-8 w-7 sm:w-8 p-0 text-muted-foreground hover:text-destructive">
+                      <Archive className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                     </Button>
                   </TooltipTrigger>
                   <TooltipContent><p className="text-xs">Archiver</p></TooltipContent>
@@ -300,10 +302,11 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
               )}
 
               {profileUrl && (
-                <Button variant="outline" size="sm" asChild className="h-8 gap-1.5 text-xs rounded-none">
+                <Button variant="outline" size="sm" asChild className="h-7 sm:h-8 gap-1 sm:gap-1.5 text-[11px] sm:text-xs rounded-none px-2 sm:px-3">
                   <a href={profileUrl} target="_blank" rel="noopener noreferrer">
-                    <ExternalLink className="w-3.5 h-3.5" />
-                    LinkedIn
+                    <ExternalLink className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
+                    <span className="hidden sm:inline">LinkedIn</span>
+                    <span className="sm:hidden">LI</span>
                   </a>
                 </Button>
               )}
@@ -312,7 +315,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
 
           {/* ─── CONTENT ─── */}
           <ScrollArea className="flex-1">
-            <div className="p-6 space-y-6">
+            <div className="p-3 sm:p-6 space-y-4 sm:space-y-6">
               {/* Job Score */}
               {jobScore && (
                 <div className="border border-foreground p-5 bg-muted/20">
@@ -336,7 +339,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
                     </Badge>
                   </div>
                   <p className="text-sm text-foreground/80 leading-relaxed mb-4">{aiAnalysis.summary}</p>
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                     <div className="space-y-2">
                       <p className="text-[11px] font-semibold text-emerald-700 uppercase tracking-wider flex items-center gap-1">
                         <CheckCircle2 className="w-3 h-3" /> Points forts
