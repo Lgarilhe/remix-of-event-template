@@ -56,7 +56,7 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
   } = profileData;
 
   // Airtable history
-  const candidateProfileUrl = profile.profile_url || profile.public_profile_url;
+  const candidateProfileUrl = profile.public_profile_url || profile.profile_url;
   const { data: historyData, loading: historyLoading } = useCandidateHistory(
     airtableMatch
       ? { linkedinUrl: candidateProfileUrl, airtableId: airtableMatch.airtable_id }
