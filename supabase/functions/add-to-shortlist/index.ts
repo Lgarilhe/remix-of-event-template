@@ -199,7 +199,9 @@ serve(async (req) => {
       if (data.entity) {
         props['Entité'] = { select: { name: data.entity } };
       }
-      // Note: "Type d'accompagnement" does not exist on the Candidats database — skip it
+      if (data.accompagnement) {
+        props['Type d\u2019accompagnement'] = { select: { name: data.accompagnement } };
+      }
       if (data.clientId) {
         props['Client'] = { relation: [{ id: data.clientId }] };
       }
@@ -296,7 +298,10 @@ serve(async (req) => {
       shortlistProps['Entité'] = { select: { name: 'Konekt' } };
     }
 
-    // Note: "Type d'accompagnement" may not exist on Shortlist — skipped
+    // Type d'accompagnement
+    if (data.accompagnement) {
+      shortlistProps['Type d\u2019accompagnement'] = { select: { name: data.accompagnement } };
+    }
 
     // Relation poste
     if (data.jobId) {
