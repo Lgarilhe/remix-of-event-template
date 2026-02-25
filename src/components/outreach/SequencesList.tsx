@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { BrutalLoader } from '@/components/ui/brutal-loader';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -431,11 +432,7 @@ export const SequencesList: React.FC<SequencesListProps> = ({
   };
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin h-8 w-8 border-b-2 border-foreground" />
-      </div>
-    );
+    return <BrutalLoader variant="sequences" rows={4} />;
   }
 
   return (

@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import { BrutalLoader } from '@/components/ui/brutal-loader';
 import { LinkedInProfile } from '@/components/outreach/types';
 import { LinkedInResultCard } from '@/components/outreach/LinkedInResultCard';
 import { BulkInMailModal } from '@/components/outreach/BulkInMailModal';
@@ -460,10 +461,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
       {/* Results list */}
       <ScrollArea className="flex-1" ref={scrollAreaRef}>
         {loading && results.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-20">
-            <Loader2 className="w-10 h-10 animate-spin text-primary mb-4" />
-            <p className="text-sm text-muted-foreground">Recherche en cours...</p>
-          </div>
+          <BrutalLoader variant="search" rows={5} />
         ) : results.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-12 text-muted-foreground px-8">
             {hasSearched ? (

@@ -3,7 +3,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Skeleton } from '@/components/ui/skeleton';
+import { BrutalLoader } from '@/components/ui/brutal-loader';
 import { Search, MessageSquare, RefreshCw, Reply } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Chat, SequenceEnrollmentInfo } from '@/hooks/useMessagesInbox';
@@ -131,16 +131,8 @@ export const ChatListSidebar: React.FC<ChatListSidebarProps> = ({
       {/* Chat List */}
       <ScrollArea className="flex-1">
         {loadingChats ? (
-          <div className="p-3 space-y-3">
-            {[1, 2, 3, 4, 5].map(i => (
-              <div key={i} className="flex items-center gap-3">
-                <Skeleton className="w-12 h-12 rounded-none" />
-                <div className="flex-1 space-y-2">
-                  <Skeleton className="h-4 w-3/4" />
-                  <Skeleton className="h-3 w-1/2" />
-                </div>
-              </div>
-            ))}
+          <div className="p-3">
+            <BrutalLoader compact messages={['Chargement des messages…', 'Synchronisation inbox…', 'Récupération des conversations…']} />
           </div>
         ) : filteredChats.length === 0 ? (
           <div className="p-8 text-center text-muted-foreground">

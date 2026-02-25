@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { useNurturingOpportunities, NurturingOpportunity } from '@/hooks/useNurturingOpportunities';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Skeleton } from '@/components/ui/skeleton';
+import { BrutalLoader } from '@/components/ui/brutal-loader';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
@@ -374,10 +374,8 @@ export function NurturingDashboard({ accounts, selectedAccount }: NurturingDashb
 
         <CardContent className="p-0">
           {isLoading ? (
-            <div className="p-4 space-y-3">
-              {[1, 2, 3].map(i => (
-                <Skeleton key={i} className="h-16 w-full" />
-              ))}
+            <div className="p-4">
+              <BrutalLoader compact messages={['Analyse des opportunités…', 'Scoring en cours…', 'Détection des signaux…']} />
             </div>
           ) : opportunities.length === 0 ? (
             <div className="text-center py-12">

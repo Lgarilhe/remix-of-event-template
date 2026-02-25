@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { BrutalLoader } from '@/components/ui/brutal-loader';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -450,7 +451,7 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
           <ScrollArea className="h-[calc(100vh-300px)]">
             <div className="space-y-2">
               {loading ? (
-                <div className="text-center py-8 text-muted-foreground">Chargement...</div>
+                <BrutalLoader compact messages={['Chargement des inscriptions…', 'Récupération des étapes…', 'Synchronisation…']} />
               ) : enrollments.length === 0 ? (
                 <div className="text-center py-8 text-muted-foreground">
                   Aucun candidat inscrit

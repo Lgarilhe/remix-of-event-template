@@ -4,7 +4,7 @@ import { useMultipleProjectStats, ProjectStats } from '@/hooks/useProjectStats';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { Skeleton } from '@/components/ui/skeleton';
+import { BrutalLoader } from '@/components/ui/brutal-loader';
 import { 
   FolderOpen, 
   Plus, 
@@ -94,17 +94,7 @@ export const ProjectsList: React.FC<ProjectsListProps> = ({ onResumeSearch }) =>
   };
 
   if (isLoading) {
-    return (
-      <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <Skeleton className="h-10 w-64" />
-          <Skeleton className="h-10 w-32" />
-        </div>
-        {[1, 2, 3].map(i => (
-          <Skeleton key={i} className="h-32 w-full" />
-        ))}
-      </div>
-    );
+    return <BrutalLoader variant="default" rows={3} messages={['Chargement des projets…', 'Récupération des données…', 'Synchronisation…']} />;
   }
 
   return (
