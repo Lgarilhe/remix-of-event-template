@@ -59,10 +59,11 @@ export const Navbar: React.FC = () => {
         />
       )}
       <nav
-        className={`fixed left-4 md:left-8 z-[2000] flex items-center gap-0 transition-all duration-300 ease-in-out ${
-          isCollapsed ? '-top-12 opacity-0 pointer-events-none' : 'top-8 opacity-100'
+        className={`fixed left-0 right-0 z-[2000] transition-all duration-300 ease-in-out ${
+          isCollapsed ? '-top-12 opacity-0 pointer-events-none' : 'top-4 opacity-100'
         }`}
       >
+      <div className="max-w-[1600px] mx-auto px-3 sm:px-6 lg:px-8 flex items-center gap-0">
       {/* Logo */}
       <div className="bg-black text-white h-[34px] w-[34px] border border-black flex items-center justify-center">
         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 14 14" className="w-4 h-4">
@@ -209,6 +210,7 @@ export const Navbar: React.FC = () => {
         <span className="relative z-10">MENU</span>
         <span className="absolute inset-0 bg-[#FA76FF] translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out"></span>
       </button>
+      </div>
     </nav>
     
     <AuthSheet isOpen={isAuthOpen} onClose={() => { setIsAuthOpen(false); setPendingRoute(null); }} />
