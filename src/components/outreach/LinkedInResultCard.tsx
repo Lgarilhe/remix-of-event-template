@@ -90,7 +90,7 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
 
   return (
     <div
-      className={`relative bg-background border border-foreground transition-all overflow-hidden max-w-full cursor-pointer group hover:shadow-md`}
+      className={`relative bg-background border border-foreground transition-all max-w-full cursor-pointer group hover:shadow-md`}
       style={{ wordBreak: 'break-word' }}
       onClick={(e) => {
         if (showScoringOverlay) return;
@@ -120,8 +120,8 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
         </div>
       )}
       {/* Main card content */}
-      <div className={`p-2.5 sm:p-4 overflow-hidden transition-all duration-300 ${showScoringOverlay ? 'select-none pointer-events-none' : ''}`}>
-        <div className="flex items-start gap-2 sm:gap-4 min-w-0">
+      <div className={`p-2.5 sm:p-4 transition-all duration-300 ${showScoringOverlay ? 'select-none pointer-events-none' : ''}`}>
+        <div className="flex items-start gap-2 sm:gap-4 min-w-0 w-full">
           {/* Checkbox */}
           {selectedJob && onToggleSelect && (
             <div className="pt-3" data-no-detail>
@@ -162,12 +162,12 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
           </div>
 
           {/* Info */}
-          <div className="flex-1 min-w-0 overflow-hidden">
+          <div className="flex-1 min-w-0">
             <div className="flex flex-col gap-1">
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
-                    <h3 className="font-semibold text-foreground text-sm sm:text-base truncate">
+                    <h3 className="font-semibold text-foreground text-sm sm:text-base leading-tight break-words sm:truncate">
                       {fullName || 'Profil LinkedIn'}
                     </h3>
                     <CardStatusBadges
@@ -183,7 +183,7 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
                     />
                   </div>
 
-                  <p className="text-xs sm:text-sm text-muted-foreground line-clamp-1 sm:line-clamp-2 mt-0.5 sm:mt-1 leading-snug break-all">
+                  <p className="text-xs sm:text-sm text-muted-foreground line-clamp-2 mt-0.5 sm:mt-1 leading-snug break-words">
                     {profile.headline || currentRole || 'Profil LinkedIn'}
                   </p>
                   {historyData && !historyLoading && (
@@ -237,36 +237,36 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
             </div>
 
             {/* Meta info row */}
-            <div className="flex flex-wrap items-center gap-x-2 sm:gap-x-4 gap-y-1 mt-2 sm:mt-3 text-[10px] sm:text-xs text-muted-foreground max-w-full overflow-hidden">
+            <div className="flex flex-col sm:flex-row sm:flex-wrap items-start sm:items-center gap-x-2 sm:gap-x-4 gap-y-1 mt-2 sm:mt-3 text-[10px] sm:text-xs text-muted-foreground">
               {currentCompany && (
-                <span className="flex items-center gap-1.5 font-medium text-foreground/80 truncate max-w-[60%] sm:max-w-none">
+                <span className="flex items-center gap-1.5 font-medium text-foreground/80 min-w-0">
                   {profileData.currentJob?.logo ? (
                     <img src={profileData.currentJob.logo} alt="" className="w-4 h-4 rounded object-contain bg-white border border-border/30 shrink-0" />
                   ) : (
                     <Building2 className="w-3.5 h-3.5 text-primary shrink-0" />
                   )}
-                  <span className="truncate">{currentCompany}</span>
+                  <span className="min-w-0 break-words sm:truncate">{currentCompany}</span>
                   {currentJobTenure && (
                     <span className="text-muted-foreground/40 font-normal shrink-0">• {currentJobTenure}</span>
                   )}
                 </span>
               )}
               {profile.location && (
-                <span className="flex items-center gap-1 truncate max-w-[50%] sm:max-w-none">
+                <span className="flex items-center gap-1 min-w-0">
                   <MapPin className="w-3.5 h-3.5 shrink-0" />
-                  <span className="truncate">{profile.location}</span>
+                  <span className="min-w-0 break-words sm:truncate">{profile.location}</span>
                 </span>
               )}
               {totalExperience && (
-                <span className="flex items-center gap-1 text-emerald-600 font-medium shrink-0">
+                <span className="flex items-center gap-1 text-emerald-600 font-medium">
                   <TrendingUp className="w-3.5 h-3.5" />
                   {totalExperience}
                 </span>
               )}
               {connectionsCount && (
-                <span className="flex items-center gap-1 shrink-0">
+                <span className="flex items-center gap-1">
                   <Users className="w-3.5 h-3.5" />
-                  {connectionsCount.toLocaleString()}
+                  {connectionsCount.toLocaleString()} connexions
                 </span>
               )}
             </div>
