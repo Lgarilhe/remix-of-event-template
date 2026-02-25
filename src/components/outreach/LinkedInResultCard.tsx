@@ -121,29 +121,46 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
       )}
       {/* Main card content */}
       <div className={`p-2.5 sm:p-4 transition-all duration-300 ${showScoringOverlay ? 'select-none pointer-events-none' : ''}`}>
-        <div className="flex items-start gap-2 sm:gap-4 min-w-0 w-full">
-          {/* Checkbox */}
+        <div className="relative flex items-start gap-2 sm:gap-4 min-w-0 w-full">
+          {/* Checkbox - top-right on mobile, left column on desktop */}
           {selectedJob && onToggleSelect && (
-            <div className="pt-3" data-no-detail>
-              {jobScore?.recommendation === 'skip' ? (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <div className="w-4 h-4 rounded border border-destructive/30 bg-destructive/5 flex items-center justify-center cursor-not-allowed">
-                      <X className="w-3 h-3 text-destructive/40" />
-                    </div>
-                  </TooltipTrigger>
-                  <TooltipContent side="right" className="max-w-xs">
-                    <p className="text-xs">Profil peu adapté (score &lt; 40%) — sélection désactivée</p>
-                  </TooltipContent>
-                </Tooltip>
-              ) : (
-                <Checkbox
-                  checked={isSelected}
-                  onCheckedChange={onToggleSelect}
-                  className="border-primary/30 data-[state=checked]:bg-primary data-[state=checked]:border-primary"
-                />
-              )}
-            </div>
+            <>
+              {/* Desktop: left column */}
+              <div className="hidden sm:block pt-3" data-no-detail>
+                {jobScore?.recommendation === 'skip' ? (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <div className="w-4 h-4 rounded border border-destructive/30 bg-destructive/5 flex items-center justify-center cursor-not-allowed">
+                        <X className="w-3 h-3 text-destructive/40" />
+                      </div>
+                    </TooltipTrigger>
+                    <TooltipContent side="right" className="max-w-xs">
+                      <p className="text-xs">Profil peu adapté (score &lt; 40%) — sélection désactivée</p>
+                    </TooltipContent>
+                  </Tooltip>
+                ) : (
+                  <Checkbox
+                    checked={isSelected}
+                    onCheckedChange={onToggleSelect}
+                    className="border-primary/30 data-[state=checked]:bg-primary data-[state=checked]:border-primary"
+                  />
+                )}
+              </div>
+              {/* Mobile: absolute top-right */}
+              <div className="sm:hidden absolute top-0 right-0 z-10" data-no-detail>
+                {jobScore?.recommendation === 'skip' ? (
+                  <div className="w-5 h-5 rounded border border-destructive/30 bg-destructive/5 flex items-center justify-center cursor-not-allowed">
+                    <X className="w-3 h-3 text-destructive/40" />
+                  </div>
+                ) : (
+                  <Checkbox
+                    checked={isSelected}
+                    onCheckedChange={onToggleSelect}
+                    className="border-primary/30 data-[state=checked]:bg-primary data-[state=checked]:border-primary w-5 h-5"
+                  />
+                )}
+              </div>
+            </>
           )}
 
           {/* Avatar */}
