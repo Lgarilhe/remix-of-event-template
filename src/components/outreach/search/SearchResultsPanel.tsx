@@ -494,34 +494,26 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
           <div className="p-2 sm:p-4 space-y-2 min-w-0">
             {/* Batch workflow banner */}
             {hasSearched && total !== null && total > 0 && (
-              <div className="border border-foreground bg-background mb-3 overflow-hidden">
-                {/* Top accent strip */}
-                <div className="h-1 bg-foreground" />
-                
-                <div className="p-3 sm:p-4 space-y-3">
-                  <div className="flex items-center justify-between gap-3">
-                    {/* Left: count block */}
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className="relative shrink-0">
-                        <div className="w-12 h-12 bg-foreground text-background flex items-center justify-center">
-                          <Users className="w-5 h-5" />
-                        </div>
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-lg sm:text-xl font-bold text-foreground tracking-tight leading-none">
-                          {total.toLocaleString()}
-                          <span className="text-sm font-medium text-muted-foreground ml-1.5">
-                            candidats
-                          </span>
-                        </p>
-                        <div className="flex items-center gap-1.5 mt-1">
-                          <span className="text-xs text-muted-foreground font-medium">
-                            {results.length} chargés
+              <div className="border border-foreground/15 bg-background mb-3 overflow-hidden">
+                <div className="p-3 sm:p-4">
+                  <div className="flex items-center justify-between gap-4">
+                    {/* Left: bold typographic count */}
+                    <div className="flex items-baseline gap-2 min-w-0">
+                      <span className="text-3xl sm:text-4xl font-black text-foreground tabular-nums tracking-tighter leading-none">
+                        {total.toLocaleString()}
+                      </span>
+                      <div className="flex flex-col gap-0.5">
+                        <span className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
+                          profils trouvés
+                        </span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[11px] text-muted-foreground/70">
+                            {results.length} affichés sur {total}
                           </span>
                           {statusCounts.untreated === 0 && results.length > 0 && cursor && (
-                            <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider bg-emerald-500 text-white px-1.5 py-0.5">
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-emerald-500">
                               <CheckCircle2 className="w-3 h-3" />
-                              Lot traité
+                              traité
                             </span>
                           )}
                         </div>
@@ -529,15 +521,15 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
                     </div>
 
                     {/* Right: refine actions */}
-                    <div className="hidden sm:flex items-center gap-2 shrink-0">
+                    <div className="hidden sm:flex items-center gap-1.5 shrink-0">
                       <Button
                         variant="outline"
                         size="sm"
                         onClick={() => onRefineSearch('expand')}
                         disabled={refineLoading}
-                        className="h-9 px-3 gap-1.5 text-xs font-bold uppercase tracking-wider border-foreground text-foreground hover:bg-foreground hover:text-background transition-colors"
+                        className="h-8 px-2.5 gap-1 text-[11px] font-bold uppercase tracking-wider border-foreground/20 text-muted-foreground hover:text-foreground hover:border-foreground/40 transition-colors"
                       >
-                        {refineLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Maximize2 className="w-3.5 h-3.5" />}
+                        {refineLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Maximize2 className="w-3 h-3" />}
                         Élargir
                       </Button>
                       <Button
@@ -545,25 +537,31 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
                         size="sm"
                         onClick={() => onRefineSearch('narrow')}
                         disabled={refineLoading}
-                        className="h-9 px-3 gap-1.5 text-xs font-bold uppercase tracking-wider border-foreground text-foreground hover:bg-foreground hover:text-background transition-colors"
+                        className="h-8 px-2.5 gap-1 text-[11px] font-bold uppercase tracking-wider border-foreground/20 text-muted-foreground hover:text-foreground hover:border-foreground/40 transition-colors"
                       >
-                        {refineLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Minimize2 className="w-3.5 h-3.5" />}
+                        {refineLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Minimize2 className="w-3 h-3" />}
                         Affiner
                       </Button>
                     </div>
                   </div>
 
-                  {/* Progress bar */}
+                  {/* Subtle segmented progress — only when more to load */}
                   {total > results.length && (
-                    <div className="flex items-center gap-3">
-                      <div className="flex-1 h-2 bg-foreground/10 overflow-hidden">
-                        <div 
-                          className="h-full bg-foreground transition-all duration-500 ease-out"
-                          style={{ width: `${(results.length / total) * 100}%` }}
-                        />
+                    <div className="mt-3 flex items-center gap-2">
+                      <div className="flex-1 flex gap-px h-1">
+                        {Array.from({ length: Math.min(20, Math.ceil(total / Math.max(results.length, 1))) }).map((_, i) => (
+                          <div
+                            key={i}
+                            className={`flex-1 transition-colors duration-300 ${
+                              i < Math.ceil((results.length / total) * Math.min(20, Math.ceil(total / Math.max(results.length, 1))))
+                                ? 'bg-foreground'
+                                : 'bg-foreground/10'
+                            }`}
+                          />
+                        ))}
                       </div>
-                      <span className="text-xs font-bold text-foreground tabular-nums whitespace-nowrap">
-                        {results.length}<span className="text-muted-foreground font-medium">/{total}</span>
+                      <span className="text-[10px] text-muted-foreground/60 tabular-nums whitespace-nowrap">
+                        {Math.round((results.length / total) * 100)}%
                       </span>
                     </div>
                   )}
