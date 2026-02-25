@@ -62,6 +62,9 @@ export function useNotionShortlist() {
     staleTime: STALE_TIME,
     gcTime: GC_TIME,
     refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+    refetchOnMount: false,
+    retryOnMount: false,
     retry: 2,
   });
 }
@@ -73,6 +76,9 @@ export function useNotionCandidates() {
     staleTime: STALE_TIME,
     gcTime: GC_TIME,
     refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+    refetchOnMount: false,
+    retryOnMount: false,
     retry: 2,
   });
 }

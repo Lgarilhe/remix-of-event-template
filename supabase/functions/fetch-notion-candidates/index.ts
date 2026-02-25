@@ -35,9 +35,9 @@ async function fetchWithRetry(input: string, init: RequestInit, attempt = 0): Pr
   const res = await fetch(input, init);
 
   // Notion rate limit
-  if (res.status === 429 && attempt < 5) {
-    const backoffMs = Math.min(10_000, 500 * Math.pow(2, attempt));
-    const jitter = Math.floor(Math.random() * 250);
+  if (res.status === 429 && attempt < 1) {
+    const backoffMs = Math.min(2_000, 400 * Math.pow(2, attempt));
+    const jitter = Math.floor(Math.random() * 150);
     await sleep(backoffMs + jitter);
     return fetchWithRetry(input, init, attempt + 1);
   }
@@ -268,7 +268,7 @@ serve(async (req) => {
     // If we have ANY cached data (even stale), return it immediately for instant UI
     // The client can request a refresh in background if needed
     const isRateLimited = (cached.payload as any)?._meta?.rateLimited;
-    const cachedTtlMs = isRateLimited ? 30_000 : CACHE_TTL_MS;
+    const cachedTtlMs = isRateLimited ? 10 * 60 * 1000 : CACHE_TTL_MS;
     const isFresh = cached.payload && cached.ageMs !== null && cached.ageMs < cachedTtlMs;
     
     // Return cached data immediately (unless force refresh requested)
@@ -281,19 +281,16 @@ serve(async (req) => {
         );
       }
       
-      // If cache is stale but exists, return it with stale flag
-      // Client can trigger background refresh
-      if (!isRateLimited) {
-        return new Response(
-          JSON.stringify({ 
-            ...(cached.payload as any), 
-            cached: true, 
-            stale: true,
-            ageMs: cached.ageMs 
-          }),
-          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
+      // If cache exists but is stale, still return it immediately to avoid blocking UI
+      return new Response(
+        JSON.stringify({ 
+          ...(cached.payload as any), 
+          cached: true, 
+          stale: true,
+          ageMs: cached.ageMs 
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
     if (type === 'candidates') {
