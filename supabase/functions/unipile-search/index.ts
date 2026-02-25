@@ -1285,7 +1285,7 @@ async function handleMarkAsRead(
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        action: 'setAllMessagesAsRead',
+        action: 'setReadStatus',
         value: true,
       }),
     });
