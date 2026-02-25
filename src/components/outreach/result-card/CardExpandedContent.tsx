@@ -127,7 +127,7 @@ export const CardExpandedContent: React.FC<CardExpandedContentProps> = ({
                           </div>
                         )}
                         {exp.description && (
-                          <p className="text-xs text-muted-foreground/70 mt-2.5 leading-relaxed line-clamp-4">{exp.description}</p>
+                          <div className="text-xs text-muted-foreground/70 mt-2.5 leading-relaxed whitespace-pre-line">{exp.description}</div>
                         )}
                       </div>
                     </div>
