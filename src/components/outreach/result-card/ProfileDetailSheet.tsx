@@ -141,7 +141,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
   return (
     <>
       <Sheet open={open} onOpenChange={onOpenChange}>
-        <SheetContent side="right" className="w-[95vw] max-w-[720px] p-0 flex flex-col">
+        <SheetContent side="right" className="w-[95vw] max-w-[780px] p-0 flex flex-col">
           <SheetHeader className="px-5 pt-5 pb-4 bg-gradient-to-b from-muted/40 to-background border-b border-border shrink-0">
             <div className="flex items-start gap-4">
               <Avatar className="w-14 h-14 border-2 border-background shadow-lg ring-2 ring-primary/10 shrink-0">
