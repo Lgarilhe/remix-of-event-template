@@ -348,7 +348,7 @@ ${recentPosts.map((p, i) => `POST ${i + 1} (${p.date}${p.reactions ? `, ${p.reac
 === FIN PUBLICATIONS ===
 
 UTILISATION DES POSTS:
-- Les posts LinkedIn sont une SOURCE PREMIUM de personnalisation (meilleure que le "À propos")
+- Les posts LinkedIn sont une SOURCE PREMIUM de personnalisation
 - Si un post est pertinent par rapport au poste → UTILISE-LE comme accroche ("j'ai vu ton post sur [sujet]")
 - Si un post montre une expertise/passion alignée avec le poste → mentionne-le
 - Si les posts ne sont PAS pertinents (contenu trop générique, sans lien avec le poste) → IGNORE-LES et utilise une autre source de personnalisation
@@ -506,11 +506,12 @@ ${statusInstructions[candidateStatus] || statusInstructions.other}
       - Le but: transformer un cold outreach en warm intro grâce à la relation existante.
    
    b) SECTION "À PROPOS" (mine d'or si pas de posts pertinents):
-      - Une passion technique ("j'aime les systèmes distribués")
-      - Un side project, une contribution open source
-      - Une motivation personnelle ("j'ai quitté X pour Y")
-      - Un style de travail ("petites équipes", "ownership")
-      - Un hobby ou intérêt inhabituel mentionné
+       ⚠️ JAMAIS écrire "dans ton À propos", "tu mentionnes dans ton profil", "dans ta bio" → cite le contenu DIRECTEMENT comme si tu le savais naturellement.
+       - Une passion technique ("j'aime les systèmes distribués")
+       - Un side project, une contribution open source
+       - Une motivation personnelle ("j'ai quitté X pour Y")
+       - Un style de travail ("petites équipes", "ownership")
+       - Un hobby ou intérêt inhabituel mentionné
    
    c) PARCOURS PROFESSIONNEL:
       - Un ancien employeur commun avec le client → +27% de réponse, TOUJOURS le mentionner si applicable
@@ -569,12 +570,13 @@ ${statusInstructions[candidateStatus] || statusInstructions.other}
    - SI technique/précis → sois concis et factuel
    Le but: un message de PAIR, pas de robot.
 
-8. INTERDITS (MARQUEURS IA À BANNIR):
-   - "j'ai parcouru ton profil", "a retenu mon attention", "m'a tapé dans l'œil"
-   - Superlatifs: exceptionnel, remarquable, impressionnant, brillant, solide parcours
-   - "parfaitement", "exactement", "idéalement" → trop vendeur
-   - Questions génériques: "ça t'intéresserait ?", "tu serais ouvert ?"
-   - FORMAT: JAMAIS "20+", "10+" → "plus de 20", "plus de 10"
+ 8. INTERDITS (MARQUEURS IA À BANNIR):
+    - "j'ai parcouru ton profil", "a retenu mon attention", "m'a tapé dans l'œil"
+    - "dans ton À propos", "tu mentionnes dans ton profil", "dans ta bio", "dans ta section" → CITE LE CONTENU DIRECTEMENT sans préciser la source
+    - Superlatifs: exceptionnel, remarquable, impressionnant, brillant, solide parcours
+    - "parfaitement", "exactement", "idéalement" → trop vendeur
+    - Questions génériques: "ça t'intéresserait ?", "tu serais ouvert ?"
+    - FORMAT: JAMAIS "20+", "10+" → "plus de 20", "plus de 10"
    - TIRETS: JAMAIS de "- ..." ni "A – B" → phrases avec points/virgules
    - LISTES À PUCES: JAMAIS, écris en prose fluide
    - LIENS: JAMAIS de liens dans le message (distrait du contenu)
@@ -604,7 +606,7 @@ ${statusInstructions[candidateStatus] || statusInstructions.other}
    - Structure: 
      PHRASE 1 = PERSONNALISATION PURE (obligatoire). Une phrase naturelle qui montre que tu as lu le profil.
      PAS de structure "Du X au Y", PAS de "Ton parcours de X à Y", PAS de résumé de carrière.
-     C'est une OBSERVATION SPÉCIFIQUE: quelque chose que tu as remarqué, une question sur un choix de carrière, une référence à un post ou au À propos.
+     C'est une OBSERVATION SPÉCIFIQUE: quelque chose que tu as remarqué, une question sur un choix de carrière, une référence à un post ou un élément du profil (SANS citer la source comme "ton À propos").
      → PHRASE 2-3 = Ce que le candidat y gagne (1-2 phrases)
      → PHRASE 4 = CTA non-engageant (1 phrase)
    - Signature: "${senderName || '[Prénom]'}"
@@ -619,17 +621,17 @@ ${statusInstructions[candidateStatus] || statusInstructions.other}
    - Toute formulation qui RÉSUME le parcours au lieu de RÉAGIR à un élément précis ❌
 
    ✅ BONNES ACCROCHES (phrase 1) — factuel, jamais flatteur:
-   - "Tu mentionnes [X] dans ton À propos, on bosse justement sur [Y] chez ${clientName}." (lien direct)
-   - "J'ai vu ton post sur [sujet], on part sur la même approche chez ${clientName}." (réf post)
-   - "Ton passage chez [entreprise] m'intrigue, comment tu gérais [problème spécifique] ?" (question)
-   - "Tu bosses sur [techno] depuis [entreprise], on cherche quelqu'un sur ce créneau." (observation neutre)
+    - "Le DDD et l'ownership, c'est aussi ce qu'on pousse chez ${clientName}." (cite le contenu SANS mentionner "À propos")
+    - "J'ai vu ton post sur [sujet], on part sur la même approche chez ${clientName}." (réf post)
+    - "Ton passage chez [entreprise] m'intrigue, comment tu gérais [problème spécifique] ?" (question)
+    - "Tu bosses sur [techno] depuis [entreprise], on cherche quelqu'un sur ce créneau." (observation neutre)
 
 === EXEMPLES (BONNES PRATIQUES 2025) ===
 
-EXEMPLE 1 - MODE RPO, accroche "À propos":
+EXEMPLE 1 - MODE RPO, accroche profil:
 "Salut Thomas,
 
-Tu parles de DDD et d'ownership dans ton À propos. On monte justement le cloud souverain chez ${clientName}, stack Go/K8s, tu définirais l'archi toi-même.
+Le DDD et l'ownership, c'est aussi ce qu'on pousse chez ${clientName}. On monte le cloud souverain, stack Go/K8s, tu définirais l'archi toi-même.
 
 Curieux d'avoir ton avis, même si t'es pas en recherche.
 
