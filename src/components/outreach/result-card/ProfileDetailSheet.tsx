@@ -1,27 +1,30 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Separator } from '@/components/ui/separator';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { LinkedInProfile } from '../types';
 import { JobMatchResult, JobScoreDisplay, SalaryBadge } from '../JobScoreDisplay';
 import { Job } from '@/pages/JobSpace';
 import { SourcingProject } from '@/hooks/useSourcingProjects';
 import { CardExpandedContent } from './CardExpandedContent';
 import { CardStatusBadges } from './CardStatusBadges';
-import { CardActions } from './CardActions';
 import { useProfileData } from './useProfileData';
 import { useCandidateHistory } from '@/hooks/useCandidateHistory';
 import { CandidateHistoryPanel } from '../CandidateHistoryPanel';
 import { OutreachMessageModal } from '../OutreachMessageModal';
+import { SequenceEnrollButton } from '../SequenceEnrollButton';
+import { AddToProjectButton } from '../projects/AddToProjectButton';
 import {
-  Building2, MapPin, Users, TrendingUp, ExternalLink, Bot, Loader2,
-  Target, CheckCircle2, AlertTriangle, X,
+  Building2, MapPin, TrendingUp, ExternalLink, Bot, Loader2,
+  Target, CheckCircle2, AlertTriangle, PenLine, Archive, Mail,
+  MessageSquare, FolderPlus,
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import { useState } from 'react';
 
 interface ProfileDetailSheetProps {
   profile: LinkedInProfile | null;
@@ -69,17 +72,20 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
     recommendation: string;
   } | null>(null);
 
-  // Dummy profile for hook stability (hooks must be called unconditionally)
+  // Reset AI analysis when profile changes
+  useEffect(() => { setAiAnalysis(null); }, [profile?.id]);
+
   const dummyProfile = { id: '', name: '' } as LinkedInProfile;
   const profileData = useProfileData(profile || dummyProfile);
-
   const candidateProfileUrl = (profile || dummyProfile).profile_url || (profile || dummyProfile).public_profile_url;
 
-  // Airtable history
+  // Airtable history — fetch by both URL and direct airtable_id for reliability
   const { data: historyData, loading: historyLoading } = useCandidateHistory(
     airtableMatch
       ? { linkedinUrl: candidateProfileUrl, airtableId: airtableMatch.airtable_id }
-      : null
+      : candidateProfileUrl
+        ? { linkedinUrl: candidateProfileUrl }
+        : null
   );
 
   const formatHistoryDate = (dateStr: string | null | undefined) => {
@@ -102,7 +108,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
         .sort((a, b) => (a > b ? -1 : a < b ? 1 : 0))[0] ?? null
     : null;
   const historyLatestDateLabel = formatHistoryDate(historyLatestDate);
-  
+
   if (!profile) return null;
 
   const {
@@ -138,21 +144,30 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
     }
   };
 
+  const hasHistory = historyData && (
+    historyData.placements.length > 0 ||
+    historyData.shortlists.length > 0 ||
+    historyData.notes.length > 0 ||
+    historyData.appointments.length > 0 ||
+    historyData.candidate
+  );
+
   return (
     <>
       <Sheet open={open} onOpenChange={onOpenChange}>
-        <SheetContent side="right" className="w-[95vw] max-w-[780px] p-0 flex flex-col">
-          <SheetHeader className="px-5 pt-5 pb-4 bg-gradient-to-b from-muted/40 to-background border-b border-border shrink-0">
+        <SheetContent side="right" className="w-[95vw] max-w-[820px] p-0 flex flex-col overflow-hidden">
+          {/* ─── HEADER ─── */}
+          <SheetHeader className="px-6 pt-5 pb-4 bg-gradient-to-b from-muted/50 to-background border-b border-border shrink-0">
             <div className="flex items-start gap-4">
-              <Avatar className="w-14 h-14 border-2 border-background shadow-lg ring-2 ring-primary/10 shrink-0">
+              <Avatar className="w-16 h-16 border-2 border-background shadow-lg ring-2 ring-primary/10 shrink-0">
                 <AvatarImage src={profile.profile_picture_url} alt={fullName} className="object-cover" />
-                <AvatarFallback className="bg-gradient-to-br from-primary to-primary/80 text-primary-foreground text-lg font-semibold">
+                <AvatarFallback className="bg-gradient-to-br from-primary to-primary/80 text-primary-foreground text-xl font-semibold">
                   {initials || '?'}
                 </AvatarFallback>
               </Avatar>
               <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2.5 flex-wrap">
-                  <SheetTitle className="text-lg font-bold text-foreground truncate">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <SheetTitle className="text-xl font-bold text-foreground truncate">
                     {fullName || 'Profil LinkedIn'}
                   </SheetTitle>
                   <CardStatusBadges
@@ -193,27 +208,89 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
                 </div>
               </div>
             </div>
-            {/* Actions bar */}
-            <div className="flex items-center justify-between mt-3 pt-3 border-t border-border/30">
-              <CardActions
-                profile={profile}
-                profileUrl={profileUrl}
-                fullName={fullName}
-                selectedJob={selectedJob}
-                jobScore={jobScore}
-                accountId={accountId}
-                activeProject={activeProject}
-                isScoring={isScoring}
-                isAnalyzing={isAnalyzing}
-                onScoreProfile={onScoreProfile}
-                onOpenMessage={() => setShowMessageModal(true)}
-                onAiAnalysis={handleAiAnalysis}
-                onArchive={onArchive}
-                onSequenceEnroll={onSequenceEnroll}
-                onProfileTreated={onProfileTreated}
-              />
+
+            {/* ─── ACTIONS BAR ─── */}
+            <div className="flex items-center gap-2 mt-4 pt-3 border-t border-border/30 flex-wrap">
+              {/* Primary actions */}
+              {selectedJob && (
+                <Button
+                  size="sm"
+                  onClick={() => setShowMessageModal(true)}
+                  className="h-8 gap-1.5 text-xs rounded-lg"
+                >
+                  <PenLine className="w-3.5 h-3.5" />
+                  Message
+                </Button>
+              )}
+
+              {selectedJob && onScoreProfile && !jobScore && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={onScoreProfile}
+                  disabled={isScoring}
+                  className="h-8 gap-1.5 text-xs rounded-lg text-purple-600 border-purple-200 hover:bg-purple-50"
+                >
+                  {isScoring ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Target className="w-3.5 h-3.5" />}
+                  Scorer
+                </Button>
+              )}
+
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleAiAnalysis}
+                disabled={isAnalyzing}
+                className="h-8 gap-1.5 text-xs rounded-lg text-purple-600 border-purple-200 hover:bg-purple-50"
+              >
+                {isAnalyzing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Bot className="w-3.5 h-3.5" />}
+                {aiAnalysis ? 'Masquer IA' : 'Analyse IA'}
+              </Button>
+
+              {/* Sequence enroll */}
+              {accountId && jobScore?.recommendation !== 'skip' && (
+                <SequenceEnrollButton
+                  selectedProfiles={[profile]}
+                  accountId={accountId}
+                  selectedJob={selectedJob ? { id: selectedJob.id, title: selectedJob.title } : undefined}
+                  onSuccess={() => { onSequenceEnroll?.(); onProfileTreated?.(); }}
+                />
+              )}
+
+              {/* Add to project */}
+              {selectedJob && (
+                <AddToProjectButton
+                  candidateId={profile.id}
+                  candidateName={fullName}
+                  candidateHeadline={profile.headline}
+                  linkedinProfileUrl={profileUrl}
+                  score={jobScore?.match_score}
+                  recommendation={jobScore?.recommendation}
+                  skipReason={jobScore?.missing_skills?.join(', ')}
+                  jobId={selectedJob.id}
+                  activeProject={activeProject}
+                  compact
+                  onAdded={onProfileTreated}
+                />
+              )}
+
+              {/* Spacer */}
+              <div className="flex-1" />
+
+              {/* Secondary actions */}
+              {onArchive && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button variant="ghost" size="sm" onClick={onArchive} className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive">
+                      <Archive className="w-4 h-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent><p className="text-xs">Archiver</p></TooltipContent>
+                </Tooltip>
+              )}
+
               {profileUrl && (
-                <Button variant="outline" size="sm" asChild className="gap-1.5 text-xs">
+                <Button variant="outline" size="sm" asChild className="h-8 gap-1.5 text-xs rounded-lg">
                   <a href={profileUrl} target="_blank" rel="noopener noreferrer">
                     <ExternalLink className="w-3.5 h-3.5" />
                     LinkedIn
@@ -223,14 +300,15 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
             </div>
           </SheetHeader>
 
+          {/* ─── CONTENT ─── */}
           <ScrollArea className="flex-1">
-            <div className="p-5 space-y-5">
+            <div className="p-6 space-y-6">
               {/* Job Score */}
               {jobScore && (
-                <div>
+                <div className="rounded-xl border border-border/60 p-4 bg-background">
                   <JobScoreDisplay result={jobScore} jobTitle={selectedJob?.title} compact={false} />
                   {jobScore.recommendation === 'skip' && jobScore.summary && (
-                    <div className="mt-2 flex items-start gap-2 p-2.5 rounded-lg bg-destructive/10 border border-destructive/20 text-xs text-destructive">
+                    <div className="mt-3 flex items-start gap-2 p-3 rounded-lg bg-destructive/5 border border-destructive/15 text-xs text-destructive">
                       <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
                       <div>
                         <span className="font-semibold">Raison du rejet : </span>
@@ -243,59 +321,58 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
 
               {/* AI Analysis */}
               {aiAnalysis && (
-                <div className="p-3 bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-50 rounded-lg border border-purple-200/50">
+                <div className="p-4 bg-gradient-to-br from-accent/40 via-accent/20 to-background rounded-xl border border-primary/10">
                   <div className="flex items-center justify-between mb-3">
                     <div className="flex items-center gap-2">
-                      <Bot className="w-4 h-4 text-purple-600" />
-                      <span className="text-xs font-semibold text-purple-700">Analyse IA</span>
+                      <Bot className="w-4 h-4 text-primary" />
+                      <span className="text-sm font-semibold text-foreground">Analyse IA</span>
                     </div>
-                    <div className="flex items-center gap-1.5">
-                      <Target className="w-3.5 h-3.5 text-purple-500" />
-                      <span className={`text-sm font-bold ${
-                        aiAnalysis.fit_score >= 70 ? 'text-green-600' :
-                        aiAnalysis.fit_score >= 50 ? 'text-amber-600' : 'text-red-500'
-                      }`}>
-                        {aiAnalysis.fit_score}/100
-                      </span>
-                    </div>
+                    <Badge variant="outline" className={`text-sm font-bold ${
+                      aiAnalysis.fit_score >= 70 ? 'text-emerald-600 border-emerald-300' :
+                      aiAnalysis.fit_score >= 50 ? 'text-amber-600 border-amber-300' : 'text-destructive border-destructive/30'
+                    }`}>
+                      {aiAnalysis.fit_score}/100
+                    </Badge>
                   </div>
-                  <p className="text-sm text-foreground/80 font-medium mb-3">{aiAnalysis.summary}</p>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-1.5">
-                      <div className="flex items-center gap-1 text-[10px] font-semibold text-green-700 uppercase tracking-wider">
+                  <p className="text-sm text-foreground/80 leading-relaxed mb-4">{aiAnalysis.summary}</p>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <p className="text-[11px] font-semibold text-emerald-700 uppercase tracking-wider flex items-center gap-1">
                         <CheckCircle2 className="w-3 h-3" /> Points forts
-                      </div>
+                      </p>
                       {(aiAnalysis.strengths || []).map((s, i) => (
-                        <div key={i} className="flex items-start gap-1.5 text-xs text-green-800 bg-green-100/50 px-2 py-1 rounded">
-                          <span className="text-green-500 mt-0.5">✓</span><span>{s}</span>
+                        <div key={i} className="flex items-start gap-2 text-xs text-foreground/70 bg-emerald-50/50 px-2.5 py-1.5 rounded-lg border border-emerald-100">
+                          <span className="text-emerald-500 mt-0.5 shrink-0">✓</span><span>{s}</span>
                         </div>
                       ))}
                     </div>
-                    <div className="space-y-1.5">
-                      <div className="flex items-center gap-1 text-[10px] font-semibold text-amber-700 uppercase tracking-wider">
+                    <div className="space-y-2">
+                      <p className="text-[11px] font-semibold text-amber-700 uppercase tracking-wider flex items-center gap-1">
                         <AlertTriangle className="w-3 h-3" /> À vérifier
-                      </div>
+                      </p>
                       {(aiAnalysis.concerns || []).map((c, i) => (
-                        <div key={i} className="flex items-start gap-1.5 text-xs text-amber-800 bg-amber-100/50 px-2 py-1 rounded">
-                          <span className="text-amber-500 mt-0.5">!</span><span>{c}</span>
+                        <div key={i} className="flex items-start gap-2 text-xs text-foreground/70 bg-amber-50/50 px-2.5 py-1.5 rounded-lg border border-amber-100">
+                          <span className="text-amber-500 mt-0.5 shrink-0">!</span><span>{c}</span>
                         </div>
                       ))}
                     </div>
                   </div>
                   {aiAnalysis.recommendation && (
-                    <div className="mt-3 pt-2 border-t border-purple-200/50">
-                      <p className="text-xs text-purple-700 italic">💡 {aiAnalysis.recommendation}</p>
+                    <div className="mt-3 pt-3 border-t border-primary/10">
+                      <p className="text-xs text-primary/80 italic">💡 {aiAnalysis.recommendation}</p>
                     </div>
                   )}
                 </div>
               )}
 
-              {/* Expanded content (tabs: experience, education, skills, posts) */}
-              {/* Airtable History Panel */}
-              {airtableMatch && historyData && !historyLoading && (
-                <CandidateHistoryPanel data={historyData} loading={false} compact={false} />
+              {/* Airtable History Panel — always show if we have data or are loading */}
+              {(historyLoading || hasHistory) && (
+                <div className="rounded-xl border border-border/60 overflow-hidden bg-background">
+                  <CandidateHistoryPanel data={historyData} loading={historyLoading} compact={false} />
+                </div>
               )}
 
+              {/* Tabs: experience, education, skills, messages, posts */}
               <CardExpandedContent
                 profile={profile}
                 profileData={profileData}
@@ -304,8 +381,8 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
                 accountId={accountId}
                 candidateStatus={candidateStatus}
                 airtableMatch={airtableMatch}
-                historyData={historyData}
-                historyLoading={historyLoading}
+                historyData={null}
+                historyLoading={false}
                 onClose={() => onOpenChange(false)}
                 onOpenMessage={() => setShowMessageModal(true)}
                 onMessageSent={onMessageSent}
