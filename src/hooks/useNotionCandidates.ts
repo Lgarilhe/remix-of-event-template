@@ -32,7 +32,7 @@ function extractItems<T>(response: unknown, key: 'shortlist' | 'candidates'): T[
 
 async function fetchNotionPayload<T>(type: 'shortlist' | 'candidates'): Promise<T[]> {
   const response = await fetch(
-    `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/fetch-notion-candidates?type=${type}&refresh=true`,
+    `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/fetch-notion-candidates?type=${type}`,
     {
       headers: {
         'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
