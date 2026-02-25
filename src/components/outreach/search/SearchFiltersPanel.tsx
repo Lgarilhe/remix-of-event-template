@@ -60,6 +60,10 @@ interface SearchFiltersPanelProps {
   searchHistoryLoading?: boolean;
   onApplyHistoryFilters?: (filters: LinkedInFiltersState) => void;
   onDeleteHistoryEntry?: (id: string) => void;
+  
+  // Scoring instructions
+  scoringInstructions?: string;
+  onScoringInstructionsChange?: (value: string) => void;
 }
 
 export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
@@ -82,6 +86,8 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
   searchHistoryLoading = false,
   onApplyHistoryFilters,
   onDeleteHistoryEntry,
+  scoringInstructions = '',
+  onScoringInstructionsChange,
 }) => {
   const [keywordsDialogOpen, setKeywordsDialogOpen] = useState(false);
   const [keywordsDraft, setKeywordsDraft] = useState('');
@@ -241,7 +247,23 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
             selectedJob={selectedJob}
             onApplyPresetJob={handleApplyPresetJob}
           />
+      </div>
+
+      {/* Custom scoring instructions (visible when job selected) */}
+      {selectedJob && onScoringInstructionsChange && (
+        <div className="bg-background border border-foreground p-3">
+          <label className="text-[10px] font-bold text-muted-foreground mb-1.5 block uppercase tracking-widest">
+            Consignes scoring IA <span className="font-normal text-muted-foreground/60">(optionnel)</span>
+          </label>
+          <textarea
+            value={scoringInstructions}
+            onChange={(e) => onScoringInstructionsChange(e.target.value)}
+            placeholder="Ex: Privilégier les profils avec exp. cloud souverain, ignorer le critère localisation, bonus si exp. scale-up..."
+            rows={2}
+            className="w-full px-3 py-2 text-sm border border-foreground/30 bg-background placeholder:text-muted-foreground/50 focus:outline-none focus:border-foreground resize-none"
+          />
         </div>
+      )}
 
       </div>
 

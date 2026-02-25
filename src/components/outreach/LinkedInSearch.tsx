@@ -17,6 +17,7 @@ import { toast } from 'sonner';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { SlidersHorizontal } from 'lucide-react';
+import { useState as useLocalState } from 'react';
 
 interface LinkedInSearchProps {
   accounts: LinkedInAccount[];
@@ -36,6 +37,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
   const queryClient = useQueryClient();
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const loadMoreTriggerRef = useRef<HTMLDivElement>(null);
+  const [scoringInstructions, setScoringInstructions] = useLocalState('');
 
   // Main search state hook
   const search = useLinkedInSearch({
@@ -98,6 +100,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
       saveScore: search.candidateStatus.saveScore,
       batchSaveScores: search.candidateStatus.batchSaveScores,
     },
+    customScoringInstructions: scoringInstructions.trim() || undefined,
   });
 
   // Filtered results hook
@@ -542,6 +545,8 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
         toast.info('Filtres de l\'historique appliqués, recherche en cours...');
       }}
       onDeleteHistoryEntry={searchHistory.deleteEntry}
+      scoringInstructions={scoringInstructions}
+      onScoringInstructionsChange={setScoringInstructions}
     />
   );
 
