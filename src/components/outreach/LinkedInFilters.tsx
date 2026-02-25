@@ -440,7 +440,7 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
   }, [filters, onChange]);
 
   return (
-    <div className="h-[calc(100vh-220px)] bg-white rounded-xl border border-[#1A1A1A]/10 overflow-y-auto">
+    <div className="h-[calc(100vh-220px)] bg-background border border-foreground/10 overflow-y-auto">
       {/* Reset AI Filters Button */}
       {hasAiFilters && (
         <div className="sticky top-0 z-10 bg-amber-50/90 backdrop-blur-sm border-b border-amber-200 px-4 py-2 flex items-center justify-between">

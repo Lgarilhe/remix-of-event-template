@@ -34,28 +34,28 @@ export const FilterSection: React.FC<FilterSectionProps> = ({
   activeFiltersPreview,
   bgColorClass = '',
 }) => (
-  <Collapsible open={isOpen} onOpenChange={onToggle} className={`border-b border-[#1A1A1A]/10 ${bgColorClass}`}>
-    <CollapsibleTrigger className="flex flex-col items-start w-full p-4 hover:bg-white/40 transition-colors">
+  <Collapsible open={isOpen} onOpenChange={onToggle} className={`border-b border-foreground/10 ${bgColorClass}`}>
+    <CollapsibleTrigger className="flex flex-col items-start w-full p-4 hover:bg-muted/50 transition-colors">
       <div className="flex items-center justify-between w-full">
         <div className="flex items-center gap-2">
           {icon}
-          <span className="text-sm font-semibold text-[#1A1A1A]">{title}</span>
+          <span className="text-sm font-semibold text-foreground uppercase tracking-wide">{title}</span>
           {badge !== undefined && badge > 0 && (
-            <Badge variant="secondary" className="h-5 px-1.5 text-xs bg-[#0077B5]/10 text-[#0077B5]">
+            <Badge variant="secondary" className="h-5 px-1.5 text-xs bg-foreground/10 text-foreground">
               {badge}
             </Badge>
           )}
         </div>
-        <ChevronDown className={`w-4 h-4 text-[#1A1A1A]/40 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
+        <ChevronDown className={`w-4 h-4 text-foreground/40 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
       </div>
       {/* Preview of active filters when collapsed */}
       {!isOpen && activeFiltersPreview && activeFiltersPreview.length > 0 && (
         <div className="flex flex-wrap gap-1 mt-2 w-full">
           {activeFiltersPreview.filter(Boolean).slice(0, 5).map((filter, index) => (
-            <Badge 
+             <Badge 
               key={index} 
               variant="outline" 
-              className="text-[10px] h-5 px-1.5 bg-white/60 text-[#1A1A1A]/70 border-[#1A1A1A]/10 font-normal"
+              className="text-[10px] h-5 px-1.5 bg-background/60 text-foreground/70 border-foreground/10 font-normal"
             >
               {String(filter).length > 20 ? `${String(filter).slice(0, 20)}...` : String(filter)}
             </Badge>
@@ -63,7 +63,7 @@ export const FilterSection: React.FC<FilterSectionProps> = ({
           {activeFiltersPreview.length > 5 && (
             <Badge 
               variant="outline" 
-              className="text-[10px] h-5 px-1.5 bg-[#0077B5]/5 text-[#0077B5] border-[#0077B5]/20 font-normal"
+              className="text-[10px] h-5 px-1.5 bg-foreground/5 text-foreground border-foreground/20 font-normal"
             >
               +{activeFiltersPreview.length - 5}
             </Badge>
@@ -97,12 +97,12 @@ export const FilterGroup: React.FC<FilterGroupProps> = ({
   unsupported = false,
   unsupportedTooltip,
 }) => (
-  <div className={`rounded-md border border-[#1A1A1A]/6 bg-gradient-to-b from-gray-50/60 to-white p-2 shadow-sm ${unsupported ? 'opacity-60' : ''}`}>
+  <div className={`border border-foreground/10 bg-muted/30 p-2 ${unsupported ? 'opacity-60' : ''}`}>
     <div className="flex items-center gap-1.5 mb-1.5">
       {icon && icon}
-      <span className="text-[11px] font-medium text-[#1A1A1A]/70 uppercase tracking-wide">{title}</span>
+      <span className="text-[11px] font-medium text-foreground/70 uppercase tracking-wide">{title}</span>
       {badge !== undefined && badge > 0 && (
-        <Badge variant="outline" className="h-4 px-1 text-[10px] bg-[#0077B5]/10 text-[#0077B5] border-[#0077B5]/20">{badge}</Badge>
+        <Badge variant="outline" className="h-4 px-1 text-[10px] bg-foreground/10 text-foreground border-foreground/20">{badge}</Badge>
       )}
       {unsupported && (
         <TooltipProvider delayDuration={200}>
@@ -156,7 +156,7 @@ export const AutocompleteInput: React.FC<AutocompleteInputProps> = ({
   return (
     <div className="relative">
       <div className="relative">
-        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#1A1A1A]/40" />
+        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
         <Input
           value={value}
           onChange={(e) => onInputChange(e.target.value)}
@@ -165,20 +165,20 @@ export const AutocompleteInput: React.FC<AutocompleteInputProps> = ({
           disabled={disabled}
         />
         {loading && (
-          <Loader2 className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 animate-spin text-[#0077B5]" />
+          <Loader2 className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 animate-spin text-foreground" />
         )}
       </div>
       {options.length > 0 && !disabled && (
-        <div className="absolute z-50 w-full mt-1 bg-white border border-[#1A1A1A]/10 rounded-lg shadow-lg max-h-48 overflow-auto">
+        <div className="absolute z-50 w-full mt-1 bg-background border border-foreground/10 shadow-lg max-h-48 overflow-auto">
           {options.map((option, index) => (
             <button
               key={`${option.id}-${index}`}
               type="button"
               onClick={() => onSelect(option)}
-              className="w-full text-left px-3 py-2 text-sm hover:bg-[#0077B5]/5 transition-colors flex items-center justify-between group"
+              className="w-full text-left px-3 py-2 text-sm hover:bg-muted transition-colors flex items-center justify-between group"
             >
               <span className="truncate">{option.title}</span>
-              <Plus className="w-4 h-4 text-[#0077B5] opacity-0 group-hover:opacity-100 transition-opacity" />
+              <Plus className="w-4 h-4 text-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
             </button>
           ))}
         </div>
@@ -201,10 +201,10 @@ export const SelectedBadges: React.FC<SelectedBadgesProps> = ({ items, onRemove 
         <Badge
           key={item.id}
           variant="secondary"
-          className="gap-1 pr-1 bg-[#0077B5]/10 text-[#0077B5] hover:bg-[#0077B5]/20 text-xs"
+          className="gap-1 pr-1 bg-foreground/10 text-foreground hover:bg-foreground/20 text-xs"
         >
           <span className="max-w-[150px] truncate">{item.name}</span>
-          <button type="button" onClick={() => onRemove(item.id)} className="ml-0.5 hover:bg-[#0077B5]/30 rounded-full p-0.5">
+          <button type="button" onClick={() => onRemove(item.id)} className="ml-0.5 hover:bg-foreground/30 p-0.5">
             <X className="w-3 h-3" />
           </button>
         </Badge>
@@ -231,7 +231,7 @@ export const PriorityBadges: React.FC<PriorityBadgesProps> = ({
       {items.map((item) => {
         const priorityConfig = PRIORITY_OPTIONS.find((p) => p.value === item.priority);
         return (
-          <div key={item.id} className="flex items-center gap-2 p-2 bg-gray-50 rounded-lg">
+          <div key={item.id} className="flex items-center gap-2 p-2 bg-muted/50">
             <span className="text-sm flex-1 truncate">{item.name}</span>
             <Select
               value={item.priority}
@@ -284,17 +284,17 @@ export const LocationBadges: React.FC<LocationBadgesProps> = ({
         return (
           <div 
             key={item.id} 
-            className="bg-gradient-to-r from-gray-50 to-white border border-gray-100 rounded-lg p-3 shadow-sm"
+            className="bg-muted/30 border border-foreground/10 p-3"
           >
             {/* Location name and remove button */}
             <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-medium text-[#1A1A1A] truncate flex-1 pr-2">
+              <span className="text-sm font-medium text-foreground truncate flex-1 pr-2">
                 {item.name}
               </span>
               <button 
                 type="button" 
                 onClick={() => onRemove(item.id)} 
-                className="text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-full p-1 transition-colors"
+                className="text-muted-foreground hover:text-destructive hover:bg-destructive/10 p-1 transition-colors"
               >
                 <X className="w-3.5 h-3.5" />
               </button>
@@ -309,7 +309,7 @@ export const LocationBadges: React.FC<LocationBadgesProps> = ({
                 <SelectTrigger className={`h-7 flex-1 text-[11px] border-0 shadow-sm ${priorityConfig?.color}`}>
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent className="bg-white z-50">
+                <SelectContent className="bg-background z-50">
                   {PRIORITY_OPTIONS.map((opt) => (
                     <SelectItem key={opt.value} value={opt.value} className="text-xs">
                       <span className="flex items-center gap-1.5">
@@ -325,10 +325,10 @@ export const LocationBadges: React.FC<LocationBadgesProps> = ({
                 value={item.scope}
                 onValueChange={(val) => onUpdateScope(item.id, val as LocationScope)}
               >
-                <SelectTrigger className="h-7 flex-1 text-[11px] border border-gray-200 bg-white shadow-sm">
+                <SelectTrigger className="h-7 flex-1 text-[11px] border border-foreground/10 bg-background">
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent className="bg-white z-50">
+                <SelectContent className="bg-background z-50">
                   {LOCATION_SCOPE_OPTIONS.map((opt) => (
                     <SelectItem key={opt.value} value={opt.value} className="text-xs">
                       {opt.label}
@@ -405,7 +405,7 @@ export const MultiSelectDropdown: React.FC<MultiSelectDropdownProps> = ({
           <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-[200px] p-0 bg-white" align="start">
+      <PopoverContent className="w-[200px] p-0 bg-background" align="start">
         <div className="max-h-[200px] overflow-auto p-1">
           {options.map((option) => {
             const isSelected = selected.includes(option.value);
@@ -414,14 +414,14 @@ export const MultiSelectDropdown: React.FC<MultiSelectDropdownProps> = ({
                 key={String(option.value)}
                 type="button"
                 onClick={() => toggleOption(option.value)}
-                className={`w-full flex items-center gap-2 px-2 py-1.5 text-sm rounded hover:bg-gray-100 transition-colors ${
-                  isSelected ? 'bg-[#0077B5]/5' : ''
+                className={`w-full flex items-center gap-2 px-2 py-1.5 text-sm hover:bg-muted transition-colors ${
+                  isSelected ? 'bg-foreground/5' : ''
                 }`}
               >
-                <div className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 ${
-                  isSelected ? 'bg-[#0077B5] border-[#0077B5]' : 'border-gray-300'
+                <div className={`w-4 h-4 border flex items-center justify-center shrink-0 ${
+                  isSelected ? 'bg-foreground border-foreground' : 'border-foreground/30'
                 }`}>
-                  {isSelected && <Check className="w-3 h-3 text-white" />}
+                  {isSelected && <Check className="w-3 h-3 text-background" />}
                 </div>
                 <span className="truncate">{option.label}</span>
               </button>
@@ -433,7 +433,7 @@ export const MultiSelectDropdown: React.FC<MultiSelectDropdownProps> = ({
             <button
               type="button"
               onClick={() => onChange([])}
-              className="w-full text-xs text-red-500 hover:bg-red-50 p-1.5 rounded transition-colors"
+              className="w-full text-xs text-destructive hover:bg-destructive/10 p-1.5 transition-colors"
             >
               Tout effacer
             </button>
