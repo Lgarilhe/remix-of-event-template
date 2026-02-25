@@ -573,6 +573,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
                 profile={profile}
                 selectedJob={selectedJob}
                 isSelected={selectedProfiles.has(profile.id)}
+                isBatchScoring={scoringInProgress}
                 onToggleSelect={() => onToggleProfileSelection(profile.id)}
                 jobScore={jobScores[profile.id] || (treatedCandidates.get(profile.id)?.score != null ? {
                   profile_name: treatedCandidates.get(profile.id)!.candidate_name || profile.name || '',
