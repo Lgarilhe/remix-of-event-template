@@ -53,13 +53,13 @@ export const CandidateFilters: React.FC<CandidateFiltersProps> = ({
     <div className="flex flex-wrap items-center gap-3">
       {/* Search */}
       <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#1A1A1A]/40" />
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
         <Input
           type="text"
           placeholder="Rechercher..."
           value={filters.search}
           onChange={(e) => onFiltersChange({ ...filters, search: e.target.value })}
-          className="pl-9 w-[200px] h-9 text-sm bg-white border-[#1A1A1A]/10"
+          className="pl-9 w-[200px] h-9 text-sm bg-background border-foreground"
         />
       </div>
 
@@ -68,10 +68,10 @@ export const CandidateFilters: React.FC<CandidateFiltersProps> = ({
         value={filters.position[0] || 'all'}
         onValueChange={(value) => onFiltersChange({ ...filters, position: value === 'all' ? [] : [value] })}
       >
-        <SelectTrigger className="w-[180px] h-9 text-sm bg-white border-[#1A1A1A]/10">
+        <SelectTrigger className="w-[180px] h-9 text-sm bg-background border-foreground">
           <SelectValue placeholder="Poste" />
         </SelectTrigger>
-        <SelectContent className="bg-white z-50 max-h-[300px]">
+        <SelectContent className="bg-background z-50 max-h-[300px]">
           <SelectItem value="all">Tous les postes</SelectItem>
           {options.positions.map(pos => (
             <SelectItem key={pos.id} value={pos.id}>{pos.name}</SelectItem>
@@ -84,10 +84,10 @@ export const CandidateFilters: React.FC<CandidateFiltersProps> = ({
         value={filters.stage[0] || 'all'}
         onValueChange={(value) => onFiltersChange({ ...filters, stage: value === 'all' ? [] : [value] })}
       >
-        <SelectTrigger className="w-[140px] h-9 text-sm bg-white border-[#1A1A1A]/10">
+        <SelectTrigger className="w-[140px] h-9 text-sm bg-background border-foreground">
           <SelectValue placeholder="Étape" />
         </SelectTrigger>
-        <SelectContent className="bg-white z-50">
+        <SelectContent className="bg-background z-50">
           <SelectItem value="all">Toutes les étapes</SelectItem>
           {options.stages.map(stage => (
             <SelectItem key={stage} value={stage}>{stage}</SelectItem>
@@ -100,10 +100,10 @@ export const CandidateFilters: React.FC<CandidateFiltersProps> = ({
         value={filters.entity[0] || 'all'}
         onValueChange={(value) => onFiltersChange({ ...filters, entity: value === 'all' ? [] : [value] })}
       >
-        <SelectTrigger className="w-[120px] h-9 text-sm bg-white border-[#1A1A1A]/10">
+        <SelectTrigger className="w-[120px] h-9 text-sm bg-background border-foreground">
           <SelectValue placeholder="Entité" />
         </SelectTrigger>
-        <SelectContent className="bg-white z-50">
+        <SelectContent className="bg-background z-50">
           <SelectItem value="all">Toutes</SelectItem>
           {options.entities.map(entity => (
             <SelectItem key={entity} value={entity}>{entity}</SelectItem>
@@ -116,10 +116,10 @@ export const CandidateFilters: React.FC<CandidateFiltersProps> = ({
         value={filters.expertise[0] || 'all'}
         onValueChange={(value) => onFiltersChange({ ...filters, expertise: value === 'all' ? [] : [value] })}
       >
-        <SelectTrigger className="w-[150px] h-9 text-sm bg-white border-[#1A1A1A]/10">
+        <SelectTrigger className="w-[150px] h-9 text-sm bg-background border-foreground">
           <SelectValue placeholder="Expertise" />
         </SelectTrigger>
-        <SelectContent className="bg-white z-50 max-h-[300px]">
+        <SelectContent className="bg-background z-50 max-h-[300px]">
           <SelectItem value="all">Toutes</SelectItem>
           {options.expertise.map(exp => (
             <SelectItem key={exp} value={exp}>{exp}</SelectItem>
@@ -133,7 +133,7 @@ export const CandidateFilters: React.FC<CandidateFiltersProps> = ({
           variant="ghost"
           size="sm"
           onClick={clearFilters}
-          className="h-9 text-[#1A1A1A]/60 hover:text-[#1A1A1A]"
+          className="h-9 text-muted-foreground hover:text-foreground"
         >
           <X className="w-4 h-4 mr-1" />
           Effacer
