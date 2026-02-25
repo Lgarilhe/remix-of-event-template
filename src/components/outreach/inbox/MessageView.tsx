@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { InMailTextEditor } from '../InMailTextEditor';
@@ -189,7 +188,7 @@ export const MessageView: React.FC<MessageViewProps> = ({
       </div>
 
       {/* Messages Area */}
-      <ScrollArea className="flex-1 min-h-0 p-4" ref={messagesContainerRef}>
+      <div className="flex-1 min-h-0 overflow-y-auto p-4" ref={messagesContainerRef}>
         {loadingMessages && messages.length === 0 ? (
           <div className="flex items-center justify-center h-full">
             <Loader2 className="w-6 h-6 animate-spin text-foreground" />
@@ -243,7 +242,7 @@ export const MessageView: React.FC<MessageViewProps> = ({
             <div ref={messagesEndRef} />
           </div>
         )}
-      </ScrollArea>
+      </div>
 
       {/* Separator before input */}
       <div className="border-t border-foreground" />
