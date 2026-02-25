@@ -1,16 +1,16 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Job } from '@/pages/JobSpace';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Loader2, Target, X, Wand2, Search, Sparkles, RefreshCw, ChevronDown, Check } from 'lucide-react';
 import { toast } from 'sonner';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { useIsMobile } from '@/hooks/use-mobile';
 
 interface JobSelectorProps {
   selectedJob: Job | null;
@@ -98,6 +98,34 @@ export const JobSelector: React.FC<JobSelectorProps> = ({ selectedJob, onJobChan
   const [autoFillLoading, setAutoFillLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [popoverOpen, setPopoverOpen] = useState(false);
+  const isMobile = useIsMobile();
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!popoverOpen) return;
+
+    const handlePointerDown = (event: PointerEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setPopoverOpen(false);
+        setSearchQuery('');
+      }
+    };
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setPopoverOpen(false);
+        setSearchQuery('');
+      }
+    };
+
+    document.addEventListener('pointerdown', handlePointerDown);
+    document.addEventListener('keydown', handleEscape);
+
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown);
+      document.removeEventListener('keydown', handleEscape);
+    };
+  }, [popoverOpen]);
 
   // If the selected job comes from a stale cache (or from a project resume with a minimal job object),
   // hydrate it with the freshest version from the jobs list so ALL fields are present.
@@ -238,8 +266,21 @@ export const JobSelector: React.FC<JobSelectorProps> = ({ selectedJob, onJobChan
         </div>
       </div>
       
-      <Popover open={popoverOpen} onOpenChange={(open) => { setPopoverOpen(open); if (!open) setSearchQuery(''); }} modal={true}>
-        <PopoverTrigger asChild>
+      {isMobile ? (
+        <select
+          value={selectedJob?.id || 'none'}
+          onChange={(e) => handleChange(e.target.value)}
+          className="flex h-10 w-full items-center rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+        >
+          <option value="none">Pas de scoring job</option>
+          {jobs.map((job) => (
+            <option key={job.id} value={job.id}>
+              {job.title}{job.client?.name ? ` @ ${job.client.name}` : ''}
+            </option>
+          ))}
+        </select>
+      ) : (
+        <div className="relative" ref={dropdownRef}>
           <button
             type="button"
             className={cn(
@@ -247,78 +288,85 @@ export const JobSelector: React.FC<JobSelectorProps> = ({ selectedJob, onJobChan
               "focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2",
               "border-purple-200 bg-white"
             )}
-            onClick={(e) => { e.preventDefault(); e.stopPropagation(); setPopoverOpen(!popoverOpen); }}
+            onClick={() => setPopoverOpen((prev) => !prev)}
           >
             <span className={cn("truncate", !selectedJob && "text-muted-foreground")}>
               {selectedJob ? selectedJob.title : "Sélectionner un poste pour le scoring"}
             </span>
-            <ChevronDown className="h-4 w-4 opacity-50 shrink-0 ml-2" />
+            <ChevronDown className={cn("h-4 w-4 opacity-50 shrink-0 ml-2 transition-transform", popoverOpen && "rotate-180")} />
           </button>
-        </PopoverTrigger>
-        <PopoverContent 
-          className="w-[var(--radix-popover-trigger-width)] p-0 z-50" 
-          align="start"
-          onOpenAutoFocus={(e) => e.preventDefault()}
-        >
-          {/* Search input */}
-          <div className="p-2 border-b border-border">
-            <div className="relative">
-              <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
-              <Input
-                placeholder="Rechercher un poste..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-8 h-8 text-sm"
-                autoFocus
-              />
-            </div>
-          </div>
-          
-          <ScrollArea className="max-h-[300px]">
-            {/* No job option */}
-            <button
-              className={cn(
-                "relative flex w-full cursor-default select-none items-center rounded-sm py-2 pl-8 pr-2 text-sm outline-none hover:bg-accent hover:text-accent-foreground",
-                !selectedJob && "bg-accent"
-              )}
-              onClick={() => { handleChange('none'); setPopoverOpen(false); }}
-            >
-              {!selectedJob && <Check className="absolute left-2 h-4 w-4" />}
-              <span className="text-muted-foreground">Pas de scoring job</span>
-            </button>
-            
-            {filteredJobs.length === 0 && searchQuery && (
-              <div className="p-3 text-center text-sm text-muted-foreground">
-                Aucun poste trouvé pour "{searchQuery}"
-              </div>
-            )}
-            
-            {filteredJobs.map((job) => (
-              <button
-                key={job.id}
-                className={cn(
-                  "relative flex w-full cursor-default select-none items-center rounded-sm py-2 pl-8 pr-2 text-sm outline-none hover:bg-accent hover:text-accent-foreground",
-                  selectedJob?.id === job.id && "bg-accent"
-                )}
-                onClick={() => { handleChange(job.id); setPopoverOpen(false); }}
-              >
-                {selectedJob?.id === job.id && <Check className="absolute left-2 h-4 w-4" />}
-                <div className="flex items-center gap-2 min-w-0">
-                  <span className="font-medium truncate max-w-[200px]">{job.title}</span>
-                  {job.client?.name && (
-                    <span className="text-xs text-muted-foreground whitespace-nowrap flex-shrink-0">@ {job.client.name}</span>
-                  )}
-                  {job.skills?.length > 0 && (
-                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-secondary text-secondary-foreground whitespace-nowrap flex-shrink-0">
-                      {job.skills.length} skills
-                    </span>
-                  )}
+
+          {popoverOpen && (
+            <div className="absolute left-0 right-0 mt-1 z-[70] border border-border bg-popover text-popover-foreground shadow-md" onPointerDown={(e) => e.stopPropagation()}>
+              <div className="p-2 border-b border-border">
+                <div className="relative">
+                  <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+                  <Input
+                    placeholder="Rechercher un poste..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="pl-8 h-8 text-sm"
+                    autoFocus
+                  />
                 </div>
-              </button>
-            ))}
-          </ScrollArea>
-        </PopoverContent>
-      </Popover>
+              </div>
+
+              <ScrollArea className="max-h-[300px]">
+                <button
+                  type="button"
+                  className={cn(
+                    "relative flex w-full items-center rounded-sm py-2 pl-8 pr-2 text-sm text-left hover:bg-accent hover:text-accent-foreground",
+                    !selectedJob && "bg-accent"
+                  )}
+                  onClick={() => {
+                    handleChange('none');
+                    setPopoverOpen(false);
+                    setSearchQuery('');
+                  }}
+                >
+                  {!selectedJob && <Check className="absolute left-2 h-4 w-4" />}
+                  <span className="text-muted-foreground">Pas de scoring job</span>
+                </button>
+
+                {filteredJobs.length === 0 && searchQuery && (
+                  <div className="p-3 text-center text-sm text-muted-foreground">
+                    Aucun poste trouvé pour "{searchQuery}"
+                  </div>
+                )}
+
+                {filteredJobs.map((job) => (
+                  <button
+                    key={job.id}
+                    type="button"
+                    className={cn(
+                      "relative flex w-full items-center rounded-sm py-2 pl-8 pr-2 text-sm text-left hover:bg-accent hover:text-accent-foreground",
+                      selectedJob?.id === job.id && "bg-accent"
+                    )}
+                    onClick={() => {
+                      handleChange(job.id);
+                      setPopoverOpen(false);
+                      setSearchQuery('');
+                    }}
+                  >
+                    {selectedJob?.id === job.id && <Check className="absolute left-2 h-4 w-4" />}
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="font-medium truncate max-w-[200px]">{job.title}</span>
+                      {job.client?.name && (
+                        <span className="text-xs text-muted-foreground whitespace-nowrap flex-shrink-0">@ {job.client.name}</span>
+                      )}
+                      {job.skills?.length > 0 && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-secondary text-secondary-foreground whitespace-nowrap flex-shrink-0">
+                          {job.skills.length} skills
+                        </span>
+                      )}
+                    </div>
+                  </button>
+                ))}
+              </ScrollArea>
+            </div>
+          )}
+        </div>
+      )}
 
       {selectedJob && (
         <div className="flex flex-wrap gap-1 pt-1">
