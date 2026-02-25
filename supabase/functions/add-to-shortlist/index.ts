@@ -181,7 +181,7 @@ serve(async (req) => {
         updates['💼 Postes'] = { relation: [{ id: data.jobId }] };
       }
       // Update etape & etat if provided
-      if (data.etape) updates['Etape'] = { select: { name: data.etape } };
+      if (data.etape) updates['Etape'] = { status: { name: data.etape } };
       if (data.etat) updates['Etat'] = { select: { name: data.etat } };
 
       if (Object.keys(updates).length > 0) {
@@ -199,9 +199,7 @@ serve(async (req) => {
       if (data.entity) {
         props['Entité'] = { select: { name: data.entity } };
       }
-      if (data.accompagnement) {
-        props['Type d\'accompagnement'] = { select: { name: data.accompagnement } };
-      }
+      // Note: "Type d'accompagnement" does not exist on the Candidats database — skip it
       if (data.clientId) {
         props['Client'] = { relation: [{ id: data.clientId }] };
       }
@@ -248,7 +246,7 @@ serve(async (req) => {
       }
 
       // Etape & Etat
-      if (data.etape) props['Etape'] = { select: { name: data.etape } };
+      if (data.etape) props['Etape'] = { status: { name: data.etape } };
       if (data.etat) props['Etat'] = { select: { name: data.etat } };
 
       console.log('Creating new candidate...');
@@ -263,7 +261,7 @@ serve(async (req) => {
       // Update existing shortlist etape if needed
       if (data.etape) {
         await updateNotionPage(existingShortlistId, {
-          'Etape': { select: { name: data.etape } },
+          'Etape': { status: { name: data.etape } },
         });
       }
       return new Response(
@@ -288,7 +286,7 @@ serve(async (req) => {
     const shortlistProps: Record<string, unknown> = {
       'Nom': { title: [{ text: { content: shortlistTitle } }] },
       'Candidats': { relation: [{ id: candidateId }] },
-      'Etape': { select: { name: data.etape || 'Pressenti' } },
+      'Etape': { status: { name: data.etape || 'Pressenti' } },
     };
 
     // Entité
@@ -298,10 +296,7 @@ serve(async (req) => {
       shortlistProps['Entité'] = { select: { name: 'Konekt' } };
     }
 
-    // Type d'accompagnement
-    if (data.accompagnement) {
-      shortlistProps['Type d\'accompagnement'] = { select: { name: data.accompagnement } };
-    }
+    // Note: "Type d'accompagnement" may not exist on Shortlist — skipped
 
     // Relation poste
     if (data.jobId) {
