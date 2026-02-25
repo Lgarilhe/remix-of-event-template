@@ -163,9 +163,9 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
             </>
           )}
 
-          {/* Avatar */}
-          <div className="relative shrink-0">
-            <Avatar className="w-10 h-10 sm:w-14 sm:h-14 border-2 border-border shadow-md">
+          {/* Avatar - separate column on desktop only */}
+          <div className="relative shrink-0 hidden sm:block">
+            <Avatar className="w-14 h-14 border-2 border-border shadow-md">
               <AvatarImage src={profile.profile_picture_url} alt={fullName} className="object-cover" />
               <AvatarFallback className="bg-gradient-to-br from-primary to-primary/80 text-primary-foreground text-lg font-medium">
                 {initials || '?'}
@@ -184,6 +184,20 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap min-w-0 max-w-full">
+                    {/* Avatar inline next to name on mobile */}
+                    <div className="relative shrink-0 sm:hidden">
+                      <Avatar className="w-8 h-8 border border-border shadow-sm">
+                        <AvatarImage src={profile.profile_picture_url} alt={fullName} className="object-cover" />
+                        <AvatarFallback className="bg-gradient-to-br from-primary to-primary/80 text-primary-foreground text-xs font-medium">
+                          {initials || '?'}
+                        </AvatarFallback>
+                      </Avatar>
+                      {networkDistance && networkDistance <= 3 && (
+                        <span className="absolute -bottom-0.5 -right-0.5 w-4 h-4 bg-background border border-primary rounded-full flex items-center justify-center text-[8px] font-bold text-primary">
+                          {networkDistance}°
+                        </span>
+                      )}
+                    </div>
                     <h3 className="font-semibold text-foreground text-sm sm:text-base leading-tight break-words sm:truncate">
                       {fullName || 'Profil LinkedIn'}
                     </h3>
