@@ -218,7 +218,11 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
             <div className="flex flex-wrap items-center gap-x-2 sm:gap-x-4 gap-y-1 mt-2 sm:mt-3 text-[10px] sm:text-xs text-muted-foreground">
               {currentCompany && (
                 <span className="flex items-center gap-1.5 font-medium text-foreground/80">
-                  <Building2 className="w-3.5 h-3.5 text-primary" />
+                  {profileData.currentJob?.logo ? (
+                    <img src={profileData.currentJob.logo} alt="" className="w-4 h-4 rounded object-contain bg-white border border-border/30" />
+                  ) : (
+                    <Building2 className="w-3.5 h-3.5 text-primary" />
+                  )}
                   {currentCompany}
                   {currentJobTenure && (
                     <span className="text-muted-foreground/40 font-normal">• {currentJobTenure}</span>
@@ -259,10 +263,14 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
             {/* Experience preview - compact */}
             {(otherCurrentJobs.length > 0 || pastJobs.length > 0) && (
               <div className="mt-2 pt-2 border-t border-border/50">
-                <div className="space-y-1">
+              <div className="space-y-1.5">
                   {[...otherCurrentJobs.slice(0, 1), ...pastJobs.slice(0, 1)].map((pos: any, index: number) => (
                     <div key={index} className="flex items-center gap-2 text-xs min-w-0">
-                      <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${index === 0 && otherCurrentJobs.length > 0 ? 'bg-green-500' : 'bg-primary/40'}`} />
+                      {pos.logo ? (
+                        <img src={pos.logo} alt="" className="w-4 h-4 rounded object-contain bg-white border border-border/30 shrink-0" />
+                      ) : (
+                        <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${index === 0 && otherCurrentJobs.length > 0 ? 'bg-green-500' : 'bg-primary/40'}`} />
+                      )}
                       <span className="text-muted-foreground truncate">
                         <span className="font-medium">{pos.role}</span>
                         <span className="text-muted-foreground/40"> chez </span>
