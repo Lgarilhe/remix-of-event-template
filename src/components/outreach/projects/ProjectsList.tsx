@@ -98,7 +98,7 @@ export const ProjectsList: React.FC<ProjectsListProps> = ({ onResumeSearch }) =>
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 w-full max-w-full overflow-x-hidden">
       {/* Header */}
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
         <div className="flex items-center gap-3 flex-1 min-w-0">
@@ -169,7 +169,7 @@ export const ProjectsList: React.FC<ProjectsListProps> = ({ onResumeSearch }) =>
           )}
         </div>
       ) : (
-        <div className="grid gap-4">
+        <div className="grid gap-4 min-w-0">
           {filteredProjects.map((project) => {
             const StatusIcon = statusConfig[project.status].icon;
             const stats = getProjectStats(project);
@@ -228,8 +228,8 @@ export const ProjectsList: React.FC<ProjectsListProps> = ({ onResumeSearch }) =>
                   </div>
 
                   {/* Right: Actions & Meta */}
-                  <div className="flex sm:flex-col items-center sm:items-end justify-between sm:justify-start gap-3 pt-2 sm:pt-0 border-t sm:border-t-0 border-foreground/5">
-                    <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap sm:flex-col items-center sm:items-end justify-between sm:justify-start gap-3 pt-2 sm:pt-0 border-t sm:border-t-0 border-foreground/5 w-full sm:w-auto">
+                    <div className="flex items-center gap-2 shrink-0">
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
@@ -285,9 +285,9 @@ export const ProjectsList: React.FC<ProjectsListProps> = ({ onResumeSearch }) =>
                       </DropdownMenu>
                     </div>
 
-                    <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <div className="flex items-center gap-1.5 text-xs text-muted-foreground min-w-0 ml-auto sm:ml-0">
                       <Calendar className="w-3.5 h-3.5 shrink-0" />
-                      <span className="truncate">
+                      <span className="truncate max-w-[140px] sm:max-w-none">
                         {project.last_search_at 
                           ? `${formatDistanceToNow(new Date(project.last_search_at), { addSuffix: true, locale: fr })}`
                           : `${formatDistanceToNow(new Date(project.created_at), { addSuffix: true, locale: fr })}`
