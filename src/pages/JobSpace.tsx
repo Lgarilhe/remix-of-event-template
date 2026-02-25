@@ -6,7 +6,7 @@ import { Navbar } from '@/components/Navbar';
 import { JobList } from '@/components/jobs/JobList';
 import { JobFilters } from '@/components/jobs/JobFilters';
 import { SEOHead } from '@/components/SEOHead';
-import { Loader2, ChevronLeft, ChevronRight, ArrowUpDown, Heart } from 'lucide-react';
+import { Loader2, ChevronLeft, ChevronRight, ArrowUpDown, Heart, Briefcase } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useFavoriteJobs } from '@/hooks/useFavoriteJobs';
 import { useNotionJobs } from '@/hooks/useNotionJobs';
@@ -45,7 +45,6 @@ export interface Job {
   salaryMax: number;
   priority: string;
   skills: string[];
-  // Detailed fields
   description: string;
   interviewProcess: string;
   requirements: string;
@@ -59,7 +58,6 @@ export interface Job {
   tjm: number;
   accompagnement: string[];
   jobUrl: string;
-  // Candidate counts by stage
   candidateCounts: CandidateCounts;
 }
 
@@ -118,7 +116,6 @@ const JobSpace = () => {
   });
   const navigate = useNavigate();
   
-  // Use React Query for cached jobs data
   const { data: allJobs = [], isLoading: jobsLoading, error: jobsError } = useNotionJobs();
   const { favorites, toggleFavorite, isFavorite, favoritesCount } = useFavoriteJobs(user?.id);
 
@@ -143,7 +140,6 @@ const JobSpace = () => {
     return () => subscription.unsubscribe();
   }, [navigate]);
 
-  // Update pagination when jobs load
   useEffect(() => {
     if (allJobs.length > 0) {
       setPagination(prev => ({
@@ -157,7 +153,6 @@ const JobSpace = () => {
 
   const filterJobs = useCallback((jobList: Job[]) => {
     return jobList.filter(job => {
-      // Search filter
       if (filters.search) {
         const searchLower = filters.search.toLowerCase();
         const matchesSearch = 
@@ -166,43 +161,13 @@ const JobSpace = () => {
           job.location?.toLowerCase().includes(searchLower);
         if (!matchesSearch) return false;
       }
-
-      // Status filter
-      if (filters.status.length > 0 && !filters.status.includes(job.status)) {
-        return false;
-      }
-
-      // Contract type filter
-      if (filters.contractType.length > 0 && !filters.contractType.includes(job.contractType)) {
-        return false;
-      }
-
-      // Location filter
-      if (filters.location && !job.location?.toLowerCase().includes(filters.location.toLowerCase())) {
-        return false;
-      }
-
-      // Remote filter
-      if (filters.remote.length > 0 && !filters.remote.includes(job.remote)) {
-        return false;
-      }
-
-      // Sector filter
-      if (filters.sector.length > 0 && !filters.sector.includes(job.client?.sector || '')) {
-        return false;
-      }
-
-      // Priority filter
-      if (filters.priority.length > 0 && !filters.priority.includes(job.priority)) {
-        return false;
-      }
-
-      // Seniority filter
-      if (filters.seniority.length > 0 && !filters.seniority.includes(job.seniority)) {
-        return false;
-      }
-
-      // Skills filter
+      if (filters.status.length > 0 && !filters.status.includes(job.status)) return false;
+      if (filters.contractType.length > 0 && !filters.contractType.includes(job.contractType)) return false;
+      if (filters.location && !job.location?.toLowerCase().includes(filters.location.toLowerCase())) return false;
+      if (filters.remote.length > 0 && !filters.remote.includes(job.remote)) return false;
+      if (filters.sector.length > 0 && !filters.sector.includes(job.client?.sector || '')) return false;
+      if (filters.priority.length > 0 && !filters.priority.includes(job.priority)) return false;
+      if (filters.seniority.length > 0 && !filters.seniority.includes(job.seniority)) return false;
       if (filters.skills.length > 0) {
         const jobSkills = job.skills || [];
         const hasMatchingSkill = filters.skills.some(skill => 
@@ -210,12 +175,10 @@ const JobSpace = () => {
         );
         if (!hasMatchingSkill) return false;
       }
-
       return true;
     });
   }, [filters]);
 
-  // Sort jobs
   const sortJobs = useCallback((jobList: Job[]) => {
     return [...jobList].sort((a, b) => {
       switch (sortBy) {
@@ -225,42 +188,18 @@ const JobSpace = () => {
           return aFav - bFav;
         }
         case 'priority': {
-          const priorityOrder: Record<string, number> = { 
-            'haute': 0, 'high': 0, 
-            'moyenne': 1, 'medium': 1, 
-            'basse': 2, 'low': 2 
-          };
-          const aOrder = priorityOrder[a.priority?.toLowerCase()] ?? 3;
-          const bOrder = priorityOrder[b.priority?.toLowerCase()] ?? 3;
-          return aOrder - bOrder;
+          const priorityOrder: Record<string, number> = { 'haute': 0, 'high': 0, 'moyenne': 1, 'medium': 1, 'basse': 2, 'low': 2 };
+          return (priorityOrder[a.priority?.toLowerCase()] ?? 3) - (priorityOrder[b.priority?.toLowerCase()] ?? 3);
         }
-        case 'salary_desc': {
-          const aMax = a.salaryMax || a.salaryMin || 0;
-          const bMax = b.salaryMax || b.salaryMin || 0;
-          return bMax - aMax;
-        }
-        case 'salary_asc': {
-          const aMin = a.salaryMin || a.salaryMax || Infinity;
-          const bMin = b.salaryMin || b.salaryMax || Infinity;
-          return aMin - bMin;
-        }
-        case 'date_desc': {
-          const aDate = a.openingDate ? new Date(a.openingDate).getTime() : 0;
-          const bDate = b.openingDate ? new Date(b.openingDate).getTime() : 0;
-          return bDate - aDate;
-        }
-        case 'date_asc': {
-          const aDate = a.openingDate ? new Date(a.openingDate).getTime() : Infinity;
-          const bDate = b.openingDate ? new Date(b.openingDate).getTime() : Infinity;
-          return aDate - bDate;
-        }
-        default:
-          return 0;
+        case 'salary_desc': return (b.salaryMax || b.salaryMin || 0) - (a.salaryMax || a.salaryMin || 0);
+        case 'salary_asc': return (a.salaryMin || a.salaryMax || Infinity) - (b.salaryMin || b.salaryMax || Infinity);
+        case 'date_desc': return (b.openingDate ? new Date(b.openingDate).getTime() : 0) - (a.openingDate ? new Date(a.openingDate).getTime() : 0);
+        case 'date_asc': return (a.openingDate ? new Date(a.openingDate).getTime() : Infinity) - (b.openingDate ? new Date(b.openingDate).getTime() : Infinity);
+        default: return 0;
       }
     });
   }, [sortBy, favorites]);
 
-  // Apply filters, sorting, and pagination
   const filteredJobs = useMemo(() => filterJobs(allJobs), [filterJobs, allJobs]);
   const sortedJobs = useMemo(() => sortJobs(filteredJobs), [sortJobs, filteredJobs]);
   const totalFiltered = sortedJobs.length;
@@ -268,7 +207,6 @@ const JobSpace = () => {
   const startIndex = (pagination.page - 1) * pagination.limit;
   const paginatedJobs = sortedJobs.slice(startIndex, startIndex + pagination.limit);
 
-  // Reset to page 1 when filters or sort change
   useEffect(() => {
     setPagination(prev => ({ ...prev, page: 1 }));
   }, [filters, sortBy]);
@@ -280,14 +218,14 @@ const JobSpace = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-white flex items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-[#1A1A1A]" />
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-foreground" />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-[#F5F5F5]">
+    <div className="min-h-screen bg-background">
       <SEOHead 
         title="Job Space - Postes disponibles"
         description="Consultez les postes disponibles et trouvez votre prochaine opportunité"
@@ -298,10 +236,15 @@ const JobSpace = () => {
         <div className="max-w-7xl mx-auto">
           {/* Header */}
           <div className="mb-8">
-            <h1 className="text-4xl md:text-5xl font-medium text-[#1A1A1A] tracking-[-0.02em]">
-              Job Space
-            </h1>
-            <p className="mt-2 text-[#1A1A1A]/60">
+            <div className="flex items-center gap-3 mb-2">
+              <div className="h-10 w-10 bg-foreground text-background flex items-center justify-center border border-foreground">
+                <Briefcase className="w-5 h-5" />
+              </div>
+              <h1 className="text-4xl md:text-5xl font-medium text-foreground tracking-[-0.02em] uppercase">
+                Job Space
+              </h1>
+            </div>
+            <p className="mt-2 text-muted-foreground ml-[52px]">
               {totalFiltered} poste{totalFiltered > 1 ? 's' : ''} disponible{totalFiltered > 1 ? 's' : ''}
               {totalFiltered !== allJobs.length && ` (sur ${allJobs.length} au total)`}
             </p>
@@ -313,18 +256,18 @@ const JobSpace = () => {
           {/* Sort selector and favorites count */}
           <div className="flex items-center justify-between mb-4">
             {favoritesCount > 0 && (
-              <div className="flex items-center gap-1.5 text-sm text-[#1A1A1A]/60">
+              <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
                 <Heart className="w-4 h-4 text-red-400 fill-red-400" />
                 <span>{favoritesCount} favori{favoritesCount > 1 ? 's' : ''}</span>
               </div>
             )}
             <div className={`flex items-center gap-2 ${favoritesCount === 0 ? 'ml-auto' : ''}`}>
-              <ArrowUpDown className="w-4 h-4 text-[#1A1A1A]/40" />
+              <ArrowUpDown className="w-4 h-4 text-muted-foreground" />
               <Select value={sortBy} onValueChange={(v) => setSortBy(v as SortOption)}>
-                <SelectTrigger className="w-[160px] h-8 text-xs border-[#1A1A1A]/10 bg-white">
+                <SelectTrigger className="w-[160px] h-8 text-xs border-foreground/20 bg-background">
                   <SelectValue placeholder="Trier par" />
                 </SelectTrigger>
-                <SelectContent className="bg-white">
+                <SelectContent className="bg-background">
                   {SORT_OPTIONS.map(option => (
                     <SelectItem key={option.value} value={option.value} className="text-xs">
                       {option.label}
@@ -336,11 +279,11 @@ const JobSpace = () => {
           </div>
           {jobsLoading ? (
             <div className="flex items-center justify-center py-20">
-              <Loader2 className="w-8 h-8 animate-spin text-[#1A1A1A]" />
+              <Loader2 className="w-8 h-8 animate-spin text-foreground" />
             </div>
           ) : jobsError ? (
-            <div className="bg-red-50 border border-red-200 rounded-lg p-6 text-center">
-              <p className="text-red-600">{jobsError instanceof Error ? jobsError.message : 'Error loading jobs'}</p>
+            <div className="bg-destructive/10 border border-destructive/30 p-6 text-center">
+              <p className="text-destructive">{jobsError instanceof Error ? jobsError.message : 'Error loading jobs'}</p>
             </div>
           ) : (
             <>
@@ -352,59 +295,52 @@ const JobSpace = () => {
               
               {/* Pagination */}
               {totalPages > 1 && (
-                <div className="mt-8 flex items-center justify-center gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
+                <div className="mt-8 flex items-center justify-center gap-0">
+                  <button
                     onClick={() => goToPage(pagination.page - 1)}
                     disabled={pagination.page === 1}
-                    className="border-[#1A1A1A]/20"
+                    className="relative overflow-hidden h-[34px] w-[34px] flex items-center justify-center border border-foreground text-foreground disabled:opacity-30 group"
                   >
-                    <ChevronLeft className="w-4 h-4" />
-                  </Button>
+                    <ChevronLeft className="w-4 h-4 relative z-10" />
+                    <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
+                  </button>
                   
-                  <div className="flex items-center gap-1">
-                    {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => {
-                      // Show first, last, current and neighbors
-                      const showPage = page === 1 || 
-                        page === totalPages || 
-                        Math.abs(page - pagination.page) <= 1;
-                      
-                      const showEllipsis = (page === 2 && pagination.page > 3) ||
-                        (page === totalPages - 1 && pagination.page < totalPages - 2);
-                      
-                      if (showEllipsis && !showPage) {
-                        return <span key={page} className="px-2 text-[#1A1A1A]/40">...</span>;
-                      }
-                      
-                      if (!showPage) return null;
-                      
-                      return (
-                        <Button
-                          key={page}
-                          variant={page === pagination.page ? "default" : "outline"}
-                          size="sm"
-                          onClick={() => goToPage(page)}
-                          className={page === pagination.page 
-                            ? "bg-[#1A1A1A] text-white" 
-                            : "border-[#1A1A1A]/20"
-                          }
-                        >
-                          {page}
-                        </Button>
-                      );
-                    })}
-                  </div>
+                  {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => {
+                    const showPage = page === 1 || page === totalPages || Math.abs(page - pagination.page) <= 1;
+                    const showEllipsis = (page === 2 && pagination.page > 3) ||
+                      (page === totalPages - 1 && pagination.page < totalPages - 2);
+                    
+                    if (showEllipsis && !showPage) {
+                      return <span key={page} className="px-2 text-muted-foreground">...</span>;
+                    }
+                    if (!showPage) return null;
+                    
+                    return (
+                      <button
+                        key={page}
+                        onClick={() => goToPage(page)}
+                        className={`relative overflow-hidden h-[34px] min-w-[34px] px-2 flex items-center justify-center border border-l-0 border-foreground text-xs font-medium uppercase group ${
+                          page === pagination.page 
+                            ? "bg-foreground text-background" 
+                            : "bg-background text-foreground"
+                        }`}
+                      >
+                        <span className="relative z-10">{page}</span>
+                        {page !== pagination.page && (
+                          <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
+                        )}
+                      </button>
+                    );
+                  })}
                   
-                  <Button
-                    variant="outline"
-                    size="sm"
+                  <button
                     onClick={() => goToPage(pagination.page + 1)}
                     disabled={pagination.page === totalPages}
-                    className="border-[#1A1A1A]/20"
+                    className="relative overflow-hidden h-[34px] w-[34px] flex items-center justify-center border border-l-0 border-foreground text-foreground disabled:opacity-30 group"
                   >
-                    <ChevronRight className="w-4 h-4" />
-                  </Button>
+                    <ChevronRight className="w-4 h-4 relative z-10" />
+                    <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
+                  </button>
                 </div>
               )}
             </>

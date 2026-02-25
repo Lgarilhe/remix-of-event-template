@@ -13,13 +13,19 @@ import { ATSTableSkeleton } from '@/components/ats/ATSTableSkeleton';
 import { ATSStatsSkeleton } from '@/components/ats/ATSStatsSkeleton';
 import { RemindersSidebar } from '@/components/ats/RemindersSidebar';
 import { CandidateDetailModal } from '@/components/ats/CandidateDetailModal';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Button } from '@/components/ui/button';
+import { Tabs, TabsContent } from '@/components/ui/tabs';
 import { LayoutGrid, Table, Clock, Bell, Users, RefreshCw } from 'lucide-react';
 import { useATSData, ATSCandidate, ATS_STAGES } from '@/hooks/useATSData';
+import { cn } from '@/lib/utils';
 
 export type { ATSCandidate };
 export { ATS_STAGES };
+
+const viewTabs = [
+  { value: 'kanban', label: 'Kanban', icon: LayoutGrid },
+  { value: 'table', label: 'Table', icon: Table },
+  { value: 'timeline', label: 'Timeline', icon: Clock },
+] as const;
 
 export default function ATS() {
   const [user, setUser] = useState<User | null>(null);
@@ -27,18 +33,8 @@ export default function ATS() {
   const [showReminders, setShowReminders] = useState(false);
   const [selectedCandidate, setSelectedCandidate] = useState<ATSCandidate | null>(null);
   
-  // Use our optimized hook with caching
-  const { 
-    candidates, 
-    loading, 
-    isFetching,
-    isFromCache,
-    error, 
-    refetch, 
-    handleStageChange 
-  } = useATSData();
+  const { candidates, loading, isFetching, isFromCache, error, refetch, handleStageChange } = useATSData();
 
-  // Filters
   const [filters, setFilters] = useState({
     search: '',
     stage: [] as string[],
@@ -47,36 +43,22 @@ export default function ATS() {
     hasReminder: false,
   });
 
-  // Check auth
   useEffect(() => {
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      setUser(user);
-    });
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
-    });
-
+    supabase.auth.getUser().then(({ data: { user } }) => setUser(user));
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => setUser(session?.user ?? null));
     return () => subscription.unsubscribe();
   }, []);
-
-  // Note: useATSData() already fetches data + caches it.
-  // Avoid an extra refetch on mount (it increases Notion load and triggers rate limits).
 
   // Get unique values for filters
   const filterOptions = useMemo(() => {
     const stages = new Set<string>();
     const sources = new Set<string>();
     const jobsMap = new Map<string, string>();
-
     candidates.forEach(candidate => {
       stages.add(candidate.stage);
       sources.add(candidate.source);
-      if (candidate.jobId && candidate.jobTitle) {
-        jobsMap.set(candidate.jobId, candidate.jobTitle);
-      }
+      if (candidate.jobId && candidate.jobTitle) jobsMap.set(candidate.jobId, candidate.jobTitle);
     });
-
     return {
       stages: Array.from(stages),
       sources: Array.from(sources),
@@ -87,36 +69,17 @@ export default function ATS() {
   // Filter candidates
   const filteredCandidates = useMemo(() => {
     return candidates.filter(candidate => {
-      // Search filter
       if (filters.search) {
         const search = filters.search.toLowerCase();
-        const matchName = candidate.name?.toLowerCase().includes(search);
-        const matchEmail = candidate.email?.toLowerCase().includes(search);
-        const matchHeadline = candidate.headline?.toLowerCase().includes(search);
-        const matchJob = candidate.jobTitle?.toLowerCase().includes(search);
-        if (!matchName && !matchEmail && !matchHeadline && !matchJob) return false;
+        if (!candidate.name?.toLowerCase().includes(search) &&
+            !candidate.email?.toLowerCase().includes(search) &&
+            !candidate.headline?.toLowerCase().includes(search) &&
+            !candidate.jobTitle?.toLowerCase().includes(search)) return false;
       }
-
-      // Stage filter
-      if (filters.stage.length > 0 && !filters.stage.includes(candidate.stage)) {
-        return false;
-      }
-
-      // Source filter
-      if (filters.source.length > 0 && !filters.source.includes(candidate.source)) {
-        return false;
-      }
-
-      // Job filter
-      if (filters.job.length > 0 && candidate.jobId && !filters.job.includes(candidate.jobId)) {
-        return false;
-      }
-
-      // Reminder filter
-      if (filters.hasReminder && !candidate.hasReminder) {
-        return false;
-      }
-
+      if (filters.stage.length > 0 && !filters.stage.includes(candidate.stage)) return false;
+      if (filters.source.length > 0 && !filters.source.includes(candidate.source)) return false;
+      if (filters.job.length > 0 && candidate.jobId && !filters.job.includes(candidate.jobId)) return false;
+      if (filters.hasReminder && !candidate.hasReminder) return false;
       return true;
     });
   }, [candidates, filters]);
@@ -124,28 +87,19 @@ export default function ATS() {
   // Group by stage for Kanban
   const kanbanData = useMemo(() => {
     const grouped: Record<string, ATSCandidate[]> = {};
-    ATS_STAGES.forEach(stage => {
-      grouped[stage.key] = [];
-    });
-
+    ATS_STAGES.forEach(stage => { grouped[stage.key] = []; });
     filteredCandidates.forEach(candidate => {
       const stage = candidate.stage || 'Nouveau';
-      if (grouped[stage]) {
-        grouped[stage].push(candidate);
-      } else {
-        grouped['Nouveau'].push(candidate);
-      }
+      if (grouped[stage]) grouped[stage].push(candidate);
+      else grouped['Nouveau'].push(candidate);
     });
-
     return grouped;
   }, [filteredCandidates]);
 
-  const handleCandidateClick = (candidate: ATSCandidate) => {
-    setSelectedCandidate(candidate);
-  };
+  const handleCandidateClick = (candidate: ATSCandidate) => setSelectedCandidate(candidate);
 
   return (
-    <div className="min-h-screen bg-[#FAFAFA]">
+    <div className="min-h-screen bg-background">
       <SEOHead
         title="ATS - Suivi des candidats | Konekt"
         description="Centralisez et gérez toutes vos interactions avec les candidats"
@@ -159,54 +113,57 @@ export default function ATS() {
             <div className="flex items-center justify-between">
               <div>
                 <div className="flex items-center gap-3 mb-2">
-                  <Users className="w-8 h-8 text-[#1A1A1A]" />
-                  <h1 className="text-3xl font-bold text-[#1A1A1A]">ATS</h1>
+                  <div className="h-10 w-10 bg-foreground text-background flex items-center justify-center border border-foreground">
+                    <Users className="w-5 h-5" />
+                  </div>
+                  <h1 className="text-3xl font-bold text-foreground uppercase tracking-tight">ATS</h1>
                   {loading && (
-                    <span className="text-sm text-[#1A1A1A]/50 animate-pulse">
-                      Chargement...
-                    </span>
+                    <span className="text-sm text-muted-foreground animate-pulse">Chargement...</span>
                   )}
                   {isFromCache && !isFetching && (
-                    <span className="text-xs text-green-600 bg-green-50 px-2 py-0.5 rounded-full">
+                    <span className="text-xs text-emerald-600 border border-emerald-300 px-2 py-0.5 uppercase tracking-wider font-medium">
                       Cache
                     </span>
                   )}
                   {isFetching && !loading && (
-                    <span className="text-xs text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full animate-pulse">
+                    <span className="text-xs text-blue-600 border border-blue-300 px-2 py-0.5 uppercase tracking-wider font-medium animate-pulse">
                       Actualisation...
                     </span>
                   )}
                 </div>
-                <p className="text-[#1A1A1A]/60">
+                <p className="text-muted-foreground ml-[52px]">
                   {candidates.length} candidat{candidates.length > 1 ? 's' : ''} • Toutes sources confondues
                 </p>
               </div>
 
-              <div className="flex items-center gap-3">
-                <Button
-                  variant="outline"
-                  size="sm"
+              <div className="flex items-center gap-0">
+                <button
                   onClick={refetch}
                   disabled={loading}
-                  className="gap-2"
+                  className="relative overflow-hidden h-[34px] px-4 flex items-center gap-2 border border-foreground text-foreground text-[11px] font-medium uppercase tracking-wider group disabled:opacity-30"
                 >
-                  <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-                  Actualiser
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
+                  <RefreshCw className={`w-3.5 h-3.5 relative z-10 ${loading ? 'animate-spin' : ''}`} />
+                  <span className="relative z-10">Actualiser</span>
+                  <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
+                </button>
+                <button
                   onClick={() => setShowReminders(!showReminders)}
-                  className={showReminders ? 'bg-amber-50 border-amber-300' : ''}
+                  className={cn(
+                    "relative overflow-hidden h-[34px] px-4 flex items-center gap-2 border border-l-0 border-foreground text-foreground text-[11px] font-medium uppercase tracking-wider group",
+                    showReminders && "bg-brutal-accent"
+                  )}
                 >
-                  <Bell className="w-4 h-4 mr-2" />
-                  Rappels
-                </Button>
+                  <Bell className="w-3.5 h-3.5 relative z-10" />
+                  <span className="relative z-10">Rappels</span>
+                  {!showReminders && (
+                    <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
+                  )}
+                </button>
               </div>
             </div>
           </div>
 
-          {/* Stats - Show skeleton while loading, real data progressively */}
+          {/* Stats */}
           {loading && candidates.length === 0 ? (
             <ATSStatsSkeleton />
           ) : (
@@ -217,20 +174,30 @@ export default function ATS() {
           <div className="mb-6">
             <Tabs value={activeView} onValueChange={(v) => setActiveView(v as any)}>
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
-                <TabsList className="bg-white border border-[#1A1A1A]/10">
-                  <TabsTrigger value="kanban" className="gap-2 data-[state=active]:bg-[#1A1A1A] data-[state=active]:text-white">
-                    <LayoutGrid className="w-4 h-4" />
-                    Kanban
-                  </TabsTrigger>
-                  <TabsTrigger value="table" className="gap-2 data-[state=active]:bg-[#1A1A1A] data-[state=active]:text-white">
-                    <Table className="w-4 h-4" />
-                    Table
-                  </TabsTrigger>
-                  <TabsTrigger value="timeline" className="gap-2 data-[state=active]:bg-[#1A1A1A] data-[state=active]:text-white">
-                    <Clock className="w-4 h-4" />
-                    Timeline
-                  </TabsTrigger>
-                </TabsList>
+                {/* Brutal tabs */}
+                <div className="flex gap-0">
+                  {viewTabs.map((tab, index) => {
+                    const Icon = tab.icon;
+                    const isActive = activeView === tab.value;
+                    return (
+                      <button
+                        key={tab.value}
+                        onClick={() => setActiveView(tab.value as any)}
+                        className={cn(
+                          "relative overflow-hidden flex items-center gap-1.5 h-[34px] px-4 text-[11px] font-medium uppercase tracking-wider border border-foreground transition-colors duration-200 group",
+                          index > 0 && "border-l-0",
+                          isActive ? "bg-brutal-accent text-foreground" : "bg-background text-foreground"
+                        )}
+                      >
+                        <Icon className="w-3.5 h-3.5 shrink-0 relative z-10" />
+                        <span className="relative z-10">{tab.label}</span>
+                        {!isActive && (
+                          <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
 
                 <ATSFilters
                   filters={filters}
@@ -240,11 +207,15 @@ export default function ATS() {
               </div>
 
               {error ? (
-                <div className="bg-red-50 border border-red-200 rounded-lg p-6 text-center">
-                  <p className="text-red-600">{error}</p>
-                  <Button variant="outline" onClick={refetch} className="mt-4">
-                    Réessayer
-                  </Button>
+                <div className="bg-destructive/10 border border-destructive/30 p-6 text-center">
+                  <p className="text-destructive">{error}</p>
+                  <button
+                    onClick={refetch}
+                    className="relative overflow-hidden h-[34px] px-6 mt-4 border border-foreground text-foreground text-[11px] font-medium uppercase tracking-wider group"
+                  >
+                    <span className="relative z-10">Réessayer</span>
+                    <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
+                  </button>
                 </div>
               ) : (
                 <div className="flex gap-6">
@@ -297,7 +268,6 @@ export default function ATS() {
         </div>
       </main>
 
-      {/* Candidate Detail Modal */}
       {selectedCandidate && (
         <CandidateDetailModal
           candidate={selectedCandidate}
