@@ -205,7 +205,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
   }, [filteredResults, statusFilter, getAirtableMatch, getNotionMatch]);
 
   return (
-    <div className="bg-background border border-foreground flex flex-col h-[calc(100vh-200px)] lg:h-[calc(100vh-120px)] lg:sticky lg:top-24 min-w-0 overflow-hidden">
+    <div className="bg-background border border-foreground flex flex-col h-[calc(100vh-160px)] lg:h-[calc(100vh-80px)] lg:sticky lg:top-20 min-w-0 overflow-hidden">
       {/* ROW 1: Search button + count + status filters */}
       <div className="flex items-center justify-between px-3 sm:px-4 py-2 border-b border-border shrink-0 gap-2 overflow-x-auto no-scrollbar">
         <div className="flex items-center gap-3 shrink-0">
