@@ -7,40 +7,6 @@ const corsHeaders = {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-async function fetchWithRetry(
-  url: string,
-  init: RequestInit,
-  opts?: {
-    retries?: number;
-    baseDelayMs?: number;
-    retryStatusCodes?: number[];
-  }
-): Promise<Response> {
-  const retries = opts?.retries ?? 3;
-  const baseDelayMs = opts?.baseDelayMs ?? 600;
-  const retryStatusCodes = opts?.retryStatusCodes ?? [500, 502, 503, 504, 529, 408];
-
-  let lastResponse: Response | null = null;
-
-  for (let attempt = 0; attempt <= retries; attempt++) {
-    const res = await fetch(url, init);
-    lastResponse = res;
-
-    if (res.ok) return res;
-
-    const shouldRetry = retryStatusCodes.includes(res.status);
-    if (!shouldRetry || attempt === retries) return res;
-
-    // Use longer delays for 529 (API overloaded)
-    const effectiveBase = res.status === 529 ? Math.max(baseDelayMs, 2000) : baseDelayMs;
-    const delay = Math.round(effectiveBase * Math.pow(2, attempt));
-    console.warn(`[score-profile-job] transient AI error ${res.status}, retrying in ${delay}ms (attempt ${attempt + 1}/${retries})`);
-    await sleep(delay);
-  }
-
-  return lastResponse!;
-}
-
 interface WorkExperienceItem {
   role: string;
   company: string;
@@ -161,12 +127,9 @@ function extractJsonRobust(raw: string): any {
   } else {
     // Truncated — attempt repair by closing open arrays/objects
     jsonStr = content.substring(startIdx);
-    // Remove trailing incomplete value
     jsonStr = jsonStr.replace(/,\s*"[^"]*"?\s*:?\s*[^,}\]]*$/, '');
-    // Close any open arrays
     const openBrackets = (jsonStr.match(/\[/g) || []).length - (jsonStr.match(/\]/g) || []).length;
     for (let i = 0; i < openBrackets; i++) jsonStr += ']';
-    // Close any open objects
     const openBraces = (jsonStr.match(/\{/g) || []).length - (jsonStr.match(/\}/g) || []).length;
     for (let i = 0; i < openBraces; i++) jsonStr += '}';
     console.warn(`[score] Repaired truncated JSON (added ${openBrackets} ] and ${openBraces} })`);
@@ -193,10 +156,10 @@ serve(async (req) => {
       profiles?: ProfileData[];
     };
     
-    const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
+    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
 
-    if (!ANTHROPIC_API_KEY) {
-      throw new Error("ANTHROPIC_API_KEY is not configured");
+    if (!LOVABLE_API_KEY) {
+      throw new Error("LOVABLE_API_KEY is not configured");
     }
 
     const profilesToScore = profiles || (profile ? [profile] : []);
@@ -228,7 +191,7 @@ serve(async (req) => {
     };
 
     const BATCH_SIZE = 5;
-    const DELAY_BETWEEN_BATCHES_MS = 500;
+    const DELAY_BETWEEN_BATCHES_MS = 300;
     const results: any[] = [];
 
     for (let i = 0; i < profilesToScore.length; i += BATCH_SIZE) {
@@ -273,47 +236,45 @@ serve(async (req) => {
               if (tc.should) transversalText += `Should transversal: ${tc.should}\n`;
             }
 
-            const prompt = sanitizeText(`Expert recruteur tech. Évalue profil vs poste.\n\nPOSTE: ${job.title} | ${job.client?.name || '?'} (${job.client?.sector || '?'}) | Séniorité: ${job.seniority || '?'} | Loc: ${job.location || '?'} | Remote: ${job.remote || '?'} | XP: ${job.xpMin || '?'} - ${job.xpMax || '?'} ans | ${formatSalaryInfo(job)}\nSkills requis: ${job.skills.join(', ')}\n${job.mustHave ? 'MUST-HAVE: ' + job.mustHave : ''}\n${job.shouldHave ? 'SHOULD-HAVE: ' + job.shouldHave : ''}\n${job.requirements ? 'Exigences: ' + job.requirements.substring(0, 300) : ''}\n${job.description ? 'Desc: ' + job.description.substring(0, 300) : ''}\n${transversalText}\n\nPROFIL: ${p.name} | ${p.headline || p.currentRole || '?'} @ ${p.currentCompany || '?'} | Loc: ${p.location || '?'} | XP: ${p.yearsOfExperience ?? '?'} ans | Tenure moy: ${p.averageTenureMonths ? Math.round(p.averageTenureMonths) + 'mois' : '?'} | OTW: ${p.openToWork ? 'Oui' : 'Non'} | OpenProfile: ${p.openProfile ? 'Oui' : 'Non'} | Réseau: ${p.networkDistance || '?'}\nSkills: ${profileSkills.join(', ') || 'Aucune'}\nMatchées: ${matchedSkills.join(', ') || 'Aucune'} | Manquantes: ${missingSkills.join(', ') || 'Aucune'}\n${p.education ? 'Formation: ' + p.education.join(', ') : ''}\n${workExpText}\n\nRÈGLES STRICTES:\n1. Mismatch séniorité (IC vs Director) -> score<=30, NO_MATCH\n2. Must-have manquant -> score<=35, WEAK_MATCH ou NO_MATCH (tolérance zéro)\n3. Seuils: NO_MATCH(0-30) WEAK_MATCH(31-45) POSSIBLE_MATCH(46-60) GOOD_MATCH(61-79) STRONG_MATCH(80-100)\n4. Sois SÉVÈRE.\n\nRéponds en JSON COMPACT sur UNE SEULE LIGNE sans retour à la ligne. Max 3 strengths/concerns/missingSkills. Chaque texte max 50 chars. Summary max 20 mots.\n{\\"score\\":N,\\"recommendation\\":\\"X\\",\\"summary\\":\\"...\\",\\"strengths\\":[\\"...\\"],\\"concerns\\":[\\"...\\"],\\"missingSkills\\":[\\"...\\"],\\"seniorityMatch\\":\\"X\\",\\"locationMatch\\":\\"X\\",\\"experienceMatch\\":\\"X\\",\\"tenureAnalysis\\":\\"X\\",\\"receptivityScore\\":N,\\"skipReason\\":null}`);
+            const prompt = sanitizeText(`Expert recruteur tech. Évalue profil vs poste.\n\nPOSTE: ${job.title} | ${job.client?.name || '?'} (${job.client?.sector || '?'}) | Séniorité: ${job.seniority || '?'} | Loc: ${job.location || '?'} | Remote: ${job.remote || '?'} | XP: ${job.xpMin || '?'} - ${job.xpMax || '?'} ans | ${formatSalaryInfo(job)}\nSkills requis: ${job.skills.join(', ')}\n${job.mustHave ? 'MUST-HAVE: ' + job.mustHave : ''}\n${job.shouldHave ? 'SHOULD-HAVE: ' + job.shouldHave : ''}\n${job.requirements ? 'Exigences: ' + job.requirements.substring(0, 300) : ''}\n${job.description ? 'Desc: ' + job.description.substring(0, 300) : ''}\n${transversalText}\n\nPROFIL: ${p.name} | ${p.headline || p.currentRole || '?'} @ ${p.currentCompany || '?'} | Loc: ${p.location || '?'} | XP: ${p.yearsOfExperience ?? '?'} ans | Tenure moy: ${p.averageTenureMonths ? Math.round(p.averageTenureMonths) + 'mois' : '?'} | OTW: ${p.openToWork ? 'Oui' : 'Non'} | OpenProfile: ${p.openProfile ? 'Oui' : 'Non'} | Réseau: ${p.networkDistance || '?'}\nSkills: ${profileSkills.join(', ') || 'Aucune'}\nMatchées: ${matchedSkills.join(', ') || 'Aucune'} | Manquantes: ${missingSkills.join(', ') || 'Aucune'}\n${p.education ? 'Formation: ' + p.education.join(', ') : ''}\n${workExpText}\n\nRÈGLES STRICTES:\n1. Mismatch séniorité (IC vs Director) -> score<=30, NO_MATCH\n2. Must-have manquant -> score<=35, WEAK_MATCH ou NO_MATCH (tolérance zéro)\n3. Seuils: NO_MATCH(0-30) WEAK_MATCH(31-45) POSSIBLE_MATCH(46-60) GOOD_MATCH(61-79) STRONG_MATCH(80-100)\n4. Sois SÉVÈRE.\n\nRéponds en JSON COMPACT sur UNE SEULE LIGNE sans retour à la ligne. Max 3 strengths/concerns/missingSkills. Chaque texte max 50 chars. Summary max 20 mots.\n{"score":N,"recommendation":"X","summary":"...","strengths":["..."],"concerns":["..."],"missingSkills":["..."],"seniorityMatch":"X","locationMatch":"X","experienceMatch":"X","tenureAnalysis":"X","receptivityScore":N,"skipReason":null}`);
 
-            const res = await fetchWithRetry(
-              "https://api.anthropic.com/v1/messages",
+            const res = await fetch(
+              "https://ai.gateway.lovable.dev/v1/chat/completions",
               {
                 method: "POST",
                 headers: {
                   "Content-Type": "application/json",
-                  "x-api-key": ANTHROPIC_API_KEY,
-                  "anthropic-version": "2023-06-01",
+                  "Authorization": `Bearer ${LOVABLE_API_KEY}`,
                 },
                 body: JSON.stringify({
-                  model: "claude-sonnet-4-6",
-                  max_tokens: 1200,
+                  model: "google/gemini-3-flash-preview",
                   messages: [
+                    {
+                      role: "system",
+                      content: "Tu es un expert recruteur tech. Tu évalues des profils candidats vs des postes. Tu réponds TOUJOURS en JSON valide compact, sans markdown, sans code blocks, sur une seule ligne."
+                    },
                     {
                       role: "user",
                       content: prompt,
                     },
                   ],
-                }).replace(/[\uD800-\uDFFF]/g, ''),
-              },
-              { retries: 3, baseDelayMs: 800, retryStatusCodes: [500, 502, 503, 504, 529] }
+                  max_tokens: 800,
+                  temperature: 0.2,
+                }),
+              }
             );
 
             if (!res.ok) {
               const errorBody = await res.text();
-              console.error(`Anthropic API error:`, { status: res.status, body: errorBody });
+              console.error(`Lovable AI error:`, { status: res.status, body: errorBody });
               
               if (res.status === 429) throw new Error("RATE_LIMITED");
               if (res.status === 402) throw new Error("CREDITS_EXHAUSTED");
-              throw new Error(`Anthropic API error: ${res.status}`);
+              throw new Error(`AI gateway error: ${res.status}`);
             }
 
             const data = await res.json();
-            const rawContent = data.content?.[0]?.text || '';
-            const stopReason = data.stop_reason;
-
-            if (stopReason === 'max_tokens') {
-              console.warn(`[score] Response truncated for ${p.name}, will attempt repair`);
-            }
+            const rawContent = data.choices?.[0]?.message?.content || '';
 
             const scoring = extractJsonRobust(rawContent);
 
