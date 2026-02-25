@@ -610,9 +610,21 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
             {/* Next batch / Load more */}
             <div ref={loadMoreTriggerRef} className="py-4">
               {loadingMore && (
-                <div className="flex items-center justify-center gap-2 py-4">
-                  <Loader2 className="w-5 h-5 animate-spin text-primary" />
-                  <span className="text-sm text-muted-foreground">Chargement du lot suivant...</span>
+                <div className="border border-foreground bg-brutal-accent/10 p-4 sm:p-6">
+                  <BrutalLoader
+                    variant="search"
+                    messages={[
+                      'Chargement du lot suivant…',
+                      'On recrute les meilleurs profils…',
+                      'Encore quelques secondes…',
+                      'LinkedIn nous répond…',
+                      'Tri des nouveaux candidats…',
+                      'Bientôt 25 nouveaux profils…',
+                      'Ça arrive, promis…',
+                    ]}
+                    rows={3}
+                    compact={false}
+                  />
                 </div>
               )}
               {!loadingMore && hasMoreResults && cursor && (
