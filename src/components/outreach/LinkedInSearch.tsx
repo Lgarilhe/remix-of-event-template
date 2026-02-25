@@ -546,7 +546,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
   );
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 lg:gap-6 min-w-0 min-h-[calc(100vh-200px)]">
+    <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 lg:gap-6 min-w-0 lg:min-h-[calc(100dvh-5rem)]">
       {/* Mobile: Filters button + Sheet */}
       <div className="lg:hidden">
         <Sheet open={filtersOpen} onOpenChange={setFiltersOpen}>
