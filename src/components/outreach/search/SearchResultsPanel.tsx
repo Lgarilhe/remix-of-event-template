@@ -206,8 +206,8 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
 
   return (
     <div className="bg-background border border-foreground flex flex-col min-h-[420px] lg:h-full min-w-0 overflow-hidden">
-      {/* ROW 1: Search button + count + status filters */}
-      <div className="flex items-center justify-between px-3 sm:px-4 py-2 border-b border-border shrink-0 gap-2 overflow-x-auto no-scrollbar">
+      {/* ROW 1: Search button + count */}
+      <div className="flex items-center justify-between px-3 sm:px-4 py-2 border-b border-border shrink-0 gap-2 min-w-0">
         <div className="flex items-center gap-3 shrink-0">
           <Button
             onClick={onSearch}
@@ -239,47 +239,47 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
             </div>
           )}
         </div>
-
-        {/* Status filters */}
-        {selectedJob && hasSearched && results.length > 0 && (
-          <div className="flex items-center gap-1 shrink-0">
-            <div className="flex items-center gap-0.5 bg-muted/50 p-0.5 border border-foreground/20">
-              {([
-                { value: 'all' as const, label: 'Tous', icon: Users, count: results.length },
-                { value: 'untreated' as const, label: 'Nouveaux', icon: Eye, count: statusCounts.untreated },
-                { value: 'scored' as const, label: 'Scorés', icon: Target, count: statusCounts.scored },
-                { value: 'messaged' as const, label: 'Contactés', icon: Mail, count: statusCounts.messaged },
-                { value: 'known' as const, label: 'Connus', icon: Database, count: statusCounts.known },
-                { value: 'dismissed' as const, label: 'Archivés', icon: Archive, count: statusCounts.dismissed },
-              ]).map(({ value, label, icon: Icon, count }) => {
-                const isActive = statusFilter === value || 
-                  (value === 'scored' && (statusFilter === 'scored_go' || statusFilter === 'scored_maybe' || statusFilter === 'scored_not_contacted'));
-                return (
-                  <Button
-                    key={value}
-                    variant={isActive ? 'default' : 'ghost'}
-                    size="sm"
-                    onClick={() => onSetStatusFilter(value)}
-                    className={`h-7 px-2 text-[11px] gap-1 ${
-                      isActive
-                        ? 'bg-primary text-primary-foreground shadow-sm'
-                        : 'text-muted-foreground hover:text-foreground'
-                    }`}
-                  >
-                    <Icon className="w-3 h-3" />
-                    <span className="hidden sm:inline">{label}</span>
-                    {count > 0 && (
-                      <span className={`text-[10px] font-medium ${isActive ? 'text-primary-foreground/80' : 'text-muted-foreground/60'}`}>
-                        {count}
-                      </span>
-                    )}
-                  </Button>
-                );
-              })}
-            </div>
-          </div>
-        )}
       </div>
+
+      {/* ROW 1b: Status filters (separate row for mobile) */}
+      {selectedJob && hasSearched && results.length > 0 && (
+        <div className="overflow-x-auto no-scrollbar border-b border-border shrink-0">
+          <div className="flex items-center gap-0.5 bg-muted/50 p-0.5 mx-3 sm:mx-4 my-1.5 border border-foreground/20 w-fit">
+            {([
+              { value: 'all' as const, label: 'Tous', icon: Users, count: results.length },
+              { value: 'untreated' as const, label: 'Nouveaux', icon: Eye, count: statusCounts.untreated },
+              { value: 'scored' as const, label: 'Scorés', icon: Target, count: statusCounts.scored },
+              { value: 'messaged' as const, label: 'Contactés', icon: Mail, count: statusCounts.messaged },
+              { value: 'known' as const, label: 'Connus', icon: Database, count: statusCounts.known },
+              { value: 'dismissed' as const, label: 'Archivés', icon: Archive, count: statusCounts.dismissed },
+            ]).map(({ value, label, icon: Icon, count }) => {
+              const isActive = statusFilter === value || 
+                (value === 'scored' && (statusFilter === 'scored_go' || statusFilter === 'scored_maybe' || statusFilter === 'scored_not_contacted'));
+              return (
+                <Button
+                  key={value}
+                  variant={isActive ? 'default' : 'ghost'}
+                  size="sm"
+                  onClick={() => onSetStatusFilter(value)}
+                  className={`h-7 px-2 text-[11px] gap-1 shrink-0 ${
+                    isActive
+                      ? 'bg-primary text-primary-foreground shadow-sm'
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  <Icon className="w-3 h-3" />
+                  <span className="hidden sm:inline">{label}</span>
+                  {count > 0 && (
+                    <span className={`text-[10px] font-medium ${isActive ? 'text-primary-foreground/80' : 'text-muted-foreground/60'}`}>
+                      {count}
+                    </span>
+                  )}
+                </Button>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* ROW 1.5: Scored sub-filters (only when scored filter active) */}
       {(statusFilter === 'scored' || statusFilter === 'scored_go' || statusFilter === 'scored_maybe' || statusFilter === 'scored_not_contacted') && statusCounts.scored > 0 && (
@@ -415,7 +415,10 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
                 )}
               </>
             ) : (
-              <span className="text-xs text-muted-foreground">Sélectionnez des profils pour les actions groupées</span>
+              <>
+                <span className="text-xs text-muted-foreground hidden sm:inline">Sélectionnez des profils pour les actions groupées</span>
+                <span className="text-xs text-muted-foreground sm:hidden">Sélectionnez des profils</span>
+              </>
             )}
           </div>
 
