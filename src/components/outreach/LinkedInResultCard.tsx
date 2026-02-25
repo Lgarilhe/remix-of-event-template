@@ -69,22 +69,34 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
   // Notion shortlist data for this candidate
   const { data: notionShortlistData } = useNotionShortlist();
   const notionShortlistsForCandidate: NotionShortlistHistoryItem[] = React.useMemo(() => {
-    if (!notionMatch || !notionShortlistData) return [];
-    const candidateId = notionMatch.id;
-    return notionShortlistData
-      .filter((s: any) => s.candidate?.id === candidateId)
-      .map((s: any) => ({
-        id: s.id,
-        name: s.name,
-        stage: s.stage,
-        entity: s.entity,
-        positions: s.positions || [],
-        createdAt: s.createdAt,
-        preQualifDate: s.preQualifDate,
-        cvPresentationDate: s.cvPresentationDate,
-        startDate: s.startDate,
-      }));
-  }, [notionMatch, notionShortlistData]);
+    if (!notionShortlistData) return [];
+    
+    const profileName = (profile.first_name && profile.last_name)
+      ? `${profile.first_name} ${profile.last_name}`.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      : null;
+    
+    const matched = notionShortlistData.filter((s: any) => {
+      if (!s.candidate) return false;
+      if (notionMatch && s.candidate.id === notionMatch.id) return true;
+      if (profileName && s.candidate.name) {
+        const candidateName = s.candidate.name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        return candidateName === profileName;
+      }
+      return false;
+    });
+    
+    return matched.map((s: any) => ({
+      id: s.id,
+      name: s.name,
+      stage: s.stage,
+      entity: s.entity,
+      positions: s.positions || [],
+      createdAt: s.createdAt,
+      preQualifDate: s.preQualifDate,
+      cvPresentationDate: s.cvPresentationDate,
+      startDate: s.startDate,
+    }));
+  }, [notionMatch, notionShortlistData, profile]);
 
   const formatHistoryDate = (dateStr: string | null | undefined) => {
     if (!dateStr) return null;
