@@ -132,8 +132,8 @@ export default function Outreach() {
           </div>
 
           {/* Tabs — brutal style */}
-          <div className="overflow-x-auto -mx-3 px-3 sm:mx-0 sm:px-0 mb-5 sm:mb-6">
-            <div className="flex gap-0 w-max sm:w-auto">
+          <div className="mb-5 sm:mb-6 min-w-0">
+            <div className="grid grid-cols-3 sm:flex gap-0 w-full min-w-0">
               {tabs.map((tab, index) => {
                 const Icon = tab.icon;
                 const isActive = activeTab === tab.value;
@@ -142,16 +142,16 @@ export default function Outreach() {
                     key={tab.value}
                     onClick={() => setActiveTab(tab.value)}
                     className={cn(
-                      "relative overflow-hidden flex items-center gap-1.5 h-[34px] px-3 sm:px-4 text-[11px] sm:text-xs font-medium uppercase tracking-wider border border-foreground transition-colors duration-200 group",
-                      index > 0 && "border-l-0",
+                      "relative overflow-hidden flex items-center justify-center sm:justify-start gap-1 h-[34px] px-2 sm:px-4 text-[10px] sm:text-xs font-medium uppercase tracking-wider border border-foreground transition-colors duration-200 group min-w-0",
+                      index > 0 && "sm:border-l-0",
                       isActive
                         ? "bg-brutal-accent text-foreground"
                         : "bg-background text-foreground"
                     )}
                   >
                     <Icon className="w-3.5 h-3.5 shrink-0 relative z-10" />
-                    <span className="hidden sm:inline relative z-10">{tab.label}{tab.value === 'accounts' ? ` (${accounts.length})` : ''}</span>
-                    <span className="sm:hidden relative z-10">{tab.shortLabel || tab.label}{tab.value === 'accounts' ? ` (${accounts.length})` : ''}</span>
+                    <span className="hidden sm:inline relative z-10 truncate">{tab.label}{tab.value === 'accounts' ? ` (${accounts.length})` : ''}</span>
+                    <span className="sm:hidden relative z-10 truncate">{tab.shortLabel || tab.label}{tab.value === 'accounts' ? ` (${accounts.length})` : ''}</span>
                     {tab.value === 'messages' && unreadMessageCount > 0 && (
                       <span className="ml-0.5 px-1.5 py-0.5 text-[9px] sm:text-[10px] font-bold bg-destructive text-destructive-foreground rounded-full min-w-[16px] text-center relative z-10">
                         {unreadMessageCount > 99 ? '99+' : unreadMessageCount}

@@ -207,8 +207,8 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
   return (
     <div className="bg-background border border-foreground flex flex-col min-h-[420px] lg:h-full min-w-0 overflow-hidden">
       {/* ROW 1: Search button + count */}
-      <div className="flex items-center justify-between px-3 sm:px-4 py-2 border-b border-border shrink-0 gap-2 min-w-0">
-        <div className="flex items-center gap-3 shrink-0">
+      <div className="flex flex-wrap items-center justify-between px-3 sm:px-4 py-2 border-b border-border shrink-0 gap-2 min-w-0">
+        <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-wrap">
           <Button
             onClick={onSearch}
             disabled={loading || !selectedJob}
@@ -224,7 +224,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
           </Button>
 
           {hasSearched && (
-            <div className="flex items-center gap-2 text-sm">
+            <div className="flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm min-w-0 flex-wrap">
               <span className="font-semibold text-foreground">
                 {displayResults.length}
               </span>
@@ -232,7 +232,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
                 profil{displayResults.length > 1 ? 's' : ''}
               </span>
               {total !== null && (
-                <span className="text-xs text-muted-foreground/60">
+                <span className="text-[11px] sm:text-xs text-muted-foreground/60">
                   / {total.toLocaleString()}
                 </span>
               )}
@@ -283,40 +283,42 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
 
       {/* ROW 1.5: Scored sub-filters (only when scored filter active) */}
       {(statusFilter === 'scored' || statusFilter === 'scored_go' || statusFilter === 'scored_maybe' || statusFilter === 'scored_not_contacted') && statusCounts.scored > 0 && (
-        <div className="flex items-center gap-1 px-3 sm:px-4 py-1.5 border-b border-border/50 bg-muted/20 shrink-0">
-          <div className="flex items-center gap-0.5 bg-muted/30 p-0.5 border border-foreground">
-            {([
-              { value: 'scored' as const, label: 'Tous', count: statusCounts.scored },
-              { value: 'scored_go' as const, label: '✅ À contacter', count: statusCounts.scored_go },
-              { value: 'scored_maybe' as const, label: '🤔 À évaluer', count: statusCounts.scored_maybe },
-              { value: 'scored_not_contacted' as const, label: '🆕 Non contactés', count: statusCounts.scored_not_contacted },
-            ]).map(({ value, label, count }) => (
-              <Button
-                key={value}
-                variant={statusFilter === value ? 'secondary' : 'ghost'}
-                size="sm"
-                onClick={() => onSetStatusFilter(value)}
-                className={`h-6 px-2 text-[10px] gap-1 ${
-                  statusFilter === value
-                    ? 'bg-secondary text-secondary-foreground shadow-sm'
-                    : 'text-muted-foreground hover:text-foreground'
-                }`}
-              >
-                {label}
-                {count > 0 && (
-                  <span className="text-[9px] font-medium opacity-70">{count}</span>
-                )}
-              </Button>
-            ))}
+        <div className="overflow-x-auto no-scrollbar border-b border-border/50 bg-muted/20 shrink-0">
+          <div className="flex items-center gap-1 px-3 sm:px-4 py-1.5 w-max min-w-full">
+            <div className="flex items-center gap-0.5 bg-muted/30 p-0.5 border border-foreground">
+              {([
+                { value: 'scored' as const, label: 'Tous', count: statusCounts.scored },
+                { value: 'scored_go' as const, label: '✅ À contacter', count: statusCounts.scored_go },
+                { value: 'scored_maybe' as const, label: '🤔 À évaluer', count: statusCounts.scored_maybe },
+                { value: 'scored_not_contacted' as const, label: '🆕 Non contactés', count: statusCounts.scored_not_contacted },
+              ]).map(({ value, label, count }) => (
+                <Button
+                  key={value}
+                  variant={statusFilter === value ? 'secondary' : 'ghost'}
+                  size="sm"
+                  onClick={() => onSetStatusFilter(value)}
+                  className={`h-6 px-2 text-[10px] gap-1 shrink-0 ${
+                    statusFilter === value
+                      ? 'bg-secondary text-secondary-foreground shadow-sm'
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  {label}
+                  {count > 0 && (
+                    <span className="text-[9px] font-medium opacity-70">{count}</span>
+                  )}
+                </Button>
+              ))}
+            </div>
           </div>
         </div>
       )}
 
       {/* ROW 2: Bulk actions + sort + select all (only when relevant) */}
       {selectedJob && results.length > 0 && (
-        <div className="flex items-center justify-between px-3 sm:px-4 py-1.5 border-b border-border/50 bg-muted/10 shrink-0 gap-2">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between px-3 sm:px-4 py-1.5 border-b border-border/50 bg-muted/10 shrink-0 gap-2 min-w-0">
           {/* Left: Bulk actions */}
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
             {selectedProfiles.size > 0 ? (
               <>
                 <span className="text-xs font-medium text-primary">{selectedProfiles.size} sél.</span>
@@ -416,14 +418,14 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
               </>
             ) : (
               <>
-                <span className="text-xs text-muted-foreground hidden sm:inline">Sélectionnez des profils pour les actions groupées</span>
-                <span className="text-xs text-muted-foreground sm:hidden">Sélectionnez des profils</span>
+                <span className="text-xs text-muted-foreground hidden sm:inline truncate">Sélectionnez des profils pour les actions groupées</span>
+                <span className="text-xs text-muted-foreground sm:hidden truncate">Sélectionnez des profils</span>
               </>
             )}
           </div>
 
           {/* Right: Sort + Select all */}
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex items-center gap-2 shrink-0 ml-auto">
             {/* Sort by score toggle */}
             {Object.keys(jobScores).length > 0 && (
               <TooltipProvider>
