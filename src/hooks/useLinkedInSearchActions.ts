@@ -51,6 +51,26 @@ export function buildSearchParams(filters: LinkedInFiltersState, selectedAccount
   // Keywords
   if (filters.keywords) baseParams.keywords = filters.keywords;
 
+  // Country-level LinkedIn geo IDs — radius doesn't apply to these
+  const COUNTRY_GEO_IDS = new Set([
+    '105015875', // France
+    '101165590', // United Kingdom
+    '101174742', // Germany
+    '102713980', // India
+    '103644278', // United States
+    '106155005', // Spain
+    '103350119', // Italy
+    '100565514', // Belgium
+    '103883259', // Switzerland
+    '102890719', // Netherlands
+    '100364837', // Portugal
+    '104738515', // Canada
+    '101620260', // Australia
+    '102478259', // Singapore
+    '104305776', // Luxembourg
+    '105646813', // Morocco
+  ]);
+
   // Location
   if (filters.location.length) {
     if (filters.api === 'recruiter') {
@@ -59,7 +79,9 @@ export function buildSearchParams(filters: LinkedInFiltersState, selectedAccount
         priority: f.priority || 'MUST_HAVE',
         scope: f.scope || 'CURRENT_OR_OPEN_TO_RELOCATE',
       }));
-      if (filters.location_within_area !== null) {
+      // Don't send location_within_area if any location is a country (radius doesn't apply)
+      const hasCountryLocation = filters.location.some(f => COUNTRY_GEO_IDS.has(f.id));
+      if (filters.location_within_area !== null && !hasCountryLocation) {
         baseParams.location_within_area = filters.location_within_area;
       }
     } else {
