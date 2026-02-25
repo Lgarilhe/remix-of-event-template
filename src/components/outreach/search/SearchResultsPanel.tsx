@@ -92,6 +92,9 @@ interface SearchResultsPanelProps {
 const getCanonicalProfileUrl = (p: Pick<LinkedInProfile, 'profile_url' | 'public_profile_url'>) =>
   p.public_profile_url || p.profile_url || '';
 
+const getProfileDisplayName = (p: Pick<LinkedInProfile, 'name' | 'first_name' | 'last_name'>) =>
+  p.name || `${p.first_name || ''} ${p.last_name || ''}`.trim() || undefined;
+
 export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
   results,
   filteredResults,
@@ -160,8 +163,11 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
     [results]
   );
   const { getMatch: getAirtableMatch } = useAirtableMatch(profileMatchInputs);
-  const profileUrls = useMemo(() => profileMatchInputs.map(p => p.url), [profileMatchInputs]);
-  const { getMatch: getNotionMatch } = useNotionMatch(profileUrls);
+  const notionMatchInputs = useMemo(
+    () => results.map((r) => ({ url: getCanonicalProfileUrl(r), name: getProfileDisplayName(r) })),
+    [results]
+  );
+  const { getMatch: getNotionMatch } = useNotionMatch(notionMatchInputs);
   // Pre-fetch Notion shortlist data so it's available in ProfileDetailSheet & LinkedInResultCard
   useNotionShortlist();
   // Count by status for filter badges
@@ -169,8 +175,13 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
     const counts = { scored: 0, scored_go: 0, scored_maybe: 0, scored_contacted: 0, scored_not_contacted: 0, messaged: 0, dismissed: 0, untreated: 0, known: 0 };
     for (const r of results) {
       const profileUrl = getCanonicalProfileUrl(r);
+      const notionMatch = getNotionMatch({
+        url: profileUrl,
+        name: getProfileDisplayName(r),
+      });
+
       // Count "known" (in Airtable or Notion)
-      if (getAirtableMatch(profileUrl) || getNotionMatch(profileUrl)) {
+      if (getAirtableMatch(profileUrl) || notionMatch) {
         counts.known++;
       }
       const s = treatedCandidates.get(r.id);
@@ -202,7 +213,10 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
     if (statusFilter !== 'known') return filteredResults;
     return filteredResults.filter(r => {
       const profileUrl = getCanonicalProfileUrl(r);
-      return !!(getAirtableMatch(profileUrl) || getNotionMatch(profileUrl));
+      return !!(
+        getAirtableMatch(profileUrl) ||
+        getNotionMatch({ url: profileUrl, name: getProfileDisplayName(r) })
+      );
     });
   }, [filteredResults, statusFilter, getAirtableMatch, getNotionMatch]);
 
@@ -609,7 +623,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
                   updated_at: treatedCandidates.get(profile.id)!.updated_at,
                 } : null}
                 airtableMatch={getAirtableMatch(getCanonicalProfileUrl(profile))}
-                notionMatch={getNotionMatch(getCanonicalProfileUrl(profile))}
+                notionMatch={getNotionMatch({ url: getCanonicalProfileUrl(profile), name: getProfileDisplayName(profile) })}
                 onOpenDetail={() => openProfileDetail(profile)}
               />
             ))}
@@ -707,7 +721,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
           updated_at: treatedCandidates.get(detailProfile.id)!.updated_at,
         } : null) : null}
         airtableMatch={detailProfile ? getAirtableMatch(getCanonicalProfileUrl(detailProfile)) : undefined}
-        notionMatch={detailProfile ? getNotionMatch(getCanonicalProfileUrl(detailProfile)) : undefined}
+        notionMatch={detailProfile ? getNotionMatch({ url: getCanonicalProfileUrl(detailProfile), name: getProfileDisplayName(detailProfile) }) : undefined}
         onScoreProfile={detailProfile ? () => onScoreProfile(detailProfile) : undefined}
         onArchive={detailProfile && selectedJob ? () => onArchive(detailProfile) : undefined}
         onMessageSent={onMessageSent}
