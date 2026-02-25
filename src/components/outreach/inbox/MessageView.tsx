@@ -126,16 +126,13 @@ export const MessageView: React.FC<MessageViewProps> = ({
   };
 
   return (
-    <div className={cn(
-      "flex-1 flex flex-col min-w-0",
-      !selectedChat ? "hidden md:flex" : "flex"
-    )}>
+    <div className="flex-1 flex flex-col min-w-0">
       {/* Chat Header */}
-      <div className="p-3 border-b border-foreground flex items-center gap-3 bg-background">
+      <div className="p-3 border-b border-foreground flex items-center gap-3 bg-background shrink-0">
         <Button
           variant="ghost"
           size="icon"
-          className="md:hidden h-8 w-8"
+          className="h-8 w-8 shrink-0"
           onClick={onBack}
         >
           <ChevronLeft className="w-5 h-5" />
