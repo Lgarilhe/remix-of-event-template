@@ -72,6 +72,36 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
   // Dummy profile for hook stability (hooks must be called unconditionally)
   const dummyProfile = { id: '', name: '' } as LinkedInProfile;
   const profileData = useProfileData(profile || dummyProfile);
+
+  const candidateProfileUrl = (profile || dummyProfile).profile_url || (profile || dummyProfile).public_profile_url;
+
+  // Airtable history
+  const { data: historyData, loading: historyLoading } = useCandidateHistory(
+    airtableMatch
+      ? { linkedinUrl: candidateProfileUrl, airtableId: airtableMatch.airtable_id }
+      : null
+  );
+
+  const formatHistoryDate = (dateStr: string | null | undefined) => {
+    if (!dateStr) return null;
+    const isoMatch = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (isoMatch) return `${isoMatch[3]}/${isoMatch[2]}/${isoMatch[1].slice(2)}`;
+    const date = new Date(dateStr);
+    if (isNaN(date.getTime())) return null;
+    return date.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: '2-digit' });
+  };
+
+  const historyLatestDate = historyData
+    ? [
+        ...historyData.placements.map((p: any) => p.start_date),
+        ...historyData.shortlists.map((s: any) => s.date_added),
+        ...historyData.notes.map((n: any) => n.note_date),
+        ...historyData.appointments.map((a: any) => a.appointment_date),
+      ]
+        .filter((d): d is string => Boolean(d))
+        .sort((a, b) => (a > b ? -1 : a < b ? 1 : 0))[0] ?? null
+    : null;
+  const historyLatestDateLabel = formatHistoryDate(historyLatestDate);
   
   if (!profile) return null;
 
@@ -80,8 +110,6 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
     networkDistance, profileUrl, skills, education, educationPreview,
     otherCurrentJobs, pastJobs, connectionsCount, isLikelyToRespond, totalExperience,
   } = profileData;
-
-  const candidateProfileUrl = profile.profile_url || profile.public_profile_url;
 
   const handleAiAnalysis = async () => {
     if (aiAnalysis) { setAiAnalysis(null); return; }
@@ -134,6 +162,9 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
                     isLikelyToRespond={isLikelyToRespond}
                     airtableMatch={airtableMatch}
                     notionMatch={notionMatch}
+                    historyData={historyData}
+                    historyLoading={historyLoading}
+                    historyLatestDateLabel={historyLatestDateLabel}
                   />
                 </div>
                 <p className="text-sm text-muted-foreground line-clamp-2 mt-0.5">
@@ -260,6 +291,11 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
               )}
 
               {/* Expanded content (tabs: experience, education, skills, posts) */}
+              {/* Airtable History Panel */}
+              {airtableMatch && historyData && !historyLoading && (
+                <CandidateHistoryPanel data={historyData} loading={false} compact={false} />
+              )}
+
               <CardExpandedContent
                 profile={profile}
                 profileData={profileData}
@@ -268,6 +304,8 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
                 accountId={accountId}
                 candidateStatus={candidateStatus}
                 airtableMatch={airtableMatch}
+                historyData={historyData}
+                historyLoading={historyLoading}
                 onClose={() => onOpenChange(false)}
                 onOpenMessage={() => setShowMessageModal(true)}
                 onMessageSent={onMessageSent}
