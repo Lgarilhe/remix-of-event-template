@@ -181,7 +181,7 @@ serve(async (req) => {
         updates['💼 Postes'] = { relation: [{ id: data.jobId }] };
       }
       // Update etape & etat if provided
-      if (data.etape) updates['Etape'] = { status: { name: data.etape } };
+      if (data.etape) updates['Etape'] = { select: { name: data.etape } };
       if (data.etat) updates['Etat'] = { select: { name: data.etat } };
 
       if (Object.keys(updates).length > 0) {
@@ -248,7 +248,7 @@ serve(async (req) => {
       }
 
       // Etape & Etat
-      if (data.etape) props['Etape'] = { status: { name: data.etape } };
+      if (data.etape) props['Etape'] = { select: { name: data.etape } };
       if (data.etat) props['Etat'] = { select: { name: data.etat } };
 
       console.log('Creating new candidate...');
