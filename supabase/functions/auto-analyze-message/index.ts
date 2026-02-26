@@ -366,14 +366,12 @@ serve(async (req) => {
     };
     const chatCategory = INTENT_TO_CHAT_CATEGORY[analysis.intent];
     if (chatCategory && chat_id && account_id) {
-      // Find all users who have entries for this account (they use this inbox)
       const { data: existingEntries } = await supabase
         .from('chat_categories')
         .select('created_by')
         .eq('account_id', account_id)
         .limit(1);
 
-      // If no existing entries, try to find the user from job_candidate_status
       let userIds: string[] = existingEntries?.map(e => e.created_by) || [];
       
       if (userIds.length === 0 && candidateId) {
@@ -385,7 +383,6 @@ serve(async (req) => {
         userIds = statusRecs?.map(r => r.created_by) || [];
       }
 
-      // Deduplicate
       const uniqueUserIds = [...new Set(userIds)];
       
       for (const userId of uniqueUserIds) {
@@ -404,6 +401,76 @@ serve(async (req) => {
         console.log(`[auto-analyze] Updated chat_categories → "${chatCategory}" for ${uniqueUserIds.length} user(s)`);
       }
     }
+
+    // 7. Trigger full AI analysis (analyze-response) and cache the result
+    // Fire-and-forget to avoid slowing down the webhook response
+    const supabaseUrl2 = Deno.env.get('SUPABASE_URL')!;
+    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
+    
+    (async () => {
+      try {
+        console.log(`[auto-analyze] Triggering full analysis for cache (chat: ${chat_id})`);
+        
+        // Build context for analyze-response
+        const analysisContext: Record<string, unknown> = {
+          recipientName: candidateName,
+          recipientHeadline: chatDetails.attendeeHeadline,
+          messages: messages.map(m => ({ text: m.text, is_sender: m.is_sender, timestamp: m.timestamp })),
+        };
+
+        // Fetch available jobs from Notion for job matching
+        try {
+          const notionJobsRes = await fetch(`${supabaseUrl2}/functions/v1/fetch-notion-jobs`, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${supabaseAnonKey}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({}),
+          });
+          if (notionJobsRes.ok) {
+            const notionJobsData = await notionJobsRes.json();
+            const jobs = notionJobsData?.jobs || [];
+            if (jobs.length > 0) {
+              analysisContext.availableJobs = jobs.slice(0, 15);
+            }
+          }
+        } catch (e) {
+          console.warn('[auto-analyze] Failed to fetch jobs for cache:', e);
+        }
+
+        // Call analyze-response
+        const analyzeRes = await fetch(`${supabaseUrl2}/functions/v1/analyze-response`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${supabaseAnonKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ context: analysisContext }),
+        });
+
+        if (analyzeRes.ok) {
+          const analyzeData = await analyzeRes.json();
+          if (analyzeData?.success && analyzeData?.analysis) {
+            // Store in cache
+            await supabase
+              .from('message_analysis_cache')
+              .upsert({
+                chat_id: chat_id,
+                account_id: account_id,
+                recipient_name: candidateName,
+                analysis: analyzeData.analysis,
+                updated_at: new Date().toISOString(),
+              }, { onConflict: 'chat_id,account_id' });
+            console.log(`[auto-analyze] Full analysis cached for chat: ${chat_id}`);
+          }
+        } else {
+          console.error(`[auto-analyze] analyze-response failed: ${analyzeRes.status}`);
+        }
+      } catch (e) {
+        console.error('[auto-analyze] Full analysis cache error:', e);
+      }
+    })();
 
     return new Response(JSON.stringify({ 
       success: true, 

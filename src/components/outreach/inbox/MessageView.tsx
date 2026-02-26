@@ -317,6 +317,8 @@ export const MessageView: React.FC<MessageViewProps> = ({
         open={aiSheetOpen}
         onOpenChange={setAiSheetOpen}
         context={aiContext}
+        chatId={selectedChat.id}
+        accountId={selectedChat.account_id}
         profileUrl={selectedChat.attendees?.[0]?.profile_url}
         onSuggestionSelect={(text) => { onSuggestionClick(text); }}
         onSuggestionSend={(text) => { onSuggestionSend(text); }}

@@ -999,6 +999,36 @@ export type Database = {
         }
         Relationships: []
       }
+      message_analysis_cache: {
+        Row: {
+          account_id: string
+          analysis: Json
+          chat_id: string
+          created_at: string
+          id: string
+          recipient_name: string | null
+          updated_at: string
+        }
+        Insert: {
+          account_id: string
+          analysis?: Json
+          chat_id: string
+          created_at?: string
+          id?: string
+          recipient_name?: string | null
+          updated_at?: string
+        }
+        Update: {
+          account_id?: string
+          analysis?: Json
+          chat_id?: string
+          created_at?: string
+          id?: string
+          recipient_name?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       notion_api_cache: {
         Row: {
           cache_key: string
