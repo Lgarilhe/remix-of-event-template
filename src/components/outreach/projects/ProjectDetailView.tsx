@@ -241,19 +241,66 @@ export const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
                           </div>
                         )}
 
+                        {/* Scoring criteria — Must / Should / Nice to have */}
+                        {(job.mustHave || job.requirements) && (
+                          <CriteriaSection
+                            color="bg-destructive/10 border-destructive/30"
+                            label="🔴 Must-have"
+                            content={job.mustHave || job.requirements}
+                          />
+                        )}
+                        {job.shouldHave && (
+                          <CriteriaSection
+                            color="bg-yellow-50 border-yellow-300"
+                            label="🟡 Should-have"
+                            content={job.shouldHave}
+                          />
+                        )}
+                        {job.niceToHave && (
+                          <CriteriaSection
+                            color="bg-green-50 border-green-300"
+                            label="🟢 Nice-to-have"
+                            content={job.niceToHave}
+                          />
+                        )}
+
+                        {/* Transversal criteria */}
+                        {job.transversalCriteria && (
+                          <div className="border border-foreground/10 p-4 space-y-3">
+                            <h4 className="text-[10px] uppercase tracking-widest text-muted-foreground font-medium">
+                              Critères transverses
+                            </h4>
+                            {job.transversalCriteria.must && (
+                              <CriteriaSection color="bg-destructive/10 border-destructive/30" label="🔴 Must" content={job.transversalCriteria.must} />
+                            )}
+                            {job.transversalCriteria.should && (
+                              <CriteriaSection color="bg-yellow-50 border-yellow-300" label="🟡 Should" content={job.transversalCriteria.should} />
+                            )}
+                            {job.transversalCriteria.niceToHave && (
+                              <CriteriaSection color="bg-green-50 border-green-300" label="🟢 Nice" content={job.transversalCriteria.niceToHave} />
+                            )}
+                            {job.transversalCriteria.context && (
+                              <DetailSection title="Contexte" content={job.transversalCriteria.context} />
+                            )}
+                            {job.transversalCriteria.bodyContent && (
+                              <DetailSection title="Détail critères" content={job.transversalCriteria.bodyContent} />
+                            )}
+                          </div>
+                        )}
+
                         {/* Description */}
                         {job.description && (
                           <DetailSection title="Description du poste" content={job.description} />
                         )}
 
+                        {/* Body content from Notion page */}
+                        {job.bodyContent && (
+                          <DetailSection title="Contenu de la page" content={job.bodyContent} />
+                        )}
+
                         {/* Sourcing criteria */}
                         {job.sourcingCriteria && (
                           <DetailSection title="Critères de sourcing" content={job.sourcingCriteria} icon={Target} />
-                        )}
-
-                        {/* Requirements */}
-                        {job.requirements && (
-                          <DetailSection title="Prérequis" content={job.requirements} />
                         )}
 
                         {/* Interview process */}
@@ -458,6 +505,13 @@ const InfoCard: React.FC<{ icon: React.ElementType; label: string; value: string
       {label}
     </div>
     <p className="text-sm font-medium text-foreground">{value}</p>
+  </div>
+);
+
+const CriteriaSection: React.FC<{ color: string; label: string; content: string }> = ({ color, label, content }) => (
+  <div className={cn("border p-3", color)}>
+    <h4 className="text-[10px] uppercase tracking-widest font-medium mb-1.5">{label}</h4>
+    <p className="text-sm text-foreground whitespace-pre-line leading-relaxed">{content}</p>
   </div>
 );
 

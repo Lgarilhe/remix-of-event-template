@@ -5,6 +5,16 @@ export interface CandidateCounts {
   total: number;
 }
 
+export interface TransversalCriteria {
+  must: string;
+  should: string;
+  niceToHave: string;
+  context: string;
+  domain: string;
+  level: string;
+  bodyContent: string;
+}
+
 export interface Job {
   id: string;
   title: string;
@@ -39,6 +49,16 @@ export interface Job {
   accompagnement: string[];
   jobUrl: string;
   candidateCounts: CandidateCounts;
+  /** Scoring criteria from the job itself */
+  mustHave?: string;
+  shouldHave?: string;
+  niceToHave?: string;
+  /** Free-form body content extracted from the Notion page */
+  bodyContent?: string;
+  /** Resolved transversal criteria linked to this job */
+  transversalCriteria?: TransversalCriteria | null;
+  /** Entity / business unit */
+  entity?: string;
 }
 
 export interface JobFiltersState {
