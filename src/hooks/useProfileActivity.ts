@@ -14,12 +14,12 @@ export interface ActivityEvent {
   sequenceName?: string | null;
 }
 
-export function useProfileActivity(profileId: string | null) {
+export function useProfileActivity(profileId: string | null, profileUrl?: string | null) {
   const [events, setEvents] = useState<ActivityEvent[]>([]);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (!profileId) {
+    if (!profileId && !profileUrl) {
       setEvents([]);
       return;
     }
@@ -28,11 +28,21 @@ export function useProfileActivity(profileId: string | null) {
     const fetch = async () => {
       setLoading(true);
       try {
-        // Get enrollments for this profile
-        const { data: enrollments } = await supabase
+        // Get enrollments for this profile - match by profile_id OR profile_url
+        let query = supabase
           .from('sequence_enrollments')
-          .select('id, sequence_id')
-          .eq('profile_id', profileId);
+          .select('id, sequence_id');
+        
+        if (profileId && profileUrl) {
+          // Try matching by either profile_id or profile_url
+          query = query.or(`profile_id.eq.${profileId},profile_url.eq.${profileUrl}`);
+        } else if (profileId) {
+          query = query.eq('profile_id', profileId);
+        } else if (profileUrl) {
+          query = query.eq('profile_url', profileUrl);
+        }
+
+        const { data: enrollments } = await query;
 
         if (!enrollments?.length || cancelled) {
           setEvents([]);
@@ -99,7 +109,7 @@ export function useProfileActivity(profileId: string | null) {
 
     fetch();
     return () => { cancelled = true; };
-  }, [profileId]);
+  }, [profileId, profileUrl]);
 
   return { events, loading };
 }
