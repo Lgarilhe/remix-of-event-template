@@ -273,12 +273,29 @@ async function handleCheckReplies(supabase: any) {
   let repliesDetected = 0;
 
   for (const enrollment of activeEnrollments || []) {
-    if (await checkForReplyAfterDate(enrollment.account_id, enrollment.profile_id, enrollment.created_at, enrollment.profile_url)) {
+    // Find the last message/inmail sent by the sequence for this enrollment
+    const { data: lastSentExec } = await supabase
+      .from('sequence_step_executions')
+      .select('executed_at, step:sequence_steps!inner(action_type)')
+      .eq('enrollment_id', enrollment.id)
+      .eq('status', 'sent')
+      .in('step.action_type', ['message', 'inmail', 'smart_message', 'connection_request'])
+      .order('executed_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    // Only check for replies if we've actually sent a message
+    if (!lastSentExec?.executed_at) continue;
+
+    // Check for replies after the last message was sent (not after enrollment creation)
+    const afterDate = lastSentExec.executed_at;
+
+    if (await checkForReplyAfterDate(enrollment.account_id, enrollment.profile_id, afterDate, enrollment.profile_url)) {
       await supabase.from('sequence_enrollments').update({ status: 'replied', replied_at: new Date().toISOString() }).eq('id', enrollment.id);
       await supabase.from('sequence_step_executions').update({ status: 'cancelled', skip_reason: 'Reply detected' }).eq('enrollment_id', enrollment.id).eq('status', 'scheduled');
       await logAnalytics(supabase, enrollment.sequence_id, 'replies_received');
       repliesDetected++;
-      console.log(`[checkReplies] Reply detected for ${enrollment.profile_name} (${enrollment.profile_id})`);
+      console.log(`[checkReplies] Reply detected for ${enrollment.profile_name} (after ${afterDate})`);
     }
   }
   return new Response(JSON.stringify({ success: true, repliesDetected }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
@@ -511,13 +528,20 @@ async function checkForReplyAfterDate(accountId: string, profileId: string, afte
   } catch { return false; }
 }
 
-async function checkMessagesForReply(chats: { id: string }[], enrollmentTime: number): Promise<boolean> {
+async function checkMessagesForReply(chats: { id: string }[], afterTimestamp: number): Promise<boolean> {
   for (const chat of chats) {
-    const msgRes = await fetch(`${UNIPILE_DSN}/api/v1/chats/${chat.id}/messages?limit=20`, { headers: { 'X-API-KEY': UNIPILE_API_KEY! } });
+    const msgRes = await fetch(`${UNIPILE_DSN}/api/v1/chats/${chat.id}/messages?limit=10`, { headers: { 'X-API-KEY': UNIPILE_API_KEY! } });
     if (!msgRes.ok) continue;
     const messages = (await msgRes.json()).items || [];
     // deno-lint-ignore no-explicit-any
-    if (messages.some((m: any) => !m.is_sender_self && m.sender_attendee_id !== 'self' && new Date(m.timestamp || m.date || m.created_at).getTime() > enrollmentTime)) return true;
+    const hasReply = messages.some((m: any) => {
+      // Check multiple fields for sender detection (Unipile uses different field names)
+      const isSelf = m.is_sender_self === true || m.is_sender === true || m.sender_attendee_id === 'self';
+      if (isSelf) return false;
+      const msgTime = new Date(m.timestamp || m.date || m.created_at).getTime();
+      return msgTime > afterTimestamp;
+    });
+    if (hasReply) return true;
   }
   return false;
 }
