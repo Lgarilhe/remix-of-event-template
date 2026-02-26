@@ -308,8 +308,16 @@ Accroche + présentation + CTA.`
       a.toLowerCase().includes('intégré')
     );
     
+    // Client-specific rules
+    const clientNameRaw = job.client?.name || '';
+    const clientNameLower = clientNameRaw.toLowerCase().trim();
+    
+    // Clients where salary/TJM must NEVER be mentioned in messages
+    const NO_SALARY_CLIENTS = ['numspot'];
+    const hideSalary = NO_SALARY_CLIENTS.some(c => clientNameLower.includes(c));
+    
     // Different positioning based on engagement type
-    const clientName = job.client?.name || 'nous';
+    const clientName = clientNameRaw || 'nous';
     const engagementInstructions = isRPO
       ? `
 === MODE RPO (TU ES SALARIÉ DE ${job.client?.name?.toUpperCase() || 'L\'ENTREPRISE'}) ===
@@ -474,7 +482,8 @@ POSTE À POURVOIR:
 - Localisation: ${job.location || 'Non spécifié'}
 - Télétravail: ${job.remote || 'Non spécifié'}
 - Type contrat: ${job.contractType || 'Non spécifié'}
-${salaryInfo.length > 0 ? `- Rémunération: ${salaryInfo.join(' | ')}` : ''}
+${salaryInfo.length > 0 && !hideSalary ? `- Rémunération: ${salaryInfo.join(' | ')}` : ''}
+${hideSalary ? `⛔ RÈGLE CLIENT: Ne JAMAIS mentionner de salaire, TJM, rémunération ou fourchette salariale dans le message pour ${clientName}. C'est un sujet à aborder uniquement en call.` : ''}
 ${criteriaContext.length > 0 ? `- Critères clés: ${criteriaContext.join(' | ')}` : ''}
 ${job.description ? `- Contexte mission: ${job.description.slice(0, 300)}...` : ''}
 
