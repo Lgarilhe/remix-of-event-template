@@ -541,27 +541,60 @@ async function checkForReplyAfterDate(accountId: string, profileId: string, afte
   } catch { return false; }
 }
 
+async function resolveOwnAttendeeId(accountId: string, chatId: string): Promise<Set<string>> {
+  const ownIds = new Set<string>();
+  ownIds.add('self');
+  try {
+    // Fetch chat details which include attendees with their role
+    const chatRes = await fetch(`${UNIPILE_DSN}/api/v1/chats/${chatId}`, { headers: { 'X-API-KEY': UNIPILE_API_KEY! } });
+    if (!chatRes.ok) return ownIds;
+    const chatData = await chatRes.json();
+    // deno-lint-ignore no-explicit-any
+    const attendees = chatData.attendees || chatData.participants || [];
+    // deno-lint-ignore no-explicit-any
+    for (const att of attendees) {
+      // Unipile marks the account owner with is_self or role='self'
+      if (att.is_self === true || att.role === 'self' || att.id === 'self') {
+        ownIds.add(att.id);
+        if (att.provider_id) ownIds.add(att.provider_id);
+      }
+    }
+    console.log(`[checkReplies] Own attendee IDs for chat ${chatId}:`, Array.from(ownIds));
+  } catch (e) {
+    console.warn(`[checkReplies] Failed to resolve own attendee ID for chat ${chatId}:`, e);
+  }
+  return ownIds;
+}
+
 async function checkMessagesForReply(chats: { id: string }[], afterTimestamp: number): Promise<boolean> {
   for (const chat of chats) {
+    // First, resolve our own attendee ID(s) in this chat to avoid false positives
+    const ownAttendeeIds = await resolveOwnAttendeeId('', chat.id);
+
     const msgRes = await fetch(`${UNIPILE_DSN}/api/v1/chats/${chat.id}/messages?limit=10`, { headers: { 'X-API-KEY': UNIPILE_API_KEY! } });
     if (!msgRes.ok) continue;
     const messages = (await msgRes.json()).items || [];
     // deno-lint-ignore no-explicit-any
     const incomingReplies = messages.filter((m: any) => {
-      // ONLY trust is_sender_self for self-detection (is_sender can be ambiguous for InMails)
-      // If is_sender_self is explicitly true, it's our message → skip
+      // Explicit self-detection
       if (m.is_sender_self === true) return false;
-      // If is_sender_self is explicitly false, it's a reply from the prospect
-      // If is_sender_self is undefined (e.g. InMails), fall back to sender_attendee_id
-      if (m.is_sender_self === undefined && m.sender_attendee_id === 'self') return false;
-      // Extra safety: if the message type suggests it's an outgoing InMail, skip it
-      if (m.type === 'INMAIL' && m.is_sender_self !== false) return false;
+      // Check if sender_attendee_id matches any of our known own IDs
+      if (m.sender_attendee_id && ownAttendeeIds.has(m.sender_attendee_id)) return false;
+      // Fallback: if is_sender_self is undefined and no attendee match, 
+      // be conservative — only count as reply if is_sender_self is explicitly false
+      if (m.is_sender_self === undefined && !ownAttendeeIds.has(m.sender_attendee_id || '')) {
+        // If we couldn't resolve own IDs (set only has 'self'), be extra cautious
+        if (ownAttendeeIds.size <= 1) {
+          console.log(`[checkReplies] Skipping ambiguous message ${m.id} (is_sender_self=undefined, no own ID resolved)`);
+          return false;
+        }
+      }
       const msgTime = new Date(m.timestamp || m.date || m.created_at).getTime();
       return msgTime > afterTimestamp;
     });
     if (incomingReplies.length > 0) {
       // deno-lint-ignore no-explicit-any
-      console.log(`[checkReplies] Found ${incomingReplies.length} reply(ies) in chat ${chat.id}:`, incomingReplies.map((m: any) => ({ 
+      console.log(`[checkReplies] Found ${incomingReplies.length} genuine reply(ies) in chat ${chat.id}:`, incomingReplies.map((m: any) => ({ 
         id: m.id, is_sender_self: m.is_sender_self, sender_attendee_id: m.sender_attendee_id, type: m.type,
         timestamp: m.timestamp || m.date 
       })));
