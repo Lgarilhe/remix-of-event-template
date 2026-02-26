@@ -105,6 +105,8 @@ interface MessageAISheetProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   context: AnalysisContext;
+  chatId?: string;
+  accountId?: string;
   profileUrl?: string | null;
   onSuggestionSelect: (text: string) => void;
   onSuggestionSend: (text: string) => void;
@@ -139,6 +141,8 @@ export const MessageAISheet: React.FC<MessageAISheetProps> = ({
   open,
   onOpenChange,
   context,
+  chatId,
+  accountId,
   profileUrl,
   onSuggestionSelect,
   onSuggestionSend,
@@ -152,23 +156,62 @@ export const MessageAISheet: React.FC<MessageAISheetProps> = ({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'analyze' | 'suggestions' | 'jobs' | 'history'>('analyze');
+  const [fromCache, setFromCache] = useState(false);
   const isAnalyzingRef = useRef(false);
 
   const { data: historyData, loading: historyLoading } = useCandidateHistory(profileUrl);
 
-  const analyzeResponse = useCallback(async () => {
+  const analyzeResponse = useCallback(async (skipCache = false) => {
     if (isAnalyzingRef.current) return;
     isAnalyzingRef.current = true;
     setLoading(true);
     setError(null);
+    setFromCache(false);
 
     try {
+      // 1. Check cache first (unless explicitly skipping)
+      if (!skipCache && chatId && accountId) {
+        const { data: cached } = await supabase
+          .from('message_analysis_cache')
+          .select('analysis, updated_at')
+          .eq('chat_id', chatId)
+          .eq('account_id', accountId)
+          .maybeSingle();
+
+        if (cached?.analysis && typeof cached.analysis === 'object') {
+          console.log('[MessageAISheet] Using cached analysis from', cached.updated_at);
+          setAnalysis(cached.analysis as unknown as AnalysisResult);
+          setFromCache(true);
+          setLoading(false);
+          isAnalyzingRef.current = false;
+          return;
+        }
+      }
+
+      // 2. No cache — call analyze-response live
       const response = await supabase.functions.invoke('analyze-response', {
         body: { context },
       });
       if (response.error) throw response.error;
       if (response.data?.success && response.data?.analysis) {
         setAnalysis(response.data.analysis);
+
+        // Store in cache for next time
+        if (chatId && accountId) {
+          supabase
+            .from('message_analysis_cache')
+            .upsert({
+              chat_id: chatId,
+              account_id: accountId,
+              recipient_name: context.recipientName,
+              analysis: response.data.analysis,
+              updated_at: new Date().toISOString(),
+            }, { onConflict: 'chat_id,account_id' })
+            .then((res) => {
+              if (res.error) console.warn('[MessageAISheet] Cache write failed:', res.error);
+              else console.log('[MessageAISheet] Analysis cached');
+            });
+        }
       } else if (response.data?.error) {
         throw new Error(response.data.error);
       }
@@ -179,7 +222,7 @@ export const MessageAISheet: React.FC<MessageAISheetProps> = ({
       setLoading(false);
       isAnalyzingRef.current = false;
     }
-  }, [context]);
+  }, [context, chatId, accountId]);
 
   // Auto-analyze when sheet opens
   React.useEffect(() => {
@@ -294,7 +337,8 @@ export const MessageAISheet: React.FC<MessageAISheetProps> = ({
                 {activeTab === 'analyze' && analysis && (
                   <AnalyzePanel
                     analysis={analysis}
-                    onRefresh={() => { setAnalysis(null); analyzeResponse(); }}
+                    fromCache={fromCache}
+                    onRefresh={() => { setAnalysis(null); setFromCache(false); analyzeResponse(true); }}
                   />
                 )}
 
@@ -324,7 +368,7 @@ export const MessageAISheet: React.FC<MessageAISheetProps> = ({
                   <div className="text-center py-8">
                     <Brain className="w-8 h-8 mx-auto mb-3 text-muted-foreground" />
                     <p className="text-sm text-muted-foreground mb-3">Pas encore d'analyse</p>
-                    <Button variant="outline" size="sm" className="rounded-none" onClick={analyzeResponse}>
+                    <Button variant="outline" size="sm" className="rounded-none" onClick={() => analyzeResponse()}>
                       Lancer l'analyse
                     </Button>
                   </div>
@@ -340,11 +384,18 @@ export const MessageAISheet: React.FC<MessageAISheetProps> = ({
 
 // ─── Analyze Panel ────────────────────────────────────────────────
 
-const AnalyzePanel: React.FC<{ analysis: AnalysisResult; onRefresh: () => void }> = ({ analysis, onRefresh }) => {
+const AnalyzePanel: React.FC<{ analysis: AnalysisResult; fromCache?: boolean; onRefresh: () => void }> = ({ analysis, fromCache, onRefresh }) => {
   const intent = intentConfig[analysis.intent] || intentConfig.neutral;
 
   return (
     <div className="space-y-3">
+      {/* Cache indicator */}
+      {fromCache && (
+        <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground bg-muted/50 px-2 py-1 border border-border">
+          <Zap className="w-3 h-3" /> Analyse pré-calculée
+          <button onClick={onRefresh} className="ml-auto underline hover:text-foreground">Actualiser</button>
+        </div>
+      )}
       {/* Intent card */}
       <div className="border-2 border-foreground p-3 space-y-2">
         <div className="flex items-center justify-between">
@@ -357,7 +408,7 @@ const AnalyzePanel: React.FC<{ analysis: AnalysisResult; onRefresh: () => void }
               <span className="text-xs text-muted-foreground ml-2">({analysis.intentConfidence}%)</span>
             </div>
           </div>
-          <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={onRefresh} title="Relancer">
+          <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={onRefresh} title="Relancer (sans cache)">
             <RefreshCw className="w-3.5 h-3.5" />
           </Button>
         </div>
