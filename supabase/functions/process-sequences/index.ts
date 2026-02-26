@@ -74,27 +74,23 @@ function getActionDelay(actionType: string): number {
 const LOCK_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes — consider stale after this
 
 async function acquireLock(supabase: any, runId: string): Promise<boolean> {
-  // Try to acquire lock only if it's free or stale
-  const { data } = await supabase
-    .from('sequence_processing_lock')
-    .select('locked_at')
-    .eq('id', 'process')
-    .single();
-
-  if (data?.locked_at) {
-    const lockedAge = Date.now() - new Date(data.locked_at).getTime();
-    if (lockedAge < LOCK_TIMEOUT_MS) {
-      console.log(`[process] Lock held by another instance (${Math.round(lockedAge / 1000)}s ago), skipping`);
-      return false;
-    }
-    console.log(`[process] Stale lock detected (${Math.round(lockedAge / 1000)}s), taking over`);
-  }
-
-  await supabase
+  // Atomic lock acquisition: only update if lock is free (null) or stale (> LOCK_TIMEOUT_MS)
+  const staleThreshold = new Date(Date.now() - LOCK_TIMEOUT_MS).toISOString();
+  
+  const { data, error } = await supabase
     .from('sequence_processing_lock')
     .update({ locked_at: new Date().toISOString(), locked_by: runId })
-    .eq('id', 'process');
+    .eq('id', 'process')
+    .or(`locked_at.is.null,locked_at.lt.${staleThreshold}`)
+    .select()
+    .maybeSingle();
 
+  if (error || !data) {
+    console.log(`[process] Lock held by another instance, skipping (runId=${runId})`);
+    return false;
+  }
+
+  console.log(`[process] Lock acquired (runId=${runId})`);
   return true;
 }
 
@@ -195,7 +191,12 @@ async function handleProcess(supabase: any, force = false) {
         const executeResult = await executeStepAction(step.action_type, enrollment, step, 
           { ...exec, final_message: finalMessage, final_subject: finalSubject }, supabase);
 
-        if (executeResult.success) {
+        if (executeResult.error === '__WAIT_EVENT__') {
+          // Special case: wait_connection — transition to waiting_event
+          await supabase.from('sequence_step_executions').update({ status: 'waiting_event' }).eq('id', exec.id);
+          console.log(`[process] ${enrollment.profile_name} → waiting_event (wait_connection)`);
+          results.skipped++;
+        } else if (executeResult.success) {
           await supabase.from('sequence_step_executions').update({ 
             status: 'sent', executed_at: now, final_subject: executeResult.subject || finalSubject, final_message: executeResult.message || finalMessage,
           }).eq('id', exec.id);
@@ -271,6 +272,7 @@ async function handleProcess(supabase: any, force = false) {
 async function handleCheckReplies(supabase: any) {
   const { data: activeEnrollments } = await supabase.from('sequence_enrollments').select('*').eq('status', 'active');
   let repliesDetected = 0;
+  let skippedTooRecent = 0;
 
   for (const enrollment of activeEnrollments || []) {
     // Find the last message/inmail sent by the sequence for this enrollment
@@ -287,6 +289,13 @@ async function handleCheckReplies(supabase: any) {
     // Only check for replies if we've actually sent a message
     if (!lastSentExec?.executed_at) continue;
 
+    // Skip if the last message was sent less than 30 minutes ago (avoid false positives)
+    const sentAge = Date.now() - new Date(lastSentExec.executed_at).getTime();
+    if (sentAge < 30 * 60 * 1000) {
+      skippedTooRecent++;
+      continue;
+    }
+
     // Check for replies after the last message was sent (not after enrollment creation)
     const afterDate = lastSentExec.executed_at;
 
@@ -298,7 +307,8 @@ async function handleCheckReplies(supabase: any) {
       console.log(`[checkReplies] Reply detected for ${enrollment.profile_name} (after ${afterDate})`);
     }
   }
-  return new Response(JSON.stringify({ success: true, repliesDetected }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+  console.log(`[checkReplies] Done: ${repliesDetected} replies, ${skippedTooRecent} skipped (too recent)`);
+  return new Response(JSON.stringify({ success: true, repliesDetected, skippedTooRecent }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 }
 
 // deno-lint-ignore no-explicit-any
@@ -684,7 +694,7 @@ async function executeStepAction(actionType: string, enrollment: Record<string, 
     const subj = (execution.final_subject || step.subject_template || '') as string;
 
     switch (actionType) {
-      case 'wait_connection': return { success: true };
+      case 'wait_connection': return { success: false, error: '__WAIT_EVENT__' };
       case 'check_connection': {
         const p = await getProfileInfo(accountId, profileId, enrollment.profile_url as string | undefined);
         const isConnected = p?.network_distance === 'FIRST_DEGREE';
