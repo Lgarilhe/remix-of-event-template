@@ -492,6 +492,7 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange }: UseMe
             })),
             calendlyLink: calendlyLink || undefined,
             candidateProfileUrl: selectedChat.attendees?.[0]?.profile_url || undefined,
+            candidateName: getChatDisplayName(selectedChat) || undefined,
           },
         },
       });
@@ -636,10 +637,22 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange }: UseMe
     const profileName = getChatDisplayName(selectedChat);
     
     if (calendlyLink) {
-      // Build Calendly link with LinkedIn URL pre-fill
+      // Build Calendly link with LinkedIn URL + name pre-fill
       const profileUrl = selectedChat.attendees?.[0]?.profile_url;
-      const calendlyWithPrefill = profileUrl
-        ? `${calendlyLink}${calendlyLink.includes('?') ? '&' : '?'}a1=${encodeURIComponent(profileUrl)}`
+      const candidateName = getChatDisplayName(selectedChat);
+      const params = new URLSearchParams();
+      if (profileUrl) params.set('a1', profileUrl);
+      if (candidateName) {
+        const parts = candidateName.trim().split(/\s+/);
+        if (parts.length >= 2) {
+          params.set('first_name', parts[0]);
+          params.set('last_name', parts.slice(1).join(' '));
+        } else if (parts.length === 1) {
+          params.set('first_name', parts[0]);
+        }
+      }
+      const calendlyWithPrefill = params.toString()
+        ? `${calendlyLink}${calendlyLink.includes('?') ? '&' : '?'}${params.toString()}`
         : calendlyLink;
       const calendlyMessage = `Voici un lien pour réserver un créneau : ${calendlyWithPrefill}`;
       setNewMessage(prev => prev ? `${prev}\n\n${calendlyMessage}` : calendlyMessage);
