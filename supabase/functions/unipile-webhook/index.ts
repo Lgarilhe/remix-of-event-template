@@ -156,8 +156,12 @@ async function handleNewRelation(supabase: SupabaseClient, payload: WebhookPaylo
 async function handleNewMessage(supabase: SupabaseClient, payload: WebhookPayload) {
   const { account_id, data } = payload;
   
-  // Extract sender info and chat info from message
-  const message = data.message as { 
+  // Handle different payload formats: 
+  // - new_message: { message: {...}, chat: {...} }
+  // - message_received: data IS the message directly, or { message: {...} }
+  const rawMessage = (data.message || data) as Record<string, unknown>;
+  
+  const message = rawMessage as { 
     sender_id?: string; 
     attendee_provider_id?: string;
     sender?: { provider_id?: string; id?: string };
@@ -165,10 +169,12 @@ async function handleNewMessage(supabase: SupabaseClient, payload: WebhookPayloa
     is_sender_self?: boolean;
     sender_attendee_id?: string;
     chat_id?: string;
-  } | undefined;
+  };
   
-  const chat = data.chat as { id?: string } | undefined;
-  const chatId = message?.chat_id || chat?.id;
+  const chat = (data.chat || rawMessage.chat) as { id?: string } | undefined;
+  const chatId = message?.chat_id || chat?.id || rawMessage.chat_id as string | undefined;
+  
+  console.log('[unipile-webhook] handleNewMessage payload keys:', Object.keys(data), '| chatId:', chatId);
   
   // Skip if this is a message WE sent (not a reply)
   // Check multiple fields: is_sender, is_sender_self
