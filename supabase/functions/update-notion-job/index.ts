@@ -16,7 +16,7 @@ const FIELD_MAP: Record<string, { notionKey: string; type: string }> = {
   status:            { notionKey: 'État', type: 'status' },
   seniority:         { notionKey: 'Séniorité', type: 'select' },
   contractType:      { notionKey: 'Type de contrat', type: 'multi_select' },
-  location:          { notionKey: 'Localisation', type: 'select' },
+  location:          { notionKey: 'Localisation', type: 'rich_text' },
   remote:            { notionKey: 'Politique de remote', type: 'select' },
   salaryMin:         { notionKey: 'Salaire budget', type: 'number' },
   salaryMax:         { notionKey: 'Salaire maximum', type: 'number' },

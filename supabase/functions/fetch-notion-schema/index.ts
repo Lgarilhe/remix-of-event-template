@@ -64,12 +64,12 @@ serve(async (req) => {
       'État': 'status',
       'Séniorité': 'seniority',
       'Type de contrat': 'contractType',
-      'Localisation': 'location',
       'Politique de remote': 'remote',
       'Priorité': 'priority',
       'Entité': 'entity',
       'Canal de publication': 'channel',
     };
+    // Note: 'Localisation' is rich_text in Notion, not select — handled as free text input
 
     const schema: Record<string, { type: string; options: { name: string; color: string }[] }> = {};
 
