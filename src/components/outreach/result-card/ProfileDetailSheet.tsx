@@ -375,7 +375,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
 
           {/* ─── CONTENT ─── */}
           <div className="flex-1 overflow-y-auto overflow-x-auto">
-            <div className="p-3 sm:p-6 space-y-4 sm:space-y-6 min-w-0 max-w-full">
+            <div className="p-2 sm:p-6 space-y-3 sm:space-y-6 min-w-0 max-w-full">
               {/* Job Score */}
               {jobScore && (
                 <div className="border border-foreground p-5 bg-muted/20">
@@ -438,7 +438,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
 
               {/* À propos */}
               {profile.summary && (
-                <div className="rounded-xl border border-border/60 bg-background p-4">
+                <div className="rounded-none sm:rounded-xl border border-border/60 bg-background p-3 sm:p-4">
                   <h3 className="text-sm font-semibold text-foreground mb-2">À propos</h3>
                   <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-line">{profile.summary}</p>
                 </div>

@@ -54,7 +54,7 @@ export const CardExpandedContent: React.FC<CardExpandedContentProps> = ({
   const workExperience = profile.work_experience || [];
 
   return (
-    <div className="rounded-xl border border-border/60 bg-background overflow-hidden">
+    <div className="rounded-none sm:rounded-xl border border-border/60 bg-background overflow-hidden">
       <Tabs defaultValue="experience" className="w-full">
         <div className="border-b border-border/50 bg-muted/20 overflow-x-auto">
           <TabsList className="w-max min-w-full h-11 sm:h-12 bg-transparent p-0 rounded-none gap-0">
@@ -79,55 +79,57 @@ export const CardExpandedContent: React.FC<CardExpandedContentProps> = ({
         </div>
 
         {/* Experience Tab */}
-        <TabsContent value="experience" className="mt-0 p-4">
+        <TabsContent value="experience" className="mt-0 p-2 sm:p-4">
           {workExperience.length > 0 ? (
-            <div className="space-y-3">
+            <div className="space-y-2 sm:space-y-3">
               {workExperience.map((exp: any, index: number) => {
                 const isCurrent = !exp.end;
                 const tenure = getTenureLabel(exp.start, exp.end);
                 return (
                   <div
                     key={index}
-                    className={`relative p-4 rounded-xl border transition-colors ${
+                    className={`relative p-3 sm:p-4 rounded-none sm:rounded-xl border transition-colors ${
                       isCurrent
                         ? 'bg-primary/[0.03] border-primary/20 shadow-sm'
                         : 'bg-background border-border/50 hover:border-border'
                     }`}
                   >
-                    {isCurrent && (
-                      <Badge variant="secondary" className="absolute top-3 right-3 text-[10px] bg-emerald-100 text-emerald-700 border-0 px-2 py-0.5 font-semibold">
-                        En poste
-                      </Badge>
-                    )}
-                    <div className="flex items-start gap-3">
+                    <div className="flex items-start gap-2.5 sm:gap-3">
                       {exp.logo ? (
                         <img
                           src={exp.logo}
                           alt={exp.company || ''}
-                          className="mt-0.5 w-10 h-10 rounded-xl object-contain bg-white border border-border/40 shrink-0 p-0.5"
+                          className="mt-0.5 w-9 h-9 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl object-contain bg-white border border-border/40 shrink-0 p-0.5"
                           onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; (e.target as HTMLImageElement).nextElementSibling && ((e.target as HTMLImageElement).nextElementSibling as HTMLElement).classList.remove('hidden'); }}
                         />
                       ) : null}
-                      <div className={`mt-0.5 w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+                      <div className={`mt-0.5 w-9 h-9 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl flex items-center justify-center shrink-0 ${
                         isCurrent ? 'bg-primary/10' : 'bg-muted/60'
                       } ${exp.logo ? 'hidden' : ''}`}>
-                        <Briefcase className={`w-4.5 h-4.5 ${isCurrent ? 'text-primary' : 'text-muted-foreground'}`} />
+                        <Briefcase className={`w-4 h-4 ${isCurrent ? 'text-primary' : 'text-muted-foreground'}`} />
                       </div>
-                      <div className="flex-1 min-w-0 pr-16">
-                        <p className="font-semibold text-foreground text-sm leading-tight">{exp.role}</p>
-                        <p className="text-sm text-muted-foreground mt-0.5 flex items-center gap-1">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-start justify-between gap-2">
+                          <p className="font-semibold text-foreground text-sm leading-tight">{exp.role}</p>
+                          {isCurrent && (
+                            <Badge variant="secondary" className="text-[10px] bg-emerald-100 text-emerald-700 border-0 px-1.5 py-0 font-semibold shrink-0">
+                              En poste
+                            </Badge>
+                          )}
+                        </div>
+                        <p className="text-xs sm:text-sm text-muted-foreground mt-0.5 flex items-center gap-1">
                           <Building2 className="w-3 h-3 shrink-0" />
                           {exp.company}
                         </p>
                         {(exp.start?.year || exp.end?.year) && (
-                          <div className="flex items-center gap-2 mt-1.5 text-xs text-muted-foreground/60">
+                          <div className="flex items-center gap-2 mt-1 text-[11px] sm:text-xs text-muted-foreground/60">
                             <CalendarDays className="w-3 h-3 shrink-0" />
                             <span>{exp.start?.year || '?'} → {exp.end?.year || 'Présent'}</span>
                             {tenure && <span className="text-muted-foreground/40">• {tenure}</span>}
                           </div>
                         )}
                         {exp.description && (
-                          <div className="text-xs text-muted-foreground/70 mt-2.5 leading-relaxed whitespace-pre-line">{exp.description}</div>
+                          <div className="text-xs text-muted-foreground/70 mt-2 leading-relaxed whitespace-pre-line">{exp.description}</div>
                         )}
                       </div>
                     </div>
@@ -141,32 +143,32 @@ export const CardExpandedContent: React.FC<CardExpandedContentProps> = ({
         </TabsContent>
 
         {/* Education Tab */}
-        <TabsContent value="education" className="mt-0 p-4">
+        <TabsContent value="education" className="mt-0 p-2 sm:p-4">
           {education.length > 0 ? (
-            <div className="space-y-3">
+            <div className="space-y-2 sm:space-y-3">
               {education.map((edu: any, index: number) => {
                 const schoolLogo = edu.logo || edu.school_logo || edu.school_details?.logo;
                 return (
-                <div key={index} className="p-4 rounded-xl border border-border/50 bg-background hover:border-border transition-colors">
-                  <div className="flex items-start gap-3">
+                <div key={index} className="p-3 sm:p-4 rounded-none sm:rounded-xl border border-border/50 bg-background hover:border-border transition-colors">
+                  <div className="flex items-start gap-2.5 sm:gap-3">
                     {schoolLogo ? (
                       <img
                         src={schoolLogo}
                         alt={edu.school || ''}
-                        className="mt-0.5 w-10 h-10 rounded-xl object-contain bg-white border border-border/40 shrink-0 p-0.5"
+                        className="mt-0.5 w-9 h-9 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl object-contain bg-white border border-border/40 shrink-0 p-0.5"
                         onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; (e.target as HTMLImageElement).nextElementSibling && ((e.target as HTMLImageElement).nextElementSibling as HTMLElement).classList.remove('hidden'); }}
                       />
                     ) : null}
-                    <div className={`mt-0.5 w-10 h-10 rounded-xl bg-amber-100/60 flex items-center justify-center shrink-0 ${schoolLogo ? 'hidden' : ''}`}>
-                      <GraduationCap className="w-4.5 h-4.5 text-amber-600" />
+                    <div className={`mt-0.5 w-9 h-9 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl bg-amber-100/60 flex items-center justify-center shrink-0 ${schoolLogo ? 'hidden' : ''}`}>
+                      <GraduationCap className="w-4 h-4 text-amber-600" />
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="font-semibold text-foreground text-sm">{edu.school}</p>
-                      <p className="text-sm text-muted-foreground mt-0.5">
+                      <p className="text-xs sm:text-sm text-muted-foreground mt-0.5">
                         {edu.degree}{edu.field_of_study && ` · ${edu.field_of_study}`}
                       </p>
                       {(edu.start?.year || edu.end?.year) && (
-                        <div className="flex items-center gap-2 mt-1.5 text-xs text-muted-foreground/60">
+                        <div className="flex items-center gap-2 mt-1 text-[11px] sm:text-xs text-muted-foreground/60">
                           <CalendarDays className="w-3 h-3" />
                           <span>{edu.start?.year || '?'}{edu.end?.year && ` → ${edu.end.year}`}</span>
                         </div>
@@ -183,7 +185,7 @@ export const CardExpandedContent: React.FC<CardExpandedContentProps> = ({
         </TabsContent>
 
         {/* Skills Tab */}
-        <TabsContent value="skills" className="mt-0 p-4">
+        <TabsContent value="skills" className="mt-0 p-2 sm:p-4">
           {skills.length > 0 ? (
             <div className="flex flex-wrap gap-2">
               {skills.map((skill: any, index: number) => (
@@ -205,7 +207,7 @@ export const CardExpandedContent: React.FC<CardExpandedContentProps> = ({
         </TabsContent>
 
         {/* Messages Tab */}
-        <TabsContent value="messages" className="mt-0 p-4">
+        <TabsContent value="messages" className="mt-0 p-2 sm:p-4">
           <CardMessageThread
             accountId={accountId}
             profileId={profile.id}
@@ -216,7 +218,7 @@ export const CardExpandedContent: React.FC<CardExpandedContentProps> = ({
         </TabsContent>
 
         {/* Posts Tab */}
-        <TabsContent value="posts" className="mt-0 p-4">
+        <TabsContent value="posts" className="mt-0 p-2 sm:p-4">
           <div className="text-center py-12 text-muted-foreground">
             <Newspaper className="w-10 h-10 mx-auto mb-3 opacity-30" />
             <p className="text-sm font-medium mb-1">Publications LinkedIn</p>
