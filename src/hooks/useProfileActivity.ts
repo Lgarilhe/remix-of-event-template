@@ -1,0 +1,105 @@
+import { useState, useEffect } from 'react';
+import { supabase } from '@/integrations/supabase/client';
+
+export interface ActivityEvent {
+  id: string;
+  type: 'sequence_step';
+  timestamp: string;
+  actionType: string; // profile_visit, send_connection, send_message, send_inmail, wait_connection, check_connection
+  stepOrder: number;
+  status: string; // sent, skipped, failed, pending, waiting_event
+  skipReason?: string | null;
+  errorMessage?: string | null;
+  finalSubject?: string | null;
+  sequenceName?: string | null;
+}
+
+export function useProfileActivity(profileId: string | null) {
+  const [events, setEvents] = useState<ActivityEvent[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!profileId) {
+      setEvents([]);
+      return;
+    }
+
+    let cancelled = false;
+    const fetch = async () => {
+      setLoading(true);
+      try {
+        // Get enrollments for this profile
+        const { data: enrollments } = await supabase
+          .from('sequence_enrollments')
+          .select('id, sequence_id')
+          .eq('profile_id', profileId);
+
+        if (!enrollments?.length || cancelled) {
+          setEvents([]);
+          return;
+        }
+
+        // Get sequence names
+        const sequenceIds = [...new Set(enrollments.map(e => e.sequence_id))];
+        const { data: sequences } = await supabase
+          .from('outreach_sequences')
+          .select('id, name')
+          .in('id', sequenceIds);
+        const seqMap = new Map(sequences?.map(s => [s.id, s.name]) || []);
+
+        // Get executions
+        const enrollmentIds = enrollments.map(e => e.id);
+        const { data: executions } = await supabase
+          .from('sequence_step_executions')
+          .select('id, enrollment_id, step_id, step_order, status, executed_at, scheduled_at, skip_reason, error_message, final_subject')
+          .in('enrollment_id', enrollmentIds)
+          .order('executed_at', { ascending: true, nullsFirst: false });
+
+        if (!executions?.length || cancelled) {
+          setEvents([]);
+          return;
+        }
+
+        // Get step details for action types
+        const stepIds = [...new Set(executions.map(e => e.step_id))];
+        const { data: steps } = await supabase
+          .from('sequence_steps')
+          .select('id, action_type, sequence_id')
+          .in('id', stepIds);
+        const stepMap = new Map(steps?.map(s => [s.id, s]) || []);
+
+        const enrollmentSeqMap = new Map(enrollments.map(e => [e.id, e.sequence_id]));
+
+        const mapped: ActivityEvent[] = executions
+          .filter(ex => ex.executed_at) // only show executed steps
+          .map(ex => {
+            const step = stepMap.get(ex.step_id);
+            const seqId = enrollmentSeqMap.get(ex.enrollment_id);
+            return {
+              id: ex.id,
+              type: 'sequence_step' as const,
+              timestamp: ex.executed_at!,
+              actionType: step?.action_type || 'unknown',
+              stepOrder: ex.step_order,
+              status: ex.status,
+              skipReason: ex.skip_reason,
+              errorMessage: ex.error_message,
+              finalSubject: ex.final_subject,
+              sequenceName: seqId ? seqMap.get(seqId) || null : null,
+            };
+          });
+
+        if (!cancelled) setEvents(mapped);
+      } catch (err) {
+        console.error('Error fetching profile activity:', err);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+
+    fetch();
+    return () => { cancelled = true; };
+  }, [profileId]);
+
+  return { events, loading };
+}
