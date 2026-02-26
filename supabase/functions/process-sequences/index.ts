@@ -245,7 +245,7 @@ async function handleProcess(supabase: any, force = false) {
 
     // Auto-pause: if >30% of batch actions failed definitively, pause affected sequences
     const totalActioned = results.processed + results.failed;
-    if (totalActioned >= 2 && results.failed / totalActioned > 0.3) {
+    if (totalActioned >= 5 && results.failed / totalActioned > 0.3) {
       console.warn(`[process] ⚠️ HIGH FAILURE RATE: ${results.failed}/${totalActioned} failed (${Math.round(results.failed / totalActioned * 100)}%). Auto-pausing affected sequences.`);
       for (const seqId of failedSequenceIds) {
         await supabase.from('outreach_sequences').update({ is_active: false }).eq('id', seqId);
