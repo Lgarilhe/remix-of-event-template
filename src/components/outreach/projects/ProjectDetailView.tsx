@@ -464,34 +464,45 @@ export const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
 
               {/* Notes Tab */}
               <TabsContent value="notes" className="h-full m-0 flex flex-col gap-4">
+                {/* Calendly link — always visible */}
+                <div>
+                  <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-widest mb-1.5 flex items-center gap-1.5">
+                    <Link2 className="w-3.5 h-3.5" />
+                    Lien Calendly (injecté dans les messages IA)
+                  </label>
+                  {hasSourcingProject ? (
+                    <div className="flex gap-2">
+                      <Input
+                        value={calendlyLink}
+                        onChange={(e) => handleCalendlyChange(e.target.value)}
+                        placeholder="https://calendly.com/votre-lien/30min"
+                        className="flex-1 text-sm border-foreground/20 rounded-none"
+                      />
+                      {calendlyChanged && (
+                        <button
+                          onClick={saveCalendlyLink}
+                          disabled={isUpdating}
+                          className="flex items-center gap-1.5 h-[36px] px-3 text-[10px] font-medium uppercase tracking-wider border border-foreground bg-foreground text-background"
+                        >
+                          <Save className="w-3 h-3" />
+                          Sauver
+                        </button>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="flex gap-2">
+                      <Input
+                        value=""
+                        disabled
+                        placeholder="Lancez une recherche pour activer ce champ"
+                        className="flex-1 text-sm border-foreground/20 rounded-none opacity-50"
+                      />
+                    </div>
+                  )}
+                </div>
+
                 {hasSourcingProject ? (
                   <>
-                    {/* Calendly link */}
-                    <div>
-                      <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-widest mb-1.5 flex items-center gap-1.5">
-                        <Link2 className="w-3.5 h-3.5" />
-                        Lien Calendly (injecté dans les messages IA)
-                      </label>
-                      <div className="flex gap-2">
-                        <Input
-                          value={calendlyLink}
-                          onChange={(e) => handleCalendlyChange(e.target.value)}
-                          placeholder="https://calendly.com/votre-lien/30min"
-                          className="flex-1 text-sm border-foreground/20 rounded-none"
-                        />
-                        {calendlyChanged && (
-                          <button
-                            onClick={saveCalendlyLink}
-                            disabled={isUpdating}
-                            className="flex items-center gap-1.5 h-[36px] px-3 text-[10px] font-medium uppercase tracking-wider border border-foreground bg-foreground text-background"
-                          >
-                            <Save className="w-3 h-3" />
-                            Sauver
-                          </button>
-                        )}
-                      </div>
-                    </div>
-
                     {/* Notes */}
                     <Textarea
                       value={notes}
@@ -511,7 +522,7 @@ export const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
                     )}
                   </>
                 ) : (
-                  <div className="text-center py-12 text-muted-foreground">
+                  <div className="text-center py-8 text-muted-foreground">
                     <FileText className="w-10 h-10 mx-auto mb-2 opacity-30" />
                     <p className="text-sm mb-1">Notes disponibles après le premier sourcing</p>
                     <p className="text-xs">Lancez une recherche pour activer le projet</p>
