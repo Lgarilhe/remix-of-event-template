@@ -173,11 +173,11 @@ export const ChatListSidebar: React.FC<ChatListSidebarProps> = ({
         {filtersExpanded && (
           <div className="space-y-1.5 pt-0.5">
             {/* Category filter pills */}
-            <div className="flex flex-wrap gap-0.5">
+            <div className="flex gap-0">
               <button
                 onClick={() => onCategoryFilterChange('all')}
                 className={cn(
-                  "h-5 px-1.5 text-[8px] font-medium uppercase tracking-wider border transition-colors",
+                  "flex-1 h-6 px-1.5 text-[9px] font-medium uppercase tracking-wider border transition-colors",
                   categoryFilter === 'all'
                     ? "bg-foreground text-background border-foreground"
                     : "bg-background text-foreground border-foreground/30 hover:border-foreground"
@@ -185,12 +185,12 @@ export const ChatListSidebar: React.FC<ChatListSidebarProps> = ({
               >
                 Tous
               </button>
-              {(Object.entries(CHAT_CATEGORIES) as [ChatCategory, typeof CHAT_CATEGORIES[ChatCategory]][]).map(([key, info]) => (
+              {(Object.entries(CHAT_CATEGORIES) as [ChatCategory, typeof CHAT_CATEGORIES[ChatCategory]][]).map(([key, info], index) => (
                 <button
                   key={key}
                   onClick={() => onCategoryFilterChange(categoryFilter === key ? 'all' : key)}
                   className={cn(
-                    "h-5 px-1.5 text-[8px] font-medium border transition-colors",
+                    "flex-1 h-6 px-1.5 text-[9px] font-medium border border-l-0 transition-colors",
                     categoryFilter === key
                       ? cn("border-foreground", info.color)
                       : "bg-background text-foreground border-foreground/30 hover:border-foreground"
