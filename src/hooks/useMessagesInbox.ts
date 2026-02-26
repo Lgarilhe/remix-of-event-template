@@ -697,7 +697,7 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange }: UseMe
       const calendlyWithPrefill = params.toString()
         ? `${calendlyLink}${calendlyLink.includes('?') ? '&' : '?'}${params.toString()}`
         : calendlyLink;
-      const calendlyMessage = `Voici un lien pour réserver un créneau : ${calendlyWithPrefill}`;
+      const calendlyMessage = `Voici un lien pour réserver un créneau afin de discuter du poste avec notre équipe : ${calendlyWithPrefill}`;
       setNewMessage(prev => prev ? `${prev}\n\n${calendlyMessage}` : calendlyMessage);
       toast.success('📅 Lien Calendly inséré dans le message');
       return;
