@@ -8,3 +8,6 @@ verify_jwt = false
 
 [functions.fetch-airtable]
 verify_jwt = false
+
+[functions.auto-analyze-message]
+verify_jwt = false
