@@ -224,11 +224,7 @@ export const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
                           {job.tjm > 0 && (
                             <EditableInfoCard icon={DollarSign} label="TJM (€)" value={String(job.tjm)} fieldName="tjm" type="number" onSave={saveToNotion} />
                           )}
-                          {notionSchema?.location ? (
-                            <SelectableInfoCard icon={MapPin} label="Localisation" value={job.location || '—'} fieldName="location" options={notionSchema.location.options} onSave={saveToNotion} />
-                          ) : (
-                            <EditableInfoCard icon={MapPin} label="Localisation" value={job.location || '—'} fieldName="location" onSave={saveToNotion} />
-                          )}
+                          <EditableInfoCard icon={MapPin} label="Localisation" value={job.location || '—'} fieldName="location" onSave={saveToNotion} />
                           {notionSchema?.entity ? (
                             <SelectableInfoCard icon={Layers} label="Entité" value={job.entity || '—'} fieldName="entity" options={notionSchema.entity.options} onSave={saveToNotion} />
                           ) : (
