@@ -1013,7 +1013,7 @@ async function handleGetChats(
   });
   
   console.log(`Total merged chats: ${chats.length} (Classic: ${classicChats.length}, Recruiter: ${recruiterChats.length}, Generic: ${genericChats.length})`);
-  
+
   // Log folder distribution for debugging
   const folderCounts: Record<string, number> = {};
   chats.forEach((chat: Record<string, unknown>) => {

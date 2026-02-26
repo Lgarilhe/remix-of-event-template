@@ -647,11 +647,13 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange }: UseMe
       result = result.filter(chat => chatCategories.categoriesMap.get(chat.id) === chatCategories.categoryFilter);
     }
 
-    // Response status filter
+    // Response status filter (using unread_count as proxy: unread > 0 means candidate replied = waiting for me)
     if (responseFilter === 'waiting_candidate') {
-      result = result.filter(chat => chat.last_message?.is_sender === true);
+      // I sent last message → unread is 0 and chat exists
+      result = result.filter(chat => !hasUnread(chat));
     } else if (responseFilter === 'waiting_me') {
-      result = result.filter(chat => chat.last_message?.is_sender === false);
+      // Candidate replied → unread > 0
+      result = result.filter(chat => hasUnread(chat));
     }
     
     if (searchQuery.trim()) {
