@@ -40,6 +40,7 @@ serve(async (req) => {
     }
 
     const payload: WebhookPayload = await req.json();
+    console.log('[unipile-webhook] RAW PAYLOAD:', JSON.stringify(payload).slice(0, 1000));
     console.log('[unipile-webhook] Received event:', payload.event, 'for account:', payload.account_id);
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
