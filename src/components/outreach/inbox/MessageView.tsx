@@ -86,7 +86,8 @@ export const MessageView: React.FC<MessageViewProps> = ({
   const [aiSheetOpen, setAiSheetOpen] = useState(false);
 
   const profileId = selectedChat ? getAttendeeProfileId(selectedChat) : null;
-  const { events: activityEvents } = useProfileActivity(profileId);
+  const profileUrl = selectedChat?.attendees?.[0]?.profile_url || null;
+  const { events: activityEvents } = useProfileActivity(profileId, profileUrl);
 
   // Merge messages and activity events into a unified timeline
   type TimelineItem = 
