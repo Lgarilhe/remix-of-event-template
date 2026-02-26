@@ -39,7 +39,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Button } from '@/components/ui/button';
 import { CreateProjectModal } from './CreateProjectModal';
-import { ProjectDetailPanelEnhanced } from './ProjectDetailPanelEnhanced';
+import { ProjectDetailView } from './ProjectDetailView';
 
 interface ProjectsListProps {
   onResumeSearch: (project: SourcingProject) => void;
@@ -434,13 +434,13 @@ export const ProjectsList: React.FC<ProjectsListProps> = ({ onResumeSearch }) =>
         onOpenChange={setShowCreateModal}
       />
 
-      {selectedProject?.sourcingProject && (
-        <ProjectDetailPanelEnhanced
-          project={selectedProject.sourcingProject}
+      {selectedProject && (
+        <ProjectDetailView
+          project={selectedProject}
           open={!!selectedProject}
           onOpenChange={(open) => !open && setSelectedProject(null)}
           onResumeSearch={() => {
-            onResumeSearch(selectedProject.sourcingProject!);
+            onResumeSearch(toSourcingProject(selectedProject));
             setSelectedProject(null);
           }}
         />
