@@ -1538,6 +1538,7 @@ export type Database = {
       }
       sourcing_projects: {
         Row: {
+          calendly_link: string | null
           client_name: string | null
           created_at: string
           created_by: string
@@ -1558,6 +1559,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          calendly_link?: string | null
           client_name?: string | null
           created_at?: string
           created_by: string
@@ -1578,6 +1580,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          calendly_link?: string | null
           client_name?: string | null
           created_at?: string
           created_by?: string

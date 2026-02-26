@@ -12,6 +12,7 @@ import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Input } from '@/components/ui/input';
 import {
   Play,
   Filter,
@@ -21,6 +22,7 @@ import {
   Save,
   BarChart3,
   Users,
+  Link2,
 } from 'lucide-react';
 import { formatDistanceToNow, format } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -62,6 +64,8 @@ export const ProjectDetailPanelEnhanced: React.FC<ProjectDetailPanelEnhancedProp
   const { data: dynamicStats } = useProjectStats(project.id);
   const [notes, setNotes] = useState(project.notes || '');
   const [notesChanged, setNotesChanged] = useState(false);
+  const [calendlyLink, setCalendlyLink] = useState(project.calendly_link || '');
+  const [calendlyChanged, setCalendlyChanged] = useState(false);
 
   const handleNotesChange = (value: string) => {
     setNotes(value);
@@ -72,6 +76,17 @@ export const ProjectDetailPanelEnhanced: React.FC<ProjectDetailPanelEnhancedProp
     await updateProject({ id: project.id, notes });
     setNotesChanged(false);
     toast.success('Notes sauvegardées');
+  };
+
+  const handleCalendlyChange = (value: string) => {
+    setCalendlyLink(value);
+    setCalendlyChanged(value !== (project.calendly_link || ''));
+  };
+
+  const saveCalendlyLink = async () => {
+    await updateProject({ id: project.id, calendly_link: calendlyLink || null });
+    setCalendlyChanged(false);
+    toast.success('Lien Calendly sauvegardé');
   };
 
   // Parse saved filters for display
@@ -220,7 +235,35 @@ export const ProjectDetailPanelEnhanced: React.FC<ProjectDetailPanelEnhancedProp
               </TabsContent>
 
               {/* Notes Tab */}
-              <TabsContent value="notes" className="h-full m-0 flex flex-col">
+              <TabsContent value="notes" className="h-full m-0 flex flex-col gap-4">
+                {/* Calendly link */}
+                <div>
+                  <label className="text-xs font-medium text-muted-foreground mb-1.5 flex items-center gap-1.5">
+                    <Link2 className="w-3.5 h-3.5" />
+                    Lien Calendly (injecté dans les messages IA)
+                  </label>
+                  <div className="flex gap-2">
+                    <Input
+                      value={calendlyLink}
+                      onChange={(e) => handleCalendlyChange(e.target.value)}
+                      placeholder="https://calendly.com/votre-lien/30min"
+                      className="flex-1 text-sm"
+                    />
+                    {calendlyChanged && (
+                      <Button
+                        onClick={saveCalendlyLink}
+                        disabled={isUpdating}
+                        size="sm"
+                        className="gap-1.5 shrink-0"
+                      >
+                        <Save className="w-3.5 h-3.5" />
+                        Sauver
+                      </Button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Notes */}
                 <Textarea
                   value={notes}
                   onChange={(e) => handleNotesChange(e.target.value)}

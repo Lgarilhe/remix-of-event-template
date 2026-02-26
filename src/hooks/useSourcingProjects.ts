@@ -22,6 +22,7 @@ export interface SourcingProject {
   stats_messaged: number;
   stats_dismissed: number;
   stats_shortlisted: number;
+  calendly_link: string | null;
 }
 
 export interface CreateProjectInput {
@@ -46,6 +47,7 @@ export interface UpdateProjectInput {
   stats_messaged?: number;
   stats_dismissed?: number;
   stats_shortlisted?: number;
+  calendly_link?: string | null;
 }
 
 export const useSourcingProjects = () => {

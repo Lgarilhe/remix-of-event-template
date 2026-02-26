@@ -473,6 +473,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
           profile={profile}
           job={selectedJob}
           selectedAccount={accountId}
+          calendlyLink={activeProject?.calendly_link}
           candidateHistory={historyData ? {
             shortlists: historyData.shortlists,
             placements: historyData.placements,

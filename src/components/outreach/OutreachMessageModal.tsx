@@ -38,6 +38,7 @@ interface OutreachMessageModalProps {
   selectedAccount?: string | null;
   onMessageSent?: () => void | Promise<void>;
   candidateHistory?: CandidateHistoryForPrompt | null;
+  calendlyLink?: string | null;
 }
 
 type Tone = 'professional' | 'casual' | 'enthusiastic';
@@ -50,6 +51,7 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
   selectedAccount,
   onMessageSent,
   candidateHistory,
+  calendlyLink,
 }) => {
   const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
@@ -161,6 +163,7 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
           profileId: candidateProviderId || undefined,
           candidateHistory: candidateHistory || undefined,
           customInstructions: customInstructions.trim() || undefined,
+          calendlyLink: calendlyLink || undefined,
         }
       });
 

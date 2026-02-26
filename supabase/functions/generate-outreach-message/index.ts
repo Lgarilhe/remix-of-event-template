@@ -266,7 +266,7 @@ serve(async (req) => {
   }
 
   try {
-    const { profile, job, tone = "professional", senderName, candidateStatus = "to_evaluate", accountId, profileId, candidateHistory, customInstructions } = await req.json() as {
+    const { profile, job, tone = "professional", senderName, candidateStatus = "to_evaluate", accountId, profileId, candidateHistory, customInstructions, calendlyLink } = await req.json() as {
       profile: ProfileData;
       job: JobData;
       tone?: "professional" | "casual" | "enthusiastic";
@@ -276,6 +276,7 @@ serve(async (req) => {
       profileId?: string;
       candidateHistory?: CandidateHistoryData | null;
       customInstructions?: string;
+      calendlyLink?: string;
     };
     
     const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
@@ -713,6 +714,16 @@ Ton post sur les micro-services m'a donné une idée. On a un projet greenfield 
 Ça t'inspire un avis ?
 
 Marc"
+${calendlyLink ? `
+=== LIEN CALENDLY DISPONIBLE ===
+Lien de prise de RDV: ${calendlyLink}
+RÈGLES D'UTILISATION:
+- Tu peux proposer ce lien comme CTA UNIQUEMENT quand le message vise à proposer un échange/call/rdv
+- Intègre-le naturellement: "Si ça te parle, tu peux bloquer un créneau ici: ${calendlyLink}" ou "Dispo pour un call ? ${calendlyLink}"
+- NE L'UTILISE PAS systématiquement — seulement quand le CTA est de type "proposer un échange"
+- Pour les messages de qualification (question ouverte), ne mets PAS le lien
+=== FIN CALENDLY ===
+` : ''}
 ${customInstructions ? `
 === INSTRUCTIONS SUPPLÉMENTAIRES DU RECRUTEUR (PRIORITÉ HAUTE) ===
 ${customInstructions.slice(0, 500)}
