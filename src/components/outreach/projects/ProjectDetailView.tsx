@@ -199,6 +199,9 @@ export const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
                       <>
                         {/* Key info grid */}
                         <div className="grid grid-cols-2 gap-3">
+                          {job.contractType && (
+                            <InfoCard icon={Briefcase} label="Type de contrat" value={job.contractType} />
+                          )}
                           {job.salaryMin > 0 && (
                             <InfoCard icon={DollarSign} label="Salaire" value={`${job.salaryMin}${job.salaryMax ? ` - ${job.salaryMax}` : ''} K€`} />
                           )}
@@ -217,8 +220,8 @@ export const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
                           {job.priority && (
                             <InfoCard icon={Star} label="Priorité" value={job.priority} />
                           )}
-                          {job.status && (
-                            <InfoCard icon={Info} label="Statut Notion" value={job.status} />
+                          {job.entity && (
+                            <InfoCard icon={Layers} label="Entité" value={job.entity} />
                           )}
                           {job.channel && (
                             <InfoCard icon={Layers} label="Canal" value={job.channel} />
