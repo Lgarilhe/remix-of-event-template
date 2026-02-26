@@ -345,6 +345,75 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange }: UseMe
     }
   }, [selectedAccount]);
 
+  // Fire-and-forget: update status to 'messaged' + sync Notion after sending from inbox
+  const syncAfterInboxSend = useCallback(async (chat: Chat) => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const profileId = getAttendeeProfileId(chat);
+      const profileUrl = chat.attendees?.[0]?.profile_url || null;
+      const candidateName = getChatDisplayName(chat);
+      const candidateHeadline = getChatHeadline(chat);
+
+      // Find job context from enrollments or job_candidate_status
+      const enrollmentProfileId = profileId || (profileUrl ? profileUrl.split('/').filter(Boolean).pop() : null);
+      const enrollment = enrollmentProfileId ? enrollmentsMap.get(enrollmentProfileId) : null;
+      const jobId = enrollment?.job_id || null;
+      const jobTitle = enrollment?.job_title || null;
+      const job = jobId ? availableJobs.find(j => j.id === jobId) : null;
+
+      // 1. Update job_candidate_status to 'messaged' if we have a candidate id + job
+      if (profileId && jobId) {
+        await supabase
+          .from('job_candidate_status')
+          .upsert({
+            job_id: jobId,
+            candidate_id: profileId,
+            linkedin_profile_url: profileUrl || null,
+            candidate_name: candidateName || null,
+            candidate_headline: candidateHeadline || null,
+            status: 'messaged',
+            created_by: user.id,
+          }, {
+            onConflict: 'job_id,candidate_id,created_by',
+          });
+        console.log('[Inbox] Status updated to messaged for', candidateName);
+      }
+
+      // 2. Sync to Notion via add-to-shortlist (create/update candidate + shortlist)
+      if (candidateName) {
+        // Determine accompagnement from job data
+        const accompagnementRaw = (job as any)?.accompagnement || [];
+        let accompagnement: string | undefined;
+        if (accompagnementRaw.some?.((a: string) => a.toLowerCase().includes('rpo') || a.toLowerCase().includes('embedded'))) {
+          accompagnement = 'RPO';
+        } else if (accompagnementRaw.some?.((a: string) => a.toLowerCase().includes('succès') || a.toLowerCase().includes('succes'))) {
+          accompagnement = 'Succès';
+        }
+
+        await supabase.functions.invoke('add-to-shortlist', {
+          body: {
+            name: candidateName,
+            headline: candidateHeadline,
+            linkedinUrl: profileUrl || undefined,
+            jobId: jobId || undefined,
+            jobTitle: jobTitle || undefined,
+            clientName: job?.client?.name || undefined,
+            clientId: (job?.client as any)?.id || undefined,
+            entity: 'Konekt',
+            accompagnement,
+            etape: 'Contacté',
+            etat: 'En attente de réponse',
+          },
+        });
+        console.log('[Inbox] Notion sync done for', candidateName);
+      }
+    } catch (err) {
+      console.error('[Inbox] Post-send sync error (non-blocking):', err);
+    }
+  }, [enrollmentsMap, availableJobs]);
+
   // Send a message
   const sendMessage = useCallback(async () => {
     if (!selectedAccount || !selectedChat || !newMessage.trim()) return;
@@ -375,6 +444,9 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange }: UseMe
       // Mark chat as read locally after sending
       markChatAsReadLocally(selectedChat.id);
       
+      // Fire-and-forget: sync status + Notion
+      syncAfterInboxSend(selectedChat);
+      
       setTimeout(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
       }, 100);
@@ -386,7 +458,7 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange }: UseMe
     } finally {
       setSending(false);
     }
-  }, [selectedAccount, selectedChat, newMessage]);
+  }, [selectedAccount, selectedChat, newMessage, syncAfterInboxSend]);
 
   // Send suggestion directly
   const handleSuggestionSend = useCallback(async (text: string) => {
@@ -419,6 +491,9 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange }: UseMe
       // Mark chat as read locally after sending
       if (selectedChat) markChatAsReadLocally(selectedChat.id);
       
+      // Fire-and-forget: sync status + Notion
+      syncAfterInboxSend(selectedChat);
+      
       setTimeout(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
       }, 100);
@@ -430,7 +505,7 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange }: UseMe
     } finally {
       setSending(false);
     }
-  }, [selectedAccount, selectedChat, sending]);
+  }, [selectedAccount, selectedChat, sending, syncAfterInboxSend]);
 
   // Fetch AI reply suggestions
   const fetchReplySuggestions = useCallback(async () => {
