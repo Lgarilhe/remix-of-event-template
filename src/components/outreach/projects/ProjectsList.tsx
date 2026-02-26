@@ -67,12 +67,18 @@ export const ProjectsList: React.FC<ProjectsListProps> = ({ onResumeSearch }) =>
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [selectedProject, setSelectedProject] = useState<UnifiedProject | null>(null);
+  const [selectedProjectKey, setSelectedProjectKey] = useState<string | null>(null);
 
   // Merge Notion jobs + manual projects into unified list
   const unifiedProjects = useMemo(
     () => mergeProjectsAndJobs(notionJobs, sourcingProjects),
     [notionJobs, sourcingProjects]
+  );
+
+  // Keep detail panel project in sync with live query data
+  const selectedProject = useMemo(
+    () => (selectedProjectKey ? unifiedProjects.find((p) => p.key === selectedProjectKey) || null : null),
+    [selectedProjectKey, unifiedProjects]
   );
 
   // Get sourcing project IDs for batch stats
@@ -259,7 +265,7 @@ export const ProjectsList: React.FC<ProjectsListProps> = ({ onResumeSearch }) =>
               <div
                 key={project.key}
                 className="bg-background border border-foreground p-4 sm:p-5 hover:bg-brutal-accent/5 transition-all cursor-pointer"
-                onClick={() => setSelectedProject(project)}
+                onClick={() => setSelectedProjectKey(project.key)}
               >
                 <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
                   {/* Left: Main info */}
@@ -437,11 +443,11 @@ export const ProjectsList: React.FC<ProjectsListProps> = ({ onResumeSearch }) =>
       {selectedProject && (
         <ProjectDetailView
           project={selectedProject}
-          open={!!selectedProject}
-          onOpenChange={(open) => !open && setSelectedProject(null)}
+          open={Boolean(selectedProject)}
+          onOpenChange={(open) => !open && setSelectedProjectKey(null)}
           onResumeSearch={() => {
             onResumeSearch(toSourcingProject(selectedProject));
-            setSelectedProject(null);
+            setSelectedProjectKey(null);
           }}
         />
       )}
