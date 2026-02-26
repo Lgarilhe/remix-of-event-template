@@ -11,7 +11,11 @@ const WEBHOOK_SECRET = Deno.env.get('UNIPILE_WEBHOOK_SECRET');
 interface WebhookPayload {
   event: string;
   account_id: string;
-  data: Record<string, unknown>;
+  data?: Record<string, unknown>;
+  // message_received format (flat structure)
+  chat_id?: string;
+  sender?: { attendee_id?: string; attendee_provider_id?: string; attendee_name?: string; attendee_profile_url?: string };
+  attendees?: Array<{ attendee_provider_id?: string; attendee_name?: string; attendee_profile_url?: string }>;
 }
 
 interface SequenceEnrollment {
@@ -157,93 +161,83 @@ async function handleNewRelation(supabase: SupabaseClient, payload: WebhookPaylo
 async function handleNewMessage(supabase: SupabaseClient, payload: WebhookPayload) {
   const { account_id, data } = payload;
   
-  // Handle different payload formats: 
-  // - new_message: { message: {...}, chat: {...} }
-  // - message_received: data IS the message directly, or { message: {...} }
-  const rawMessage = (data.message || data) as Record<string, unknown>;
+  // Handle two payload formats:
+  // 1. new_message: { data: { message: {...}, chat: {...} } }
+  // 2. message_received: { chat_id, sender: {...}, attendees: [...] } (flat, no data)
   
-  const message = rawMessage as { 
-    sender_id?: string; 
-    attendee_provider_id?: string;
-    sender?: { provider_id?: string; id?: string };
-    is_sender?: boolean;
-    is_sender_self?: boolean;
-    sender_attendee_id?: string;
-    chat_id?: string;
-  };
+  let chatId: string | undefined;
+  let senderId: string | undefined;
+  let isSenderSelf: boolean | undefined;
+  let senderAttendeeId: string | undefined;
   
-  const chat = (data.chat || rawMessage.chat) as { id?: string } | undefined;
-  const chatId = message?.chat_id || chat?.id || rawMessage.chat_id as string | undefined;
-  
-  console.log('[unipile-webhook] handleNewMessage payload keys:', Object.keys(data), '| chatId:', chatId);
-  
-  // Skip if this is a message WE sent (not a reply)
-  // Check multiple fields: is_sender, is_sender_self
-  if (message?.is_sender === true || message?.is_sender_self === true) {
-    console.log('[unipile-webhook] new_message: Skipping - this is our own sent message');
+  if (payload.sender && payload.chat_id) {
+    // message_received format (flat)
+    console.log('[unipile-webhook] Processing message_received format');
+    chatId = payload.chat_id;
+    senderId = payload.sender.attendee_provider_id;
+    senderAttendeeId = payload.sender.attendee_id;
+    // In message_received, the sender is always the other person (not us)
+    isSenderSelf = false;
+  } else if (data) {
+    // new_message format (nested)
+    console.log('[unipile-webhook] Processing new_message format');
+    const message = data.message as { 
+      sender_id?: string; 
+      attendee_provider_id?: string;
+      sender?: { provider_id?: string; id?: string };
+      is_sender?: boolean;
+      is_sender_self?: boolean;
+      sender_attendee_id?: string;
+      chat_id?: string;
+    } | undefined;
+    
+    const chat = data.chat as { id?: string } | undefined;
+    chatId = message?.chat_id || chat?.id;
+    senderId = message?.sender?.provider_id || message?.sender?.id || message?.sender_id || message?.attendee_provider_id;
+    isSenderSelf = message?.is_sender === true || message?.is_sender_self === true ? true : 
+                   message?.is_sender === false || message?.is_sender_self === false ? false : undefined;
+    senderAttendeeId = message?.sender_attendee_id;
+  } else {
+    console.log('[unipile-webhook] handleNewMessage: Unrecognized payload format, keys:', Object.keys(payload));
     return;
   }
   
-  // For ambiguous cases (InMails where is_sender/is_sender_self are both undefined),
-  // resolve our own attendee ID from the chat to verify
-  if (message?.is_sender === undefined && message?.is_sender_self === undefined && chatId) {
+  // Skip if this is a message WE sent
+  if (isSenderSelf === true) {
+    console.log('[unipile-webhook] Skipping - this is our own sent message');
+    return;
+  }
+  
+  // For ambiguous cases (is_sender undefined), resolve via chat attendees API
+  if (isSenderSelf === undefined && chatId && senderAttendeeId) {
     try {
       const UNIPILE_DSN = Deno.env.get('UNIPILE_DSN')!;
       const UNIPILE_API_KEY = Deno.env.get('UNIPILE_API_KEY')!;
-      // Use the dedicated attendees endpoint
-      const attRes = await fetch(`${UNIPILE_DSN}/api/v1/chats/${chatId}/attendees`, { headers: { 'X-API-KEY': UNIPILE_API_KEY } });
+      const attRes = await fetch(`https://${UNIPILE_DSN}/api/v1/chats/${chatId}/attendees`, { headers: { 'X-API-KEY': UNIPILE_API_KEY } });
       if (attRes.ok) {
         const attData = await attRes.json();
         const attendees = attData.items || attData || [];
         const attendeeList = Array.isArray(attendees) ? attendees : [];
         // deno-lint-ignore no-explicit-any
         const ownAttendee = attendeeList.find((a: any) => a.is_self === true || a.is_self === 1 || a.role === 'self');
-        // deno-lint-ignore no-explicit-any
-        const otherAttendees = attendeeList.filter((a: any) => a.is_self === false || a.is_self === 0);
-        // Collect other attendee IDs
-        // deno-lint-ignore no-explicit-any
-        const otherIds = new Set(otherAttendees.flatMap((a: any) => [a.id, a.provider_id, a.attendee_id].filter(Boolean)));
-        
-        if (ownAttendee && message?.sender_attendee_id && 
-            (ownAttendee.id === message.sender_attendee_id || ownAttendee.provider_id === message.sender_attendee_id || ownAttendee.attendee_id === message.sender_attendee_id)) {
-          console.log('[unipile-webhook] new_message: Skipping - sender is our own attendee ID:', message.sender_attendee_id);
+        if (ownAttendee && (ownAttendee.id === senderAttendeeId || ownAttendee.provider_id === senderAttendeeId || ownAttendee.attendee_id === senderAttendeeId)) {
+          console.log('[unipile-webhook] Skipping - sender is our own attendee');
           return;
         }
-        // If no ownAttendee found (Recruiter InMails return only prospects with is_self=0),
-        // check if sender is in otherIds (prospect) → genuine reply, let it through
-        if (!ownAttendee && otherIds.size > 0 && message?.sender_attendee_id) {
-          if (otherIds.has(message.sender_attendee_id)) {
-            console.log('[unipile-webhook] new_message: Sender matches prospect attendee — genuine reply');
-            // Fall through to process as reply
-          } else {
-            console.log('[unipile-webhook] new_message: Sender not in prospect IDs, likely self — skipping');
-            return;
-          }
-        }
-        if (!ownAttendee && otherIds.size === 0) {
-          console.log('[unipile-webhook] new_message: WARNING - could not classify any attendee, skipping');
-          return;
-        }
+      } else {
+        await attRes.text(); // consume body
       }
     } catch (e) {
-      console.warn('[unipile-webhook] Failed to verify sender via chat attendees:', e);
-      console.log('[unipile-webhook] new_message: Skipping ambiguous message to prevent false positive');
-      return;
+      console.warn('[unipile-webhook] Failed to verify sender via attendees:', e);
     }
   }
   
-  // Try multiple ways to extract the sender's profile ID
-  const senderId = message?.sender?.provider_id || 
-                   message?.sender?.id || 
-                   message?.sender_id || 
-                   message?.attendee_provider_id;
-  
   if (!senderId) {
-    console.log('[unipile-webhook] new_message: No sender ID in payload', JSON.stringify(data, null, 2));
+    console.log('[unipile-webhook] No sender ID found in payload');
     return;
   }
 
-  console.log('[unipile-webhook] new_message: From profile:', senderId, '| Account:', account_id);
+  console.log('[unipile-webhook] Message from:', senderId, '| Chat:', chatId, '| Account:', account_id);
 
   // Find active enrollments - try exact match first, then partial match for ID format variations
   // LinkedIn IDs can come in different formats: "AEMAABl08fo...", "ACo...", "urn:li:member:..."
