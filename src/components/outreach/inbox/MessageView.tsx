@@ -1,9 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { InMailTextEditor } from '../InMailTextEditor';
 import { ToneSelector, AITone } from './ToneSelector';
 import { MessageAISheet } from './MessageAISheet';
+import { ActivityEventCard } from './ActivityEventCard';
+import { useProfileActivity, ActivityEvent } from '@/hooks/useProfileActivity';
 import { 
   ChevronLeft,
   User,
@@ -81,8 +83,27 @@ export const MessageView: React.FC<MessageViewProps> = ({
   const [localTone, setLocalTone] = useState<AITone>(selectedTone);
   const currentTone = onToneChange ? selectedTone : localTone;
   const handleToneChange = onToneChange || setLocalTone;
-
   const [aiSheetOpen, setAiSheetOpen] = useState(false);
+
+  const profileId = selectedChat ? getAttendeeProfileId(selectedChat) : null;
+  const { events: activityEvents } = useProfileActivity(profileId);
+
+  // Merge messages and activity events into a unified timeline
+  type TimelineItem = 
+    | { kind: 'message'; data: Message }
+    | { kind: 'event'; data: ActivityEvent };
+
+  const timeline = useMemo<TimelineItem[]>(() => {
+    const items: TimelineItem[] = [];
+    messages.forEach(m => items.push({ kind: 'message', data: m }));
+    activityEvents.forEach(e => items.push({ kind: 'event', data: e }));
+    items.sort((a, b) => {
+      const tA = (a.kind === 'message' ? a.data.timestamp : a.data.timestamp) || '';
+      const tB = (b.kind === 'message' ? b.data.timestamp : b.data.timestamp) || '';
+      return tA.localeCompare(tB);
+    });
+    return items;
+  }, [messages, activityEvents]);
 
   if (!selectedChat) {
     return (
@@ -102,7 +123,6 @@ export const MessageView: React.FC<MessageViewProps> = ({
   const subject = getChatSubject(selectedChat);
   const avatar = getChatAvatar(selectedChat);
   const jobInfo = getChatJobInfo(selectedChat, enrollmentsMap);
-  const profileId = getAttendeeProfileId(selectedChat);
   const hasCandidateMessage = messages.some(m => !m.is_sender);
 
   const aiContext = {
@@ -206,43 +226,49 @@ export const MessageView: React.FC<MessageViewProps> = ({
           </div>
         ) : (
           <div className="space-y-3">
-            {messages.map((msg, idx) => (
-              <div
-                key={msg.id || idx}
-                className={cn("flex", msg.is_sender ? "justify-end" : "justify-start")}
-              >
+            {timeline.map((item, idx) => {
+              if (item.kind === 'event') {
+                return <ActivityEventCard key={`evt-${item.data.id}`} event={item.data} />;
+              }
+              const msg = item.data;
+              return (
                 <div
-                  className={cn(
-                    "max-w-[75%] px-4 py-2.5",
-                    msg.is_sender
-                      ? "bg-foreground text-background"
-                      : "bg-muted text-foreground border border-foreground"
-                  )}
+                  key={msg.id || idx}
+                  className={cn("flex", msg.is_sender ? "justify-end" : "justify-start")}
                 >
-                  <p className="text-sm whitespace-pre-wrap break-words">{getMessageText(msg)}</p>
-                  <div className={cn(
-                    "flex items-center gap-1 mt-1",
-                    msg.is_sender ? "justify-end" : "justify-start"
-                  )}>
-                    <span className={cn(
-                      "text-[10px]",
-                      msg.is_sender ? "text-background/70" : "text-muted-foreground"
-                    )}>
-                      {formatMessageTime(msg.timestamp)}
-                    </span>
-                    {!!msg.is_sender && (
-                      (msg.read || msg.seen === 1) ? (
-                        <CheckCheck className="w-3 h-3 text-background/70" />
-                      ) : msg.delivered ? (
-                        <Check className="w-3 h-3 text-background/70" />
-                      ) : (
-                        <Clock className="w-3 h-3 text-background/50" />
-                      )
+                  <div
+                    className={cn(
+                      "max-w-[75%] px-4 py-2.5",
+                      msg.is_sender
+                        ? "bg-foreground text-background"
+                        : "bg-muted text-foreground border border-foreground"
                     )}
+                  >
+                    <p className="text-sm whitespace-pre-wrap break-words">{getMessageText(msg)}</p>
+                    <div className={cn(
+                      "flex items-center gap-1 mt-1",
+                      msg.is_sender ? "justify-end" : "justify-start"
+                    )}>
+                      <span className={cn(
+                        "text-[10px]",
+                        msg.is_sender ? "text-background/70" : "text-muted-foreground"
+                      )}>
+                        {formatMessageTime(msg.timestamp)}
+                      </span>
+                      {!!msg.is_sender && (
+                        (msg.read || msg.seen === 1) ? (
+                          <CheckCheck className="w-3 h-3 text-background/70" />
+                        ) : msg.delivered ? (
+                          <Check className="w-3 h-3 text-background/70" />
+                        ) : (
+                          <Clock className="w-3 h-3 text-background/50" />
+                        )
+                      )}
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
             <div ref={messagesEndRef} />
           </div>
         )}
