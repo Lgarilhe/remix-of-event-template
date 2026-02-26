@@ -239,72 +239,43 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
 
           {/* Info */}
           <div className="flex-1 min-w-0">
-            <div className="flex flex-col gap-1">
-              <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap min-w-0 max-w-full">
-                    {/* Avatar inline next to name on mobile */}
-                    <div className="relative shrink-0 sm:hidden">
-                      <Avatar className="w-8 h-8 border border-border shadow-sm">
-                        <AvatarImage src={profile.profile_picture_url} alt={fullName} className="object-cover" />
-                        <AvatarFallback className="bg-gradient-to-br from-primary to-primary/80 text-primary-foreground text-xs font-medium">
-                          {initials || '?'}
-                        </AvatarFallback>
-                      </Avatar>
-                      {networkDistance && networkDistance <= 3 && (
-                        <span className="absolute -bottom-0.5 -right-0.5 w-4 h-4 bg-background border border-primary rounded-full flex items-center justify-center text-[8px] font-bold text-primary">
-                          {networkDistance}°
-                        </span>
-                      )}
-                    </div>
-                    <h3 className="font-semibold text-foreground text-sm sm:text-base leading-tight break-words sm:truncate">
-                      {fullName || 'Profil LinkedIn'}
-                    </h3>
-                    <CardStatusBadges
-                      candidateStatus={candidateStatus}
-                      jobScore={jobScore}
-                      profile={profile}
-                      isLikelyToRespond={isLikelyToRespond}
-                      airtableMatch={airtableMatch}
-                      notionMatch={notionMatch}
-                      historyData={historyData}
-                      historyLoading={historyLoading}
-                      historyLatestDateLabel={historyLatestDateLabel}
-                    />
+            {/* Row 1: Name + badges + actions */}
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap min-w-0 max-w-full">
+                  {/* Avatar inline next to name on mobile */}
+                  <div className="relative shrink-0 sm:hidden">
+                    <Avatar className="w-8 h-8 border border-border shadow-sm">
+                      <AvatarImage src={profile.profile_picture_url} alt={fullName} className="object-cover" />
+                      <AvatarFallback className="bg-gradient-to-br from-primary to-primary/80 text-primary-foreground text-xs font-medium">
+                        {initials || '?'}
+                      </AvatarFallback>
+                    </Avatar>
+                    {networkDistance && networkDistance <= 3 && (
+                      <span className="absolute -bottom-0.5 -right-0.5 w-4 h-4 bg-background border border-primary rounded-full flex items-center justify-center text-[8px] font-bold text-primary">
+                        {networkDistance}°
+                      </span>
+                    )}
                   </div>
-
-                  <p className="text-xs sm:text-sm text-muted-foreground line-clamp-2 mt-0.5 sm:mt-1 leading-snug break-words">
-                    {profile.headline || currentRole || 'Profil LinkedIn'}
-                  </p>
-                  {(historyData || notionShortlistsForCandidate.length > 0 || historyPanelLoading) && (
-                    <CandidateHistoryPanel data={historyData} loading={historyPanelLoading} compact notionShortlists={notionShortlistsForCandidate} />
-                  )}
-                </div>
-
-                {/* Desktop actions */}
-                <div className="hidden sm:flex" data-no-detail>
-                  <CardActions
-                    profile={profile}
-                    profileUrl={profileUrl}
-                    fullName={fullName}
-                    selectedJob={selectedJob}
+                  <h3 className="font-semibold text-foreground text-sm sm:text-base leading-tight break-words sm:truncate">
+                    {fullName || 'Profil LinkedIn'}
+                  </h3>
+                  <CardStatusBadges
+                    candidateStatus={candidateStatus}
                     jobScore={jobScore}
-                    accountId={accountId}
-                    activeProject={activeProject}
-                    isScoring={isScoring}
-                    isAnalyzing={isAnalyzing}
-                    onScoreProfile={onScoreProfile}
-                    onOpenMessage={() => onOpenDetail?.()}
-                    onAiAnalysis={() => onOpenDetail?.()}
-                    onArchive={onArchive}
-                    onSequenceEnroll={onSequenceEnroll}
-                    onProfileTreated={onProfileTreated}
+                    profile={profile}
+                    isLikelyToRespond={isLikelyToRespond}
+                    airtableMatch={airtableMatch}
+                    notionMatch={notionMatch}
+                    historyData={historyData}
+                    historyLoading={historyLoading}
+                    historyLatestDateLabel={historyLatestDateLabel}
                   />
                 </div>
               </div>
 
-              {/* Mobile actions */}
-              <div className="flex sm:hidden items-center gap-0.5 mt-1 overflow-x-auto max-w-full no-scrollbar" data-no-detail>
+              {/* Desktop actions */}
+              <div className="hidden sm:flex shrink-0" data-no-detail>
                 <CardActions
                   profile={profile}
                   profileUrl={profileUrl}
@@ -321,13 +292,17 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
                   onArchive={onArchive}
                   onSequenceEnroll={onSequenceEnroll}
                   onProfileTreated={onProfileTreated}
-                  compact
                 />
               </div>
             </div>
 
-            {/* Meta info row */}
-            <div className="flex flex-col sm:flex-row sm:flex-wrap items-start sm:items-center gap-x-2 sm:gap-x-4 gap-y-1 mt-2 sm:mt-3 text-[10px] sm:text-xs text-muted-foreground">
+            {/* Row 2: Headline */}
+            <p className="text-xs sm:text-sm text-muted-foreground line-clamp-2 mt-0.5 leading-snug break-words">
+              {profile.headline || currentRole || 'Profil LinkedIn'}
+            </p>
+
+            {/* Row 3: Company + Location + Experience + Connections */}
+            <div className="flex flex-col sm:flex-row sm:flex-wrap items-start sm:items-center gap-x-2 sm:gap-x-4 gap-y-0.5 mt-1.5 text-[10px] sm:text-xs text-muted-foreground">
               {currentCompany && (
                 <span className="flex items-center gap-1.5 font-medium text-foreground/80 min-w-0">
                   {profileData.currentJob?.logo ? (
@@ -361,21 +336,17 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
               )}
             </div>
 
-            {/* Job Score Display - compact inline */}
+            {/* Row 4: Job Score */}
             {jobScore && (
-              <div className="mt-2">
-                <JobScoreDisplay
-                  result={jobScore}
-                  jobTitle={selectedJob?.title}
-                  compact
-                />
+              <div className="mt-1.5">
+                <JobScoreDisplay result={jobScore} jobTitle={selectedJob?.title} compact />
               </div>
             )}
 
-            {/* Experience preview - compact */}
+            {/* Row 5: Experience preview */}
             {(otherCurrentJobs.length > 0 || pastJobs.length > 0) && (
               <div className="mt-2 pt-2 border-t border-border/50">
-              <div className="space-y-1.5">
+                <div className="space-y-1">
                   {[...otherCurrentJobs.slice(0, 1), ...pastJobs.slice(0, 1)].map((pos: any, index: number) => (
                     <div key={index} className="flex items-center gap-2 text-xs min-w-0">
                       {pos.logo ? (
@@ -399,7 +370,7 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
               </div>
             )}
 
-            {/* Skills preview - compact */}
+            {/* Row 6: Skills */}
             {skills.length > 0 && (
               <div className="flex flex-wrap gap-1 mt-2 overflow-hidden">
                 {skills.slice(0, 4).map((skill: any, index: number) => (
@@ -415,9 +386,38 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
               </div>
             )}
 
-            {/* "Voir détails" - visible on mobile, hover on desktop */}
+            {/* Row 7: History (Airtable / Notion) */}
+            {(historyData || notionShortlistsForCandidate.length > 0 || historyPanelLoading) && (
+              <div className="mt-2">
+                <CandidateHistoryPanel data={historyData} loading={historyPanelLoading} compact notionShortlists={notionShortlistsForCandidate} />
+              </div>
+            )}
+
+            {/* Row 8: Mobile actions */}
+            <div className="flex sm:hidden items-center gap-0.5 mt-2 overflow-x-auto max-w-full no-scrollbar" data-no-detail>
+              <CardActions
+                profile={profile}
+                profileUrl={profileUrl}
+                fullName={fullName}
+                selectedJob={selectedJob}
+                jobScore={jobScore}
+                accountId={accountId}
+                activeProject={activeProject}
+                isScoring={isScoring}
+                isAnalyzing={isAnalyzing}
+                onScoreProfile={onScoreProfile}
+                onOpenMessage={() => onOpenDetail?.()}
+                onAiAnalysis={() => onOpenDetail?.()}
+                onArchive={onArchive}
+                onSequenceEnroll={onSequenceEnroll}
+                onProfileTreated={onProfileTreated}
+                compact
+              />
+            </div>
+
+            {/* "Voir détails" */}
             <div
-              className="mt-2 text-[10px] text-primary font-medium sm:text-primary/60 sm:opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1 cursor-pointer py-1"
+              className="mt-1.5 text-[10px] text-primary font-medium sm:text-primary/60 sm:opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1 cursor-pointer py-0.5"
               onClick={(e) => { e.stopPropagation(); onOpenDetail?.(); }}
             >
               <ExternalLink className="w-3 h-3" />
