@@ -176,6 +176,9 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange }: UseMe
   const [showSequenceSelect, setShowSequenceSelect] = useState(false);
   const [showPipelineModal, setShowPipelineModal] = useState(false);
   const [pipelinePreSelectedJobId, setPipelinePreSelectedJobId] = useState<string | undefined>();
+  
+  // Calendly link resolved from candidate's project
+  const [calendlyLink, setCalendlyLink] = useState<string | null>(null);
 
   // Fetch sequence enrollments
   const fetchEnrollments = useCallback(async () => {
@@ -487,6 +490,7 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange }: UseMe
               skills: j.skills || [],
               client: j.client,
             })),
+            calendlyLink: calendlyLink || undefined,
           },
         },
       });
@@ -503,7 +507,7 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange }: UseMe
     } finally {
       setLoadingSuggestions(false);
     }
-  }, [selectedChat, messages, loadingSuggestions, suggestionsLoaded, availableJobs, enrollmentsMap]);
+  }, [selectedChat, messages, loadingSuggestions, suggestionsLoaded, availableJobs, enrollmentsMap, calendlyLink]);
 
   // Handle suggestion click
   const handleSuggestionClick = useCallback((text: string) => {
@@ -584,14 +588,62 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange }: UseMe
     setShowSequenceSelect(true);
   }, [selectedChat, sequences.length]);
 
+  // Resolve Calendly link when a chat is selected
+  useEffect(() => {
+    if (!selectedChat) {
+      setCalendlyLink(null);
+      return;
+    }
+    const profileId = getAttendeeProfileId(selectedChat);
+    if (!profileId) {
+      setCalendlyLink(null);
+      return;
+    }
+    // Look up the candidate's project via job_candidate_status
+    (async () => {
+      try {
+        const { data } = await supabase
+          .from('job_candidate_status')
+          .select('project_id')
+          .eq('candidate_id', profileId)
+          .not('project_id', 'is', null)
+          .order('updated_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        
+        if (data?.project_id) {
+          const { data: project } = await supabase
+            .from('sourcing_projects')
+            .select('calendly_link')
+            .eq('id', data.project_id)
+            .maybeSingle();
+          
+          setCalendlyLink(project?.calendly_link || null);
+        } else {
+          setCalendlyLink(null);
+        }
+      } catch {
+        setCalendlyLink(null);
+      }
+    })();
+  }, [selectedChat?.id]);
+
   // Handle scheduling call
   const handleScheduleCall = useCallback(() => {
     if (!selectedChat) return;
     
     const profileName = getChatDisplayName(selectedChat);
     
-    toast.info('📅 Planifier un call', {
-      description: `Fonctionnalité en développement pour ${profileName}`,
+    if (calendlyLink) {
+      // Insert Calendly link into message
+      const calendlyMessage = `Voici un lien pour réserver un créneau : ${calendlyLink}`;
+      setNewMessage(prev => prev ? `${prev}\n\n${calendlyMessage}` : calendlyMessage);
+      toast.success('📅 Lien Calendly inséré dans le message');
+      return;
+    }
+    
+    toast.info('📅 Aucun lien Calendly configuré', {
+      description: `Ajoutez un lien Calendly dans les paramètres du projet pour ${profileName}`,
       action: {
         label: 'Copier le nom',
         onClick: () => {
@@ -600,7 +652,7 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange }: UseMe
         },
       },
     });
-  }, [selectedChat]);
+  }, [selectedChat, calendlyLink]);
 
   // Helper: mark a chat as read locally AND via the Unipile API
   // Plain function (not a hook) to avoid changing hook count
@@ -814,5 +866,6 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange }: UseMe
     handleAddToPipeline,
     handleEnrollInSequence,
     handleScheduleCall,
+    calendlyLink,
   };
 }
