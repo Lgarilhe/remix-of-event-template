@@ -77,27 +77,22 @@ export const ChatListItem: React.FC<ChatListItemProps> = ({
         </div>
         
         <div className="flex-1 min-w-0">
-          <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-1.5 min-w-0">
-              <span className={cn(
-                "text-sm truncate",
-                unread ? "font-semibold text-foreground" : "font-medium text-foreground"
-              )}>
-                {displayName}
-              </span>
-              {/* Source type badge */}
-              {sourceType && (
-                <span className={cn(
-                  "shrink-0 px-1.5 py-0.5 text-[9px] font-medium border uppercase tracking-wider",
-                  sourceType.color
-                )}>
-                  {sourceType.label}
-                </span>
-              )}
-            </div>
-            <span className="text-[10px] text-muted-foreground shrink-0 whitespace-nowrap">
-              {formatChatTime(chat.timestamp || chat.last_message?.timestamp)}
+          <div className="flex items-center gap-1.5 min-w-0">
+            <span className={cn(
+              "text-sm truncate",
+              unread ? "font-semibold text-foreground" : "font-medium text-foreground"
+            )}>
+              {displayName}
             </span>
+            {/* Source type badge */}
+            {sourceType && (
+              <span className={cn(
+                "shrink-0 px-1.5 py-0.5 text-[9px] font-medium border uppercase tracking-wider",
+                sourceType.color
+              )}>
+                {sourceType.label}
+              </span>
+            )}
           </div>
           
           {/* Show headline or InMail subject */}
@@ -112,7 +107,7 @@ export const ChatListItem: React.FC<ChatListItemProps> = ({
           )}
           
           {/* Category badge + Status info */}
-          <div className="flex items-center gap-1.5 mt-0.5">
+          <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
             {categoryInfo && (
               <span className={cn(
                 "inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[9px] font-medium border rounded-sm",
@@ -126,6 +121,11 @@ export const ChatListItem: React.FC<ChatListItemProps> = ({
                 {statusInfo.icon}
                 <span>{statusInfo.text}</span>
               </p>
+            )}
+            {(chat.timestamp || chat.last_message?.timestamp) && (
+              <span className="text-[10px] text-muted-foreground/60 whitespace-nowrap">
+                · {formatChatTime(chat.timestamp || chat.last_message?.timestamp)}
+              </span>
             )}
           </div>
         </div>
