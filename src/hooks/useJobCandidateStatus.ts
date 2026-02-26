@@ -91,6 +91,7 @@ export function useJobCandidateStatus(jobId: string | null) {
       score?: number;
       recommendation?: string;
       skipReason?: string;
+      scoringDetails?: any;
     }
   ) => {
     if (!jobId) return;
@@ -114,6 +115,7 @@ export function useJobCandidateStatus(jobId: string | null) {
           score: candidateData.score || null,
           recommendation: candidateData.recommendation || null,
           skip_reason: candidateData.skipReason || null,
+          scoring_details: candidateData.scoringDetails || null,
           created_by: user.id,
         }, {
           onConflict: 'job_id,candidate_id,created_by'
@@ -159,6 +161,7 @@ export function useJobCandidateStatus(jobId: string | null) {
       score?: number;
       recommendation?: string;
       skipReason?: string;
+      scoringDetails?: any;
     }>
   ) => {
     if (!jobId || candidates.length === 0) return;
@@ -185,6 +188,7 @@ export function useJobCandidateStatus(jobId: string | null) {
         score: c.score || null,
         recommendation: c.recommendation || null,
         skip_reason: c.skipReason || null,
+        scoring_details: c.scoringDetails || null,
         created_by: user.id,
       }));
 
@@ -335,6 +339,7 @@ export function useJobCandidateStatus(jobId: string | null) {
       profileUrl?: string;
       score: number;
       recommendation: string;
+      scoringDetails?: any;
     }
   ) => {
     if (!jobId) return;
@@ -359,6 +364,7 @@ export function useJobCandidateStatus(jobId: string | null) {
           status: keepStatus ? currentStatus : 'scored',
           score: candidateData.score,
           recommendation: candidateData.recommendation,
+          scoring_details: candidateData.scoringDetails || null,
           created_by: user.id,
         }, {
           onConflict: 'job_id,candidate_id,created_by'
@@ -401,6 +407,7 @@ export function useJobCandidateStatus(jobId: string | null) {
       profileUrl?: string;
       score: number;
       recommendation: string;
+      scoringDetails?: any;
     }>
   ) => {
     if (!jobId || candidates.length === 0) return;
@@ -421,6 +428,7 @@ export function useJobCandidateStatus(jobId: string | null) {
           status: keepStatus ? existing.status : 'scored',
           score: c.score,
           recommendation: c.recommendation,
+          scoring_details: c.scoringDetails || null,
           created_by: user.id,
         };
       });

@@ -1,0 +1,1 @@
+ALTER TABLE public.job_candidate_status ADD COLUMN scoring_details jsonb DEFAULT NULL;
