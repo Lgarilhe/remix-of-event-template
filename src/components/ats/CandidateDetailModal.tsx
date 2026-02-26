@@ -25,7 +25,9 @@ import {
   FileText,
   Loader2,
   Trash2,
-  Calendar
+  Calendar,
+  Target,
+  Brain
 } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -312,8 +314,10 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
                           {candidate.source === 'shortlist' && <FileText className="w-3 h-3" />}
                           {candidate.source === 'sequence' && <GitBranch className="w-3 h-3" />}
                           {candidate.source === 'inmail' && <Send className="w-3 h-3" />}
+                          {candidate.source === 'outreach' && <Target className="w-3 h-3" />}
                           {candidate.source === 'shortlist' ? 'Pipeline Notion' : 
-                           candidate.source === 'sequence' ? 'Séquence' : 'InMail'}
+                           candidate.source === 'sequence' ? 'Séquence' : 
+                           candidate.source === 'outreach' ? 'Outreach' : 'InMail'}
                         </Badge>
                         
                         {candidate.jobTitle && (
@@ -326,8 +330,37 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
                             {candidate.sequenceName}
                           </Badge>
                         )}
+
+                        {candidate.outreachStatus && (
+                          <Badge variant="outline" className="gap-1">
+                            {candidate.outreachStatus}
+                          </Badge>
+                        )}
                       </div>
                     </div>
+
+                    {/* AI Score & Recommendation */}
+                    {(candidate.score != null || candidate.recommendation) && (
+                      <div className="p-4 bg-[#FAFAFA] rounded-lg border-l-4 border-primary">
+                        <div className="flex items-center gap-2 mb-3">
+                          <Brain className="w-4 h-4 text-primary" />
+                          <h4 className="font-medium text-sm text-foreground">Scoring IA</h4>
+                          {candidate.score != null && (
+                            <span className={`ml-auto text-lg font-bold ${
+                              candidate.score >= 70 ? 'text-green-600' : 
+                              candidate.score >= 40 ? 'text-yellow-600' : 'text-red-500'
+                            }`}>
+                              {candidate.score}%
+                            </span>
+                          )}
+                        </div>
+                        {candidate.recommendation && (
+                          <p className="text-sm text-muted-foreground whitespace-pre-wrap leading-relaxed">
+                            {candidate.recommendation}
+                          </p>
+                        )}
+                      </div>
+                    )}
 
                     {/* Contact info */}
                     <div className="p-4 bg-[#FAFAFA] rounded-lg">
