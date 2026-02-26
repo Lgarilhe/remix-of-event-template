@@ -50,7 +50,7 @@ const MessagesInboxInner: React.FC<
     <>
       {/* Mobile fullscreen message view */}
       {inbox.selectedChat && (
-        <div className="fixed inset-0 z-50 bg-background flex flex-col min-h-0 overflow-hidden md:hidden">
+        <div className="fixed inset-0 z-[2100] bg-background flex flex-col min-h-0 overflow-hidden md:hidden">
           <MessageView
             selectedChat={inbox.selectedChat}
             messages={inbox.messages}
