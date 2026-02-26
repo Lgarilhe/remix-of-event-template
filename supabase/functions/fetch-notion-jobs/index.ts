@@ -836,11 +836,14 @@ serve(async (req) => {
         // Keep requirements for backward compatibility
         requirements: getPropertyValue(job.properties['🔴 Must-have poste']) || '',
         openingDate: (() => {
-          const key = Object.keys(job.properties).find(k => k.toLowerCase().includes('date d') && k.toLowerCase().includes('ouverture'));
+          const dateKeys = Object.keys(job.properties).filter(k => k.toLowerCase().includes('date'));
+          if (dateKeys.length > 0) console.log('[DEBUG] Date keys for job', job.properties['Name']?.title?.[0]?.plain_text || 'unknown', ':', dateKeys);
+          const key = dateKeys.find(k => k.toLowerCase().includes('ouverture'));
+          if (key) console.log('[DEBUG] Found openingDate key:', key, 'value:', JSON.stringify(job.properties[key]));
           return key ? getPropertyValue(job.properties[key]) : null;
         })(),
         startDate: (() => {
-          const key = Object.keys(job.properties).find(k => k.toLowerCase().includes('date de d') && k.toLowerCase().includes('marrage'));
+          const key = Object.keys(job.properties).find(k => k.toLowerCase().includes('date') && k.toLowerCase().includes('marrage'));
           return key ? getPropertyValue(job.properties[key]) : null;
         })(),
         channel: getPropertyValue(job.properties['Canal de publication']),
