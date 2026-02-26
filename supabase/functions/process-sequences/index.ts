@@ -547,14 +547,26 @@ async function checkMessagesForReply(chats: { id: string }[], afterTimestamp: nu
     if (!msgRes.ok) continue;
     const messages = (await msgRes.json()).items || [];
     // deno-lint-ignore no-explicit-any
-    const hasReply = messages.some((m: any) => {
-      // Check multiple fields for sender detection (Unipile uses different field names)
-      const isSelf = m.is_sender_self === true || m.is_sender === true || m.sender_attendee_id === 'self';
-      if (isSelf) return false;
+    const incomingReplies = messages.filter((m: any) => {
+      // ONLY trust is_sender_self for self-detection (is_sender can be ambiguous for InMails)
+      // If is_sender_self is explicitly true, it's our message → skip
+      if (m.is_sender_self === true) return false;
+      // If is_sender_self is explicitly false, it's a reply from the prospect
+      // If is_sender_self is undefined (e.g. InMails), fall back to sender_attendee_id
+      if (m.is_sender_self === undefined && m.sender_attendee_id === 'self') return false;
+      // Extra safety: if the message type suggests it's an outgoing InMail, skip it
+      if (m.type === 'INMAIL' && m.is_sender_self !== false) return false;
       const msgTime = new Date(m.timestamp || m.date || m.created_at).getTime();
       return msgTime > afterTimestamp;
     });
-    if (hasReply) return true;
+    if (incomingReplies.length > 0) {
+      // deno-lint-ignore no-explicit-any
+      console.log(`[checkReplies] Found ${incomingReplies.length} reply(ies) in chat ${chat.id}:`, incomingReplies.map((m: any) => ({ 
+        id: m.id, is_sender_self: m.is_sender_self, sender_attendee_id: m.sender_attendee_id, type: m.type,
+        timestamp: m.timestamp || m.date 
+      })));
+      return true;
+    }
   }
   return false;
 }
