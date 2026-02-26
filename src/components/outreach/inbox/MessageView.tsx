@@ -176,16 +176,18 @@ export const MessageView: React.FC<MessageViewProps> = ({
         )}
 
         {selectedChat.attendees?.[0]?.profile_url && (
-          <button
-            className="relative overflow-hidden h-8 px-2 md:px-3 text-xs font-medium uppercase tracking-wider border border-foreground/20 bg-background text-foreground group shrink-0"
-            onClick={() => window.open(selectedChat.attendees?.[0]?.profile_url, '_blank')}
+          <a
+            href={selectedChat.attendees[0].profile_url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="relative overflow-hidden h-8 px-2 md:px-3 text-xs font-medium uppercase tracking-wider border border-foreground/20 bg-background text-foreground group shrink-0 flex items-center"
           >
             <span className="relative z-10 flex items-center gap-1">
               <User className="w-3 h-3" />
               <span className="hidden md:inline">Profil</span>
             </span>
             <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
-          </button>
+          </a>
         )}
       </div>
 
