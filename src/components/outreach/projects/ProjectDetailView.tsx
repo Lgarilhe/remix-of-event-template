@@ -516,14 +516,37 @@ const CriteriaSection: React.FC<{ color: string; label: string; content: string 
   </div>
 );
 
+/**
+ * Preprocess Notion body content so markdown parses correctly:
+ * - Ensure blank line before headings (## …)
+ * - Ensure blank line before list items that follow a non-list line
+ */
+function preprocessMarkdown(raw: string): string {
+  return raw
+    // Normalise line endings
+    .replace(/\r\n/g, '\n')
+    // Ensure blank line before ## headings
+    .replace(/([^\n])\n(#{1,6}\s)/g, '$1\n\n$2')
+    // Ensure blank line before list items (- ) when preceded by non-list text
+    .replace(/([^\n-])\n(- )/g, '$1\n\n$2')
+    // Bold markers: **text**
+    .replace(/\*\*/g, '**');
+}
+
 const DetailSection: React.FC<{ title: string; content: string; icon?: React.ElementType }> = ({ title, content, icon: Icon }) => (
   <div>
     <h4 className="text-[10px] uppercase tracking-widest text-muted-foreground font-medium mb-2 flex items-center gap-1.5">
       {Icon && <Icon className="w-3 h-3" />}
       {title}
     </h4>
-    <div className="text-sm text-foreground leading-relaxed bg-muted/30 border border-foreground/5 p-3 prose prose-sm max-w-none prose-headings:text-foreground prose-headings:font-semibold prose-headings:mt-3 prose-headings:mb-1.5 prose-p:my-1 prose-ul:my-1 prose-li:my-0.5 prose-strong:text-foreground">
-      <ReactMarkdown>{content}</ReactMarkdown>
+    <div className="text-sm text-foreground leading-relaxed bg-muted/30 border border-foreground/5 p-3 prose prose-sm max-w-none
+      prose-headings:text-foreground prose-headings:font-semibold prose-headings:mt-4 prose-headings:mb-2
+      prose-h2:text-base prose-h3:text-sm
+      prose-p:my-1.5 prose-p:leading-relaxed
+      prose-ul:my-2 prose-ul:pl-4 prose-ul:list-disc
+      prose-li:my-0.5 prose-li:leading-relaxed
+      prose-strong:text-foreground prose-strong:font-semibold">
+      <ReactMarkdown>{preprocessMarkdown(content)}</ReactMarkdown>
     </div>
   </div>
 );
