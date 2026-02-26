@@ -680,8 +680,12 @@ async function scheduleNextStep(supabase: any, enrollment: any, currentStepOrder
     } catch { break; }
   }
 
-  const { data: existing } = await supabase.from('sequence_step_executions').select('id').eq('enrollment_id', enrollment.id).eq('step_id', nextStep.id).maybeSingle();
-  if (existing) return;
+  // Guard: prevent duplicate executions for the same enrollment+step (any non-terminal status)
+  const { data: existing } = await supabase.from('sequence_step_executions').select('id, status').eq('enrollment_id', enrollment.id).eq('step_id', nextStep.id).in('status', ['scheduled', 'sending', 'waiting_event', 'quota_blocked']);
+  if (existing && existing.length > 0) {
+    console.log(`[scheduleNextStep] Skipping duplicate: enrollment=${enrollment.id} step=${nextStep.id} (existing status=${existing[0].status})`);
+    return;
+  }
 
   await supabase.from('sequence_step_executions').insert({ enrollment_id: enrollment.id, step_id: nextStep.id, step_order: nextStep.step_order, scheduled_at: scheduledAt.toISOString(), status: 'scheduled' });
 }
