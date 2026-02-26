@@ -14,12 +14,12 @@ export interface ActivityEvent {
   sequenceName?: string | null;
 }
 
-export function useProfileActivity(profileId: string | null, profileUrl?: string | null) {
+export function useProfileActivity(profileId: string | null, profileUrl?: string | null, profileName?: string | null) {
   const [events, setEvents] = useState<ActivityEvent[]>([]);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (!profileId && !profileUrl) {
+    if (!profileId && !profileUrl && !profileName) {
       setEvents([]);
       return;
     }
@@ -28,23 +28,35 @@ export function useProfileActivity(profileId: string | null, profileUrl?: string
     const fetch = async () => {
       setLoading(true);
       try {
-        // Get enrollments for this profile - match by profile_id OR profile_url
-        let query = supabase
-          .from('sequence_enrollments')
-          .select('id, sequence_id');
-        
-        if (profileId && profileUrl) {
-          // Try matching by either profile_id or profile_url
-          query = query.or(`profile_id.eq.${profileId},profile_url.eq.${profileUrl}`);
-        } else if (profileId) {
-          query = query.eq('profile_id', profileId);
-        } else if (profileUrl) {
-          query = query.eq('profile_url', profileUrl);
+        // Get enrollments for this profile with progressive fallback:
+        // 1) profile_id, 2) profile_url, 3) profile_name
+        let enrollments: Array<{ id: string; sequence_id: string }> = [];
+
+        if (profileId) {
+          const { data } = await supabase
+            .from('sequence_enrollments')
+            .select('id, sequence_id')
+            .eq('profile_id', profileId);
+          enrollments = data || [];
         }
 
-        const { data: enrollments } = await query;
+        if (!enrollments.length && profileUrl) {
+          const { data } = await supabase
+            .from('sequence_enrollments')
+            .select('id, sequence_id')
+            .eq('profile_url', profileUrl);
+          enrollments = data || [];
+        }
 
-        if (!enrollments?.length || cancelled) {
+        if (!enrollments.length && profileName?.trim()) {
+          const { data } = await supabase
+            .from('sequence_enrollments')
+            .select('id, sequence_id')
+            .ilike('profile_name', profileName.trim());
+          enrollments = data || [];
+        }
+
+        if (!enrollments.length || cancelled) {
           setEvents([]);
           return;
         }
@@ -109,7 +121,7 @@ export function useProfileActivity(profileId: string | null, profileUrl?: string
 
     fetch();
     return () => { cancelled = true; };
-  }, [profileId, profileUrl]);
+  }, [profileId, profileUrl, profileName]);
 
   return { events, loading };
 }
