@@ -155,14 +155,17 @@ async function handleNewRelation(supabase: SupabaseClient, payload: WebhookPaylo
 async function handleNewMessage(supabase: SupabaseClient, payload: WebhookPayload) {
   const { account_id, data } = payload;
   
-  // Extract sender info from message - Unipile can send various formats
-  // { message: { sender_id: "...", attendee_provider_id: "...", sender: { provider_id: "..." } }, chat: { attendees: [...] } }
+  // Extract sender info and chat info from message
   const message = data.message as { 
     sender_id?: string; 
     attendee_provider_id?: string;
     sender?: { provider_id?: string; id?: string };
-    is_sender?: boolean; // If true, WE sent the message, not them
+    is_sender?: boolean;
+    chat_id?: string;
   } | undefined;
+  
+  const chat = data.chat as { id?: string } | undefined;
+  const chatId = message?.chat_id || chat?.id;
   
   // Skip if this is a message WE sent (not a reply)
   if (message?.is_sender === true) {
@@ -284,5 +287,30 @@ async function handleNewMessage(supabase: SupabaseClient, payload: WebhookPayloa
         updated_at: new Date().toISOString(),
       })
       .in('id', inmailIds);
+  }
+
+  // ── Trigger auto-analysis for intent detection & status update ──
+  if (chatId) {
+    console.log(`[unipile-webhook] Triggering auto-analyze for chat: ${chatId}`);
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
+    
+    // Fire-and-forget: don't await to keep webhook fast
+    fetch(`${supabaseUrl}/functions/v1/auto-analyze-message`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${supabaseAnonKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        chat_id: chatId,
+        account_id: account_id,
+        sender_id: senderId,
+      }),
+    }).then(res => {
+      console.log(`[unipile-webhook] Auto-analyze triggered: ${res.status}`);
+    }).catch(err => {
+      console.error('[unipile-webhook] Auto-analyze trigger failed:', err);
+    });
   }
 }
