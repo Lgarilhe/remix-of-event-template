@@ -204,6 +204,9 @@ async function handleProcess(supabase: any, force = false) {
           if (step.action_type !== 'check_connection') await scheduleNextStep(supabase, enrollment, step.step_order);
           results.processed++;
           
+          // Sync Notion stage (fire-and-forget, non-blocking)
+          syncNotionStageAfterAction(step.action_type, enrollment).catch(() => {});
+          
           // Action-type-specific delay to simulate natural human behavior
           const delay = getActionDelay(step.action_type);
           console.log(`[process] Sleeping ${Math.round(delay / 1000)}s after ${step.action_type}`);
@@ -808,6 +811,87 @@ async function logAnalytics(supabase: any, sequenceId: string, field: string) {
     if (existing) await supabase.from('sequence_analytics').update({ [field]: (existing[field] || 0) + 1 }).eq('id', existing.id);
     else await supabase.from('sequence_analytics').insert({ sequence_id: sequenceId, date: today, [field]: 1 });
   } catch (e) { console.error('Analytics error:', e); }
+}
+
+// ============ NOTION CANDIDATE/SHORTLIST SYNC ============
+
+const CANDIDATS_DATABASE_ID = "2787e1816fb4812b8ebddfcb3ab95510";
+const SHORTLIST_DATABASE_ID_SEQ = "2787e1816fb4811986a7e6075bc63a23";
+
+// Action → Notion stage mapping
+const ACTION_TO_NOTION_STAGE: Record<string, { etape: string; etat: string }> = {
+  connection_request: { etape: 'Pressenti', etat: 'Message à envoyer' },
+  message:            { etape: 'Contacté', etat: 'En attente de réponse' },
+  smart_message:      { etape: 'Contacté', etat: 'En attente de réponse' },
+  inmail:             { etape: 'Contacté', etat: 'En attente de réponse' },
+};
+
+async function notionQuerySeq(databaseId: string, filter: Record<string, unknown>) {
+  if (!NOTION_API_KEY) return null;
+  const response = await fetch(`https://api.notion.com/v1/databases/${databaseId}/query`, {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${NOTION_API_KEY}`, 'Notion-Version': '2022-06-28', 'Content-Type': 'application/json' },
+    body: JSON.stringify({ filter, page_size: 100 }),
+  });
+  if (!response.ok) return null;
+  return response.json();
+}
+
+async function updateNotionPageSeq(pageId: string, properties: Record<string, unknown>) {
+  if (!NOTION_API_KEY) return false;
+  const response = await fetch(`https://api.notion.com/v1/pages/${pageId}`, {
+    method: 'PATCH',
+    headers: { 'Authorization': `Bearer ${NOTION_API_KEY}`, 'Notion-Version': '2022-06-28', 'Content-Type': 'application/json' },
+    body: JSON.stringify({ properties }),
+  });
+  if (!response.ok) console.error('[notion-sync] Update error:', await response.text().catch(() => ''));
+  return response.ok;
+}
+
+async function findCandidateInNotionSeq(name: string, linkedinUrl?: string): Promise<string | null> {
+  if (linkedinUrl) {
+    const r = await notionQuerySeq(CANDIDATS_DATABASE_ID, { property: 'URL Linkedin', url: { equals: linkedinUrl } });
+    if (r?.results?.[0]?.id) return r.results[0].id;
+  }
+  if (name) {
+    const r = await notionQuerySeq(CANDIDATS_DATABASE_ID, { property: 'Nom', title: { equals: name } });
+    if (r?.results?.[0]?.id) return r.results[0].id;
+  }
+  return null;
+}
+
+async function findShortlistsForCandidateSeq(candidateId: string): Promise<string[]> {
+  const r = await notionQuerySeq(SHORTLIST_DATABASE_ID_SEQ, { property: 'Candidats', relation: { contains: candidateId } });
+  return (r?.results || []).map((p: { id: string }) => p.id);
+}
+
+async function syncNotionStageAfterAction(actionType: string, enrollment: Record<string, unknown>) {
+  const mapping = ACTION_TO_NOTION_STAGE[actionType];
+  if (!mapping || !NOTION_API_KEY) return;
+  
+  try {
+    const profileName = enrollment.profile_name as string;
+    const profileUrl = enrollment.profile_url as string | undefined;
+    
+    const candidateId = await findCandidateInNotionSeq(profileName, profileUrl);
+    if (!candidateId) {
+      console.log(`[notion-sync] Candidate not found in Notion: ${profileName}`);
+      return;
+    }
+
+    // Update Candidat "Etat"
+    await updateNotionPageSeq(candidateId, { 'Etat': { select: { name: mapping.etat } } });
+    
+    // Update all Shortlist "Etape"
+    const shortlistIds = await findShortlistsForCandidateSeq(candidateId);
+    for (const slId of shortlistIds) {
+      await updateNotionPageSeq(slId, { 'Etape': { select: { name: mapping.etape } } });
+    }
+    
+    console.log(`[notion-sync] ${profileName}: Etat→"${mapping.etat}", Etape→"${mapping.etape}" (${shortlistIds.length} shortlists)`);
+  } catch (err) {
+    console.error('[notion-sync] Error:', err instanceof Error ? err.message : err);
+  }
 }
 
 // ============ NOTION HELPERS ============
