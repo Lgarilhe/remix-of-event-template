@@ -13,14 +13,22 @@ const NOTION_API_KEY = Deno.env.get("NOTION_API_KEY");
 const CANDIDATS_DATABASE_ID = "2787e1816fb4812b8ebddfcb3ab95510";
 const SHORTLIST_DATABASE_ID = "2787e1816fb4811986a7e6075bc63a23";
 
-// ─── Intent → Stage mapping ───────────────────────────────────────
-const INTENT_TO_STAGE: Record<string, string> = {
+// ─── Intent → Notion property mapping ─────────────────────────────
+// Candidats DB uses "Etat" (select): Pré-qualif à planifier, Répondu, En attente de réponse, Message à envoyer
+// Shortlist DB uses "Etape" (select): Pressenti, Contacté, Pré-qualif, Pas intéressé, Pas pertinent, En attente, etc.
+const INTENT_TO_CANDIDAT_ETAT: Record<string, string> = {
   'interested': 'Pré-qualif à planifier',
   'wants_call': 'Pré-qualif à planifier',
-  'needs_info': "Demande d'info complémentaire",
+  'needs_info': 'Répondu',
+  'timing_issue': 'Répondu',
+};
+
+const INTENT_TO_SHORTLIST_ETAPE: Record<string, string> = {
+  'interested': 'Pré-qualif',
+  'wants_call': 'Pré-qualif',
   'not_interested': 'Pas intéressé',
-  'already_placed': 'Déjà placé',
-  'timing_issue': 'Timing pas bon',
+  'already_placed': 'Pas pertinent',
+  'timing_issue': 'En attente',
 };
 
 // Minimum confidence to trigger auto-update
@@ -267,9 +275,11 @@ serve(async (req) => {
     console.log(`[auto-analyze] Intent: ${analysis.intent} (${analysis.confidence}%) - ${analysis.summary}`);
 
     // 3. Check if we should update (confidence threshold + mappable intent)
-    const newStage = INTENT_TO_STAGE[analysis.intent];
-    if (!newStage || analysis.confidence < MIN_CONFIDENCE) {
-      console.log(`[auto-analyze] No update: intent=${analysis.intent}, confidence=${analysis.confidence}, stage=${newStage || 'unmapped'}`);
+    const candidatEtat = INTENT_TO_CANDIDAT_ETAT[analysis.intent];
+    const shortlistEtape = INTENT_TO_SHORTLIST_ETAPE[analysis.intent];
+    
+    if (!candidatEtat && !shortlistEtape || analysis.confidence < MIN_CONFIDENCE) {
+      console.log(`[auto-analyze] No update: intent=${analysis.intent}, confidence=${analysis.confidence}`);
       return new Response(JSON.stringify({ 
         success: true, 
         skipped: 'low_confidence_or_neutral',
@@ -284,7 +294,6 @@ serve(async (req) => {
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Find candidate in job_candidate_status by profile ID or LinkedIn URL
     const candidateId = sender_id || chatDetails.attendeeProviderId;
     
     if (candidateId) {
@@ -296,7 +305,6 @@ serve(async (req) => {
         .limit(10);
 
       if (statusRecords && statusRecords.length > 0) {
-        // Map intent to app status
         const appStatus = analysis.intent === 'interested' || analysis.intent === 'wants_call' 
           ? 'interested' 
           : analysis.intent === 'not_interested' || analysis.intent === 'already_placed'
@@ -317,26 +325,30 @@ serve(async (req) => {
       }
     }
 
-    // 5. Update Notion (Candidat + Shortlists)
+    // 5. Update Notion (Candidat "Etat" + Shortlist "Etape")
     if (NOTION_API_KEY) {
       const notionCandidateId = await findCandidateInNotion(candidateName, profileUrl);
       
       if (notionCandidateId) {
-        // Update candidate Etape (status type in Candidat DB)
-        await updateNotionPage(notionCandidateId, {
-          'Etape': { status: { name: newStage } },
-        });
-        console.log(`[auto-analyze] Updated Notion candidate ${notionCandidateId} → "${newStage}"`);
-
-        // Update all related shortlists (select type in Shortlist DB)
-        const shortlists = await findShortlistsForCandidate(notionCandidateId);
-        for (const sl of shortlists) {
-          await updateNotionPage(sl.id, {
-            'Etape': { select: { name: newStage } },
+        // Update candidate "Etat" (select type) if mapped
+        if (candidatEtat) {
+          await updateNotionPage(notionCandidateId, {
+            'Etat': { select: { name: candidatEtat } },
           });
+          console.log(`[auto-analyze] Updated Notion candidate Etat → "${candidatEtat}"`);
         }
-        if (shortlists.length > 0) {
-          console.log(`[auto-analyze] Updated ${shortlists.length} Notion shortlists → "${newStage}"`);
+
+        // Update all related shortlists "Etape" (select type) if mapped
+        if (shortlistEtape) {
+          const shortlists = await findShortlistsForCandidate(notionCandidateId);
+          for (const sl of shortlists) {
+            await updateNotionPage(sl.id, {
+              'Etape': { select: { name: shortlistEtape } },
+            });
+          }
+          if (shortlists.length > 0) {
+            console.log(`[auto-analyze] Updated ${shortlists.length} Notion shortlists Etape → "${shortlistEtape}"`);
+          }
         }
       } else {
         console.log(`[auto-analyze] Candidate not found in Notion: ${candidateName}`);
@@ -346,7 +358,8 @@ serve(async (req) => {
     return new Response(JSON.stringify({ 
       success: true, 
       analysis,
-      updatedStage: newStage,
+      updatedCandidatEtat: candidatEtat || null,
+      updatedShortlistEtape: shortlistEtape || null,
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
