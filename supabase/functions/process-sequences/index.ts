@@ -58,16 +58,16 @@ function getActionDelay(actionType: string): number {
   switch (actionType) {
     case 'profile_visit':
     case 'check_connection':
-      return 5000 + Math.random() * 10000;   // 5-15s — passive actions
+      return 2000 + Math.random() * 3000;    // 2-5s — passive actions (no API write)
     case 'connection_request':
-      return 20000 + Math.random() * 25000;  // 20-45s
+      return 10000 + Math.random() * 10000;  // 10-20s
     case 'message':
-      return 15000 + Math.random() * 15000;  // 15-30s
+      return 8000 + Math.random() * 7000;    // 8-15s
     case 'inmail':
     case 'smart_message':
-      return 30000 + Math.random() * 30000;  // 30-60s
+      return 15000 + Math.random() * 15000;  // 15-30s
     default:
-      return 5000 + Math.random() * 10000;   // 5-15s default
+      return 3000 + Math.random() * 5000;    // 3-8s default
   }
 }
 
@@ -121,7 +121,7 @@ async function handleProcess(supabase: any, force = false) {
       .select(`*, enrollment:sequence_enrollments(*, sequence:outreach_sequences(*)), step:sequence_steps(*)`)
       .eq('status', 'scheduled')
       .lte('scheduled_at', now)
-      .limit(5);
+      .limit(15);
 
     if (fetchError) throw fetchError;
 
