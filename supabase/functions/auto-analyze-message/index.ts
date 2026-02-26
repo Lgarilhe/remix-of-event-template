@@ -355,11 +355,62 @@ serve(async (req) => {
       }
     }
 
+    // 6. Update chat_categories for inbox tagging
+    const INTENT_TO_CHAT_CATEGORY: Record<string, string> = {
+      'interested': 'interested',
+      'wants_call': 'interested',
+      'needs_info': 'interested',
+      'not_interested': 'not_interested',
+      'already_placed': 'not_interested',
+      'timing_issue': 'to_recontact',
+    };
+    const chatCategory = INTENT_TO_CHAT_CATEGORY[analysis.intent];
+    if (chatCategory && chat_id && account_id) {
+      // Find all users who have entries for this account (they use this inbox)
+      const { data: existingEntries } = await supabase
+        .from('chat_categories')
+        .select('created_by')
+        .eq('account_id', account_id)
+        .limit(1);
+
+      // If no existing entries, try to find the user from job_candidate_status
+      let userIds: string[] = existingEntries?.map(e => e.created_by) || [];
+      
+      if (userIds.length === 0 && candidateId) {
+        const { data: statusRecs } = await supabase
+          .from('job_candidate_status')
+          .select('created_by')
+          .or(`candidate_id.eq.${candidateId}${profileUrl ? `,linkedin_profile_url.eq.${profileUrl}` : ''}`)
+          .limit(1);
+        userIds = statusRecs?.map(r => r.created_by) || [];
+      }
+
+      // Deduplicate
+      const uniqueUserIds = [...new Set(userIds)];
+      
+      for (const userId of uniqueUserIds) {
+        await supabase
+          .from('chat_categories')
+          .upsert({
+            chat_id: chat_id,
+            account_id: account_id,
+            category: chatCategory,
+            created_by: userId,
+            updated_at: new Date().toISOString(),
+          }, { onConflict: 'chat_id,created_by' });
+      }
+      
+      if (uniqueUserIds.length > 0) {
+        console.log(`[auto-analyze] Updated chat_categories → "${chatCategory}" for ${uniqueUserIds.length} user(s)`);
+      }
+    }
+
     return new Response(JSON.stringify({ 
       success: true, 
       analysis,
       updatedCandidatEtat: candidatEtat || null,
       updatedShortlistEtape: shortlistEtape || null,
+      updatedChatCategory: chatCategory || null,
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });

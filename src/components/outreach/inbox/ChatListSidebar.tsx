@@ -3,7 +3,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { BrutalLoader } from '@/components/ui/brutal-loader';
-import { Search, MessageSquare, RefreshCw, Tag, Sparkles, ChevronDown, ArrowUpRight, ArrowDownLeft } from 'lucide-react';
+import { Search, MessageSquare, RefreshCw, Tag, ChevronDown, ArrowUpRight, ArrowDownLeft } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Chat, SequenceEnrollmentInfo } from '@/hooks/useMessagesInbox';
 import { ChatListItem } from './ChatListItem';
@@ -28,8 +28,6 @@ interface ChatListSidebarProps {
   onCategoryFilterChange: (filter: ChatCategory | 'all') => void;
   onResponseFilterChange: (filter: 'all' | 'waiting_candidate' | 'waiting_me') => void;
   onSetCategory: (chatId: string, accountId: string, category: ChatCategory | null) => void;
-  onAutoTag: () => void;
-  autoTagging: boolean;
   onChatSelect: (chat: Chat) => void;
   onRefresh: () => void;
 }
@@ -52,8 +50,6 @@ export const ChatListSidebar: React.FC<ChatListSidebarProps> = ({
   onCategoryFilterChange,
   onResponseFilterChange,
   onSetCategory,
-  onAutoTag,
-  autoTagging,
   onChatSelect,
   onRefresh,
 }) => {
@@ -203,20 +199,6 @@ export const ChatListSidebar: React.FC<ChatListSidebarProps> = ({
                   {info.emoji} {categoryCounts[key] || 0}
                 </button>
               ))}
-              <button
-                onClick={onAutoTag}
-                disabled={autoTagging}
-                className={cn(
-                  "h-5 px-1.5 text-[8px] font-medium uppercase tracking-wider border transition-colors flex items-center gap-0.5",
-                  autoTagging
-                    ? "bg-foreground text-background border-foreground animate-pulse"
-                    : "bg-background text-foreground border-foreground/30 hover:border-foreground hover:bg-accent"
-                )}
-                title="Auto-catégoriser les 100 dernières conversations avec l'IA"
-              >
-                <Sparkles className="w-2.5 h-2.5" />
-                {autoTagging ? '...' : 'Auto-tag'}
-              </button>
             </div>
             
             {/* Unread filter */}
