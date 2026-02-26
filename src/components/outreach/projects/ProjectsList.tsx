@@ -1,17 +1,18 @@
 import React, { useState, useMemo } from 'react';
 import { useSourcingProjects, SourcingProject } from '@/hooks/useSourcingProjects';
+import { useNotionJobs } from '@/hooks/useNotionJobs';
 import { useMultipleProjectStats, ProjectStats } from '@/hooks/useProjectStats';
-import { Button } from '@/components/ui/button';
+import { UnifiedProject, mergeProjectsAndJobs } from '@/types/projects';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { BrutalLoader } from '@/components/ui/brutal-loader';
-import { 
-  FolderOpen, 
-  Plus, 
-  Search, 
-  Users, 
-  MessageSquare, 
-  UserX, 
+import {
+  FolderOpen,
+  Plus,
+  Search,
+  Users,
+  MessageSquare,
+  UserX,
   UserCheck,
   Calendar,
   Building2,
@@ -21,7 +22,11 @@ import {
   CheckCircle,
   Archive,
   Trash2,
-  Filter
+  Filter,
+  MapPin,
+  Briefcase,
+  Star,
+  Wrench,
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -32,6 +37,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { Button } from '@/components/ui/button';
 import { CreateProjectModal } from './CreateProjectModal';
 import { ProjectDetailPanelEnhanced } from './ProjectDetailPanelEnhanced';
 
@@ -46,55 +52,130 @@ const statusConfig = {
   archived: { label: 'Archivé', color: 'bg-gray-100 text-gray-500', icon: Archive },
 };
 
+const priorityConfig: Record<string, { label: string; color: string }> = {
+  haute: { label: 'Haute', color: 'bg-red-100 text-red-700' },
+  high: { label: 'Haute', color: 'bg-red-100 text-red-700' },
+  moyenne: { label: 'Moyenne', color: 'bg-yellow-100 text-yellow-700' },
+  medium: { label: 'Moyenne', color: 'bg-yellow-100 text-yellow-700' },
+  basse: { label: 'Basse', color: 'bg-blue-100 text-blue-700' },
+  low: { label: 'Basse', color: 'bg-blue-100 text-blue-700' },
+};
+
 export const ProjectsList: React.FC<ProjectsListProps> = ({ onResumeSearch }) => {
-  const { projects, isLoading, deleteProject, updateProject, isDeleting } = useSourcingProjects();
+  const { projects: sourcingProjects, isLoading: spLoading, deleteProject, updateProject, isDeleting } = useSourcingProjects();
+  const { data: notionJobs = [], isLoading: jobsLoading } = useNotionJobs();
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [selectedProject, setSelectedProject] = useState<SourcingProject | null>(null);
+  const [selectedProject, setSelectedProject] = useState<UnifiedProject | null>(null);
 
-  // Get project IDs for batch stats query
-  const projectIds = useMemo(() => projects.map(p => p.id), [projects]);
-  
-  // Fetch real-time stats from job_candidate_status table
-  const { data: projectStats = {} } = useMultipleProjectStats(projectIds);
+  // Merge Notion jobs + manual projects into unified list
+  const unifiedProjects = useMemo(
+    () => mergeProjectsAndJobs(notionJobs, sourcingProjects),
+    [notionJobs, sourcingProjects]
+  );
 
-  // Helper to get stats for a project (with fallback to stored values)
-  const getProjectStats = (project: SourcingProject): ProjectStats => {
-    return projectStats[project.id] || {
-      total: project.stats_total_found,
-      scored: project.stats_scored,
-      messaged: project.stats_messaged,
-      shortlisted: project.stats_shortlisted,
-      dismissed: project.stats_dismissed,
-      untreated: 0,
-    };
+  // Get sourcing project IDs for batch stats
+  const spIds = useMemo(
+    () => unifiedProjects
+      .map(p => p.sourcingProject?.id)
+      .filter((id): id is string => !!id),
+    [unifiedProjects]
+  );
+  const { data: projectStats = {} } = useMultipleProjectStats(spIds);
+
+  const getStats = (project: UnifiedProject): ProjectStats => {
+    if (project.sourcingProject) {
+      return projectStats[project.sourcingProject.id] || {
+        total: project.sourcingProject.stats_total_found,
+        scored: project.sourcingProject.stats_scored,
+        messaged: project.sourcingProject.stats_messaged,
+        shortlisted: project.sourcingProject.stats_shortlisted,
+        dismissed: project.sourcingProject.stats_dismissed,
+        untreated: 0,
+      };
+    }
+    return { total: 0, scored: 0, messaged: 0, shortlisted: 0, dismissed: 0, untreated: 0 };
   };
 
-  // Filter projects
-  const filteredProjects = projects.filter(project => {
-    const matchesSearch = !searchQuery || 
+  // Filter
+  const filteredProjects = unifiedProjects.filter(project => {
+    const matchesSearch = !searchQuery ||
       project.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      project.job_title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      project.client_name?.toLowerCase().includes(searchQuery.toLowerCase());
-    
+      project.clientName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      project.location?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      project.skills.some(s => s.toLowerCase().includes(searchQuery.toLowerCase()));
+
     const matchesStatus = !statusFilter || project.status === statusFilter;
-    
+
     return matchesSearch && matchesStatus;
   });
 
-  const handleStatusChange = async (projectId: string, newStatus: SourcingProject['status']) => {
-    await updateProject({ id: projectId, status: newStatus });
-  };
+  // Sort: active first, then by last search date, then by creation date
+  const sortedProjects = useMemo(() => {
+    return [...filteredProjects].sort((a, b) => {
+      // Active first
+      const statusOrder = { active: 0, paused: 1, completed: 2, archived: 3 };
+      const statusDiff = statusOrder[a.status] - statusOrder[b.status];
+      if (statusDiff !== 0) return statusDiff;
 
-  const handleDelete = async (projectId: string) => {
-    if (window.confirm('Supprimer ce projet ? L\'historique des candidats sera conservé.')) {
-      await deleteProject(projectId);
+      // Then by priority
+      const prioOrder: Record<string, number> = { haute: 0, high: 0, moyenne: 1, medium: 1, basse: 2, low: 2 };
+      const aPrio = prioOrder[a.priority?.toLowerCase() || ''] ?? 3;
+      const bPrio = prioOrder[b.priority?.toLowerCase() || ''] ?? 3;
+      if (aPrio !== bPrio) return aPrio - bPrio;
+
+      // Then by last activity
+      const aDate = a.lastSearchAt || a.createdAt;
+      const bDate = b.lastSearchAt || b.createdAt;
+      return new Date(bDate).getTime() - new Date(aDate).getTime();
+    });
+  }, [filteredProjects]);
+
+  const handleStatusChange = async (project: UnifiedProject, newStatus: SourcingProject['status']) => {
+    if (project.sourcingProject) {
+      await updateProject({ id: project.sourcingProject.id, status: newStatus });
     }
   };
 
+  const handleDelete = async (project: UnifiedProject) => {
+    if (!project.sourcingProject) return;
+    if (window.confirm('Supprimer ce projet ? L\'historique des candidats sera conservé.')) {
+      await deleteProject(project.sourcingProject.id);
+    }
+  };
+
+  // Convert UnifiedProject to SourcingProject for downstream components
+  const toSourcingProject = (project: UnifiedProject): SourcingProject => {
+    if (project.sourcingProject) return project.sourcingProject;
+    // Create a virtual SourcingProject for Notion jobs without one
+    return {
+      id: '',
+      name: project.name,
+      description: project.description,
+      job_id: project.job?.id || null,
+      job_title: project.name,
+      client_name: project.clientName,
+      filters_snapshot: {},
+      notes: null,
+      status: project.status,
+      created_by: '',
+      created_at: project.createdAt,
+      updated_at: project.createdAt,
+      last_search_at: project.lastSearchAt,
+      stats_total_found: 0,
+      stats_scored: 0,
+      stats_messaged: 0,
+      stats_dismissed: 0,
+      stats_shortlisted: 0,
+      calendly_link: null,
+    };
+  };
+
+  const isLoading = spLoading || jobsLoading;
+
   if (isLoading) {
-    return <BrutalLoader variant="default" rows={3} messages={['Chargement des projets…', 'Récupération des données…', 'Synchronisation…']} />;
+    return <BrutalLoader variant="default" rows={3} messages={['Chargement des projets…', 'Synchronisation Notion…', 'Récupération des postes…']} />;
   }
 
   return (
@@ -105,13 +186,13 @@ export const ProjectsList: React.FC<ProjectsListProps> = ({ onResumeSearch }) =>
           <div className="relative flex-1 max-w-md min-w-0">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <Input
-              placeholder="Rechercher un projet..."
+              placeholder="Rechercher un poste, client, compétence..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="pl-10 border-foreground rounded-none"
             />
           </div>
-          
+
           {/* Status filter */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -136,8 +217,8 @@ export const ProjectsList: React.FC<ProjectsListProps> = ({ onResumeSearch }) =>
           </DropdownMenu>
         </div>
 
-        <button 
-          onClick={() => setShowCreateModal(true)} 
+        <button
+          onClick={() => setShowCreateModal(true)}
           className="relative overflow-hidden flex items-center gap-2 h-[34px] px-4 text-xs font-medium uppercase tracking-wider border border-foreground bg-foreground text-background shrink-0 group"
         >
           <Plus className="w-3.5 h-3.5 relative z-10" />
@@ -145,152 +226,197 @@ export const ProjectsList: React.FC<ProjectsListProps> = ({ onResumeSearch }) =>
         </button>
       </div>
 
-      {/* Projects grid */}
-      {filteredProjects.length === 0 ? (
+      {/* Count */}
+      <div className="text-xs text-muted-foreground uppercase tracking-wider">
+        {sortedProjects.length} projet{sortedProjects.length > 1 ? 's' : ''}
+        {sortedProjects.length !== unifiedProjects.length && ` (sur ${unifiedProjects.length})`}
+      </div>
+
+      {/* Projects list */}
+      {sortedProjects.length === 0 ? (
         <div className="bg-background border border-foreground p-12 text-center">
           <div className="h-16 w-16 bg-foreground text-background flex items-center justify-center mx-auto mb-4">
             <FolderOpen className="w-8 h-8" />
           </div>
           <h3 className="text-lg font-bold text-foreground mb-2 uppercase tracking-wide">
-            {searchQuery || statusFilter ? 'Aucun projet trouvé' : 'Aucun projet de sourcing'}
+            {searchQuery || statusFilter ? 'Aucun projet trouvé' : 'Aucun poste disponible'}
           </h3>
           <p className="text-muted-foreground mb-6 text-sm">
-            {searchQuery || statusFilter 
-              ? 'Essayez de modifier vos filtres de recherche'
-              : 'Créez un projet pour organiser vos recherches de candidats'}
+            {searchQuery || statusFilter
+              ? 'Essayez de modifier vos filtres'
+              : 'Les postes Notion apparaîtront automatiquement ici'}
           </p>
-          {!searchQuery && !statusFilter && (
-            <button 
-              onClick={() => setShowCreateModal(true)} 
-              className="relative overflow-hidden h-[34px] px-6 bg-foreground text-background border border-foreground text-xs font-medium uppercase tracking-wider group"
-            >
-              <span className="relative z-10 flex items-center gap-2"><Plus className="w-4 h-4" /> Créer mon premier projet</span>
-            </button>
-          )}
         </div>
       ) : (
-        <div className="grid gap-4 min-w-0">
-          {filteredProjects.map((project) => {
+        <div className="grid gap-3 min-w-0">
+          {sortedProjects.map((project) => {
+            const stats = getStats(project);
             const StatusIcon = statusConfig[project.status].icon;
-            const stats = getProjectStats(project);
-            
+            const hasSourcingProject = !!project.sourcingProject;
+            const prioConf = project.priority ? priorityConfig[project.priority.toLowerCase()] : null;
+
             return (
               <div
-                key={project.id}
-                className="bg-background border border-foreground p-5 hover:bg-brutal-accent/5 transition-all cursor-pointer"
+                key={project.key}
+                className="bg-background border border-foreground p-4 sm:p-5 hover:bg-brutal-accent/5 transition-all cursor-pointer"
                 onClick={() => setSelectedProject(project)}
               >
                 <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
                   {/* Left: Main info */}
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 sm:gap-3 mb-2 flex-wrap">
-                      <h3 className="text-base sm:text-lg font-bold text-foreground truncate max-w-[200px] sm:max-w-none uppercase tracking-wide">
+                    <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+                      <h3 className="text-sm sm:text-base font-bold text-foreground truncate max-w-[240px] sm:max-w-none uppercase tracking-wide">
                         {project.name}
                       </h3>
-                      <Badge className={statusConfig[project.status].color}>
-                        <StatusIcon className="w-3 h-3 mr-1" />
-                        {statusConfig[project.status].label}
-                      </Badge>
+                      {project.source === 'manual' && (
+                        <Badge variant="outline" className="text-[10px] border-foreground/30">
+                          <Wrench className="w-2.5 h-2.5 mr-0.5" />
+                          Manuel
+                        </Badge>
+                      )}
+                      {hasSourcingProject && (
+                        <Badge className={statusConfig[project.status].color}>
+                          <StatusIcon className="w-3 h-3 mr-1" />
+                          {statusConfig[project.status].label}
+                        </Badge>
+                      )}
+                      {prioConf && (
+                        <Badge className={prioConf.color}>
+                          <Star className="w-3 h-3 mr-1" />
+                          {prioConf.label}
+                        </Badge>
+                      )}
                     </div>
-                    
-                    {project.client_name && (
-                      <div className="flex items-center gap-2 text-sm text-muted-foreground mb-3">
-                        <Building2 className="w-4 h-4 shrink-0" />
-                        <span className="truncate">{project.client_name}</span>
+
+                    {/* Meta row */}
+                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground mb-2.5">
+                      {project.clientName && (
+                        <span className="flex items-center gap-1">
+                          <Building2 className="w-3.5 h-3.5 shrink-0" />
+                          {project.clientName}
+                        </span>
+                      )}
+                      {project.location && (
+                        <span className="flex items-center gap-1">
+                          <MapPin className="w-3.5 h-3.5 shrink-0" />
+                          {project.location}
+                        </span>
+                      )}
+                      {project.contractType && (
+                        <span className="flex items-center gap-1">
+                          <Briefcase className="w-3.5 h-3.5 shrink-0" />
+                          {project.contractType}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Skills */}
+                    {project.skills.length > 0 && (
+                      <div className="flex flex-wrap gap-1 mb-2.5">
+                        {project.skills.slice(0, 5).map((skill) => (
+                          <span
+                            key={skill}
+                            className="px-1.5 py-0.5 bg-muted text-muted-foreground text-[10px] uppercase tracking-wider border border-foreground/10"
+                          >
+                            {skill}
+                          </span>
+                        ))}
+                        {project.skills.length > 5 && (
+                          <span className="px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                            +{project.skills.length - 5}
+                          </span>
+                        )}
                       </div>
                     )}
 
-                    {project.description && (
-                      <p className="text-sm text-muted-foreground line-clamp-2 mb-3">
-                        {project.description}
-                      </p>
+                    {/* Stats (only if sourcing project exists with activity) */}
+                    {(stats.total > 0 || hasSourcingProject) && (
+                      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
+                        <span className="flex items-center gap-1 text-muted-foreground">
+                          <Users className="w-3.5 h-3.5" />
+                          {stats.total} trouvés
+                        </span>
+                        <span className="flex items-center gap-1 text-muted-foreground">
+                          <MessageSquare className="w-3.5 h-3.5" />
+                          {stats.messaged} contactés
+                        </span>
+                        <span className="flex items-center gap-1 text-muted-foreground">
+                          <UserCheck className="w-3.5 h-3.5" />
+                          {stats.shortlisted} shortlistés
+                        </span>
+                        <span className="flex items-center gap-1 text-muted-foreground">
+                          <UserX className="w-3.5 h-3.5" />
+                          {stats.dismissed} écartés
+                        </span>
+                      </div>
                     )}
-
-                    {/* Stats */}
-                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs sm:text-sm">
-                      <div className="flex items-center gap-1.5 text-muted-foreground">
-                        <Users className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
-                        <span>{stats.total || project.stats_total_found} trouvés</span>
-                      </div>
-                      <div className="flex items-center gap-1.5 text-muted-foreground">
-                        <MessageSquare className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
-                        <span>{stats.messaged} contactés</span>
-                      </div>
-                      <div className="flex items-center gap-1.5 text-muted-foreground">
-                        <UserCheck className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
-                        <span>{stats.shortlisted} shortlistés</span>
-                      </div>
-                      <div className="flex items-center gap-1.5 text-muted-foreground">
-                        <UserX className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
-                        <span>{stats.dismissed} écartés</span>
-                      </div>
-                    </div>
                   </div>
 
-                  {/* Right: Actions & Meta */}
-                  <div className="flex flex-wrap sm:flex-col items-center sm:items-end justify-between sm:justify-start gap-3 pt-2 sm:pt-0 border-t sm:border-t-0 border-foreground/5 w-full sm:w-auto">
+                  {/* Right: Actions */}
+                  <div className="flex flex-wrap sm:flex-col items-center sm:items-end justify-between sm:justify-start gap-2 pt-2 sm:pt-0 border-t sm:border-t-0 border-foreground/5 w-full sm:w-auto">
                     <div className="flex items-center gap-2 shrink-0">
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
-                          onResumeSearch(project);
+                          onResumeSearch(toSourcingProject(project));
                         }}
-                        className="relative overflow-hidden flex items-center gap-1.5 h-[30px] px-3 text-[11px] font-medium uppercase tracking-wider border border-foreground bg-foreground text-background group"
+                        className="relative overflow-hidden flex items-center gap-1.5 h-[28px] px-3 text-[10px] font-medium uppercase tracking-wider border border-foreground bg-foreground text-background group"
                       >
-                        <Play className="w-3.5 h-3.5 relative z-10" />
-                        <span className="relative z-10">Reprendre</span>
+                        <Play className="w-3 h-3 relative z-10" />
+                        <span className="relative z-10">Sourcer</span>
                       </button>
 
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-                          <Button variant="ghost" size="icon" className="h-8 w-8">
-                            <MoreVertical className="w-4 h-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          {project.status !== 'active' && (
-                            <DropdownMenuItem onClick={() => handleStatusChange(project.id, 'active')}>
-                              <Play className="w-4 h-4 mr-2" />
-                              Marquer actif
-                            </DropdownMenuItem>
-                          )}
-                          {project.status !== 'paused' && (
-                            <DropdownMenuItem onClick={() => handleStatusChange(project.id, 'paused')}>
-                              <Pause className="w-4 h-4 mr-2" />
-                              Mettre en pause
-                            </DropdownMenuItem>
-                          )}
-                          {project.status !== 'completed' && (
-                            <DropdownMenuItem onClick={() => handleStatusChange(project.id, 'completed')}>
-                              <CheckCircle className="w-4 h-4 mr-2" />
-                              Marquer terminé
-                            </DropdownMenuItem>
-                          )}
-                          {project.status !== 'archived' && (
-                            <DropdownMenuItem onClick={() => handleStatusChange(project.id, 'archived')}>
-                              <Archive className="w-4 h-4 mr-2" />
-                              Archiver
-                            </DropdownMenuItem>
-                          )}
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem 
-                            onClick={() => handleDelete(project.id)}
-                            className="text-red-600"
-                            disabled={isDeleting}
-                          >
-                            <Trash2 className="w-4 h-4 mr-2" />
-                            Supprimer
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
+                      {hasSourcingProject && (
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                            <Button variant="ghost" size="icon" className="h-7 w-7">
+                              <MoreVertical className="w-3.5 h-3.5" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            {project.status !== 'active' && (
+                              <DropdownMenuItem onClick={() => handleStatusChange(project, 'active')}>
+                                <Play className="w-4 h-4 mr-2" /> Actif
+                              </DropdownMenuItem>
+                            )}
+                            {project.status !== 'paused' && (
+                              <DropdownMenuItem onClick={() => handleStatusChange(project, 'paused')}>
+                                <Pause className="w-4 h-4 mr-2" /> En pause
+                              </DropdownMenuItem>
+                            )}
+                            {project.status !== 'completed' && (
+                              <DropdownMenuItem onClick={() => handleStatusChange(project, 'completed')}>
+                                <CheckCircle className="w-4 h-4 mr-2" /> Terminé
+                              </DropdownMenuItem>
+                            )}
+                            {project.status !== 'archived' && (
+                              <DropdownMenuItem onClick={() => handleStatusChange(project, 'archived')}>
+                                <Archive className="w-4 h-4 mr-2" /> Archiver
+                              </DropdownMenuItem>
+                            )}
+                            {project.source === 'manual' && (
+                              <>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem
+                                  onClick={() => handleDelete(project)}
+                                  className="text-destructive"
+                                  disabled={isDeleting}
+                                >
+                                  <Trash2 className="w-4 h-4 mr-2" /> Supprimer
+                                </DropdownMenuItem>
+                              </>
+                            )}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      )}
                     </div>
 
-                    <div className="flex items-center gap-1.5 text-xs text-muted-foreground min-w-0 ml-auto sm:ml-0">
-                      <Calendar className="w-3.5 h-3.5 shrink-0" />
-                      <span className="truncate max-w-[140px] sm:max-w-none">
-                        {project.last_search_at 
-                          ? `${formatDistanceToNow(new Date(project.last_search_at), { addSuffix: true, locale: fr })}`
-                          : `${formatDistanceToNow(new Date(project.created_at), { addSuffix: true, locale: fr })}`
+                    <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground ml-auto sm:ml-0">
+                      <Calendar className="w-3 h-3 shrink-0" />
+                      <span className="truncate max-w-[120px]">
+                        {project.lastSearchAt
+                          ? formatDistanceToNow(new Date(project.lastSearchAt), { addSuffix: true, locale: fr })
+                          : formatDistanceToNow(new Date(project.createdAt), { addSuffix: true, locale: fr })
                         }
                       </span>
                     </div>
@@ -303,18 +429,18 @@ export const ProjectsList: React.FC<ProjectsListProps> = ({ onResumeSearch }) =>
       )}
 
       {/* Modals */}
-      <CreateProjectModal 
-        open={showCreateModal} 
+      <CreateProjectModal
+        open={showCreateModal}
         onOpenChange={setShowCreateModal}
       />
 
-      {selectedProject && (
+      {selectedProject?.sourcingProject && (
         <ProjectDetailPanelEnhanced
-          project={selectedProject}
+          project={selectedProject.sourcingProject}
           open={!!selectedProject}
           onOpenChange={(open) => !open && setSelectedProject(null)}
           onResumeSearch={() => {
-            onResumeSearch(selectedProject);
+            onResumeSearch(selectedProject.sourcingProject!);
             setSelectedProject(null);
           }}
         />
