@@ -1,15 +1,15 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { UnifiedProject } from '@/types/projects';
 import { useSourcingProjects, useProjectCandidates } from '@/hooks/useSourcingProjects';
 import { useProjectStats } from '@/hooks/useProjectStats';
+import { useUpdateNotionJob } from '@/hooks/useNotionJobs';
 import {
   Sheet,
   SheetContent,
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet';
-import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
@@ -33,7 +33,6 @@ import {
   ExternalLink,
   Layers,
   Target,
-  Info,
   BookOpen,
 } from 'lucide-react';
 import { formatDistanceToNow, format } from 'date-fns';
@@ -41,6 +40,7 @@ import { fr } from 'date-fns/locale';
 import { toast } from 'sonner';
 import { ProjectFunnel } from './ProjectFunnel';
 import { ProjectCandidatesTableEnhanced } from './ProjectCandidatesTableEnhanced';
+import { EditableInfoCard } from './EditableField';
 import { cn } from '@/lib/utils';
 
 interface ProjectDetailViewProps {
@@ -66,6 +66,7 @@ export const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
   accountId,
 }) => {
   const { updateProject, isUpdating } = useSourcingProjects();
+  const updateNotionJob = useUpdateNotionJob();
   const spId = project.sourcingProject?.id || null;
   const { data: candidates = [], isLoading: candidatesLoading } = useProjectCandidates(spId);
   const { data: dynamicStats } = useProjectStats(spId);
@@ -76,6 +77,18 @@ export const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
 
   const job = project.job;
   const hasSourcingProject = !!project.sourcingProject;
+
+  /**
+   * Save a single field to Notion.
+   * fieldName maps to the FIELD_MAP keys in the edge function.
+   */
+  const saveToNotion = useCallback(async (fieldName: string, value: string) => {
+    if (!job) return;
+    await updateNotionJob.mutateAsync({
+      pageId: job.id,
+      updates: { [fieldName]: value },
+    });
+  }, [job, updateNotionJob]);
 
   const handleNotesChange = (value: string) => {
     setNotes(value);
@@ -197,31 +210,23 @@ export const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
                     {/* Job details from Notion */}
                     {job ? (
                       <>
-                        {/* Key info grid — always shown */}
+                        {/* Key info grid — all editable */}
                         <div className="grid grid-cols-2 gap-3">
-                          <InfoCard icon={Briefcase} label="Type de contrat" value={job.contractType || '—'} />
-                          <InfoCard icon={DollarSign} label="Salaire" value={job.salaryMin > 0 ? `${job.salaryMin}${job.salaryMax ? ` - ${job.salaryMax}` : ''} K€` : '—'} />
+                          <EditableInfoCard icon={Briefcase} label="Type de contrat" value={job.contractType || '—'} fieldName="contractType" onSave={saveToNotion} />
+                          <EditableInfoCard icon={DollarSign} label="Salaire min (K€)" value={job.salaryMin > 0 ? String(job.salaryMin) : '—'} fieldName="salaryMin" type="number" onSave={saveToNotion} />
+                          <EditableInfoCard icon={DollarSign} label="Salaire max (K€)" value={job.salaryMax > 0 ? String(job.salaryMax) : '—'} fieldName="salaryMax" type="number" onSave={saveToNotion} />
                           {job.tjm > 0 && (
-                            <InfoCard icon={DollarSign} label="TJM" value={`${job.tjm} €`} />
+                            <EditableInfoCard icon={DollarSign} label="TJM (€)" value={String(job.tjm)} fieldName="tjm" type="number" onSave={saveToNotion} />
                           )}
-                          <InfoCard icon={MapPin} label="Localisation" value={job.location || '—'} />
-                          <InfoCard icon={Layers} label="Entité" value={job.entity || '—'} />
-                          {job.seniority && (
-                            <InfoCard icon={GraduationCap} label="Séniorité" value={job.seniority} />
-                          )}
-                          {(job.xpMin > 0 || job.xpMax > 0) && (
-                            <InfoCard icon={Clock} label="Expérience" value={`${job.xpMin || 0} - ${job.xpMax || '∞'} ans`} />
-                          )}
-                          {job.remote && (
-                            <InfoCard icon={Globe} label="Remote" value={job.remote} />
-                          )}
-                          {job.priority && (
-                            <InfoCard icon={Star} label="Priorité" value={job.priority} />
-                          )}
-                          {job.channel && (
-                            <InfoCard icon={Layers} label="Canal" value={job.channel} />
-                          )}
-                          <InfoCard icon={Calendar} label="Date de création" value={job.openingDate ? new Date(job.openingDate).toLocaleDateString('fr-FR') : '—'} />
+                          <EditableInfoCard icon={MapPin} label="Localisation" value={job.location || '—'} fieldName="location" onSave={saveToNotion} />
+                          <EditableInfoCard icon={Layers} label="Entité" value={job.entity || '—'} fieldName="entity" onSave={saveToNotion} />
+                          <EditableInfoCard icon={GraduationCap} label="Séniorité" value={job.seniority || '—'} fieldName="seniority" onSave={saveToNotion} />
+                          <EditableInfoCard icon={Clock} label="XP min (ans)" value={job.xpMin > 0 ? String(job.xpMin) : '—'} fieldName="xpMin" type="number" onSave={saveToNotion} />
+                          <EditableInfoCard icon={Clock} label="XP max (ans)" value={job.xpMax > 0 ? String(job.xpMax) : '—'} fieldName="xpMax" type="number" onSave={saveToNotion} />
+                          <EditableInfoCard icon={Globe} label="Remote" value={job.remote || '—'} fieldName="remote" onSave={saveToNotion} />
+                          <EditableInfoCard icon={Star} label="Priorité" value={job.priority || '—'} fieldName="priority" onSave={saveToNotion} />
+                          <EditableInfoCard icon={Layers} label="Canal" value={job.channel || '—'} fieldName="channel" onSave={saveToNotion} />
+                          <EditableInfoCard icon={Calendar} label="Date création" value={job.openingDate ? new Date(job.openingDate).toLocaleDateString('fr-FR') : '—'} fieldName="openingDate" onSave={saveToNotion} />
                         </div>
 
                         {/* Compétences — always shown */}
@@ -257,28 +262,34 @@ export const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
                           )}
                         </div>
 
-                        {/* Scoring criteria — always shown */}
-                        <CriteriaSection
+                        {/* Scoring criteria — always shown, editable */}
+                        <EditableCriteriaSection
                           color="bg-destructive/10 border-destructive/30"
                           label="🔴 Must-have"
-                          content={job.mustHave || job.requirements || null}
+                          content={job.mustHave || job.requirements || ''}
+                          fieldName="mustHave"
+                          onSave={saveToNotion}
                         />
-                        <CriteriaSection
+                        <EditableCriteriaSection
                           color="bg-yellow-50 border-yellow-300"
                           label="🟡 Should-have"
-                          content={job.shouldHave || null}
+                          content={job.shouldHave || ''}
+                          fieldName="shouldHave"
+                          onSave={saveToNotion}
                         />
-                        <CriteriaSection
+                        <EditableCriteriaSection
                           color="bg-green-50 border-green-300"
                           label="🟢 Nice-to-have"
-                          content={job.niceToHave || null}
+                          content={job.niceToHave || ''}
+                          fieldName="niceToHave"
+                          onSave={saveToNotion}
                         />
 
-                        {/* Transversal criteria */}
+                        {/* Transversal criteria (read-only, comes from linked DB) */}
                         {job.transversalCriteria && (
                           <div className="border border-foreground/10 p-4 space-y-3">
                             <h4 className="text-[10px] uppercase tracking-widest text-muted-foreground font-medium">
-                              Critères transverses
+                              Critères transverses <span className="text-[9px] opacity-60">(lecture seule)</span>
                             </h4>
                             {job.transversalCriteria.must && (
                               <CriteriaSection color="bg-destructive/10 border-destructive/30" label="🔴 Must" content={job.transversalCriteria.must} />
@@ -298,15 +309,45 @@ export const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
                           </div>
                         )}
 
-                        {/* Description — always shown */}
-                        <DetailSection title="Description du poste" content={job.description || 'Non renseigné'} />
+                        {/* Description — editable */}
+                        <EditableTextSection
+                          title="Description du poste"
+                          content={job.description || ''}
+                          fieldName="description"
+                          onSave={saveToNotion}
+                        />
 
-                        {/* Body content from Notion page */}
+                        {/* Body content from Notion page (read-only — page blocks) */}
                         {job.bodyContent && (
                           <DetailSection title="Contenu de la page" content={job.bodyContent} />
                         )}
 
-                        {/* Client info */}
+                        {/* Sourcing criteria — editable */}
+                        <EditableTextSection
+                          title="Critères de sourcing"
+                          content={job.sourcingCriteria || ''}
+                          fieldName="sourcingCriteria"
+                          onSave={saveToNotion}
+                          icon={Target}
+                        />
+
+                        {/* Interview process — editable */}
+                        <EditableTextSection
+                          title="Process d'entretien"
+                          content={job.interviewProcess || ''}
+                          fieldName="interviewProcess"
+                          onSave={saveToNotion}
+                        />
+
+                        {/* Team info — editable */}
+                        <EditableTextSection
+                          title="Équipe"
+                          content={job.teamInfo || ''}
+                          fieldName="teamInfo"
+                          onSave={saveToNotion}
+                        />
+
+                        {/* Client info (read-only) */}
                         {job.client && (
                           <div className="border border-foreground/10 p-4">
                             <h4 className="text-[10px] uppercase tracking-widest text-muted-foreground font-medium mb-3">Client</h4>
@@ -477,17 +518,7 @@ export const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
   );
 };
 
-/* Sub-components */
-
-const InfoCard: React.FC<{ icon: React.ElementType; label: string; value: string }> = ({ icon: Icon, label, value }) => (
-  <div className="border border-foreground/10 p-3">
-    <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground uppercase tracking-widest mb-1">
-      <Icon className="w-3 h-3" />
-      {label}
-    </div>
-    <p className="text-sm font-medium text-foreground">{value}</p>
-  </div>
-);
+/* ======== Sub-components ======== */
 
 const CriteriaSection: React.FC<{ color: string; label: string; content: string | null }> = ({ color, label, content }) => (
   <div className={cn("border p-3", color)}>
@@ -501,22 +532,166 @@ const CriteriaSection: React.FC<{ color: string; label: string; content: string 
 );
 
 /**
- * Preprocess Notion body content so markdown parses correctly:
- * - Ensure blank line before headings (## …)
- * - Ensure blank line before list items that follow a non-list line
+ * Editable criteria section — click to edit, saves to Notion.
  */
-function preprocessMarkdown(raw: string): string {
-  return raw
-    // Normalise line endings
-    .replace(/\r\n/g, '\n')
-    // Ensure blank line before ## headings
-    .replace(/([^\n])\n(#{1,6}\s)/g, '$1\n\n$2')
-    // Ensure blank line before list items (- ) when preceded by non-list text
-    .replace(/([^\n-])\n(- )/g, '$1\n\n$2')
-    // Bold markers: **text**
-    .replace(/\*\*/g, '**');
-}
+const EditableCriteriaSection: React.FC<{
+  color: string;
+  label: string;
+  content: string;
+  fieldName: string;
+  onSave: (fieldName: string, value: string) => Promise<void>;
+}> = ({ color, label, content, fieldName, onSave }) => {
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(content);
+  const [saving, setSaving] = useState(false);
 
+  React.useEffect(() => { setValue(content); }, [content]);
+
+  const handleSave = async () => {
+    if (value === content) { setEditing(false); return; }
+    setSaving(true);
+    try {
+      await onSave(fieldName, value);
+      setEditing(false);
+    } catch { setValue(content); }
+    finally { setSaving(false); }
+  };
+
+  const isEmpty = !content;
+
+  return (
+    <div
+      className={cn("border p-3 group cursor-pointer", color)}
+      onClick={() => !editing && setEditing(true)}
+    >
+      <div className="flex items-center justify-between mb-1.5">
+        <h4 className="text-[10px] uppercase tracking-widest font-medium">{label}</h4>
+        {!editing && (
+          <span className="text-[9px] text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity">✏️ modifier</span>
+        )}
+      </div>
+      {editing ? (
+        <div className="space-y-2">
+          <Textarea
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Escape') { setValue(content); setEditing(false); } }}
+            className="text-sm border-foreground/20 rounded-none min-h-[80px] resize-y bg-background/80"
+            autoFocus
+          />
+          <div className="flex gap-2">
+            <button
+              onClick={(e) => { e.stopPropagation(); handleSave(); }}
+              disabled={saving}
+              className="h-7 px-3 text-[10px] font-medium uppercase tracking-wider border border-foreground bg-foreground text-background"
+            >
+              {saving ? 'Sauvegarde...' : 'Sauvegarder'}
+            </button>
+            <button
+              onClick={(e) => { e.stopPropagation(); setValue(content); setEditing(false); }}
+              className="h-7 px-3 text-[10px] font-medium uppercase tracking-wider border border-foreground/20"
+            >
+              Annuler
+            </button>
+          </div>
+        </div>
+      ) : (
+        isEmpty ? (
+          <p className="text-xs text-muted-foreground italic">Non renseigné</p>
+        ) : (
+          <p className="text-sm text-foreground whitespace-pre-line leading-relaxed">{content}</p>
+        )
+      )}
+    </div>
+  );
+};
+
+/**
+ * Editable text section for long-form text fields.
+ */
+const EditableTextSection: React.FC<{
+  title: string;
+  content: string;
+  fieldName: string;
+  onSave: (fieldName: string, value: string) => Promise<void>;
+  icon?: React.ElementType;
+}> = ({ title, content, fieldName, onSave, icon: Icon }) => {
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(content);
+  const [saving, setSaving] = useState(false);
+
+  React.useEffect(() => { setValue(content); }, [content]);
+
+  const handleSave = async () => {
+    if (value === content) { setEditing(false); return; }
+    setSaving(true);
+    try {
+      await onSave(fieldName, value);
+      setEditing(false);
+    } catch { setValue(content); }
+    finally { setSaving(false); }
+  };
+
+  const isEmpty = !content;
+
+  return (
+    <div className="group cursor-pointer" onClick={() => !editing && setEditing(true)}>
+      <div className="flex items-center justify-between mb-2">
+        <h4 className="text-[10px] uppercase tracking-widest text-muted-foreground font-medium flex items-center gap-1.5">
+          {Icon && <Icon className="w-3 h-3" />}
+          {title}
+        </h4>
+        {!editing && (
+          <span className="text-[9px] text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity">✏️ modifier</span>
+        )}
+      </div>
+      {editing ? (
+        <div className="space-y-2">
+          <Textarea
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Escape') { setValue(content); setEditing(false); } }}
+            className="text-sm border-foreground/20 rounded-none min-h-[100px] resize-y"
+            autoFocus
+          />
+          <div className="flex gap-2">
+            <button
+              onClick={(e) => { e.stopPropagation(); handleSave(); }}
+              disabled={saving}
+              className="h-7 px-3 text-[10px] font-medium uppercase tracking-wider border border-foreground bg-foreground text-background"
+            >
+              {saving ? 'Sauvegarde...' : 'Sauvegarder'}
+            </button>
+            <button
+              onClick={(e) => { e.stopPropagation(); setValue(content); setEditing(false); }}
+              className="h-7 px-3 text-[10px] font-medium uppercase tracking-wider border border-foreground/20"
+            >
+              Annuler
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="text-sm text-foreground leading-relaxed bg-muted/30 border border-foreground/5 p-3 prose prose-sm max-w-none
+          prose-headings:text-foreground prose-headings:font-semibold prose-headings:mt-4 prose-headings:mb-2
+          prose-h2:text-base prose-h3:text-sm
+          prose-p:my-1.5 prose-p:leading-relaxed
+          prose-ul:my-2 prose-ul:pl-4 prose-ul:list-disc
+          prose-li:my-0.5 prose-li:leading-relaxed
+          prose-strong:text-foreground prose-strong:font-semibold">
+          {isEmpty ? (
+            <p className="text-xs text-muted-foreground italic">Non renseigné</p>
+          ) : (
+            <ReactMarkdown>{preprocessMarkdown(content)}</ReactMarkdown>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
+/**
+ * Read-only detail section with markdown rendering.
+ */
 const DetailSection: React.FC<{ title: string; content: string; icon?: React.ElementType }> = ({ title, content, icon: Icon }) => (
   <div>
     <h4 className="text-[10px] uppercase tracking-widest text-muted-foreground font-medium mb-2 flex items-center gap-1.5">
@@ -534,3 +709,13 @@ const DetailSection: React.FC<{ title: string; content: string; icon?: React.Ele
     </div>
   </div>
 );
+
+/**
+ * Preprocess Notion body content so markdown parses correctly.
+ */
+function preprocessMarkdown(raw: string): string {
+  return raw
+    .replace(/\r\n/g, '\n')
+    .replace(/([^\n])\n(#{1,6}\s)/g, '$1\n\n$2')
+    .replace(/([^\n-])\n(- )/g, '$1\n\n$2');
+}
