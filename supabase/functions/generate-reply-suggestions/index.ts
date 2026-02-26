@@ -94,6 +94,8 @@ interface ChatContext {
   detectedIntent?: 'interested' | 'not_interested' | 'needs_info' | 'wants_call' | 'timing_issue' | 'already_placed' | 'neutral';
   // Tone preference
   tone?: AITone;
+  // Calendly link for scheduling
+  calendlyLink?: string;
 }
 
 // Format salary info for display
@@ -366,6 +368,13 @@ serve(async (req) => {
 
     // Adjust prompt based on detected intent
     let intentGuidance = '';
+    // Build calendly context
+    const calendlyContext = context.calendlyLink 
+      ? `\n\n📅 LIEN CALENDLY DISPONIBLE: ${context.calendlyLink}
+Quand le candidat est intéressé, veut un call, ou montre une intention de RDV, INCLUS ce lien dans au moins une suggestion.
+Formule naturelle: "Voici un lien pour réserver un créneau qui te convient : ${context.calendlyLink}"` 
+      : '';
+
     if (context.detectedIntent) {
       switch (context.detectedIntent) {
         case 'needs_info':
@@ -375,10 +384,10 @@ serve(async (req) => {
 3. Demandent en retour les infos manquantes: ${infoToRequest.join(', ') || 'disponibilité, prétentions'}`;
           break;
         case 'interested':
-          intentGuidance = '\n\nLe candidat est INTÉRESSÉ. Propose un call ou un entretien rapidement.';
+          intentGuidance = `\n\nLe candidat est INTÉRESSÉ. Propose un call ou un entretien rapidement.${context.calendlyLink ? ` Utilise le lien Calendly: ${context.calendlyLink}` : ''}`;
           break;
         case 'wants_call':
-          intentGuidance = '\n\nLe candidat veut un CALL. Propose des créneaux concrets cette semaine.';
+          intentGuidance = `\n\nLe candidat veut un CALL.${context.calendlyLink ? ` INCLUS le lien Calendly: ${context.calendlyLink} pour qu'il puisse réserver un créneau.` : ' Propose des créneaux concrets cette semaine.'}`;
           break;
         case 'timing_issue':
           intentGuidance = '\n\nLe candidat a un PROBLÈME DE TIMING. Propose de le recontacter plus tard et garde le lien.';
@@ -416,6 +425,7 @@ ${profileContext}
 ${jobContext}
 ${needsInfoContext}
 ${availableJobsContext}
+${calendlyContext}
 ${languageInstruction}
 
 ${toneInstructions}

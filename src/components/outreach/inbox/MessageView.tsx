@@ -15,6 +15,7 @@ import {
   CheckCheck,
   Check,
   Zap,
+  CalendarPlus,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Chat, Message, SequenceEnrollmentInfo, JobData } from '@/hooks/useMessagesInbox';
@@ -57,6 +58,7 @@ interface MessageViewProps {
   onAddToPipeline: (jobId?: string, jobTitle?: string) => void;
   onEnrollInSequence: () => void;
   onScheduleCall: () => void;
+  calendlyLink?: string | null;
 }
 
 export const MessageView: React.FC<MessageViewProps> = ({
@@ -79,6 +81,7 @@ export const MessageView: React.FC<MessageViewProps> = ({
   onAddToPipeline,
   onEnrollInSequence,
   onScheduleCall,
+  calendlyLink,
 }) => {
   const [localTone, setLocalTone] = useState<AITone>(selectedTone);
   const currentTone = onToneChange ? selectedTone : localTone;
@@ -144,6 +147,7 @@ export const MessageView: React.FC<MessageViewProps> = ({
       skills: headline?.split(/[|,·]/).map(s => s.trim()).filter(Boolean) || [],
     },
     availableJobs: availableJobs,
+    calendlyLink: calendlyLink || undefined,
   };
 
   return (
@@ -192,6 +196,21 @@ export const MessageView: React.FC<MessageViewProps> = ({
             <span className="relative z-10 flex items-center gap-1">
               <Zap className="w-3.5 h-3.5" />
               <span className="hidden md:inline">IA</span>
+            </span>
+            <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
+          </button>
+        )}
+
+        {/* Calendly button */}
+        {calendlyLink && (
+          <button
+            className="relative overflow-hidden h-8 px-2 md:px-3 text-xs font-medium uppercase tracking-wider border border-foreground/20 bg-background text-foreground group shrink-0 flex items-center"
+            onClick={onScheduleCall}
+            title="Insérer le lien Calendly"
+          >
+            <span className="relative z-10 flex items-center gap-1">
+              <CalendarPlus className="w-3.5 h-3.5" />
+              <span className="hidden md:inline">RDV</span>
             </span>
             <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
           </button>

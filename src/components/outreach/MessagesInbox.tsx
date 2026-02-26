@@ -81,6 +81,7 @@ const MessagesInboxInner: React.FC<
             onAddToPipeline={inbox.handleAddToPipeline}
             onEnrollInSequence={inbox.handleEnrollInSequence}
             onScheduleCall={inbox.handleScheduleCall}
+            calendlyLink={inbox.calendlyLink}
           />
         </div>
       )}
@@ -142,6 +143,7 @@ const MessagesInboxInner: React.FC<
             onAddToPipeline={inbox.handleAddToPipeline}
             onEnrollInSequence={inbox.handleEnrollInSequence}
             onScheduleCall={inbox.handleScheduleCall}
+            calendlyLink={inbox.calendlyLink}
           />
         </div>
 
