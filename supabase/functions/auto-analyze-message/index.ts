@@ -403,78 +403,85 @@ serve(async (req) => {
     }
 
     // 7. Trigger full AI analysis (analyze-response) and cache the result
-    // Fire-and-forget to avoid slowing down the webhook response
+    // IMPORTANT: We await this so the cache is written before the function exits.
+    // The webhook already calls auto-analyze as fire-and-forget, so this is fine.
     const supabaseUrl2 = Deno.env.get('SUPABASE_URL')!;
     const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
     
-    (async () => {
+    let cacheWritten = false;
+    try {
+      console.log(`[auto-analyze] Triggering full analysis for cache (chat: ${chat_id})`);
+      
+      // Build context for analyze-response
+      const analysisContext: Record<string, unknown> = {
+        recipientName: candidateName,
+        recipientHeadline: chatDetails.attendeeHeadline,
+        messages: messages.map(m => ({ text: m.text, is_sender: m.is_sender, timestamp: m.timestamp })),
+      };
+
+      // Fetch available jobs from Notion for job matching
       try {
-        console.log(`[auto-analyze] Triggering full analysis for cache (chat: ${chat_id})`);
-        
-        // Build context for analyze-response
-        const analysisContext: Record<string, unknown> = {
-          recipientName: candidateName,
-          recipientHeadline: chatDetails.attendeeHeadline,
-          messages: messages.map(m => ({ text: m.text, is_sender: m.is_sender, timestamp: m.timestamp })),
-        };
-
-        // Fetch available jobs from Notion for job matching
-        try {
-          const notionJobsRes = await fetch(`${supabaseUrl2}/functions/v1/fetch-notion-jobs`, {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${supabaseAnonKey}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({}),
-          });
-          if (notionJobsRes.ok) {
-            const notionJobsData = await notionJobsRes.json();
-            const jobs = notionJobsData?.jobs || [];
-            if (jobs.length > 0) {
-              analysisContext.availableJobs = jobs.slice(0, 15);
-            }
-          }
-        } catch (e) {
-          console.warn('[auto-analyze] Failed to fetch jobs for cache:', e);
-        }
-
-        // Call analyze-response
-        const analyzeRes = await fetch(`${supabaseUrl2}/functions/v1/analyze-response`, {
+        const notionJobsRes = await fetch(`${supabaseUrl2}/functions/v1/fetch-notion-jobs`, {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${supabaseAnonKey}`,
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({ context: analysisContext }),
+          body: JSON.stringify({}),
         });
-
-        if (analyzeRes.ok) {
-          const analyzeData = await analyzeRes.json();
-          if (analyzeData?.success && analyzeData?.analysis) {
-            // Store in cache
-            await supabase
-              .from('message_analysis_cache')
-              .upsert({
-                chat_id: chat_id,
-                account_id: account_id,
-                recipient_name: candidateName,
-                analysis: analyzeData.analysis,
-                updated_at: new Date().toISOString(),
-              }, { onConflict: 'chat_id,account_id' });
-            console.log(`[auto-analyze] Full analysis cached for chat: ${chat_id}`);
+        if (notionJobsRes.ok) {
+          const notionJobsData = await notionJobsRes.json();
+          const jobs = notionJobsData?.jobs || [];
+          if (jobs.length > 0) {
+            analysisContext.availableJobs = jobs.slice(0, 15);
           }
-        } else {
-          console.error(`[auto-analyze] analyze-response failed: ${analyzeRes.status}`);
         }
       } catch (e) {
-        console.error('[auto-analyze] Full analysis cache error:', e);
+        console.warn('[auto-analyze] Failed to fetch jobs for cache:', e);
       }
-    })();
+
+      // Call analyze-response and AWAIT the result
+      const analyzeRes = await fetch(`${supabaseUrl2}/functions/v1/analyze-response`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${supabaseAnonKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ context: analysisContext }),
+      });
+
+      if (analyzeRes.ok) {
+        const analyzeData = await analyzeRes.json();
+        if (analyzeData?.success && analyzeData?.analysis) {
+          // Store in cache — awaited so it completes before function exits
+          const { error: cacheError } = await supabase
+            .from('message_analysis_cache')
+            .upsert({
+              chat_id: chat_id,
+              account_id: account_id,
+              recipient_name: candidateName,
+              analysis: analyzeData.analysis,
+              updated_at: new Date().toISOString(),
+            }, { onConflict: 'chat_id,account_id' });
+          
+          if (cacheError) {
+            console.error(`[auto-analyze] Cache write error:`, cacheError);
+          } else {
+            cacheWritten = true;
+            console.log(`[auto-analyze] ✅ Full analysis cached for chat: ${chat_id}`);
+          }
+        }
+      } else {
+        console.error(`[auto-analyze] analyze-response failed: ${analyzeRes.status}`);
+      }
+    } catch (e) {
+      console.error('[auto-analyze] Full analysis cache error:', e);
+    }
 
     return new Response(JSON.stringify({ 
       success: true, 
       analysis,
+      cacheWritten,
       updatedCandidatEtat: candidatEtat || null,
       updatedShortlistEtape: shortlistEtape || null,
       updatedChatCategory: chatCategory || null,
