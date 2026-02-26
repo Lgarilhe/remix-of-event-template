@@ -68,7 +68,7 @@ const AppContent = () => {
         <Route path="/create-event" element={<CreateEvent />} />
         <Route path="/auth" element={<Auth />} />
         <Route path="/admin" element={<Admin />} />
-        <Route path="/jobs" element={<JobSpace />} />
+        {/* Job Space removed - merged into Outreach > Projects */}
         <Route path="/candidates" element={<Candidates />} />
         <Route path="/outreach" element={<ProtectedRoute><Outreach /></ProtectedRoute>} />
         <Route path="/ats" element={<ProtectedRoute><ATS /></ProtectedRoute>} />
