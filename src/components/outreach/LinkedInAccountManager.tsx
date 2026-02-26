@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { LinkedInAccount } from '@/pages/Outreach';
 import { Button } from '@/components/ui/button';
@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Loader2, Trash2, CheckCircle, AlertCircle, Key, Cookie, RefreshCw, Building2, Info, ToggleLeft, ToggleRight } from 'lucide-react';
+import { Loader2, Trash2, CheckCircle, AlertCircle, Key, Cookie, RefreshCw, Building2, Info, ToggleLeft, ToggleRight, UserCircle, Save } from 'lucide-react';
 import linkedInLogo from '@/assets/linkedin-logo.png';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
@@ -59,6 +59,36 @@ export const LinkedInAccountManager: React.FC<LinkedInAccountManagerProps> = ({
   const [connecting, setConnecting] = useState(false);
   const [disconnecting, setDisconnecting] = useState<string | null>(null);
   const [reconnectingAccount, setReconnectingAccount] = useState<LinkedInAccount | null>(null);
+  
+  // Signature settings
+  const [signatureName, setSignatureName] = useState(() => {
+    return localStorage.getItem('outreach_sender_name') || '';
+  });
+  const [signatureSaved, setSignatureSaved] = useState(false);
+
+  // Auto-detect name from auth session if no signature saved
+  useEffect(() => {
+    if (!localStorage.getItem('outreach_sender_name')) {
+      supabase.auth.getUser().then(({ data: { user } }) => {
+        if (user) {
+          const meta = user.user_metadata;
+          const fullName = meta?.full_name || meta?.display_name || meta?.name || '';
+          const firstName = fullName.split(' ')[0] || user.email?.split('@')[0] || '';
+          if (firstName) {
+            setSignatureName(firstName);
+            localStorage.setItem('outreach_sender_name', firstName);
+          }
+        }
+      });
+    }
+  }, []);
+
+  const handleSaveSignature = () => {
+    localStorage.setItem('outreach_sender_name', signatureName.trim());
+    setSignatureSaved(true);
+    toast.success('Signature mise à jour');
+    setTimeout(() => setSignatureSaved(false), 2000);
+  };
   
   // Cookie method
   const [liAtCookie, setLiAtCookie] = useState('');
@@ -567,6 +597,52 @@ export const LinkedInAccountManager: React.FC<LinkedInAccountManagerProps> = ({
         </CardContent>
       </Card>
       </div>
+
+      {/* Signature settings */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <UserCircle className="w-5 h-5" />
+            Signature des messages
+          </CardTitle>
+          <CardDescription>
+            Votre prénom utilisé comme signature dans les messages d'approche et les séquences
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center gap-3">
+            <div className="flex-1">
+              <Label htmlFor="signature-name" className="text-xs text-muted-foreground mb-1.5 block">
+                Prénom (signature)
+              </Label>
+              <Input
+                id="signature-name"
+                value={signatureName}
+                onChange={(e) => setSignatureName(e.target.value)}
+                placeholder="Ex: Laurent"
+                className="h-9"
+                onKeyDown={(e) => e.key === 'Enter' && handleSaveSignature()}
+              />
+            </div>
+            <Button
+              onClick={handleSaveSignature}
+              disabled={!signatureName.trim()}
+              size="sm"
+              className="mt-5"
+            >
+              {signatureSaved ? (
+                <CheckCircle className="w-4 h-4 mr-1" />
+              ) : (
+                <Save className="w-4 h-4 mr-1" />
+              )}
+              {signatureSaved ? 'Enregistré' : 'Enregistrer'}
+            </Button>
+          </div>
+          <p className="text-xs text-muted-foreground mt-2">
+            Ce prénom sera utilisé automatiquement dans tous vos messages d'approche et séquences.
+          </p>
+        </CardContent>
+      </Card>
 
       {/* Webhook Manager */}
       <WebhookManager />
