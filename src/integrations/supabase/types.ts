@@ -707,6 +707,36 @@ export type Database = {
         }
         Relationships: []
       }
+      chat_categories: {
+        Row: {
+          account_id: string
+          category: string
+          chat_id: string
+          created_at: string
+          created_by: string
+          id: string
+          updated_at: string
+        }
+        Insert: {
+          account_id: string
+          category: string
+          chat_id: string
+          created_at?: string
+          created_by: string
+          id?: string
+          updated_at?: string
+        }
+        Update: {
+          account_id?: string
+          category?: string
+          chat_id?: string
+          created_at?: string
+          created_by?: string
+          id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       contact_submissions: {
         Row: {
           company: string | null
