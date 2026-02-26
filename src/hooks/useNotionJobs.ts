@@ -8,9 +8,9 @@ const STALE_TIME = 5 * 60 * 1000; // 5 minutes
 const GC_TIME = 60 * 60 * 1000; // 1 hour
 const REFETCH_INTERVAL = 5 * 60 * 1000; // 5 minutes polling
 
-async function fetchJobs(): Promise<Job[]> {
+async function fetchJobs(refresh = false): Promise<Job[]> {
   const { data, error } = await supabase.functions.invoke('fetch-notion-jobs', {
-    body: { all: true, refresh: false },
+    body: { all: true, refresh },
   });
 
   if (error) throw error;
@@ -22,7 +22,7 @@ async function fetchJobs(): Promise<Job[]> {
 export function useNotionJobs() {
   return useQuery({
     queryKey: ['notion-jobs'],
-    queryFn: fetchJobs,
+    queryFn: () => fetchJobs(false),
     staleTime: STALE_TIME,
     gcTime: GC_TIME,
     refetchOnWindowFocus: false,
@@ -32,7 +32,7 @@ export function useNotionJobs() {
 
 /**
  * Mutation hook to update a Notion job field and sync back.
- * Invalidates the jobs cache on success so the UI refreshes.
+ * Optimistically updates the local cache, then forces a fresh refetch from Notion.
  */
 export function useUpdateNotionJob() {
   const queryClient = useQueryClient();
@@ -46,15 +46,48 @@ export function useUpdateNotionJob() {
       if (error) throw error;
       if (!data?.success) throw new Error(data?.error || 'Failed to update');
 
-      return data;
+      return { pageId, updates };
+    },
+    onMutate: async ({ pageId, updates }) => {
+      // Cancel outgoing refetches
+      await queryClient.cancelQueries({ queryKey: ['notion-jobs'] });
+
+      // Snapshot previous value
+      const previousJobs = queryClient.getQueryData<Job[]>(['notion-jobs']);
+
+      // Optimistically update the cache
+      if (previousJobs) {
+        queryClient.setQueryData<Job[]>(['notion-jobs'], (old) =>
+          (old || []).map((job) => {
+            if (job.id !== pageId) return job;
+            const updated = { ...job };
+            for (const [field, value] of Object.entries(updates)) {
+              (updated as any)[field] = value;
+            }
+            return updated;
+          })
+        );
+      }
+
+      return { previousJobs };
+    },
+    onError: (err: Error, _vars, context) => {
+      // Roll back on error
+      if (context?.previousJobs) {
+        queryClient.setQueryData(['notion-jobs'], context.previousJobs);
+      }
+      toast.error(`Erreur Notion: ${err.message}`);
     },
     onSuccess: () => {
-      // Invalidate jobs cache so polling picks up changes immediately
-      queryClient.invalidateQueries({ queryKey: ['notion-jobs'] });
       toast.success('Modifié dans Notion ✓');
     },
-    onError: (err: Error) => {
-      toast.error(`Erreur Notion: ${err.message}`);
+    onSettled: () => {
+      // Force a fresh refetch from Notion (bypass cache)
+      queryClient.fetchQuery({
+        queryKey: ['notion-jobs'],
+        queryFn: () => fetchJobs(true),
+        staleTime: 0,
+      });
     },
   });
 }
