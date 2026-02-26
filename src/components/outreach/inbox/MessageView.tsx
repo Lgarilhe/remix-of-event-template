@@ -87,7 +87,8 @@ export const MessageView: React.FC<MessageViewProps> = ({
 
   const profileId = selectedChat ? getAttendeeProfileId(selectedChat) : null;
   const profileUrl = selectedChat?.attendees?.[0]?.profile_url || null;
-  const { events: activityEvents } = useProfileActivity(profileId, profileUrl);
+  const profileName = selectedChat ? getChatDisplayName(selectedChat) : null;
+  const { events: activityEvents } = useProfileActivity(profileId, profileUrl, profileName);
 
   // Merge messages and activity events into a unified timeline
   type TimelineItem = 
