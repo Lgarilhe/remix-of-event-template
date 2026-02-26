@@ -216,8 +216,8 @@ export const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
                       <div className="border border-foreground/10 p-4">
                         <h4 className="text-[10px] uppercase tracking-widest text-muted-foreground font-medium mb-3">Pipeline</h4>
                         <ProjectFunnel
-                          totalFound={dynamicStats?.total || project.sourcingProject!.stats_total_found}
-                          scored={dynamicStats?.scored || project.sourcingProject!.stats_scored}
+                          totalFound={dynamicStats?.total || project.sourcingProject?.stats_total_found || 0}
+                          scored={dynamicStats?.scored || project.sourcingProject?.stats_scored || 0}
                           messaged={dynamicStats?.messaged || 0}
                           shortlisted={dynamicStats?.shortlisted || 0}
                           dismissed={dynamicStats?.dismissed || 0}
