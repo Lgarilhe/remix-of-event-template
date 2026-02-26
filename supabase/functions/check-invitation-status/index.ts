@@ -7,7 +7,8 @@ const corsHeaders = {
 };
 
 const UNIPILE_API_KEY = Deno.env.get('UNIPILE_API_KEY');
-const UNIPILE_DSN = Deno.env.get('UNIPILE_DSN');
+const rawDsn = Deno.env.get('UNIPILE_DSN') || '';
+const UNIPILE_DSN = rawDsn.startsWith('http') ? rawDsn : `https://${rawDsn}`;
 
 interface PendingInvitation {
   provider_id: string;
