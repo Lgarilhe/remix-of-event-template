@@ -8,7 +8,8 @@ import {
   Bell, 
   GitBranch, 
   FileText,
-  Send
+  Send,
+  Target
 } from 'lucide-react';
 
 interface ATSCandidateCardProps {
@@ -32,6 +33,11 @@ const SOURCE_CONFIG: Record<string, { icon: React.ReactNode; label: string; colo
     icon: <Send className="w-3 h-3" />, 
     label: 'InMail', 
     color: 'bg-cyan-100 text-cyan-700' 
+  },
+  outreach: { 
+    icon: <Target className="w-3 h-3" />, 
+    label: 'Outreach', 
+    color: 'bg-orange-100 text-orange-700' 
   },
 };
 
@@ -66,11 +72,19 @@ export const ATSCandidateCard: React.FC<ATSCandidateCardProps> = ({
         
         {/* Indicators */}
         <div className="flex items-center gap-1 flex-shrink-0">
+          {candidate.score != null && (
+            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
+              candidate.score >= 70 ? 'bg-green-100 text-green-700' : 
+              candidate.score >= 40 ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-600'
+            }`}>
+              {candidate.score}%
+            </span>
+          )}
           {candidate.hasReminder && (
             <Bell className="w-3.5 h-3.5 text-amber-500" />
           )}
           {(candidate.notesCount || 0) > 0 && (
-            <div className="flex items-center gap-0.5 text-[#1A1A1A]/50">
+            <div className="flex items-center gap-0.5 text-muted-foreground">
               <StickyNote className="w-3.5 h-3.5" />
               <span className="text-[10px]">{candidate.notesCount}</span>
             </div>

@@ -19,7 +19,8 @@ import {
   ExternalLink,
   GitBranch,
   FileText,
-  Send
+  Send,
+  Target
 } from 'lucide-react';
 
 interface ATSTableProps {
@@ -34,12 +35,14 @@ const SOURCE_LABELS: Record<string, string> = {
   shortlist: 'Pipeline',
   sequence: 'Séquence',
   inmail: 'InMail',
+  outreach: 'Outreach',
 };
 
 const SOURCE_ICONS: Record<string, React.ReactNode> = {
   shortlist: <FileText className="w-3 h-3" />,
   sequence: <GitBranch className="w-3 h-3" />,
   inmail: <Send className="w-3 h-3" />,
+  outreach: <Target className="w-3 h-3" />,
 };
 
 export const ATSTable: React.FC<ATSTableProps> = ({ candidates, onCandidateClick }) => {
@@ -129,6 +132,7 @@ export const ATSTable: React.FC<ATSTableProps> = ({ candidates, onCandidateClick
             <TableHead className="w-[100px]">
               <SortButton label="Activité" sortKeyVal="lastActivity" />
             </TableHead>
+            <TableHead className="w-[70px]">Score</TableHead>
             <TableHead className="w-[80px]">Actions</TableHead>
           </TableRow>
         </TableHeader>
@@ -207,6 +211,18 @@ export const ATSTable: React.FC<ATSTableProps> = ({ candidates, onCandidateClick
                 )}
               </TableCell>
               <TableCell>
+                {candidate.score != null ? (
+                  <span className={`text-xs font-bold px-1.5 py-0.5 rounded ${
+                    candidate.score >= 70 ? 'bg-green-100 text-green-700' : 
+                    candidate.score >= 40 ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-600'
+                  }`}>
+                    {candidate.score}%
+                  </span>
+                ) : (
+                  <span className="text-sm text-muted-foreground">—</span>
+                )}
+              </TableCell>
+              <TableCell>
                 <div className="flex items-center gap-1">
                   {candidate.linkedin && (
                     <Button
@@ -241,7 +257,7 @@ export const ATSTable: React.FC<ATSTableProps> = ({ candidates, onCandidateClick
 
           {sortedCandidates.length === 0 && (
             <TableRow>
-              <TableCell colSpan={7} className="text-center py-12 text-[#1A1A1A]/50">
+              <TableCell colSpan={8} className="text-center py-12 text-muted-foreground">
                 Aucun candidat trouvé
               </TableCell>
             </TableRow>

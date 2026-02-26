@@ -15,7 +15,7 @@ export interface ATSCandidate {
   expertise: string[];
   stage: string;
   entity: string | null;
-  source: 'shortlist' | 'sequence' | 'inmail';
+  source: 'shortlist' | 'sequence' | 'inmail' | 'outreach';
   sourceId: string;
   jobId: string | null;
   jobTitle: string | null;
@@ -27,6 +27,9 @@ export interface ATSCandidate {
   createdAt: string;
   notesCount?: number;
   hasReminder?: boolean;
+  score?: number | null;
+  recommendation?: string | null;
+  outreachStatus?: string | null;
 }
 
 export const ATS_STAGES = [
@@ -152,6 +155,51 @@ async function fetchInMails(existingProfileIds: Set<string>): Promise<ATSCandida
     }));
 }
 
+// Fetch outreach candidates (scored, messaged, etc.) from job_candidate_status
+async function fetchOutreachCandidates(existingProfileIds: Set<string>): Promise<ATSCandidate[]> {
+  const { data: records, error } = await supabase
+    .from('job_candidate_status')
+    .select('*')
+    .order('updated_at', { ascending: false })
+    .limit(500);
+
+  if (error || !records) return [];
+
+  const STATUS_TO_STAGE: Record<string, string> = {
+    'scored': 'Nouveau',
+    'shortlisted': 'Pressenti',
+    'messaged': 'Contacté',
+    'replied': 'Répondu',
+    'interested': 'Répondu',
+    'not_interested': 'Perdu',
+    'dismissed': 'Perdu',
+  };
+
+  return records
+    .filter((r: any) => !existingProfileIds.has(r.candidate_id))
+    .map((r: any) => ({
+      id: `outreach-${r.id}`,
+      candidateId: r.candidate_id,
+      name: r.candidate_name || 'Profil LinkedIn',
+      email: null,
+      phone: null,
+      linkedin: r.linkedin_profile_url || null,
+      headline: r.candidate_headline || null,
+      expertise: [],
+      stage: STATUS_TO_STAGE[r.status] || 'Nouveau',
+      entity: null,
+      source: 'outreach' as const,
+      sourceId: r.id,
+      jobId: r.job_id || null,
+      jobTitle: null,
+      lastActivity: r.updated_at || r.created_at,
+      createdAt: r.created_at,
+      score: r.score,
+      recommendation: r.recommendation,
+      outreachStatus: r.status,
+    }));
+}
+
 async function fetchMetadata(candidates: ATSCandidate[]): Promise<ATSCandidate[]> {
   const [notesResult, remindersResult] = await Promise.all([
     supabase.from('candidate_notes').select('candidate_id'),
@@ -180,21 +228,63 @@ async function fetchMetadata(candidates: ATSCandidate[]): Promise<ATSCandidate[]
 
 // Main fetch function that combines all sources
 async function fetchAllCandidates(): Promise<ATSCandidate[]> {
-  // Fetch shortlist and sequences in parallel (they're independent)
-  const [shortlistCandidates, sequenceCandidates] = await Promise.all([
+  // Fetch shortlist, sequences, and outreach scores in parallel
+  const [shortlistCandidates, sequenceCandidates, allOutreachRecords] = await Promise.all([
     fetchShortlist(),
     fetchSequences(),
+    // Fetch ALL outreach records (including those that overlap) for score enrichment
+    (async () => {
+      const { data } = await supabase
+        .from('job_candidate_status')
+        .select('*')
+        .order('updated_at', { ascending: false })
+        .limit(500);
+      return data || [];
+    })(),
   ]);
 
-  // Combine for deduplication before fetching inmails
-  const combined = [...shortlistCandidates, ...sequenceCandidates];
+  // Build a score lookup map from outreach records
+  const scoreLookup = new Map<string, { score: number | null; recommendation: string | null; status: string }>();
+  for (const r of allOutreachRecords) {
+    // Keep the highest score per candidate
+    const existing = scoreLookup.get(r.candidate_id);
+    if (!existing || (r.score && (!existing.score || r.score > existing.score))) {
+      scoreLookup.set(r.candidate_id, { 
+        score: r.score, 
+        recommendation: r.recommendation, 
+        status: r.status 
+      });
+    }
+  }
+
+  // Enrich shortlist and sequence candidates with scores
+  const enrichedShortlist = shortlistCandidates.map(c => {
+    const scoreData = scoreLookup.get(c.candidateId);
+    return scoreData ? { ...c, score: scoreData.score, recommendation: scoreData.recommendation, outreachStatus: scoreData.status } : c;
+  });
+  const enrichedSequences = sequenceCandidates.map(c => {
+    const scoreData = scoreLookup.get(c.candidateId);
+    return scoreData ? { ...c, score: scoreData.score, recommendation: scoreData.recommendation, outreachStatus: scoreData.status } : c;
+  });
+
+  // Combine for deduplication before fetching inmails + outreach-only candidates
+  const combined = [...enrichedShortlist, ...enrichedSequences];
   const existingProfileIds = new Set(combined.map(c => c.candidateId));
 
-  // Fetch inmails (needs deduplication)
-  const inmailCandidates = await fetchInMails(existingProfileIds);
+  // Fetch inmails and outreach-only candidates (those not in shortlist/sequences)
+  const [inmailCandidates, outreachOnlyCandidates] = await Promise.all([
+    fetchInMails(existingProfileIds),
+    fetchOutreachCandidates(existingProfileIds),
+  ]);
+
+  // Enrich inmails too
+  const enrichedInmails = inmailCandidates.map(c => {
+    const scoreData = scoreLookup.get(c.candidateId);
+    return scoreData ? { ...c, score: scoreData.score, recommendation: scoreData.recommendation, outreachStatus: scoreData.status } : c;
+  });
 
   // Combine all
-  const allCandidates = [...combined, ...inmailCandidates];
+  const allCandidates = [...combined, ...enrichedInmails, ...outreachOnlyCandidates];
 
   // Fetch and apply metadata
   return fetchMetadata(allCandidates);
