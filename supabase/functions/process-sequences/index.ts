@@ -592,8 +592,12 @@ async function executeStepAction(actionType: string, enrollment: Record<string, 
       }
       case 'profile_visit': {
         const r = await fetch(`${UNIPILE_DSN}/api/v1/users/${profileId}?account_id=${accountId}`, { headers: { 'X-API-KEY': UNIPILE_API_KEY! } });
-        if (r.ok) await logAnalytics(supabase, enrollment.sequence_id as string, 'profile_visits');
-        return { success: r.ok };
+        if (r.ok) {
+          await logAnalytics(supabase, enrollment.sequence_id as string, 'profile_visits');
+          return { success: true };
+        }
+        const errBody = await r.text().catch(() => '');
+        return { success: false, error: `Profile visit ${r.status}: ${errBody || r.statusText}` };
       }
       case 'smart_message': case 'inmail': case 'message': {
         const p = await getProfileInfo(accountId, profileId, enrollment.profile_url as string | undefined);
