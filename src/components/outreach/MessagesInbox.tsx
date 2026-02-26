@@ -97,12 +97,14 @@ const MessagesInboxInner: React.FC<
           showUnreadOnly={inbox.showUnreadOnly}
           sourceFilter={inbox.sourceFilter}
           categoryFilter={inbox.chatCategories.categoryFilter}
+          responseFilter={inbox.responseFilter}
           enrollmentsMap={inbox.enrollmentsMap}
           categoriesMap={inbox.chatCategories.categoriesMap}
           onSearchChange={inbox.setSearchQuery}
           onShowUnreadOnlyChange={inbox.setShowUnreadOnly}
           onSourceFilterChange={inbox.setSourceFilter}
           onCategoryFilterChange={inbox.chatCategories.setCategoryFilter}
+          onResponseFilterChange={inbox.setResponseFilter}
           onSetCategory={inbox.chatCategories.setCategory}
           onAutoTag={() => inbox.chatCategories.autoTagChats(inbox.chats.slice(0, 100))}
           autoTagging={inbox.chatCategories.autoTagging}

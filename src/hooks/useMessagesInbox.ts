@@ -135,6 +135,7 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange }: UseMe
   // Filters
   const [showUnreadOnly, setShowUnreadOnly] = useState(false);
   const [sourceFilter, setSourceFilter] = useState<'all' | 'classic' | 'recruiter'>('all');
+  const [responseFilter, setResponseFilter] = useState<'all' | 'waiting_candidate' | 'waiting_me'>('all');
   
   // Context data
   const [enrollmentsMap, setEnrollmentsMap] = useState<Map<string, SequenceEnrollmentInfo>>(new Map());
@@ -645,6 +646,13 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange }: UseMe
     if (chatCategories.categoryFilter !== 'all') {
       result = result.filter(chat => chatCategories.categoriesMap.get(chat.id) === chatCategories.categoryFilter);
     }
+
+    // Response status filter
+    if (responseFilter === 'waiting_candidate') {
+      result = result.filter(chat => chat.last_message?.is_sender === true);
+    } else if (responseFilter === 'waiting_me') {
+      result = result.filter(chat => chat.last_message?.is_sender === false);
+    }
     
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
@@ -652,7 +660,7 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange }: UseMe
     }
     
     setFilteredChats(result);
-  }, [searchQuery, chats, showUnreadOnly, sourceFilter, chatCategories.categoryFilter, chatCategories.categoriesMap]);
+  }, [searchQuery, chats, showUnreadOnly, sourceFilter, responseFilter, chatCategories.categoryFilter, chatCategories.categoriesMap]);
 
   // Unread count effect
   useEffect(() => {
@@ -713,6 +721,8 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange }: UseMe
     setShowUnreadOnly,
     sourceFilter,
     setSourceFilter,
+    responseFilter,
+    setResponseFilter,
     
     // Categories
     chatCategories,
