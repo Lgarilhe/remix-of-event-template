@@ -197,17 +197,15 @@ export const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
                     {/* Job details from Notion */}
                     {job ? (
                       <>
-                        {/* Key info grid */}
+                        {/* Key info grid — always shown */}
                         <div className="grid grid-cols-2 gap-3">
-                          {job.contractType && (
-                            <InfoCard icon={Briefcase} label="Type de contrat" value={job.contractType} />
-                          )}
-                          {job.salaryMin > 0 && (
-                            <InfoCard icon={DollarSign} label="Salaire" value={`${job.salaryMin}${job.salaryMax ? ` - ${job.salaryMax}` : ''} K€`} />
-                          )}
+                          <InfoCard icon={Briefcase} label="Type de contrat" value={job.contractType || '—'} />
+                          <InfoCard icon={DollarSign} label="Salaire" value={job.salaryMin > 0 ? `${job.salaryMin}${job.salaryMax ? ` - ${job.salaryMax}` : ''} K€` : '—'} />
                           {job.tjm > 0 && (
                             <InfoCard icon={DollarSign} label="TJM" value={`${job.tjm} €`} />
                           )}
+                          <InfoCard icon={MapPin} label="Localisation" value={job.location || '—'} />
+                          <InfoCard icon={Layers} label="Entité" value={job.entity || '—'} />
                           {job.seniority && (
                             <InfoCard icon={GraduationCap} label="Séniorité" value={job.seniority} />
                           )}
@@ -220,18 +218,16 @@ export const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
                           {job.priority && (
                             <InfoCard icon={Star} label="Priorité" value={job.priority} />
                           )}
-                          {job.entity && (
-                            <InfoCard icon={Layers} label="Entité" value={job.entity} />
-                          )}
                           {job.channel && (
                             <InfoCard icon={Layers} label="Canal" value={job.channel} />
                           )}
+                          <InfoCard icon={Calendar} label="Date de création" value={job.openingDate ? new Date(job.openingDate).toLocaleDateString('fr-FR') : '—'} />
                         </div>
 
-                        {/* Skills */}
-                        {job.skills && job.skills.length > 0 && (
-                          <div>
-                            <h4 className="text-[10px] uppercase tracking-widest text-muted-foreground font-medium mb-2">Compétences</h4>
+                        {/* Compétences — always shown */}
+                        <div>
+                          <h4 className="text-[10px] uppercase tracking-widest text-muted-foreground font-medium mb-2">Compétences</h4>
+                          {job.skills && job.skills.length > 0 ? (
                             <div className="flex flex-wrap gap-1.5">
                               {job.skills.map((skill) => (
                                 <span
@@ -242,31 +238,41 @@ export const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
                                 </span>
                               ))}
                             </div>
-                          </div>
-                        )}
+                          ) : (
+                            <p className="text-xs text-muted-foreground italic">Non renseigné</p>
+                          )}
+                        </div>
 
-                        {/* Scoring criteria — Must / Should / Nice to have */}
-                        {(job.mustHave || job.requirements) && (
-                          <CriteriaSection
-                            color="bg-destructive/10 border-destructive/30"
-                            label="🔴 Must-have"
-                            content={job.mustHave || job.requirements}
-                          />
-                        )}
-                        {job.shouldHave && (
-                          <CriteriaSection
-                            color="bg-yellow-50 border-yellow-300"
-                            label="🟡 Should-have"
-                            content={job.shouldHave}
-                          />
-                        )}
-                        {job.niceToHave && (
-                          <CriteriaSection
-                            color="bg-green-50 border-green-300"
-                            label="🟢 Nice-to-have"
-                            content={job.niceToHave}
-                          />
-                        )}
+                        {/* Accompagnement — always shown */}
+                        <div>
+                          <h4 className="text-[10px] uppercase tracking-widest text-muted-foreground font-medium mb-2">Accompagnement</h4>
+                          {job.accompagnement && job.accompagnement.length > 0 ? (
+                            <div className="flex flex-wrap gap-1.5">
+                              {job.accompagnement.map((item) => (
+                                <Badge key={item} variant="outline" className="text-[10px]">{item}</Badge>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="text-xs text-muted-foreground italic">Non renseigné</p>
+                          )}
+                        </div>
+
+                        {/* Scoring criteria — always shown */}
+                        <CriteriaSection
+                          color="bg-destructive/10 border-destructive/30"
+                          label="🔴 Must-have"
+                          content={job.mustHave || job.requirements || null}
+                        />
+                        <CriteriaSection
+                          color="bg-yellow-50 border-yellow-300"
+                          label="🟡 Should-have"
+                          content={job.shouldHave || null}
+                        />
+                        <CriteriaSection
+                          color="bg-green-50 border-green-300"
+                          label="🟢 Nice-to-have"
+                          content={job.niceToHave || null}
+                        />
 
                         {/* Transversal criteria */}
                         {job.transversalCriteria && (
@@ -292,41 +298,12 @@ export const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
                           </div>
                         )}
 
-                        {/* Description */}
-                        {job.description && (
-                          <DetailSection title="Description du poste" content={job.description} />
-                        )}
+                        {/* Description — always shown */}
+                        <DetailSection title="Description du poste" content={job.description || 'Non renseigné'} />
 
                         {/* Body content from Notion page */}
                         {job.bodyContent && (
                           <DetailSection title="Contenu de la page" content={job.bodyContent} />
-                        )}
-
-                        {/* Sourcing criteria */}
-                        {job.sourcingCriteria && (
-                          <DetailSection title="Critères de sourcing" content={job.sourcingCriteria} icon={Target} />
-                        )}
-
-                        {/* Interview process */}
-                        {job.interviewProcess && (
-                          <DetailSection title="Process d'entretien" content={job.interviewProcess} />
-                        )}
-
-                        {/* Team info */}
-                        {job.teamInfo && (
-                          <DetailSection title="Équipe" content={job.teamInfo} />
-                        )}
-
-                        {/* Accompagnement */}
-                        {job.accompagnement && job.accompagnement.length > 0 && (
-                          <div>
-                            <h4 className="text-[10px] uppercase tracking-widest text-muted-foreground font-medium mb-2">Accompagnement</h4>
-                            <div className="flex flex-wrap gap-1.5">
-                              {job.accompagnement.map((item) => (
-                                <Badge key={item} variant="outline" className="text-[10px]">{item}</Badge>
-                              ))}
-                            </div>
-                          </div>
                         )}
 
                         {/* Client info */}
@@ -512,10 +489,14 @@ const InfoCard: React.FC<{ icon: React.ElementType; label: string; value: string
   </div>
 );
 
-const CriteriaSection: React.FC<{ color: string; label: string; content: string }> = ({ color, label, content }) => (
+const CriteriaSection: React.FC<{ color: string; label: string; content: string | null }> = ({ color, label, content }) => (
   <div className={cn("border p-3", color)}>
     <h4 className="text-[10px] uppercase tracking-widest font-medium mb-1.5">{label}</h4>
-    <p className="text-sm text-foreground whitespace-pre-line leading-relaxed">{content}</p>
+    {content ? (
+      <p className="text-sm text-foreground whitespace-pre-line leading-relaxed">{content}</p>
+    ) : (
+      <p className="text-xs text-muted-foreground italic">Non renseigné</p>
+    )}
   </div>
 );
 
