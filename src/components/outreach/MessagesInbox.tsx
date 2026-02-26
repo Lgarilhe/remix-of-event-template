@@ -104,6 +104,8 @@ const MessagesInboxInner: React.FC<
           onSourceFilterChange={inbox.setSourceFilter}
           onCategoryFilterChange={inbox.chatCategories.setCategoryFilter}
           onSetCategory={inbox.chatCategories.setCategory}
+          onAutoTag={() => inbox.chatCategories.autoTagChats(inbox.chats.slice(0, 100))}
+          autoTagging={inbox.chatCategories.autoTagging}
           onChatSelect={inbox.setSelectedChat}
           onRefresh={() => inbox.fetchChats(true)}
         />

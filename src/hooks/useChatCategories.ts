@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { toast } from 'sonner';
 
 export type ChatCategory = 'interested' | 'not_interested' | 'to_recontact' | 'no_response';
 
@@ -109,6 +110,71 @@ export function useChatCategories() {
     return counts as Record<ChatCategory | 'uncategorized', number>;
   }, [categoriesMap]);
 
+  const [autoTagging, setAutoTagging] = useState(false);
+
+  const autoTagChats = useCallback(async (chats: Array<{ id: string; account_id: string; name?: string; attendees?: any[]; last_message?: any; unread_count?: number; unread?: number }>) => {
+    if (autoTagging || chats.length === 0) return;
+    setAutoTagging(true);
+    try {
+      const { data: user } = await supabase.auth.getUser();
+      if (!user.user) return;
+
+      // Process in batches of 30
+      const batchSize = 30;
+      let totalTagged = 0;
+
+      for (let i = 0; i < chats.length; i += batchSize) {
+        const batch = chats.slice(i, i + batchSize);
+        
+        const response = await supabase.functions.invoke('auto-categorize-chats', {
+          body: { chats: batch },
+        });
+
+        if (response.error || !response.data?.success) {
+          console.error('Auto-categorize batch error:', response.error || response.data?.error);
+          continue;
+        }
+
+        const results = response.data.results as Array<{ chat_id: string; account_id: string; category: string }>;
+        if (results.length === 0) continue;
+
+        // Bulk upsert
+        const rows = results.map(r => ({
+          chat_id: r.chat_id,
+          account_id: r.account_id,
+          category: r.category,
+          created_by: user.user!.id,
+          updated_at: new Date().toISOString(),
+        }));
+
+        const { error } = await supabase
+          .from('chat_categories')
+          .upsert(rows, { onConflict: 'chat_id,created_by' });
+
+        if (error) {
+          console.error('Upsert error:', error);
+          continue;
+        }
+
+        // Update local map
+        setCategoriesMap(prev => {
+          const next = new Map(prev);
+          results.forEach(r => next.set(r.chat_id, r.category as ChatCategory));
+          return next;
+        });
+
+        totalTagged += results.length;
+      }
+
+      toast.success(`${totalTagged} conversations catégorisées automatiquement`);
+    } catch (error) {
+      console.error('Error auto-tagging:', error);
+      toast.error('Erreur lors de la catégorisation automatique');
+    } finally {
+      setAutoTagging(false);
+    }
+  }, [autoTagging]);
+
   useEffect(() => {
     fetchCategories();
   }, [fetchCategories]);
@@ -121,6 +187,8 @@ export function useChatCategories() {
     getCategoryForChat,
     getCategoryCounts,
     fetchCategories,
+    autoTagChats,
+    autoTagging,
     loading,
   };
 }
