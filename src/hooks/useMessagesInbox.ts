@@ -491,6 +491,7 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange }: UseMe
               client: j.client,
             })),
             calendlyLink: calendlyLink || undefined,
+            candidateProfileUrl: selectedChat.attendees?.[0]?.profile_url || undefined,
           },
         },
       });
@@ -635,8 +636,12 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange }: UseMe
     const profileName = getChatDisplayName(selectedChat);
     
     if (calendlyLink) {
-      // Insert Calendly link into message
-      const calendlyMessage = `Voici un lien pour réserver un créneau : ${calendlyLink}`;
+      // Build Calendly link with LinkedIn URL pre-fill
+      const profileUrl = selectedChat.attendees?.[0]?.profile_url;
+      const calendlyWithPrefill = profileUrl
+        ? `${calendlyLink}${calendlyLink.includes('?') ? '&' : '?'}a1=${encodeURIComponent(profileUrl)}`
+        : calendlyLink;
+      const calendlyMessage = `Voici un lien pour réserver un créneau : ${calendlyWithPrefill}`;
       setNewMessage(prev => prev ? `${prev}\n\n${calendlyMessage}` : calendlyMessage);
       toast.success('📅 Lien Calendly inséré dans le message');
       return;

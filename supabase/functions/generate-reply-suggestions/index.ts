@@ -96,6 +96,8 @@ interface ChatContext {
   tone?: AITone;
   // Calendly link for scheduling
   calendlyLink?: string;
+  // Candidate LinkedIn URL for Calendly pre-fill
+  candidateProfileUrl?: string;
 }
 
 // Format salary info for display
@@ -369,10 +371,14 @@ serve(async (req) => {
     // Adjust prompt based on detected intent
     let intentGuidance = '';
     // Build calendly context
-    const calendlyContext = context.calendlyLink 
-      ? `\n\n📅 LIEN CALENDLY DISPONIBLE: ${context.calendlyLink}
+    // Build calendly link with LinkedIn URL pre-fill
+    const calendlyWithPrefill = context.calendlyLink && context.candidateProfileUrl
+      ? `${context.calendlyLink}${context.calendlyLink.includes('?') ? '&' : '?'}a1=${encodeURIComponent(context.candidateProfileUrl)}`
+      : context.calendlyLink;
+    const calendlyContext = calendlyWithPrefill 
+      ? `\n\n📅 LIEN CALENDLY DISPONIBLE: ${calendlyWithPrefill}
 Quand le candidat est intéressé, veut un call, ou montre une intention de RDV, INCLUS ce lien dans au moins une suggestion.
-Formule naturelle: "Voici un lien pour réserver un créneau qui te convient : ${context.calendlyLink}"` 
+Formule naturelle: "Voici un lien pour réserver un créneau qui te convient : ${calendlyWithPrefill}"` 
       : '';
 
     if (context.detectedIntent) {
@@ -384,10 +390,10 @@ Formule naturelle: "Voici un lien pour réserver un créneau qui te convient : $
 3. Demandent en retour les infos manquantes: ${infoToRequest.join(', ') || 'disponibilité, prétentions'}`;
           break;
         case 'interested':
-          intentGuidance = `\n\nLe candidat est INTÉRESSÉ. Propose un call ou un entretien rapidement.${context.calendlyLink ? ` Utilise le lien Calendly: ${context.calendlyLink}` : ''}`;
+          intentGuidance = `\n\nLe candidat est INTÉRESSÉ. Propose un call ou un entretien rapidement.${calendlyWithPrefill ? ` Utilise le lien Calendly: ${calendlyWithPrefill}` : ''}`;
           break;
         case 'wants_call':
-          intentGuidance = `\n\nLe candidat veut un CALL.${context.calendlyLink ? ` INCLUS le lien Calendly: ${context.calendlyLink} pour qu'il puisse réserver un créneau.` : ' Propose des créneaux concrets cette semaine.'}`;
+          intentGuidance = `\n\nLe candidat veut un CALL.${calendlyWithPrefill ? ` INCLUS le lien Calendly: ${calendlyWithPrefill} pour qu'il puisse réserver un créneau.` : ' Propose des créneaux concrets cette semaine.'}`;
           break;
         case 'timing_issue':
           intentGuidance = '\n\nLe candidat a un PROBLÈME DE TIMING. Propose de le recontacter plus tard et garde le lien.';

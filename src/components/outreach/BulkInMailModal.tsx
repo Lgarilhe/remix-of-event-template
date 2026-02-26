@@ -248,6 +248,7 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
           },
           tone,
           senderName: senderName.trim() || undefined,
+          candidateLinkedInUrl: recipient.profile?.public_profile_url || recipient.profile?.profile_url || undefined,
         }
       });
 
