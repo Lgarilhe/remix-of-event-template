@@ -53,7 +53,8 @@ serve(async (req) => {
         break;
       }
       
-      case 'new_message': {
+      case 'new_message':
+      case 'message_received': {
         // A new message was received
         await handleNewMessage(supabase, payload);
         break;
