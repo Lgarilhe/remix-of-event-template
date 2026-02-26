@@ -812,6 +812,24 @@ async function generatePersonalizedMessage(supabase: any, enrollment: Record<str
     let jobNotionData: Record<string, string> = {};
     let jobBodyContent = '';
     let jobAccompagnement: string[] = [];
+    let calendlyLink = '';
+
+    // Fetch calendly_link from sourcing_projects linked to this job
+    if (enrollment.job_id) {
+      try {
+        const { data: projects } = await supabase
+          .from('sourcing_projects')
+          .select('calendly_link')
+          .eq('job_id', enrollment.job_id as string)
+          .not('calendly_link', 'is', null)
+          .limit(1);
+        if (projects?.length && projects[0].calendly_link) {
+          calendlyLink = projects[0].calendly_link;
+          console.log(`[generatePersonalizedMessage] Calendly link found: ${calendlyLink}`);
+        }
+      } catch { /* ignore */ }
+    }
+
     if (enrollment.job_id && NOTION_API_KEY) {
       try {
         const [pageRes, blocksRes] = await Promise.all([
@@ -1198,6 +1216,16 @@ RÈGLES ABSOLUES:
 - JAMAIS mentionner le salaire, la rémunération, le TJM, le package ou tout montant en €
 - Sauts de ligne entre les paragraphes (\\n\\n)
 - Signe TOUJOURS avec ton prénom "${senderName}" (jamais "Recruteur", jamais de titre)
+${calendlyLink ? `
+=== LIEN CALENDLY DISPONIBLE ===
+Lien de prise de RDV: ${calendlyLink}
+RÈGLES D'UTILISATION:
+- Tu peux proposer ce lien comme CTA UNIQUEMENT quand le message vise à proposer un échange/call
+- Intègre-le naturellement: "Si ça te parle, tu peux bloquer un créneau ici: ${calendlyLink}"
+- NE L'UTILISE PAS pour les messages de qualification ou de relance avec question ouverte
+- Pour les INMAILS INITIAUX et PREMIERS MESSAGES: ne mets PAS le lien (trop tôt)
+- Pour les RELANCES et messages POST-CONNEXION: tu peux l'utiliser si le CTA propose un échange
+=== FIN CALENDLY ===` : ''}
 
 Réponds UNIQUEMENT en JSON valide: {"subject": "objet si InMail, sinon vide", "message": "le message complet"}`;
 
