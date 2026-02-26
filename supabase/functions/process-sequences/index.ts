@@ -1096,10 +1096,22 @@ async function generatePersonalizedMessage(supabase: any, enrollment: Record<str
           .limit(1);
         if (projects?.length && projects[0].calendly_link) {
           const baseCalendly = projects[0].calendly_link;
-          // Pre-fill LinkedIn URL in Calendly question
           const profileUrl = enrollment.profile_url as string | undefined;
-          calendlyLink = profileUrl
-            ? `${baseCalendly}${baseCalendly.includes('?') ? '&' : '?'}a1=${encodeURIComponent(profileUrl)}`
+          const profileName = enrollment.profile_name as string | undefined;
+          // Pre-fill LinkedIn URL + name in Calendly
+          const params = new URLSearchParams();
+          if (profileUrl) params.set('a1', profileUrl);
+          if (profileName) {
+            const parts = profileName.trim().split(/\s+/);
+            if (parts.length >= 2) {
+              params.set('first_name', parts[0]);
+              params.set('last_name', parts.slice(1).join(' '));
+            } else if (parts.length === 1) {
+              params.set('first_name', parts[0]);
+            }
+          }
+          calendlyLink = params.toString()
+            ? `${baseCalendly}${baseCalendly.includes('?') ? '&' : '?'}${params.toString()}`
             : baseCalendly;
           console.log(`[generatePersonalizedMessage] Calendly link found: ${calendlyLink}`);
         }

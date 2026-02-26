@@ -280,10 +280,28 @@ serve(async (req) => {
       candidateLinkedInUrl?: string;
     };
     
-    // Build Calendly link with LinkedIn URL pre-fill
-    const calendlyWithPrefill = calendlyLink && candidateLinkedInUrl
-      ? `${calendlyLink}${calendlyLink.includes('?') ? '&' : '?'}a1=${encodeURIComponent(candidateLinkedInUrl)}`
-      : calendlyLink;
+    // Build Calendly link with pre-filled fields (LinkedIn URL + name)
+    const buildCalendlyPrefill = (base: string, linkedInUrl?: string, name?: string): string => {
+      const params = new URLSearchParams();
+      if (linkedInUrl) params.set('a1', linkedInUrl);
+      if (name) {
+        const parts = name.trim().split(/\s+/);
+        if (parts.length >= 2) {
+          params.set('first_name', parts[0]);
+          params.set('last_name', parts.slice(1).join(' '));
+        } else if (parts.length === 1) {
+          params.set('first_name', parts[0]);
+        }
+      }
+      if (params.toString()) {
+        return `${base}${base.includes('?') ? '&' : '?'}${params.toString()}`;
+      }
+      return base;
+    };
+    
+    const calendlyWithPrefill = calendlyLink
+      ? buildCalendlyPrefill(calendlyLink, candidateLinkedInUrl, profile.name)
+      : undefined;
     
     const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
 

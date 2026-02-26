@@ -98,6 +98,8 @@ interface ChatContext {
   calendlyLink?: string;
   // Candidate LinkedIn URL for Calendly pre-fill
   candidateProfileUrl?: string;
+  // Candidate name for Calendly pre-fill
+  candidateName?: string;
 }
 
 // Format salary info for display
@@ -371,10 +373,24 @@ serve(async (req) => {
     // Adjust prompt based on detected intent
     let intentGuidance = '';
     // Build calendly context
-    // Build calendly link with LinkedIn URL pre-fill
-    const calendlyWithPrefill = context.calendlyLink && context.candidateProfileUrl
-      ? `${context.calendlyLink}${context.calendlyLink.includes('?') ? '&' : '?'}a1=${encodeURIComponent(context.candidateProfileUrl)}`
-      : context.calendlyLink;
+    // Build calendly link with LinkedIn URL + name pre-fill
+    let calendlyWithPrefill = context.calendlyLink;
+    if (context.calendlyLink) {
+      const params = new URLSearchParams();
+      if (context.candidateProfileUrl) params.set('a1', context.candidateProfileUrl);
+      if (context.candidateName) {
+        const parts = context.candidateName.trim().split(/\s+/);
+        if (parts.length >= 2) {
+          params.set('first_name', parts[0]);
+          params.set('last_name', parts.slice(1).join(' '));
+        } else if (parts.length === 1) {
+          params.set('first_name', parts[0]);
+        }
+      }
+      if (params.toString()) {
+        calendlyWithPrefill = `${context.calendlyLink}${context.calendlyLink.includes('?') ? '&' : '?'}${params.toString()}`;
+      }
+    }
     const calendlyContext = calendlyWithPrefill 
       ? `\n\n📅 LIEN CALENDLY DISPONIBLE: ${calendlyWithPrefill}
 Quand le candidat est intéressé, veut un call, ou montre une intention de RDV, INCLUS ce lien dans au moins une suggestion.
