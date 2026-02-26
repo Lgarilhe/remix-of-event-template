@@ -270,12 +270,12 @@ async function handleNewMessage(supabase: SupabaseClient, payload: WebhookPayloa
   }
 
   // Also update inmail_queue entries for this sender (for ATS tracking)
-  // Match by recipient_profile_id (exact or partial)
+  // Only use exact match to avoid false positives
   const { data: inmailMatches } = await supabase
     .from('inmail_queue')
     .select('id, recipient_profile_id')
     .eq('status', 'sent')
-    .or(`recipient_profile_id.eq.${senderId},recipient_profile_id.ilike.%${senderId}%`);
+    .eq('recipient_profile_id', senderId);
 
   if (inmailMatches && inmailMatches.length > 0) {
     console.log(`[unipile-webhook] Marking ${inmailMatches.length} inmail_queue entries as replied`);
