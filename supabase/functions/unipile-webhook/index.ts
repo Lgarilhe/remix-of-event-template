@@ -189,14 +189,31 @@ async function handleNewMessage(supabase: SupabaseClient, payload: WebhookPayloa
         const attendees = attData.items || attData || [];
         const attendeeList = Array.isArray(attendees) ? attendees : [];
         // deno-lint-ignore no-explicit-any
-        const ownAttendee = attendeeList.find((a: any) => a.is_self === true || a.role === 'self');
+        const ownAttendee = attendeeList.find((a: any) => a.is_self === true || a.is_self === 1 || a.role === 'self');
+        // deno-lint-ignore no-explicit-any
+        const otherAttendees = attendeeList.filter((a: any) => a.is_self === false || a.is_self === 0);
+        // Collect other attendee IDs
+        // deno-lint-ignore no-explicit-any
+        const otherIds = new Set(otherAttendees.flatMap((a: any) => [a.id, a.provider_id, a.attendee_id].filter(Boolean)));
+        
         if (ownAttendee && message?.sender_attendee_id && 
             (ownAttendee.id === message.sender_attendee_id || ownAttendee.provider_id === message.sender_attendee_id || ownAttendee.attendee_id === message.sender_attendee_id)) {
           console.log('[unipile-webhook] new_message: Skipping - sender is our own attendee ID:', message.sender_attendee_id);
           return;
         }
-        if (!ownAttendee) {
-          console.log('[unipile-webhook] new_message: WARNING - could not identify own attendee among', attendeeList.length, 'attendees, skipping to avoid false positive');
+        // If no ownAttendee found (Recruiter InMails return only prospects with is_self=0),
+        // check if sender is in otherIds (prospect) → genuine reply, let it through
+        if (!ownAttendee && otherIds.size > 0 && message?.sender_attendee_id) {
+          if (otherIds.has(message.sender_attendee_id)) {
+            console.log('[unipile-webhook] new_message: Sender matches prospect attendee — genuine reply');
+            // Fall through to process as reply
+          } else {
+            console.log('[unipile-webhook] new_message: Sender not in prospect IDs, likely self — skipping');
+            return;
+          }
+        }
+        if (!ownAttendee && otherIds.size === 0) {
+          console.log('[unipile-webhook] new_message: WARNING - could not classify any attendee, skipping');
           return;
         }
       }

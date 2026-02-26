@@ -568,10 +568,16 @@ async function resolveAttendeeIds(chatId: string): Promise<ChatAttendeeInfo> {
     // deno-lint-ignore no-explicit-any
     for (const att of list) {
       const ids = [att.id, att.provider_id, att.attendee_id].filter(Boolean);
-      if (att.is_self === true || att.role === 'self' || att.id === 'self') {
-        ids.forEach(id => result.ownIds.add(id));
+      // is_self can be true/false/0/1/undefined — normalize carefully
+      const isSelf = att.is_self === true || att.is_self === 1 || att.role === 'self';
+      const isOther = att.is_self === false || att.is_self === 0;
+      if (isSelf) {
+        ids.forEach((id: string) => result.ownIds.add(id));
+      } else if (isOther) {
+        ids.forEach((id: string) => result.otherIds.add(id));
       } else {
-        ids.forEach(id => result.otherIds.add(id));
+        // Unknown — don't classify
+        console.log(`[checkReplies] Attendee ${att.id} has ambiguous is_self=${att.is_self}`);
       }
     }
     
@@ -615,8 +621,13 @@ async function checkMessagesForReply(chats: { id: string }[], afterTimestamp: nu
         const msgTime = new Date(m.timestamp || m.date || m.created_at).getTime();
         return msgTime > afterTimestamp;
       }
-      // Unknown sender and no resolution — skip to be safe
-      console.log(`[checkReplies] Skipping ambiguous message ${m.id} (sender=${senderAtt}, not in own or other sets)`);
+      // If we have otherIds resolved but sender is NOT in them, it's likely us → skip
+      if (attendeeInfo.resolved && attendeeInfo.otherIds.size > 0) {
+        console.log(`[checkReplies] Skipping message ${m.id} — sender ${senderAtt} not in otherIds, likely self`);
+        return false;
+      }
+      // No resolution at all — skip to be safe
+      console.log(`[checkReplies] Skipping ambiguous message ${m.id} (no attendee resolution)`);
       return false;
     });
     if (incomingReplies.length > 0) {
