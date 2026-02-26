@@ -836,11 +836,15 @@ serve(async (req) => {
         // Keep requirements for backward compatibility
         requirements: getPropertyValue(job.properties['🔴 Must-have poste']) || '',
         openingDate: (() => {
-          const dateKeys = Object.keys(job.properties).filter(k => k.toLowerCase().includes('date'));
-          if (dateKeys.length > 0) console.log('[DEBUG] Date keys for job', job.properties['Name']?.title?.[0]?.plain_text || 'unknown', ':', dateKeys);
-          const key = dateKeys.find(k => k.toLowerCase().includes('ouverture'));
-          if (key) console.log('[DEBUG] Found openingDate key:', key, 'value:', JSON.stringify(job.properties[key]));
-          return key ? getPropertyValue(job.properties[key]) : null;
+          const key = Object.keys(job.properties).find(k => k.toLowerCase().includes('ouverture'));
+          const val = key ? getPropertyValue(job.properties[key]) : null;
+          if (val) return val;
+          // Fallback: "Date de création" property
+          const creationKey = Object.keys(job.properties).find(k => k.toLowerCase() === 'date de création');
+          const creationVal = creationKey ? getPropertyValue(job.properties[creationKey]) : null;
+          if (creationVal) return creationVal;
+          // Final fallback: page created_time
+          return job.created_time || null;
         })(),
         startDate: (() => {
           const key = Object.keys(job.properties).find(k => k.toLowerCase().includes('date') && k.toLowerCase().includes('marrage'));
