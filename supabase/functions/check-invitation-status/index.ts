@@ -17,6 +17,81 @@ interface PendingInvitation {
 
 interface ProfileInfo {
   network_distance?: 'FIRST_DEGREE' | 'SECOND_DEGREE' | 'THIRD_DEGREE' | 'OUT_OF_NETWORK';
+  public_identifier?: string;
+  provider_id?: string;
+}
+
+/**
+ * Resolve the actual network_distance for a profile.
+ * Recruiter IDs (AEM...) often report incorrect network_distance,
+ * so we re-check via the public_identifier (slug) when detected.
+ */
+async function resolveNetworkDistance(
+  profileId: string,
+  accountId: string,
+  profileUrl?: string | null,
+): Promise<{ networkDistance: string | null; resolvedProviderId: string | null }> {
+  const headers = { 'X-API-KEY': UNIPILE_API_KEY! };
+
+  // Step 1: Fetch profile info with the given ID
+  const res = await fetch(
+    `${UNIPILE_DSN}/api/v1/users/${profileId}?account_id=${accountId}`,
+    { headers }
+  );
+
+  if (!res.ok) {
+    console.log(`[check-invitation] Profile fetch failed for ${profileId}: ${res.status}`);
+    return { networkDistance: null, resolvedProviderId: null };
+  }
+
+  const profile: ProfileInfo = await res.json();
+  const isRecruiterID = profileId.startsWith('AEM');
+
+  console.log(`[check-invitation] Profile ${profileId} | network_distance=${profile.network_distance} | isRecruiter=${isRecruiterID}`);
+
+  // If it's already FIRST_DEGREE, no need for slug resolution
+  if (profile.network_distance === 'FIRST_DEGREE') {
+    return { networkDistance: 'FIRST_DEGREE', resolvedProviderId: profile.provider_id || null };
+  }
+
+  // Step 2: For Recruiter IDs, try to resolve via slug for accurate distance
+  if (isRecruiterID) {
+    // Try to extract slug from profile response or from profile_url
+    let slug = profile.public_identifier;
+
+    if (!slug && profileUrl) {
+      // Try to extract slug from classic LinkedIn URL
+      const classicMatch = profileUrl.match(/linkedin\.com\/in\/([^/?]+)/);
+      if (classicMatch) {
+        slug = classicMatch[1];
+      }
+    }
+
+    if (slug) {
+      console.log(`[check-invitation] Recruiter ID detected, re-checking via slug: ${slug}`);
+      try {
+        const slugRes = await fetch(
+          `${UNIPILE_DSN}/api/v1/users/${slug}?account_id=${accountId}`,
+          { headers }
+        );
+
+        if (slugRes.ok) {
+          const slugProfile: ProfileInfo = await slugRes.json();
+          console.log(`[check-invitation] Slug resolution: network_distance=${slugProfile.network_distance}`);
+          return {
+            networkDistance: slugProfile.network_distance || null,
+            resolvedProviderId: slugProfile.provider_id || profile.provider_id || null,
+          };
+        }
+      } catch (err) {
+        console.error(`[check-invitation] Slug resolution error:`, err);
+      }
+    } else {
+      console.log(`[check-invitation] No slug available for Recruiter ID ${profileId}`);
+    }
+  }
+
+  return { networkDistance: profile.network_distance || null, resolvedProviderId: profile.provider_id || null };
 }
 
 serve(async (req) => {
@@ -29,12 +104,12 @@ serve(async (req) => {
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Get all active enrollments with pending_invite status
+    // Get all active enrollments with pending_invite OR pending check
     const { data: enrollments, error: enrollError } = await supabase
       .from('sequence_enrollments')
       .select('*')
       .eq('status', 'active')
-      .eq('connection_status', 'pending_invite');
+      .in('connection_status', ['pending_invite', 'not_connected']);
 
     if (enrollError) throw enrollError;
 
@@ -75,11 +150,10 @@ serve(async (req) => {
         results.checked++;
 
         try {
-          // Check if invitation is still pending
-          if (pendingProfileIds.has(enrollment.profile_id)) {
+          // Check if invitation is still pending (only for pending_invite status)
+          if (enrollment.connection_status === 'pending_invite' && pendingProfileIds.has(enrollment.profile_id)) {
             results.still_pending++;
             
-            // Update last_check_at
             await supabase
               .from('sequence_enrollments')
               .update({ last_check_at: new Date().toISOString() })
@@ -87,46 +161,50 @@ serve(async (req) => {
             continue;
           }
 
-          // Invitation not in pending list - check if connected
-          const profileResponse = await fetch(
-            `${UNIPILE_DSN}/api/v1/users/${enrollment.profile_id}?account_id=${accountId}`,
-            { headers: { 'X-API-KEY': UNIPILE_API_KEY! } }
+          // Invitation not in pending list (or was previously not_connected) - check actual connection
+          const { networkDistance } = await resolveNetworkDistance(
+            enrollment.profile_id,
+            accountId,
+            enrollment.profile_url,
           );
 
-          if (profileResponse.ok) {
-            const profile: ProfileInfo = await profileResponse.json();
+          if (networkDistance === 'FIRST_DEGREE') {
+            // Connection accepted!
+            results.connected++;
+            console.log(`[check-invitation] ✅ ${enrollment.profile_name} is now FIRST_DEGREE!`);
             
-            if (profile.network_distance === 'FIRST_DEGREE') {
-              // Connection accepted!
-              results.connected++;
-              
-              await supabase
-                .from('sequence_enrollments')
-                .update({
-                  connection_status: 'connected',
-                  last_check_at: new Date().toISOString(),
-                })
-                .eq('id', enrollment.id);
+            await supabase
+              .from('sequence_enrollments')
+              .update({
+                connection_status: 'connected',
+                last_check_at: new Date().toISOString(),
+              })
+              .eq('id', enrollment.id);
 
-              // Log analytics - upsert directly
-              const today = new Date().toISOString().split('T')[0];
-              await supabase
-                .from('sequence_analytics')
-                .upsert({
-                  sequence_id: enrollment.sequence_id,
-                  date: today,
-                  invites_accepted: 1,
-                }, { onConflict: 'sequence_id,date' });
-            } else {
-              // Invitation was rejected or expired
-              await supabase
-                .from('sequence_enrollments')
-                .update({
-                  connection_status: 'not_connected',
-                  last_check_at: new Date().toISOString(),
-                })
-                .eq('id', enrollment.id);
-            }
+            // Log analytics
+            const today = new Date().toISOString().split('T')[0];
+            await supabase
+              .from('sequence_analytics')
+              .upsert({
+                sequence_id: enrollment.sequence_id,
+                date: today,
+                invites_accepted: 1,
+              }, { onConflict: 'sequence_id,date' });
+          } else if (enrollment.connection_status === 'pending_invite') {
+            // Only mark as not_connected if it was pending_invite and confirmed not connected
+            await supabase
+              .from('sequence_enrollments')
+              .update({
+                connection_status: 'not_connected',
+                last_check_at: new Date().toISOString(),
+              })
+              .eq('id', enrollment.id);
+          } else {
+            // Just update the check timestamp for not_connected re-checks
+            await supabase
+              .from('sequence_enrollments')
+              .update({ last_check_at: new Date().toISOString() })
+              .eq('id', enrollment.id);
           }
         } catch (err) {
           console.error(`Error checking enrollment ${enrollment.id}:`, err);
