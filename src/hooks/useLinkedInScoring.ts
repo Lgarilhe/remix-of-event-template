@@ -26,6 +26,7 @@ interface ScoringOptions {
       score?: number;
       recommendation?: string;
       skipReason?: string;
+      scoringDetails?: any;
     }>) => Promise<void>;
     saveScore?: (candidateId: string, data: {
       name?: string;
@@ -33,6 +34,7 @@ interface ScoringOptions {
       profileUrl?: string;
       score: number;
       recommendation: string;
+      scoringDetails?: any;
     }) => Promise<void>;
     batchSaveScores?: (candidates: Array<{
       id: string;
@@ -41,6 +43,7 @@ interface ScoringOptions {
       profileUrl?: string;
       score: number;
       recommendation: string;
+      scoringDetails?: any;
     }>) => Promise<void>;
   };
 }
@@ -242,6 +245,7 @@ export function useLinkedInScoring({
             score: mapped.match_score,
             recommendation: mapped.recommendation,
             skipReason: mapped.summary || 'Score insuffisant',
+            scoringDetails: mapped,
           }]);
           setSelectedProfiles?.(prev => {
             const newSet = new Set(prev);
@@ -257,6 +261,7 @@ export function useLinkedInScoring({
             profileUrl,
             score: mapped.match_score,
             recommendation: mapped.recommendation,
+            scoringDetails: mapped,
           });
         }
       }
@@ -374,6 +379,7 @@ export function useLinkedInScoring({
           score?: number;
           recommendation?: string;
           skipReason?: string;
+          scoringDetails?: any;
         }> = [];
         const goodScoreProfiles: Array<{
           id: string;
@@ -382,6 +388,7 @@ export function useLinkedInScoring({
           profileUrl?: string;
           score: number;
           recommendation: string;
+          scoringDetails?: any;
         }> = [];
 
         allResults.forEach((rawResult: any, index: number) => {
@@ -400,6 +407,7 @@ export function useLinkedInScoring({
                 score: result.match_score,
                 recommendation: result.recommendation,
                 skipReason: result.summary || 'Score insuffisant',
+                scoringDetails: result,
               });
             } else {
               goodScoreProfiles.push({
@@ -409,6 +417,7 @@ export function useLinkedInScoring({
                 profileUrl,
                 score: result.match_score,
                 recommendation: result.recommendation,
+                scoringDetails: result,
               });
             }
           }

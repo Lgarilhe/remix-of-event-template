@@ -872,6 +872,7 @@ export type Database = {
           project_id: string | null
           recommendation: string | null
           score: number | null
+          scoring_details: Json | null
           skip_reason: string | null
           status: string
           updated_at: string
@@ -888,6 +889,7 @@ export type Database = {
           project_id?: string | null
           recommendation?: string | null
           score?: number | null
+          scoring_details?: Json | null
           skip_reason?: string | null
           status?: string
           updated_at?: string
@@ -904,6 +906,7 @@ export type Database = {
           project_id?: string | null
           recommendation?: string | null
           score?: number | null
+          scoring_details?: Json | null
           skip_reason?: string | null
           status?: string
           updated_at?: string

@@ -27,7 +27,11 @@ import {
   Trash2,
   Calendar,
   Target,
-  Brain
+  Brain,
+  CheckCircle2,
+  AlertTriangle,
+  MapPin,
+  Briefcase
 } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -354,10 +358,88 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
                             </span>
                           )}
                         </div>
-                        {candidate.recommendation && (
-                          <p className="text-sm text-muted-foreground whitespace-pre-wrap leading-relaxed">
-                            {candidate.recommendation}
+
+                        {/* Summary */}
+                        {(candidate.scoringDetails?.summary || candidate.recommendation) && (
+                          <p className="text-sm text-muted-foreground whitespace-pre-wrap leading-relaxed mb-3">
+                            {candidate.scoringDetails?.summary || candidate.recommendation}
                           </p>
+                        )}
+
+                        {/* Matching Skills */}
+                        {candidate.scoringDetails?.matching_skills?.length > 0 && (
+                          <div className="mb-3">
+                            <div className="flex items-center gap-1.5 mb-1.5">
+                              <CheckCircle2 className="w-3.5 h-3.5 text-green-600" />
+                              <span className="text-xs font-medium text-green-700">Compétences matchées</span>
+                            </div>
+                            <div className="flex flex-wrap gap-1.5">
+                              {candidate.scoringDetails.matching_skills.map((skill: string) => (
+                                <Badge key={skill} variant="secondary" className="text-xs bg-green-50 text-green-700 border-green-200">
+                                  {skill}
+                                </Badge>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Missing Skills */}
+                        {candidate.scoringDetails?.missing_skills?.length > 0 && (
+                          <div className="mb-3">
+                            <div className="flex items-center gap-1.5 mb-1.5">
+                              <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />
+                              <span className="text-xs font-medium text-amber-700">Compétences manquantes</span>
+                            </div>
+                            <div className="flex flex-wrap gap-1.5">
+                              {candidate.scoringDetails.missing_skills.map((skill: string) => (
+                                <Badge key={skill} variant="secondary" className="text-xs bg-amber-50 text-amber-700 border-amber-200">
+                                  {skill}
+                                </Badge>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Experience & Location */}
+                        {candidate.scoringDetails && (
+                          <div className="flex flex-wrap gap-3 text-xs">
+                            {candidate.scoringDetails.experience_match && (
+                              <div className="flex items-center gap-1">
+                                <Briefcase className="w-3.5 h-3.5 text-muted-foreground" />
+                                <span className="text-muted-foreground">Expérience :</span>
+                                <span className={`font-medium ${
+                                  candidate.scoringDetails.experience_match === 'compatible' ? 'text-green-600' :
+                                  candidate.scoringDetails.experience_match === 'trop_senior' ? 'text-amber-600' :
+                                  candidate.scoringDetails.experience_match === 'trop_junior' ? 'text-red-500' :
+                                  'text-muted-foreground'
+                                }`}>
+                                  {candidate.scoringDetails.experience_match === 'compatible' ? 'Compatible' :
+                                   candidate.scoringDetails.experience_match === 'trop_senior' ? 'Trop senior' :
+                                   candidate.scoringDetails.experience_match === 'trop_junior' ? 'Trop junior' :
+                                   'Incertain'}
+                                </span>
+                              </div>
+                            )}
+                            <div className="flex items-center gap-1">
+                              <MapPin className="w-3.5 h-3.5 text-muted-foreground" />
+                              <span className="text-muted-foreground">Localisation :</span>
+                              <span className={`font-medium ${candidate.scoringDetails.location_match ? 'text-green-600' : 'text-red-500'}`}>
+                                {candidate.scoringDetails.location_match ? 'Compatible' : 'Non compatible'}
+                              </span>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Salary Analysis */}
+                        {candidate.scoringDetails?.salary_analysis && (
+                          <div className="mt-2 pt-2 border-t text-xs text-muted-foreground">
+                            💰 {candidate.scoringDetails.salary_analysis.status === 'adequate' ? 'Salaire adéquat' :
+                                candidate.scoringDetails.salary_analysis.status === 'too_low' ? 'Salaire potentiellement bas' :
+                                candidate.scoringDetails.salary_analysis.status === 'too_high' ? 'Salaire potentiellement élevé' :
+                                'Analyse salariale disponible'}
+                            {candidate.scoringDetails.salary_analysis.gap_percent && 
+                              ` (écart: ${candidate.scoringDetails.salary_analysis.gap_percent}%)`}
+                          </div>
                         )}
                       </div>
                     )}

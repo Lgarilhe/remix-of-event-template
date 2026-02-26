@@ -30,6 +30,16 @@ export interface ATSCandidate {
   score?: number | null;
   recommendation?: string | null;
   outreachStatus?: string | null;
+  scoringDetails?: {
+    match_score: number;
+    matching_skills: string[];
+    missing_skills: string[];
+    experience_match: string;
+    location_match: boolean;
+    summary: string;
+    recommendation: string;
+    salary_analysis?: any;
+  } | null;
 }
 
 export const ATS_STAGES = [
@@ -197,6 +207,7 @@ async function fetchOutreachCandidates(existingProfileIds: Set<string>): Promise
       score: r.score,
       recommendation: r.recommendation,
       outreachStatus: r.status,
+      scoringDetails: r.scoring_details || null,
     }));
 }
 
@@ -244,7 +255,7 @@ async function fetchAllCandidates(): Promise<ATSCandidate[]> {
   ]);
 
   // Build a score lookup map from outreach records
-  const scoreLookup = new Map<string, { score: number | null; recommendation: string | null; status: string }>();
+  const scoreLookup = new Map<string, { score: number | null; recommendation: string | null; status: string; scoringDetails: any }>();
   for (const r of allOutreachRecords) {
     // Keep the highest score per candidate
     const existing = scoreLookup.get(r.candidate_id);
@@ -252,7 +263,8 @@ async function fetchAllCandidates(): Promise<ATSCandidate[]> {
       scoreLookup.set(r.candidate_id, { 
         score: r.score, 
         recommendation: r.recommendation, 
-        status: r.status 
+        status: r.status,
+        scoringDetails: (r as any).scoring_details || null,
       });
     }
   }
@@ -260,11 +272,11 @@ async function fetchAllCandidates(): Promise<ATSCandidate[]> {
   // Enrich shortlist and sequence candidates with scores
   const enrichedShortlist = shortlistCandidates.map(c => {
     const scoreData = scoreLookup.get(c.candidateId);
-    return scoreData ? { ...c, score: scoreData.score, recommendation: scoreData.recommendation, outreachStatus: scoreData.status } : c;
+    return scoreData ? { ...c, score: scoreData.score, recommendation: scoreData.recommendation, outreachStatus: scoreData.status, scoringDetails: scoreData.scoringDetails } : c;
   });
   const enrichedSequences = sequenceCandidates.map(c => {
     const scoreData = scoreLookup.get(c.candidateId);
-    return scoreData ? { ...c, score: scoreData.score, recommendation: scoreData.recommendation, outreachStatus: scoreData.status } : c;
+    return scoreData ? { ...c, score: scoreData.score, recommendation: scoreData.recommendation, outreachStatus: scoreData.status, scoringDetails: scoreData.scoringDetails } : c;
   });
 
   // Combine for deduplication before fetching inmails + outreach-only candidates
@@ -280,7 +292,7 @@ async function fetchAllCandidates(): Promise<ATSCandidate[]> {
   // Enrich inmails too
   const enrichedInmails = inmailCandidates.map(c => {
     const scoreData = scoreLookup.get(c.candidateId);
-    return scoreData ? { ...c, score: scoreData.score, recommendation: scoreData.recommendation, outreachStatus: scoreData.status } : c;
+    return scoreData ? { ...c, score: scoreData.score, recommendation: scoreData.recommendation, outreachStatus: scoreData.status, scoringDetails: scoreData.scoringDetails } : c;
   });
 
   // Combine all
