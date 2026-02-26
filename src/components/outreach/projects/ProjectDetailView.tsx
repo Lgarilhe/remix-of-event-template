@@ -66,19 +66,20 @@ export const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
   onResumeSearch,
   accountId,
 }) => {
-  const { updateProject, isUpdating } = useSourcingProjects();
+  const { updateProject, createProject, isUpdating } = useSourcingProjects();
   const updateNotionJob = useUpdateNotionJob();
   const { data: notionSchema } = useNotionSchema();
   const spId = project.sourcingProject?.id || null;
-  const { data: candidates = [], isLoading: candidatesLoading } = useProjectCandidates(spId);
-  const { data: dynamicStats } = useProjectStats(spId);
+  const [localSpId, setLocalSpId] = useState<string | null>(spId);
+  const { data: candidates = [], isLoading: candidatesLoading } = useProjectCandidates(localSpId || spId);
+  const { data: dynamicStats } = useProjectStats(localSpId || spId);
   const [notes, setNotes] = useState(project.sourcingProject?.notes || '');
   const [notesChanged, setNotesChanged] = useState(false);
   const [calendlyLink, setCalendlyLink] = useState(project.sourcingProject?.calendly_link || '');
   const [calendlyChanged, setCalendlyChanged] = useState(false);
 
   const job = project.job;
-  const hasSourcingProject = !!project.sourcingProject;
+  const hasSourcingProject = !!project.sourcingProject || !!localSpId;
 
   /**
    * Save a single field to Notion.
@@ -98,8 +99,9 @@ export const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
   };
 
   const saveNotes = async () => {
-    if (!spId) return;
-    await updateProject({ id: spId, notes });
+    const id = localSpId || spId;
+    if (!id) return;
+    await updateProject({ id, notes });
     setNotesChanged(false);
     toast.success('Notes sauvegardées');
   };
@@ -110,8 +112,22 @@ export const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
   };
 
   const saveCalendlyLink = async () => {
-    if (!spId) return;
-    await updateProject({ id: spId, calendly_link: calendlyLink || null });
+    const id = localSpId || spId;
+    if (id) {
+      await updateProject({ id, calendly_link: calendlyLink || null });
+    } else {
+      // Auto-create sourcing project to store the calendly link
+      const newProject = await createProject({
+        name: project.name,
+        job_id: project.job?.id || undefined,
+        job_title: project.name,
+        client_name: project.clientName || undefined,
+      });
+      if (newProject?.id) {
+        setLocalSpId(newProject.id);
+        await updateProject({ id: newProject.id, calendly_link: calendlyLink || null });
+      }
+    }
     setCalendlyChanged(false);
     toast.success('Lien Calendly sauvegardé');
   };
@@ -464,41 +480,30 @@ export const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
 
               {/* Notes Tab */}
               <TabsContent value="notes" className="h-full m-0 flex flex-col gap-4">
-                {/* Calendly link — always visible */}
+                {/* Calendly link — always editable */}
                 <div>
                   <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-widest mb-1.5 flex items-center gap-1.5">
                     <Link2 className="w-3.5 h-3.5" />
                     Lien Calendly (injecté dans les messages IA)
                   </label>
-                  {hasSourcingProject ? (
-                    <div className="flex gap-2">
-                      <Input
-                        value={calendlyLink}
-                        onChange={(e) => handleCalendlyChange(e.target.value)}
-                        placeholder="https://calendly.com/votre-lien/30min"
-                        className="flex-1 text-sm border-foreground/20 rounded-none"
-                      />
-                      {calendlyChanged && (
-                        <button
-                          onClick={saveCalendlyLink}
-                          disabled={isUpdating}
-                          className="flex items-center gap-1.5 h-[36px] px-3 text-[10px] font-medium uppercase tracking-wider border border-foreground bg-foreground text-background"
-                        >
-                          <Save className="w-3 h-3" />
-                          Sauver
-                        </button>
-                      )}
-                    </div>
-                  ) : (
-                    <div className="flex gap-2">
-                      <Input
-                        value=""
-                        disabled
-                        placeholder="Lancez une recherche pour activer ce champ"
-                        className="flex-1 text-sm border-foreground/20 rounded-none opacity-50"
-                      />
-                    </div>
-                  )}
+                  <div className="flex gap-2">
+                    <Input
+                      value={calendlyLink}
+                      onChange={(e) => handleCalendlyChange(e.target.value)}
+                      placeholder="https://calendly.com/votre-lien/30min"
+                      className="flex-1 text-sm border-foreground/20 rounded-none"
+                    />
+                    {calendlyChanged && (
+                      <button
+                        onClick={saveCalendlyLink}
+                        disabled={isUpdating}
+                        className="flex items-center gap-1.5 h-[36px] px-3 text-[10px] font-medium uppercase tracking-wider border border-foreground bg-foreground text-background"
+                      >
+                        <Save className="w-3 h-3" />
+                        Sauver
+                      </button>
+                    )}
+                  </div>
                 </div>
 
                 {hasSourcingProject ? (
