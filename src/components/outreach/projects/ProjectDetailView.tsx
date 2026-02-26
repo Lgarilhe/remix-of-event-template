@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import ReactMarkdown from 'react-markdown';
 import { UnifiedProject } from '@/types/projects';
 import { useSourcingProjects, useProjectCandidates } from '@/hooks/useSourcingProjects';
 import { useProjectStats } from '@/hooks/useProjectStats';
@@ -521,8 +522,8 @@ const DetailSection: React.FC<{ title: string; content: string; icon?: React.Ele
       {Icon && <Icon className="w-3 h-3" />}
       {title}
     </h4>
-    <div className="text-sm text-foreground whitespace-pre-line leading-relaxed bg-muted/30 border border-foreground/5 p-3">
-      {content}
+    <div className="text-sm text-foreground leading-relaxed bg-muted/30 border border-foreground/5 p-3 prose prose-sm max-w-none prose-headings:text-foreground prose-headings:font-semibold prose-headings:mt-3 prose-headings:mb-1.5 prose-p:my-1 prose-ul:my-1 prose-li:my-0.5 prose-strong:text-foreground">
+      <ReactMarkdown>{content}</ReactMarkdown>
     </div>
   </div>
 );
