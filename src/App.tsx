@@ -14,14 +14,14 @@ import MyEvents from "./pages/MyEvents";
 import CreateEvent from "./pages/CreateEvent";
 import EditEvent from "./pages/EditEvent";
 import SkalrLanding from "./pages/SkalrLanding";
-import JobSpace from "./pages/JobSpace";
+// JobSpace removed — merged into Outreach > Projects
 import Candidates from "./pages/Candidates";
 import Outreach from "./pages/Outreach";
 import ATS from "./pages/ATS";
 import NotFound from "./pages/NotFound";
 
 // Pages that don't require authentication
-const PUBLIC_ROUTES = ['/', '/auth', '/discover', '/event', '/jobs'];
+const PUBLIC_ROUTES = ['/', '/auth', '/discover', '/event'];
 
 const AppContent = () => {
   const [sessionExpired, setSessionExpired] = useState(false);

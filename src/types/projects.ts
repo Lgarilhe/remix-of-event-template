@@ -1,4 +1,4 @@
-import type { Job } from '@/pages/JobSpace';
+import type { Job } from '@/types/jobs';
 import type { SourcingProject } from '@/hooks/useSourcingProjects';
 
 /**

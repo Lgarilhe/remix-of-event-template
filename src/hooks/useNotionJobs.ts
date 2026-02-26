@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import type { Job } from '@/pages/JobSpace';
+import type { Job } from '@/types/jobs';
 
 // Cache configuration - aggressive caching for Notion data
 const STALE_TIME = 30 * 60 * 1000; // 30 minutes
