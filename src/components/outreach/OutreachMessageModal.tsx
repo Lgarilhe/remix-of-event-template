@@ -164,6 +164,7 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
           candidateHistory: candidateHistory || undefined,
           customInstructions: customInstructions.trim() || undefined,
           calendlyLink: calendlyLink || undefined,
+          candidateLinkedInUrl: profile.public_profile_url || profile.profile_url || (profile as any).linkedin_url || undefined,
         }
       });
 
