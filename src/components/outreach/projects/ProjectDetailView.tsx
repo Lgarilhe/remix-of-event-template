@@ -247,11 +247,6 @@ export const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
                           ) : (
                             <EditableInfoCard icon={Star} label="Priorité" value={job.priority || '—'} fieldName="priority" onSave={saveToNotion} />
                           )}
-                          {notionSchema?.channel ? (
-                            <SelectableInfoCard icon={Layers} label="Canal" value={job.channel || '—'} fieldName="channel" options={notionSchema.channel.options} onSave={saveToNotion} />
-                          ) : (
-                            <EditableInfoCard icon={Layers} label="Canal" value={job.channel || '—'} fieldName="channel" onSave={saveToNotion} />
-                          )}
                           <EditableInfoCard icon={Calendar} label="Date création" value={job.openingDate ? new Date(job.openingDate).toLocaleDateString('fr-FR') : '—'} fieldName="openingDate" onSave={saveToNotion} />
                         </div>
 
