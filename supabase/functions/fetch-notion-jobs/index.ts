@@ -835,8 +835,14 @@ serve(async (req) => {
         niceToHave: getPropertyValue(job.properties['🟢 Nice-to-have poste']) || '',
         // Keep requirements for backward compatibility
         requirements: getPropertyValue(job.properties['🔴 Must-have poste']) || '',
-        openingDate: getPropertyValue(job.properties['Date d\'ouverture']),
-        startDate: getPropertyValue(job.properties['Date de démarrage espérée']),
+        openingDate: (() => {
+          const key = Object.keys(job.properties).find(k => k.toLowerCase().includes('date d') && k.toLowerCase().includes('ouverture'));
+          return key ? getPropertyValue(job.properties[key]) : null;
+        })(),
+        startDate: (() => {
+          const key = Object.keys(job.properties).find(k => k.toLowerCase().includes('date de d') && k.toLowerCase().includes('marrage'));
+          return key ? getPropertyValue(job.properties[key]) : null;
+        })(),
         channel: getPropertyValue(job.properties['Canal de publication']),
         sourcingCriteria: getPropertyValue(job.properties['Critères sourcing']) || '',
         teamInfo: getPropertyValue(job.properties['Équipe (client)']) || '',
