@@ -182,25 +182,26 @@ async function handleNewMessage(supabase: SupabaseClient, payload: WebhookPayloa
     try {
       const UNIPILE_DSN = Deno.env.get('UNIPILE_DSN')!;
       const UNIPILE_API_KEY = Deno.env.get('UNIPILE_API_KEY')!;
-      const chatRes = await fetch(`${UNIPILE_DSN}/api/v1/chats/${chatId}`, { headers: { 'X-API-KEY': UNIPILE_API_KEY } });
-      if (chatRes.ok) {
-        const chatData = await chatRes.json();
-        const attendees = chatData.attendees || chatData.participants || [];
+      // Use the dedicated attendees endpoint
+      const attRes = await fetch(`${UNIPILE_DSN}/api/v1/chats/${chatId}/attendees`, { headers: { 'X-API-KEY': UNIPILE_API_KEY } });
+      if (attRes.ok) {
+        const attData = await attRes.json();
+        const attendees = attData.items || attData || [];
+        const attendeeList = Array.isArray(attendees) ? attendees : [];
         // deno-lint-ignore no-explicit-any
-        const ownAttendee = attendees.find((a: any) => a.is_self === true || a.role === 'self');
+        const ownAttendee = attendeeList.find((a: any) => a.is_self === true || a.role === 'self');
         if (ownAttendee && message?.sender_attendee_id && 
-            (ownAttendee.id === message.sender_attendee_id || ownAttendee.provider_id === message.sender_attendee_id)) {
+            (ownAttendee.id === message.sender_attendee_id || ownAttendee.provider_id === message.sender_attendee_id || ownAttendee.attendee_id === message.sender_attendee_id)) {
           console.log('[unipile-webhook] new_message: Skipping - sender is our own attendee ID:', message.sender_attendee_id);
           return;
         }
         if (!ownAttendee) {
-          console.log('[unipile-webhook] new_message: WARNING - could not identify own attendee, skipping to avoid false positive');
+          console.log('[unipile-webhook] new_message: WARNING - could not identify own attendee among', attendeeList.length, 'attendees, skipping to avoid false positive');
           return;
         }
       }
     } catch (e) {
       console.warn('[unipile-webhook] Failed to verify sender via chat attendees:', e);
-      // If we can't verify, skip to avoid false positive
       console.log('[unipile-webhook] new_message: Skipping ambiguous message to prevent false positive');
       return;
     }
