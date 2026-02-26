@@ -597,33 +597,76 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange }: UseMe
       return;
     }
     const profileId = getAttendeeProfileId(selectedChat);
-    if (!profileId) {
+    const profileUrl = selectedChat.attendees?.[0]?.profile_url || null;
+    if (!profileId && !profileUrl) {
       setCalendlyLink(null);
       return;
     }
-    // Look up the candidate's project via job_candidate_status
+
     (async () => {
       try {
-        const { data } = await supabase
-          .from('job_candidate_status')
-          .select('project_id')
-          .eq('candidate_id', profileId)
-          .not('project_id', 'is', null)
-          .order('updated_at', { ascending: false })
-          .limit(1)
-          .maybeSingle();
-        
-        if (data?.project_id) {
+        // Helper to fetch calendly_link from a project id
+        const fetchCalendlyFromProject = async (projectId: string): Promise<string | null> => {
           const { data: project } = await supabase
             .from('sourcing_projects')
             .select('calendly_link')
-            .eq('id', data.project_id)
+            .eq('id', projectId)
             .maybeSingle();
-          
-          setCalendlyLink(project?.calendly_link || null);
-        } else {
-          setCalendlyLink(null);
+          return project?.calendly_link || null;
+        };
+
+        // Strategy 1: via job_candidate_status → project_id
+        if (profileId) {
+          const { data } = await supabase
+            .from('job_candidate_status')
+            .select('project_id')
+            .eq('candidate_id', profileId)
+            .not('project_id', 'is', null)
+            .order('updated_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+          if (data?.project_id) {
+            const link = await fetchCalendlyFromProject(data.project_id);
+            if (link) { setCalendlyLink(link); return; }
+          }
         }
+
+        // Strategy 2: via sequence_enrollments → job_id → sourcing_projects
+        const enrollmentProfileId = profileId || (profileUrl ? profileUrl.split('/').filter(Boolean).pop() : null);
+        if (enrollmentProfileId) {
+          const { data: enrollment } = await supabase
+            .from('sequence_enrollments')
+            .select('job_id')
+            .eq('profile_id', enrollmentProfileId)
+            .not('job_id', 'is', null)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+          if (enrollment?.job_id) {
+            const { data: project } = await supabase
+              .from('sourcing_projects')
+              .select('calendly_link')
+              .eq('job_id', enrollment.job_id)
+              .not('calendly_link', 'is', null)
+              .limit(1)
+              .maybeSingle();
+            if (project?.calendly_link) { setCalendlyLink(project.calendly_link); return; }
+          }
+        }
+
+        // Strategy 3: fallback to any active project with a calendly_link
+        const { data: anyProject } = await supabase
+          .from('sourcing_projects')
+          .select('calendly_link')
+          .eq('status', 'active')
+          .not('calendly_link', 'is', null)
+          .order('updated_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        setCalendlyLink(anyProject?.calendly_link || null);
       } catch {
         setCalendlyLink(null);
       }
