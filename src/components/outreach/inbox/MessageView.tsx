@@ -201,20 +201,21 @@ export const MessageView: React.FC<MessageViewProps> = ({
           </button>
         )}
 
-        {/* Calendly button */}
-        {calendlyLink && (
-          <button
-            className="relative overflow-hidden h-8 px-2 md:px-3 text-xs font-medium uppercase tracking-wider border border-foreground/20 bg-background text-foreground group shrink-0 flex items-center"
-            onClick={onScheduleCall}
-            title="Insérer le lien Calendly"
-          >
-            <span className="relative z-10 flex items-center gap-1">
-              <CalendarPlus className="w-3.5 h-3.5" />
-              <span className="hidden md:inline">RDV</span>
-            </span>
-            <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
-          </button>
-        )}
+        {/* Calendly button - always visible */}
+        <button
+          className={cn(
+            "relative overflow-hidden h-8 px-2 md:px-3 text-xs font-medium uppercase tracking-wider border bg-background text-foreground group shrink-0 flex items-center",
+            calendlyLink ? "border-foreground/20" : "border-foreground/10 opacity-70"
+          )}
+          onClick={onScheduleCall}
+          title={calendlyLink ? "Insérer le lien Calendly" : "Configurer un lien Calendly dans le projet"}
+        >
+          <span className="relative z-10 flex items-center gap-1">
+            <CalendarPlus className="w-3.5 h-3.5" />
+            <span className="hidden md:inline">RDV</span>
+          </span>
+          <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
+        </button>
 
         {selectedChat.attendees?.[0]?.profile_url && (
           <a
