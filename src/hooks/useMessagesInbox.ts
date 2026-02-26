@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { useChatCategories } from './useChatCategories';
 import {
   getChatDisplayName,
   getChatHeadline,
@@ -139,6 +140,9 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange }: UseMe
   const [enrollmentsMap, setEnrollmentsMap] = useState<Map<string, SequenceEnrollmentInfo>>(new Map());
   const [availableJobs, setAvailableJobs] = useState<JobData[]>([]);
   const [sequences, setSequences] = useState<Array<{ id: string; name: string; steps: any[] }>>([]);
+  
+  // Chat categories
+  const chatCategories = useChatCategories();
   
   // Reply suggestions
   const [replySuggestions, setReplySuggestions] = useState<Array<{ text: string; type: string }>>([]);
@@ -636,6 +640,11 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange }: UseMe
     if (showUnreadOnly) {
       result = result.filter(chat => hasUnread(chat));
     }
+
+    // Category filter
+    if (chatCategories.categoryFilter !== 'all') {
+      result = result.filter(chat => chatCategories.categoriesMap.get(chat.id) === chatCategories.categoryFilter);
+    }
     
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
@@ -643,7 +652,7 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange }: UseMe
     }
     
     setFilteredChats(result);
-  }, [searchQuery, chats, showUnreadOnly, sourceFilter]);
+  }, [searchQuery, chats, showUnreadOnly, sourceFilter, chatCategories.categoryFilter, chatCategories.categoriesMap]);
 
   // Unread count effect
   useEffect(() => {
@@ -704,6 +713,9 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange }: UseMe
     setShowUnreadOnly,
     sourceFilter,
     setSourceFilter,
+    
+    // Categories
+    chatCategories,
     
     // Context data
     enrollmentsMap,

@@ -2,13 +2,13 @@ import React from 'react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { BrutalLoader } from '@/components/ui/brutal-loader';
-import { Search, MessageSquare, RefreshCw, Reply } from 'lucide-react';
+import { Search, MessageSquare, RefreshCw, Reply, Tag } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Chat, SequenceEnrollmentInfo } from '@/hooks/useMessagesInbox';
 import { ChatListItem } from './ChatListItem';
 import { isRecruiterChat, isClassicChat, hasUnread } from '@/hooks/useMessagesInboxHelpers';
+import { ChatCategory, CHAT_CATEGORIES } from '@/hooks/useChatCategories';
 
 interface ChatListSidebarProps {
   chats: Chat[];
@@ -18,10 +18,14 @@ interface ChatListSidebarProps {
   searchQuery: string;
   showUnreadOnly: boolean;
   sourceFilter: 'all' | 'classic' | 'recruiter';
+  categoryFilter: ChatCategory | 'all';
   enrollmentsMap: Map<string, SequenceEnrollmentInfo>;
+  categoriesMap: Map<string, ChatCategory>;
   onSearchChange: (query: string) => void;
   onShowUnreadOnlyChange: (show: boolean) => void;
   onSourceFilterChange: (filter: 'all' | 'classic' | 'recruiter') => void;
+  onCategoryFilterChange: (filter: ChatCategory | 'all') => void;
+  onSetCategory: (chatId: string, accountId: string, category: ChatCategory | null) => void;
   onChatSelect: (chat: Chat) => void;
   onRefresh: () => void;
 }
@@ -34,16 +38,32 @@ export const ChatListSidebar: React.FC<ChatListSidebarProps> = ({
   searchQuery,
   showUnreadOnly,
   sourceFilter,
+  categoryFilter,
   enrollmentsMap,
+  categoriesMap,
   onSearchChange,
   onShowUnreadOnlyChange,
   onSourceFilterChange,
+  onCategoryFilterChange,
+  onSetCategory,
   onChatSelect,
   onRefresh,
 }) => {
   const classicCount = chats.filter(c => isClassicChat(c)).length;
   const recruiterCount = chats.filter(c => isRecruiterChat(c)).length;
   const unreadCount = chats.filter(c => hasUnread(c)).length;
+
+  // Count categories
+  const categoryCounts = {
+    interested: 0,
+    not_interested: 0,
+    to_recontact: 0,
+    no_response: 0,
+  };
+  chats.forEach(c => {
+    const cat = categoriesMap.get(c.id);
+    if (cat && cat in categoryCounts) categoryCounts[cat as ChatCategory]++;
+  });
 
   return (
     <div className={cn(
@@ -99,6 +119,36 @@ export const ChatListSidebar: React.FC<ChatListSidebarProps> = ({
             </button>
           ))}
         </div>
+
+        {/* Category filter pills */}
+        <div className="flex flex-wrap gap-1">
+          <button
+            onClick={() => onCategoryFilterChange('all')}
+            className={cn(
+              "h-6 px-2 text-[9px] font-medium uppercase tracking-wider border transition-colors",
+              categoryFilter === 'all'
+                ? "bg-foreground text-background border-foreground"
+                : "bg-background text-foreground border-foreground/30 hover:border-foreground"
+            )}
+          >
+            <Tag className="w-2.5 h-2.5 inline mr-1" />
+            Tous
+          </button>
+          {(Object.entries(CHAT_CATEGORIES) as [ChatCategory, typeof CHAT_CATEGORIES[ChatCategory]][]).map(([key, info]) => (
+            <button
+              key={key}
+              onClick={() => onCategoryFilterChange(categoryFilter === key ? 'all' : key)}
+              className={cn(
+                "h-6 px-2 text-[9px] font-medium border transition-colors",
+                categoryFilter === key
+                  ? cn("border-foreground", info.color)
+                  : "bg-background text-foreground border-foreground/30 hover:border-foreground"
+              )}
+            >
+              {info.emoji} {categoryCounts[key] || 0}
+            </button>
+          ))}
+        </div>
         
         {/* Unread filter toggle */}
         <button
@@ -149,6 +199,8 @@ export const ChatListSidebar: React.FC<ChatListSidebarProps> = ({
                 chat={chat}
                 isSelected={selectedChat?.id === chat.id}
                 enrollmentsMap={enrollmentsMap}
+                category={categoriesMap.get(chat.id) || null}
+                onSetCategory={onSetCategory}
                 onClick={() => onChatSelect(chat)}
               />
             ))}

@@ -96,10 +96,14 @@ const MessagesInboxInner: React.FC<
           searchQuery={inbox.searchQuery}
           showUnreadOnly={inbox.showUnreadOnly}
           sourceFilter={inbox.sourceFilter}
+          categoryFilter={inbox.chatCategories.categoryFilter}
           enrollmentsMap={inbox.enrollmentsMap}
+          categoriesMap={inbox.chatCategories.categoriesMap}
           onSearchChange={inbox.setSearchQuery}
           onShowUnreadOnlyChange={inbox.setShowUnreadOnly}
           onSourceFilterChange={inbox.setSourceFilter}
+          onCategoryFilterChange={inbox.chatCategories.setCategoryFilter}
+          onSetCategory={inbox.chatCategories.setCategory}
           onChatSelect={inbox.setSelectedChat}
           onRefresh={() => inbox.fetchChats(true)}
         />
