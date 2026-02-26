@@ -95,8 +95,8 @@ export const ChatListItem: React.FC<ChatListItemProps> = ({
                 </span>
               )}
             </div>
-            <span className="text-[10px] text-muted-foreground shrink-0">
-              {formatChatTime(chat.timestamp)}
+            <span className="text-[10px] text-muted-foreground shrink-0 whitespace-nowrap">
+              {formatChatTime(chat.timestamp || chat.last_message?.timestamp)}
             </span>
           </div>
           
