@@ -40,7 +40,8 @@ import { fr } from 'date-fns/locale';
 import { toast } from 'sonner';
 import { ProjectFunnel } from './ProjectFunnel';
 import { ProjectCandidatesTableEnhanced } from './ProjectCandidatesTableEnhanced';
-import { EditableInfoCard } from './EditableField';
+import { EditableInfoCard, SelectableInfoCard, MultiSelectInfoCard } from './EditableField';
+import { useNotionSchema } from '@/hooks/useNotionSchema';
 import { cn } from '@/lib/utils';
 
 interface ProjectDetailViewProps {
@@ -67,6 +68,7 @@ export const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
 }) => {
   const { updateProject, isUpdating } = useSourcingProjects();
   const updateNotionJob = useUpdateNotionJob();
+  const { data: notionSchema } = useNotionSchema();
   const spId = project.sourcingProject?.id || null;
   const { data: candidates = [], isLoading: candidatesLoading } = useProjectCandidates(spId);
   const { data: dynamicStats } = useProjectStats(spId);
@@ -212,20 +214,48 @@ export const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
                       <>
                         {/* Key info grid — all editable */}
                         <div className="grid grid-cols-2 gap-3">
-                          <EditableInfoCard icon={Briefcase} label="Type de contrat" value={job.contractType || '—'} fieldName="contractType" onSave={saveToNotion} />
+                          {notionSchema?.contractType ? (
+                            <MultiSelectInfoCard icon={Briefcase} label="Type de contrat" values={job.contractType ? job.contractType.split(',').map(s => s.trim()).filter(Boolean) : []} fieldName="contractType" options={notionSchema.contractType.options} onSave={saveToNotion} />
+                          ) : (
+                            <EditableInfoCard icon={Briefcase} label="Type de contrat" value={job.contractType || '—'} fieldName="contractType" onSave={saveToNotion} />
+                          )}
                           <EditableInfoCard icon={DollarSign} label="Salaire min (K€)" value={job.salaryMin > 0 ? String(job.salaryMin) : '—'} fieldName="salaryMin" type="number" onSave={saveToNotion} />
                           <EditableInfoCard icon={DollarSign} label="Salaire max (K€)" value={job.salaryMax > 0 ? String(job.salaryMax) : '—'} fieldName="salaryMax" type="number" onSave={saveToNotion} />
                           {job.tjm > 0 && (
                             <EditableInfoCard icon={DollarSign} label="TJM (€)" value={String(job.tjm)} fieldName="tjm" type="number" onSave={saveToNotion} />
                           )}
-                          <EditableInfoCard icon={MapPin} label="Localisation" value={job.location || '—'} fieldName="location" onSave={saveToNotion} />
-                          <EditableInfoCard icon={Layers} label="Entité" value={job.entity || '—'} fieldName="entity" onSave={saveToNotion} />
-                          <EditableInfoCard icon={GraduationCap} label="Séniorité" value={job.seniority || '—'} fieldName="seniority" onSave={saveToNotion} />
+                          {notionSchema?.location ? (
+                            <SelectableInfoCard icon={MapPin} label="Localisation" value={job.location || '—'} fieldName="location" options={notionSchema.location.options} onSave={saveToNotion} />
+                          ) : (
+                            <EditableInfoCard icon={MapPin} label="Localisation" value={job.location || '—'} fieldName="location" onSave={saveToNotion} />
+                          )}
+                          {notionSchema?.entity ? (
+                            <SelectableInfoCard icon={Layers} label="Entité" value={job.entity || '—'} fieldName="entity" options={notionSchema.entity.options} onSave={saveToNotion} />
+                          ) : (
+                            <EditableInfoCard icon={Layers} label="Entité" value={job.entity || '—'} fieldName="entity" onSave={saveToNotion} />
+                          )}
+                          {notionSchema?.seniority ? (
+                            <SelectableInfoCard icon={GraduationCap} label="Séniorité" value={job.seniority || '—'} fieldName="seniority" options={notionSchema.seniority.options} onSave={saveToNotion} />
+                          ) : (
+                            <EditableInfoCard icon={GraduationCap} label="Séniorité" value={job.seniority || '—'} fieldName="seniority" onSave={saveToNotion} />
+                          )}
                           <EditableInfoCard icon={Clock} label="XP min (ans)" value={job.xpMin > 0 ? String(job.xpMin) : '—'} fieldName="xpMin" type="number" onSave={saveToNotion} />
                           <EditableInfoCard icon={Clock} label="XP max (ans)" value={job.xpMax > 0 ? String(job.xpMax) : '—'} fieldName="xpMax" type="number" onSave={saveToNotion} />
-                          <EditableInfoCard icon={Globe} label="Remote" value={job.remote || '—'} fieldName="remote" onSave={saveToNotion} />
-                          <EditableInfoCard icon={Star} label="Priorité" value={job.priority || '—'} fieldName="priority" onSave={saveToNotion} />
-                          <EditableInfoCard icon={Layers} label="Canal" value={job.channel || '—'} fieldName="channel" onSave={saveToNotion} />
+                          {notionSchema?.remote ? (
+                            <SelectableInfoCard icon={Globe} label="Remote" value={job.remote || '—'} fieldName="remote" options={notionSchema.remote.options} onSave={saveToNotion} />
+                          ) : (
+                            <EditableInfoCard icon={Globe} label="Remote" value={job.remote || '—'} fieldName="remote" onSave={saveToNotion} />
+                          )}
+                          {notionSchema?.priority ? (
+                            <SelectableInfoCard icon={Star} label="Priorité" value={job.priority || '—'} fieldName="priority" options={notionSchema.priority.options} onSave={saveToNotion} />
+                          ) : (
+                            <EditableInfoCard icon={Star} label="Priorité" value={job.priority || '—'} fieldName="priority" onSave={saveToNotion} />
+                          )}
+                          {notionSchema?.channel ? (
+                            <SelectableInfoCard icon={Layers} label="Canal" value={job.channel || '—'} fieldName="channel" options={notionSchema.channel.options} onSave={saveToNotion} />
+                          ) : (
+                            <EditableInfoCard icon={Layers} label="Canal" value={job.channel || '—'} fieldName="channel" onSave={saveToNotion} />
+                          )}
                           <EditableInfoCard icon={Calendar} label="Date création" value={job.openingDate ? new Date(job.openingDate).toLocaleDateString('fr-FR') : '—'} fieldName="openingDate" onSave={saveToNotion} />
                         </div>
 
