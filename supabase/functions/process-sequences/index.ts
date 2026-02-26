@@ -337,6 +337,21 @@ async function handleCheckWaitEvents(supabase: any) {
 function sleep(ms: number): Promise<void> { return new Promise(r => setTimeout(r, ms)); }
 function needsMessage(actionType: string): boolean { return ['message', 'inmail', 'smart_message'].includes(actionType); }
 
+function isLikelyRealFirstName(name: string): boolean {
+  if (!name || name.trim().length < 2) return false;
+  const t = name.trim();
+  if (/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE00}-\u{FE0F}\u{200D}\u{20E3}]/u.test(t)) return false;
+  if (/\d/.test(t)) return false;
+  if (/[^a-zA-ZÀ-ÿ\s'\-]/.test(t)) return false;
+  if (t.length > 2 && t === t.toUpperCase() && /[A-Z]/.test(t)) return false;
+  if (/^(mr|mme|dr|prof|dispo|open|looking|hiring|freelance|consultant|dev|engineer|cto|ceo|lead|senior|junior|stagiaire|intern|coach|expert|disponible)/i.test(t)) return false;
+  if (/\b(dispo|opentowork|open.to.work|recrut|cherche|search|available)\b/i.test(t)) return false;
+  if (/\.\s*$/.test(t)) return false;
+  if (/^(.)\1+$/i.test(t)) return false;
+  if (t.length > 20) return false;
+  return true;
+}
+
 const MAX_RETRIES = 3;
 const RETRY_DELAY_MS = 30 * 60 * 1000; // 30 minutes
 
@@ -1107,7 +1122,10 @@ ${senderIsInHistory ? `- TU ES le consultant → première personne: "on avait �
 ${engagementBlock}
 
 PROFIL CANDIDAT:
-- Prénom: ${profile?.first_name || profile?.name?.split(' ')[0] || 'Candidat'}
+- Prénom: ${(() => {
+      const raw = profile?.first_name || profile?.name?.split(' ')[0] || '';
+      return isLikelyRealFirstName(raw) ? raw : '(non fiable, ne pas utiliser)';
+    })()}
 - Titre: ${profile?.headline || 'N/A'}
 ${profile?.summary ? `
 === SECTION "À PROPOS" DU CANDIDAT (SOURCE CLÉ DE PERSONNALISATION ET DE STYLE) ===
@@ -1150,6 +1168,7 @@ ${prevMsgContext ? `MESSAGES PRÉCÉDENTS ENVOYÉS (ne te répète pas, apporte 
    ❌ JAMAIS: proposer un call, un rdv, une dispo
 
 5. FORMAT OBLIGATOIRE:
+   SALUTATION: "Salut [Prénom]," UNIQUEMENT si le prénom est fiable. Si marqué "(non fiable, ne pas utiliser)", utilise "Salut," SANS prénom.
    PHRASE 1 = PERSONNALISATION PURE. Une observation spécifique, PAS un résumé de carrière.
    PHRASE 2-3 = Ce que le candidat y gagne
    PHRASE 4 = CTA non-engageant

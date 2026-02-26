@@ -65,6 +65,49 @@ type ModelJson = {
   personalization_points: string[];
 };
 
+/**
+ * Detects if a LinkedIn first name looks like a real, usable first name.
+ * Rejects: truncated names, emojis, special chars, all-caps gimmicks, single letters, etc.
+ */
+function isLikelyRealFirstName(name: string): boolean {
+  if (!name || name.trim().length === 0) return false;
+  const trimmed = name.trim();
+  
+  // Too short (single char or 2 chars) — likely truncated
+  if (trimmed.length < 2) return false;
+  
+  // Contains emojis or special unicode symbols
+  if (/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE00}-\u{FE0F}\u{200D}\u{20E3}]/u.test(trimmed)) return false;
+  
+  // Contains numbers
+  if (/\d/.test(trimmed)) return false;
+  
+  // Contains special characters (except accents, hyphens, apostrophes)
+  if (/[^a-zA-ZÀ-ÿ\s'\-]/.test(trimmed)) return false;
+  
+  // ALL CAPS and longer than 2 chars (likely a gimmick like "RECRUTEUR" or "DISPO")
+  if (trimmed.length > 2 && trimmed === trimmed.toUpperCase() && /[A-Z]/.test(trimmed)) return false;
+  
+  // Looks like a title/role/status rather than a name
+  const suspiciousPatterns = [
+    /^(mr|mme|dr|prof|dispo|open|looking|hiring|freelance|consultant|dev|engineer|cto|ceo|coo|cfo|lead|senior|junior|stagiaire|intern|coach|expert|disponible)/i,
+    /\b(dispo|opentowork|open.to.work|recrut|cherche|search|available)\b/i,
+    /(🔍|💼|🚀|✨|🎯|💡|🔥|👋|📢|🏆)/,
+  ];
+  if (suspiciousPatterns.some(p => p.test(trimmed))) return false;
+  
+  // Ends with a period or dot (truncated like "Jean-P.")
+  if (/\.\s*$/.test(trimmed)) return false;
+  
+  // Single repeated character (like "Aaa" or "Xxx")
+  if (/^(.)\1+$/i.test(trimmed)) return false;
+  
+  // Very long "first name" (>20 chars) — likely full name or garbage
+  if (trimmed.length > 20) return false;
+
+  return true;
+}
+
 function detectViolations(args: { isRPO: boolean; message: string; subject?: string }): string[] {
   const { isRPO, message, subject } = args;
   const v: string[] = [];
@@ -452,7 +495,10 @@ ${senderIsInHistory ? `- TU ES le consultant qui a interagi avec ce candidat →
 ${engagementInstructions}
 
 PROFIL DU CANDIDAT:
-- Prénom: ${profile.name?.split(' ')[0] || 'Candidat'}
+- Prénom: ${(() => {
+      const raw = profile.name?.split(' ')[0] || '';
+      return isLikelyRealFirstName(raw) ? raw : '(non fiable, ne pas utiliser)';
+    })()}
 - Titre: ${profile.headline || 'Non spécifié'}
 - Poste actuel: ${profile.currentRole || 'Non spécifié'} chez ${profile.currentCompany || 'Non spécifié'}
 - Localisation: ${profile.location || 'Non spécifié'}
@@ -613,6 +659,9 @@ ${statusInstructions[candidateStatus] || statusInstructions.other}
    - 200-400 CARACTÈRES pour le message (hors signature) = 3-5 phrases
    - Phrases courtes et percutantes, PAS de tirets, PAS de listes
    - SAUTS DE LIGNE entre chaque idée (2-3 paragraphes courts)
+   - SALUTATION: "Salut [Prénom]," UNIQUEMENT si le prénom indiqué ci-dessus est un vrai prénom fiable.
+     Si le prénom est marqué "(non fiable, ne pas utiliser)", utilise simplement "Salut," ou "Hey," SANS prénom.
+     Ne JAMAIS utiliser un prénom tronqué, bizarre ou manifestement faux.
    - Structure: 
      PHRASE 1 = PERSONNALISATION PURE (obligatoire). Une phrase naturelle qui montre que tu as lu le profil.
      PAS de structure "Du X au Y", PAS de "Ton parcours de X à Y", PAS de résumé de carrière.
