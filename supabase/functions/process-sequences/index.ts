@@ -273,11 +273,12 @@ async function handleCheckReplies(supabase: any) {
   let repliesDetected = 0;
 
   for (const enrollment of activeEnrollments || []) {
-    if (await checkForReplyAfterDate(enrollment.account_id, enrollment.profile_id, enrollment.created_at)) {
+    if (await checkForReplyAfterDate(enrollment.account_id, enrollment.profile_id, enrollment.created_at, enrollment.profile_url)) {
       await supabase.from('sequence_enrollments').update({ status: 'replied', replied_at: new Date().toISOString() }).eq('id', enrollment.id);
       await supabase.from('sequence_step_executions').update({ status: 'cancelled', skip_reason: 'Reply detected' }).eq('enrollment_id', enrollment.id).eq('status', 'scheduled');
       await logAnalytics(supabase, enrollment.sequence_id, 'replies_received');
       repliesDetected++;
+      console.log(`[checkReplies] Reply detected for ${enrollment.profile_name} (${enrollment.profile_id})`);
     }
   }
   return new Response(JSON.stringify({ success: true, repliesDetected }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
@@ -441,21 +442,84 @@ async function getProfileInfo(accountId: string, profileId: string, enrollmentPr
   }
 }
 
-async function checkForReplyAfterDate(accountId: string, profileId: string, afterDate: string): Promise<boolean> {
+async function resolveProfileIdForChat(accountId: string, profileId: string, profileUrl?: string | null): Promise<string> {
+  // If it's a recruiter ID (AEM/AE), resolve to a slug or classic ID for chat API
+  if (!profileId.startsWith('AE')) return profileId;
+  
+  try {
+    // Try extracting slug from profile URL first
+    let slug: string | null = null;
+    if (profileUrl) {
+      const match = profileUrl.match(/linkedin\.com\/in\/([^/?]+)/);
+      if (match && !match[1].startsWith('AE')) slug = match[1];
+    }
+    
+    // If no slug from URL, fetch profile to get public_identifier
+    if (!slug) {
+      const r = await fetch(`${UNIPILE_DSN}/api/v1/users/${profileId}?account_id=${accountId}`, { headers: { 'X-API-KEY': UNIPILE_API_KEY! } });
+      if (r.ok) {
+        const data = await r.json();
+        slug = data.public_identifier || data.public_id || null;
+        // Also try provider_id if it's a classic format
+        if (!slug && data.provider_id && !data.provider_id.startsWith('AE')) {
+          return data.provider_id;
+        }
+      }
+    }
+    
+    if (slug) {
+      // Resolve slug to get the classic provider_id
+      const slugRes = await fetch(`${UNIPILE_DSN}/api/v1/users/${encodeURIComponent(slug)}?account_id=${accountId}`, { headers: { 'X-API-KEY': UNIPILE_API_KEY! } });
+      if (slugRes.ok) {
+        const slugData = await slugRes.json();
+        if (slugData.provider_id && !slugData.provider_id.startsWith('AE')) {
+          console.log(`[resolveProfileIdForChat] Resolved ${profileId} -> ${slugData.provider_id} via slug ${slug}`);
+          return slugData.provider_id;
+        }
+      }
+      // Use slug directly as fallback
+      console.log(`[resolveProfileIdForChat] Using slug ${slug} for ${profileId}`);
+      return slug;
+    }
+  } catch (err) {
+    console.warn(`[resolveProfileIdForChat] Error resolving ${profileId}:`, err);
+  }
+  
+  return profileId;
+}
+
+async function checkForReplyAfterDate(accountId: string, profileId: string, afterDate: string, profileUrl?: string | null): Promise<boolean> {
   try {
     const enrollmentTime = new Date(afterDate).getTime();
-    const chatsRes = await fetch(`${UNIPILE_DSN}/api/v1/chat_attendees/${profileId}/chats?account_id=${accountId}`, { headers: { 'X-API-KEY': UNIPILE_API_KEY! } });
-    if (!chatsRes.ok) return false;
-    const chats = (await chatsRes.json()).items || [];
-    for (const chat of chats) {
-      const msgRes = await fetch(`${UNIPILE_DSN}/api/v1/chats/${chat.id}/messages?limit=20`, { headers: { 'X-API-KEY': UNIPILE_API_KEY! } });
-      if (!msgRes.ok) continue;
-      const messages = (await msgRes.json()).items || [];
-      // deno-lint-ignore no-explicit-any
-      if (messages.some((m: any) => !m.is_sender_self && m.sender_attendee_id !== 'self' && new Date(m.timestamp || m.date || m.created_at).getTime() > enrollmentTime)) return true;
+    
+    // Resolve recruiter IDs to a format the chat API understands
+    const resolvedId = await resolveProfileIdForChat(accountId, profileId, profileUrl);
+    
+    const chatsRes = await fetch(`${UNIPILE_DSN}/api/v1/chat_attendees/${resolvedId}/chats?account_id=${accountId}`, { headers: { 'X-API-KEY': UNIPILE_API_KEY! } });
+    if (!chatsRes.ok) {
+      // If resolved ID also fails and it was different from original, try original as fallback
+      if (resolvedId !== profileId) {
+        const fallbackRes = await fetch(`${UNIPILE_DSN}/api/v1/chat_attendees/${profileId}/chats?account_id=${accountId}`, { headers: { 'X-API-KEY': UNIPILE_API_KEY! } });
+        if (!fallbackRes.ok) return false;
+        const fallbackChats = (await fallbackRes.json()).items || [];
+        return await checkMessagesForReply(fallbackChats, enrollmentTime);
+      }
+      return false;
     }
-    return false;
+    const chats = (await chatsRes.json()).items || [];
+    return await checkMessagesForReply(chats, enrollmentTime);
   } catch { return false; }
+}
+
+async function checkMessagesForReply(chats: { id: string }[], enrollmentTime: number): Promise<boolean> {
+  for (const chat of chats) {
+    const msgRes = await fetch(`${UNIPILE_DSN}/api/v1/chats/${chat.id}/messages?limit=20`, { headers: { 'X-API-KEY': UNIPILE_API_KEY! } });
+    if (!msgRes.ok) continue;
+    const messages = (await msgRes.json()).items || [];
+    // deno-lint-ignore no-explicit-any
+    if (messages.some((m: any) => !m.is_sender_self && m.sender_attendee_id !== 'self' && new Date(m.timestamp || m.date || m.created_at).getTime() > enrollmentTime)) return true;
+  }
+  return false;
 }
 
 async function checkHasProspectReplied(accountId: string, profileId: string): Promise<boolean> {
