@@ -693,6 +693,52 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange }: UseMe
     }
   }, [selectedChat?.id, fetchMessages]);
 
+  // Auto-poll messages every 5s when a chat is selected
+  useEffect(() => {
+    if (!selectedChat || !selectedAccount) return;
+
+    const chatId = selectedChat.id;
+    let active = true;
+
+    const poll = async () => {
+      if (!active) return;
+      try {
+        const response = await supabase.functions.invoke('unipile-search', {
+          body: {
+            action: 'get_messages',
+            account_id: selectedAccount,
+            chat_id: chatId,
+            limit: 50,
+          },
+        });
+
+        if (!active) return;
+        if (response.error || !response.data?.success) return;
+
+        const freshMessages: Message[] = (response.data.messages || []).reverse();
+        
+        setMessages(prev => {
+          // Only update if there are genuinely new messages
+          if (freshMessages.length !== prev.length) return freshMessages;
+          // Check if last message ID differs
+          const lastFresh = freshMessages[freshMessages.length - 1];
+          const lastPrev = prev[prev.length - 1];
+          if (lastFresh?.id !== lastPrev?.id) return freshMessages;
+          return prev; // No change — keep reference stable
+        });
+      } catch {
+        // Silently ignore polling errors
+      }
+    };
+
+    const intervalId = setInterval(poll, 5000);
+
+    return () => {
+      active = false;
+      clearInterval(intervalId);
+    };
+  }, [selectedChat?.id, selectedAccount]);
+
   // Scroll to bottom on new messages
   useEffect(() => {
     if (!loadingMessages && messages.length > 0) {
