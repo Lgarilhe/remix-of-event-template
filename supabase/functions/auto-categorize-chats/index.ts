@@ -51,14 +51,13 @@ function classifyDeterministic(chat: any): ChatCategory {
   }
 
   if (!isSender) {
+    // Candidate replied - check content for sentiment
+    if (lastMsg.length < 15) return 'to_recontact'; // too short to tell
     return 'to_recontact';
   }
 
-  if (isSender && unread === 0) {
-    return 'no_response';
-  }
-
-  return 'to_recontact';
+  // Recruiter sent last message, no reply
+  return 'no_response';
 }
 
 async function callAiWithRetry(chatSummaries: string, chatsCount: number, apiKey: string) {
@@ -74,24 +73,22 @@ async function callAiWithRetry(chatSummaries: string, chatsCount: number, apiKey
         messages: [
           {
             role: 'system',
-            content: `Tu es un assistant de recrutement. Analyse ces conversations LinkedIn et attribue une catégorie à chacune.
+            content: `Tu es un assistant de recrutement expert. Tu analyses des conversations LinkedIn entre un recruteur et des candidats.
 
-Catégories autorisées (obligatoires) :
-- "interested"
-- "not_interested"
-- "to_recontact"
-- "no_response"
+Pour chaque conversation, attribue UNE catégorie parmi :
+- "interested" : Le candidat a répondu positivement. Exemples : accepte un appel, demande plus d'infos sur le poste, donne ses disponibilités, dit "ça m'intéresse", pose des questions sur le salaire/la mission.
+- "not_interested" : Le candidat a refusé. Exemples : "non merci", "pas intéressé", "je ne suis pas en recherche", "pas pour moi".
+- "no_response" : Le DERNIER message a été envoyé par le recruteur (sent_by_me: true) ET le candidat n'a jamais répondu ou n'a pas répondu depuis.
+- "to_recontact" : Le candidat a répondu mais sans conclusion claire. Exemples : réponse vague, "peut-être plus tard", conversation qui s'essouffle, échange poli sans engagement.
 
-Règles strictes :
-- Tu dois renvoyer exactement une catégorie pour chaque index
-- Ne renvoie jamais "skip"
-- Si sent_by_me: false, la catégorie "no_response" est interdite
-- Si réponse clairement positive → interested
-- Si refus clair → not_interested
-- Si échange en cours / relance nécessaire → to_recontact
-- Si dernier message envoyé par le recruteur et aucun retour visible → no_response
+RÈGLES CRITIQUES :
+1. Si sent_by_me: true (dernier msg du recruteur) → c'est très probablement "no_response" sauf si le contexte montre clairement autre chose
+2. Si sent_by_me: false (le candidat a répondu) → JAMAIS "no_response". Analyse le CONTENU du message.
+3. Une réponse positive même courte ("ok", "pourquoi pas", "oui") = "interested"
+4. Un message du candidat qui pose des questions = "interested"
+5. Un simple "merci" ou réponse polie sans engagement = "to_recontact"
 
-Réponds UNIQUEMENT avec un JSON array. Chaque élément : {"index": <number>, "category": "<category>"}`,
+Réponds UNIQUEMENT avec un JSON array : [{"index": 0, "category": "..."}, ...]`,
           },
           {
             role: 'user',
