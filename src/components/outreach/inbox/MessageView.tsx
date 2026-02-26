@@ -127,7 +127,7 @@ export const MessageView: React.FC<MessageViewProps> = ({
   return (
     <div className="flex-1 flex flex-col min-w-0 min-h-0">
       {/* Chat Header */}
-      <div className="p-3 border-b border-foreground flex items-center gap-3 bg-background shrink-0">
+      <div className="p-2 md:p-3 border-b border-foreground flex items-center gap-2 md:gap-3 bg-background shrink-0">
         <Button
           variant="ghost"
           size="icon"
@@ -136,38 +136,40 @@ export const MessageView: React.FC<MessageViewProps> = ({
         >
           <ChevronLeft className="w-5 h-5" />
         </Button>
-        <Avatar className="w-10 h-10 rounded-none">
+        <Avatar className="w-8 h-8 md:w-10 md:h-10 rounded-none shrink-0">
           <AvatarImage src={avatar} />
-          <AvatarFallback className="bg-foreground/10 text-foreground font-medium rounded-none">
+          <AvatarFallback className="bg-foreground/10 text-foreground font-medium rounded-none text-xs md:text-sm">
             {getInitials(displayName)}
           </AvatarFallback>
         </Avatar>
         <div className="flex-1 min-w-0">
-          <h4 className="font-semibold text-foreground truncate text-sm uppercase tracking-wide">
+          <h4 className="font-semibold text-foreground truncate text-xs md:text-sm uppercase tracking-wide">
             {displayName}
           </h4>
           {headline && (
-            <p className="text-xs text-muted-foreground truncate">{headline}</p>
+            <p className="text-[10px] md:text-xs text-muted-foreground truncate">{headline}</p>
           )}
           {subject && (
-            <p className="text-[10px] text-muted-foreground truncate flex items-center gap-1">
+            <p className="text-[10px] text-muted-foreground truncate flex items-center gap-1 hidden md:flex">
               <span>📧</span> {subject}
             </p>
           )}
         </div>
         
-        {/* Tone Selector */}
-        <ToneSelector selectedTone={currentTone} onToneChange={handleToneChange} />
+        {/* Tone Selector - hidden on mobile to save space */}
+        <div className="hidden md:block">
+          <ToneSelector selectedTone={currentTone} onToneChange={handleToneChange} />
+        </div>
 
         {/* AI Sheet trigger */}
         {hasCandidateMessage && messages.length > 0 && (
           <button
-            className="relative overflow-hidden h-8 px-3 text-xs font-medium uppercase tracking-wider border border-foreground bg-foreground text-background group"
+            className="relative overflow-hidden h-8 px-2 md:px-3 text-xs font-medium uppercase tracking-wider border border-foreground bg-foreground text-background group shrink-0"
             onClick={() => setAiSheetOpen(true)}
           >
-            <span className="relative z-10 flex items-center gap-1.5">
+            <span className="relative z-10 flex items-center gap-1">
               <Zap className="w-3.5 h-3.5" />
-              IA
+              <span className="hidden md:inline">IA</span>
             </span>
             <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
           </button>
@@ -175,12 +177,12 @@ export const MessageView: React.FC<MessageViewProps> = ({
 
         {selectedChat.attendees?.[0]?.profile_url && (
           <button
-            className="relative overflow-hidden h-8 px-3 text-xs font-medium uppercase tracking-wider border border-foreground/20 bg-background text-foreground group"
+            className="relative overflow-hidden h-8 px-2 md:px-3 text-xs font-medium uppercase tracking-wider border border-foreground/20 bg-background text-foreground group shrink-0"
             onClick={() => window.open(selectedChat.attendees?.[0]?.profile_url, '_blank')}
           >
             <span className="relative z-10 flex items-center gap-1">
               <User className="w-3 h-3" />
-              Profil
+              <span className="hidden md:inline">Profil</span>
             </span>
             <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
           </button>
