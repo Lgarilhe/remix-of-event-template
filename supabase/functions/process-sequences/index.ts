@@ -714,7 +714,9 @@ async function executeStepAction(actionType: string, enrollment: Record<string, 
       }
       case 'smart_message': case 'inmail': case 'message': {
         const p = await getProfileInfo(accountId, profileId, enrollment.profile_url as string | undefined);
-        const needsInMail = p?.network_distance !== 'FIRST_DEGREE' && (actionType === 'inmail' || actionType === 'smart_message');
+        const isConnected = p?.network_distance === 'FIRST_DEGREE' || (enrollment as any).connection_status === 'connected';
+        const needsInMail = !isConnected && (actionType === 'inmail' || actionType === 'smart_message');
+        console.log(`[executeStepAction] ${(enrollment as any).profile_name} | actionType=${actionType} | network_distance=${p?.network_distance} | connection_status=${(enrollment as any).connection_status} | isConnected=${isConnected} | needsInMail=${needsInMail}`);
         const fd = new FormData();
         fd.append('account_id', accountId); fd.append('attendees_ids', profileId); fd.append('text', msg);
         if (needsInMail) { fd.append('linkedin[api]', 'recruiter'); fd.append('linkedin[inmail]', 'true'); if (subj) fd.append('linkedin[subject]', subj); }
