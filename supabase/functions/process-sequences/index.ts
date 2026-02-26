@@ -541,56 +541,83 @@ async function checkForReplyAfterDate(accountId: string, profileId: string, afte
   } catch { return false; }
 }
 
-async function resolveOwnAttendeeId(accountId: string, chatId: string): Promise<Set<string>> {
-  const ownIds = new Set<string>();
-  ownIds.add('self');
+interface ChatAttendeeInfo {
+  ownIds: Set<string>;
+  otherIds: Set<string>;
+  resolved: boolean;
+}
+
+async function resolveAttendeeIds(chatId: string): Promise<ChatAttendeeInfo> {
+  const result: ChatAttendeeInfo = { ownIds: new Set(['self']), otherIds: new Set(), resolved: false };
   try {
-    // Fetch chat details which include attendees with their role
-    const chatRes = await fetch(`${UNIPILE_DSN}/api/v1/chats/${chatId}`, { headers: { 'X-API-KEY': UNIPILE_API_KEY! } });
-    if (!chatRes.ok) return ownIds;
-    const chatData = await chatRes.json();
+    const attRes = await fetch(`${UNIPILE_DSN}/api/v1/chats/${chatId}/attendees`, { headers: { 'X-API-KEY': UNIPILE_API_KEY! } });
+    if (!attRes.ok) {
+      console.warn(`[checkReplies] Attendees endpoint failed for chat ${chatId}: ${attRes.status}`);
+      return result;
+    }
+    const attData = await attRes.json();
+    const attendees = attData.items || attData || [];
+    const list = Array.isArray(attendees) ? attendees : [];
+    
+    // Log full attendee data for debugging
     // deno-lint-ignore no-explicit-any
-    const attendees = chatData.attendees || chatData.participants || [];
+    console.log(`[checkReplies] Chat ${chatId} attendees (${list.length}):`, list.map((a: any) => ({ 
+      id: a.id, provider_id: a.provider_id, is_self: a.is_self, role: a.role, display_name: a.display_name 
+    })));
+    
     // deno-lint-ignore no-explicit-any
-    for (const att of attendees) {
-      // Unipile marks the account owner with is_self or role='self'
+    for (const att of list) {
+      const ids = [att.id, att.provider_id, att.attendee_id].filter(Boolean);
       if (att.is_self === true || att.role === 'self' || att.id === 'self') {
-        ownIds.add(att.id);
-        if (att.provider_id) ownIds.add(att.provider_id);
+        ids.forEach(id => result.ownIds.add(id));
+      } else {
+        ids.forEach(id => result.otherIds.add(id));
       }
     }
-    console.log(`[checkReplies] Own attendee IDs for chat ${chatId}:`, Array.from(ownIds));
+    
+    // In a 1-to-1 chat with 2 attendees, if we can't find is_self,
+    // but we know our account, we can infer: the attendee that ISN'T us is the other person.
+    // If NO attendee has is_self, use a different approach:
+    // Any message from an attendee in otherIds is a genuine reply.
+    // Any message from an attendee NOT in otherIds AND NOT in ownIds is ambiguous.
+    result.resolved = list.length > 0;
+    
+    console.log(`[checkReplies] Resolved for chat ${chatId}: ownIds=${JSON.stringify(Array.from(result.ownIds))}, otherIds=${JSON.stringify(Array.from(result.otherIds))}`);
   } catch (e) {
-    console.warn(`[checkReplies] Failed to resolve own attendee ID for chat ${chatId}:`, e);
+    console.warn(`[checkReplies] Failed to resolve attendees for chat ${chatId}:`, e);
   }
-  return ownIds;
+  return result;
 }
 
 async function checkMessagesForReply(chats: { id: string }[], afterTimestamp: number): Promise<boolean> {
   for (const chat of chats) {
-    // First, resolve our own attendee ID(s) in this chat to avoid false positives
-    const ownAttendeeIds = await resolveOwnAttendeeId('', chat.id);
+    // Resolve attendee identities for this chat
+    const attendeeInfo = await resolveAttendeeIds(chat.id);
 
     const msgRes = await fetch(`${UNIPILE_DSN}/api/v1/chats/${chat.id}/messages?limit=10`, { headers: { 'X-API-KEY': UNIPILE_API_KEY! } });
     if (!msgRes.ok) continue;
     const messages = (await msgRes.json()).items || [];
     // deno-lint-ignore no-explicit-any
     const incomingReplies = messages.filter((m: any) => {
-      // Explicit self-detection
+      // Explicit self-detection — always trust this
       if (m.is_sender_self === true) return false;
-      // Check if sender_attendee_id matches any of our known own IDs
-      if (m.sender_attendee_id && ownAttendeeIds.has(m.sender_attendee_id)) return false;
-      // Fallback: if is_sender_self is undefined and no attendee match, 
-      // be conservative — only count as reply if is_sender_self is explicitly false
-      if (m.is_sender_self === undefined && !ownAttendeeIds.has(m.sender_attendee_id || '')) {
-        // If we couldn't resolve own IDs (set only has 'self'), be extra cautious
-        if (ownAttendeeIds.size <= 1) {
-          console.log(`[checkReplies] Skipping ambiguous message ${m.id} (is_sender_self=undefined, no own ID resolved)`);
-          return false;
-        }
+      // If explicitly marked as not-self, it's a genuine reply
+      if (m.is_sender_self === false) {
+        const msgTime = new Date(m.timestamp || m.date || m.created_at).getTime();
+        return msgTime > afterTimestamp;
       }
-      const msgTime = new Date(m.timestamp || m.date || m.created_at).getTime();
-      return msgTime > afterTimestamp;
+      // is_sender_self is undefined (InMail case) — use attendee resolution
+      const senderAtt = m.sender_attendee_id || '';
+      // If sender is in our known own IDs, skip
+      if (attendeeInfo.ownIds.has(senderAtt)) return false;
+      // If sender is in known other IDs (the prospect), it's a genuine reply
+      if (senderAtt && attendeeInfo.otherIds.has(senderAtt)) {
+        const msgTime = new Date(m.timestamp || m.date || m.created_at).getTime();
+        return msgTime > afterTimestamp;
+      }
+      // Unknown sender and no resolution — skip to be safe
+      console.log(`[checkReplies] Skipping ambiguous message ${m.id} (sender=${senderAtt}, not in own or other sets)`);
+      return false;
     });
     if (incomingReplies.length > 0) {
       // deno-lint-ignore no-explicit-any
