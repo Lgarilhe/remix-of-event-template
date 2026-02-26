@@ -1031,55 +1031,77 @@ async function handleGetChats(
   // The list endpoint returns attendee_provider_id but not the full attendee info,
   // so we fetch /chat_attendees/{id} (cached by attendee_provider_id).
   // NOTE: We do this in small batches to avoid flooding the upstream API.
+  // Helper: fetch last message for a chat to determine is_sender
+  const fetchLastMessage = async (chatId: string): Promise<{ is_sender: boolean; text?: string; timestamp?: string } | null> => {
+    try {
+      const msgUrl = `${baseUrl}/chats/${encodeURIComponent(chatId)}/messages?limit=1`;
+      const msgResponse = await fetch(msgUrl, {
+        headers: { 'X-API-KEY': apiKey, 'Accept': 'application/json' },
+      });
+      if (msgResponse.ok) {
+        const msgData = await msgResponse.json();
+        const items = msgData.items || msgData || [];
+        const lastMsg = Array.isArray(items) ? items[0] : null;
+        if (lastMsg) {
+          return {
+            is_sender: !!lastMsg.is_sender,
+            text: lastMsg.text || lastMsg.text_content || '',
+            timestamp: lastMsg.timestamp,
+          };
+        }
+      }
+    } catch (e) {
+      console.error('Error fetching last message for chat', chatId, e);
+    }
+    return null;
+  };
+
   const enrichChat = async (chat: Record<string, unknown>) => {
     try {
-      // If upstream already provided attendees, keep them.
-      const providedAttendees = (chat.attendees as Record<string, unknown>[] | undefined) || [];
-      if (providedAttendees.length > 0) {
-        return {
-          ...chat,
-          attendees: providedAttendees,
-        };
-      }
-
+      // Parallel: fetch attendee info + last message
       const attendeeProviderId = chat.attendee_provider_id as string | undefined;
-      if (!attendeeProviderId) {
-        return {
-          ...chat,
-          attendees: [],
-        };
+      const providedAttendees = (chat.attendees as Record<string, unknown>[] | undefined) || [];
+      
+      const promises: Promise<unknown>[] = [];
+      
+      // Attendee fetch (if needed)
+      let needsAttendeeFetch = providedAttendees.length === 0 && attendeeProviderId && !attendeeCache.has(attendeeProviderId);
+      if (needsAttendeeFetch) {
+        promises.push(
+          fetch(`${baseUrl}/chat_attendees/${encodeURIComponent(attendeeProviderId!)}`, {
+            headers: { 'X-API-KEY': apiKey, 'Accept': 'application/json' },
+          }).then(r => r.ok ? r.json() : null).catch(() => null)
+        );
+      } else {
+        promises.push(Promise.resolve(null));
       }
-
-      if (attendeeCache.has(attendeeProviderId)) {
-        return {
-          ...chat,
-          attendees: [attendeeCache.get(attendeeProviderId)!],
-        };
-      }
-
-      const attendeeResponse = await fetch(
-        `${baseUrl}/chat_attendees/${encodeURIComponent(attendeeProviderId)}`,
-        {
-          headers: {
-            'X-API-KEY': apiKey,
-            'Accept': 'application/json',
-          },
+      
+      // Last message fetch
+      promises.push(fetchLastMessage(chat.id as string));
+      
+      const [attendeeResult, lastMsgResult] = await Promise.all(promises) as [Record<string, unknown> | null, { is_sender: boolean; text?: string; timestamp?: string } | null];
+      
+      // Build attendees
+      let attendees = providedAttendees;
+      if (attendees.length === 0 && attendeeProviderId) {
+        if (attendeeCache.has(attendeeProviderId)) {
+          attendees = [attendeeCache.get(attendeeProviderId)!];
+        } else if (attendeeResult) {
+          attendeeCache.set(attendeeProviderId, attendeeResult);
+          attendees = [attendeeResult];
         }
-      );
-
-      if (attendeeResponse.ok) {
-        const attendeeInfo = await attendeeResponse.json();
-        attendeeCache.set(attendeeProviderId, attendeeInfo);
-        return {
-          ...chat,
-          attendees: [attendeeInfo],
-        };
       }
-
-      // Fallback: return chat without attendees
+      
+      // Build last_message info
+      const existingLastMessage = (chat.last_message as Record<string, unknown>) || {};
+      const enrichedLastMessage = lastMsgResult
+        ? { ...existingLastMessage, is_sender: lastMsgResult.is_sender, text: lastMsgResult.text, timestamp: lastMsgResult.timestamp }
+        : existingLastMessage;
+      
       return {
         ...chat,
-        attendees: [],
+        attendees,
+        last_message: enrichedLastMessage,
       };
     } catch (error) {
       console.error('Error enriching chat:', chat.id, error);

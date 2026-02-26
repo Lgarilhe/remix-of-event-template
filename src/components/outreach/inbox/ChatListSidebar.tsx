@@ -60,8 +60,8 @@ export const ChatListSidebar: React.FC<ChatListSidebarProps> = ({
   const classicCount = chats.filter(c => isClassicChat(c)).length;
   const recruiterCount = chats.filter(c => isRecruiterChat(c)).length;
   const unreadCount = chats.filter(c => hasUnread(c)).length;
-  const waitingCandidateCount = chats.filter(c => !hasUnread(c)).length;
-  const waitingMeCount = chats.filter(c => hasUnread(c)).length;
+  const waitingCandidateCount = chats.filter(c => c.last_message?.is_sender === true).length;
+  const waitingMeCount = chats.filter(c => c.last_message?.is_sender === false).length;
 
   // Count categories
   const categoryCounts = {
