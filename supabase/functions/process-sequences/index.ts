@@ -56,9 +56,11 @@ serve(async (req) => {
 // Action-type-specific delays (ms) to simulate natural human behavior
 function getActionDelay(actionType: string): number {
   switch (actionType) {
-    case 'profile_visit':
     case 'check_connection':
-      return 2000 + Math.random() * 3000;    // 2-5s — passive actions (no API write)
+    case 'wait_connection':
+      return 0;                               // 0s — invisible API checks, no LinkedIn footprint
+    case 'profile_visit':
+      return 2000 + Math.random() * 3000;    // 2-5s — passive but visible on LinkedIn
     case 'connection_request':
       return 10000 + Math.random() * 10000;  // 10-20s
     case 'message':
