@@ -707,7 +707,7 @@ function ScoringCard({ scoring }: { scoring: ScoringRecord }) {
           </div>
           <span className="text-[10px] text-muted-foreground">
             {format(parseISO(scoring.updatedAt), 'd MMM yyyy', { locale: fr })}
-            {scoring.jobId && ` • Job: ${scoring.jobId.slice(0, 8)}...`}
+            {(scoring.jobTitle || scoring.jobId) && ` • ${scoring.jobTitle || scoring.jobId.slice(0, 8) + '...'}`}
           </span>
         </div>
         {expanded ? <ChevronUp className="w-4 h-4 text-muted-foreground shrink-0" /> : <ChevronDown className="w-4 h-4 text-muted-foreground shrink-0" />}

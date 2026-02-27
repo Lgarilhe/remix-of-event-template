@@ -167,10 +167,34 @@ export function useCandidateFullProfile(candidateId: string, linkedinUrl: string
         .eq('candidate_id', profileId)
         .order('updated_at', { ascending: false });
       
-      setScoringHistory((data || []).map((r: any) => ({
+      if (!data || data.length === 0) {
+        setScoringHistory([]);
+        return;
+      }
+
+      // Fetch job titles from search_history for all unique job_ids
+      const uniqueJobIds = [...new Set(data.map((r: any) => r.job_id).filter(Boolean))];
+      const jobTitleMap = new Map<string, string>();
+
+      if (uniqueJobIds.length > 0) {
+        const { data: searches } = await supabase
+          .from('search_history')
+          .select('job_id, job_title')
+          .in('job_id', uniqueJobIds);
+        
+        if (searches) {
+          searches.forEach((s: any) => {
+            if (s.job_title && !jobTitleMap.has(s.job_id)) {
+              jobTitleMap.set(s.job_id, s.job_title);
+            }
+          });
+        }
+      }
+
+      setScoringHistory(data.map((r: any) => ({
         id: r.id,
         jobId: r.job_id,
-        jobTitle: null, // Will be enriched by job title from Notion if needed
+        jobTitle: jobTitleMap.get(r.job_id) || null,
         score: r.score,
         recommendation: r.recommendation,
         status: r.status,
