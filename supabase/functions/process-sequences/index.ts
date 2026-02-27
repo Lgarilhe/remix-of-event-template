@@ -1715,7 +1715,7 @@ Réponds UNIQUEMENT en JSON valide: {"subject": "objet si InMail, sinon vide", "
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-api-key': ANTHROPIC_API_KEY!, 'anthropic-version': '2023-06-01' },
         body: JSON.stringify({ 
-          model: 'claude-opus-4-6', 
+          model: 'claude-sonnet-4-6', 
           max_tokens: 500, 
           system: 'Tu es un recruteur tech senior. Tu écris des messages LinkedIn courts, directs, humains. JAMAIS de superlatifs, JAMAIS de tournures IA. Tu réponds TOUJOURS en JSON valide, sans markdown ni code blocks.',
           messages: [{ role: 'user', content: userPrompt }] 
