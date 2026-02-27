@@ -23,7 +23,7 @@ serve(async (req) => {
   }
 
   // ===== AUTH CHECK =====
-  // Accept: (1) dedicated PROCESS_SEQUENCES_SECRET (cron), (2) service_role key, (3) anon key (cron legacy), or (4) valid admin JWT (frontend)
+  // Accept: (1) service_role key (internal/cron), (2) PROCESS_SEQUENCES_SECRET, or (3) valid admin JWT (frontend)
   const authHeader = req.headers.get('authorization') || '';
   const token = authHeader.replace(/^Bearer\s+/i, '');
   const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -33,12 +33,14 @@ serve(async (req) => {
 
   let isAuthorized = false;
 
-  if (cronSecret && token === cronSecret) {
+  if (token === serviceRoleKey) {
+    // Service role — always allowed (cron via pg_net uses this)
     isAuthorized = true;
-  } else if (token === serviceRoleKey) {
+  } else if (cronSecret && token === cronSecret) {
+    // Dedicated cron secret
     isAuthorized = true;
-  } else if (token) {
-    // Validate as user JWT — must be admin
+  } else if (token && token !== anonKey) {
+    // Validate as user JWT (reject raw anon key — it's not a user token)
     const authClient = createClient(supabaseUrl, anonKey, {
       global: { headers: { Authorization: `Bearer ${token}` } },
     });
