@@ -12,8 +12,8 @@ const NOTION_API_KEY = Deno.env.get("NOTION_API_KEY");
 const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-const POSTES_DATABASE_ID = "2787e1816fb481d2a0e8d4b2c1dd38f9";
-const SHORTLIST_DATABASE_ID = "2787e1816fb4811986a7e6075bc63a23";
+const POSTES_DATABASE_ID = Deno.env.get("NOTION_POSTES_DB_ID")!;
+const SHORTLIST_DATABASE_ID = Deno.env.get("NOTION_SHORTLIST_DB_ID")!;
 
 console.log('[fetch-notion-jobs] boot', {
   hasNotionKey: Boolean(NOTION_API_KEY),

@@ -10,8 +10,8 @@ const UNIPILE_API_KEY = Deno.env.get("UNIPILE_API_KEY");
 const UNIPILE_DSN = Deno.env.get("UNIPILE_DSN");
 const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
 const NOTION_API_KEY = Deno.env.get("NOTION_API_KEY");
-const CANDIDATS_DATABASE_ID = "2787e1816fb4812b8ebddfcb3ab95510";
-const SHORTLIST_DATABASE_ID = "2787e1816fb4811986a7e6075bc63a23";
+const CANDIDATS_DATABASE_ID = Deno.env.get("NOTION_CANDIDATS_DB_ID")!;
+const SHORTLIST_DATABASE_ID = Deno.env.get("NOTION_SHORTLIST_DB_ID")!;
 
 // ─── Intent → Notion property mapping ─────────────────────────────
 // Candidats DB uses "Etat" (select): Pré-qualif à planifier, Répondu, En attente de réponse, Message à envoyer

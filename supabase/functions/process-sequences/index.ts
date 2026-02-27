@@ -958,8 +958,8 @@ async function logAnalytics(supabase: any, sequenceId: string, field: string) {
 
 // ============ NOTION CANDIDATE/SHORTLIST SYNC ============
 
-const CANDIDATS_DATABASE_ID = "2787e1816fb4812b8ebddfcb3ab95510";
-const SHORTLIST_DATABASE_ID_SEQ = "2787e1816fb4811986a7e6075bc63a23";
+const CANDIDATS_DATABASE_ID = Deno.env.get("NOTION_CANDIDATS_DB_ID")!;
+const SHORTLIST_DATABASE_ID_SEQ = Deno.env.get("NOTION_SHORTLIST_DB_ID")!;
 
 // Action → Notion stage mapping
 const ACTION_TO_NOTION_STAGE: Record<string, { etape: string; etat: string }> = {
