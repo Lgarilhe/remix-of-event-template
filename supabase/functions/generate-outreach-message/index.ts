@@ -719,7 +719,7 @@ Le DDD et l'ownership, c'est aussi ce qu'on pousse chez ${clientName}. On monte 
 
 Curieux d'avoir ton avis, même si t'es pas en recherche.
 
-Marc"
+${senderName || '[Prénom]'}"
 
 EXEMPLE 2 - MODE SUCCÈS, accroche parcours:
 "Salut Julie,
@@ -728,7 +728,7 @@ EXEMPLE 2 - MODE SUCCÈS, accroche parcours:
 
 Tu recommanderais quelqu'un pour ce type de rôle ?
 
-Marc"
+${senderName || '[Prénom]'}"
 
 EXEMPLE 3 - Accroche post LinkedIn:
 "Salut Alex,
@@ -737,7 +737,7 @@ Ton post sur les micro-services m'a donné une idée. On a un projet greenfield 
 
 Ça t'inspire un avis ?
 
-Marc"
+${senderName || '[Prénom]'}"
 ${calendlyWithPrefill ? `
 === LIEN CALENDLY DISPONIBLE ===
 Lien de prise de RDV: ${calendlyWithPrefill}
