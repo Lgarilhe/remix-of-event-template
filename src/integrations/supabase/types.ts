@@ -1469,6 +1469,7 @@ export type Database = {
           profile_name: string | null
           profile_url: string | null
           replied_at: string | null
+          resolved_profile_id: string | null
           sequence_id: string
           status: string
           updated_at: string
@@ -1490,6 +1491,7 @@ export type Database = {
           profile_name?: string | null
           profile_url?: string | null
           replied_at?: string | null
+          resolved_profile_id?: string | null
           sequence_id: string
           status?: string
           updated_at?: string
@@ -1511,6 +1513,7 @@ export type Database = {
           profile_name?: string | null
           profile_url?: string | null
           replied_at?: string | null
+          resolved_profile_id?: string | null
           sequence_id?: string
           status?: string
           updated_at?: string
