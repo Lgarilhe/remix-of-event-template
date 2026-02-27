@@ -12,6 +12,7 @@ export interface EnrichedProfile {
   experiences?: Array<{
     title: string;
     company: string;
+    logo?: string;
     description?: string;
     startDate?: string;
     endDate?: string;
@@ -87,6 +88,7 @@ export function useProfileEnrichment(): UseProfileEnrichmentResult {
         experiences: (profile.positions || profile.experiences || []).slice(0, 5).map((exp: any) => ({
           title: exp.title,
           company: exp.company_name || exp.company,
+          logo: exp.company_logo || exp.logo_url || exp.logo || undefined,
           description: exp.description,
           startDate: exp.start_date || exp.starts_at,
           endDate: exp.end_date || exp.ends_at,
