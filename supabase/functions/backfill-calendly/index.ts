@@ -54,11 +54,16 @@ serve(async (req) => {
 
     console.log(`[backfill] Found ${events.length} Calendly events`);
 
+    // Only keep events matching our recruitment event type
+    const ALLOWED_EVENT_NAME = '📅 20 min pour présentation poste - Equipe Konekt';
+    const filteredEvents = events.filter(e => e.name === ALLOWED_EVENT_NAME);
+    console.log(`[backfill] Filtered to ${filteredEvents.length}/${events.length} matching "${ALLOWED_EVENT_NAME}"`);
+
     let created = 0;
     let skipped = 0;
     let errors = 0;
 
-    for (const event of events) {
+    for (const event of filteredEvents) {
       const calendlyEventId = event.uri?.split('/').pop();
 
       // Check if session already exists
@@ -117,21 +122,27 @@ serve(async (req) => {
         eventLocation = event.location.join_url || event.location.location || event.location.type || null;
       }
 
+      // Validate LinkedIn URL before matching (must be a real URL, not just "LinkedIn")
+      const isValidLinkedinUrl = candidateLinkedinUrl && /^https?:\/\/(www\.)?linkedin\.com\/in\/.+/i.test(candidateLinkedinUrl);
+
       // Try to match candidate
       let candidateMatch: any = null;
-      if (candidateLinkedinUrl) {
-        const normalizedUrl = candidateLinkedinUrl
+      if (isValidLinkedinUrl) {
+        const normalizedUrl = candidateLinkedinUrl!
           .replace(/\/$/, '')
           .replace(/^https?:\/\/(www\.)?linkedin\.com/, 'https://www.linkedin.com');
 
-        const { data } = await supabase
-          .from('job_candidate_status')
-          .select('candidate_id, candidate_name, candidate_headline, job_id, linkedin_profile_url, scoring_details, project_id, created_by')
-          .ilike('linkedin_profile_url', `%${normalizedUrl.split('linkedin.com')[1] || normalizedUrl}%`)
-          .order('updated_at', { ascending: false })
-          .limit(1);
+        const slug = normalizedUrl.split('linkedin.com')[1];
+        if (slug && slug.length > 4) {
+          const { data } = await supabase
+            .from('job_candidate_status')
+            .select('candidate_id, candidate_name, candidate_headline, job_id, linkedin_profile_url, scoring_details, project_id, created_by')
+            .ilike('linkedin_profile_url', `%${slug}%`)
+            .order('updated_at', { ascending: false })
+            .limit(1);
 
-        if (data?.length) candidateMatch = data[0];
+          if (data?.length) candidateMatch = data[0];
+        }
       }
 
       // Get project info
