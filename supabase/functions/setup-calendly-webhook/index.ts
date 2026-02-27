@@ -31,7 +31,6 @@ serve(async (req) => {
 
     const meData = await meRes.json();
     const organizationUri = meData.resource?.current_organization;
-    const userUri = meData.resource?.uri;
 
     if (!organizationUri) {
       throw new Error('Could not find organization URI from Calendly');
@@ -45,21 +44,37 @@ serve(async (req) => {
 
     if (listRes.ok) {
       const listData = await listRes.json();
-      const existing = listData.collection?.find(
+      const collection = listData.collection || [];
+      const sameCallback = collection.filter(
         (wh: any) => wh.callback_url === webhookUrl && wh.state === 'active'
       );
 
-      if (existing) {
+      const orgWide = sameCallback.find(
+        (wh: any) => wh.scope === 'organization' && !wh.user
+      );
+
+      if (orgWide) {
         return new Response(JSON.stringify({
           success: true,
-          message: 'Webhook already configured',
+          message: 'Webhook already configured (organization-wide)',
           webhook: {
-            id: existing.uri,
-            url: existing.callback_url,
-            events: existing.events,
-            state: existing.state,
+            id: orgWide.uri,
+            url: orgWide.callback_url,
+            events: orgWide.events,
+            state: orgWide.state,
           }
         }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      }
+
+      // Cleanup stale subscriptions with the same callback to avoid duplicates
+      for (const stale of sameCallback) {
+        const staleId = stale.uri?.split('/').pop();
+        if (!staleId) continue;
+
+        await fetch(`https://api.calendly.com/webhook_subscriptions/${staleId}`, {
+          method: 'DELETE',
+          headers: { 'Authorization': `Bearer ${calendlyApiKey}` },
+        });
       }
     }
 
@@ -74,7 +89,6 @@ serve(async (req) => {
         url: webhookUrl,
         events: ['invitee.created', 'invitee.canceled'],
         organization: organizationUri,
-        user: userUri,
         scope: 'organization',
       }),
     });
