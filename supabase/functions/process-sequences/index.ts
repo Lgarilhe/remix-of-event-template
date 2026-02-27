@@ -88,25 +88,6 @@ serve(async (req) => {
 // ============ ACTION HANDLERS ============
 
 // deno-lint-ignore no-explicit-any
-// Action-type-specific delays (ms) to simulate natural human behavior
-function getActionDelay(actionType: string): number {
-  switch (actionType) {
-    case 'check_connection':
-    case 'wait_connection':
-      return 0;                               // 0s — invisible API checks, no LinkedIn footprint
-    case 'profile_visit':
-      return 2000 + Math.random() * 3000;    // 2-5s — passive but visible on LinkedIn
-    case 'connection_request':
-      return 10000 + Math.random() * 10000;  // 10-20s
-    case 'message':
-      return 8000 + Math.random() * 7000;    // 8-15s
-    case 'inmail':
-    case 'smart_message':
-      return 15000 + Math.random() * 15000;  // 15-30s
-    default:
-      return 3000 + Math.random() * 5000;    // 3-8s default
-  }
-}
 
 async function acquireLock(supabase: any, runId: string): Promise<boolean> {
   const { data, error } = await supabase.rpc('acquire_sequence_lock', { p_run_id: runId, p_ttl_minutes: 10 });
@@ -228,11 +209,6 @@ async function handleProcess(supabase: any, force = false) {
           
           // Sync Notion stage (fire-and-forget, non-blocking)
           syncNotionStageAfterAction(step.action_type, enrollment).catch(() => {});
-          
-          // Action-type-specific delay to simulate natural human behavior
-          const delay = getActionDelay(step.action_type);
-          console.log(`[process] Sleeping ${Math.round(delay / 1000)}s after ${step.action_type}`);
-          await sleep(delay);
         } else {
           // Retry logic: if error is retryable and retry_count < MAX_RETRIES, reschedule
           const currentRetryCount = exec.retry_count || 0;
@@ -387,7 +363,7 @@ async function handleCheckWaitEvents(supabase: any) {
 
 // ============ UTILITIES ============
 
-function sleep(ms: number): Promise<void> { return new Promise(r => setTimeout(r, ms)); }
+
 function needsMessage(actionType: string): boolean { return ['message', 'inmail', 'smart_message'].includes(actionType); }
 
 function isLikelyRealFirstName(name: string): boolean {
