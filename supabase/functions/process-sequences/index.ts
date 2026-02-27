@@ -32,16 +32,18 @@ serve(async (req) => {
   const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
   const supabase = createClient(supabaseUrl, serviceRoleKey);
 
+  console.log(`[auth] Token length: ${token.length}, cronSecret length: ${cronSecret.length}, hasServiceRole: ${!!serviceRoleKey}, tokenPreview: ${token.slice(0, 10)}...`);
+
   let isAuthorized = false;
+  let authMethod = 'none';
 
   if (token === serviceRoleKey) {
-    // Service role — always allowed (cron via pg_net uses this)
     isAuthorized = true;
+    authMethod = 'service_role';
   } else if (cronSecret && token === cronSecret) {
-    // Dedicated cron secret
     isAuthorized = true;
+    authMethod = 'cron_secret';
   } else if (token && token !== anonKey) {
-    // Validate as user JWT (reject raw anon key — it's not a user token)
     const authClient = createClient(supabaseUrl, anonKey, {
       global: { headers: { Authorization: `Bearer ${token}` } },
     });
@@ -49,10 +51,16 @@ serve(async (req) => {
     if (!error && user) {
       const { data: hasAdmin } = await supabase.rpc('has_role', { _user_id: user.id, _role: 'admin' });
       isAuthorized = !!hasAdmin;
+      authMethod = hasAdmin ? 'admin_jwt' : 'jwt_no_admin';
+    } else {
+      authMethod = `jwt_failed: ${error?.message || 'no user'}`;
     }
   }
 
+  console.log(`[auth] Result: ${authMethod}, authorized: ${isAuthorized}`);
+
   if (!isAuthorized) {
+    console.warn(`[auth] ❌ Unauthorized request rejected (method: ${authMethod})`);
     return new Response(JSON.stringify({ error: 'Unauthorized' }), {
       status: 401,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
