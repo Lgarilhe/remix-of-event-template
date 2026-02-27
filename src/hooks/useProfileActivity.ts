@@ -139,12 +139,28 @@ export function useProfileActivity(profileId: string | null, profileUrl?: string
 
         // Fallback: match by candidate name
         if (!sessions.length && profileName?.trim()) {
-          const profileNameLike = `%${profileName.trim()}%`;
-          const { data } = await supabase
-            .from('qualification_sessions')
-            .select('id, event_start_at, event_name, event_location, status, candidate_linkedin_url')
-            .ilike('candidate_name', profileNameLike);
-          sessions = data || [];
+          const normalizedName = profileName
+            .replace(/[^\p{L}\p{N}\s'-]/gu, ' ')
+            .replace(/\s+/g, ' ')
+            .trim();
+
+          const firstName = normalizedName.split(' ')[0]?.trim();
+          const nameLike = normalizedName ? `%${normalizedName}%` : null;
+          const firstNameLike = firstName ? `%${firstName}%` : null;
+
+          if (nameLike && firstNameLike && nameLike !== firstNameLike) {
+            const { data } = await supabase
+              .from('qualification_sessions')
+              .select('id, event_start_at, event_name, event_location, status, candidate_linkedin_url')
+              .or(`candidate_name.ilike.${nameLike},candidate_name.ilike.${firstNameLike}`);
+            sessions = data || [];
+          } else if (nameLike) {
+            const { data } = await supabase
+              .from('qualification_sessions')
+              .select('id, event_start_at, event_name, event_location, status, candidate_linkedin_url')
+              .ilike('candidate_name', nameLike);
+            sessions = data || [];
+          }
         }
 
         bookingEvents = sessions.map(s => ({
