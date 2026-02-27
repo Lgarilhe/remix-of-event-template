@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { ATSCandidate } from '@/pages/ATS';
+import linkedinLogo from '@/assets/linkedin-logo.png';
 import {
   Table,
   TableBody,
@@ -10,7 +11,6 @@ import {
 } from '@/components/ui/table';
 import { 
   ArrowUpDown, 
-  Linkedin, 
   Mail, 
   StickyNote, 
   Bell,
@@ -178,7 +178,7 @@ export const ATSTable: React.FC<ATSTableProps> = ({ candidates, onCandidateClick
                       className="h-7 w-7 flex items-center justify-center border border-foreground/20 hover:bg-brutal-accent transition-colors"
                       onClick={(e) => { e.stopPropagation(); window.open(candidate.linkedin!, '_blank'); }}
                     >
-                      <Linkedin className="w-4 h-4 text-[#0077B5]" />
+                      <img src={linkedinLogo} alt="LinkedIn" className="w-4 h-4 object-contain" />
                     </button>
                   )}
                   {candidate.email && (

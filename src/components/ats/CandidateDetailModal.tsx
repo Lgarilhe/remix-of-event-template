@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import linkedinLogo from '@/assets/linkedin-logo.png';
 import { supabase } from '@/integrations/supabase/client';
 import { ATSCandidate, ATS_STAGES } from '@/pages/ATS';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -12,7 +13,6 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { 
   X, 
-  Linkedin, 
   Mail, 
   Phone, 
   StickyNote, 
@@ -272,7 +272,7 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
                   size="sm"
                   onClick={() => window.open(candidate.linkedin!, '_blank')}
                 >
-                  <Linkedin className="w-4 h-4 mr-2 text-[#0077B5]" />
+                  <img src={linkedinLogo} alt="LinkedIn" className="w-4 h-4 mr-2 object-contain" />
                   LinkedIn
                 </Button>
               )}
@@ -460,7 +460,7 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
                         )}
                         {candidate.linkedin && (
                           <div className="flex items-center gap-2">
-                            <Linkedin className="w-4 h-4 text-[#0077B5]" />
+                            <img src={linkedinLogo} alt="LinkedIn" className="w-4 h-4 object-contain" />
                             <a 
                               href={candidate.linkedin} 
                               target="_blank" 

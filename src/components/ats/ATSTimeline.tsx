@@ -2,7 +2,6 @@ import React, { useMemo } from 'react';
 import { ATSCandidate } from '@/pages/ATS';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { 
-  Linkedin, 
   GitBranch, 
   FileText, 
   Send,
@@ -10,6 +9,7 @@ import {
   StickyNote,
   Calendar
 } from 'lucide-react';
+import linkedinLogo from '@/assets/linkedin-logo.png';
 import { format, isToday, isYesterday, isThisWeek, isThisMonth, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
 
@@ -151,7 +151,7 @@ export const ATSTimeline: React.FC<ATSTimelineProps> = ({ candidates, onCandidat
                                 {format(parseISO(candidate.lastActivity), 'HH:mm', { locale: fr })}
                               </span>
                             )}
-                            {candidate.linkedin && <Linkedin className="w-4 h-4 text-[#0077B5]" />}
+                            {candidate.linkedin && <img src={linkedinLogo} alt="LinkedIn" className="w-4 h-4 object-contain" />}
                           </div>
                         </div>
                       </div>
