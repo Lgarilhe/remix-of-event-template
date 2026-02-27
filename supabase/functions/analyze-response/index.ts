@@ -342,7 +342,7 @@ ANALYSE DEMANDÉE (JSON strict, pas de markdown):
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "claude-opus-4-6",
+        model: "claude-sonnet-4-6",
         max_tokens: 4096,
         temperature: 0.2,
         system: "Tu es un assistant expert en recrutement tech. Tu analyses les conversations candidat avec précision et réponds UNIQUEMENT en JSON valide, sans markdown ni commentaires. Tes matchings de postes sont rigoureux et basés sur des critères objectifs.",
