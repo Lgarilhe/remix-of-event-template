@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { LinkedInProfile } from './types';
-import { Job } from '@/pages/JobSpace';
+import { Job } from '@/types/jobs';
 import { supabase } from '@/integrations/supabase/client';
 import {
   Dialog,

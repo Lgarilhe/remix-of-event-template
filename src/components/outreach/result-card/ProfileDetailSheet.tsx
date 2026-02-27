@@ -8,7 +8,7 @@ import { Separator } from '@/components/ui/separator';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { LinkedInProfile } from '../types';
 import { JobMatchResult, JobScoreDisplay, SalaryBadge } from '../JobScoreDisplay';
-import { Job } from '@/pages/JobSpace';
+import { Job } from '@/types/jobs';
 import { SourcingProject } from '@/hooks/useSourcingProjects';
 import { CardExpandedContent } from './CardExpandedContent';
 import { CardStatusBadges } from './CardStatusBadges';

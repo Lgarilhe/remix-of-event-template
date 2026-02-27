@@ -1,4 +1,4 @@
-import { Job } from '@/pages/JobSpace';
+import { Job } from '@/types/jobs';
 
 export interface WizardQuestion {
   id: string;

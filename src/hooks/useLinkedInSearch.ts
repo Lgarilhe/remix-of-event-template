@@ -5,7 +5,7 @@ import { useUnipileQuota } from '@/hooks/useUnipileQuota';
 import { useJobCandidateStatus } from '@/hooks/useJobCandidateStatus';
 import { useSourcingProjects, SourcingProject } from '@/hooks/useSourcingProjects';
 
-import { Job } from '@/pages/JobSpace';
+import { Job } from '@/types/jobs';
 import { JobMatchResult } from '@/components/outreach/JobScoreDisplay';
 import { filterByCalculatedExperience } from '@/components/outreach/calculateExperience';
 import { toast } from 'sonner';

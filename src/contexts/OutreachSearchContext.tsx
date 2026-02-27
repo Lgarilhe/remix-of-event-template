@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useCallback, ReactNode } from 'react';
 import { LinkedInFiltersState, LinkedInProfile, INITIAL_FILTERS } from '@/components/outreach/types';
 import { JobMatchResult } from '@/components/outreach/JobScoreDisplay';
-import { Job } from '@/pages/JobSpace';
+import { Job } from '@/types/jobs';
 
 interface OutreachSearchState {
   // Filters

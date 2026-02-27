@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { X, Loader2, Send, CheckCircle } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
-import { Job } from '@/pages/JobSpace';
+import { Job } from '@/types/jobs';
 import { toast } from '@/hooks/use-toast';
 
 interface ApplicationModalProps {

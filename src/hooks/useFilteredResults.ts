@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { LinkedInFiltersState, LinkedInProfile } from '@/components/outreach/types';
 import { JobMatchResult } from '@/components/outreach/JobScoreDisplay';
-import { Job } from '@/pages/JobSpace';
+import { Job } from '@/types/jobs';
 
 interface FilteredResultsOptions {
   results: LinkedInProfile[];

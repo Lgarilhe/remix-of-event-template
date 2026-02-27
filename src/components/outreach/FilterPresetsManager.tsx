@@ -43,7 +43,7 @@ import { LinkedInFiltersState } from './types';
 import { useSavedFilterPresets, SavedFilterPreset } from '@/hooks/useSavedFilterPresets';
 import { formatDistanceToNow } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import { Job } from '@/pages/JobSpace';
+import { Job } from '@/types/jobs';
 
 interface FilterPresetsManagerProps {
   currentFilters: LinkedInFiltersState;

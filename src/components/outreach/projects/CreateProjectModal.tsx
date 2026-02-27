@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useSourcingProjects } from '@/hooks/useSourcingProjects';
 import { useJobs } from '@/components/outreach/JobSelector';
-import { Job } from '@/pages/JobSpace';
+import { Job } from '@/types/jobs';
 import {
   Dialog,
   DialogContent,

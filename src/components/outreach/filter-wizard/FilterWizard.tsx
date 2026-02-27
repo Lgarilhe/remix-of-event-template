@@ -3,7 +3,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Button } from '@/components/ui/button';
 import { Loader2, Sparkles, Briefcase } from 'lucide-react';
 import { toast } from 'sonner';
-import { Job } from '@/pages/JobSpace';
+import { Job } from '@/types/jobs';
 import { LinkedInFiltersState } from '../types';
 import { WizardProgress } from './WizardProgress';
 import { WizardQuestionStep } from './WizardQuestionStep';

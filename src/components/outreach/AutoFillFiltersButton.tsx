@@ -6,7 +6,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Wand2, Loader2, Eye, ChevronDown, ChevronUp } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { LinkedInFiltersState, RoleFilter, PriorityFilterItem, CompanyKeywordFilter, LocationFilterItem, SpotlightType } from './types';
-import { Job } from '@/pages/JobSpace';
+import { Job } from '@/types/jobs';
 import { toast } from 'sonner';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 

@@ -7,7 +7,7 @@ import { SequenceEnrollButton } from '@/components/outreach/SequenceEnrollButton
 import { ProfileDetailSheet } from '@/components/outreach/result-card/ProfileDetailSheet';
 import { JobMatchResult } from '@/components/outreach/JobScoreDisplay';
 import { JobCandidateStatus } from '@/hooks/useJobCandidateStatus';
-import { Job } from '@/pages/JobSpace';
+import { Job } from '@/types/jobs';
 import { SourcingProject } from '@/hooks/useSourcingProjects';
 import { useAirtableMatch } from '@/hooks/useAirtableMatch';
 import { useNotionMatch } from '@/hooks/useNotionMatch';

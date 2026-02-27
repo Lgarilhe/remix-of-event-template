@@ -4,7 +4,7 @@ import { useCandidateHistory, NotionShortlistHistoryItem } from '@/hooks/useCand
 import { CandidateHistoryPanel } from './CandidateHistoryPanel';
 import { useNotionShortlist } from '@/hooks/useNotionCandidates';
 import { JobScoreDisplay, JobMatchResult } from './JobScoreDisplay';
-import { Job } from '@/pages/JobSpace';
+import { Job } from '@/types/jobs';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';

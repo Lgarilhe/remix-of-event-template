@@ -1,7 +1,7 @@
 import { useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { LinkedInProfile } from '@/components/outreach/types';
-import { Job } from '@/pages/JobSpace';
+import { Job } from '@/types/jobs';
 import { JobMatchResult } from '@/components/outreach/JobScoreDisplay';
 import { toast } from 'sonner';
 

@@ -9,7 +9,7 @@ import { AutoFillFiltersButton } from '@/components/outreach/AutoFillFiltersButt
 import { QuotaDisplay } from '@/components/outreach/QuotaDisplay';
 import { SearchHistory } from './SearchHistory';
 import { SearchHistoryEntry } from '@/hooks/useSearchHistory';
-import { Job } from '@/pages/JobSpace';
+import { Job } from '@/types/jobs';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';

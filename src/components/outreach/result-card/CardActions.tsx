@@ -1,7 +1,7 @@
 import React from 'react';
 import { LinkedInProfile } from '../types';
 import { JobMatchResult } from '../JobScoreDisplay';
-import { Job } from '@/pages/JobSpace';
+import { Job } from '@/types/jobs';
 import { SourcingProject } from '@/hooks/useSourcingProjects';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
