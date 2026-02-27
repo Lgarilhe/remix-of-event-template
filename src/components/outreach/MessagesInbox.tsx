@@ -15,6 +15,8 @@ interface MessagesInboxProps {
   selectedAccount: string | null;
   onAccountChange: (accountId: string | null) => void;
   onUnreadCountChange?: (count: number) => void;
+  initialChatId?: string | null;
+  onChatChange?: (chatId: string | null) => void;
 }
 
 export const MessagesInbox: React.FC<MessagesInboxProps> = (props) => {
@@ -38,10 +40,12 @@ export const MessagesInbox: React.FC<MessagesInboxProps> = (props) => {
 
 const MessagesInboxInner: React.FC<
   MessagesInboxProps & { selectedAccount: string }
-> = ({ selectedAccount, onUnreadCountChange }) => {
+> = ({ selectedAccount, onUnreadCountChange, initialChatId, onChatChange }) => {
   const inbox = useMessagesInbox({
     selectedAccount,
     onUnreadCountChange,
+    initialChatId,
+    onChatChange,
   });
 
   const candidateProfile = getCurrentCandidateProfile(inbox.selectedChat);
