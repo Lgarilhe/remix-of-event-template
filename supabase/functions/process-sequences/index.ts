@@ -354,6 +354,22 @@ async function handleCheckTimeouts(supabase: any) {
 
 // deno-lint-ignore no-explicit-any
 async function handleCheckWaitEvents(supabase: any) {
+  // Throttle: run at most every 4 hours to avoid burning Unipile quota
+  const MIN_INTERVAL_MS = 4 * 60 * 60 * 1000;
+  const { data: lastRun } = await supabase
+    .from('internal_config')
+    .select('value')
+    .eq('key', 'last_check_wait_events')
+    .maybeSingle();
+
+  if (lastRun?.value && Date.now() - new Date(lastRun.value).getTime() < MIN_INTERVAL_MS) {
+    console.log('[handleCheckWaitEvents] Skipped — last run too recent:', lastRun.value);
+    return new Response(JSON.stringify({ skipped: 'too_recent', last_run: lastRun.value }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+  }
+
+  // Update last run timestamp
+  await supabase.from('internal_config').upsert({ key: 'last_check_wait_events', value: new Date().toISOString() }, { onConflict: 'key' });
+
   const { data: waitingExecutions } = await supabase.from('sequence_step_executions')
     .select(`*, enrollment:sequence_enrollments(*), step:sequence_steps(*)`)
     .eq('status', 'waiting_event')
