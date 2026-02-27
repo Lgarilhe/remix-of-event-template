@@ -8,9 +8,9 @@ const corsHeaders = {
 
 const RAW_AIRTABLE_API_KEY = Deno.env.get("AIRTABLE_API_KEY");
 const AIRTABLE_API_KEY = RAW_AIRTABLE_API_KEY?.trim();
-const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
-const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 // Base configs
 const BASES: Record<string, { baseId: string | undefined; label: string }> = {
   konekt: { baseId: Deno.env.get("AIRTABLE_BASE_ID")?.trim(), label: 'Konekt' },
@@ -358,9 +358,6 @@ serve(async (req) => {
 
   try {
     if (!AIRTABLE_API_KEY) throw new Error('AIRTABLE_API_KEY is not configured');
-    if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) throw new Error('Supabase config missing');
-
-    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
     const body = await req.json().catch(() => ({}));
     const action = body.action || 'sync_all';

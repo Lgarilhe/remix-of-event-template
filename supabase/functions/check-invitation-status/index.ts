@@ -9,7 +9,9 @@ const corsHeaders = {
 const UNIPILE_API_KEY = Deno.env.get('UNIPILE_API_KEY');
 const rawDsn = Deno.env.get('UNIPILE_DSN') || '';
 const UNIPILE_DSN = rawDsn.startsWith('http') ? rawDsn : `https://${rawDsn}`;
-
+const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+const supabase = createClient(supabaseUrl, supabaseServiceKey);
 interface PendingInvitation {
   provider_id: string;
   created_at?: string;
@@ -100,9 +102,6 @@ serve(async (req) => {
   }
 
   try {
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     // Get all active enrollments with pending_invite OR pending check
     const { data: enrollments, error: enrollError } = await supabase

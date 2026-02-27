@@ -105,7 +105,7 @@ serve(async (req: Request) => {
       throw new Error("Missing Unipile configuration");
     }
 
-    // Service role client for database operations
+    // Service role client for database operations (hoisted for warm invocation reuse would require refactor of validateUser closure)
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     const { action, items, user_timezone, item_ids } = await req.json();
