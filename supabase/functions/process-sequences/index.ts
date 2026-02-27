@@ -129,12 +129,20 @@ async function handleProcess(supabase: any, force = false) {
   try {
     const now = new Date().toISOString();
     
+    // Smart batching: fetch more candidates, then split by action visibility
+    // Non-visible actions (profile_visit, check_connection) = safe to batch aggressively
+    // Visible actions (message, inmail, connection_request) = keep conservative
+    const INVISIBLE_ACTIONS = new Set(['profile_visit', 'check_connection']);
+    const MAX_INVISIBLE_PER_CYCLE = 4;
+    const MAX_VISIBLE_PER_CYCLE = 2;
+    const FETCH_LIMIT = MAX_INVISIBLE_PER_CYCLE + MAX_VISIBLE_PER_CYCLE; // fetch enough candidates
+
     const { data: executions, error: fetchError } = await supabase
       .from('sequence_step_executions')
       .select(`*, enrollment:sequence_enrollments(*, sequence:outreach_sequences(*)), step:sequence_steps(*)`)
       .eq('status', 'scheduled')
       .lte('scheduled_at', now)
-      .limit(1);
+      .limit(FETCH_LIMIT);
 
     if (fetchError) throw fetchError;
 
@@ -150,14 +158,34 @@ async function handleProcess(supabase: any, force = false) {
       return true;
     });
 
-    // Random jitter (0-20s) to break cron regularity and appear more human to LinkedIn
-    const jitterMs = Math.floor(Math.random() * 20000);
-    if (jitterMs > 0) {
-      console.log(`[process] Jitter: waiting ${Math.round(jitterMs / 1000)}s before action`);
-      await new Promise(r => setTimeout(r, jitterMs));
+    // Smart batching: separate invisible vs visible actions, apply per-type limits
+    let invisibleCount = 0;
+    let visibleCount = 0;
+    const batchedExecutions = dedupedExecutions.filter((exec: { step?: { action_type?: string } }) => {
+      const actionType = exec.step?.action_type || '';
+      if (INVISIBLE_ACTIONS.has(actionType)) {
+        if (invisibleCount >= MAX_INVISIBLE_PER_CYCLE) return false;
+        invisibleCount++;
+        return true;
+      } else {
+        if (visibleCount >= MAX_VISIBLE_PER_CYCLE) return false;
+        visibleCount++;
+        return true;
+      }
+    });
+
+    console.log(`[process] Smart batch: ${invisibleCount} invisible + ${visibleCount} visible actions (from ${dedupedExecutions.length} candidates)`);
+
+    // Random jitter (0-20s) only before visible actions to appear more human
+    if (visibleCount > 0) {
+      const jitterMs = Math.floor(Math.random() * 20000);
+      if (jitterMs > 0) {
+        console.log(`[process] Jitter: waiting ${Math.round(jitterMs / 1000)}s before visible actions`);
+        await new Promise(r => setTimeout(r, jitterMs));
+      }
     }
 
-    for (const exec of dedupedExecutions) {
+    for (const exec of batchedExecutions) {
       try {
         const enrollment = exec.enrollment;
         const step = exec.step;
