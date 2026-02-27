@@ -135,7 +135,7 @@ async function handleProcess(supabase: any, force = false) {
     const INVISIBLE_ACTIONS = new Set(['profile_visit', 'check_connection']);
     const MAX_INVISIBLE_PER_CYCLE = 4;
     const MAX_VISIBLE_PER_CYCLE = 2;
-    const FETCH_LIMIT = MAX_INVISIBLE_PER_CYCLE + MAX_VISIBLE_PER_CYCLE; // fetch enough candidates
+    const FETCH_LIMIT = 12; // Overfetch to compensate for dedup, skips, quota blocks
 
     const { data: executions, error: fetchError } = await supabase
       .from('sequence_step_executions')
@@ -185,6 +185,7 @@ async function handleProcess(supabase: any, force = false) {
       }
     }
 
+    let visibleActionsExecuted = 0;
     for (const exec of batchedExecutions) {
       try {
         const enrollment = exec.enrollment;
@@ -240,6 +241,13 @@ async function handleProcess(supabase: any, force = false) {
           if (personalized) { finalMessage = personalized.message; finalSubject = personalized.subject || finalSubject; }
         }
 
+        // Inter-visible-action spacing: 2-5s delay between visible actions to look human
+        if (!INVISIBLE_ACTIONS.has(step.action_type) && visibleActionsExecuted > 0) {
+          const spacingMs = 2000 + Math.floor(Math.random() * 3000);
+          console.log(`[process] Spacing: ${Math.round(spacingMs / 1000)}s between visible actions`);
+          await new Promise(r => setTimeout(r, spacingMs));
+        }
+
         const executeResult = await executeStepAction(step.action_type, enrollment, step, 
           { ...exec, final_message: finalMessage, final_subject: finalSubject }, supabase);
 
@@ -255,6 +263,7 @@ async function handleProcess(supabase: any, force = false) {
           await supabase.from('sequence_enrollments').update({ current_step_order: step.step_order + 1 }).eq('id', enrollment.id);
           if (step.action_type !== 'check_connection') await scheduleNextStep(supabase, enrollment, step.step_order);
           results.processed++;
+          if (!INVISIBLE_ACTIONS.has(step.action_type)) visibleActionsExecuted++;
           
           // Sync Notion stage (fire-and-forget, non-blocking)
           syncNotionStageAfterAction(step.action_type, enrollment).catch(() => {});
