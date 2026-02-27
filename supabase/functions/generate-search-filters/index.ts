@@ -347,15 +347,16 @@ ${transversal.bodyContent ? `Contenu détaillé critères transverses:\n${transv
         try {
           const response = await fetch("https://api.anthropic.com/v1/messages", {
             method: "POST",
-            headers: {
+             headers: {
               "x-api-key": ANTHROPIC_API_KEY,
               "anthropic-version": "2023-06-01",
+              "anthropic-beta": "prompt-caching-2024-07-31",
               "Content-Type": "application/json",
             },
             body: JSON.stringify({
               model: "claude-sonnet-4-5-20250929",
               max_tokens: 2048,
-              system: systemPrompt,
+              system: [{ type: "text", text: systemPrompt, cache_control: { type: "ephemeral" } }],
               messages: [
                 { role: "user", content: jobContext },
               ],

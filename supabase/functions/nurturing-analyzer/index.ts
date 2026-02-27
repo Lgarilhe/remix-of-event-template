@@ -827,12 +827,13 @@ Réponds UNIQUEMENT en JSON:
       headers: {
         "x-api-key": apiKey,
         "anthropic-version": "2023-06-01",
+        "anthropic-beta": "prompt-caching-2024-07-31",
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
         model: "claude-sonnet-4-20250514",
         max_tokens: 300,
-        system: "Tu es un recruteur tech senior. Tu écris des messages LinkedIn courts, directs, humains. JAMAIS de superlatifs, JAMAIS de tournures IA. Tu réponds TOUJOURS en JSON valide.",
+        system: [{ type: "text", text: "Tu es un recruteur tech senior. Tu écris des messages LinkedIn courts, directs, humains. JAMAIS de superlatifs, JAMAIS de tournures IA. Tu réponds TOUJOURS en JSON valide.", cache_control: { type: "ephemeral" } }],
         messages: [
           { role: "user", content: prompt }
         ],
