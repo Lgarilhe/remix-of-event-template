@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 
 export interface CandidateActivity {
-  type: 'scored' | 'messaged' | 'sequence_enrolled' | 'sequence_step' | 'inmail_sent' | 'qualification_scheduled' | 'qualification_verdict' | 'stage_change' | 'note_added';
+  type: 'scored' | 'messaged' | 'sequence_enrolled' | 'sequence_step' | 'inmail_sent' | 'qualification_scheduled' | 'qualification_verdict' | 'stage_change' | 'note_added' | 'appointment' | 'shortlist_added';
   date: string;
   title: string;
   detail?: string;
@@ -56,15 +56,36 @@ export interface ScoringRecord {
   updatedAt: string;
 }
 
+export interface SequenceStepDetail {
+  id: string;
+  actionType: string;
+  stepOrder: number;
+  status: string;
+  executedAt: string | null;
+  finalSubject: string | null;
+  sequenceName: string | null;
+}
+
+export interface AirtableAppointment {
+  id: string;
+  title: string | null;
+  appointmentDate: string | null;
+  appointmentType: string | null;
+  status: string | null;
+  notes: string | null;
+}
+
 export interface CandidateFullProfile {
   qualificationSessions: QualificationSession[];
   sequenceEnrollments: SequenceEnrollmentInfo[];
+  sequenceSteps: SequenceStepDetail[];
   inmailsSent: { id: string; subject: string; status: string; sentAt: string | null; createdAt: string }[];
   scoringHistory: ScoringRecord[];
   accountId: string | null;
   airtableMatch: { fullName: string; status: string; experience: string; skills: string[]; educationLevel: string } | null;
   airtableShortlists: { id: string; status: string; dateAdded: string; jobTitle?: string; companyName?: string }[];
   airtableNotes: { id: string; title: string; detail: string; noteDate: string; author: string }[];
+  airtableAppointments: AirtableAppointment[];
   timeline: CandidateActivity[];
   loading: boolean;
 }
@@ -72,12 +93,14 @@ export interface CandidateFullProfile {
 export function useCandidateFullProfile(candidateId: string, linkedinUrl: string | null): CandidateFullProfile {
   const [qualificationSessions, setQualificationSessions] = useState<QualificationSession[]>([]);
   const [sequenceEnrollments, setSequenceEnrollments] = useState<SequenceEnrollmentInfo[]>([]);
+  const [sequenceSteps, setSequenceSteps] = useState<SequenceStepDetail[]>([]);
   const [inmailsSent, setInmailsSent] = useState<any[]>([]);
   const [scoringHistory, setScoringHistory] = useState<ScoringRecord[]>([]);
   const [accountId, setAccountId] = useState<string | null>(null);
   const [airtableMatch, setAirtableMatch] = useState<any>(null);
   const [airtableShortlists, setAirtableShortlists] = useState<any[]>([]);
   const [airtableNotes, setAirtableNotes] = useState<any[]>([]);
+  const [airtableAppointments, setAirtableAppointments] = useState<AirtableAppointment[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -124,8 +147,35 @@ export function useCandidateFullProfile(candidateId: string, linkedinUrl: string
         .order('created_at', { ascending: false });
       
       if (data && data.length > 0) {
-        // Extract account_id from first enrollment for profile enrichment
         setAccountId(data[0].account_id || null);
+
+        // Fetch detailed step executions
+        const enrollmentIds = data.map((e: any) => e.id);
+        const { data: executions } = await supabase
+          .from('sequence_step_executions')
+          .select('id, enrollment_id, step_id, step_order, status, executed_at, final_subject')
+          .in('enrollment_id', enrollmentIds)
+          .order('executed_at', { ascending: false });
+
+        if (executions && executions.length > 0) {
+          const stepIds = [...new Set(executions.map((e: any) => e.step_id))];
+          const { data: steps } = await supabase
+            .from('sequence_steps')
+            .select('id, action_type')
+            .in('id', stepIds);
+          const stepMap = new Map((steps || []).map((s: any) => [s.id, s.action_type]));
+          const enrollmentSeqMap = new Map(data.map((e: any) => [e.id, e.outreach_sequences?.name || 'Séquence']));
+
+          setSequenceSteps(executions.filter((ex: any) => ex.executed_at).map((ex: any) => ({
+            id: ex.id,
+            actionType: stepMap.get(ex.step_id) || 'unknown',
+            stepOrder: ex.step_order,
+            status: ex.status,
+            executedAt: ex.executed_at,
+            finalSubject: ex.final_subject,
+            sequenceName: enrollmentSeqMap.get(ex.enrollment_id) || null,
+          })));
+        }
       }
 
       setSequenceEnrollments((data || []).map((e: any) => ({
@@ -249,6 +299,22 @@ export function useCandidateFullProfile(candidateId: string, linkedinUrl: string
           noteDate: n.note_date || n.created_at,
           author: n.author || '',
         })));
+
+        // Fetch airtable appointments
+        const { data: appointments } = await supabase
+          .from('airtable_appointments')
+          .select('*')
+          .eq('candidate_airtable_id', c.airtable_id)
+          .order('appointment_date', { ascending: false });
+
+        setAirtableAppointments((appointments || []).map((a: any) => ({
+          id: a.id,
+          title: a.title,
+          appointmentDate: a.appointment_date,
+          appointmentType: a.appointment_type,
+          status: a.status,
+          notes: a.notes,
+        })));
       }
     }
 
@@ -287,6 +353,23 @@ export function useCandidateFullProfile(candidateId: string, linkedinUrl: string
     });
   });
 
+  // Detailed sequence steps
+  sequenceSteps.forEach(step => {
+    const actionLabels: Record<string, string> = {
+      send_connection: '🔗 Invitation envoyée',
+      send_message: '💬 Message envoyé',
+      send_inmail: '📧 InMail envoyé',
+      visit_profile: '👀 Visite de profil',
+      check_connection: '🔍 Vérification connexion',
+    };
+    timeline.push({
+      type: 'sequence_step',
+      date: step.executedAt || '',
+      title: actionLabels[step.actionType] || `Action : ${step.actionType}`,
+      detail: step.sequenceName ? `${step.sequenceName} • Étape ${step.stepOrder}` : `Étape ${step.stepOrder}`,
+    });
+  });
+
   inmailsSent.forEach(im => {
     timeline.push({
       type: 'inmail_sent',
@@ -301,10 +384,30 @@ export function useCandidateFullProfile(candidateId: string, linkedinUrl: string
       timeline.push({
         type: 'scored',
         date: sr.updatedAt,
-        title: `Scoring : ${sr.score}%`,
+        title: `Scoring : ${sr.score}% ${sr.jobTitle ? `• ${sr.jobTitle}` : ''}`,
         detail: sr.scoringDetails?.recommendation || sr.recommendation || undefined,
       });
     }
+  });
+
+  // Airtable shortlists in timeline
+  airtableShortlists.forEach(s => {
+    timeline.push({
+      type: 'shortlist_added',
+      date: s.dateAdded || '',
+      title: `Shortlist : ${s.jobTitle || s.companyName || 'Poste'}`,
+      detail: s.status || undefined,
+    });
+  });
+
+  // Airtable appointments in timeline
+  airtableAppointments.forEach(a => {
+    timeline.push({
+      type: 'appointment',
+      date: a.appointmentDate || '',
+      title: a.title || `RDV ${a.appointmentType || ''}`,
+      detail: a.status || undefined,
+    });
   });
 
   timeline.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
@@ -312,12 +415,14 @@ export function useCandidateFullProfile(candidateId: string, linkedinUrl: string
   return {
     qualificationSessions,
     sequenceEnrollments,
+    sequenceSteps,
     inmailsSent,
     scoringHistory,
     accountId,
     airtableMatch,
     airtableShortlists,
     airtableNotes,
+    airtableAppointments,
     timeline,
     loading,
   };
