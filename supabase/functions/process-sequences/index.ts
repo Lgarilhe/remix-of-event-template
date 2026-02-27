@@ -336,7 +336,7 @@ async function handleCheckReplies(supabase: any) {
 // deno-lint-ignore no-explicit-any
 async function handleCheckTimeouts(supabase: any) {
   const { data: waitingExecutions } = await supabase.from('sequence_step_executions')
-    .select(`*, enrollment:sequence_enrollments(*), step:sequence_steps(*)`).eq('status', 'waiting_event').not('step.timeout_days', 'is', null);
+    .select(`*, enrollment:sequence_enrollments(*), step:sequence_steps(*)`).eq('status', 'waiting_event').not('step.timeout_days', 'is', null).limit(50);
 
   let branched = 0;
   for (const exec of waitingExecutions || []) {
