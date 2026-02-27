@@ -28,6 +28,13 @@ interface SearchContext {
     treatedIds: Set<string>;
     dismissedIds: Set<string>;
     getStatus?: (id: string) => { status: string } | undefined;
+    batchDiscover?: (profiles: Array<{
+      id: string;
+      name?: string;
+      headline?: string;
+      profileUrl?: string;
+      linkedinProfileData?: any;
+    }>) => Promise<void>;
   };
 }
 
@@ -486,16 +493,43 @@ export function useLinkedInSearchActions(
         toast.warning('Attention: vous approchez de la limite quotidienne de résultats de recherche');
       }
 
+      // Persist newly discovered profiles to DB (non-blocking, won't overwrite existing statuses)
+      if (candidateStatus.batchDiscover && allCollected.length > 0) {
+        const profilesToDiscover = allCollected.map(p => ({
+          id: p.id,
+          name: p.name || `${p.first_name || ''} ${p.last_name || ''}`.trim() || undefined,
+          headline: p.headline,
+          profileUrl: p.public_profile_url || p.profile_url,
+          linkedinProfileData: {
+            name: p.name,
+            first_name: p.first_name,
+            last_name: p.last_name,
+            headline: p.headline,
+            location: p.location,
+            summary: p.summary,
+            skills: p.skills,
+            work_experience: p.work_experience,
+            education: p.education,
+            current_positions: p.current_positions,
+            past_positions: p.past_positions,
+            profile_picture_url: p.profile_picture_url,
+            network_distance: p.network_distance,
+            connections_count: p.connections_count,
+            industry: p.industry,
+            open_to_work: p.open_to_work,
+            public_profile_url: p.public_profile_url,
+            profile_url: p.profile_url,
+          },
+        }));
+        // Fire and forget — don't block the UI
+        candidateStatus.batchDiscover(profilesToDiscover).catch(console.error);
+      }
+
       if (appendMode) {
         setResults(prev => [...prev, ...allCollected]);
       } else {
         setResults(allCollected);
         setHasSearched(true);
-      }
-
-      setCursor(currentCursor);
-      if (!appendMode) {
-        setTotal(latestTotal);
       }
 
     } catch (error: any) {

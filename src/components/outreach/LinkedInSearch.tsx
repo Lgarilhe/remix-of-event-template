@@ -70,6 +70,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
         treatedIds: search.candidateStatus.treatedIds,
         dismissedIds: search.candidateStatus.dismissedIds,
         getStatus: search.candidateStatus.getStatus,
+        batchDiscover: search.candidateStatus.batchDiscover,
       },
     },
     {
@@ -103,8 +104,11 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
     customScoringInstructions: scoringInstructions.trim() || undefined,
   });
 
+  // Pool view toggle
+  const [showPoolView, setShowPoolView] = useLocalState(true);
+
   // Filtered results hook
-  const { filteredAndSortedResults, selectableProfiles, allSelectableSelected } = useFilteredResults({
+  const { filteredAndSortedResults, selectableProfiles, allSelectableSelected, poolCount } = useFilteredResults({
     results: search.results,
     jobScores: search.jobScores,
     sortByScore: search.sortByScore,
@@ -116,10 +120,12 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
       treatedIds: search.candidateStatus.treatedIds,
       dismissedIds: search.candidateStatus.dismissedIds,
       getStatus: search.candidateStatus.getStatus,
+      statuses: search.candidateStatus.statuses,
     },
     selectedProfiles: search.selectedProfiles,
     calculatedExperienceMin: search.filters.calculated_experience_min,
     calculatedExperienceMax: search.filters.calculated_experience_max,
+    showPoolView,
   });
 
   // Auto-fill filters hook
@@ -605,6 +611,9 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
           treatedCandidates={search.candidateStatus.statuses}
           onRestoreCandidate={search.candidateStatus.restoreCandidate}
           showBulkInMailModal={search.showBulkInMailModal}
+          poolCount={poolCount}
+          showPoolView={showPoolView}
+          onSetShowPoolView={setShowPoolView}
           onSearch={() => handleSearch(false)}
           onLoadMore={handleLoadMore}
           onToggleProfileSelection={search.toggleProfileSelection}

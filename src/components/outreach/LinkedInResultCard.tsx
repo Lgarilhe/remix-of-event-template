@@ -260,6 +260,11 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
                   <h3 className="font-semibold text-foreground text-sm sm:text-base leading-tight break-words sm:truncate">
                     {fullName || 'Profil LinkedIn'}
                   </h3>
+                  {(profile as any)._fromPool && (
+                    <Badge variant="outline" className="text-[9px] px-1.5 py-0 border-muted-foreground/30 text-muted-foreground/70 gap-0.5 shrink-0">
+                      🔄 Pool
+                    </Badge>
+                  )}
                   <CardStatusBadges
                     candidateStatus={candidateStatus}
                     jobScore={jobScore}

@@ -1,7 +1,8 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { LinkedInFiltersState, LinkedInProfile } from '@/components/outreach/types';
 import { JobMatchResult } from '@/components/outreach/JobScoreDisplay';
 import { Job } from '@/types/jobs';
+import { JobCandidateStatus } from '@/hooks/useJobCandidateStatus';
 
 interface FilteredResultsOptions {
   results: LinkedInProfile[];
@@ -15,10 +16,39 @@ interface FilteredResultsOptions {
     treatedIds: Set<string>;
     dismissedIds: Set<string>;
     getStatus: (id: string) => { status: string } | undefined;
+    statuses?: Map<string, JobCandidateStatus>;
   };
   selectedProfiles: Set<string>;
   calculatedExperienceMin?: number | null;
   calculatedExperienceMax?: number | null;
+  showPoolView?: boolean;
+}
+
+// Rehydrate a LinkedInProfile from stored DB data
+function rehydrateProfile(status: JobCandidateStatus): LinkedInProfile & { _fromPool?: boolean } {
+  const data = status.linkedin_profile_data as Record<string, any> | null;
+  return {
+    id: status.candidate_id,
+    name: status.candidate_name || data?.name || 'Inconnu',
+    first_name: data?.first_name,
+    last_name: data?.last_name,
+    headline: status.candidate_headline || data?.headline || '',
+    profile_url: status.linkedin_profile_url || data?.profile_url || '',
+    public_profile_url: data?.public_profile_url || status.linkedin_profile_url || '',
+    location: data?.location || undefined,
+    summary: data?.summary,
+    skills: data?.skills || [],
+    work_experience: data?.work_experience || [],
+    education: data?.education || [],
+    current_positions: data?.current_positions,
+    past_positions: data?.past_positions,
+    profile_picture_url: data?.profile_picture_url,
+    network_distance: data?.network_distance,
+    connections_count: data?.connections_count,
+    industry: data?.industry,
+    open_to_work: data?.open_to_work,
+    _fromPool: true,
+  } as LinkedInProfile & { _fromPool?: boolean };
 }
 
 export function useFilteredResults({
@@ -31,12 +61,46 @@ export function useFilteredResults({
   statusFilter,
   candidateStatus,
   selectedProfiles,
+  showPoolView = true,
 }: FilteredResultsOptions) {
-  const { treatedIds, dismissedIds, getStatus } = candidateStatus;
+  const { treatedIds, dismissedIds, getStatus, statuses } = candidateStatus;
+
+  // Merge search results with pool profiles from DB
+  const mergedResults = useMemo(() => {
+    if (!showPoolView || !statuses || statuses.size === 0) return results;
+
+    // Index current search results by ID
+    const byId = new Map<string, LinkedInProfile>();
+    for (const r of results) {
+      byId.set(r.id, r);
+    }
+
+    // Add DB profiles not in current search (pool profiles)
+    for (const [candidateId, status] of statuses) {
+      if (!byId.has(candidateId) && status.linkedin_profile_data) {
+        byId.set(candidateId, rehydrateProfile(status));
+      }
+    }
+
+    return Array.from(byId.values());
+  }, [results, statuses, showPoolView]);
+
+  // Count pool-only profiles
+  const poolCount = useMemo(() => {
+    if (!statuses) return 0;
+    const searchIds = new Set(results.map(r => r.id));
+    let count = 0;
+    for (const [candidateId, status] of statuses) {
+      if (!searchIds.has(candidateId) && status.linkedin_profile_data) {
+        count++;
+      }
+    }
+    return count;
+  }, [results, statuses]);
 
   // Filter and sort results
   const filteredAndSortedResults = useMemo(() => {
-    let filtered = results;
+    let filtered = mergedResults;
 
     // Apply status filter
     if (selectedJob && statusFilter !== 'all') {
@@ -44,9 +108,9 @@ export function useFilteredResults({
         const status = getStatus(p.id);
         switch (statusFilter) {
           case 'untreated':
-            return !status;
+            // discovered is functionally "untreated"
+            return !status || status.status === 'discovered';
           case 'scored':
-            // Show scored profiles AND messaged profiles that have a score
             return status?.status === 'scored' || ((status?.status === 'messaged' || status?.status === 'replied') && !!jobScores[p.id]);
           case 'scored_go': {
             const isScored = status?.status === 'scored' || ((status?.status === 'messaged' || status?.status === 'replied') && !!jobScores[p.id]);
@@ -82,7 +146,7 @@ export function useFilteredResults({
     }
 
     return filtered;
-  }, [results, jobScores, sortByScore, selectedJob, showDismissed, autoHideTreated, treatedIds, dismissedIds, getStatus, statusFilter]);
+  }, [mergedResults, jobScores, sortByScore, selectedJob, showDismissed, autoHideTreated, treatedIds, dismissedIds, getStatus, statusFilter]);
 
   // Calculate selectable profiles (exclude "peu adapté")
   const selectableProfiles = useMemo(() => {
@@ -102,6 +166,8 @@ export function useFilteredResults({
     filteredAndSortedResults,
     selectableProfiles,
     allSelectableSelected,
+    poolCount,
+    mergedResults,
   };
 }
 
