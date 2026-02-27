@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useCandidateFullProfile, ScoringRecord } from '@/hooks/useCandidateFullProfile';
-import { useProfileEnrichment, EnrichedProfile } from '@/hooks/useProfileEnrichment';
+import { EnrichedProfile } from '@/hooks/useProfileEnrichment';
 import { 
   X, Mail, Phone, StickyNote, Bell, Send, Plus, User, GitBranch, Target,
   Loader2, Trash2, Calendar, Brain, CheckCircle2, AlertTriangle, MapPin,
@@ -66,14 +66,54 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
   const [addingReminder, setAddingReminder] = useState(false);
 
   const fullProfile = useCandidateFullProfile(candidate.candidateId, candidate.linkedin);
-  const { enrichedProfile, loading: enrichLoading, enrichProfile } = useProfileEnrichment();
 
-  // Try to enrich profile when we have an account_id
-  useEffect(() => {
-    if (fullProfile.accountId && candidate.linkedin && !enrichedProfile && !enrichLoading) {
-      enrichProfile(candidate.linkedin, fullProfile.accountId);
+  // Build enriched profile from stored LinkedIn data (no API call needed)
+  const enrichedProfile: EnrichedProfile | null = React.useMemo(() => {
+    const raw = candidate.linkedinProfileData;
+    if (!raw) return null;
+    
+    const workExperience = raw.work_experience || [];
+    const currentJob = workExperience.find((exp: any) => !exp.end) || workExperience[0];
+    
+    // Calculate years of experience from earliest start date
+    let yearsOfExperience: number | undefined;
+    const allStartYears = workExperience
+      .map((exp: any) => exp.start?.year)
+      .filter(Boolean) as number[];
+    if (allStartYears.length > 0) {
+      const earliest = Math.min(...allStartYears);
+      yearsOfExperience = new Date().getFullYear() - earliest;
     }
-  }, [fullProfile.accountId, candidate.linkedin, enrichedProfile, enrichLoading]);
+
+    return {
+      name: raw.name || `${raw.first_name || ''} ${raw.last_name || ''}`.trim() || candidate.name,
+      headline: raw.headline || candidate.headline || undefined,
+      summary: raw.summary,
+      currentRole: currentJob?.role,
+      currentCompany: currentJob?.company,
+      location: typeof raw.location === 'string' ? raw.location : raw.location?.name,
+      skills: raw.skills?.map((s: any) => typeof s === 'string' ? s : s.name).filter(Boolean) || [],
+      experiences: workExperience.slice(0, 6).map((exp: any) => ({
+        title: exp.role || exp.title || '',
+        company: exp.company || exp.company_name || '',
+        description: exp.description,
+        startDate: exp.start ? `${exp.start.year || ''}${exp.start.month ? `-${String(exp.start.month).padStart(2, '0')}` : ''}` : undefined,
+        endDate: exp.end ? `${exp.end.year || ''}${exp.end.month ? `-${String(exp.end.month).padStart(2, '0')}` : ''}` : undefined,
+        isCurrent: !exp.end,
+      })),
+      education: (raw.education || []).slice(0, 4).map((edu: any) => ({
+        school: edu.school || edu.school_name || '',
+        degree: edu.degree || edu.degree_name || '',
+        field: edu.field_of_study || edu.field || '',
+        startYear: edu.start?.year?.toString(),
+        endYear: edu.end?.year?.toString(),
+      })),
+      yearsOfExperience,
+      languages: raw.languages?.map((l: any) => typeof l === 'string' ? l : l.name).filter(Boolean) || [],
+    };
+  }, [candidate.linkedinProfileData, candidate.name, candidate.headline]);
+  
+  const enrichLoading = false;
 
   useEffect(() => {
     const fetchData = async () => {
