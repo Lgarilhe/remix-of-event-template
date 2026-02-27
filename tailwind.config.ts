@@ -15,7 +15,7 @@ export default {
   	extend: {
   		fontFamily: {
   			sans: [
-  				'Work Sans',
+  				'Inter',
   				'ui-sans-serif',
   				'system-ui',
   				'-apple-system',
@@ -37,7 +37,7 @@ export default {
   				'serif'
   			],
   			mono: [
-  				'Inconsolata',
+  				'Space Mono',
   				'ui-monospace',
   				'SFMono-Regular',
   				'Menlo',
@@ -162,7 +162,7 @@ export default {
   					transform: 'translate3d(-50%, 0, 0)'
   				}
   			},
-  			'scan': {
+  			scan: {
   				'0%': {
   					top: '0%',
   					opacity: '0.3'
@@ -176,7 +176,7 @@ export default {
   					opacity: '0.3'
   				}
   			},
-  			'shimmer': {
+  			shimmer: {
   				'0%': {
   					transform: 'translateX(-100%)'
   				},
