@@ -390,14 +390,38 @@ function isWithinBusinessHours(timezone: string): boolean {
   } catch { return true; }
 }
 
+// Helper: get the UTC offset (in hours) for a given timezone at a given instant
+function getTimezoneOffsetHours(date: Date, tz: string): number {
+  // Extract local hour in the target timezone
+  const localHour = parseInt(new Intl.DateTimeFormat("en-US", { timeZone: tz, hour: "numeric", hour12: false }).format(date), 10);
+  const utcHour = date.getUTCHours();
+  // offset = localHour - utcHour (positive means ahead of UTC, e.g. Europe/Paris = +1 or +2)
+  let offset = localHour - utcHour;
+  if (offset > 12) offset -= 24;
+  if (offset < -12) offset += 24;
+  return offset;
+}
+
+// Set the date's time so that the LOCAL hour in `tz` equals `desiredLocalHour`
+function setLocalHour(date: Date, tz: string, desiredLocalHour: number, minutes = 0): void {
+  const offset = getTimezoneOffsetHours(date, tz);
+  date.setUTCHours(desiredLocalHour - offset, minutes, 0, 0);
+}
+
 function getNextBusinessHourSlot(timezone: string): Date {
   const target = new Date();
   for (let i = 0; i < 7; i++) {
     try {
       const day = new Intl.DateTimeFormat("en-US", { timeZone: timezone, weekday: "short" }).format(target);
       const hour = parseInt(new Intl.DateTimeFormat("en-US", { timeZone: timezone, hour: "numeric", hour12: false }).format(target), 10);
-      if (day === "Sat" || day === "Sun" || hour >= 19) { target.setDate(target.getDate() + 1); target.setHours(8, Math.floor(Math.random() * 30), 0, 0); continue; }
-      if (hour < 8) { target.setHours(8, Math.floor(Math.random() * 30), 0, 0); }
+      if (day === "Sat" || day === "Sun" || hour >= 19) {
+        target.setDate(target.getDate() + 1);
+        setLocalHour(target, timezone, 8, Math.floor(Math.random() * 30));
+        continue;
+      }
+      if (hour < 8) {
+        setLocalHour(target, timezone, 8, Math.floor(Math.random() * 30));
+      }
       break;
     } catch { target.setTime(target.getTime() + 3600000); break; }
   }
@@ -733,11 +757,14 @@ async function scheduleNextStep(supabase: any, enrollment: any, currentStepOrder
   }
 
   let scheduledAt = new Date();
-  scheduledAt.setMinutes(scheduledAt.getMinutes() + (nextStep.delay_minutes || 0));
-  scheduledAt.setDate(scheduledAt.getDate() + (nextStep.delay_days || 0));
-  scheduledAt.setHours(scheduledAt.getHours() + (nextStep.delay_hours || 0));
+  // Use time-based arithmetic to avoid setHours/setDate timezone pitfalls
+  scheduledAt.setTime(scheduledAt.getTime()
+    + (nextStep.delay_days || 0) * 86400000
+    + (nextStep.delay_hours || 0) * 3600000
+    + (nextStep.delay_minutes || 0) * 60000
+  );
   // Add human-like jitter: ±5 minutes
-  scheduledAt.setMinutes(scheduledAt.getMinutes() + Math.floor(Math.random() * 10) - 5);
+  scheduledAt.setTime(scheduledAt.getTime() + (Math.floor(Math.random() * 10) - 5) * 60000);
   
   // Use timezone-aware hour checking for preferred hours and weekday skipping
   const tz = enrollment.user_timezone || 'Europe/Paris';
@@ -749,10 +776,10 @@ async function scheduleNextStep(supabase: any, enrollment: any, currentStepOrder
       const localHour = parseInt(new Intl.DateTimeFormat("en-US", { timeZone: tz, hour: "numeric", hour12: false }).format(scheduledAt), 10);
       const localDay = new Intl.DateTimeFormat("en-US", { timeZone: tz, weekday: "short" }).format(scheduledAt);
       
-      if (localDay === "Sat") { scheduledAt.setDate(scheduledAt.getDate() + 2); scheduledAt.setHours(scheduledAt.getHours() - localHour + ps, Math.floor(Math.random() * 30), 0); continue; }
-      if (localDay === "Sun") { scheduledAt.setDate(scheduledAt.getDate() + 1); scheduledAt.setHours(scheduledAt.getHours() - localHour + ps, Math.floor(Math.random() * 30), 0); continue; }
-      if (localHour >= pe) { scheduledAt.setDate(scheduledAt.getDate() + 1); scheduledAt.setHours(scheduledAt.getHours() - localHour + ps, Math.floor(Math.random() * 30), 0); continue; }
-      if (localHour < ps) { scheduledAt.setHours(scheduledAt.getHours() + (ps - localHour), Math.floor(Math.random() * 30), 0); }
+      if (localDay === "Sat") { scheduledAt.setDate(scheduledAt.getDate() + 2); setLocalHour(scheduledAt, tz, ps, Math.floor(Math.random() * 30)); continue; }
+      if (localDay === "Sun") { scheduledAt.setDate(scheduledAt.getDate() + 1); setLocalHour(scheduledAt, tz, ps, Math.floor(Math.random() * 30)); continue; }
+      if (localHour >= pe) { scheduledAt.setDate(scheduledAt.getDate() + 1); setLocalHour(scheduledAt, tz, ps, Math.floor(Math.random() * 30)); continue; }
+      if (localHour < ps) { setLocalHour(scheduledAt, tz, ps, Math.floor(Math.random() * 30)); }
       break;
     } catch { break; }
   }

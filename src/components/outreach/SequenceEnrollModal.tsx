@@ -283,6 +283,22 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
   );
 };
 
+// Helper: get UTC offset in hours for a timezone at a given instant
+function getTimezoneOffsetHours(date: Date, tz: string): number {
+  const localHour = parseInt(new Intl.DateTimeFormat("en-US", { timeZone: tz, hour: "numeric", hour12: false }).format(date), 10);
+  const utcHour = date.getUTCHours();
+  let offset = localHour - utcHour;
+  if (offset > 12) offset -= 24;
+  if (offset < -12) offset += 24;
+  return offset;
+}
+
+// Set date so that the LOCAL hour in `tz` equals `desiredLocalHour`
+function setLocalHour(date: Date, tz: string, desiredLocalHour: number, minutes = 0): void {
+  const offset = getTimezoneOffsetHours(date, tz);
+  date.setUTCHours(desiredLocalHour - offset, minutes, 0, 0);
+}
+
 // Helper to calculate scheduled time respecting time windows
 function calculateScheduledTime(
   fromDate: Date,
@@ -295,10 +311,12 @@ function calculateScheduledTime(
 ): Date {
   const scheduled = new Date(fromDate);
   
-  // Add delay
-  scheduled.setDate(scheduled.getDate() + delayDays);
-  scheduled.setHours(scheduled.getHours() + delayHours);
-  scheduled.setMinutes(scheduled.getMinutes() + delayMinutes);
+  // Use time-based arithmetic to avoid setHours/setDate timezone pitfalls
+  scheduled.setTime(scheduled.getTime()
+    + delayDays * 86400000
+    + delayHours * 3600000
+    + delayMinutes * 60000
+  );
   
   // Get hour in user's timezone
   const formatter = new Intl.DateTimeFormat('en-US', {
@@ -308,36 +326,31 @@ function calculateScheduledTime(
   });
   const localHour = parseInt(formatter.format(scheduled));
   
-  // Adjust to preferred window
+  // Adjust to preferred window using timezone-aware setter
   if (localHour < preferredHourStart) {
-    // Too early, move to start of window
-    scheduled.setHours(scheduled.getHours() + (preferredHourStart - localHour));
+    setLocalHour(scheduled, timezone, preferredHourStart, Math.floor(Math.random() * 15));
   } else if (localHour >= preferredHourEnd) {
-    // Too late, move to next day's window
     scheduled.setDate(scheduled.getDate() + 1);
-    scheduled.setHours(preferredHourStart);
-    scheduled.setMinutes(0);
+    setLocalHour(scheduled, timezone, preferredHourStart, Math.floor(Math.random() * 15));
   }
   
   // Skip weekends
-  const day = scheduled.getDay();
-  if (day === 0) scheduled.setDate(scheduled.getDate() + 1); // Sunday -> Monday
-  if (day === 6) scheduled.setDate(scheduled.getDate() + 2); // Saturday -> Monday
+  const dayFormatter = new Intl.DateTimeFormat('en-US', { timeZone: timezone, weekday: 'short' });
+  const day = dayFormatter.format(scheduled);
+  if (day === 'Sun') { scheduled.setDate(scheduled.getDate() + 1); setLocalHour(scheduled, timezone, preferredHourStart, Math.floor(Math.random() * 15)); }
+  if (day === 'Sat') { scheduled.setDate(scheduled.getDate() + 2); setLocalHour(scheduled, timezone, preferredHourStart, Math.floor(Math.random() * 15)); }
   
-  // Add small jitter (±5 minutes) for natural timing (do NOT overwrite minutes)
-  const jitterMinutes = Math.floor(Math.random() * 11) - 5; // -5..+5
-  scheduled.setTime(scheduled.getTime() + jitterMinutes * 60 * 1000);
+  // Add small jitter (±5 minutes) for natural timing
+  const jitterMinutes = Math.floor(Math.random() * 11) - 5;
+  scheduled.setTime(scheduled.getTime() + jitterMinutes * 60000);
 
-  // Ensure we still respect preferred window after jitter (edge cases near boundaries)
-  const localHourAfterJitter = parseInt(formatter.format(scheduled));
-  if (localHourAfterJitter < preferredHourStart) {
-    scheduled.setHours(scheduled.getHours() + (preferredHourStart - localHourAfterJitter));
-    scheduled.setTime(scheduled.getTime() + Math.floor(Math.random() * 6) * 60 * 1000); // 0..5 min
-  } else if (localHourAfterJitter >= preferredHourEnd) {
+  // Final boundary check after jitter
+  const finalHour = parseInt(formatter.format(scheduled));
+  if (finalHour < preferredHourStart) {
+    setLocalHour(scheduled, timezone, preferredHourStart, Math.floor(Math.random() * 6));
+  } else if (finalHour >= preferredHourEnd) {
     scheduled.setDate(scheduled.getDate() + 1);
-    scheduled.setHours(preferredHourStart);
-    scheduled.setMinutes(0);
-    scheduled.setTime(scheduled.getTime() + Math.floor(Math.random() * 6) * 60 * 1000); // 0..5 min
+    setLocalHour(scheduled, timezone, preferredHourStart, Math.floor(Math.random() * 6));
   }
   
   return scheduled;
