@@ -367,8 +367,21 @@ async function handleCheckWaitEvents(supabase: any) {
 
     let eventOccurred = false;
     if (step.wait_for_event === 'connection_accepted') {
-      const profile = await getProfileInfo(enrollment.account_id, enrollment.profile_id, enrollment.profile_url);
-      eventOccurred = profile?.network_distance === 'FIRST_DEGREE';
+      // Use DB-stored network_distance first → avoids Unipile API call
+      if (enrollment.network_distance === 'FIRST_DEGREE') {
+        eventOccurred = true;
+        console.log(`[handleCheckWaitEvents] DB hit: ${enrollment.profile_name} already FIRST_DEGREE`);
+      } else {
+        const profile = await getProfileInfo(enrollment.account_id, enrollment.profile_id, enrollment.profile_url);
+        eventOccurred = profile?.network_distance === 'FIRST_DEGREE';
+        // Persist network_distance + provider_id to DB for future lookups
+        if (profile) {
+          await supabase.from('sequence_enrollments').update({
+            network_distance: profile.network_distance || null,
+            provider_id: profile.provider_id || null,
+          }).eq('id', enrollment.id);
+        }
+      }
     } else if (step.wait_for_event === 'reply_received') {
       eventOccurred = await checkHasProspectReplied(enrollment.account_id, enrollment.profile_id);
     }
@@ -376,7 +389,7 @@ async function handleCheckWaitEvents(supabase: any) {
     if (eventOccurred) {
       await supabase.from('sequence_step_executions').update({ status: 'scheduled', scheduled_at: new Date().toISOString() }).eq('id', exec.id);
       if (step.wait_for_event === 'connection_accepted') {
-        await supabase.from('sequence_enrollments').update({ connection_status: 'connected' }).eq('id', enrollment.id);
+        await supabase.from('sequence_enrollments').update({ connection_status: 'connected', network_distance: 'FIRST_DEGREE' }).eq('id', enrollment.id);
         await logAnalytics(supabase, enrollment.sequence_id, 'invites_accepted');
       }
       eventsTriggered++;

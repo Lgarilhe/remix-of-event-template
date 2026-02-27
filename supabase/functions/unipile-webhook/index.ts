@@ -130,11 +130,12 @@ async function handleNewRelation(supabase: SupabaseClient, payload: WebhookPaylo
   console.log(`[unipile-webhook] Found ${enrollments.length} enrollments to update`);
 
   for (const enrollment of enrollments) {
-    // Update connection status to connected
+    // Update connection status + network_distance to connected
     const { error: updateError } = await supabase
       .from('sequence_enrollments')
       .update({
         connection_status: 'connected',
+        network_distance: 'FIRST_DEGREE',
         last_check_at: new Date().toISOString(),
       })
       .eq('id', enrollment.id);

@@ -176,6 +176,7 @@ serve(async (req) => {
               .from('sequence_enrollments')
               .update({
                 connection_status: 'connected',
+                network_distance: 'FIRST_DEGREE',
                 last_check_at: new Date().toISOString(),
               })
               .eq('id', enrollment.id);
