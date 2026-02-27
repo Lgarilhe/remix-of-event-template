@@ -30,6 +30,7 @@ serve(async (req) => {
   const anonKey = Deno.env.get('SUPABASE_ANON_KEY') || '';
   const cronSecret = Deno.env.get('PROCESS_SEQUENCES_SECRET') || '';
   const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+  const supabase = createClient(supabaseUrl, serviceRoleKey);
 
   let isAuthorized = false;
 
@@ -46,8 +47,7 @@ serve(async (req) => {
     });
     const { data: { user }, error } = await authClient.auth.getUser();
     if (!error && user) {
-      const checkClient = createClient(supabaseUrl, serviceRoleKey);
-      const { data: hasAdmin } = await checkClient.rpc('has_role', { _user_id: user.id, _role: 'admin' });
+      const { data: hasAdmin } = await supabase.rpc('has_role', { _user_id: user.id, _role: 'admin' });
       isAuthorized = !!hasAdmin;
     }
   }
@@ -60,7 +60,6 @@ serve(async (req) => {
   }
 
   try {
-    const supabase = createClient(supabaseUrl, serviceRoleKey);
 
     const { action, force } = await req.json();
 

@@ -6,15 +6,15 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+const calendlyApiKey = Deno.env.get('CALENDLY_API_KEY')!;
+const supabase = createClient(supabaseUrl, serviceRoleKey);
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
-
-  const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-  const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-  const calendlyApiKey = Deno.env.get('CALENDLY_API_KEY')!;
-  const supabase = createClient(supabaseUrl, serviceRoleKey);
 
   try {
     // Step 1: Get current user org

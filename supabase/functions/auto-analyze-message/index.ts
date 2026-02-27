@@ -12,7 +12,9 @@ const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
 const NOTION_API_KEY = Deno.env.get("NOTION_API_KEY");
 const CANDIDATS_DATABASE_ID = Deno.env.get("NOTION_CANDIDATS_DB_ID")!;
 const SHORTLIST_DATABASE_ID = Deno.env.get("NOTION_SHORTLIST_DB_ID")!;
-
+const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
+const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 // ─── Intent → Notion property mapping ─────────────────────────────
 // Candidats DB uses "Etat" (select): Pré-qualif à planifier, Répondu, En attente de réponse, Message à envoyer
 // Shortlist DB uses "Etape" (select): Pressenti, Contacté, Pré-qualif, Pas intéressé, Pas pertinent, En attente, etc.
@@ -291,9 +293,6 @@ serve(async (req) => {
     }
 
     // 4. Update app DB (job_candidate_status)
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     const candidateId = sender_id || chatDetails.attendeeProviderId;
     

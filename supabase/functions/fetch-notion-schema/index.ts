@@ -10,6 +10,7 @@ const NOTION_API_KEY = Deno.env.get("NOTION_API_KEY");
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const POSTES_DATABASE_ID = Deno.env.get("NOTION_POSTES_DB_ID")!;
+const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
 const CACHE_KEY = "notion:schema:postes:v1";
 const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
@@ -25,8 +26,6 @@ serve(async (req) => {
 
   try {
     if (!NOTION_API_KEY) throw new Error('NOTION_API_KEY not configured');
-
-    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
     // Check cache first
     const { data: cached } = await supabase
