@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
-export type CandidateStatus = 'dismissed' | 'messaged' | 'replied' | 'shortlisted' | 'scored';
+export type CandidateStatus = 'discovered' | 'dismissed' | 'messaged' | 'replied' | 'shortlisted' | 'scored';
 
 export interface JobCandidateStatus {
   id: string;
@@ -27,7 +27,7 @@ export function useJobCandidateStatus(jobId: string | null) {
   const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set());
   const [treatedIds, setTreatedIds] = useState<Set<string>>(new Set()); // messaged, replied, shortlisted, dismissed
 
-  // Fetch all statuses for current job
+  // Fetch all statuses for current job (including linkedin_profile_data for pool rehydration)
   const fetchStatuses = useCallback(async () => {
     if (!jobId) {
       setStatuses(new Map());
@@ -299,7 +299,7 @@ export function useJobCandidateStatus(jobId: string | null) {
     }
   }, [jobId, statuses]);
 
-  // Restore a dismissed candidate
+  // Restore a dismissed candidate → set back to 'discovered' (preserves linkedin_profile_data)
   const restoreCandidate = useCallback(async (candidateId: string) => {
     if (!jobId) return;
 
@@ -309,7 +309,7 @@ export function useJobCandidateStatus(jobId: string | null) {
 
       const { error } = await supabase
         .from('job_candidate_status')
-        .delete()
+        .update({ status: 'discovered', score: null, recommendation: null, skip_reason: null })
         .eq('job_id', jobId)
         .eq('candidate_id', candidateId)
         .eq('created_by', user.id);
@@ -324,7 +324,10 @@ export function useJobCandidateStatus(jobId: string | null) {
       });
       setStatuses(prev => {
         const next = new Map(prev);
-        next.delete(candidateId);
+        const existing = next.get(candidateId);
+        if (existing) {
+          next.set(candidateId, { ...existing, status: 'discovered', score: null, recommendation: null, skip_reason: null, updated_at: new Date().toISOString() });
+        }
         return next;
       });
 
@@ -490,6 +493,86 @@ export function useJobCandidateStatus(jobId: string | null) {
     return statuses.get(candidateId);
   }, [statuses]);
 
+  // Batch discover — persist newly found profiles as 'discovered' without overwriting existing statuses
+  const batchDiscover = useCallback(async (
+    profiles: Array<{
+      id: string;
+      name?: string;
+      headline?: string;
+      profileUrl?: string;
+      linkedinProfileData?: any;
+    }>
+  ) => {
+    if (!jobId || profiles.length === 0) return;
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      // Only persist profiles not already in local state
+      const newProfiles = profiles.filter(p => !statuses.has(p.id));
+      if (newProfiles.length === 0) return;
+
+      // Dedupe by candidate_id
+      const uniqueProfiles = Array.from(
+        new Map(newProfiles.map(p => [p.id, p])).values()
+      );
+
+      const records = uniqueProfiles.map(p => ({
+        job_id: jobId,
+        candidate_id: p.id,
+        candidate_name: p.name || null,
+        candidate_headline: p.headline || null,
+        linkedin_profile_url: p.profileUrl || null,
+        linkedin_profile_data: p.linkedinProfileData || null,
+        status: 'discovered',
+        created_by: user.id,
+      }));
+
+      const { error } = await supabase
+        .from('job_candidate_status')
+        .upsert(records, {
+          onConflict: 'job_id,candidate_id,created_by',
+          ignoreDuplicates: true, // Don't overwrite existing rows
+        });
+
+      if (error) {
+        console.error('Error batch discovering:', error);
+        return;
+      }
+
+      // Optimistic local state update
+      setStatuses(prev => {
+        const next = new Map(prev);
+        for (const p of uniqueProfiles) {
+          if (!next.has(p.id)) {
+            next.set(p.id, {
+              id: '',
+              job_id: jobId,
+              candidate_id: p.id,
+              linkedin_profile_url: p.profileUrl || null,
+              candidate_name: p.name || null,
+              candidate_headline: p.headline || null,
+              status: 'discovered',
+              score: null,
+              recommendation: null,
+              skip_reason: null,
+              created_by: user.id,
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+              linkedin_profile_data: p.linkedinProfileData || null,
+            });
+          }
+        }
+        return next;
+      });
+
+      console.log(`[batchDiscover] Persisted ${uniqueProfiles.length} new profiles`);
+    } catch (error) {
+      console.error('Error in batchDiscover:', error);
+    }
+  }, [jobId, statuses]);
+
   return {
     statuses,
     dismissedIds,
@@ -497,6 +580,7 @@ export function useJobCandidateStatus(jobId: string | null) {
     loading,
     dismissCandidate,
     batchDismiss,
+    batchDiscover,
     saveScore,
     batchSaveScores,
     updateStatus,

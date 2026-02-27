@@ -60,6 +60,11 @@ interface SearchResultsPanelProps {
   
   // Modal state
   showBulkInMailModal: boolean;
+
+  // Pool
+  poolCount?: number;
+  showPoolView?: boolean;
+  onSetShowPoolView?: (v: boolean) => void;
   
   // Actions
   onSearch: () => void;
@@ -121,6 +126,9 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
   treatedCandidates,
   onRestoreCandidate,
   showBulkInMailModal,
+  poolCount = 0,
+  showPoolView = true,
+  onSetShowPoolView,
   onSearch,
   onLoadMore,
   onToggleProfileSelection,
@@ -186,6 +194,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
       }
       const s = treatedCandidates.get(r.id);
       if (!s) { counts.untreated++; continue; }
+      if (s.status === 'discovered') { counts.untreated++; continue; }
       if (s.status === 'scored') {
         counts.scored++;
         counts.scored_not_contacted++;
@@ -252,9 +261,28 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
                   / {total.toLocaleString()}
                 </span>
               )}
+              {poolCount > 0 && (
+                <span className="text-[11px] sm:text-xs text-muted-foreground/60 ml-1">
+                  • {poolCount + results.length} dans le pool
+                </span>
+              )}
             </div>
           )}
         </div>
+        {/* Pool toggle */}
+        {poolCount > 0 && onSetShowPoolView && (
+          <div className="flex items-center gap-2 shrink-0">
+            <Button
+              variant={showPoolView ? 'secondary' : 'ghost'}
+              size="sm"
+              onClick={() => onSetShowPoolView(!showPoolView)}
+              className="h-7 px-2 text-[11px] gap-1"
+            >
+              <Database className="w-3 h-3" />
+              {showPoolView ? 'Pool complet' : 'Recherche actuelle'}
+            </Button>
+          </div>
+        )}
       </div>
 
       {/* ROW 1b: Status filters (separate row for mobile) */}
