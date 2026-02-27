@@ -53,10 +53,11 @@ export function useProfileActivity(profileId: string | null, profileUrl?: string
         }
 
         if (!enrollments.length && profileName?.trim()) {
+          const profileNameLike = `%${profileName.trim()}%`;
           const { data } = await supabase
             .from('sequence_enrollments')
             .select('id, sequence_id')
-            .ilike('profile_name', profileName.trim());
+            .ilike('profile_name', profileNameLike);
           enrollments = data || [];
         }
 
@@ -138,10 +139,11 @@ export function useProfileActivity(profileId: string | null, profileUrl?: string
 
         // Fallback: match by candidate name
         if (!sessions.length && profileName?.trim()) {
+          const profileNameLike = `%${profileName.trim()}%`;
           const { data } = await supabase
             .from('qualification_sessions')
             .select('id, event_start_at, event_name, event_location, status, candidate_linkedin_url')
-            .ilike('candidate_name', profileName.trim());
+            .ilike('candidate_name', profileNameLike);
           sessions = data || [];
         }
 
