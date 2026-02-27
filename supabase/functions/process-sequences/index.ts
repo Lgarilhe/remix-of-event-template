@@ -1031,7 +1031,54 @@ function extractNotionText(prop: unknown): string {
     return (p.multi_select as Array<{ name: string }>).map(s => s.name).join(', ');
   }
   if (p.type === 'number') return p.number != null ? String(p.number) : '';
+  if (p.type === 'relation' && Array.isArray(p.relation)) {
+    // Store relation IDs as comma-separated for later resolution
+    return (p.relation as Array<{ id: string }>).map(r => r.id).filter(Boolean).join(',');
+  }
+  if (p.type === 'rollup' && p.rollup && typeof p.rollup === 'object') {
+    const rollup = p.rollup as Record<string, unknown>;
+    if (rollup.type === 'array' && Array.isArray(rollup.array)) {
+      return (rollup.array as Array<Record<string, unknown>>).map(item => {
+        if (item.type === 'title' || item.type === 'rich_text') {
+          const arr = (item[item.type as string] || []) as Array<{ plain_text?: string }>;
+          return arr.map(t => t.plain_text || '').join('');
+        }
+        return '';
+      }).filter(Boolean).join(', ');
+    }
+  }
   return '';
+}
+
+// Resolve Notion relation IDs to page titles
+async function resolveNotionRelations(data: Record<string, string>, keys: string[]): Promise<void> {
+  if (!NOTION_API_KEY) return;
+  for (const key of keys) {
+    const val = data[key];
+    if (!val || !val.match(/^[a-f0-9-]{36}(,[a-f0-9-]{36})*$/i)) continue;
+    const ids = val.split(',');
+    const titles: string[] = [];
+    for (const id of ids.slice(0, 3)) {
+      try {
+        const res = await fetch(`https://api.notion.com/v1/pages/${id}`, {
+          headers: { 'Authorization': `Bearer ${NOTION_API_KEY}`, 'Notion-Version': '2022-06-28' },
+        });
+        if (res.ok) {
+          const page = await res.json();
+          const props = (page.properties || {}) as Record<string, unknown>;
+          for (const prop of Object.values(props)) {
+            const p = prop as Record<string, unknown>;
+            if (p.type === 'title') {
+              const arr = (p.title || []) as Array<{ plain_text?: string }>;
+              const title = arr.map(t => t.plain_text || '').join('');
+              if (title) { titles.push(title); break; }
+            }
+          }
+        }
+      } catch { /* ignore */ }
+    }
+    if (titles.length > 0) data[key] = titles.join(', ');
+  }
 }
 
 function extractNotionJob(pageData: Record<string, unknown>): Record<string, string> {
@@ -1165,6 +1212,9 @@ async function generatePersonalizedMessage(supabase: any, enrollment: Record<str
         if (pageRes.ok) {
           const pageData = await pageRes.json();
           jobNotionData = extractNotionJob(pageData);
+          // Resolve relation properties (Client, Entreprise) to their actual page titles
+          await resolveNotionRelations(jobNotionData, ['Client', 'Entreprise', 'Company', 'Société']);
+          console.log(`[generatePersonalizedMessage] Notion job data keys: ${Object.keys(jobNotionData).join(', ')}; Client="${jobNotionData['Client'] || ''}", Entreprise="${jobNotionData['Entreprise'] || ''}"`);
         }
         if (blocksRes.ok) {
           const blocksData = await blocksRes.json();
