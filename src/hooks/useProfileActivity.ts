@@ -60,84 +60,102 @@ export function useProfileActivity(profileId: string | null, profileUrl?: string
           enrollments = data || [];
         }
 
-        if (!enrollments.length || cancelled) {
-          setEvents([]);
-          return;
+        let mapped: ActivityEvent[] = [];
+
+        if (enrollments.length && !cancelled) {
+          // Get sequence names
+          const sequenceIds = [...new Set(enrollments.map(e => e.sequence_id))];
+          const { data: sequences } = await supabase
+            .from('outreach_sequences')
+            .select('id, name')
+            .in('id', sequenceIds);
+          const seqMap = new Map(sequences?.map(s => [s.id, s.name]) || []);
+
+          // Get executions
+          const enrollmentIds = enrollments.map(e => e.id);
+          const { data: executions } = await supabase
+            .from('sequence_step_executions')
+            .select('id, enrollment_id, step_id, step_order, status, executed_at, scheduled_at, skip_reason, error_message, final_subject')
+            .in('enrollment_id', enrollmentIds)
+            .order('executed_at', { ascending: true, nullsFirst: false });
+
+          if (executions?.length) {
+            // Get step details for action types
+            const stepIds = [...new Set(executions.map(e => e.step_id))];
+            const { data: steps } = await supabase
+              .from('sequence_steps')
+              .select('id, action_type, sequence_id')
+              .in('id', stepIds);
+            const stepMap = new Map(steps?.map(s => [s.id, s]) || []);
+
+            const enrollmentSeqMap = new Map(enrollments.map(e => [e.id, e.sequence_id]));
+
+            mapped = executions
+              .filter(ex => ex.executed_at)
+              .map(ex => {
+                const step = stepMap.get(ex.step_id);
+                const seqId = enrollmentSeqMap.get(ex.enrollment_id);
+                return {
+                  id: ex.id,
+                  type: 'sequence_step' as const,
+                  timestamp: ex.executed_at!,
+                  actionType: step?.action_type || 'unknown',
+                  stepOrder: ex.step_order,
+                  status: ex.status,
+                  skipReason: ex.skip_reason,
+                  errorMessage: ex.error_message,
+                  finalSubject: ex.final_subject,
+                  sequenceName: seqId ? seqMap.get(seqId) || null : null,
+                };
+              });
+          }
         }
-
-        // Get sequence names
-        const sequenceIds = [...new Set(enrollments.map(e => e.sequence_id))];
-        const { data: sequences } = await supabase
-          .from('outreach_sequences')
-          .select('id, name')
-          .in('id', sequenceIds);
-        const seqMap = new Map(sequences?.map(s => [s.id, s.name]) || []);
-
-        // Get executions
-        const enrollmentIds = enrollments.map(e => e.id);
-        const { data: executions } = await supabase
-          .from('sequence_step_executions')
-          .select('id, enrollment_id, step_id, step_order, status, executed_at, scheduled_at, skip_reason, error_message, final_subject')
-          .in('enrollment_id', enrollmentIds)
-          .order('executed_at', { ascending: true, nullsFirst: false });
-
-        if (!executions?.length || cancelled) {
-          setEvents([]);
-          return;
-        }
-
-        // Get step details for action types
-        const stepIds = [...new Set(executions.map(e => e.step_id))];
-        const { data: steps } = await supabase
-          .from('sequence_steps')
-          .select('id, action_type, sequence_id')
-          .in('id', stepIds);
-        const stepMap = new Map(steps?.map(s => [s.id, s]) || []);
-
-        const enrollmentSeqMap = new Map(enrollments.map(e => [e.id, e.sequence_id]));
-
-        const mapped: ActivityEvent[] = executions
-          .filter(ex => ex.executed_at) // only show executed steps
-          .map(ex => {
-            const step = stepMap.get(ex.step_id);
-            const seqId = enrollmentSeqMap.get(ex.enrollment_id);
-            return {
-              id: ex.id,
-              type: 'sequence_step' as const,
-              timestamp: ex.executed_at!,
-              actionType: step?.action_type || 'unknown',
-              stepOrder: ex.step_order,
-              status: ex.status,
-              skipReason: ex.skip_reason,
-              errorMessage: ex.error_message,
-              finalSubject: ex.final_subject,
-              sequenceName: seqId ? seqMap.get(seqId) || null : null,
-            };
-          });
 
         // Fetch booking events (qualification sessions) for this candidate
+        // Use multiple matching strategies: LinkedIn URL, profile_id, or name
         let bookingEvents: ActivityEvent[] = [];
+        let sessions: any[] = [];
+
         if (profileUrl) {
           const normalizedPath = profileUrl.split('linkedin.com')[1]?.replace(/\/$/, '') || '';
           if (normalizedPath) {
-            const { data: sessions } = await supabase
+            const { data } = await supabase
               .from('qualification_sessions')
               .select('id, event_start_at, event_name, event_location, status, candidate_linkedin_url')
               .ilike('candidate_linkedin_url', `%${normalizedPath}%`);
-
-            bookingEvents = (sessions || []).map(s => ({
-              id: `booking-${s.id}`,
-              type: 'booking' as const,
-              timestamp: s.event_start_at || '',
-              actionType: 'calendly_booking',
-              stepOrder: 0,
-              status: s.status || 'scheduled',
-              qualificationSessionId: s.id,
-              eventName: s.event_name,
-              eventLocation: s.event_location,
-            }));
+            sessions = data || [];
           }
         }
+
+        // Fallback: match by candidate_profile_id
+        if (!sessions.length && profileId) {
+          const { data } = await supabase
+            .from('qualification_sessions')
+            .select('id, event_start_at, event_name, event_location, status, candidate_linkedin_url')
+            .eq('candidate_profile_id', profileId);
+          sessions = data || [];
+        }
+
+        // Fallback: match by candidate name
+        if (!sessions.length && profileName?.trim()) {
+          const { data } = await supabase
+            .from('qualification_sessions')
+            .select('id, event_start_at, event_name, event_location, status, candidate_linkedin_url')
+            .ilike('candidate_name', profileName.trim());
+          sessions = data || [];
+        }
+
+        bookingEvents = sessions.map(s => ({
+          id: `booking-${s.id}`,
+          type: 'booking' as const,
+          timestamp: s.event_start_at || '',
+          actionType: 'calendly_booking',
+          stepOrder: 0,
+          status: s.status || 'scheduled',
+          qualificationSessionId: s.id,
+          eventName: s.event_name,
+          eventLocation: s.event_location,
+        }));
 
         const allEvents = [...mapped, ...bookingEvents].sort(
           (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
