@@ -15,12 +15,18 @@ const ANTHROPIC_API_KEY = Deno.env.get('ANTHROPIC_API_KEY');
 const NOTION_API_KEY = Deno.env.get('NOTION_API_KEY');
 const WEEKLY_INVITE_LIMIT = 100;
 
+// In-memory profile cache — cleared at the start of each request to avoid cross-invocation staleness
+const profileInfoCache = new Map<string, { network_distance?: string; provider_id?: string }>();
+
 console.log('[process-sequences] Config:', { hasDSN: !!UNIPILE_DSN, hasApiKey: !!UNIPILE_API_KEY });
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
+
+  // Clear profile cache for each new request
+  profileInfoCache.clear();
 
   // ===== AUTH CHECK =====
   // Accept: (1) service_role key (internal/cron), (2) PROCESS_SEQUENCES_SECRET, or (3) valid admin JWT (frontend)
@@ -463,7 +469,14 @@ function getNextBusinessHourSlot(timezone: string): Date {
   return target;
 }
 
-async function getProfileInfo(accountId: string, profileId: string, enrollmentProfileUrl?: string): Promise<{ network_distance?: string } | null> {
+async function getProfileInfo(accountId: string, profileId: string, enrollmentProfileUrl?: string): Promise<{ network_distance?: string; provider_id?: string } | null> {
+  const cacheKey = `${accountId}::${profileId}`;
+  const cached = profileInfoCache.get(cacheKey);
+  if (cached) {
+    console.log(`[getProfileInfo] Cache hit for ${profileId} → network_distance=${cached.network_distance}`);
+    return cached;
+  }
+
   try {
     const r = await fetch(`${UNIPILE_DSN}/api/v1/users/${profileId}?account_id=${accountId}`, { headers: { 'X-API-KEY': UNIPILE_API_KEY! } });
     if (!r.ok) {
@@ -477,6 +490,7 @@ async function getProfileInfo(accountId: string, profileId: string, enrollmentPr
     // Normalize network_distance: some API modes return numeric (1) or different strings
     if (rawDistance === 'FIRST_DEGREE' || rawDistance === 1 || rawDistance === '1' || rawDistance === 'DISTANCE_1') {
       data.network_distance = 'FIRST_DEGREE';
+      profileInfoCache.set(cacheKey, data);
       return data;
     }
 
@@ -505,12 +519,14 @@ async function getProfileInfo(accountId: string, profileId: string, enrollmentPr
           console.log(`[getProfileInfo] Slug resolution: network_distance=${slugDistance}`);
           if (slugDistance === 'FIRST_DEGREE' || slugDistance === 1 || slugDistance === '1' || slugDistance === 'DISTANCE_1') {
             slugData.network_distance = 'FIRST_DEGREE';
+            profileInfoCache.set(cacheKey, slugData);
             return slugData;
           }
         }
       }
     }
 
+    profileInfoCache.set(cacheKey, data);
     return data;
   } catch (err) {
     console.error(`[getProfileInfo] Error for profileId=${profileId}:`, err);
