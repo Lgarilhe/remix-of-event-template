@@ -18,6 +18,7 @@ export interface JobCandidateStatus {
   created_by: string;
   created_at: string;
   updated_at: string;
+  linkedin_profile_data?: any;
 }
 
 export function useJobCandidateStatus(jobId: string | null) {
@@ -92,6 +93,7 @@ export function useJobCandidateStatus(jobId: string | null) {
       recommendation?: string;
       skipReason?: string;
       scoringDetails?: any;
+      linkedinProfileData?: any;
     }
   ) => {
     if (!jobId) return;
@@ -116,6 +118,7 @@ export function useJobCandidateStatus(jobId: string | null) {
           recommendation: candidateData.recommendation || null,
           skip_reason: candidateData.skipReason || null,
           scoring_details: candidateData.scoringDetails || null,
+          linkedin_profile_data: candidateData.linkedinProfileData || null,
           created_by: user.id,
         }, {
           onConflict: 'job_id,candidate_id,created_by'
@@ -162,6 +165,7 @@ export function useJobCandidateStatus(jobId: string | null) {
       recommendation?: string;
       skipReason?: string;
       scoringDetails?: any;
+      linkedinProfileData?: any;
     }>
   ) => {
     if (!jobId || candidates.length === 0) return;
@@ -189,6 +193,7 @@ export function useJobCandidateStatus(jobId: string | null) {
         recommendation: c.recommendation || null,
         skip_reason: c.skipReason || null,
         scoring_details: c.scoringDetails || null,
+        linkedin_profile_data: c.linkedinProfileData || null,
         created_by: user.id,
       }));
 
@@ -340,6 +345,7 @@ export function useJobCandidateStatus(jobId: string | null) {
       score: number;
       recommendation: string;
       scoringDetails?: any;
+      linkedinProfileData?: any;
     }
   ) => {
     if (!jobId) return;
@@ -365,6 +371,7 @@ export function useJobCandidateStatus(jobId: string | null) {
           score: candidateData.score,
           recommendation: candidateData.recommendation,
           scoring_details: candidateData.scoringDetails || null,
+          linkedin_profile_data: candidateData.linkedinProfileData || null,
           created_by: user.id,
         }, {
           onConflict: 'job_id,candidate_id,created_by'
@@ -408,6 +415,7 @@ export function useJobCandidateStatus(jobId: string | null) {
       score: number;
       recommendation: string;
       scoringDetails?: any;
+      linkedinProfileData?: any;
     }>
   ) => {
     if (!jobId || candidates.length === 0) return;
@@ -429,6 +437,7 @@ export function useJobCandidateStatus(jobId: string | null) {
           score: c.score,
           recommendation: c.recommendation,
           scoring_details: c.scoringDetails || null,
+          linkedin_profile_data: c.linkedinProfileData || null,
           created_by: user.id,
         };
       });

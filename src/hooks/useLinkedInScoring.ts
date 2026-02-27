@@ -27,6 +27,7 @@ interface ScoringOptions {
       recommendation?: string;
       skipReason?: string;
       scoringDetails?: any;
+      linkedinProfileData?: any;
     }>) => Promise<void>;
     saveScore?: (candidateId: string, data: {
       name?: string;
@@ -35,6 +36,7 @@ interface ScoringOptions {
       score: number;
       recommendation: string;
       scoringDetails?: any;
+      linkedinProfileData?: any;
     }) => Promise<void>;
     batchSaveScores?: (candidates: Array<{
       id: string;
@@ -44,6 +46,7 @@ interface ScoringOptions {
       score: number;
       recommendation: string;
       scoringDetails?: any;
+      linkedinProfileData?: any;
     }>) => Promise<void>;
   };
 }
@@ -178,6 +181,28 @@ function mapScoringResult(raw: any): JobMatchResult {
   };
 }
 
+// Serialize profile for storage (keep essential data, skip huge fields)
+function serializeProfileForStorage(profile: LinkedInProfile): any {
+  return {
+    name: profile.name,
+    first_name: profile.first_name,
+    last_name: profile.last_name,
+    headline: profile.headline,
+    summary: profile.summary,
+    location: profile.location,
+    skills: profile.skills,
+    work_experience: (profile.work_experience || []).slice(0, 8),
+    education: profile.education,
+    languages: (profile as any).languages,
+    open_to_work: profile.open_to_work,
+    open_profile: profile.open_profile,
+    network_distance: profile.network_distance,
+    public_profile_url: profile.public_profile_url,
+    profile_url: profile.profile_url,
+    connections_count: profile.connections_count,
+  };
+}
+
 export function useLinkedInScoring({
   selectedJob,
   selectedProfiles,
@@ -235,6 +260,9 @@ export function useLinkedInScoring({
         const profileName = profile.name || `${profile.first_name || ''} ${profile.last_name || ''}`.trim();
         const profileUrl = profile.public_profile_url || profile.profile_url || (profile as any)?.linkedin_url;
 
+        // Serialize full LinkedIn profile for storage
+        const linkedinProfileData = serializeProfileForStorage(profile);
+
         // Auto-dismiss profiles with 'skip' recommendation
         if (mapped.recommendation === 'skip' && candidateStatus) {
           await candidateStatus.batchDismiss([{
@@ -246,6 +274,7 @@ export function useLinkedInScoring({
             recommendation: mapped.recommendation,
             skipReason: mapped.summary || 'Score insuffisant',
             scoringDetails: mapped,
+            linkedinProfileData,
           }]);
           setSelectedProfiles?.(prev => {
             const newSet = new Set(prev);
@@ -262,6 +291,7 @@ export function useLinkedInScoring({
             score: mapped.match_score,
             recommendation: mapped.recommendation,
             scoringDetails: mapped,
+            linkedinProfileData,
           });
         }
       }
@@ -380,6 +410,7 @@ export function useLinkedInScoring({
           recommendation?: string;
           skipReason?: string;
           scoringDetails?: any;
+          linkedinProfileData?: any;
         }> = [];
         const goodScoreProfiles: Array<{
           id: string;
@@ -389,6 +420,7 @@ export function useLinkedInScoring({
           score: number;
           recommendation: string;
           scoringDetails?: any;
+          linkedinProfileData?: any;
         }> = [];
 
         allResults.forEach((rawResult: any, index: number) => {
@@ -398,6 +430,7 @@ export function useLinkedInScoring({
             newScores[profile.id] = result;
             const profileName = profile.name || `${profile.first_name || ''} ${profile.last_name || ''}`.trim();
             const profileUrl = profile.public_profile_url || profile.profile_url;
+            const linkedinProfileData = serializeProfileForStorage(profile);
             if (result.recommendation === 'skip') {
               lowScoreProfiles.push({
                 id: profile.id,
@@ -408,6 +441,7 @@ export function useLinkedInScoring({
                 recommendation: result.recommendation,
                 skipReason: result.summary || 'Score insuffisant',
                 scoringDetails: result,
+                linkedinProfileData,
               });
             } else {
               goodScoreProfiles.push({
@@ -418,6 +452,7 @@ export function useLinkedInScoring({
                 score: result.match_score,
                 recommendation: result.recommendation,
                 scoringDetails: result,
+                linkedinProfileData,
               });
             }
           }

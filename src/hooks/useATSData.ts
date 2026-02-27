@@ -42,6 +42,7 @@ export interface ATSCandidate {
     recommendation: string;
     salary_analysis?: any;
   } | null;
+  linkedinProfileData?: any;
 }
 
 export const ATS_STAGES = [
@@ -110,6 +111,7 @@ async function fetchLocalCandidates(): Promise<ATSCandidate[]> {
       notionShortlistId: r.notion_shortlist_id || null,
       notionCandidateId: r.notion_candidate_id || null,
       scoringDetails: r.scoring_details || null,
+      linkedinProfileData: r.linkedin_profile_data || null,
     };
   });
 }
