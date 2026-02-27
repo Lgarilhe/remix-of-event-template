@@ -1,10 +1,9 @@
 import React from 'react';
-import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Badge } from '@/components/ui/badge';
-import { Search, Filter, X, Bell } from 'lucide-react';
+import { Search, X, Bell } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 interface ATSFiltersProps {
   filters: {
@@ -28,6 +27,34 @@ const SOURCE_LABELS: Record<string, string> = {
   inmail: 'InMails',
 };
 
+const FilterButton: React.FC<{
+  label: string;
+  count: number;
+  children: React.ReactNode;
+}> = ({ label, count, children }) => (
+  <Popover>
+    <PopoverTrigger asChild>
+      <button className={cn(
+        "relative overflow-hidden h-[34px] px-4 flex items-center gap-2 border border-foreground text-foreground text-[11px] font-medium uppercase tracking-wider group",
+        count > 0 && "bg-brutal-accent"
+      )}>
+        <span className="relative z-10">{label}</span>
+        {count > 0 && (
+          <span className="relative z-10 bg-foreground text-background text-[10px] px-1.5 py-0 font-bold">
+            {count}
+          </span>
+        )}
+        {count === 0 && (
+          <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
+        )}
+      </button>
+    </PopoverTrigger>
+    <PopoverContent className="w-56 p-3 rounded-none border-foreground" align="start">
+      {children}
+    </PopoverContent>
+  </Popover>
+);
+
 export const ATSFilters: React.FC<ATSFiltersProps> = ({ filters, onFiltersChange, options }) => {
   const activeFiltersCount = 
     filters.stage.length + 
@@ -36,146 +63,102 @@ export const ATSFilters: React.FC<ATSFiltersProps> = ({ filters, onFiltersChange
     (filters.hasReminder ? 1 : 0);
 
   const clearAllFilters = () => {
-    onFiltersChange({
-      search: '',
-      stage: [],
-      source: [],
-      job: [],
-      hasReminder: false,
-    });
+    onFiltersChange({ search: '', stage: [], source: [], job: [], hasReminder: false });
   };
 
   return (
-    <div className="flex items-center gap-3 flex-wrap">
+    <div className="flex items-center gap-0 flex-wrap">
       {/* Search */}
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#1A1A1A]/40" />
+      <div className="relative mr-3">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
         <Input
-          placeholder="Rechercher un candidat..."
+          placeholder="Rechercher..."
           value={filters.search}
           onChange={(e) => onFiltersChange({ ...filters, search: e.target.value })}
-          className="pl-9 w-64 bg-white"
+          className="pl-9 w-56 rounded-none border-foreground bg-background text-sm h-[34px]"
         />
       </div>
 
       {/* Stage Filter */}
-      <Popover>
-        <PopoverTrigger asChild>
-          <Button variant="outline" size="sm" className="gap-2">
-            Étape
-            {filters.stage.length > 0 && (
-              <Badge variant="secondary" className="ml-1 px-1.5 py-0 text-xs">
-                {filters.stage.length}
-              </Badge>
-            )}
-          </Button>
-        </PopoverTrigger>
-        <PopoverContent className="w-56 p-3" align="start">
-          <div className="space-y-2">
-            {options.stages.map(stage => (
-              <label key={stage} className="flex items-center gap-2 cursor-pointer">
-                <Checkbox
-                  checked={filters.stage.includes(stage)}
-                  onCheckedChange={(checked) => {
-                    if (checked) {
-                      onFiltersChange({ ...filters, stage: [...filters.stage, stage] });
-                    } else {
-                      onFiltersChange({ ...filters, stage: filters.stage.filter(s => s !== stage) });
-                    }
-                  }}
-                />
-                <span className="text-sm">{stage}</span>
-              </label>
-            ))}
-          </div>
-        </PopoverContent>
-      </Popover>
+      <FilterButton label="Étape" count={filters.stage.length}>
+        <div className="space-y-2">
+          {options.stages.map(stage => (
+            <label key={stage} className="flex items-center gap-2 cursor-pointer text-sm">
+              <Checkbox
+                checked={filters.stage.includes(stage)}
+                onCheckedChange={(checked) => {
+                  if (checked) onFiltersChange({ ...filters, stage: [...filters.stage, stage] });
+                  else onFiltersChange({ ...filters, stage: filters.stage.filter(s => s !== stage) });
+                }}
+              />
+              {stage}
+            </label>
+          ))}
+        </div>
+      </FilterButton>
 
       {/* Source Filter */}
-      <Popover>
-        <PopoverTrigger asChild>
-          <Button variant="outline" size="sm" className="gap-2">
-            Source
-            {filters.source.length > 0 && (
-              <Badge variant="secondary" className="ml-1 px-1.5 py-0 text-xs">
-                {filters.source.length}
-              </Badge>
-            )}
-          </Button>
-        </PopoverTrigger>
-        <PopoverContent className="w-56 p-3" align="start">
-          <div className="space-y-2">
-            {options.sources.map(source => (
-              <label key={source} className="flex items-center gap-2 cursor-pointer">
-                <Checkbox
-                  checked={filters.source.includes(source)}
-                  onCheckedChange={(checked) => {
-                    if (checked) {
-                      onFiltersChange({ ...filters, source: [...filters.source, source] });
-                    } else {
-                      onFiltersChange({ ...filters, source: filters.source.filter(s => s !== source) });
-                    }
-                  }}
-                />
-                <span className="text-sm">{SOURCE_LABELS[source] || source}</span>
-              </label>
-            ))}
-          </div>
-        </PopoverContent>
-      </Popover>
+      <FilterButton label="Source" count={filters.source.length}>
+        <div className="space-y-2">
+          {options.sources.map(source => (
+            <label key={source} className="flex items-center gap-2 cursor-pointer text-sm">
+              <Checkbox
+                checked={filters.source.includes(source)}
+                onCheckedChange={(checked) => {
+                  if (checked) onFiltersChange({ ...filters, source: [...filters.source, source] });
+                  else onFiltersChange({ ...filters, source: filters.source.filter(s => s !== source) });
+                }}
+              />
+              {SOURCE_LABELS[source] || source}
+            </label>
+          ))}
+        </div>
+      </FilterButton>
 
       {/* Job Filter */}
       {options.jobs.length > 0 && (
-        <Popover>
-          <PopoverTrigger asChild>
-            <Button variant="outline" size="sm" className="gap-2">
-              Poste
-              {filters.job.length > 0 && (
-                <Badge variant="secondary" className="ml-1 px-1.5 py-0 text-xs">
-                  {filters.job.length}
-                </Badge>
-              )}
-            </Button>
-          </PopoverTrigger>
-          <PopoverContent className="w-72 p-3" align="start">
-            <div className="space-y-2 max-h-64 overflow-y-auto">
-              {options.jobs.map(job => (
-                <label key={job.id} className="flex items-center gap-2 cursor-pointer">
-                  <Checkbox
-                    checked={filters.job.includes(job.id)}
-                    onCheckedChange={(checked) => {
-                      if (checked) {
-                        onFiltersChange({ ...filters, job: [...filters.job, job.id] });
-                      } else {
-                        onFiltersChange({ ...filters, job: filters.job.filter(j => j !== job.id) });
-                      }
-                    }}
-                  />
-                  <span className="text-sm truncate">{job.title}</span>
-                </label>
-              ))}
-            </div>
-          </PopoverContent>
-        </Popover>
+        <FilterButton label="Poste" count={filters.job.length}>
+          <div className="space-y-2 max-h-64 overflow-y-auto">
+            {options.jobs.map(job => (
+              <label key={job.id} className="flex items-center gap-2 cursor-pointer text-sm">
+                <Checkbox
+                  checked={filters.job.includes(job.id)}
+                  onCheckedChange={(checked) => {
+                    if (checked) onFiltersChange({ ...filters, job: [...filters.job, job.id] });
+                    else onFiltersChange({ ...filters, job: filters.job.filter(j => j !== job.id) });
+                  }}
+                />
+                <span className="truncate">{job.title}</span>
+              </label>
+            ))}
+          </div>
+        </FilterButton>
       )}
 
       {/* Reminder filter */}
-      <Button
-        variant={filters.hasReminder ? 'default' : 'outline'}
-        size="sm"
+      <button
         onClick={() => onFiltersChange({ ...filters, hasReminder: !filters.hasReminder })}
-        className="gap-2"
+        className={cn(
+          "relative overflow-hidden h-[34px] px-4 flex items-center gap-2 border border-l-0 border-foreground text-foreground text-[11px] font-medium uppercase tracking-wider group",
+          filters.hasReminder && "bg-brutal-accent"
+        )}
       >
-        <Bell className="w-4 h-4" />
-        Avec rappel
-      </Button>
+        <Bell className="w-3.5 h-3.5 relative z-10" />
+        <span className="relative z-10">Rappels</span>
+        {!filters.hasReminder && (
+          <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
+        )}
+      </button>
 
       {/* Clear all */}
       {activeFiltersCount > 0 && (
-        <Button variant="ghost" size="sm" onClick={clearAllFilters} className="gap-1 text-red-600">
-          <X className="w-4 h-4" />
-          Effacer ({activeFiltersCount})
-        </Button>
+        <button
+          onClick={clearAllFilters}
+          className="relative overflow-hidden h-[34px] px-4 flex items-center gap-2 border border-l-0 border-foreground text-destructive text-[11px] font-medium uppercase tracking-wider group ml-0"
+        >
+          <X className="w-3.5 h-3.5 relative z-10" />
+          <span className="relative z-10">Effacer ({activeFiltersCount})</span>
+        </button>
       )}
     </div>
   );

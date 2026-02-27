@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { useDroppable } from '@dnd-kit/core';
 import { ATSCandidate } from '@/pages/ATS';
 import { ATSDraggableCard } from './ATSDraggableCard';
-import { Button } from '@/components/ui/button';
 import { ChevronDown, ChevronUp } from 'lucide-react';
 
 interface ATSDroppableColumnProps {
@@ -27,38 +26,26 @@ export const ATSDroppableColumn: React.FC<ATSDroppableColumnProps> = ({
 
   const { setNodeRef } = useDroppable({
     id,
-    data: {
-      type: 'column',
-      stageKey: id,
-    },
+    data: { type: 'column', stageKey: id },
   });
 
   const visibleCandidates = candidates.slice(0, visibleCount);
   const hasMore = candidates.length > visibleCount;
   const canCollapse = visibleCount > INITIAL_VISIBLE;
 
-  const handleLoadMore = () => {
-    setVisibleCount(prev => Math.min(prev + LOAD_MORE_COUNT, candidates.length));
-  };
-
-  const handleCollapse = () => {
-    setVisibleCount(INITIAL_VISIBLE);
-  };
-
   return (
     <div
       ref={setNodeRef}
       className={`
-        w-[300px] flex-shrink-0 rounded-xl border-2 transition-all duration-200
-        ${stage.color}
-        ${isOver ? 'ring-2 ring-primary ring-offset-2 scale-[1.02]' : ''}
+        w-[280px] flex-shrink-0 border border-foreground/30 bg-background transition-all duration-200
+        ${isOver ? 'border-foreground shadow-[4px_4px_0px_0px_hsl(var(--brutal-accent))] scale-[1.01]' : ''}
       `}
     >
       {/* Header */}
-      <div className="p-3 border-b border-[#1A1A1A]/10 bg-white/50 rounded-t-xl">
+      <div className="p-3 border-b border-foreground/20 bg-foreground/5">
         <div className="flex items-center justify-between">
-          <h3 className="font-semibold text-[#1A1A1A]">{stage.label}</h3>
-          <span className="text-sm text-[#1A1A1A]/60 bg-white px-2 py-0.5 rounded-full">
+          <h3 className="font-medium text-foreground text-[12px] uppercase tracking-wider">{stage.label}</h3>
+          <span className="text-[11px] text-foreground bg-foreground/10 px-2 py-0.5 font-bold">
             {candidates.length}
           </span>
         </div>
@@ -67,7 +54,7 @@ export const ATSDroppableColumn: React.FC<ATSDroppableColumnProps> = ({
       {/* Cards */}
       <div className="p-2 space-y-2 min-h-[200px] max-h-[600px] overflow-y-auto">
         {visibleCandidates.length === 0 ? (
-          <div className="text-center py-8 text-[#1A1A1A]/40 text-sm">
+          <div className="text-center py-8 text-muted-foreground text-[11px] uppercase tracking-wider">
             Aucun candidat
           </div>
         ) : (
@@ -84,29 +71,25 @@ export const ATSDroppableColumn: React.FC<ATSDroppableColumnProps> = ({
 
       {/* Load more / Collapse */}
       {(hasMore || canCollapse) && (
-        <div className="p-2 border-t border-[#1A1A1A]/10 bg-white/50 rounded-b-xl">
-          <div className="flex gap-2">
+        <div className="p-2 border-t border-foreground/20 bg-foreground/5">
+          <div className="flex gap-0">
             {hasMore && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={handleLoadMore}
-                className="flex-1 text-xs"
+              <button
+                onClick={() => setVisibleCount(prev => Math.min(prev + LOAD_MORE_COUNT, candidates.length))}
+                className="flex-1 flex items-center justify-center gap-1 h-[28px] text-[10px] font-medium uppercase tracking-wider text-foreground border border-foreground/30 hover:bg-brutal-accent transition-colors"
               >
-                <ChevronDown className="w-3 h-3 mr-1" />
+                <ChevronDown className="w-3 h-3" />
                 Voir plus ({candidates.length - visibleCount})
-              </Button>
+              </button>
             )}
             {canCollapse && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={handleCollapse}
-                className="flex-1 text-xs"
+              <button
+                onClick={() => setVisibleCount(INITIAL_VISIBLE)}
+                className={`flex-1 flex items-center justify-center gap-1 h-[28px] text-[10px] font-medium uppercase tracking-wider text-foreground border border-foreground/30 hover:bg-brutal-accent transition-colors ${hasMore ? 'border-l-0' : ''}`}
               >
-                <ChevronUp className="w-3 h-3 mr-1" />
+                <ChevronUp className="w-3 h-3" />
                 Réduire
-              </Button>
+              </button>
             )}
           </div>
         </div>
