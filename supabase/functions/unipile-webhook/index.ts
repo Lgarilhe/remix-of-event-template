@@ -243,13 +243,13 @@ async function handleNewMessage(supabase: SupabaseClient, payload: WebhookPayloa
   // LinkedIn IDs can come in different formats: "AEMAABl08fo...", "ACo...", "urn:li:member:..."
   let enrollments: SequenceEnrollment[] = [];
   
-  // Try exact match first
+  // Try exact match first (profile_id or resolved_profile_id)
   const { data: exactMatch, error: exactError } = await supabase
     .from('sequence_enrollments')
     .select('*')
     .eq('account_id', account_id)
-    .eq('profile_id', senderId)
-    .eq('status', 'active');
+    .eq('status', 'active')
+    .or(`profile_id.eq.${senderId},resolved_profile_id.eq.${senderId}`);
 
   if (exactError) {
     console.error('[unipile-webhook] Error fetching enrollments (exact):', exactError);
@@ -260,7 +260,6 @@ async function handleNewMessage(supabase: SupabaseClient, payload: WebhookPayloa
     enrollments = exactMatch as SequenceEnrollment[];
   } else {
     // Try matching by profile URL containing the sender ID (for cases where format differs)
-    // This is more robust as profile_url is normalized
     const { data: urlMatch, error: urlError } = await supabase
       .from('sequence_enrollments')
       .select('*')

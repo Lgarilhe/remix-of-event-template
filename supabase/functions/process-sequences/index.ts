@@ -330,7 +330,7 @@ async function handleCheckReplies(supabase: any) {
     // Check for replies after the last message was sent (not after enrollment creation)
     const afterDate = lastSentExec.executed_at;
 
-    if (await checkForReplyAfterDate(enrollment.account_id, enrollment.profile_id, afterDate, enrollment.profile_url)) {
+    if (await checkForReplyAfterDate(enrollment.account_id, enrollment.resolved_profile_id || enrollment.profile_id, afterDate, enrollment.profile_url, enrollment.id, supabase)) {
       await supabase.from('sequence_enrollments').update({ status: 'replied', replied_at: new Date().toISOString() }).eq('id', enrollment.id);
       await supabase.from('sequence_step_executions').update({ status: 'cancelled', skip_reason: 'Reply detected' }).eq('enrollment_id', enrollment.id).eq('status', 'scheduled');
       await logAnalytics(supabase, enrollment.sequence_id, 'replies_received');
@@ -500,7 +500,7 @@ async function getProfileInfo(accountId: string, profileId: string, enrollmentPr
   }
 }
 
-async function resolveProfileIdForChat(accountId: string, profileId: string, profileUrl?: string | null): Promise<string> {
+async function resolveProfileIdForChat(accountId: string, profileId: string, profileUrl?: string | null, enrollmentId?: string, supabase?: any): Promise<string> {
   // If it's a recruiter ID (AEM/AE), resolve to a slug or classic ID for chat API
   if (!profileId.startsWith('AE')) return profileId;
   
@@ -532,6 +532,10 @@ async function resolveProfileIdForChat(accountId: string, profileId: string, pro
         const slugData = await slugRes.json();
         if (slugData.provider_id && !slugData.provider_id.startsWith('AE')) {
           console.log(`[resolveProfileIdForChat] Resolved ${profileId} -> ${slugData.provider_id} via slug ${slug}`);
+          // Persist resolved ID for future webhook matching
+          if (enrollmentId && supabase) {
+            await supabase.from('sequence_enrollments').update({ resolved_profile_id: slugData.provider_id }).eq('id', enrollmentId);
+          }
           return slugData.provider_id;
         }
       }
@@ -546,12 +550,12 @@ async function resolveProfileIdForChat(accountId: string, profileId: string, pro
   return profileId;
 }
 
-async function checkForReplyAfterDate(accountId: string, profileId: string, afterDate: string, profileUrl?: string | null): Promise<boolean> {
+async function checkForReplyAfterDate(accountId: string, profileId: string, afterDate: string, profileUrl?: string | null, enrollmentId?: string, supabase?: any): Promise<boolean> {
   try {
     const enrollmentTime = new Date(afterDate).getTime();
     
     // Resolve recruiter IDs to a format the chat API understands
-    const resolvedId = await resolveProfileIdForChat(accountId, profileId, profileUrl);
+    const resolvedId = await resolveProfileIdForChat(accountId, profileId, profileUrl, enrollmentId, supabase);
     
     const chatsRes = await fetch(`${UNIPILE_DSN}/api/v1/chat_attendees/${resolvedId}/chats?account_id=${accountId}`, { headers: { 'X-API-KEY': UNIPILE_API_KEY! } });
     if (!chatsRes.ok) {
@@ -901,6 +905,12 @@ async function executeStepAction(actionType: string, enrollment: Record<string, 
 
           if (!resolved) {
             console.warn(`[connection_request] Could not resolve classic ID for ${profileId}, attempting with original ID`);
+          }
+
+          // Save resolved classic ID for future reply matching (webhook + checkReplies)
+          if (resolved && providerId !== profileId) {
+            await supabase.from('sequence_enrollments').update({ resolved_profile_id: providerId }).eq('id', enrollment.id);
+            console.log(`[connection_request] Saved resolved_profile_id: ${providerId}`);
           }
         }
         const r = await fetch(`${UNIPILE_DSN}/api/v1/users/invite`, { method: 'POST', headers: { 'X-API-KEY': UNIPILE_API_KEY!, 'Content-Type': 'application/json' }, body: JSON.stringify({ account_id: accountId, provider_id: providerId }) });
