@@ -1182,6 +1182,113 @@ export type Database = {
         }
         Relationships: []
       }
+      qualification_sessions: {
+        Row: {
+          calendly_event_id: string | null
+          calendly_invitee_id: string | null
+          candidate_headline: string | null
+          candidate_linkedin_url: string | null
+          candidate_name: string | null
+          candidate_profile_id: string | null
+          client_name: string | null
+          created_at: string
+          created_by: string
+          event_end_at: string | null
+          event_location: string | null
+          event_name: string | null
+          event_start_at: string | null
+          id: string
+          invitee_email: string | null
+          job_criteria: Json | null
+          job_id: string | null
+          job_title: string | null
+          notes: string | null
+          notion_candidate_id: string | null
+          notion_shortlist_id: string | null
+          notion_synced_at: string | null
+          project_id: string | null
+          scoring_summary: Json | null
+          status: string
+          updated_at: string
+          verdict: string | null
+          verdict_at: string | null
+          verdict_by: string | null
+          verdict_notes: string | null
+        }
+        Insert: {
+          calendly_event_id?: string | null
+          calendly_invitee_id?: string | null
+          candidate_headline?: string | null
+          candidate_linkedin_url?: string | null
+          candidate_name?: string | null
+          candidate_profile_id?: string | null
+          client_name?: string | null
+          created_at?: string
+          created_by: string
+          event_end_at?: string | null
+          event_location?: string | null
+          event_name?: string | null
+          event_start_at?: string | null
+          id?: string
+          invitee_email?: string | null
+          job_criteria?: Json | null
+          job_id?: string | null
+          job_title?: string | null
+          notes?: string | null
+          notion_candidate_id?: string | null
+          notion_shortlist_id?: string | null
+          notion_synced_at?: string | null
+          project_id?: string | null
+          scoring_summary?: Json | null
+          status?: string
+          updated_at?: string
+          verdict?: string | null
+          verdict_at?: string | null
+          verdict_by?: string | null
+          verdict_notes?: string | null
+        }
+        Update: {
+          calendly_event_id?: string | null
+          calendly_invitee_id?: string | null
+          candidate_headline?: string | null
+          candidate_linkedin_url?: string | null
+          candidate_name?: string | null
+          candidate_profile_id?: string | null
+          client_name?: string | null
+          created_at?: string
+          created_by?: string
+          event_end_at?: string | null
+          event_location?: string | null
+          event_name?: string | null
+          event_start_at?: string | null
+          id?: string
+          invitee_email?: string | null
+          job_criteria?: Json | null
+          job_id?: string | null
+          job_title?: string | null
+          notes?: string | null
+          notion_candidate_id?: string | null
+          notion_shortlist_id?: string | null
+          notion_synced_at?: string | null
+          project_id?: string | null
+          scoring_summary?: Json | null
+          status?: string
+          updated_at?: string
+          verdict?: string | null
+          verdict_at?: string | null
+          verdict_by?: string | null
+          verdict_notes?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "qualification_sessions_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "sourcing_projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       saved_filter_presets: {
         Row: {
           created_at: string
