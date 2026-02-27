@@ -205,7 +205,7 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
 
   return (
     <Dialog open onOpenChange={onClose}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-hidden flex flex-col p-0 rounded-none border-foreground gap-0">
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-hidden flex flex-col p-0 rounded-none border-foreground gap-0 [&>button]:hidden">
         {/* Header */}
         <div className="p-6 pb-0">
           <div className="flex items-start justify-between">
@@ -295,7 +295,7 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
         </div>
 
         {/* Tab content */}
-        <div className="flex-1 overflow-hidden px-6 pt-4 pb-6">
+        <div className="flex-1 min-h-0 overflow-hidden px-6 pt-4 pb-6">
           {activeTab === 'info' && (
             <ScrollArea className="h-full">
               <div className="space-y-4 pr-4">
