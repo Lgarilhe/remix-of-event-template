@@ -73,60 +73,19 @@ function getActionDelay(actionType: string): number {
   }
 }
 
-const LOCK_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes — consider stale after this
-
 async function acquireLock(supabase: any, runId: string): Promise<boolean> {
-  // Two-step lock: read then conditionally update (avoids PostgREST .or() + .is.null issues)
-  const staleThreshold = new Date(Date.now() - LOCK_TIMEOUT_MS).toISOString();
-
-  const { data: current, error: readErr } = await supabase
-    .from('sequence_processing_lock')
-    .select('locked_at, locked_by')
-    .eq('id', 'process')
-    .single();
-
-  if (readErr) {
-    console.error(`[process] Lock read error:`, readErr);
+  const { data, error } = await supabase.rpc('acquire_sequence_lock', { p_run_id: runId, p_ttl_minutes: 10 });
+  if (error) {
+    console.error(`[process] Lock RPC error:`, error);
     return false;
   }
-
-  const isFree = !current.locked_at;
-  const isStale = current.locked_at && current.locked_at < staleThreshold;
-
-  if (!isFree && !isStale) {
-    console.log(`[process] Lock held by ${current.locked_by} since ${current.locked_at}, skipping (runId=${runId})`);
-    return false;
-  }
-
-  // Try to acquire — use the previous locked_by as guard against races
-  const nowIso = new Date().toISOString();
-  let query = supabase
-    .from('sequence_processing_lock')
-    .update({ locked_at: nowIso, locked_by: runId })
-    .eq('id', 'process');
-
-  if (isFree) {
-    query = query.is('locked_at', null);
-  } else {
-    query = query.eq('locked_by', current.locked_by);
-  }
-
-  const { data, error } = await query.select().maybeSingle();
-
-  if (error || !data) {
-    console.log(`[process] Lock race lost, skipping (runId=${runId})`);
-    return false;
-  }
-
-  console.log(`[process] Lock acquired (runId=${runId})`);
-  return true;
+  const acquired = !!data;
+  console.log(`[process] Lock ${acquired ? 'acquired' : 'held by another run'} (runId=${runId})`);
+  return acquired;
 }
 
-async function releaseLock(supabase: any) {
-  await supabase
-    .from('sequence_processing_lock')
-    .update({ locked_at: null, locked_by: null })
-    .eq('id', 'process');
+async function releaseLock(supabase: any, runId: string) {
+  await supabase.rpc('release_sequence_lock', { p_run_id: runId });
 }
 
 async function handleProcess(supabase: any, force = false) {
@@ -295,7 +254,7 @@ async function handleProcess(supabase: any, force = false) {
 
     return new Response(JSON.stringify({ success: true, results }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
   } finally {
-    await releaseLock(supabase);
+    await releaseLock(supabase, runId);
   }
 }
 

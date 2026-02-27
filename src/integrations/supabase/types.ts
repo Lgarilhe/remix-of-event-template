@@ -1813,6 +1813,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      acquire_sequence_lock: {
+        Args: { p_run_id: string; p_ttl_minutes?: number }
+        Returns: boolean
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
@@ -1820,6 +1824,7 @@ export type Database = {
         }
         Returns: boolean
       }
+      release_sequence_lock: { Args: { p_run_id: string }; Returns: undefined }
     }
     Enums: {
       app_role: "admin" | "user"
