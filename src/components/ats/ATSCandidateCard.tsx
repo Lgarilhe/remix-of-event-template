@@ -1,7 +1,7 @@
 import React from 'react';
 import { ATSCandidate } from '@/pages/ATS';
+import linkedinLogo from '@/assets/linkedin-logo.png';
 import { 
-  Linkedin, 
   Mail, 
   StickyNote, 
   Bell, 
@@ -127,7 +127,7 @@ export const ATSCandidateCard: React.FC<ATSCandidateCardProps> = ({
       <div className="flex items-center justify-between text-[10px] text-muted-foreground">
         <div className="flex items-center gap-2">
           {candidate.linkedin && (
-            <Linkedin className="w-3 h-3 text-[#0077B5]" />
+            <img src={linkedinLogo} alt="LinkedIn" className="w-3 h-3 object-contain" />
           )}
           {candidate.email && (
             <Mail className="w-3 h-3" />
