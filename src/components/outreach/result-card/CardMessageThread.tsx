@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { MessageSquare, Loader2, Send } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import { invokeUnipile } from '@/lib/invokeUnipile';
 import { toast } from 'sonner';
 import { ChatMessage } from './types';
 
@@ -48,7 +49,7 @@ export const CardMessageThread: React.FC<CardMessageThreadProps> = ({
     setNoConversation(false);
 
     try {
-      const chatsResponse = await supabase.functions.invoke('unipile-search', {
+      const { data: chatsData } = await invokeUnipile({
         body: {
           action: 'get_chats',
           account_id: accountId,
@@ -57,18 +58,16 @@ export const CardMessageThread: React.FC<CardMessageThreadProps> = ({
         },
       });
 
-      if (chatsResponse.error) throw chatsResponse.error;
-
-      if (!chatsResponse.data?.success || !chatsResponse.data?.chats?.length) {
+      if (!chatsData?.success || !(chatsData?.chats as any[])?.length) {
         setNoConversation(true);
         setMessagesLoaded(true);
         return;
       }
 
-      const foundChat = chatsResponse.data.chats[0];
+      const foundChat = (chatsData.chats as any[])[0];
       setChatId(foundChat.id);
 
-      const messagesResponse = await supabase.functions.invoke('unipile-search', {
+      const { data: msgsData } = await invokeUnipile({
         body: {
           action: 'get_messages',
           account_id: accountId,
@@ -77,10 +76,8 @@ export const CardMessageThread: React.FC<CardMessageThreadProps> = ({
         },
       });
 
-      if (messagesResponse.error) throw messagesResponse.error;
-
-      if (messagesResponse.data?.success && messagesResponse.data?.messages) {
-        setMessages(messagesResponse.data.messages);
+      if (msgsData?.success && msgsData?.messages) {
+        setMessages(msgsData.messages as ChatMessage[]);
       }
 
       setMessagesLoaded(true);
@@ -97,7 +94,7 @@ export const CardMessageThread: React.FC<CardMessageThreadProps> = ({
 
     setIsSending(true);
     try {
-      const response = await supabase.functions.invoke('unipile-search', {
+      const { data } = await invokeUnipile({
         body: {
           action: 'send_message',
           account_id: accountId,
@@ -106,11 +103,10 @@ export const CardMessageThread: React.FC<CardMessageThreadProps> = ({
         },
       });
 
-      if (response.error) throw response.error;
-      if (!response.data?.success) throw new Error(response.data?.error || "Erreur lors de l'envoi");
+      if (!data?.success) throw new Error(data?.error as string || "Erreur lors de l'envoi");
 
       const newMessage: ChatMessage = {
-        id: response.data.message?.id || Date.now().toString(),
+        id: (data.message as any)?.id || Date.now().toString(),
         text: replyText.trim(),
         is_sender: true,
         timestamp: new Date().toISOString(),

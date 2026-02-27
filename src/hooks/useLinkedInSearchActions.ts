@@ -1,5 +1,6 @@
 import { useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { invokeUnipile } from '@/lib/invokeUnipile';
 import { LinkedInFiltersState, LinkedInProfile, LinkedInApiType } from '@/components/outreach/types';
 import { filterByCalculatedExperience } from '@/components/outreach/calculateExperience';
 import { Job } from '@/types/jobs';
@@ -415,21 +416,20 @@ export function useLinkedInSearchActions(
           console.log('[LinkedInSearch] Search params:', params);
         }
 
-        const response = await supabase.functions.invoke('unipile-search', {
+        const { data } = await invokeUnipile({
           body: params,
         });
 
-        if (response.error) throw response.error;
-        if (!response.data?.success) {
-          const apiError = new Error(response.data?.error || 'Erreur lors de la recherche');
-          (apiError as Error & { errorType?: string; retryable?: boolean }).errorType = response.data?.errorType;
-          (apiError as Error & { errorType?: string; retryable?: boolean }).retryable = response.data?.retryable;
+        if (!data?.success) {
+          const apiError = new Error(data?.error as string || 'Erreur lors de la recherche');
+          (apiError as Error & { errorType?: string; retryable?: boolean }).errorType = data?.errorType as string;
+          (apiError as Error & { errorType?: string; retryable?: boolean }).retryable = data?.retryable as boolean;
           throw apiError;
         }
 
-        const batch: LinkedInProfile[] = response.data.results || [];
-        const batchCursor: string | null = response.data.cursor || null;
-        const fetchedTotal: number | null = response.data.total || null;
+        const batch: LinkedInProfile[] = (data.results as LinkedInProfile[]) || [];
+        const batchCursor: string | null = (data.cursor as string) || null;
+        const fetchedTotal: number | null = (data.total as number) || null;
 
         if (fetchedTotal !== null) latestTotal = fetchedTotal;
         quota.recordAction('searchResultsFetched', batch.length);

@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { invokeUnipile } from '@/lib/invokeUnipile';
 import { toast } from 'sonner';
 import { useChatCategories } from './useChatCategories';
 import {
@@ -297,7 +298,7 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
 
     setLoadingChats(true);
     try {
-      const response = await supabase.functions.invoke('unipile-search', {
+      const { data } = await invokeUnipile({
         body: { 
           action: 'get_chats', 
           account_id: selectedAccount,
@@ -305,10 +306,9 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
         },
       });
 
-      if (response.error) throw response.error;
-      if (!response.data?.success) throw new Error(response.data?.error);
+      if (!data?.success) throw new Error(data?.error as string);
 
-      const fetchedChats = response.data.chats || [];
+      const fetchedChats = data.chats as Chat[] || [];
       setChats(fetchedChats);
       setFilteredChats(fetchedChats);
       
@@ -339,7 +339,7 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
 
     setLoadingMessages(true);
     try {
-      const response = await supabase.functions.invoke('unipile-search', {
+      const { data } = await invokeUnipile({
         body: { 
           action: 'get_messages', 
           account_id: selectedAccount,
@@ -349,10 +349,9 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
         },
       });
 
-      if (response.error) throw response.error;
-      if (!response.data?.success) throw new Error(response.data?.error);
+      if (!data?.success) throw new Error(data?.error as string);
 
-      const newMessages = response.data.messages || [];
+      const newMessages = (data.messages as Message[]) || [];
       
       if (loadMore) {
         setMessages(prev => [...newMessages, ...prev]);
@@ -360,8 +359,8 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
         setMessages(newMessages.reverse());
       }
       
-      setCursor(response.data.cursor);
-      setHasMore(!!response.data.cursor);
+      setCursor(data.cursor as string | null);
+      setHasMore(!!data.cursor);
     } catch (error) {
       console.error('Error fetching messages:', error);
       toast.error('Erreur lors du chargement des messages');
@@ -458,7 +457,7 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
 
     setSending(true);
     try {
-      const response = await supabase.functions.invoke('unipile-search', {
+      const { data } = await invokeUnipile({
         body: { 
           action: 'send_message', 
           account_id: selectedAccount,
@@ -467,8 +466,7 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
         },
       });
 
-      if (response.error) throw response.error;
-      if (!response.data?.success) throw new Error(response.data?.error);
+      if (!data?.success) throw new Error(data?.error as string);
 
       const sentMessage: Message = {
         id: Date.now().toString(),
@@ -502,7 +500,7 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
     
     setSending(true);
     try {
-      const response = await supabase.functions.invoke('unipile-search', {
+      const { data } = await invokeUnipile({
         body: { 
           action: 'send_message', 
           account_id: selectedAccount,
@@ -511,8 +509,7 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
         },
       });
 
-      if (response.error) throw response.error;
-      if (!response.data?.success) throw new Error(response.data?.error);
+      if (!data?.success) throw new Error(data?.error as string);
 
       const sentMessage: Message = {
         id: Date.now().toString(),
@@ -835,15 +832,15 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
     );
 
     // Fire-and-forget: tell Unipile to mark the chat as read server-side
-    supabase.functions.invoke('unipile-search', {
+    invokeUnipile({
       body: {
         action: 'mark_as_read',
         account_id: selectedAccount,
         chat_id: chatId,
       },
-    }).then(res => {
-      if (res.error || !res.data?.success) {
-        console.warn('Failed to mark chat as read via API:', res.error || res.data?.error);
+    }).then(({ data }) => {
+      if (!data?.success) {
+        console.warn('Failed to mark chat as read via API:', data?.error);
       }
     }).catch(err => {
       console.warn('Error marking chat as read:', err);
@@ -929,7 +926,7 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
     const poll = async () => {
       if (!active) return;
       try {
-        const response = await supabase.functions.invoke('unipile-search', {
+        const { data } = await invokeUnipile({
           body: {
             action: 'get_messages',
             account_id: selectedAccount,
@@ -939,9 +936,9 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
         });
 
         if (!active) return;
-        if (response.error || !response.data?.success) return;
+        if (!data?.success) return;
 
-        const freshMessages: Message[] = (response.data.messages || []).reverse();
+        const freshMessages: Message[] = ((data.messages as Message[]) || []).reverse();
         
         setMessages(prev => {
           // Only update if there are genuinely new messages

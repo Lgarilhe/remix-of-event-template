@@ -8,6 +8,7 @@ import { toast } from 'sonner';
 import ReactMarkdown from 'react-markdown';
 import { LinkedInFiltersState } from './types';
 import { supabase } from '@/integrations/supabase/client';
+import { invokeUnipile } from '@/lib/invokeUnipile';
 import { Job } from '@/types/jobs';
 
 interface Message {
@@ -271,7 +272,7 @@ export const FilterAssistantModal: React.FC<FilterAssistantModalProps> = ({
           searchTerm = 'École des Ponts ParisTech';
         }
 
-        const { data, error } = await supabase.functions.invoke('unipile-search', {
+        const { data } = await invokeUnipile({
           body: {
             action: 'get_parameters',
             account_id: accountId,
@@ -281,7 +282,7 @@ export const FilterAssistantModal: React.FC<FilterAssistantModalProps> = ({
           },
         });
 
-        if (!error && data?.items?.length > 0) {
+        if (data?.success && (data.items as any[])?.length > 0) {
           // Filter out non-French schools
           const frenchSchools = data.items.filter((it: { title: string }) => {
             const title = it.title.toLowerCase();

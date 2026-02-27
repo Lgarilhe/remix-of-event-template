@@ -1,5 +1,6 @@
 import { useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { invokeUnipile } from '@/lib/invokeUnipile';
 import { LinkedInFiltersState, LinkedInApiType } from '@/components/outreach/types';
 import { GeneratedFilters } from '@/components/outreach/JobSelector';
 import { toast } from 'sonner';
@@ -65,7 +66,7 @@ export function useAutoFillFilters({
         try {
           if (filtersRef.current.location.length > 0) return;
 
-          const { data, error } = await supabase.functions.invoke('unipile-search', {
+          const { data } = await invokeUnipile({
             body: {
               action: 'get_parameters',
               account_id: selectedAccount,
@@ -75,8 +76,7 @@ export function useAutoFillFilters({
             },
           });
 
-          if (error) throw error;
-          if (!data?.success || !Array.isArray(data?.items) || data.items.length === 0) {
+          if (!data?.success || !Array.isArray(data?.items) || (data.items as any[]).length === 0) {
             console.warn('[AutoFill] Location could not be resolved:', locationKeyword);
             return;
           }
