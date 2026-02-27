@@ -401,7 +401,13 @@ function isLikelyRealFirstName(name: string): boolean {
   if (/\b(dispo|opentowork|open.to.work|recrut|cherche|search|available)\b/i.test(t)) return false;
   if (/\.\s*$/.test(t)) return false;
   if (/^(.)\1+$/i.test(t)) return false;
-  if (t.length > 20) return false;
+  if (t.length > 30) return false;
+  // Compound names: validate each part
+  if (t.includes(' ')) {
+    const parts = t.split(/\s+/);
+    if (parts.length > 3) return false;
+    if (parts.some(p => p.length < 2)) return false;
+  }
   return true;
 }
 

@@ -73,7 +73,7 @@ function isLikelyRealFirstName(name: string): boolean {
   if (!name || name.trim().length === 0) return false;
   const trimmed = name.trim();
   
-  // Too short (single char or 2 chars) — likely truncated
+  // Too short (single char) — likely truncated
   if (trimmed.length < 2) return false;
   
   // Contains emojis or special unicode symbols
@@ -82,7 +82,7 @@ function isLikelyRealFirstName(name: string): boolean {
   // Contains numbers
   if (/\d/.test(trimmed)) return false;
   
-  // Contains special characters (except accents, hyphens, apostrophes)
+  // Contains special characters (except accents, hyphens, apostrophes, spaces)
   if (/[^a-zA-ZÀ-ÿ\s'\-]/.test(trimmed)) return false;
   
   // ALL CAPS and longer than 2 chars (likely a gimmick like "RECRUTEUR" or "DISPO")
@@ -102,8 +102,16 @@ function isLikelyRealFirstName(name: string): boolean {
   // Single repeated character (like "Aaa" or "Xxx")
   if (/^(.)\1+$/i.test(trimmed)) return false;
   
-  // Very long "first name" (>20 chars) — likely full name or garbage
-  if (trimmed.length > 20) return false;
+  // Very long "first name" (>30 chars) — likely full name or garbage
+  // Raised from 20 to support compound first names like "Jean Pierre" or "Marie Claire"
+  if (trimmed.length > 30) return false;
+
+  // For compound names with spaces, validate each part is at least 2 chars
+  if (trimmed.includes(' ')) {
+    const parts = trimmed.split(/\s+/);
+    if (parts.length > 3) return false; // More than 3 parts is suspicious
+    if (parts.some(p => p.length < 2)) return false; // Each part must be ≥ 2 chars
+  }
 
   return true;
 }
