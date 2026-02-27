@@ -899,6 +899,10 @@ export type Database = {
           id: string
           job_id: string
           linkedin_profile_url: string | null
+          notion_candidate_id: string | null
+          notion_shortlist_id: string | null
+          notion_synced_at: string | null
+          pipeline_stage: string | null
           project_id: string | null
           recommendation: string | null
           score: number | null
@@ -916,6 +920,10 @@ export type Database = {
           id?: string
           job_id: string
           linkedin_profile_url?: string | null
+          notion_candidate_id?: string | null
+          notion_shortlist_id?: string | null
+          notion_synced_at?: string | null
+          pipeline_stage?: string | null
           project_id?: string | null
           recommendation?: string | null
           score?: number | null
@@ -933,6 +941,10 @@ export type Database = {
           id?: string
           job_id?: string
           linkedin_profile_url?: string | null
+          notion_candidate_id?: string | null
+          notion_shortlist_id?: string | null
+          notion_synced_at?: string | null
+          pipeline_stage?: string | null
           project_id?: string | null
           recommendation?: string | null
           score?: number | null
