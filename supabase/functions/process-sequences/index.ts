@@ -76,19 +76,45 @@ function getActionDelay(actionType: string): number {
 const LOCK_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes — consider stale after this
 
 async function acquireLock(supabase: any, runId: string): Promise<boolean> {
-  // Atomic lock acquisition: only update if lock is free (null) or stale (> LOCK_TIMEOUT_MS)
+  // Two-step lock: read then conditionally update (avoids PostgREST .or() + .is.null issues)
   const staleThreshold = new Date(Date.now() - LOCK_TIMEOUT_MS).toISOString();
-  
-  const { data, error } = await supabase
+
+  const { data: current, error: readErr } = await supabase
     .from('sequence_processing_lock')
-    .update({ locked_at: new Date().toISOString(), locked_by: runId })
+    .select('locked_at, locked_by')
     .eq('id', 'process')
-    .or(`locked_at.is.null,locked_at.lt.${staleThreshold}`)
-    .select()
-    .maybeSingle();
+    .single();
+
+  if (readErr) {
+    console.error(`[process] Lock read error:`, readErr);
+    return false;
+  }
+
+  const isFree = !current.locked_at;
+  const isStale = current.locked_at && current.locked_at < staleThreshold;
+
+  if (!isFree && !isStale) {
+    console.log(`[process] Lock held by ${current.locked_by} since ${current.locked_at}, skipping (runId=${runId})`);
+    return false;
+  }
+
+  // Try to acquire — use the previous locked_by as guard against races
+  const nowIso = new Date().toISOString();
+  let query = supabase
+    .from('sequence_processing_lock')
+    .update({ locked_at: nowIso, locked_by: runId })
+    .eq('id', 'process');
+
+  if (isFree) {
+    query = query.is('locked_at', null);
+  } else {
+    query = query.eq('locked_by', current.locked_by);
+  }
+
+  const { data, error } = await query.select().maybeSingle();
 
   if (error || !data) {
-    console.log(`[process] Lock held by another instance, skipping (runId=${runId})`);
+    console.log(`[process] Lock race lost, skipping (runId=${runId})`);
     return false;
   }
 
