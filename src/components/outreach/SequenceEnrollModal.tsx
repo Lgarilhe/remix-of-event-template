@@ -84,7 +84,16 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
             continue;
           }
 
-          // Create enrollment
+          // Create enrollment with network_distance from search results
+          const networkDist = profile.network_distance;
+          const normalizedDistance = networkDist === 1 || networkDist === '1' || networkDist === 'DISTANCE_1'
+            ? 'FIRST_DEGREE'
+            : networkDist === 2 || networkDist === '2' || networkDist === 'DISTANCE_2'
+            ? 'SECOND_DEGREE'
+            : networkDist === 3 || networkDist === '3' || networkDist === 'DISTANCE_3'
+            ? 'THIRD_DEGREE'
+            : typeof networkDist === 'string' ? networkDist : null;
+
           const { data: enrollment, error: enrollError } = await supabase
             .from('sequence_enrollments')
             .insert({
@@ -100,6 +109,7 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
               user_timezone: userTimezone,
               current_step_order: 0,
               status: 'active',
+              network_distance: normalizedDistance,
             })
             .select()
             .single();
