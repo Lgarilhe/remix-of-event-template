@@ -9,7 +9,7 @@ const corsHeaders = {
 const NOTION_API_KEY = Deno.env.get("NOTION_API_KEY");
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-const POSTES_DATABASE_ID = "2787e1816fb481d2a0e8d4b2c1dd38f9";
+const POSTES_DATABASE_ID = Deno.env.get("NOTION_POSTES_DB_ID")!;
 
 const CACHE_KEY = "notion:schema:postes:v1";
 const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
