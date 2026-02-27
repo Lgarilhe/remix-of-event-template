@@ -1419,18 +1419,25 @@ Tu parles EN TANT QUE recruteur externe indépendant.
     const jobLocation = jobNotionData['Localisation'] || jobNotionData['Lieu'] || '';
     const jobRemote = jobNotionData['Remote'] || jobNotionData['Télétravail'] || '';
     const jobDescription = jobNotionData['Description'] || '';
-    const jobSalary = ''; // Never expose salary to AI — forbidden in outreach messages
     const jobMustHave = jobNotionData['Must-have'] || jobNotionData['Must Have'] || '';
+    const jobShouldHave = jobNotionData['Should-have'] || jobNotionData['Should Have'] || '';
+    const jobSeniority = jobNotionData['Séniorité'] || jobNotionData['Seniority'] || '';
+    const jobXpMin = jobNotionData['XP Min'] || jobNotionData['Expérience min'] || '';
+    const jobXpMax = jobNotionData['XP Max'] || jobNotionData['Expérience max'] || '';
+    const jobContractType = jobNotionData['Type de contrat'] || jobNotionData['Contract Type'] || '';
+    const jobSector = jobNotionData['Secteur'] || jobNotionData['Sector'] || '';
 
     const jobContextBlock = `POSTE À POURVOIR:
 - Titre: ${jobTitle}
-- Client: ${clientName}
+- Client: ${clientName}${jobSector ? ` (${jobSector})` : ''}
 - Accompagnement: ${jobAccompagnement.join(', ') || 'Non spécifié'} ${isRPO ? '(MODE RPO)' : '(MODE SUCCÈS)'}
-${jobSkills ? `- Compétences: ${jobSkills}` : ''}
+${jobSkills ? `- Compétences requises: ${jobSkills}` : ''}
+${jobSeniority ? `- Séniorité: ${jobSeniority}` : ''}${jobXpMin || jobXpMax ? ` | XP: ${jobXpMin || '?'}-${jobXpMax || '?'} ans` : ''}
 ${jobLocation ? `- Localisation: ${jobLocation}` : ''}
-${jobRemote ? `- Remote: ${jobRemote}` : ''}
-${jobSalary ? `- Rémunération: ${jobSalary}` : ''}
+${jobRemote ? `- Télétravail: ${jobRemote}` : ''}
+${jobContractType ? `- Type contrat: ${jobContractType}` : ''}
 ${jobMustHave ? `- Must-have: ${jobMustHave}` : ''}
+${jobShouldHave ? `- Should-have: ${jobShouldHave}` : ''}
 ${jobDescription ? `- Contexte mission: ${jobDescription.slice(0, 300)}` : ''}
 ${jobBodyContent ? `- Détails poste:\n${jobBodyContent.slice(0, 400)}` : ''}`;
 
@@ -1443,6 +1450,46 @@ ${jobBodyContent ? `- Détails poste:\n${jobBodyContent.slice(0, 400)}` : ''}`;
       const desc = e.description || '';
       return `  • ${title} @ ${company}${desc ? `: ${desc.slice(0, 120)}` : ''}`;
     }).join('\n') : '';
+
+    // Extract skills from profile
+    const profileSkills = (() => {
+      if (!profile?.skills) return '';
+      const skills = Array.isArray(profile.skills) 
+        // deno-lint-ignore no-explicit-any
+        ? profile.skills.map((s: any) => typeof s === 'string' ? s : s.name).filter(Boolean)
+        : [];
+      return skills.slice(0, 15).join(', ');
+    })();
+
+    // Extract education from profile
+    const profileEducation = (() => {
+      const edu = profile?.education || [];
+      if (!Array.isArray(edu) || edu.length === 0) return '';
+      // deno-lint-ignore no-explicit-any
+      return edu.slice(0, 2).map((e: any) => {
+        const school = e.school_name || e.school || '';
+        const degree = e.degree_name || e.degree || '';
+        const field = e.field_of_study || e.field || '';
+        return [school, degree, field].filter(Boolean).join(' - ');
+      }).join('; ');
+    })();
+
+    // Calculate years of experience
+    const profileYearsXP = (() => {
+      if (!Array.isArray(profileExperiences) || profileExperiences.length === 0) return 0;
+      let earliest = 9999;
+      // deno-lint-ignore no-explicit-any
+      for (const exp of profileExperiences as any[]) {
+        const startDate = exp.start_date || exp.starts_at;
+        if (startDate) {
+          const year = typeof startDate === 'string' 
+            ? parseInt(startDate.split('-')[0]) 
+            : (startDate.year || 9999);
+          if (year < earliest) earliest = year;
+        }
+      }
+      return earliest < 9999 ? new Date().getFullYear() - earliest : 0;
+    })();
 
     // Build candidate history section
     const historySection = (() => {
@@ -1521,6 +1568,10 @@ PROFIL CANDIDAT:
       return isLikelyRealFirstName(raw) ? raw : '(non fiable, ne pas utiliser)';
     })()}
 - Titre: ${profile?.headline || 'N/A'}
+${profile?.current_company_name ? `- Poste actuel: ${profile.headline?.split(' at ')[0] || profile.headline?.split(' chez ')[0] || ''} chez ${profile.current_company_name}` : ''}
+${profileSkills ? `- Compétences: ${profileSkills}` : ''}
+${profileYearsXP ? `- Années d'expérience: ~${profileYearsXP} ans` : ''}
+${profileEducation ? `- Formation: ${profileEducation}` : ''}
 ${profile?.summary ? `
 === SECTION "À PROPOS" DU CANDIDAT (SOURCE CLÉ DE PERSONNALISATION ET DE STYLE) ===
 "${(profile.summary as string).slice(0, 800)}"
@@ -1528,8 +1579,9 @@ ${profile?.summary ? `
 
 IMPORTANT - ANALYSE LE STYLE D'ÉCRITURE DU CANDIDAT:
 - Observe comment il écrit: phrases courtes ou longues ? Formel ou décontracté ?
+- Utilise-t-il des émojis, de l'humour, des expressions familières ?
+- Son ton est-il corporate, startup, créatif, technique ?
 - ADAPTE TON MESSAGE À SON STYLE pour créer une résonance naturelle` : ''}
-${profile?.current_company_name ? `- Entreprise actuelle: ${profile.current_company_name}` : ''}
 ${expContext ? `- Expériences récentes:\n${expContext}` : ''}
 ${postsSection}
 ${historySection}
@@ -1543,19 +1595,30 @@ ${prevMsgContext ? `MESSAGES PRÉCÉDENTS ENVOYÉS (ne te répète pas, apporte 
 
 === STRATÉGIE LINKEDIN 2025 – RÈGLES ABSOLUES ===
 
+📊 STATS CLÉS QUI GUIDENT TA RÉDACTION:
+- Les InMails personnalisés obtiennent +15% de taux de réponse vs envois en masse
+- Les messages entre 200 et 400 CARACTÈRES ont +16% de chances de réponse
+- 57% du trafic LinkedIn est mobile → sujet COURT obligatoire
+- Mentionner un ancien employeur commun = +27% de réponse
+
 1. PERSONNALISATION = FACTEUR N°1 (NON NÉGOCIABLE)
    Chaque message DOIT contenir au moins UN élément hyper-spécifique au candidat. Cherche dans cet ordre:
    a) PUBLICATIONS LINKEDIN RÉCENTES → "j'ai vu ton post sur [sujet]"
    a-bis) HISTORIQUE INTERNE → "on avait échangé pour [poste/client]"
    b) SECTION "À PROPOS" → passion technique, side project, motivation
-   c) PARCOURS PROFESSIONNEL → ancien employeur commun, transition intéressante
+      ⚠️ JAMAIS écrire "dans ton À propos", "tu mentionnes dans ton profil" → cite le contenu DIRECTEMENT
+   c) PARCOURS PROFESSIONNEL → ancien employeur commun (+27% réponse), transition intéressante
+   d) CONNEXIONS MUTUELLES → même école, même ex-employeur → warm intro
    ⚠️ SI rien de spécifique → utilise une QUESTION OUVERTE comme accroche
 
 2. LONGUEUR = COURT (CRITIQUE)
    200-400 CARACTÈRES pour le corps du message (hors signature). 3-5 phrases MAX.
+   Sur mobile (57% du trafic), un message court = entièrement visible sans scroller.
 
 3. CE QUE LE CANDIDAT Y GAGNE, PAS UN DESCRIPTIF DE POSTE
    "Tu définirais l'archi toi-même" > "Nous cherchons un architecte"
+   "Stack greenfield Go/K8s, pas de legacy" > "Stack: Go, Kubernetes"
+   MAX 1-2 éléments différenciants, intégrés naturellement. Pas de liste.
 
 4. CTA = SIMPLE ET NON-ENGAGEANT
    Exemples: "Ça te parlerait ?", "C'est un sujet pour toi ?", "T'aurais quelqu'un en tête ?"
@@ -1567,26 +1630,46 @@ ${prevMsgContext ? `MESSAGES PRÉCÉDENTS ENVOYÉS (ne te répète pas, apporte 
    PHRASE 2-3 = Ce que le candidat y gagne
    PHRASE 4 = CTA non-engageant
    Signature: "${senderName}"
+   IMPORTANT: \\n\\n entre les paragraphes. Jamais de bloc massif.
 
    ⛔ STRUCTURES D'ACCROCHE INTERDITES:
    - "Du [entreprise] au [entreprise]..." ❌
    - "Ton parcours de [X] à [Y]..." ❌
    - "Après [N] ans chez [entreprise]..." ❌
 
-8. INTERDITS (MARQUEURS IA À BANNIR):
-   - "j'ai parcouru ton profil", "a retenu mon attention"
+   ✅ BONNES ACCROCHES — factuel, jamais flatteur:
+    - "Le DDD et l'ownership, c'est aussi ce qu'on pousse chez ${clientName}." (cite le contenu SANS mentionner "À propos")
+    - "J'ai vu ton post sur [sujet], on part sur la même approche chez ${clientName}."
+    - "Ton passage chez [entreprise] m'intrigue, comment tu gérais [problème spécifique] ?"
+
+6. ADAPTATION AU STYLE DU CANDIDAT:
+   - SI décontracté avec émojis → sois plus casual
+   - SI corporate/formel → reste pro mais pas froid
+   - SI humour → ose une touche légère
+   Le but: un message de PAIR, pas de robot.
+
+7. INTERDITS (MARQUEURS IA À BANNIR):
+   - "j'ai parcouru ton profil", "a retenu mon attention", "m'a tapé dans l'œil"
+   - "dans ton À propos", "tu mentionnes dans ton profil", "dans ta bio" → CITE LE CONTENU DIRECTEMENT
    - Superlatifs: exceptionnel, remarquable, impressionnant, brillant, solide parcours
    - "parfaitement", "exactement" → trop vendeur
-   - TIRETS: JAMAIS de "- ..." ni "A – B"
-   - LISTES À PUCES: JAMAIS
-   - JARGON: "ton taf", "mise gros", "c'est chaud"
-   - FORMULES CREUSES: "projet passionnant", "belle aventure"
+   - FORMAT: JAMAIS "20+", "10+" → "plus de 20", "plus de 10"
+   - TIRETS: JAMAIS de "- ..." ni "A – B" → phrases avec points/virgules
+   - LISTES À PUCES: JAMAIS, écris en prose fluide
+   - LIENS: JAMAIS de liens dans le message (sauf Calendly si applicable)
+   - JARGON: "ton taf", "mise gros", "c'est chaud", "le kiff"
+   - FORMULES CREUSES: "projet passionnant", "belle aventure", "super équipe"
    - "ton profil colle parfaitement" ❌ → "ça matche" ou "ton profil colle bien"
    ⛔ FLATTERIE = INTERDIT (ça sonne fake et IA):
    - "c'est rare et c'est ce qu'il nous faut" ❌
    - "ça montre que tu aimes creuser" ❌
    - "ton expertise en [X] est précieuse" ❌
    → Tu OBSERVES ou tu POSES UNE QUESTION, tu ne fais PAS de compliment.
+
+   EN MODE RPO - ABSOLUMENT INTERDIT:
+   - "je recrute pour eux" ❌ → "on cherche"
+   - "ce qu'ils cherchent" ❌ → "ce qu'on recherche"
+   - "leur équipe" ❌ → "notre équipe"
 
 RÈGLES ABSOLUES:
 - JAMAIS mentionner le salaire, la rémunération, le TJM, le package ou tout montant en €
