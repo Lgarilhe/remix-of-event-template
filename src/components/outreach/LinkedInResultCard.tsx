@@ -4,6 +4,8 @@ import { useCandidateHistory, NotionShortlistHistoryItem } from '@/hooks/useCand
 import { CandidateHistoryPanel } from './CandidateHistoryPanel';
 import { useNotionShortlist } from '@/hooks/useNotionCandidates';
 import { JobScoreDisplay, JobMatchResult } from './JobScoreDisplay';
+import { PreScoreBar } from './result-card/PreScoreBar';
+import { PreScoreResult } from '@/hooks/linkedin/preScoring';
 import { Job } from '@/types/jobs';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -341,7 +343,15 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
               )}
             </div>
 
-            {/* Row 4: Job Score */}
+            {/* Row 4: Pre-score + Job Score */}
+            {(profile as any)._preScore && (
+              <div className="mt-1.5">
+                <PreScoreBar
+                  preScore={(profile as any)._preScore as PreScoreResult}
+                  hasLLMScore={!!jobScore}
+                />
+              </div>
+            )}
             {jobScore && (
               <div className="mt-1.5">
                 <JobScoreDisplay result={jobScore} jobTitle={selectedJob?.title} compact />

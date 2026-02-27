@@ -6,6 +6,7 @@ import { filterByCalculatedExperience } from '@/components/outreach/calculateExp
 import { Job } from '@/types/jobs';
 import { JobMatchResult } from '@/components/outreach/JobScoreDisplay';
 import { SourcingProject } from '@/hooks/useSourcingProjects';
+import { calculatePreScore, PreScoreResult } from '@/hooks/linkedin/preScoring';
 import { toast } from 'sonner';
 
 const RESULTS_PER_BATCH = 25;
@@ -528,10 +529,18 @@ export function useLinkedInSearchActions(
         candidateStatus.batchDiscover(profilesToDiscover).catch(console.error);
       }
 
+      // Calculate pre-scores before setting results
+      const scoredBatch = selectedJob
+        ? allCollected.map(profile => ({
+            ...profile,
+            _preScore: calculatePreScore(profile, selectedJob, selectedJob.skills || []),
+          }))
+        : allCollected;
+
       if (appendMode) {
-        setResults(prev => [...prev, ...allCollected]);
+        setResults(prev => [...prev, ...scoredBatch]);
       } else {
-        setResults(allCollected);
+        setResults(scoredBatch);
         setHasSearched(true);
       }
 

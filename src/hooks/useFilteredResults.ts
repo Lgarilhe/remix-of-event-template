@@ -3,6 +3,7 @@ import { LinkedInFiltersState, LinkedInProfile } from '@/components/outreach/typ
 import { JobMatchResult } from '@/components/outreach/JobScoreDisplay';
 import { Job } from '@/types/jobs';
 import { JobCandidateStatus } from '@/hooks/useJobCandidateStatus';
+import { calculatePreScore } from '@/hooks/linkedin/preScoring';
 
 interface FilteredResultsOptions {
   results: LinkedInProfile[];
@@ -75,15 +76,20 @@ export function useFilteredResults({
       byId.set(r.id, r);
     }
 
-    // Add DB profiles not in current search (pool profiles)
+    // Add DB profiles not in current search (pool profiles) — with pre-score
     for (const [candidateId, status] of statuses) {
       if (!byId.has(candidateId) && status.linkedin_profile_data) {
-        byId.set(candidateId, rehydrateProfile(status));
+        const rehydrated = rehydrateProfile(status);
+        // Calculate pre-score for rehydrated profiles
+        if (selectedJob) {
+          (rehydrated as any)._preScore = calculatePreScore(rehydrated, selectedJob, selectedJob.skills || []);
+        }
+        byId.set(candidateId, rehydrated);
       }
     }
 
     return Array.from(byId.values());
-  }, [results, statuses, showPoolView]);
+  }, [results, statuses, showPoolView, selectedJob]);
 
   // Count pool-only profiles
   const poolCount = useMemo(() => {
@@ -136,12 +142,19 @@ export function useFilteredResults({
       });
     }
 
-    // Sort by score if enabled
+    // Sort by LLM score if enabled, otherwise by pre-score
     if (sortByScore && Object.keys(jobScores).length > 0) {
       filtered = [...filtered].sort((a, b) => {
         const scoreA = jobScores[a.id]?.match_score ?? -1;
         const scoreB = jobScores[b.id]?.match_score ?? -1;
         return scoreB - scoreA;
+      });
+    } else {
+      // Default sort by pre-score (descending)
+      filtered = [...filtered].sort((a, b) => {
+        const preA = (a as any)._preScore?.preScore ?? 50;
+        const preB = (b as any)._preScore?.preScore ?? 50;
+        return preB - preA;
       });
     }
 

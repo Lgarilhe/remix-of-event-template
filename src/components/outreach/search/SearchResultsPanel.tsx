@@ -461,10 +461,41 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
                 )}
               </>
             ) : (
-              <>
-                <span className="text-xs text-muted-foreground hidden sm:inline truncate">Sélectionnez des profils pour les actions groupées</span>
-                <span className="text-xs text-muted-foreground sm:hidden truncate">Sélectionnez des profils</span>
-              </>
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs text-muted-foreground hidden sm:inline truncate">Sélectionnez des profils</span>
+                {/* Score relevant button — pre-selects high-tier profiles */}
+                {selectedJob && filteredResults.some((p: any) => p._preScore?.tier === 'high' && !jobScores[p.id]) && (
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            const highTier = filteredResults
+                              .filter((p: any) => p._preScore?.tier === 'high' && !jobScores[p.id])
+                              .map(p => p.id);
+                            if (highTier.length === 0) {
+                              toast.info('Aucun profil à haut potentiel non scoré');
+                              return;
+                            }
+                            highTier.forEach(id => onToggleProfileSelection(id));
+                            toast.success(`${highTier.length} profils à haut potentiel sélectionnés`);
+                          }}
+                          className="h-7 px-2 text-[11px] gap-1 border-emerald-300 text-emerald-700 hover:bg-emerald-50"
+                          disabled={scoringInProgress}
+                        >
+                          <Sparkles className="w-3 h-3" />
+                          Scorer les pertinents
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>Pré-sélectionner les profils avec un pre-score ≥ 60% pour scoring IA</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                )}
+              </div>
             )}
           </div>
 
