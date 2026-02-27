@@ -14,3 +14,6 @@ verify_jwt = false
 
 [functions.auto-categorize-chats]
 verify_jwt = false
+
+[functions.calendly-webhook]
+verify_jwt = false
