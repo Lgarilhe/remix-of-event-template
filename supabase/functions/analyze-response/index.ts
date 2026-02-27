@@ -280,9 +280,58 @@ SCORING:
 Retourne le TOP 3 des meilleurs matchs avec justification précise.`;
     }
 
-    const prompt = `Tu es un expert senior en recrutement tech avec 15 ans d'expérience. Tu analyses cette conversation LinkedIn pour qualifier le candidat et identifier les meilleures opportunités.
+    // Static system prompt with all rules (cached to save ~90% input costs)
+    const systemPrompt = `Tu es un expert senior en recrutement tech avec 15 ans d'expérience. Tu analyses les conversations LinkedIn pour qualifier les candidats et identifier les meilleures opportunités.
 
-CONTEXTE CONVERSATION:
+Tu réponds UNIQUEMENT en JSON valide, sans markdown ni commentaires.
+
+RÈGLES D'ANALYSE:
+- Détecte l'intent du candidat parmi: interested, not_interested, needs_info, wants_call, timing_issue, already_placed, neutral
+- Évalue le sentiment (positive/neutral/negative) et l'engagement (high/medium/low)
+- Propose des actions concrètes (reply, tag, alert, schedule_followup) avec priorité
+- Génère des tags pertinents pour la catégorisation
+- Identifie les questions de qualification stratégiques à poser
+
+RÈGLES DE SUGGESTIONS DE RÉPONSE:
+- 3 réponses positives/engageantes (quick ~15 mots, standard ~30 mots, detailed ~50 mots)
+- 2 réponses négatives (standard ~20 mots clôture polie, quick ~15 mots désengagement ferme)
+- Adapte la langue à celle du candidat (FR ou EN)
+- Ton professionnel mais humain, jamais robotique
+
+RÈGLES DE MATCHING POSTES (quand des postes sont fournis):
+1. **NIVEAU HIÉRARCHIQUE EN PRIORITÉ**: Un candidat "Head of" / "CTO" / "Director" ne doit JAMAIS être matché avec des postes de niveau inférieur (SRE, Dev, Engineer). C'est un mismatch CRITIQUE = score 0.
+2. **INTENTIONS EXPLICITES**: Si le candidat mentionne explicitement ce qu'il cherche, seuls les postes correspondants sont valides.
+3. Compare les skills du profil avec les skills requis de chaque poste
+4. Vérifie la cohérence du niveau d'expérience (années XP vs séniorité demandée)
+5. Vérifie la compatibilité géographique (localisation profil vs lieu poste + politique remote)
+6. Identifie les mismatches critiques (contrat, type de rôle, niveau hiérarchique)
+
+SCORING POSTES:
+- 80-100: Excellent match niveau + skills + localisation, recommandation "go"
+- 50-79: Match partiel (skills ok mais niveau légèrement différent), recommandation "maybe"
+- 0-49: Mismatch de niveau hiérarchique OU skills critiques manquants, recommandation "skip"
+⚠️ NE RECOMMANDE QUE des postes cohérents avec le niveau du candidat. Si aucun poste ne correspond, retourne un tableau vide ou avec des scores très bas.
+
+FORMAT DE SORTIE JSON:
+{
+  "intent": "interested|not_interested|needs_info|wants_call|timing_issue|already_placed|neutral",
+  "intentConfidence": 0-100,
+  "sentiment": "positive|neutral|negative",
+  "engagement": "high|medium|low",
+  "suggestedActions": [{"type": "reply|tag|alert|schedule_followup", "priority": "high|medium|low", "label": "Action courte", "description": "Détail action"}],
+  "suggestedTags": ["tag pertinent"],
+  "summary": "Résumé en 1 phrase de la situation",
+  "qualificationQuestions": ["Question stratégique à poser pour qualifier"],
+  "replySuggestions": [
+    {"text": "...", "type": "quick|standard|detailed", "tone": "positive|negative", "intent_match": "..."}
+  ],
+  "jobMatches": [
+    {"jobId": "UUID EXACT", "jobTitle": "Titre exact", "clientName": "...", "matchScore": 0-100, "matchingSkills": [], "missingSkills": [], "recommendation": "go|maybe|skip", "summary": "Justification en 1 phrase"}
+  ]
+}`;
+
+    // Dynamic user prompt with only variable data
+    const userPrompt = `CONTEXTE CONVERSATION:
 - Candidat: ${context.recipientName}${context.recipientHeadline ? ` (${context.recipientHeadline})` : ''}
 ${currentJobContext}
 
@@ -296,38 +345,9 @@ LANGUE: ${detectedLanguage === 'fr' ? 'Français' : 'English'}
 ${infoToCollect.length > 0 ? `INFOS MANQUANTES À COLLECTER: ${infoToCollect.join(', ')}` : ''}
 ${jobMatchingPrompt}
 
-ANALYSE DEMANDÉE (JSON strict, pas de markdown):
-{
-  "intent": "interested|not_interested|needs_info|wants_call|timing_issue|already_placed|neutral",
-  "intentConfidence": 0-100,
-  "sentiment": "positive|neutral|negative",
-  "engagement": "high|medium|low",
-  "suggestedActions": [{"type": "reply|tag|alert|schedule_followup", "priority": "high|medium|low", "label": "Action courte", "description": "Détail action"}],
-  "suggestedTags": ["tag pertinent"],
-  "summary": "Résumé en 1 phrase de la situation",
-  "qualificationQuestions": ["Question stratégique à poser pour qualifier"],
-  "replySuggestions": [
-    {"text": "Réponse courte positive/engageante 15 mots ${detectedLanguage === 'en' ? 'in English' : 'en français'}", "type": "quick", "tone": "positive", "intent_match": "adapté à l'intent détecté"},
-    {"text": "Réponse moyenne engageante 30 mots ${detectedLanguage === 'en' ? 'in English' : 'en français'}", "type": "standard", "tone": "positive", "intent_match": "..."},
-    {"text": "Réponse détaillée engageante 50 mots ${detectedLanguage === 'en' ? 'in English' : 'en français'}", "type": "detailed", "tone": "positive", "intent_match": "..."},
-    {"text": "Réponse polie de refus/clôture 20 mots ${detectedLanguage === 'en' ? 'in English' : 'en français'} (profil pas aligné, poste pourvu, ou garder contact pour plus tard)", "type": "standard", "tone": "negative", "intent_match": "Clôture respectueuse"},
-    {"text": "Réponse de désengagement ferme mais professionnelle 15 mots ${detectedLanguage === 'en' ? 'in English' : 'en français'}", "type": "quick", "tone": "negative", "intent_match": "Fin de conversation"}
-  ]${jobMatchingPrompt ? `,
-  "jobMatches": [
-    {
-      "jobId": "UUID EXACT du poste",
-      "jobTitle": "Titre exact",
-      "clientName": "Nom client si dispo",
-      "matchScore": 0-100,
-      "matchingSkills": ["skill1", "skill2"],
-      "missingSkills": ["skill manquant critique"],
-      "recommendation": "go|maybe|skip",
-      "summary": "Justification précise du score en 1 phrase"
-    }
-  ]` : ''}
-}`;
+Analyse cette conversation et retourne le JSON.`;
 
-    console.log("[analyze-response] Calling Claude Opus 4.6 via Anthropic API...");
+    console.log("[analyze-response] Calling Claude Sonnet 4.6 via Anthropic API...");
 
     const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
     if (!ANTHROPIC_API_KEY) {
@@ -346,9 +366,9 @@ ANALYSE DEMANDÉE (JSON strict, pas de markdown):
         model: "claude-sonnet-4-6",
         max_tokens: 4096,
         temperature: 0.2,
-        system: [{ type: "text", text: "Tu es un assistant expert en recrutement tech. Tu analyses les conversations candidat avec précision et réponds UNIQUEMENT en JSON valide, sans markdown ni commentaires. Tes matchings de postes sont rigoureux et basés sur des critères objectifs.", cache_control: { type: "ephemeral" } }],
+        system: [{ type: "text", text: systemPrompt, cache_control: { type: "ephemeral" } }],
         messages: [
-          { role: "user", content: prompt }
+          { role: "user", content: userPrompt }
         ],
       }),
     });
