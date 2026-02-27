@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Job } from '@/pages/JobSpace';
+import { Job } from '@/types/jobs';
 import { MapPin, Building2, Briefcase, Euro, ChevronDown, ChevronUp, ExternalLink, Send, Users, FileText, MessageSquare, Gift, Heart } from 'lucide-react';
 import { ApplicationModal } from './ApplicationModal';
 import { getSkillStyles } from '@/utils/skillCategories';

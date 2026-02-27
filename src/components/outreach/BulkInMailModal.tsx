@@ -38,7 +38,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
-import { Job } from '@/pages/JobSpace';
+import { Job } from '@/types/jobs';
 import { useInMailBalance } from '@/hooks/useInMailBalance';
 import { LinkedInProfile } from './types';
 

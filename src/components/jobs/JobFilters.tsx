@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { Search, X, Code, ChevronDown, Filter } from 'lucide-react';
-import { Job, JobFiltersState } from '@/pages/JobSpace';
+import { Job, JobFiltersState } from '@/types/jobs';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 

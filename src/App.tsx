@@ -14,14 +14,12 @@ import MyEvents from "./pages/MyEvents";
 import CreateEvent from "./pages/CreateEvent";
 import EditEvent from "./pages/EditEvent";
 import SkalrLanding from "./pages/SkalrLanding";
-// JobSpace removed — merged into Outreach > Projects
 import Candidates from "./pages/Candidates";
 import Outreach from "./pages/Outreach";
 import ATS from "./pages/ATS";
 import Qualification from "./pages/Qualification";
 import NotFound from "./pages/NotFound";
 
-// Pages that don't require authentication
 const PUBLIC_ROUTES = ['/', '/auth', '/discover', '/event'];
 
 const AppContent = () => {
@@ -64,17 +62,15 @@ const AppContent = () => {
         <Route path="/" element={<SkalrLanding />} />
         <Route path="/discover" element={<Discover />} />
         <Route path="/event/:id" element={<Index />} />
-        <Route path="/event/:id/edit" element={<EditEvent />} />
-        <Route path="/my-events" element={<MyEvents />} />
-        <Route path="/create-event" element={<CreateEvent />} />
+        <Route path="/event/:id/edit" element={<ProtectedRoute><EditEvent /></ProtectedRoute>} />
+        <Route path="/my-events" element={<ProtectedRoute><MyEvents /></ProtectedRoute>} />
+        <Route path="/create-event" element={<ProtectedRoute><CreateEvent /></ProtectedRoute>} />
         <Route path="/auth" element={<Auth />} />
-        <Route path="/admin" element={<Admin />} />
-        {/* Job Space removed - merged into Outreach > Projects */}
-        <Route path="/candidates" element={<Candidates />} />
+        <Route path="/admin" element={<ProtectedRoute><Admin /></ProtectedRoute>} />
+        <Route path="/candidates" element={<ProtectedRoute><Candidates /></ProtectedRoute>} />
         <Route path="/outreach" element={<ProtectedRoute><Outreach /></ProtectedRoute>} />
         <Route path="/ats" element={<ProtectedRoute><ATS /></ProtectedRoute>} />
         <Route path="/qualification/:id" element={<ProtectedRoute><Qualification /></ProtectedRoute>} />
-        <Route path="*" element={<NotFound />} />
         <Route path="*" element={<NotFound />} />
       </Routes>
       <SessionExpiredDialog 

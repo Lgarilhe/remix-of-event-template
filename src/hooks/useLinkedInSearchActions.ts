@@ -2,7 +2,7 @@ import { useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { LinkedInFiltersState, LinkedInProfile, LinkedInApiType } from '@/components/outreach/types';
 import { filterByCalculatedExperience } from '@/components/outreach/calculateExperience';
-import { Job } from '@/pages/JobSpace';
+import { Job } from '@/types/jobs';
 import { JobMatchResult } from '@/components/outreach/JobScoreDisplay';
 import { SourcingProject } from '@/hooks/useSourcingProjects';
 import { toast } from 'sonner';

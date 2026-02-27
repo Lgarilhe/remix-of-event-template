@@ -1,6 +1,6 @@
 import { LinkedInProfile } from '../types';
 import { JobMatchResult } from '../JobScoreDisplay';
-import { Job } from '@/pages/JobSpace';
+import { Job } from '@/types/jobs';
 import { SourcingProject } from '@/hooks/useSourcingProjects';
 
 export interface LinkedInResultCardProps {

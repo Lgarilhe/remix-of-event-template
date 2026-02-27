@@ -1,5 +1,5 @@
 import React from 'react';
-import { Job } from '@/pages/JobSpace';
+import { Job } from '@/types/jobs';
 import { JobCard } from './JobCard';
 
 interface JobListProps {

@@ -8,7 +8,7 @@ import { toast } from 'sonner';
 import ReactMarkdown from 'react-markdown';
 import { LinkedInFiltersState } from './types';
 import { supabase } from '@/integrations/supabase/client';
-import { Job } from '@/pages/JobSpace';
+import { Job } from '@/types/jobs';
 
 interface Message {
   role: 'user' | 'assistant';
