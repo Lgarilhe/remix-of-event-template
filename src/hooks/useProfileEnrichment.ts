@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { invokeUnipile } from '@/lib/invokeUnipile';
 
 export interface EnrichedProfile {
   name: string;
@@ -63,7 +64,7 @@ export function useProfileEnrichment(): UseProfileEnrichmentResult {
     setError(null);
 
     try {
-      const response = await supabase.functions.invoke('unipile-search', {
+      const { data: response } = await invokeUnipile({
         body: {
           action: 'get_profile',
           account_id: accountId,
@@ -71,10 +72,9 @@ export function useProfileEnrichment(): UseProfileEnrichmentResult {
         },
       });
 
-      if (response.error) throw response.error;
-      if (!response.data?.success) throw new Error(response.data?.error || 'Failed to fetch profile');
+      if (!response?.success) throw new Error(response?.error as string || 'Failed to fetch profile');
 
-      const profile = response.data.profile;
+      const profile = response.profile as Record<string, any>;
       
       // Transform Unipile profile data to our format
       const enriched: EnrichedProfile = {

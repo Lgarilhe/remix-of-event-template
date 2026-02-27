@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { LinkedInProfile } from './types';
 import { Job } from '@/types/jobs';
 import { supabase } from '@/integrations/supabase/client';
+import { invokeUnipile } from '@/lib/invokeUnipile';
 import {
   Dialog,
   DialogContent,
@@ -231,19 +232,18 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
       const networkDist = profile.network_distance || profileAny.specifics?.network_distance;
       const isFirstDegree = networkDist === 'DISTANCE_1' || networkDist === 1;
       
-      const { data, error } = await supabase.functions.invoke('unipile-search', {
+      const { data } = await invokeUnipile({
         body: {
           action: 'send_message',
           account_id: selectedAccount,
           recipient_id: recipientId,
           message: plainMessage,
-          subject: !isFirstDegree ? subject : undefined, // Subject only for InMails
+          subject: !isFirstDegree ? subject : undefined,
           is_inmail: !isFirstDegree,
         }
       });
 
-      if (error) throw error;
-      if (!data?.success) throw new Error(data?.error || 'Erreur lors de l\'envoi');
+      if (!data?.success) throw new Error(data?.error as string || 'Erreur lors de l\'envoi');
 
       setMessageSent(true);
       toast.success(isFirstDegree ? 'Message envoyé !' : 'InMail envoyé !');

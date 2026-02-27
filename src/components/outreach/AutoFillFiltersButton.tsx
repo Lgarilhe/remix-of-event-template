@@ -5,6 +5,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Wand2, Loader2, Eye, ChevronDown, ChevronUp } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import { invokeUnipile } from '@/lib/invokeUnipile';
 import { LinkedInFiltersState, RoleFilter, PriorityFilterItem, CompanyKeywordFilter, LocationFilterItem, SpotlightType } from './types';
 import { Job } from '@/types/jobs';
 import { toast } from 'sonner';
@@ -210,7 +211,7 @@ export const AutoFillFiltersButton: React.FC<AutoFillFiltersButtonProps> = ({
 
       if (!hasValidExistingLocation && locationKeyword && accountId) {
         try {
-          const { data: paramData, error: paramError } = await supabase.functions.invoke('unipile-search', {
+          const { data: paramData } = await invokeUnipile({
             body: {
               action: 'get_parameters',
               account_id: accountId,
@@ -220,9 +221,7 @@ export const AutoFillFiltersButton: React.FC<AutoFillFiltersButtonProps> = ({
             },
           });
 
-          if (paramError) throw paramError;
-
-          const items = Array.isArray(paramData?.items) ? paramData.items : [];
+          const items = Array.isArray(paramData?.items) ? paramData.items as any[] : [];
           if (paramData?.success && items.length > 0) {
             const normalized = locationKeyword.toLowerCase();
             const best =

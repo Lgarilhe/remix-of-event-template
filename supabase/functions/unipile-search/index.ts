@@ -732,7 +732,7 @@ async function handleSearch(
           error: 'La requête est trop volumineuse. Essayez de réduire les mots-clés ou les filtres.',
           errorType: 'CONTENT_TOO_LARGE',
         }),
-        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
     
@@ -750,7 +750,7 @@ async function handleSearch(
             errorType: 'RATE_LIMIT',
             retryAfter: 60,
           }),
-          { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
     }
@@ -771,7 +771,7 @@ async function handleSearch(
         errorType: data.type,
         debug: { status: response!.status, body: searchBody }
       }),
-      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
 
@@ -833,14 +833,13 @@ async function handleGetParameters(
 
   if (!response.ok) {
     console.error('Parameters error:', data);
-    // Return 200 with success: false to avoid throwing on client
     return new Response(
       JSON.stringify({ 
         success: false, 
         error: data.detail || data.message || 'Erreur de récupération',
         items: [] 
       }),
-      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
 
@@ -894,7 +893,7 @@ async function handleGetProfile(
   if (!response.ok) {
     return new Response(
       JSON.stringify({ success: false, error: data.message || 'Profil non trouvé' }),
-      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
 
@@ -941,7 +940,7 @@ async function handleGetChats(
       console.error('Chats error:', data);
       return new Response(
         JSON.stringify({ success: false, error: data.detail || data.message || 'Erreur', chats: [] }),
-        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
     
@@ -1180,7 +1179,7 @@ async function handleGetMessages(
         error: data.detail || data.message || 'Erreur de récupération des messages',
         messages: [] 
       }),
-      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
 
@@ -1270,7 +1269,7 @@ async function handleSendMessage(
         error: data.detail || data.message || "Erreur lors de l'envoi du message",
         code: data.status_code || response.status,
       }),
-      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
 
@@ -1325,7 +1324,7 @@ async function handleMarkAsRead(
       console.error('Mark as read error:', data);
       return new Response(
         JSON.stringify({ success: false, error: data.detail || data.message || 'Erreur' }),
-        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
@@ -1338,7 +1337,7 @@ async function handleMarkAsRead(
     console.error('Mark as read exception:', error);
     return new Response(
       JSON.stringify({ success: false, error: error instanceof Error ? error.message : 'Erreur' }),
-      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
 }

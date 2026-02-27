@@ -1,5 +1,6 @@
 import React, { useState, useCallback, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { invokeUnipile } from '@/lib/invokeUnipile';
 import {
   LinkedInFiltersState,
   FilterItem,
@@ -165,7 +166,7 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
       try {
         const paramType = getParameterType(key);
 
-        const response = await supabase.functions.invoke('unipile-search', {
+        const { data } = await invokeUnipile({
           body: {
             action: 'get_parameters',
             account_id: accountId,
@@ -177,13 +178,12 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
 
         if (abortControllerRef.current[key]?.signal.aborted) return;
 
-        if (response.error) throw response.error;
-        if (!response.data?.success) {
+        if (!data?.success) {
           setParameterOptions((prev) => ({ ...prev, [key]: [] }));
           return;
         }
 
-        let items: ParameterOption[] = response.data.items || [];
+        let items: ParameterOption[] = (data.items as ParameterOption[]) || [];
 
         // For location searches, inject known country-level entries that LinkedIn API doesn't return
         if (key === 'location') {
@@ -610,7 +610,7 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
 
                     const resolved = await Promise.all(
                       TOP_SCHOOLS.map(async (school) => {
-                        const { data, error } = await supabase.functions.invoke('unipile-search', {
+                        const { data } = await invokeUnipile({
                           body: {
                             action: 'get_parameters',
                             account_id: accountId,
@@ -621,7 +621,7 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
                           },
                         });
 
-                        if (error || !data?.success || !Array.isArray(data?.items) || data.items.length === 0) {
+                        if (!data?.success || !Array.isArray(data?.items) || (data.items as any[]).length === 0) {
                           return null;
                         }
 
