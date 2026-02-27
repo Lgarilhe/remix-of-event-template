@@ -1713,11 +1713,11 @@ Réponds UNIQUEMENT en JSON valide: {"subject": "objet si InMail, sinon vide", "
     const callAI = async (userPrompt: string) => {
       const res = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-api-key': ANTHROPIC_API_KEY!, 'anthropic-version': '2023-06-01' },
+        headers: { 'Content-Type': 'application/json', 'x-api-key': ANTHROPIC_API_KEY!, 'anthropic-version': '2023-06-01', 'anthropic-beta': 'prompt-caching-2024-07-31' },
         body: JSON.stringify({ 
           model: 'claude-sonnet-4-6', 
           max_tokens: 500, 
-          system: 'Tu es un recruteur tech senior. Tu écris des messages LinkedIn courts, directs, humains. JAMAIS de superlatifs, JAMAIS de tournures IA. Tu réponds TOUJOURS en JSON valide, sans markdown ni code blocks.',
+          system: [{ type: 'text', text: 'Tu es un recruteur tech senior. Tu écris des messages LinkedIn courts, directs, humains. JAMAIS de superlatifs, JAMAIS de tournures IA. Tu réponds TOUJOURS en JSON valide, sans markdown ni code blocks.', cache_control: { type: 'ephemeral' } }],
           messages: [{ role: 'user', content: userPrompt }] 
         }),
       });

@@ -339,13 +339,14 @@ ANALYSE DEMANDÉE (JSON strict, pas de markdown):
       headers: {
         "x-api-key": ANTHROPIC_API_KEY,
         "anthropic-version": "2023-06-01",
+        "anthropic-beta": "prompt-caching-2024-07-31",
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
         model: "claude-sonnet-4-6",
         max_tokens: 4096,
         temperature: 0.2,
-        system: "Tu es un assistant expert en recrutement tech. Tu analyses les conversations candidat avec précision et réponds UNIQUEMENT en JSON valide, sans markdown ni commentaires. Tes matchings de postes sont rigoureux et basés sur des critères objectifs.",
+        system: [{ type: "text", text: "Tu es un assistant expert en recrutement tech. Tu analyses les conversations candidat avec précision et réponds UNIQUEMENT en JSON valide, sans markdown ni commentaires. Tes matchings de postes sont rigoureux et basés sur des critères objectifs.", cache_control: { type: "ephemeral" } }],
         messages: [
           { role: "user", content: prompt }
         ],

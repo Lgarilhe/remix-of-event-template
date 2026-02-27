@@ -199,13 +199,14 @@ Réponds UNIQUEMENT en JSON strict:
       headers: {
         "x-api-key": ANTHROPIC_API_KEY,
         "anthropic-version": "2023-06-01",
+        "anthropic-beta": "prompt-caching-2024-07-31",
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
         model: "claude-sonnet-4-6",
         max_tokens: 256,
         temperature: 0.1,
-        system: "Tu es un expert en recrutement. Réponds UNIQUEMENT en JSON valide.",
+        system: [{ type: "text", text: "Tu es un expert en recrutement. Réponds UNIQUEMENT en JSON valide.", cache_control: { type: "ephemeral" } }],
         messages: [{ role: "user", content: prompt }],
       }),
     });

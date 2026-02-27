@@ -767,13 +767,13 @@ Réponds UNIQUEMENT en JSON valide:
           headers: {
             "x-api-key": ANTHROPIC_API_KEY,
             "anthropic-version": "2023-06-01",
+            "anthropic-beta": "prompt-caching-2024-07-31",
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
             model: "claude-sonnet-4-6",
             max_tokens: 2048,
-            system:
-              "Tu es un recruteur tech senior. Tu écris des messages LinkedIn courts, directs, humains. JAMAIS de superlatifs, JAMAIS de tournures IA. Tu réponds TOUJOURS en JSON valide, sans markdown ni code blocks.",
+            system: [{ type: "text", text: "Tu es un recruteur tech senior. Tu écris des messages LinkedIn courts, directs, humains. JAMAIS de superlatifs, JAMAIS de tournures IA. Tu réponds TOUJOURS en JSON valide, sans markdown ni code blocks.", cache_control: { type: "ephemeral" } }],
             messages: [{ role: "user", content: userPrompt }],
           }),
         });
