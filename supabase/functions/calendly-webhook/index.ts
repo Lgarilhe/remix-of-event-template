@@ -38,12 +38,21 @@ serve(async (req) => {
     const invitee = payload;
     const event = payload.event || payload.scheduled_event;
 
+    // Only process our recruitment event type
+    const ALLOWED_EVENT_NAME = '📅 20 min pour présentation poste - Equipe Konekt';
+    const eventName = event?.name || null;
+    if (eventName !== ALLOWED_EVENT_NAME) {
+      console.log(`[calendly-webhook] Skipping event "${eventName}" (not matching "${ALLOWED_EVENT_NAME}")`);
+      return new Response(JSON.stringify({ success: true, skipped: true, reason: 'event_type_mismatch' }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
     // Extract data
     const calendlyEventId = event?.uri?.split('/').pop() || null;
     const calendlyInviteeId = invitee?.uri?.split('/').pop() || null;
     const inviteeEmail = invitee?.email || null;
     const inviteeName = invitee?.name || null;
-    const eventName = event?.name || null;
     const eventStartAt = event?.start_time || null;
     const eventEndAt = event?.end_time || null;
 
@@ -97,30 +106,25 @@ serve(async (req) => {
       scoring_details?: any;
     } | null = null;
 
-    if (candidateLinkedinUrl) {
-      // Normalize LinkedIn URL for matching
-      const normalizedUrl = candidateLinkedinUrl
+    // Validate LinkedIn URL (must be a real profile URL, not just "LinkedIn")
+    const isValidLinkedinUrl = candidateLinkedinUrl && /^https?:\/\/(www\.)?linkedin\.com\/in\/.+/i.test(candidateLinkedinUrl);
+
+    if (isValidLinkedinUrl) {
+      const normalizedUrl = candidateLinkedinUrl!
         .replace(/\/$/, '')
         .replace(/^https?:\/\/(www\.)?linkedin\.com/, 'https://www.linkedin.com');
 
-      // Search with various URL formats
-      const urlVariants = [
-        candidateLinkedinUrl,
-        normalizedUrl,
-        normalizedUrl.replace('https://www.', 'https://'),
-      ];
-
-      for (const url of urlVariants) {
+      const slug = normalizedUrl.split('linkedin.com')[1];
+      if (slug && slug.length > 4) {
         const { data } = await supabase
           .from('job_candidate_status')
           .select('candidate_id, candidate_name, candidate_headline, job_id, linkedin_profile_url, scoring_details, project_id')
-          .ilike('linkedin_profile_url', `%${url.split('linkedin.com')[1] || url}%`)
+          .ilike('linkedin_profile_url', `%${slug}%`)
           .order('updated_at', { ascending: false })
           .limit(1);
 
         if (data?.length) {
           candidateMatch = data[0];
-          break;
         }
       }
     }
