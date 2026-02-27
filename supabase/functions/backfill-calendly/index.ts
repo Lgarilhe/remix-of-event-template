@@ -22,23 +22,35 @@ serve(async (req) => {
       headers: { 'Authorization': `Bearer ${calendlyApiKey}` },
     });
     const meData = await meRes.json();
-    const userUri = meData.resource?.uri;
+    const organizationUri = meData.resource?.current_organization;
 
-    if (!userUri) throw new Error('Could not get Calendly user URI');
+    if (!organizationUri) throw new Error('Could not get Calendly organization URI');
 
-    // Step 2: Fetch last 50 scheduled events
-    const now = new Date().toISOString();
-    const eventsUrl = new URL('https://api.calendly.com/scheduled_events');
-    eventsUrl.searchParams.set('user', userUri);
-    eventsUrl.searchParams.set('count', '50');
-    eventsUrl.searchParams.set('status', 'active');
-    eventsUrl.searchParams.set('sort', 'start_time:desc');
+    // Step 2: Fetch recent scheduled events across the whole organization (round robin included)
+    const events: any[] = [];
+    let nextPageToken: string | null = null;
 
-    const eventsRes = await fetch(eventsUrl.toString(), {
-      headers: { 'Authorization': `Bearer ${calendlyApiKey}` },
-    });
-    const eventsData = await eventsRes.json();
-    const events = eventsData.collection || [];
+    do {
+      const eventsUrl = new URL('https://api.calendly.com/scheduled_events');
+      eventsUrl.searchParams.set('organization', organizationUri);
+      eventsUrl.searchParams.set('count', '100');
+      eventsUrl.searchParams.set('status', 'active');
+      eventsUrl.searchParams.set('sort', 'start_time:desc');
+      if (nextPageToken) eventsUrl.searchParams.set('page_token', nextPageToken);
+
+      const eventsRes = await fetch(eventsUrl.toString(), {
+        headers: { 'Authorization': `Bearer ${calendlyApiKey}` },
+      });
+
+      if (!eventsRes.ok) {
+        const errText = await eventsRes.text();
+        throw new Error(`Calendly scheduled_events failed: ${eventsRes.status} - ${errText}`);
+      }
+
+      const eventsData = await eventsRes.json();
+      events.push(...(eventsData.collection || []));
+      nextPageToken = eventsData.pagination?.next_page_token || null;
+    } while (nextPageToken && events.length < 300);
 
     console.log(`[backfill] Found ${events.length} Calendly events`);
 
@@ -81,15 +93,22 @@ serve(async (req) => {
       let candidateLinkedinUrl: string | null = null;
       const questionsAndAnswers = invitee.questions_and_answers || [];
       for (const qa of questionsAndAnswers) {
-        if (qa.position === 0 || qa.answer?.includes('linkedin.com')) {
-          candidateLinkedinUrl = qa.answer?.trim() || null;
-          break;
+        const answer = qa.answer?.trim();
+        const question = (qa.question || '').toLowerCase();
+        if (!answer) continue;
+
+        const looksLinkedin = /linkedin\.com/i.test(answer);
+        if (looksLinkedin || question.includes('linkedin')) {
+          if (looksLinkedin) {
+            candidateLinkedinUrl = answer;
+            break;
+          }
         }
       }
 
       // Also check tracking
-      if (!candidateLinkedinUrl && invitee.tracking?.utm_content) {
-        candidateLinkedinUrl = invitee.tracking.utm_content;
+      if (!candidateLinkedinUrl && typeof invitee.tracking?.utm_content === 'string' && /linkedin\.com/i.test(invitee.tracking.utm_content)) {
+        candidateLinkedinUrl = invitee.tracking.utm_content.trim();
       }
 
       // Location

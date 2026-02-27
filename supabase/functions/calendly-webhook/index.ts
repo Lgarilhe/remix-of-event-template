@@ -53,21 +53,27 @@ serve(async (req) => {
       eventLocation = event.location.join_url || event.location.location || event.location.type || null;
     }
 
-    // Extract LinkedIn URL from custom question a1
+    // Extract LinkedIn URL from custom questions (round robin-safe)
     let candidateLinkedinUrl: string | null = null;
     const questionsAndAnswers = invitee?.questions_and_answers || payload?.questions_and_answers || [];
     for (const qa of questionsAndAnswers) {
-      // The LinkedIn URL question is the first custom question (a1)
-      if (qa.position === 0 || qa.answer?.includes('linkedin.com')) {
-        candidateLinkedinUrl = qa.answer?.trim() || null;
-        break;
+      const answer = qa.answer?.trim();
+      const question = (qa.question || '').toLowerCase();
+      if (!answer) continue;
+
+      const looksLinkedin = /linkedin\.com/i.test(answer);
+      if (looksLinkedin || question.includes('linkedin')) {
+        if (looksLinkedin) {
+          candidateLinkedinUrl = answer;
+          break;
+        }
       }
     }
 
     // Also check tracking params (from our URL pre-fill ?a1=...)
     const tracking = invitee?.tracking || payload?.tracking || {};
-    if (!candidateLinkedinUrl && tracking.utm_content) {
-      candidateLinkedinUrl = tracking.utm_content;
+    if (!candidateLinkedinUrl && typeof tracking.utm_content === 'string' && /linkedin\.com/i.test(tracking.utm_content)) {
+      candidateLinkedinUrl = tracking.utm_content.trim();
     }
 
     console.log('[calendly-webhook] Extracted:', {
