@@ -282,9 +282,10 @@ export const FilterAssistantModal: React.FC<FilterAssistantModalProps> = ({
           },
         });
 
-        if (data?.success && (data.items as any[])?.length > 0) {
+        const items = data?.items as Array<{ title: string; id: string }> | undefined;
+        if (data?.success && items && items.length > 0) {
           // Filter out non-French schools
-          const frenchSchools = data.items.filter((it: { title: string }) => {
+          const frenchSchools = items.filter((it) => {
             const title = it.title.toLowerCase();
             // Exclude if contains foreign location indicators
             const isForeign = EXCLUDE_PATTERNS.some(pattern => title.includes(pattern));
