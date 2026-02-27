@@ -23,25 +23,27 @@ serve(async (req) => {
   }
 
   // ===== AUTH CHECK =====
-  // Accept either the service_role key (cron) or a valid user JWT (frontend admin)
+  // Accept: (1) dedicated PROCESS_SEQUENCES_SECRET (cron), (2) service_role key, (3) anon key (cron legacy), or (4) valid admin JWT (frontend)
   const authHeader = req.headers.get('authorization') || '';
   const token = authHeader.replace(/^Bearer\s+/i, '');
   const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+  const anonKey = Deno.env.get('SUPABASE_ANON_KEY') || '';
+  const cronSecret = Deno.env.get('PROCESS_SEQUENCES_SECRET') || '';
   const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
 
   let isAuthorized = false;
 
-  if (token === serviceRoleKey) {
-    // Cron / server-side call with service role key
+  if (cronSecret && token === cronSecret) {
+    isAuthorized = true;
+  } else if (token === serviceRoleKey) {
     isAuthorized = true;
   } else if (token) {
-    // Try to validate as a user JWT
-    const authClient = createClient(supabaseUrl, token, {
+    // Validate as user JWT — must be admin
+    const authClient = createClient(supabaseUrl, anonKey, {
       global: { headers: { Authorization: `Bearer ${token}` } },
     });
     const { data: { user }, error } = await authClient.auth.getUser();
     if (!error && user) {
-      // Optionally restrict to admin role
       const checkClient = createClient(supabaseUrl, serviceRoleKey);
       const { data: hasAdmin } = await checkClient.rpc('has_role', { _user_id: user.id, _role: 'admin' });
       isAuthorized = !!hasAdmin;
