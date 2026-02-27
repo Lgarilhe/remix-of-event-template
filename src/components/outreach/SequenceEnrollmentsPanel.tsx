@@ -43,6 +43,7 @@ import {
   SkipForward,
   RefreshCw,
   Zap,
+  CalendarCheck,
 } from 'lucide-react';
 import { format, formatDistanceToNow } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -113,6 +114,11 @@ const statusConfig: Record<string, { label: string; icon: React.ReactNode; class
     label: 'Annulée', 
     icon: <XCircle className="w-3 h-3" />, 
     className: 'bg-muted text-muted-foreground border border-foreground/20' 
+  },
+  booked: { 
+    label: 'RDV pris', 
+    icon: <CalendarCheck className="w-3 h-3" />, 
+    className: 'bg-green-600 text-white border border-green-700' 
   },
 };
 

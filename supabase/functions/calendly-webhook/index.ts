@@ -236,6 +236,92 @@ serve(async (req) => {
       console.log('[calendly-webhook] Updated candidate status to qualification');
     }
 
+    // Stop active sequences for this candidate (booking = sequence goal achieved)
+    if (candidateMatch?.candidate_id || (isValidLinkedinUrl && candidateLinkedinUrl)) {
+      try {
+        // Find active enrollments matching this candidate by profile_id or LinkedIn URL
+        let enrollmentsQuery = supabase
+          .from('sequence_enrollments')
+          .select('id, sequence_id')
+          .eq('status', 'active');
+
+        // Match by candidate_id (profile_id in enrollments) or by LinkedIn URL
+        if (candidateMatch?.candidate_id) {
+          enrollmentsQuery = enrollmentsQuery.eq('profile_id', candidateMatch.candidate_id);
+        }
+
+        const { data: activeEnrollments } = await enrollmentsQuery;
+
+        // Also try matching by LinkedIn URL if no match by profile_id
+        let urlEnrollments: any[] = [];
+        if ((!activeEnrollments?.length) && isValidLinkedinUrl && candidateLinkedinUrl) {
+          const slug = candidateLinkedinUrl!.replace(/\/$/, '').split('linkedin.com')[1];
+          if (slug && slug.length > 4) {
+            const { data } = await supabase
+              .from('sequence_enrollments')
+              .select('id, sequence_id')
+              .eq('status', 'active')
+              .ilike('profile_url', `%${slug}%`);
+            urlEnrollments = data || [];
+          }
+        }
+
+        const allEnrollments = [...(activeEnrollments || []), ...urlEnrollments];
+        // Deduplicate by id
+        const uniqueEnrollments = Array.from(new Map(allEnrollments.map(e => [e.id, e])).values());
+
+        if (uniqueEnrollments.length > 0) {
+          const enrollmentIds = uniqueEnrollments.map(e => e.id);
+          const now = new Date().toISOString();
+
+          // Mark enrollments as 'booked' (distinct from 'completed' for analytics)
+          await supabase
+            .from('sequence_enrollments')
+            .update({ status: 'booked', completed_at: now })
+            .in('id', enrollmentIds);
+
+          // Cancel all scheduled step executions
+          for (const enrollmentId of enrollmentIds) {
+            await supabase
+              .from('sequence_step_executions')
+              .update({ status: 'cancelled', skip_reason: 'Calendly booking detected' })
+              .eq('enrollment_id', enrollmentId)
+              .in('status', ['scheduled', 'waiting_event']);
+          }
+
+          // Log analytics for each affected sequence
+          const today = new Date().toISOString().split('T')[0];
+          const sequenceIds = [...new Set(uniqueEnrollments.map(e => e.sequence_id))];
+          for (const seqId of sequenceIds) {
+            // Upsert into sequence_analytics — no calendly_booked column exists,
+            // so we track via replies_received as a proxy (booking > reply)
+            const { data: existing } = await supabase
+              .from('sequence_analytics')
+              .select('id, replies_received')
+              .eq('sequence_id', seqId)
+              .eq('date', today)
+              .maybeSingle();
+
+            if (existing) {
+              await supabase.from('sequence_analytics').update({
+                replies_received: (existing.replies_received || 0) + 1,
+              }).eq('id', existing.id);
+            } else {
+              await supabase.from('sequence_analytics').insert({
+                sequence_id: seqId, date: today, replies_received: 1,
+              });
+            }
+          }
+
+          console.log(`[calendly-webhook] ✅ Stopped ${uniqueEnrollments.length} active sequence(s) → status: booked`);
+        } else {
+          console.log('[calendly-webhook] No active sequence enrollments found for this candidate');
+        }
+      } catch (seqErr) {
+        console.warn('[calendly-webhook] Sequence stop failed (non-blocking):', seqErr);
+      }
+    }
+
     // Try to update Notion shortlist status
     if (candidateMatch?.candidate_id && candidateMatch?.job_id) {
       try {
