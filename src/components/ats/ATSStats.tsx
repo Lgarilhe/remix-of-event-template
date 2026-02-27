@@ -1,5 +1,4 @@
 import React from 'react';
-import { Card } from '@/components/ui/card';
 import { Users, UserCheck, Send, MessageCircle, Trophy, XCircle } from 'lucide-react';
 import { ATSCandidate } from '@/pages/ATS';
 
@@ -7,6 +6,15 @@ interface ATSStatsProps {
   candidates: ATSCandidate[];
   stages: { key: string; label: string; color: string }[];
 }
+
+const STAT_CONFIG: { key: string; label: string; icon: typeof Users; suffix?: string }[] = [
+  { key: 'total', label: 'TOTAL', icon: Users },
+  { key: 'contacted', label: 'CONTACTÉS', icon: Send },
+  { key: 'responseRate', label: 'TAUX RÉPONSE', icon: MessageCircle, suffix: '%' },
+  { key: 'inProgress', label: 'EN COURS', icon: UserCheck },
+  { key: 'won', label: 'GAGNÉS', icon: Trophy },
+  { key: 'conversionRate', label: 'CONVERSION', icon: Trophy, suffix: '%' },
+];
 
 export const ATSStats: React.FC<ATSStatsProps> = ({ candidates, stages }) => {
   const stats = React.useMemo(() => {
@@ -26,91 +34,47 @@ export const ATSStats: React.FC<ATSStatsProps> = ({ candidates, stages }) => {
     const responseRate = contacted > 0 ? Math.round((replied / contacted) * 100) : 0;
     const conversionRate = (won + lost) > 0 ? Math.round((won / (won + lost)) * 100) : 0;
 
-    return {
-      total,
-      contacted,
-      replied,
-      inProgress,
-      won,
-      lost,
-      responseRate,
-      conversionRate,
-    };
+    return { total, contacted, replied, inProgress, won, lost, responseRate, conversionRate };
   }, [candidates]);
 
+  const values: Record<string, number> = {
+    total: stats.total,
+    contacted: stats.contacted,
+    responseRate: stats.responseRate,
+    inProgress: stats.inProgress,
+    won: stats.won,
+    conversionRate: stats.conversionRate,
+  };
+
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
-      <Card className="p-4 bg-white border-[#1A1A1A]/10">
-        <div className="flex items-center gap-3">
-          <div className="p-2 rounded-lg bg-slate-100">
-            <Users className="w-5 h-5 text-slate-600" />
+    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-0 mb-6">
+      {STAT_CONFIG.map((stat, index) => {
+        const Icon = stat.icon;
+        return (
+          <div
+            key={stat.key}
+            className={`
+              p-4 border border-foreground bg-background
+              ${index > 0 ? 'border-l-0' : ''}
+              group hover:bg-brutal-accent transition-colors duration-200
+            `}
+          >
+            <div className="flex items-center gap-3">
+              <div className="h-8 w-8 bg-foreground text-background flex items-center justify-center flex-shrink-0">
+                <Icon className="w-4 h-4" />
+              </div>
+              <div>
+                <p className="text-2xl font-bold text-foreground">
+                  {values[stat.key]}{stat.suffix || ''}
+                </p>
+                <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">
+                  {stat.label}
+                </p>
+              </div>
+            </div>
           </div>
-          <div>
-            <p className="text-2xl font-bold text-[#1A1A1A]">{stats.total}</p>
-            <p className="text-xs text-[#1A1A1A]/60">Total</p>
-          </div>
-        </div>
-      </Card>
-
-      <Card className="p-4 bg-white border-[#1A1A1A]/10">
-        <div className="flex items-center gap-3">
-          <div className="p-2 rounded-lg bg-blue-100">
-            <Send className="w-5 h-5 text-blue-600" />
-          </div>
-          <div>
-            <p className="text-2xl font-bold text-[#1A1A1A]">{stats.contacted}</p>
-            <p className="text-xs text-[#1A1A1A]/60">Contactés</p>
-          </div>
-        </div>
-      </Card>
-
-      <Card className="p-4 bg-white border-[#1A1A1A]/10">
-        <div className="flex items-center gap-3">
-          <div className="p-2 rounded-lg bg-cyan-100">
-            <MessageCircle className="w-5 h-5 text-cyan-600" />
-          </div>
-          <div>
-            <p className="text-2xl font-bold text-[#1A1A1A]">{stats.responseRate}%</p>
-            <p className="text-xs text-[#1A1A1A]/60">Taux réponse</p>
-          </div>
-        </div>
-      </Card>
-
-      <Card className="p-4 bg-white border-[#1A1A1A]/10">
-        <div className="flex items-center gap-3">
-          <div className="p-2 rounded-lg bg-yellow-100">
-            <UserCheck className="w-5 h-5 text-yellow-600" />
-          </div>
-          <div>
-            <p className="text-2xl font-bold text-[#1A1A1A]">{stats.inProgress}</p>
-            <p className="text-xs text-[#1A1A1A]/60">En cours</p>
-          </div>
-        </div>
-      </Card>
-
-      <Card className="p-4 bg-white border-[#1A1A1A]/10">
-        <div className="flex items-center gap-3">
-          <div className="p-2 rounded-lg bg-green-100">
-            <Trophy className="w-5 h-5 text-green-600" />
-          </div>
-          <div>
-            <p className="text-2xl font-bold text-[#1A1A1A]">{stats.won}</p>
-            <p className="text-xs text-[#1A1A1A]/60">Gagnés</p>
-          </div>
-        </div>
-      </Card>
-
-      <Card className="p-4 bg-white border-[#1A1A1A]/10">
-        <div className="flex items-center gap-3">
-          <div className="p-2 rounded-lg bg-purple-100">
-            <Trophy className="w-5 h-5 text-purple-600" />
-          </div>
-          <div>
-            <p className="text-2xl font-bold text-[#1A1A1A]">{stats.conversionRate}%</p>
-            <p className="text-xs text-[#1A1A1A]/60">Conversion</p>
-          </div>
-        </div>
-      </Card>
+        );
+      })}
     </div>
   );
 };
