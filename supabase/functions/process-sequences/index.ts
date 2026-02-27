@@ -145,7 +145,7 @@ async function handleProcess(supabase: any, force = false) {
       .select(`*, enrollment:sequence_enrollments(*, sequence:outreach_sequences(*)), step:sequence_steps(*)`)
       .eq('status', 'scheduled')
       .lte('scheduled_at', now)
-      .limit(15);
+      .limit(1);
 
     if (fetchError) throw fetchError;
 
