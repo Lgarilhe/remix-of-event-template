@@ -124,7 +124,7 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
         .from('candidate_notes')
         .insert({
           candidate_id: candidate.candidateId,
-          shortlist_id: candidate.source === 'shortlist' ? candidate.sourceId : null,
+          shortlist_id: candidate.notionShortlistId || null,
           content: newNote.trim(),
           created_by: user.id,
         });
@@ -181,7 +181,7 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
         .insert({
           candidate_id: candidate.candidateId,
           candidate_name: candidate.name,
-          shortlist_id: candidate.source === 'shortlist' ? candidate.sourceId : null,
+          shortlist_id: candidate.notionShortlistId || null,
           job_id: candidate.jobId,
           job_title: candidate.jobTitle,
           title: newReminderTitle.trim(),
@@ -315,13 +315,11 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
                       <h4 className="font-medium text-sm text-[#1A1A1A] mb-3">Source</h4>
                       <div className="flex flex-wrap gap-2">
                         <Badge variant="outline" className="gap-1">
-                          {candidate.source === 'shortlist' && <FileText className="w-3 h-3" />}
+                          {candidate.source === 'local' && <Target className="w-3 h-3" />}
                           {candidate.source === 'sequence' && <GitBranch className="w-3 h-3" />}
                           {candidate.source === 'inmail' && <Send className="w-3 h-3" />}
-                          {candidate.source === 'outreach' && <Target className="w-3 h-3" />}
-                          {candidate.source === 'shortlist' ? 'Pipeline Notion' : 
-                           candidate.source === 'sequence' ? 'Séquence' : 
-                           candidate.source === 'outreach' ? 'Outreach' : 'InMail'}
+                          {candidate.source === 'local' ? (candidate.notionShortlistId ? 'Pipeline' : 'Outreach') : 
+                           candidate.source === 'sequence' ? 'Séquence' : 'InMail'}
                         </Badge>
                         
                         {candidate.jobTitle && (
