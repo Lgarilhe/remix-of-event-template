@@ -865,7 +865,15 @@ async function handleGetProfile(
   accountId: string,
   params: Record<string, unknown>
 ): Promise<Response> {
-  const { profile_id } = params;
+  let { profile_id, profile_url } = params as { profile_id?: string; profile_url?: string };
+
+  // If profile_url is provided but not profile_id, extract the slug from the URL
+  if (!profile_id && profile_url) {
+    const slug = String(profile_url).replace(/\/+$/, '').split('/').pop();
+    if (slug) {
+      profile_id = slug;
+    }
+  }
 
   if (!profile_id) {
     return new Response(
