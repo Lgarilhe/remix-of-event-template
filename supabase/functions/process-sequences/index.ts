@@ -396,10 +396,14 @@ async function handleCheckReplies(supabase: any) {
 
       // Sync Notion: Etat → "A répondu", Etape → "Qualification"
       try {
-        const candidateId = await findCandidateInNotionSeq(
+        let candidateId = await findCandidateInNotionSeq(
           enrollment.profile_name || '',
           enrollment.profile_url
         );
+        if (!candidateId) {
+          // Create candidate + shortlist if not found
+          candidateId = await createCandidateAndShortlistInNotion(enrollment, { etape: 'Qualification', etat: 'A répondu' });
+        }
         if (candidateId) {
           await updateNotionPageSeq(candidateId, { 'Etat': { select: { name: 'A répondu' } } });
           const shortlistIds = await findShortlistsForCandidateSeq(candidateId);
@@ -1140,6 +1144,74 @@ async function findShortlistsForCandidateSeq(candidateId: string): Promise<strin
   return (r?.results || []).map((p: { id: string }) => p.id);
 }
 
+async function createNotionPageSeq(databaseId: string, properties: Record<string, unknown>): Promise<string | null> {
+  if (!NOTION_API_KEY) return null;
+  const response = await fetch('https://api.notion.com/v1/pages', {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${NOTION_API_KEY}`, 'Notion-Version': '2022-06-28', 'Content-Type': 'application/json' },
+    body: JSON.stringify({ parent: { database_id: databaseId }, properties }),
+  });
+  if (!response.ok) {
+    console.error('[notion-sync] Create page error:', await response.text().catch(() => ''));
+    return null;
+  }
+  const data = await response.json();
+  return data.id;
+}
+
+async function createCandidateAndShortlistInNotion(
+  enrollment: Record<string, unknown>,
+  mapping: { etape: string; etat: string }
+): Promise<string | null> {
+  const profileName = enrollment.profile_name as string;
+  const profileUrl = enrollment.profile_url as string | undefined;
+  const profileHeadline = enrollment.profile_headline as string | undefined;
+  const jobId = enrollment.job_id as string | undefined;
+  const jobTitle = enrollment.job_title as string | undefined;
+
+  // Create Candidat
+  const candidatProps: Record<string, unknown> = {
+    'Nom': { title: [{ text: { content: profileName } }] },
+    'Entité': { select: { name: 'Konekt' } },
+    'Etape': { status: { name: mapping.etape === 'Pressenti' ? 'Pressenti' : 'Contacté' } },
+    'Etat': { select: { name: mapping.etat } },
+  };
+  if (profileUrl) {
+    candidatProps['URL Linkedin'] = { url: profileUrl };
+    candidatProps['Lien source'] = { url: profileUrl };
+  }
+  if (profileHeadline) {
+    candidatProps['Titre du poste'] = { rich_text: [{ text: { content: profileHeadline } }] };
+  }
+  if (jobId) {
+    candidatProps['💼 Postes'] = { relation: [{ id: jobId }] };
+  }
+
+  const candidateId = await createNotionPageSeq(CANDIDATS_DATABASE_ID, candidatProps);
+  if (!candidateId) {
+    console.error('[notion-sync] Failed to create candidate in Notion');
+    return null;
+  }
+  console.log(`[notion-sync] Created candidate in Notion: ${profileName} → ${candidateId}`);
+
+  // Create Shortlist
+  const shortlistTitle = jobTitle ? `${profileName} X ${jobTitle}` : profileName;
+  const shortlistProps: Record<string, unknown> = {
+    'Nom': { title: [{ text: { content: shortlistTitle } }] },
+    'Candidats': { relation: [{ id: candidateId }] },
+    'Etape': { select: { name: mapping.etape } },
+    'Entité': { select: { name: 'Konekt' } },
+  };
+  if (jobId) {
+    shortlistProps['💼 Postes'] = { relation: [{ id: jobId }] };
+  }
+
+  const shortlistId = await createNotionPageSeq(SHORTLIST_DATABASE_ID_SEQ, shortlistProps);
+  console.log(`[notion-sync] Created shortlist in Notion: ${shortlistTitle} → ${shortlistId}`);
+
+  return candidateId;
+}
+
 async function syncNotionStageAfterAction(actionType: string, enrollment: Record<string, unknown>) {
   const mapping = ACTION_TO_NOTION_STAGE[actionType];
   if (!mapping || !NOTION_API_KEY) return;
@@ -1148,9 +1220,13 @@ async function syncNotionStageAfterAction(actionType: string, enrollment: Record
     const profileName = enrollment.profile_name as string;
     const profileUrl = enrollment.profile_url as string | undefined;
     
-    const candidateId = await findCandidateInNotionSeq(profileName, profileUrl);
+    let candidateId = await findCandidateInNotionSeq(profileName, profileUrl);
+    
     if (!candidateId) {
-      console.log(`[notion-sync] Candidate not found in Notion: ${profileName}`);
+      console.log(`[notion-sync] Candidate not found in Notion, creating: ${profileName}`);
+      candidateId = await createCandidateAndShortlistInNotion(enrollment, mapping);
+      if (!candidateId) return;
+      // Already created with correct etape/etat, done
       return;
     }
 
@@ -1159,8 +1235,26 @@ async function syncNotionStageAfterAction(actionType: string, enrollment: Record
     
     // Update all Shortlist "Etape"
     const shortlistIds = await findShortlistsForCandidateSeq(candidateId);
-    for (const slId of shortlistIds) {
-      await updateNotionPageSeq(slId, { 'Etape': { select: { name: mapping.etape } } });
+    if (shortlistIds.length === 0 && (enrollment.job_id || enrollment.job_title)) {
+      // Candidate exists but no shortlist — create one
+      const jobId = enrollment.job_id as string | undefined;
+      const jobTitle = enrollment.job_title as string | undefined;
+      const shortlistTitle = jobTitle ? `${profileName} X ${jobTitle}` : profileName;
+      const shortlistProps: Record<string, unknown> = {
+        'Nom': { title: [{ text: { content: shortlistTitle } }] },
+        'Candidats': { relation: [{ id: candidateId }] },
+        'Etape': { select: { name: mapping.etape } },
+        'Entité': { select: { name: 'Konekt' } },
+      };
+      if (jobId) {
+        shortlistProps['💼 Postes'] = { relation: [{ id: jobId }] };
+      }
+      const slId = await createNotionPageSeq(SHORTLIST_DATABASE_ID_SEQ, shortlistProps);
+      console.log(`[notion-sync] Created missing shortlist: ${shortlistTitle} → ${slId}`);
+    } else {
+      for (const slId of shortlistIds) {
+        await updateNotionPageSeq(slId, { 'Etape': { select: { name: mapping.etape } } });
+      }
     }
     
     console.log(`[notion-sync] ${profileName}: Etat→"${mapping.etat}", Etape→"${mapping.etape}" (${shortlistIds.length} shortlists)`);
