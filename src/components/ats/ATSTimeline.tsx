@@ -105,7 +105,7 @@ export const ATSTimeline: React.FC<ATSTimelineProps> = ({ candidates, onCandidat
                 <div className="absolute left-[9px] top-2 bottom-2 w-0.5 bg-[#1A1A1A]/10" />
 
                 {group.candidates.map(candidate => {
-                  const sourceConfig = SOURCE_CONFIG[candidate.source];
+                  const sourceConfig = SOURCE_CONFIG[candidate.source] || { icon: <FileText className="w-3 h-3" />, color: 'bg-gray-500' };
                   
                   return (
                     <div 
