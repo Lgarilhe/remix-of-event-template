@@ -292,6 +292,21 @@ async function handleProcess(supabase: any, force = false) {
 
 // deno-lint-ignore no-explicit-any
 async function handleCheckReplies(supabase: any) {
+  // Throttle: run at most every 4 hours — webhook handles real-time, this is fallback only
+  const MIN_INTERVAL_MS = 4 * 60 * 60 * 1000;
+  const { data: lastRun } = await supabase
+    .from('internal_config')
+    .select('value')
+    .eq('key', 'last_check_replies')
+    .maybeSingle();
+
+  if (lastRun?.value && Date.now() - new Date(lastRun.value).getTime() < MIN_INTERVAL_MS) {
+    console.log('[checkReplies] Skipped — last run too recent:', lastRun.value);
+    return new Response(JSON.stringify({ skipped: 'too_recent', last_run: lastRun.value }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+  }
+
+  await supabase.from('internal_config').upsert({ key: 'last_check_replies', value: new Date().toISOString() }, { onConflict: 'key' });
+
   const { data: activeEnrollments } = await supabase.from('sequence_enrollments').select('*').eq('status', 'active').limit(20);
   let repliesDetected = 0;
   let skippedTooRecent = 0;
@@ -355,7 +370,7 @@ async function handleCheckTimeouts(supabase: any) {
 // deno-lint-ignore no-explicit-any
 async function handleCheckWaitEvents(supabase: any) {
   // Throttle: run at most every 4 hours to avoid burning Unipile quota
-  const MIN_INTERVAL_MS = 4 * 60 * 60 * 1000;
+  const MIN_INTERVAL_MS = 8 * 60 * 60 * 1000;
   const { data: lastRun } = await supabase
     .from('internal_config')
     .select('value')
