@@ -5,7 +5,7 @@ import { ATSCandidate, ATS_STAGES } from '@/pages/ATS';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
-import { ScrollArea } from '@/components/ui/scroll-area';
+
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useCandidateFullProfile, ScoringRecord } from '@/hooks/useCandidateFullProfile';
 import { EnrichedProfile } from '@/hooks/useProfileEnrichment';
@@ -96,6 +96,7 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
       experiences: workExperience.slice(0, 6).map((exp: any) => ({
         title: exp.role || exp.title || '',
         company: exp.company || exp.company_name || '',
+        logo: exp.company_logo || exp.logo_url || exp.logo || undefined,
         description: exp.description,
         startDate: exp.start ? `${exp.start.year || ''}${exp.start.month ? `-${String(exp.start.month).padStart(2, '0')}` : ''}` : undefined,
         endDate: exp.end ? `${exp.end.year || ''}${exp.end.month ? `-${String(exp.end.month).padStart(2, '0')}` : ''}` : undefined,
@@ -280,11 +281,10 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
         </div>
 
         {/* Tab content */}
-        <div className="flex-1 min-h-0 overflow-hidden px-6 pt-4 pb-6">
+        <div className="flex-1 min-h-0 overflow-y-auto px-6 pt-4 pb-6">
           {/* ==================== PROFIL TAB ==================== */}
           {activeTab === 'profile' && (
-            <ScrollArea className="h-full">
-              <div className="space-y-4 pr-4">
+            <div className="space-y-4 pr-1">
                 {/* Enrichment loading */}
                 {enrichLoading && (
                   <div className="flex items-center gap-2 p-3 bg-foreground/[0.03] border border-foreground/10 text-muted-foreground text-[11px]">
@@ -316,14 +316,18 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
                     <div className="space-y-3">
                       {enrichedProfile.experiences.map((exp, i) => (
                         <div key={i} className="flex gap-3">
-                          <div className="w-1 shrink-0 rounded-full bg-foreground/20" />
+                          {exp.logo ? (
+                            <img src={exp.logo} alt={exp.company} className="w-8 h-8 object-contain shrink-0 border border-foreground/10 bg-background" />
+                          ) : (
+                            <div className="w-8 h-8 shrink-0 border border-foreground/10 bg-foreground/5 flex items-center justify-center">
+                              <Building2 className="w-4 h-4 text-muted-foreground" />
+                            </div>
+                          )}
                           <div className="flex-1 min-w-0">
                             <div className="flex items-start justify-between gap-2">
                               <div>
                                 <p className="text-sm font-medium text-foreground">{exp.title}</p>
-                                <p className="text-[11px] text-muted-foreground flex items-center gap-1">
-                                  <Building2 className="w-3 h-3" /> {exp.company}
-                                </p>
+                                <p className="text-[11px] text-muted-foreground">{exp.company}</p>
                               </div>
                               {exp.isCurrent && (
                                 <span className="text-[9px] px-1.5 py-0.5 border border-emerald-300 text-emerald-700 bg-emerald-50 font-bold uppercase tracking-wider shrink-0">Actuel</span>
@@ -518,13 +522,11 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
                   </div>
                 </Section>
               </div>
-            </ScrollArea>
           )}
 
           {/* ==================== SCORING TAB ==================== */}
           {activeTab === 'scoring' && (
-            <ScrollArea className="h-full">
-              <div className="space-y-4 pr-4">
+            <div className="space-y-4">
                 {fullProfile.loading ? (
                   <div className="flex items-center justify-center py-12">
                     <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
@@ -537,13 +539,11 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
                   ))
                 )}
               </div>
-            </ScrollArea>
           )}
 
           {/* ==================== ACTIVITY TAB ==================== */}
           {activeTab === 'activity' && (
-            <ScrollArea className="h-full">
-              <div className="pr-4">
+            <div>
                 {fullProfile.loading ? (
                   <div className="flex items-center justify-center py-12">
                     <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
@@ -596,7 +596,6 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
                   </div>
                 )}
               </div>
-            </ScrollArea>
           )}
 
           {/* ==================== NOTES TAB ==================== */}
@@ -609,11 +608,11 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
                   <Plus className="w-3.5 h-3.5 relative z-10" /> <span className="relative z-10">Ajouter</span>
                 </BrutalActionButton>
               </div>
-              <ScrollArea className="flex-1">
+              <div className="flex-1">
                 {loading ? <CenteredLoader /> : notes.length === 0 ? (
                   <EmptyState icon={StickyNote} label="Aucune note" />
                 ) : (
-                  <div className="space-y-3 pr-4">
+                  <div className="space-y-3">
                     {notes.map(note => (
                       <div key={note.id} className="p-3 bg-foreground/[0.03] border border-foreground/10 group hover:border-foreground/30 transition-colors">
                         <p className="text-sm text-foreground whitespace-pre-wrap">{note.content}</p>
@@ -630,7 +629,7 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
                     ))}
                   </div>
                 )}
-              </ScrollArea>
+              </div>
             </div>
           )}
 
@@ -664,11 +663,11 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
                   </button>
                 )}
               </div>
-              <ScrollArea className="flex-1">
+              <div className="flex-1">
                 {loading ? <CenteredLoader /> : reminders.length === 0 ? (
                   <EmptyState icon={Bell} label="Aucun rappel" />
                 ) : (
-                  <div className="space-y-3 pr-4">
+                  <div className="space-y-3">
                     {reminders.map(r => (
                       <div key={r.id} className={cn("p-3 border group transition-colors",
                         r.completed_at ? 'bg-muted/50 border-foreground/10 opacity-60' : 'bg-foreground/[0.03] border-foreground/10 hover:border-foreground/30'
@@ -692,7 +691,7 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
                     ))}
                   </div>
                 )}
-              </ScrollArea>
+              </div>
             </div>
           )}
         </div>
