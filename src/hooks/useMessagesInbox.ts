@@ -114,13 +114,21 @@ export interface JobData {
 interface UseMessagesInboxOptions {
   selectedAccount: string | null;
   onUnreadCountChange?: (count: number) => void;
+  initialChatId?: string | null;
+  onChatChange?: (chatId: string | null) => void;
 }
 
-export function useMessagesInbox({ selectedAccount, onUnreadCountChange }: UseMessagesInboxOptions) {
+export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initialChatId, onChatChange }: UseMessagesInboxOptions) {
   // Chat state
   const [chats, setChats] = useState<Chat[]>([]);
   const [filteredChats, setFilteredChats] = useState<Chat[]>([]);
-  const [selectedChat, setSelectedChat] = useState<Chat | null>(null);
+  const [selectedChat, _setSelectedChat] = useState<Chat | null>(null);
+  const pendingInitialChatId = useRef<string | null>(initialChatId || null);
+  
+  const setSelectedChat = useCallback((chat: Chat | null) => {
+    _setSelectedChat(chat);
+    onChatChange?.(chat?.id || null);
+  }, [onChatChange]);
   const [messages, setMessages] = useState<Message[]>([]);
   const [loadingChats, setLoadingChats] = useState(false);
   const [loadingMessages, setLoadingMessages] = useState(false);
@@ -294,8 +302,19 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange }: UseMe
       if (response.error) throw response.error;
       if (!response.data?.success) throw new Error(response.data?.error);
 
-      setChats(response.data.chats || []);
-      setFilteredChats(response.data.chats || []);
+      const fetchedChats = response.data.chats || [];
+      setChats(fetchedChats);
+      setFilteredChats(fetchedChats);
+      
+      // Auto-select initial chat if provided
+      if (pendingInitialChatId.current) {
+        const match = fetchedChats.find((c: Chat) => c.id === pendingInitialChatId.current);
+        if (match) {
+          setSelectedChat(match);
+        }
+        pendingInitialChatId.current = null;
+      }
+      
       if (showToast) toast.success('Conversations actualisées');
     } catch (error) {
       console.error('Error fetching chats:', error);
@@ -805,7 +824,7 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange }: UseMe
     setChats(prev => prev.map(c =>
       c.id === chatId ? { ...c, unread_count: 0, unread: 0 } : c
     ));
-    setSelectedChat(prev =>
+    _setSelectedChat(prev =>
       prev && prev.id === chatId ? { ...prev, unread_count: 0, unread: 0 } : prev
     );
 
