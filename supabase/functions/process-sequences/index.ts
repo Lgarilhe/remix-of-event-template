@@ -377,6 +377,41 @@ async function handleCheckReplies(supabase: any) {
       await supabase.from('sequence_enrollments').update({ status: 'replied', replied_at: new Date().toISOString() }).eq('id', enrollment.id);
       await supabase.from('sequence_step_executions').update({ status: 'cancelled', skip_reason: 'Reply detected' }).eq('enrollment_id', enrollment.id).eq('status', 'scheduled');
       await logAnalytics(supabase, enrollment.sequence_id, 'replies_received');
+
+      // Update job_candidate_status to 'replied'
+      if (enrollment.profile_id) {
+        const { data: jcsRows } = await supabase
+          .from('job_candidate_status')
+          .select('id')
+          .eq('candidate_id', enrollment.profile_id)
+          .in('status', ['contacted', 'shortlisted', 'scored', 'new']);
+        if (jcsRows && jcsRows.length > 0) {
+          await supabase
+            .from('job_candidate_status')
+            .update({ status: 'replied', updated_at: new Date().toISOString() })
+            .in('id', jcsRows.map((r: { id: string }) => r.id));
+          console.log(`[checkReplies] Updated ${jcsRows.length} job_candidate_status → replied`);
+        }
+      }
+
+      // Sync Notion: Etat → "A répondu", Etape → "Qualification"
+      try {
+        const candidateId = await findCandidateInNotionSeq(
+          enrollment.profile_name || '',
+          enrollment.profile_url
+        );
+        if (candidateId) {
+          await updateNotionPageSeq(candidateId, { 'Etat': { select: { name: 'A répondu' } } });
+          const shortlistIds = await findShortlistsForCandidateSeq(candidateId);
+          for (const slId of shortlistIds) {
+            await updateNotionPageSeq(slId, { 'Etape': { select: { name: 'Qualification' } } });
+          }
+          console.log(`[checkReplies] Notion synced: Etat→"A répondu", Etape→"Qualification" (${shortlistIds.length} shortlists)`);
+        }
+      } catch (notionErr) {
+        console.warn('[checkReplies] Notion sync failed (non-blocking):', notionErr);
+      }
+
       repliesDetected++;
       console.log(`[checkReplies] Reply detected for ${enrollment.profile_name} (after ${afterDate})`);
     }

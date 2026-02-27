@@ -319,6 +319,20 @@ async function handleNewMessage(supabase: SupabaseClient, payload: WebhookPayloa
         }, { onConflict: 'sequence_id,date' });
 
       console.log('[unipile-webhook] Enrollment', enrollment.id, 'marked as replied');
+
+      // Update job_candidate_status to 'replied'
+      const { data: jcsRows } = await supabase
+        .from('job_candidate_status')
+        .select('id')
+        .eq('candidate_id', enrollment.profile_id)
+        .in('status', ['contacted', 'shortlisted', 'scored', 'new']);
+      if (jcsRows && jcsRows.length > 0) {
+        await supabase
+          .from('job_candidate_status')
+          .update({ status: 'replied', updated_at: new Date().toISOString() })
+          .in('id', jcsRows.map((m: { id: string }) => m.id));
+        console.log(`[unipile-webhook] Updated ${jcsRows.length} job_candidate_status → replied`);
+      }
     }
   }
 
