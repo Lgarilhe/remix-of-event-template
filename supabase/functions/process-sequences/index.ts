@@ -136,6 +136,13 @@ async function handleProcess(supabase: any, force = false) {
       return true;
     });
 
+    // Random jitter (0-20s) to break cron regularity and appear more human to LinkedIn
+    const jitterMs = Math.floor(Math.random() * 20000);
+    if (jitterMs > 0) {
+      console.log(`[process] Jitter: waiting ${Math.round(jitterMs / 1000)}s before action`);
+      await new Promise(r => setTimeout(r, jitterMs));
+    }
+
     for (const exec of dedupedExecutions) {
       try {
         const enrollment = exec.enrollment;
