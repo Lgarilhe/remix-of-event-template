@@ -1479,10 +1479,12 @@ export type Database = {
           job_id: string | null
           job_title: string | null
           last_check_at: string | null
+          network_distance: string | null
           profile_headline: string | null
           profile_id: string
           profile_name: string | null
           profile_url: string | null
+          provider_id: string | null
           replied_at: string | null
           resolved_profile_id: string | null
           sequence_id: string
@@ -1501,10 +1503,12 @@ export type Database = {
           job_id?: string | null
           job_title?: string | null
           last_check_at?: string | null
+          network_distance?: string | null
           profile_headline?: string | null
           profile_id: string
           profile_name?: string | null
           profile_url?: string | null
+          provider_id?: string | null
           replied_at?: string | null
           resolved_profile_id?: string | null
           sequence_id: string
@@ -1523,10 +1527,12 @@ export type Database = {
           job_id?: string | null
           job_title?: string | null
           last_check_at?: string | null
+          network_distance?: string | null
           profile_headline?: string | null
           profile_id?: string
           profile_name?: string | null
           profile_url?: string | null
+          provider_id?: string | null
           replied_at?: string | null
           resolved_profile_id?: string | null
           sequence_id?: string
