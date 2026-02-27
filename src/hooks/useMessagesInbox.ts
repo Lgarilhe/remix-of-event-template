@@ -122,7 +122,13 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
   // Chat state
   const [chats, setChats] = useState<Chat[]>([]);
   const [filteredChats, setFilteredChats] = useState<Chat[]>([]);
-  const [selectedChat, _setSelectedChat] = useState<Chat | null>(null);
+  const [selectedChat, _setSelectedChat] = useState<Chat | null>(() => {
+    // Create a minimal placeholder chat so the UI renders immediately
+    if (initialChatId) {
+      return { id: initialChatId, account_id: '' } as Chat;
+    }
+    return null;
+  });
   const pendingInitialChatId = useRef<string | null>(initialChatId || null);
   
   const setSelectedChat = useCallback((chat: Chat | null) => {
@@ -306,11 +312,11 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
       setChats(fetchedChats);
       setFilteredChats(fetchedChats);
       
-      // Auto-select initial chat if provided
+      // Replace placeholder with full chat object (without triggering onChatChange)
       if (pendingInitialChatId.current) {
         const match = fetchedChats.find((c: Chat) => c.id === pendingInitialChatId.current);
         if (match) {
-          setSelectedChat(match);
+          _setSelectedChat(match);
         }
         pendingInitialChatId.current = null;
       }
@@ -893,8 +899,12 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
       fetchEnrollments();
       fetchAvailableJobs();
       fetchSequences();
-      setSelectedChat(null);
-      setMessages([]);
+
+      // Don't reset chat/messages if we have an initial chat to restore
+      if (!pendingInitialChatId.current) {
+        setSelectedChat(null);
+        setMessages([]);
+      }
     }
   }, [selectedAccount, fetchChats, fetchEnrollments, fetchAvailableJobs, fetchSequences]);
 
