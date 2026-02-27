@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { InMailTextEditor } from '../InMailTextEditor';
@@ -87,6 +87,22 @@ export const MessageView: React.FC<MessageViewProps> = ({
   const currentTone = onToneChange ? selectedTone : localTone;
   const handleToneChange = onToneChange || setLocalTone;
   const [aiSheetOpen, setAiSheetOpen] = useState(false);
+  const localContainerRef = useRef<HTMLDivElement>(null);
+
+  // Scroll to bottom when messages load or change
+  useEffect(() => {
+    if (!loadingMessages && messages.length > 0) {
+      const container = localContainerRef.current;
+      if (container) {
+        const timeout = setTimeout(() => {
+          requestAnimationFrame(() => {
+            container.scrollTo({ top: container.scrollHeight, behavior: 'instant' });
+          });
+        }, 80);
+        return () => clearTimeout(timeout);
+      }
+    }
+  }, [messages, loadingMessages]);
 
   const profileId = selectedChat ? getAttendeeProfileId(selectedChat) : null;
   const profileUrl = selectedChat?.attendees?.[0]?.profile_url || null;
@@ -234,7 +250,7 @@ export const MessageView: React.FC<MessageViewProps> = ({
       </div>
 
       {/* Messages Area */}
-      <div className="flex-1 min-h-0 overflow-y-auto overscroll-y-contain touch-pan-y p-4" ref={messagesContainerRef} style={{ WebkitOverflowScrolling: 'touch' }}>
+      <div className="flex-1 min-h-0 overflow-y-auto overscroll-y-contain touch-pan-y p-4" ref={localContainerRef} style={{ WebkitOverflowScrolling: 'touch' }}>
         {loadingMessages && messages.length === 0 ? (
           <div className="flex items-center justify-center h-full">
             <Loader2 className="w-6 h-6 animate-spin text-foreground" />
