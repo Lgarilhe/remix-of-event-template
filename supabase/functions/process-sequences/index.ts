@@ -286,7 +286,7 @@ async function handleProcess(supabase: any, force = false) {
 
 // deno-lint-ignore no-explicit-any
 async function handleCheckReplies(supabase: any) {
-  const { data: activeEnrollments } = await supabase.from('sequence_enrollments').select('*').eq('status', 'active');
+  const { data: activeEnrollments } = await supabase.from('sequence_enrollments').select('*').eq('status', 'active').limit(20);
   let repliesDetected = 0;
   let skippedTooRecent = 0;
 
@@ -690,7 +690,8 @@ async function checkMessagesForReply(chats: { id: string }[], afterTimestamp: nu
 }
 
 async function checkHasProspectReplied(accountId: string, profileId: string): Promise<boolean> {
-  return await checkForReplyAfterDate(accountId, profileId, new Date(Date.now() - 86400000).toISOString());
+  // 72h window instead of 24h to catch weekend replies
+  return await checkForReplyAfterDate(accountId, profileId, new Date(Date.now() - 72 * 3600000).toISOString());
 }
 
 // deno-lint-ignore no-explicit-any
