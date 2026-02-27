@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { Navbar } from '@/components/Navbar';
 import { SEOHead } from '@/components/SEOHead';
@@ -41,10 +42,23 @@ const tabs = [
 ] as const;
 
 export default function Outreach() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [rawAccounts, setRawAccounts] = useState<LinkedInAccount[]>([]);
   const [selectedAccount, setSelectedAccount] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState('projects');
+  
+  const validTabs = tabs.map(t => t.value) as string[];
+  const tabFromUrl = searchParams.get('tab');
+  const activeTab = validTabs.includes(tabFromUrl || '') ? tabFromUrl! : 'projects';
+  
+  const setActiveTab = useCallback((tab: string) => {
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev);
+      next.set('tab', tab);
+      return next;
+    }, { replace: true });
+  }, [setSearchParams]);
+  
   const [activeProject, setActiveProject] = useState<SourcingProject | null>(null);
 
   const accounts = useMemo(() => rawAccounts.map(applySubscriptionOverrides), [rawAccounts]);
