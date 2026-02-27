@@ -889,6 +889,21 @@ export type Database = {
         }
         Relationships: []
       }
+      internal_config: {
+        Row: {
+          key: string
+          value: string
+        }
+        Insert: {
+          key: string
+          value: string
+        }
+        Update: {
+          key?: string
+          value?: string
+        }
+        Relationships: []
+      }
       job_candidate_status: {
         Row: {
           candidate_headline: string | null
@@ -1823,6 +1838,10 @@ export type Database = {
           _user_id: string
         }
         Returns: boolean
+      }
+      invoke_process_sequences: {
+        Args: { p_action: string }
+        Returns: undefined
       }
       release_sequence_lock: { Args: { p_run_id: string }; Returns: undefined }
     }
