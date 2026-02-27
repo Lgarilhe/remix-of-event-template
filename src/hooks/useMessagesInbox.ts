@@ -414,6 +414,19 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange }: UseMe
     }
   }, [enrollmentsMap, availableJobs]);
 
+  // Scroll to bottom helper
+  const scrollToBottom = useCallback((smooth = true) => {
+    const container = messagesContainerRef.current;
+    if (container) {
+      requestAnimationFrame(() => {
+        container.scrollTo({
+          top: container.scrollHeight,
+          behavior: smooth ? 'smooth' : 'instant',
+        });
+      });
+    }
+  }, []);
+
   // Send a message
   const sendMessage = useCallback(async () => {
     if (!selectedAccount || !selectedChat || !newMessage.trim()) return;
@@ -447,9 +460,7 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange }: UseMe
       // Fire-and-forget: sync status + Notion
       syncAfterInboxSend(selectedChat);
       
-      setTimeout(() => {
-        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-      }, 100);
+      setTimeout(() => scrollToBottom(true), 100);
 
       toast.success('Message envoyé');
     } catch (error) {
@@ -494,9 +505,7 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange }: UseMe
       // Fire-and-forget: sync status + Notion
       syncAfterInboxSend(selectedChat);
       
-      setTimeout(() => {
-        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-      }, 100);
+      setTimeout(() => scrollToBottom(true), 100);
 
       toast.success('Message envoyé');
     } catch (error) {
@@ -927,12 +936,15 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange }: UseMe
     };
   }, [selectedChat?.id, selectedAccount]);
 
-  // Scroll to bottom on new messages
+  // Scroll to bottom helper
+
   useEffect(() => {
     if (!loadingMessages && messages.length > 0) {
-      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+      // Use instant scroll on first load, smooth on updates
+      const timeout = setTimeout(() => scrollToBottom(false), 50);
+      return () => clearTimeout(timeout);
     }
-  }, [messages, loadingMessages]);
+  }, [messages, loadingMessages, scrollToBottom]);
 
   return {
     // Chat state
