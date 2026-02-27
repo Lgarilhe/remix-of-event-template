@@ -7,12 +7,14 @@ import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { useCandidateFullProfile } from '@/hooks/useCandidateFullProfile';
+import { useCandidateFullProfile, ScoringRecord } from '@/hooks/useCandidateFullProfile';
+import { useProfileEnrichment, EnrichedProfile } from '@/hooks/useProfileEnrichment';
 import { 
   X, Mail, Phone, StickyNote, Bell, Send, Plus, User, GitBranch, Target,
   Loader2, Trash2, Calendar, Brain, CheckCircle2, AlertTriangle, MapPin,
   Briefcase, Clock, MessageSquare, CalendarPlus, FolderPlus, Activity,
-  FileText, Award, ExternalLink
+  FileText, Award, ExternalLink, GraduationCap, Languages, ChevronDown,
+  ChevronUp, Building2, TrendingUp
 } from 'lucide-react';
 import { format, parseISO, formatDistanceToNow } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -43,6 +45,7 @@ interface Reminder {
 
 const tabsConfig = [
   { key: 'profile', label: 'Profil', icon: User },
+  { key: 'scoring', label: 'Scoring', icon: Target },
   { key: 'activity', label: 'Activité', icon: Activity },
   { key: 'notes', label: 'Notes', icon: StickyNote },
   { key: 'reminders', label: 'Rappels', icon: Bell },
@@ -63,6 +66,14 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
   const [addingReminder, setAddingReminder] = useState(false);
 
   const fullProfile = useCandidateFullProfile(candidate.candidateId, candidate.linkedin);
+  const { enrichedProfile, loading: enrichLoading, enrichProfile } = useProfileEnrichment();
+
+  // Try to enrich profile when we have an account_id
+  useEffect(() => {
+    if (fullProfile.accountId && candidate.linkedin && !enrichedProfile && !enrichLoading) {
+      enrichProfile(candidate.linkedin, fullProfile.accountId);
+    }
+  }, [fullProfile.accountId, candidate.linkedin, enrichedProfile, enrichLoading]);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -143,9 +154,30 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
           <div className="flex items-start justify-between">
             <div className="flex-1 min-w-0">
               <h2 className="text-xl font-bold text-foreground">{candidate.name}</h2>
-              {candidate.headline && (
-                <p className="text-sm text-muted-foreground mt-1 truncate">{candidate.headline}</p>
+              {(enrichedProfile?.headline || candidate.headline) && (
+                <p className="text-sm text-muted-foreground mt-1 truncate">{enrichedProfile?.headline || candidate.headline}</p>
               )}
+              {/* Quick info from enrichment */}
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1.5 text-[11px] text-muted-foreground">
+                {enrichedProfile?.currentCompany && (
+                  <span className="flex items-center gap-1 font-medium text-foreground/80">
+                    <Building2 className="w-3 h-3 text-muted-foreground" />
+                    {enrichedProfile.currentCompany}
+                  </span>
+                )}
+                {enrichedProfile?.location && (
+                  <span className="flex items-center gap-1">
+                    <MapPin className="w-3 h-3" />
+                    {enrichedProfile.location}
+                  </span>
+                )}
+                {enrichedProfile?.yearsOfExperience && (
+                  <span className="flex items-center gap-1 text-emerald-600 font-medium">
+                    <TrendingUp className="w-3 h-3" />
+                    ~{enrichedProfile.yearsOfExperience} ans d'exp.
+                  </span>
+                )}
+              </div>
             </div>
             <button onClick={onClose} className="h-8 w-8 flex items-center justify-center border border-foreground text-foreground hover:bg-brutal-accent transition-colors shrink-0">
               <X className="w-4 h-4" />
@@ -183,20 +215,24 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
 
         {/* Tabs */}
         <div className="px-6 pt-4">
-          <div className="flex gap-0 border-b border-foreground/20">
+          <div className="flex gap-0 border-b border-foreground/20 overflow-x-auto">
             {tabsConfig.map(tab => {
               const Icon = tab.icon;
               const isActive = activeTab === tab.key;
-              const count = tab.key === 'notes' ? notes.length : tab.key === 'reminders' ? activeRemindersCount : tab.key === 'activity' ? fullProfile.timeline.length : null;
+              const count = tab.key === 'notes' ? notes.length
+                : tab.key === 'reminders' ? activeRemindersCount
+                : tab.key === 'activity' ? fullProfile.timeline.length
+                : tab.key === 'scoring' ? fullProfile.scoringHistory.length
+                : null;
               return (
                 <button key={tab.key} onClick={() => setActiveTab(tab.key)}
                   className={cn(
-                    "flex items-center gap-1.5 px-4 py-2.5 text-[11px] font-medium uppercase tracking-wider border-b-2 transition-colors -mb-px",
+                    "flex items-center gap-1.5 px-3 py-2.5 text-[10px] font-medium uppercase tracking-wider border-b-2 transition-colors -mb-px whitespace-nowrap",
                     isActive ? "border-foreground text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"
                   )}>
                   <Icon className="w-3.5 h-3.5" />
                   {tab.label}
-                  {count !== null && <span className="text-[10px] text-muted-foreground">({count})</span>}
+                  {count !== null && count > 0 && <span className="text-[9px] text-muted-foreground">({count})</span>}
                 </button>
               );
             })}
@@ -209,6 +245,14 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
           {activeTab === 'profile' && (
             <ScrollArea className="h-full">
               <div className="space-y-4 pr-4">
+                {/* Enrichment loading */}
+                {enrichLoading && (
+                  <div className="flex items-center gap-2 p-3 bg-foreground/[0.03] border border-foreground/10 text-muted-foreground text-[11px]">
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    Chargement du profil LinkedIn complet...
+                  </div>
+                )}
+
                 {/* Source */}
                 <Section title="Source">
                   <div className="flex flex-wrap gap-2">
@@ -226,84 +270,102 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
                   </div>
                 </Section>
 
-                {/* AI Scoring */}
-                {(candidate.score != null || candidate.recommendation) && (
-                  <div className="border-l-4 border-brutal-accent bg-foreground/[0.03] p-4">
-                    <div className="flex items-center gap-2 mb-3">
-                      <Brain className="w-4 h-4 text-foreground" />
-                      <h4 className="text-[11px] font-bold uppercase tracking-wider text-foreground">Scoring IA</h4>
-                      {candidate.score != null && (
-                        <span className={cn("ml-auto text-lg font-bold",
-                          candidate.score >= 70 ? 'text-emerald-600' : candidate.score >= 40 ? 'text-amber-500' : 'text-destructive'
-                        )}>{candidate.score}%</span>
-                      )}
-                    </div>
-                    {(candidate.scoringDetails?.summary || candidate.recommendation) && (
-                      <p className="text-sm text-muted-foreground whitespace-pre-wrap leading-relaxed mb-3">
-                        {candidate.scoringDetails?.summary || candidate.recommendation}
-                      </p>
-                    )}
-                    {candidate.scoringDetails?.matching_skills?.length > 0 && (
-                      <div className="mb-3">
-                        <div className="flex items-center gap-1.5 mb-1.5">
-                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                          <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700">Compétences matchées</span>
-                        </div>
-                        <div className="flex flex-wrap gap-1.5">
-                          {candidate.scoringDetails.matching_skills.map((s: string) => (
-                            <span key={s} className="text-[10px] px-2 py-0.5 border border-emerald-300 text-emerald-700 bg-emerald-50 font-medium">{s}</span>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                    {candidate.scoringDetails?.missing_skills?.length > 0 && (
-                      <div className="mb-3">
-                        <div className="flex items-center gap-1.5 mb-1.5">
-                          <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />
-                          <span className="text-[10px] font-bold uppercase tracking-wider text-amber-700">Compétences manquantes</span>
-                        </div>
-                        <div className="flex flex-wrap gap-1.5">
-                          {candidate.scoringDetails.missing_skills.map((s: string) => (
-                            <span key={s} className="text-[10px] px-2 py-0.5 border border-amber-300 text-amber-700 bg-amber-50 font-medium">{s}</span>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                    {candidate.scoringDetails && (
-                      <div className="flex flex-wrap gap-3 text-[11px]">
-                        {candidate.scoringDetails.experience_match && (
-                          <div className="flex items-center gap-1">
-                            <Briefcase className="w-3.5 h-3.5 text-muted-foreground" />
-                            <span className="text-muted-foreground">Expérience :</span>
-                            <span className={cn("font-medium",
-                              candidate.scoringDetails.experience_match === 'compatible' ? 'text-emerald-600' :
-                              candidate.scoringDetails.experience_match === 'trop_senior' ? 'text-amber-600' :
-                              candidate.scoringDetails.experience_match === 'trop_junior' ? 'text-destructive' : 'text-muted-foreground'
-                            )}>
-                              {candidate.scoringDetails.experience_match === 'compatible' ? 'Compatible' :
-                               candidate.scoringDetails.experience_match === 'trop_senior' ? 'Trop senior' :
-                               candidate.scoringDetails.experience_match === 'trop_junior' ? 'Trop junior' : 'Incertain'}
-                            </span>
+                {/* Enriched Profile - Experiences */}
+                {enrichedProfile?.experiences && enrichedProfile.experiences.length > 0 && (
+                  <Section title="Expériences">
+                    <div className="space-y-3">
+                      {enrichedProfile.experiences.map((exp, i) => (
+                        <div key={i} className="flex gap-3">
+                          <div className="w-1 shrink-0 rounded-full bg-foreground/20" />
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-start justify-between gap-2">
+                              <div>
+                                <p className="text-sm font-medium text-foreground">{exp.title}</p>
+                                <p className="text-[11px] text-muted-foreground flex items-center gap-1">
+                                  <Building2 className="w-3 h-3" /> {exp.company}
+                                </p>
+                              </div>
+                              {exp.isCurrent && (
+                                <span className="text-[9px] px-1.5 py-0.5 border border-emerald-300 text-emerald-700 bg-emerald-50 font-bold uppercase tracking-wider shrink-0">Actuel</span>
+                              )}
+                            </div>
+                            {(exp.startDate || exp.endDate) && (
+                              <p className="text-[10px] text-muted-foreground mt-0.5">
+                                {exp.startDate?.split('-')[0] || '?'} — {exp.endDate ? exp.endDate.split('-')[0] : 'Présent'}
+                              </p>
+                            )}
+                            {exp.description && (
+                              <p className="text-[11px] text-muted-foreground mt-1 line-clamp-3 leading-relaxed">{exp.description}</p>
+                            )}
                           </div>
-                        )}
-                        <div className="flex items-center gap-1">
-                          <MapPin className="w-3.5 h-3.5 text-muted-foreground" />
-                          <span className="text-muted-foreground">Localisation :</span>
-                          <span className={cn("font-medium", candidate.scoringDetails.location_match ? 'text-emerald-600' : 'text-destructive')}>
-                            {candidate.scoringDetails.location_match ? 'Compatible' : 'Non compatible'}
-                          </span>
                         </div>
-                      </div>
-                    )}
-                    {candidate.scoringDetails?.salary_analysis && (
-                      <div className="mt-2 pt-2 border-t border-foreground/10 text-[11px] text-muted-foreground">
-                        💰 {candidate.scoringDetails.salary_analysis.status === 'adequate' ? 'Salaire adéquat' :
-                            candidate.scoringDetails.salary_analysis.status === 'too_low' ? 'Salaire potentiellement bas' :
-                            candidate.scoringDetails.salary_analysis.status === 'too_high' ? 'Salaire potentiellement élevé' : 'Analyse salariale'}
-                        {candidate.scoringDetails.salary_analysis.gap_percent && ` (écart: ${candidate.scoringDetails.salary_analysis.gap_percent}%)`}
-                      </div>
-                    )}
-                  </div>
+                      ))}
+                    </div>
+                  </Section>
+                )}
+
+                {/* Enriched Profile - Education */}
+                {enrichedProfile?.education && enrichedProfile.education.length > 0 && (
+                  <Section title="Formation">
+                    <div className="space-y-2">
+                      {enrichedProfile.education.map((edu, i) => (
+                        <div key={i} className="flex items-start gap-2">
+                          <GraduationCap className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" />
+                          <div>
+                            <p className="text-sm font-medium text-foreground">{edu.school}</p>
+                            {(edu.degree || edu.field) && (
+                              <p className="text-[11px] text-muted-foreground">
+                                {[edu.degree, edu.field].filter(Boolean).join(' — ')}
+                              </p>
+                            )}
+                            {(edu.startYear || edu.endYear) && (
+                              <p className="text-[10px] text-muted-foreground">{edu.startYear || '?'} — {edu.endYear || '?'}</p>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </Section>
+                )}
+
+                {/* Enriched Profile - Skills */}
+                {enrichedProfile?.skills && enrichedProfile.skills.length > 0 && (
+                  <Section title="Compétences">
+                    <div className="flex flex-wrap gap-1.5">
+                      {enrichedProfile.skills.slice(0, 20).map(s => (
+                        <span key={s} className="text-[10px] px-2 py-0.5 border border-foreground/30 text-foreground font-medium uppercase tracking-wider">{s}</span>
+                      ))}
+                    </div>
+                  </Section>
+                )}
+
+                {/* Enriched Profile - Languages */}
+                {enrichedProfile?.languages && enrichedProfile.languages.length > 0 && (
+                  <Section title="Langues">
+                    <div className="flex flex-wrap gap-2">
+                      {enrichedProfile.languages.map(l => (
+                        <BadgeItem key={l} icon={<Languages className="w-3 h-3" />}>{l}</BadgeItem>
+                      ))}
+                    </div>
+                  </Section>
+                )}
+
+                {/* Enriched Profile - Summary */}
+                {enrichedProfile?.summary && (
+                  <Section title="À propos">
+                    <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-wrap line-clamp-6">{enrichedProfile.summary}</p>
+                  </Section>
+                )}
+
+                {/* Fallback: show basic skills from ATSCandidate if no enrichment */}
+                {!enrichedProfile && candidate.expertise.length > 0 && (
+                  <Section title="Compétences">
+                    <div className="flex flex-wrap gap-1.5">
+                      {candidate.expertise.map(s => (
+                        <span key={s} className="text-[10px] px-2 py-0.5 border border-foreground/30 text-foreground font-medium uppercase tracking-wider">{s}</span>
+                      ))}
+                    </div>
+                  </Section>
                 )}
 
                 {/* Qualification */}
@@ -400,17 +462,6 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
                   </Section>
                 )}
 
-                {/* Compétences */}
-                {candidate.expertise.length > 0 && (
-                  <Section title="Compétences">
-                    <div className="flex flex-wrap gap-1.5">
-                      {candidate.expertise.map(s => (
-                        <span key={s} className="text-[10px] px-2 py-0.5 border border-foreground/30 text-foreground font-medium uppercase tracking-wider">{s}</span>
-                      ))}
-                    </div>
-                  </Section>
-                )}
-
                 {/* Historique */}
                 <Section title="Historique">
                   <div className="space-y-2 text-sm">
@@ -430,6 +481,25 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
             </ScrollArea>
           )}
 
+          {/* ==================== SCORING TAB ==================== */}
+          {activeTab === 'scoring' && (
+            <ScrollArea className="h-full">
+              <div className="space-y-4 pr-4">
+                {fullProfile.loading ? (
+                  <div className="flex items-center justify-center py-12">
+                    <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+                  </div>
+                ) : fullProfile.scoringHistory.length === 0 ? (
+                  <EmptyState icon={Target} label="Aucun scoring" />
+                ) : (
+                  fullProfile.scoringHistory.map((sr) => (
+                    <ScoringCard key={sr.id} scoring={sr} />
+                  ))
+                )}
+              </div>
+            </ScrollArea>
+          )}
+
           {/* ==================== ACTIVITY TAB ==================== */}
           {activeTab === 'activity' && (
             <ScrollArea className="h-full">
@@ -439,10 +509,7 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
                     <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
                   </div>
                 ) : fullProfile.timeline.length === 0 ? (
-                  <div className="text-center py-12">
-                    <Activity className="w-10 h-10 mx-auto mb-3 text-muted-foreground opacity-30" />
-                    <p className="text-muted-foreground text-[11px] uppercase tracking-wider">Aucune activité enregistrée</p>
-                  </div>
+                  <EmptyState icon={Activity} label="Aucune activité enregistrée" />
                 ) : (
                   <div className="relative pl-6 space-y-4">
                     <div className="absolute left-[9px] top-2 bottom-2 w-0.5 bg-foreground/15" />
@@ -610,6 +677,141 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
   );
 };
 
+// ========== Scoring Card Component ==========
+
+function ScoringCard({ scoring }: { scoring: ScoringRecord }) {
+  const [expanded, setExpanded] = useState(false);
+  const details = scoring.scoringDetails;
+
+  return (
+    <div className="border border-foreground/10 bg-foreground/[0.03] hover:border-foreground/30 transition-colors">
+      {/* Header */}
+      <button onClick={() => setExpanded(!expanded)} className="w-full p-4 flex items-center gap-3 text-left">
+        <div className={cn("h-10 w-10 flex items-center justify-center border shrink-0 text-sm font-bold",
+          (scoring.score ?? 0) >= 70 ? 'border-emerald-400 bg-emerald-50 text-emerald-700' :
+          (scoring.score ?? 0) >= 40 ? 'border-amber-400 bg-amber-50 text-amber-700' :
+          'border-destructive/40 bg-destructive/5 text-destructive'
+        )}>
+          {scoring.score ?? '—'}
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-medium text-foreground">
+              {scoring.recommendation === 'shortlist' ? '✅ Shortlist' :
+               scoring.recommendation === 'skip' ? '❌ Skip' :
+               scoring.recommendation === 'maybe' ? '🤔 Maybe' : 'Scoring'}
+            </span>
+            {scoring.pipelineStage && (
+              <span className="text-[9px] px-1.5 py-0.5 border border-foreground/20 text-muted-foreground font-medium uppercase tracking-wider">{scoring.pipelineStage}</span>
+            )}
+          </div>
+          <span className="text-[10px] text-muted-foreground">
+            {format(parseISO(scoring.updatedAt), 'd MMM yyyy', { locale: fr })}
+            {scoring.jobId && ` • Job: ${scoring.jobId.slice(0, 8)}...`}
+          </span>
+        </div>
+        {expanded ? <ChevronUp className="w-4 h-4 text-muted-foreground shrink-0" /> : <ChevronDown className="w-4 h-4 text-muted-foreground shrink-0" />}
+      </button>
+
+      {/* Expanded details */}
+      {expanded && details && (
+        <div className="px-4 pb-4 space-y-3 border-t border-foreground/10 pt-3">
+          {/* Summary */}
+          {details.summary && (
+            <p className="text-sm text-muted-foreground whitespace-pre-wrap leading-relaxed">{details.summary}</p>
+          )}
+
+          {/* Matching skills */}
+          {details.matching_skills && details.matching_skills.length > 0 && (
+            <div>
+              <div className="flex items-center gap-1.5 mb-1.5">
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700">Compétences matchées</span>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {details.matching_skills.map((s: string) => (
+                  <span key={s} className="text-[10px] px-2 py-0.5 border border-emerald-300 text-emerald-700 bg-emerald-50 font-medium">{s}</span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Missing skills */}
+          {details.missing_skills && details.missing_skills.length > 0 && (
+            <div>
+              <div className="flex items-center gap-1.5 mb-1.5">
+                <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />
+                <span className="text-[10px] font-bold uppercase tracking-wider text-amber-700">Compétences manquantes</span>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {details.missing_skills.map((s: string) => (
+                  <span key={s} className="text-[10px] px-2 py-0.5 border border-amber-300 text-amber-700 bg-amber-50 font-medium">{s}</span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Experience & Location */}
+          <div className="flex flex-wrap gap-3 text-[11px]">
+            {details.experience_match && (
+              <div className="flex items-center gap-1">
+                <Briefcase className="w-3.5 h-3.5 text-muted-foreground" />
+                <span className="text-muted-foreground">Expérience :</span>
+                <span className={cn("font-medium",
+                  details.experience_match === 'compatible' ? 'text-emerald-600' :
+                  details.experience_match === 'trop_senior' ? 'text-amber-600' :
+                  details.experience_match === 'trop_junior' ? 'text-destructive' : 'text-muted-foreground'
+                )}>
+                  {details.experience_match === 'compatible' ? 'Compatible' :
+                   details.experience_match === 'trop_senior' ? 'Trop senior' :
+                   details.experience_match === 'trop_junior' ? 'Trop junior' : 'Incertain'}
+                </span>
+              </div>
+            )}
+            {details.location_match !== undefined && (
+              <div className="flex items-center gap-1">
+                <MapPin className="w-3.5 h-3.5 text-muted-foreground" />
+                <span className="text-muted-foreground">Localisation :</span>
+                <span className={cn("font-medium", details.location_match ? 'text-emerald-600' : 'text-destructive')}>
+                  {details.location_match ? 'Compatible' : 'Non compatible'}
+                </span>
+              </div>
+            )}
+          </div>
+
+          {/* Salary */}
+          {details.salary_analysis && (
+            <div className="pt-2 border-t border-foreground/10 text-[11px] text-muted-foreground">
+              💰 {details.salary_analysis.status === 'adequate' ? 'Salaire adéquat' :
+                  details.salary_analysis.status === 'too_low' ? 'Salaire potentiellement bas' :
+                  details.salary_analysis.status === 'too_high' ? 'Salaire potentiellement élevé' : 'Analyse salariale'}
+              {details.salary_analysis.gap_percent && ` (écart: ${details.salary_analysis.gap_percent}%)`}
+            </div>
+          )}
+
+          {/* Strengths & Weaknesses */}
+          {details.strengths && details.strengths.length > 0 && (
+            <div>
+              <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 mb-1 block">Forces</span>
+              <ul className="text-[11px] text-muted-foreground space-y-0.5">
+                {details.strengths.map((s: string, i: number) => <li key={i}>• {s}</li>)}
+              </ul>
+            </div>
+          )}
+          {details.weaknesses && details.weaknesses.length > 0 && (
+            <div>
+              <span className="text-[10px] font-bold uppercase tracking-wider text-amber-700 mb-1 block">Faiblesses</span>
+              <ul className="text-[11px] text-muted-foreground space-y-0.5">
+                {details.weaknesses.map((w: string, i: number) => <li key={i}>• {w}</li>)}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ========== Sub-components ==========
 
 const ACTIVITY_TYPE_CONFIG: Record<string, { icon: React.ReactNode; color: string }> = {
@@ -645,8 +847,9 @@ function ContactLine({ icon, children }: { icon: React.ReactNode; children: Reac
 function BrutalButton({ children, onClick, first = true }: { children: React.ReactNode; onClick: () => void; first?: boolean }) {
   return (
     <button onClick={onClick}
-      className={cn("relative overflow-hidden h-9 px-4 flex items-center gap-2 border border-foreground text-foreground text-[11px] font-medium uppercase tracking-wider group",
-        !first && "border-l-0"
+      className={cn(
+        "relative overflow-hidden h-9 px-4 flex items-center gap-2 border border-foreground text-foreground text-[11px] font-medium uppercase tracking-wider group",
+        !first && '-ml-px'
       )}>
       {children}
       <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
@@ -654,29 +857,33 @@ function BrutalButton({ children, onClick, first = true }: { children: React.Rea
   );
 }
 
-function BrutalActionButton({ children, onClick, disabled, loading, first = true }: {
+function BrutalActionButton({ children, onClick, disabled, loading, first }: {
   children: React.ReactNode; onClick: () => void; disabled?: boolean; loading?: boolean; first?: boolean;
 }) {
   return (
     <button onClick={onClick} disabled={disabled}
       className={cn(
-        "relative overflow-hidden h-[34px] px-4 flex items-center gap-2 border border-foreground text-foreground text-[11px] font-medium uppercase tracking-wider group disabled:opacity-30",
-        !first && "border-l-0"
+        "relative overflow-hidden h-[34px] px-4 flex items-center gap-2 border border-foreground text-foreground text-[11px] font-medium uppercase tracking-wider group disabled:opacity-50 disabled:cursor-not-allowed",
+        first !== false && 'first:ml-0',
+        !first && '-ml-px'
       )}>
-      {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin relative z-10" /> : null}
-      {children}
+      {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin relative z-10" /> : children}
       <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
     </button>
   );
 }
 
 function CenteredLoader() {
-  return <div className="flex items-center justify-center py-8"><Loader2 className="w-6 h-6 animate-spin text-muted-foreground" /></div>;
+  return (
+    <div className="flex items-center justify-center py-12">
+      <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+    </div>
+  );
 }
 
-function EmptyState({ icon: Icon, label }: { icon: React.FC<any>; label: string }) {
+function EmptyState({ icon: Icon, label }: { icon: any; label: string }) {
   return (
-    <div className="text-center py-8">
+    <div className="text-center py-12">
       <Icon className="w-10 h-10 mx-auto mb-3 text-muted-foreground opacity-30" />
       <p className="text-muted-foreground text-[11px] uppercase tracking-wider">{label}</p>
     </div>

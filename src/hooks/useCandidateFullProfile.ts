@@ -32,10 +32,36 @@ export interface SequenceEnrollmentInfo {
   connectionStatus: string | null;
 }
 
+export interface ScoringRecord {
+  id: string;
+  jobId: string;
+  jobTitle: string | null;
+  score: number | null;
+  recommendation: string | null;
+  status: string;
+  pipelineStage: string | null;
+  scoringDetails: {
+    match_score?: number;
+    matching_skills?: string[];
+    missing_skills?: string[];
+    experience_match?: string;
+    location_match?: boolean;
+    summary?: string;
+    recommendation?: string;
+    salary_analysis?: any;
+    strengths?: string[];
+    weaknesses?: string[];
+  } | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface CandidateFullProfile {
   qualificationSessions: QualificationSession[];
   sequenceEnrollments: SequenceEnrollmentInfo[];
   inmailsSent: { id: string; subject: string; status: string; sentAt: string | null; createdAt: string }[];
+  scoringHistory: ScoringRecord[];
+  accountId: string | null;
   airtableMatch: { fullName: string; status: string; experience: string; skills: string[]; educationLevel: string } | null;
   airtableShortlists: { id: string; status: string; dateAdded: string; jobTitle?: string; companyName?: string }[];
   airtableNotes: { id: string; title: string; detail: string; noteDate: string; author: string }[];
@@ -47,6 +73,8 @@ export function useCandidateFullProfile(candidateId: string, linkedinUrl: string
   const [qualificationSessions, setQualificationSessions] = useState<QualificationSession[]>([]);
   const [sequenceEnrollments, setSequenceEnrollments] = useState<SequenceEnrollmentInfo[]>([]);
   const [inmailsSent, setInmailsSent] = useState<any[]>([]);
+  const [scoringHistory, setScoringHistory] = useState<ScoringRecord[]>([]);
+  const [accountId, setAccountId] = useState<string | null>(null);
   const [airtableMatch, setAirtableMatch] = useState<any>(null);
   const [airtableShortlists, setAirtableShortlists] = useState<any[]>([]);
   const [airtableNotes, setAirtableNotes] = useState<any[]>([]);
@@ -60,6 +88,7 @@ export function useCandidateFullProfile(candidateId: string, linkedinUrl: string
           fetchQualifications(candidateId),
           fetchSequences(candidateId),
           fetchInmails(candidateId),
+          fetchScoringHistory(candidateId),
           linkedinUrl ? fetchAirtableHistory(linkedinUrl) : Promise.resolve(),
         ]);
       } finally {
@@ -94,6 +123,11 @@ export function useCandidateFullProfile(candidateId: string, linkedinUrl: string
         .eq('profile_id', profileId)
         .order('created_at', { ascending: false });
       
+      if (data && data.length > 0) {
+        // Extract account_id from first enrollment for profile enrichment
+        setAccountId(data[0].account_id || null);
+      }
+
       setSequenceEnrollments((data || []).map((e: any) => ({
         id: e.id,
         sequenceName: e.outreach_sequences?.name || 'Séquence',
@@ -113,6 +147,10 @@ export function useCandidateFullProfile(candidateId: string, linkedinUrl: string
         .eq('recipient_profile_id', profileId)
         .order('created_at', { ascending: false });
       
+      if (data && data.length > 0 && !accountId) {
+        setAccountId(data[0].account_id || null);
+      }
+
       setInmailsSent((data || []).map((i: any) => ({
         id: i.id,
         subject: i.subject,
@@ -122,8 +160,28 @@ export function useCandidateFullProfile(candidateId: string, linkedinUrl: string
       })));
     }
 
+    async function fetchScoringHistory(profileId: string) {
+      const { data } = await supabase
+        .from('job_candidate_status')
+        .select('*')
+        .eq('candidate_id', profileId)
+        .order('updated_at', { ascending: false });
+      
+      setScoringHistory((data || []).map((r: any) => ({
+        id: r.id,
+        jobId: r.job_id,
+        jobTitle: null, // Will be enriched by job title from Notion if needed
+        score: r.score,
+        recommendation: r.recommendation,
+        status: r.status,
+        pipelineStage: r.pipeline_stage,
+        scoringDetails: r.scoring_details,
+        createdAt: r.created_at,
+        updatedAt: r.updated_at,
+      })));
+    }
+
     async function fetchAirtableHistory(url: string) {
-      // Find airtable candidate by LinkedIn URL
       const { data: candidates } = await supabase
         .from('airtable_candidates')
         .select('*')
@@ -140,7 +198,6 @@ export function useCandidateFullProfile(candidateId: string, linkedinUrl: string
           educationLevel: c.education_level,
         });
 
-        // Fetch shortlists for this candidate
         const { data: shortlists } = await supabase
           .from('airtable_shortlists')
           .select('*, airtable_jobs(title), airtable_companies(name)')
@@ -155,7 +212,6 @@ export function useCandidateFullProfile(candidateId: string, linkedinUrl: string
           companyName: s.airtable_companies?.name,
         })));
 
-        // Fetch notes
         const { data: notes } = await supabase
           .from('airtable_notes')
           .select('*')
@@ -216,12 +272,25 @@ export function useCandidateFullProfile(candidateId: string, linkedinUrl: string
     });
   });
 
+  scoringHistory.forEach(sr => {
+    if (sr.score != null) {
+      timeline.push({
+        type: 'scored',
+        date: sr.updatedAt,
+        title: `Scoring : ${sr.score}%`,
+        detail: sr.scoringDetails?.recommendation || sr.recommendation || undefined,
+      });
+    }
+  });
+
   timeline.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
   return {
     qualificationSessions,
     sequenceEnrollments,
     inmailsSent,
+    scoringHistory,
+    accountId,
     airtableMatch,
     airtableShortlists,
     airtableNotes,
