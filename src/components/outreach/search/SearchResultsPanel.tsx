@@ -739,27 +739,29 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
                 </div>
               )}
               {!hasMoreResults && results.length > 0 && (
-                <div className="text-center py-2">
-                  {total !== null && results.length < total ? (
-                    <div className="flex flex-col items-center gap-2">
-                      <p className="text-xs text-muted-foreground">
-                        {results.length} profils chargés sur {total} disponibles
-                      </p>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={onSearch}
-                        className="gap-1.5 text-xs"
-                      >
-                        <Search className="w-3 h-3" />
-                        Relancer la recherche
-                      </Button>
+                <div className="text-center py-3">
+                  <div className="flex flex-col items-center gap-2 p-4 border border-dashed border-muted-foreground/30 rounded-md bg-muted/30">
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground font-medium">
+                      <Search className="w-4 h-4" />
+                      Fin des résultats LinkedIn
                     </div>
-                  ) : (
-                    <p className="text-xs text-muted-foreground/60">
-                      Tous les profils ont été chargés ({results.length})
+                    <p className="text-xs text-muted-foreground/70 max-w-sm text-center">
+                      {total !== null && results.length < total
+                        ? `${results.length} profils chargés sur ${total} disponibles (certains filtrés côté client).`
+                        : `Tous les profils ont été parcourus (${results.length}).`
+                      }
+                      {' '}Élargissez vos filtres ou modifiez vos mots-clés pour trouver plus de candidats.
                     </p>
-                  )}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={onSearch}
+                      className="gap-1.5 text-xs mt-1"
+                    >
+                      <Search className="w-3 h-3" />
+                      Relancer la recherche
+                    </Button>
+                  </div>
                 </div>
               )}
             </div>

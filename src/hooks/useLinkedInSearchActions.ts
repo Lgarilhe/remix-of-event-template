@@ -605,6 +605,9 @@ export function useLinkedInSearchActions(
         : allCollected;
 
       if (appendMode) {
+        if (scoredBatch.length === 0) {
+          toast.info('Aucun nouveau profil trouvé. Essayez d\'élargir vos filtres ou de modifier vos mots-clés.', { id: 'no-new-results', duration: 5000 });
+        }
         setResults(prev => [...prev, ...scoredBatch]);
       } else {
         setResults(scoredBatch);
