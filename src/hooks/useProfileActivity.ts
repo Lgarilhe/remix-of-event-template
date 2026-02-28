@@ -181,14 +181,36 @@ export function useProfileActivity(profileId: string | null, profileUrl?: string
 
         // Fetch Aircall call events for this candidate
         let aircallEvents: ActivityEvent[] = [];
-        
-        // Try matching by airtable candidate id first (via name match in aircall_calls)
-        const candidateNameForAircall = profileName?.trim();
-        if (candidateNameForAircall && candidateNameForAircall.length >= 3) {
+
+        // First, find the airtable candidate id(s) for this profile
+        let airtableCandidateIds: string[] = [];
+
+        if (profileUrl) {
+          const slug = profileUrl.split('linkedin.com')[1]?.replace(/\/$/, '') || '';
+          if (slug) {
+            const { data: atCandidates } = await supabase
+              .from('airtable_candidates')
+              .select('airtable_id')
+              .ilike('linkedin_url', `%${slug}%`)
+              .limit(5);
+            airtableCandidateIds = atCandidates?.map(c => c.airtable_id) || [];
+          }
+        }
+
+        if (!airtableCandidateIds.length && profileName?.trim() && profileName.trim().length >= 3) {
+          const { data: atCandidates } = await supabase
+            .from('airtable_candidates')
+            .select('airtable_id')
+            .ilike('full_name', `%${profileName.trim()}%`)
+            .limit(5);
+          airtableCandidateIds = atCandidates?.map(c => c.airtable_id) || [];
+        }
+
+        if (airtableCandidateIds.length && !cancelled) {
           const { data: calls } = await supabase
             .from('aircall_calls')
-            .select('id, started_at, direction, status, duration, user_name, matched_candidate_name')
-            .ilike('matched_candidate_name', `%${candidateNameForAircall}%`)
+            .select('id, started_at, direction, status, duration, user_name')
+            .in('matched_airtable_candidate_id', airtableCandidateIds)
             .order('started_at', { ascending: true })
             .limit(50);
 
