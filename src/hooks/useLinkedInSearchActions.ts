@@ -11,6 +11,68 @@ import { toast } from 'sonner';
 
 const RESULTS_PER_BATCH = 25;
 
+// Known geo IDs → location keywords for client-side filtering
+const GEO_ID_TO_KEYWORDS: Record<string, string[]> = {
+  '105015875': ['france', 'paris', 'lyon', 'marseille', 'toulouse', 'nantes', 'bordeaux', 'lille', 'strasbourg', 'rennes', 'montpellier', 'nice', 'île-de-france', 'idf', 'auvergne', 'rhône', 'provence', 'occitanie', 'bretagne', 'normandie', 'nouvelle-aquitaine', 'hauts-de-france', 'grand est', 'pays de la loire', 'bourgogne', 'centre-val de loire', 'corse', 'fr'],
+  '101165590': ['united kingdom', 'uk', 'london', 'manchester', 'birmingham', 'leeds', 'glasgow', 'edinburgh', 'england', 'scotland', 'wales'],
+  '101174742': ['germany', 'deutschland', 'berlin', 'munich', 'münchen', 'hamburg', 'frankfurt', 'cologne', 'köln', 'düsseldorf', 'stuttgart'],
+  '103644278': ['united states', 'usa', 'us', 'new york', 'san francisco', 'los angeles', 'chicago', 'boston', 'seattle', 'austin', 'california', 'texas'],
+  '106155005': ['spain', 'españa', 'madrid', 'barcelona', 'valencia', 'seville', 'sevilla'],
+  '103350119': ['italy', 'italia', 'rome', 'roma', 'milan', 'milano', 'turin', 'torino', 'naples', 'napoli'],
+  '100565514': ['belgium', 'belgique', 'belgi[eë]', 'brussels', 'bruxelles', 'antwerp', 'anvers', 'gent', 'liège'],
+  '103883259': ['switzerland', 'suisse', 'schweiz', 'zurich', 'zürich', 'geneva', 'genève', 'bern', 'basel', 'lausanne'],
+  '102890719': ['netherlands', 'nederland', 'amsterdam', 'rotterdam', 'the hague', 'den haag', 'utrecht'],
+  '100364837': ['portugal', 'lisbon', 'lisboa', 'porto'],
+  '104738515': ['canada', 'toronto', 'montreal', 'montréal', 'vancouver', 'ottawa', 'calgary'],
+  '101620260': ['australia', 'sydney', 'melbourne', 'brisbane', 'perth', 'adelaide'],
+  '102478259': ['singapore', 'singapour'],
+  '104305776': ['luxembourg', 'luxemburg'],
+  '105646813': ['morocco', 'maroc', 'casablanca', 'rabat', 'marrakech', 'tanger'],
+  '102713980': ['india', 'mumbai', 'bangalore', 'bengaluru', 'delhi', 'hyderabad', 'chennai', 'pune', 'kolkata'],
+};
+
+/**
+ * Client-side location filter — removes profiles whose location field
+ * doesn't match any of the requested location filters.
+ * LinkedIn API sometimes returns profiles outside the requested location.
+ */
+function filterByLocation(
+  profiles: LinkedInProfile[],
+  locationFilters: { id: string; name?: string }[],
+): LinkedInProfile[] {
+  // Build list of keywords from all active location filters
+  const keywords: string[] = [];
+  for (const loc of locationFilters) {
+    const geoKeywords = GEO_ID_TO_KEYWORDS[loc.id];
+    if (geoKeywords) {
+      keywords.push(...geoKeywords);
+    }
+    // Also use the filter's display name if available
+    if (loc.name) {
+      keywords.push(loc.name.toLowerCase());
+    }
+  }
+
+  if (keywords.length === 0) return profiles;
+
+  const filtered = profiles.filter(p => {
+    if (!p.location) return true; // Don't exclude profiles without location data
+    const loc = p.location.toLowerCase()
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    const normalizedKeywords = keywords.map(k =>
+      k.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    );
+    return normalizedKeywords.some(kw => loc.includes(kw));
+  });
+
+  const removed = profiles.length - filtered.length;
+  if (removed > 0) {
+    console.log(`[LinkedInSearch] Location filter: removed ${removed}/${profiles.length} profiles outside requested location`);
+  }
+
+  return filtered;
+}
+
 interface SearchContext {
   selectedAccount: string | null;
   selectedJob: Job | null;
@@ -449,8 +511,13 @@ export function useLinkedInSearchActions(
           currentFilters.calculated_experience_max
         );
 
+        // Apply client-side location filter (LinkedIn API doesn't always respect location filters)
+        const locationFiltered = currentFilters.location.length > 0
+          ? filterByLocation(filteredBatch, currentFilters.location)
+          : filteredBatch;
+
         // Dedupe
-        for (const p of filteredBatch) {
+        for (const p of locationFiltered) {
           if (!p?.id) continue;
           if (seen.has(p.id)) continue;
           seen.add(p.id);
