@@ -207,7 +207,7 @@ export const CompanyFilter: React.FC<CompanyFilterProps> = ({
                     <SelectTrigger className={`h-6 flex-1 text-[10px] border-0 shadow-sm ${priorityConfig?.color}`}>
                       <SelectValue />
                     </SelectTrigger>
-                    <SelectContent className="bg-white z-50">
+                    <SelectContent className="bg-white z-[3000]">
                       {COMPANY_PRIORITY_OPTIONS.map((opt) => (
                         <SelectItem key={opt.value} value={opt.value} className="text-xs">
                           <span className="flex items-center gap-1">
@@ -217,16 +217,8 @@ export const CompanyFilter: React.FC<CompanyFilterProps> = ({
                         </SelectItem>
                       ))}
                     </SelectContent>
-                  </Select>
-                  
-                  <Select
-                    value={company.scope}
-                    onValueChange={(val) => onUpdateKeywordCompany(index, { scope: val as CompanyScope })}
-                  >
-                    <SelectTrigger className="h-6 flex-1 text-[10px] border border-gray-200 bg-white shadow-sm">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent className="bg-white z-50">
+                    
+                    <SelectContent className="bg-white z-[3000]">
                       {COMPANY_SCOPE_OPTIONS.map((opt) => (
                         <SelectItem key={opt.value} value={opt.value} className="text-xs">
                           {opt.label}
@@ -261,7 +253,7 @@ export const CompanyFilter: React.FC<CompanyFilterProps> = ({
             <SelectTrigger className="h-6 flex-1 text-[10px]">
               <SelectValue />
             </SelectTrigger>
-            <SelectContent className="bg-white z-50">
+            <SelectContent className="bg-white z-[3000]">
               {COMPANY_PRIORITY_OPTIONS.map((opt) => (
                 <SelectItem key={opt.value} value={opt.value} className="text-xs">
                   <span className="flex items-center gap-1">
@@ -277,7 +269,7 @@ export const CompanyFilter: React.FC<CompanyFilterProps> = ({
             <SelectTrigger className="h-6 flex-1 text-[10px]">
               <SelectValue />
             </SelectTrigger>
-            <SelectContent className="bg-white z-50">
+            <SelectContent className="bg-white z-[3000]">
               {COMPANY_SCOPE_OPTIONS.map((opt) => (
                 <SelectItem key={opt.value} value={opt.value} className="text-xs">
                   {opt.label}
@@ -331,7 +323,7 @@ export const CompanyFilter: React.FC<CompanyFilterProps> = ({
               <SelectTrigger className="h-8 flex-1 text-xs">
                 <SelectValue />
               </SelectTrigger>
-              <SelectContent className="bg-white z-50">
+              <SelectContent className="bg-white z-[3000]">
                 {COMPANY_PRIORITY_OPTIONS.map((opt) => (
                   <SelectItem key={opt.value} value={opt.value} className="text-xs">
                     <span className="flex items-center gap-1">
@@ -346,7 +338,7 @@ export const CompanyFilter: React.FC<CompanyFilterProps> = ({
               <SelectTrigger className="h-8 flex-1 text-xs">
                 <SelectValue />
               </SelectTrigger>
-              <SelectContent className="bg-white z-50">
+              <SelectContent className="bg-white z-[3000]">
                 {COMPANY_SCOPE_OPTIONS.map((opt) => (
                   <SelectItem key={opt.value} value={opt.value} className="text-xs">
                     {opt.label}
