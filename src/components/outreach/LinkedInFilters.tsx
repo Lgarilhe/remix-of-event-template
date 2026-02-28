@@ -549,10 +549,10 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
                       location_within_area: val === 'null' ? null : parseInt(val) 
                     })}
                   >
-                    <SelectTrigger className="h-7 w-[140px] text-xs">
+                    <SelectTrigger className="h-7 w-[160px] text-xs">
                       <SelectValue />
                     </SelectTrigger>
-                    <SelectContent className="bg-white z-50">
+                    <SelectContent className="bg-background z-[100]" position="popper" sideOffset={4}>
                       {LOCATION_RADIUS_OPTIONS.map((opt) => (
                         <SelectItem 
                           key={opt.value?.toString() || 'null'} 
