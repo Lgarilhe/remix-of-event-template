@@ -70,7 +70,7 @@ export const ChatListItem: React.FC<ChatListItemProps> = ({
             </AvatarFallback>
           </Avatar>
           {unread && (
-            <span className="absolute -top-0.5 -right-0.5 w-4 h-4 bg-destructive flex items-center justify-center text-[9px] text-destructive-foreground font-bold">
+            <span className="absolute -top-0.5 -right-0.5 w-4 h-4 bg-red-600 flex items-center justify-center text-[9px] text-white font-bold">
               {unreadCount}
             </span>
           )}
