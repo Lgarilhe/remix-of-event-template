@@ -105,10 +105,10 @@ export const QuotaDisplay: React.FC<QuotaDisplayProps> = ({
         <Tooltip>
           <TooltipTrigger asChild>
             <div className={cn(
-              "flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-medium cursor-help",
-              isCritical ? "bg-red-100 text-red-700" :
-              isWarning ? "bg-amber-100 text-amber-700" :
-              "bg-[#0077B5]/10 text-[#0077B5]"
+              "flex items-center gap-1.5 px-2 py-1 text-xs font-medium cursor-help border",
+              isCritical ? "bg-destructive/10 text-destructive border-destructive/30" :
+              isWarning ? "bg-amber-100 text-amber-700 border-amber-300" :
+              "bg-muted text-foreground border-foreground"
             )}>
               {(isWarning || isCritical) && <AlertTriangle className="w-3 h-3" />}
               <span>Quota: {Math.round(percentUsed)}%</span>
@@ -159,7 +159,7 @@ export const QuotaDisplay: React.FC<QuotaDisplayProps> = ({
   }
 
   return (
-    <div className="bg-white rounded-lg border border-border p-4">
+    <div className="bg-background border border-foreground p-4">
       <div className="flex items-center justify-between mb-3">
         <h4 className="text-sm font-medium">Quotas LinkedIn ({getApiModeLabel(apiMode)})</h4>
         <TooltipProvider>
