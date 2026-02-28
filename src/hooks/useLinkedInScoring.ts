@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import React, { useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { LinkedInProfile } from '@/components/outreach/types';
 import { Job } from '@/types/jobs';
@@ -9,6 +9,7 @@ interface ScoringOptions {
   selectedJob: Job | null;
   selectedProfiles: Set<string>;
   results: LinkedInProfile[];
+  allAvailableProfilesRef?: React.MutableRefObject<LinkedInProfile[]>;
   jobScores: Record<string, JobMatchResult>;
   setJobScores: React.Dispatch<React.SetStateAction<Record<string, JobMatchResult>>>;
   setScoringInProgress: (v: boolean) => void;
@@ -207,6 +208,7 @@ export function useLinkedInScoring({
   selectedJob,
   selectedProfiles,
   results,
+  allAvailableProfilesRef,
   jobScores,
   setJobScores,
   setScoringInProgress,
@@ -314,8 +316,10 @@ export function useLinkedInScoring({
     }
 
     setScoringInProgress(true);
+    // Use merged results (including pool profiles) if available, otherwise fall back to search results
+    const allProfiles = allAvailableProfilesRef?.current || results;
     // Exclude profiles that already have a score to avoid re-scoring
-    const profilesToScore = results.filter(p => selectedProfiles.has(p.id) && !jobScores[p.id]);
+    const profilesToScore = allProfiles.filter(p => selectedProfiles.has(p.id) && !jobScores[p.id]);
 
     if (profilesToScore.length === 0) {
       toast.info('Tous les profils sélectionnés sont déjà scorés');
@@ -495,7 +499,7 @@ export function useLinkedInScoring({
     } finally {
       setScoringInProgress(false);
     }
-  }, [selectedJob, selectedProfiles, results, autoHideTreatedRef, candidateStatus, setJobScores, setScoringInProgress, setSortByScore, setResults, setSelectedProfiles, customScoringInstructions]);
+  }, [selectedJob, selectedProfiles, results, allAvailableProfilesRef, autoHideTreatedRef, candidateStatus, setJobScores, setScoringInProgress, setSortByScore, setResults, setSelectedProfiles, customScoringInstructions]);
 
   return {
     scoreProfile,
