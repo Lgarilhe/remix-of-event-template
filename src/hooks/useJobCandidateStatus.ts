@@ -46,19 +46,36 @@ export function useJobCandidateStatus(jobId: string | null) {
         return;
       }
 
-      const { data, error } = await supabase
-        .from('job_candidate_status')
-        .select('*')
-        .eq('job_id', jobId)
-        .eq('created_by', user.id);
+      // Paginate to avoid Supabase's default 1000-row limit
+      const allData: any[] = [];
+      const PAGE_SIZE = 1000;
+      let offset = 0;
+      let hasMore = true;
 
-      if (error) throw error;
+      while (hasMore) {
+        const { data, error } = await supabase
+          .from('job_candidate_status')
+          .select('*')
+          .eq('job_id', jobId)
+          .eq('created_by', user.id)
+          .range(offset, offset + PAGE_SIZE - 1);
+
+        if (error) throw error;
+
+        if (data && data.length > 0) {
+          allData.push(...data);
+          offset += PAGE_SIZE;
+          hasMore = data.length === PAGE_SIZE;
+        } else {
+          hasMore = false;
+        }
+      }
 
       const statusMap = new Map<string, JobCandidateStatus>();
       const dismissed = new Set<string>();
       const treated = new Set<string>();
       
-      (data || []).forEach((s: any) => {
+      allData.forEach((s: any) => {
         statusMap.set(s.candidate_id, s as JobCandidateStatus);
         if (s.status === 'dismissed') {
           dismissed.add(s.candidate_id);

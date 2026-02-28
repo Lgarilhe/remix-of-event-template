@@ -22,14 +22,30 @@ export const useProjectStats = (projectId: string | null) => {
         return { total: 0, scored: 0, messaged: 0, shortlisted: 0, dismissed: 0, untreated: 0 };
       }
 
-      const { data, error } = await supabase
-        .from('job_candidate_status')
-        .select('status, score')
-        .eq('project_id', projectId);
+      // Paginate to avoid 1000-row limit
+      const allData: any[] = [];
+      const PAGE_SIZE = 1000;
+      let offset = 0;
+      let hasMore = true;
 
-      if (error) throw error;
+      while (hasMore) {
+        const { data, error } = await supabase
+          .from('job_candidate_status')
+          .select('status, score')
+          .eq('project_id', projectId)
+          .range(offset, offset + PAGE_SIZE - 1);
 
-      const candidates = data || [];
+        if (error) throw error;
+        if (data && data.length > 0) {
+          allData.push(...data);
+          offset += PAGE_SIZE;
+          hasMore = data.length === PAGE_SIZE;
+        } else {
+          hasMore = false;
+        }
+      }
+
+      const candidates = allData;
       
       return {
         total: candidates.length,
@@ -58,14 +74,30 @@ export const useMultipleProjectStats = (projectIds: string[]) => {
         return {};
       }
 
-      const { data, error } = await supabase
-        .from('job_candidate_status')
-        .select('project_id, status, score')
-        .in('project_id', projectIds);
+      // Paginate to avoid 1000-row limit
+      const allData: any[] = [];
+      const PAGE_SIZE = 1000;
+      let offset = 0;
+      let hasMore = true;
 
-      if (error) throw error;
+      while (hasMore) {
+        const { data, error } = await supabase
+          .from('job_candidate_status')
+          .select('project_id, status, score')
+          .in('project_id', projectIds)
+          .range(offset, offset + PAGE_SIZE - 1);
 
-      const candidates = data || [];
+        if (error) throw error;
+        if (data && data.length > 0) {
+          allData.push(...data);
+          offset += PAGE_SIZE;
+          hasMore = data.length === PAGE_SIZE;
+        } else {
+          hasMore = false;
+        }
+      }
+
+      const candidates = allData;
       
       // Group by project
       const statsByProject: Record<string, ProjectStats> = {};
