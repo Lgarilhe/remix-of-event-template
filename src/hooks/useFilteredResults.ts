@@ -52,6 +52,11 @@ function rehydrateProfile(status: JobCandidateStatus): LinkedInProfile & { _from
   } as LinkedInProfile & { _fromPool?: boolean };
 }
 
+// Check if a status has enough data to be rehydrated into a visible profile
+function canRehydrate(status: JobCandidateStatus): boolean {
+  return !!(status.linkedin_profile_data || status.candidate_name || status.linkedin_profile_url);
+}
+
 export function useFilteredResults({
   results,
   jobScores,
@@ -78,7 +83,7 @@ export function useFilteredResults({
 
     // Add DB profiles not in current search (pool profiles) — with pre-score
     for (const [candidateId, status] of statuses) {
-      if (!byId.has(candidateId) && status.linkedin_profile_data) {
+      if (!byId.has(candidateId) && canRehydrate(status)) {
         const rehydrated = rehydrateProfile(status);
         // Calculate pre-score for rehydrated profiles
         if (selectedJob) {
@@ -97,7 +102,7 @@ export function useFilteredResults({
     const searchIds = new Set(results.map(r => r.id));
     let count = 0;
     for (const [candidateId, status] of statuses) {
-      if (!searchIds.has(candidateId) && status.linkedin_profile_data) {
+      if (!searchIds.has(candidateId) && canRehydrate(status)) {
         count++;
       }
     }
@@ -117,18 +122,18 @@ export function useFilteredResults({
             // discovered is functionally "untreated"
             return !status || status.status === 'discovered';
           case 'scored':
-            return status?.status === 'scored' || ((status?.status === 'messaged' || status?.status === 'replied') && !!jobScores[p.id]);
+            return status?.status === 'scored' || ((status?.status === 'messaged' || status?.status === 'replied') && !!(jobScores[p.id] || (statuses?.get(p.id)?.score != null)));
           case 'scored_go': {
-            const isScored = status?.status === 'scored' || ((status?.status === 'messaged' || status?.status === 'replied') && !!jobScores[p.id]);
+            const isScored = status?.status === 'scored' || ((status?.status === 'messaged' || status?.status === 'replied') && !!(jobScores[p.id] || (statuses?.get(p.id)?.score != null)));
             if (!isScored) return false;
-            const score = jobScores[p.id];
-            return score?.recommendation === 'go';
+            const rec = jobScores[p.id]?.recommendation || statuses?.get(p.id)?.recommendation;
+            return rec === 'go';
           }
           case 'scored_maybe': {
-            const isScored = status?.status === 'scored' || ((status?.status === 'messaged' || status?.status === 'replied') && !!jobScores[p.id]);
+            const isScored = status?.status === 'scored' || ((status?.status === 'messaged' || status?.status === 'replied') && !!(jobScores[p.id] || (statuses?.get(p.id)?.score != null)));
             if (!isScored) return false;
-            const score = jobScores[p.id];
-            return score?.recommendation === 'maybe';
+            const rec = jobScores[p.id]?.recommendation || statuses?.get(p.id)?.recommendation;
+            return rec === 'maybe';
           }
           case 'scored_not_contacted':
             return status?.status === 'scored';
