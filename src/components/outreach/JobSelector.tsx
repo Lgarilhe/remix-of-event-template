@@ -216,21 +216,21 @@ export const JobSelector: React.FC<JobSelectorProps> = ({ selectedJob, onJobChan
   // Show skeleton while loading
   if (loading) {
     return (
-      <div className="bg-gradient-to-r from-purple-50 to-indigo-50 rounded-lg border border-purple-200/50 p-3 space-y-2">
+      <div className="bg-background border border-foreground p-3 space-y-2">
         <div className="flex items-center gap-2">
-          <Target className="w-4 h-4 text-purple-600" />
-          <span className="text-sm font-medium text-purple-800">Scoring Job</span>
+          <Target className="w-4 h-4 text-foreground" />
+          <span className="text-xs font-medium text-foreground uppercase tracking-wide">Scoring Job</span>
         </div>
-        <Skeleton className="h-10 w-full bg-purple-100/50" />
+        <Skeleton className="h-10 w-full" />
       </div>
     );
   }
 
   return (
-    <div className="bg-gradient-to-r from-purple-50 to-indigo-50 rounded-lg border border-purple-200/50 p-3 space-y-2">
+    <div className="bg-background border border-foreground p-3 space-y-2">
       <div className="flex items-center gap-2">
-        <Target className="w-4 h-4 text-purple-600" />
-        <label className="text-sm font-medium text-purple-800">
+        <Target className="w-4 h-4 text-foreground" />
+        <label className="text-xs font-medium text-foreground uppercase tracking-wide">
           Scoring Job
         </label>
         <div className="ml-auto flex items-center gap-1">
@@ -243,7 +243,7 @@ export const JobSelector: React.FC<JobSelectorProps> = ({ selectedJob, onJobChan
                   size="sm"
                   onClick={refreshJobs}
                   disabled={isRefreshing}
-                  className="h-6 px-2 text-purple-600 hover:text-purple-800 hover:bg-purple-100"
+                  className="h-6 px-2 text-muted-foreground hover:text-foreground hover:bg-muted"
                 >
                   <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin' : ''}`} />
                 </Button>
@@ -258,7 +258,7 @@ export const JobSelector: React.FC<JobSelectorProps> = ({ selectedJob, onJobChan
               variant="ghost"
               size="sm"
               onClick={() => onJobChange(null)}
-              className="h-5 w-5 p-0 text-purple-400 hover:text-purple-600 hover:bg-purple-100"
+              className="h-5 w-5 p-0 text-muted-foreground hover:text-foreground hover:bg-muted"
             >
               <X className="w-3 h-3" />
             </Button>
@@ -270,7 +270,7 @@ export const JobSelector: React.FC<JobSelectorProps> = ({ selectedJob, onJobChan
         <select
           value={selectedJob?.id || 'none'}
           onChange={(e) => handleChange(e.target.value)}
-          className="flex h-10 w-full items-center rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+          className="flex h-10 w-full items-center border border-foreground/30 bg-background px-3 py-2 text-sm focus:outline-none focus:border-foreground"
         >
           <option value="none">Pas de scoring job</option>
           {jobs.map((job) => (
@@ -284,9 +284,8 @@ export const JobSelector: React.FC<JobSelectorProps> = ({ selectedJob, onJobChan
           <button
             type="button"
             className={cn(
-              "flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background",
-              "focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2",
-              "border-purple-200 bg-white"
+              "flex h-10 w-full items-center justify-between border border-foreground/30 bg-background px-3 py-2 text-sm",
+              "focus:outline-none focus:border-foreground"
             )}
             onClick={() => setPopoverOpen((prev) => !prev)}
           >
@@ -373,13 +372,13 @@ export const JobSelector: React.FC<JobSelectorProps> = ({ selectedJob, onJobChan
           {selectedJob.skills?.slice(0, 5).map((skill, i) => (
             <span 
               key={i} 
-              className="text-[10px] px-1.5 py-0.5 rounded bg-white border border-purple-200 text-purple-700"
+              className="text-[10px] px-1.5 py-0.5 bg-muted border border-foreground/20 text-foreground/70 font-medium"
             >
               {skill}
             </span>
           ))}
           {(selectedJob.skills?.length || 0) > 5 && (
-            <span className="text-[10px] text-purple-400">
+            <span className="text-[10px] text-muted-foreground">
               +{(selectedJob.skills?.length || 0) - 5}
             </span>
           )}
@@ -408,7 +407,7 @@ export const BatchScoreButton: React.FC<BatchScoreButtonProps> = ({
     <Button
       onClick={onScore}
       disabled={disabled || loading}
-      className="bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white shadow-lg"
+      className="bg-foreground text-background hover:bg-foreground/90"
     >
       {loading ? (
         <Loader2 className="w-4 h-4 animate-spin mr-2" />
