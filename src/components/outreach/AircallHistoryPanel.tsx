@@ -2,7 +2,8 @@ import React from 'react';
 import { AircallCall } from '@/hooks/useAircallHistory';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Phone, PhoneIncoming, PhoneOutgoing, PhoneMissed, Clock, Mic, MessageSquareText, Tag, Loader2 } from 'lucide-react';
+import { PhoneIncoming, PhoneOutgoing, PhoneMissed, Clock, Mic, MessageSquareText, Tag, Loader2 } from 'lucide-react';
+import aircallLogo from '@/assets/aircall-logo.png';
 
 interface AircallHistoryPanelProps {
   calls: AircallCall[];
@@ -66,7 +67,7 @@ export const AircallHistoryPanel: React.FC<AircallHistoryPanelProps> = ({
       {/* Stats header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <Phone className="w-4 h-4 text-primary" />
+          <img src={aircallLogo} alt="Aircall" className="w-4 h-4" />
           <span className="text-sm font-semibold text-foreground">Historique Aircall</span>
         </div>
         <div className="flex items-center gap-3 text-xs text-muted-foreground">
