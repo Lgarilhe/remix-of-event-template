@@ -84,11 +84,15 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
     }
   );
 
+  // Ref for merged results (includes pool profiles) - used by scoring hook
+  const allAvailableProfilesRef = useRef<LinkedInProfile[]>([]);
+
   // Scoring hook
   const scoring = useLinkedInScoring({
     selectedJob: search.selectedJob,
     selectedProfiles: search.selectedProfiles,
     results: search.results,
+    allAvailableProfilesRef,
     jobScores: search.jobScores,
     setJobScores: search.setJobScores,
     setScoringInProgress: search.setScoringInProgress,
@@ -128,7 +132,11 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
     showPoolView,
   });
 
-  // Auto-fill filters hook
+  // Keep ref in sync with merged results so scoring hook can access pool profiles
+  useEffect(() => {
+    allAvailableProfilesRef.current = filteredAndSortedResults;
+  }, [filteredAndSortedResults]);
+
   const { handleAutoFillFilters } = useAutoFillFilters({
     selectedAccount,
     filtersRef: search.filtersRef,
