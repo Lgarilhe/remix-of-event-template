@@ -216,9 +216,9 @@ export const JobSelector: React.FC<JobSelectorProps> = ({ selectedJob, onJobChan
   // Show skeleton while loading
   if (loading) {
     return (
-      <div className="bg-background border border-foreground p-3 space-y-2">
+      <div className="bg-brutal-accent/10 border border-brutal-accent p-3 space-y-2">
         <div className="flex items-center gap-2">
-          <Target className="w-4 h-4 text-foreground" />
+          <Target className="w-4 h-4 text-brutal-accent" />
           <span className="text-xs font-medium text-foreground uppercase tracking-wide">Scoring Job</span>
         </div>
         <Skeleton className="h-10 w-full" />
@@ -227,9 +227,9 @@ export const JobSelector: React.FC<JobSelectorProps> = ({ selectedJob, onJobChan
   }
 
   return (
-    <div className="bg-background border border-foreground p-3 space-y-2">
+    <div className="bg-brutal-accent/10 border border-brutal-accent p-3 space-y-2">
       <div className="flex items-center gap-2">
-        <Target className="w-4 h-4 text-foreground" />
+        <Target className="w-4 h-4 text-brutal-accent" />
         <label className="text-xs font-medium text-foreground uppercase tracking-wide">
           Scoring Job
         </label>
