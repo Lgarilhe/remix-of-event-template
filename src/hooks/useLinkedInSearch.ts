@@ -91,6 +91,32 @@ export function useLinkedInSearch({
     }
   }, [activeProject?.id]);
 
+  // Seed jobScores from DB statuses (so pool profiles show their scores without re-scoring)
+  useEffect(() => {
+    if (!candidateStatus.statuses || candidateStatus.statuses.size === 0) return;
+    
+    setJobScores(prev => {
+      const next = { ...prev };
+      let added = 0;
+      for (const [candidateId, status] of candidateStatus.statuses) {
+        if (!next[candidateId] && status.score != null && status.recommendation) {
+          next[candidateId] = {
+            profile_name: status.candidate_name || '',
+            match_score: status.score,
+            recommendation: status.recommendation as 'go' | 'maybe' | 'skip',
+            matching_skills: [],
+            missing_skills: [],
+            experience_match: 'incertain',
+            location_match: false,
+            summary: '',
+          };
+          added++;
+        }
+      }
+      return added > 0 ? next : prev;
+    });
+  }, [candidateStatus.statuses]);
+
   // Reset filters & results when selected job changes
   const prevSelectedJobRef = useRef<string | null>(null);
   useEffect(() => {
