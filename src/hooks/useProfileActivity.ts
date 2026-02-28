@@ -33,7 +33,8 @@ export function useProfileActivity(profileId: string | null, profileUrl?: string
     }
 
     let cancelled = false;
-    const fetch = async () => {
+    const fetchActivity = async () => {
+      console.log('[useProfileActivity] Fetching for:', { profileId, profileUrl, profileName });
       setLoading(true);
       try {
         // Get enrollments for this profile with progressive fallback:
@@ -243,7 +244,7 @@ export function useProfileActivity(profileId: string | null, profileUrl?: string
       }
     };
 
-    fetch();
+    fetchActivity();
     return () => { cancelled = true; };
   }, [profileId, profileUrl, profileName]);
 
