@@ -167,7 +167,7 @@ export default function Outreach() {
                     <span className="hidden sm:inline relative z-10 truncate">{tab.label}{tab.value === 'accounts' ? ` (${accounts.length})` : ''}</span>
                     <span className="sm:hidden relative z-10 truncate">{tab.shortLabel || tab.label}{tab.value === 'accounts' ? ` (${accounts.length})` : ''}</span>
                     {tab.value === 'messages' && unreadMessageCount > 0 && (
-                      <span className="ml-0.5 px-1.5 py-0.5 text-[9px] sm:text-[10px] font-bold bg-destructive text-destructive-foreground rounded-full min-w-[16px] text-center relative z-10">
+                      <span className="ml-0.5 px-1.5 py-0.5 text-[9px] sm:text-[10px] font-bold bg-red-600 text-white rounded-full min-w-[16px] text-center relative z-10">
                         {unreadMessageCount > 99 ? '99+' : unreadMessageCount}
                       </span>
                     )}
