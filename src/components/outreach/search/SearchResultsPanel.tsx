@@ -178,42 +178,45 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
   const { getMatch: getNotionMatch } = useNotionMatch(notionMatchInputs);
   // Pre-fetch Notion shortlist data so it's available in ProfileDetailSheet & LinkedInResultCard
   useNotionShortlist();
-  // Count by status for filter badges
+  // Count by status for filter badges — computed from DB statuses (stable across filter changes)
   const statusCounts = React.useMemo(() => {
     const counts = { scored: 0, scored_go: 0, scored_maybe: 0, scored_contacted: 0, scored_not_contacted: 0, messaged: 0, dismissed: 0, untreated: 0, known: 0 };
-    for (const r of results) {
-      const profileUrl = getCanonicalProfileUrl(r);
-      const notionMatch = getNotionMatch({
-        url: profileUrl,
-        name: getProfileDisplayName(r),
-      });
-
-      // Count "known" (in Airtable or Notion)
-      if (getAirtableMatch(profileUrl) || notionMatch) {
-        counts.known++;
-      }
-      const s = treatedCandidates.get(r.id);
-      if (!s) { counts.untreated++; continue; }
-      if (s.status === 'discovered') { counts.untreated++; continue; }
+    
+    // Count from DB statuses (source of truth, independent of current search filters)
+    for (const [candidateId, s] of treatedCandidates) {
+      if (!s || s.status === 'discovered') { counts.untreated++; continue; }
       if (s.status === 'scored') {
         counts.scored++;
         counts.scored_not_contacted++;
-        const rec = jobScores[r.id]?.recommendation || s.recommendation;
+        const rec = jobScores[candidateId]?.recommendation || s.recommendation;
         if (rec === 'go') counts.scored_go++;
         else if (rec === 'maybe') counts.scored_maybe++;
       }
       else if (s.status === 'messaged' || s.status === 'replied') {
         counts.messaged++;
-        if (jobScores[r.id] || s.score != null) {
+        if (jobScores[candidateId] || s.score != null) {
           counts.scored++;
           counts.scored_contacted++;
-          const rec = jobScores[r.id]?.recommendation || s.recommendation;
+          const rec = jobScores[candidateId]?.recommendation || s.recommendation;
           if (rec === 'go') counts.scored_go++;
           else if (rec === 'maybe') counts.scored_maybe++;
         }
       }
       else if (s.status === 'dismissed') counts.dismissed++;
     }
+
+    // Count "known" from visible results (needs profile data for Notion/Airtable matching)
+    for (const r of results) {
+      const profileUrl = getCanonicalProfileUrl(r);
+      const notionMatch = getNotionMatch({
+        url: profileUrl,
+        name: getProfileDisplayName(r),
+      });
+      if (getAirtableMatch(profileUrl) || notionMatch) {
+        counts.known++;
+      }
+    }
+
     return counts;
   }, [results, treatedCandidates, jobScores, getAirtableMatch, getNotionMatch]);
 
@@ -290,7 +293,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
         <div className="overflow-x-auto no-scrollbar border-b border-border shrink-0">
           <div className="flex items-center gap-0.5 bg-muted/50 p-0.5 mx-3 sm:mx-4 my-1.5 border border-foreground/20 w-fit">
             {([
-              { value: 'all' as const, label: 'Tous', icon: Users, count: results.length },
+              { value: 'all' as const, label: 'Tous', icon: Users, count: Math.max(results.length, treatedCandidates.size) },
               { value: 'untreated' as const, label: 'Nouveaux', icon: Eye, count: statusCounts.untreated },
               { value: 'scored' as const, label: 'Scorés', icon: Target, count: statusCounts.scored },
               { value: 'messaged' as const, label: 'Contactés', icon: Mail, count: statusCounts.messaged },
