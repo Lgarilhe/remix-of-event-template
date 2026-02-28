@@ -905,6 +905,44 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
     }
   }, [selectedAccount, fetchChats, fetchEnrollments, fetchAvailableJobs, fetchSequences]);
 
+  // Auto-poll chat list every 30s to detect new messages / conversations
+  useEffect(() => {
+    if (!selectedAccount) return;
+
+    const pollChats = async () => {
+      try {
+        const { data } = await invokeUnipile({
+          body: {
+            action: 'get_chats',
+            account_id: selectedAccount,
+            limit: 250,
+          },
+        });
+
+        if (!data?.success) return;
+
+        const freshChats = data.chats as Chat[] || [];
+        setChats(prev => {
+          // Only update if something changed (compare first chat timestamps + count)
+          if (prev.length !== freshChats.length) return freshChats;
+          const prevFirst = prev[0];
+          const freshFirst = freshChats[0];
+          if (prevFirst?.id !== freshFirst?.id || prevFirst?.timestamp !== freshFirst?.timestamp) return freshChats;
+          // Check unread counts changed
+          const prevUnread = prev.reduce((a, c) => a + getUnreadCount(c), 0);
+          const freshUnread = freshChats.reduce((a, c) => a + getUnreadCount(c), 0);
+          if (prevUnread !== freshUnread) return freshChats;
+          return prev;
+        });
+      } catch {
+        // Silently ignore polling errors
+      }
+    };
+
+    const intervalId = setInterval(pollChats, 30_000);
+    return () => clearInterval(intervalId);
+  }, [selectedAccount]);
+
   // Load messages on chat selection & mark as read
   useEffect(() => {
     if (selectedChat) {
