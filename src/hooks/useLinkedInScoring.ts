@@ -425,36 +425,35 @@ export function useLinkedInScoring({
 
         allResults.forEach((rawResult: any, index: number) => {
           const profile = profilesToScore[index];
+          if (!profile) return;
           const result = mapScoringResult(rawResult);
-          if (profile && result.match_score > 0) {
-            newScores[profile.id] = result;
-            const profileName = profile.name || `${profile.first_name || ''} ${profile.last_name || ''}`.trim();
-            const profileUrl = profile.public_profile_url || profile.profile_url;
-            const linkedinProfileData = serializeProfileForStorage(profile);
-            if (result.recommendation === 'skip') {
-              lowScoreProfiles.push({
-                id: profile.id,
-                name: profileName,
-                headline: profile.headline,
-                profileUrl,
-                score: result.match_score,
-                recommendation: result.recommendation,
-                skipReason: result.summary || 'Score insuffisant',
-                scoringDetails: result,
-                linkedinProfileData,
-              });
-            } else {
-              goodScoreProfiles.push({
-                id: profile.id,
-                name: profileName,
-                headline: profile.headline,
-                profileUrl,
-                score: result.match_score,
-                recommendation: result.recommendation,
-                scoringDetails: result,
-                linkedinProfileData,
-              });
-            }
+          newScores[profile.id] = result;
+          const profileName = profile.name || `${profile.first_name || ''} ${profile.last_name || ''}`.trim();
+          const profileUrl = profile.public_profile_url || profile.profile_url;
+          const linkedinProfileData = serializeProfileForStorage(profile);
+          if (result.recommendation === 'skip' || result.match_score === 0) {
+            lowScoreProfiles.push({
+              id: profile.id,
+              name: profileName,
+              headline: profile.headline,
+              profileUrl,
+              score: result.match_score,
+              recommendation: result.recommendation || 'skip',
+              skipReason: result.summary || 'Score insuffisant',
+              scoringDetails: result,
+              linkedinProfileData,
+            });
+          } else {
+            goodScoreProfiles.push({
+              id: profile.id,
+              name: profileName,
+              headline: profile.headline,
+              profileUrl,
+              score: result.match_score,
+              recommendation: result.recommendation,
+              scoringDetails: result,
+              linkedinProfileData,
+            });
           }
         });
 
