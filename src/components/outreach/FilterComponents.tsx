@@ -97,7 +97,7 @@ export const FilterGroup: React.FC<FilterGroupProps> = ({
   unsupported = false,
   unsupportedTooltip,
 }) => (
-  <div className={`border border-foreground bg-muted/30 p-2 ${unsupported ? 'opacity-60' : ''}`}>
+  <div className={`border border-foreground bg-muted/30 p-2 ${unsupported ? 'opacity-50 pointer-events-none select-none' : ''}`}>
     <div className="flex items-center gap-1.5 mb-1.5">
       {icon && icon}
       <span className="text-[11px] font-medium text-foreground/70 uppercase tracking-wide">{title}</span>
