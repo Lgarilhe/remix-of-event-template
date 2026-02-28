@@ -3,7 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 
 export interface ActivityEvent {
   id: string;
-  type: 'sequence_step' | 'booking';
+  type: 'sequence_step' | 'booking' | 'aircall';
   timestamp: string;
   actionType: string;
   stepOrder: number;
@@ -16,6 +16,10 @@ export interface ActivityEvent {
   qualificationSessionId?: string | null;
   eventName?: string | null;
   eventLocation?: string | null;
+  // Aircall-specific fields
+  callDirection?: string | null;
+  callDuration?: number | null;
+  callUserName?: string | null;
 }
 
 export function useProfileActivity(profileId: string | null, profileUrl?: string | null, profileName?: string | null) {
@@ -175,7 +179,37 @@ export function useProfileActivity(profileId: string | null, profileUrl?: string
           eventLocation: s.event_location,
         }));
 
-        const allEvents = [...mapped, ...bookingEvents].sort(
+        // Fetch Aircall call events for this candidate
+        let aircallEvents: ActivityEvent[] = [];
+        
+        // Try matching by airtable candidate id first (via name match in aircall_calls)
+        const candidateNameForAircall = profileName?.trim();
+        if (candidateNameForAircall && candidateNameForAircall.length >= 3) {
+          const { data: calls } = await supabase
+            .from('aircall_calls')
+            .select('id, started_at, direction, status, duration, user_name, matched_candidate_name')
+            .ilike('matched_candidate_name', `%${candidateNameForAircall}%`)
+            .order('started_at', { ascending: true })
+            .limit(50);
+
+          if (calls?.length) {
+            aircallEvents = calls
+              .filter(c => c.started_at)
+              .map(c => ({
+                id: `aircall-${c.id}`,
+                type: 'aircall' as const,
+                timestamp: c.started_at!,
+                actionType: 'aircall_call',
+                stepOrder: 0,
+                status: c.status || 'done',
+                callDirection: c.direction,
+                callDuration: c.duration || 0,
+                callUserName: c.user_name,
+              }));
+          }
+        }
+
+        const allEvents = [...mapped, ...bookingEvents, ...aircallEvents].sort(
           (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
         );
 
