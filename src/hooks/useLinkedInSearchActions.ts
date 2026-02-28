@@ -604,9 +604,13 @@ export function useLinkedInSearchActions(
           }))
         : allCollected;
 
+      const noMoreResults = exhausted || reachedTotal;
+
       if (appendMode) {
         if (scoredBatch.length === 0) {
           toast.info('Aucun nouveau profil trouvé. Essayez d\'élargir vos filtres ou de modifier vos mots-clés.', { id: 'no-new-results', duration: 5000 });
+        } else if (scoredBatch.length < 5 && noMoreResults) {
+          toast.info(`Seulement ${scoredBatch.length} nouveau${scoredBatch.length > 1 ? 'x' : ''} profil${scoredBatch.length > 1 ? 's' : ''} trouvé${scoredBatch.length > 1 ? 's' : ''}. Fin des résultats LinkedIn pour ces filtres.`, { id: 'few-new-results', duration: 5000 });
         }
         setResults(prev => [...prev, ...scoredBatch]);
       } else {
