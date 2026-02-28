@@ -16,6 +16,8 @@ import { useProfileData } from './useProfileData';
 import { useCandidateHistory } from '@/hooks/useCandidateHistory';
 import { NotionShortlistHistoryItem } from '@/hooks/useCandidateHistory';
 import { CandidateHistoryPanel } from '../CandidateHistoryPanel';
+import { useAircallHistory } from '@/hooks/useAircallHistory';
+import { AircallHistoryPanel } from '../AircallHistoryPanel';
 import { useNotionShortlist } from '@/hooks/useNotionCandidates';
 import { OutreachMessageModal } from '../OutreachMessageModal';
 import { SequenceEnrollButton } from '../SequenceEnrollButton';
@@ -102,6 +104,14 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
 
   // Notion shortlist data for this candidate
   const { data: notionShortlistData, isLoading: notionShortlistLoading } = useNotionShortlist();
+
+  // Aircall history
+  const aircallHistory = useAircallHistory(
+    airtableMatch?.airtable_id || null,
+    profile ? [profile.first_name, profile.last_name].filter(Boolean).join(' ') : null,
+    historyData?.candidate?.phone || null
+  );
+
   const notionShortlistsForCandidate: NotionShortlistHistoryItem[] = React.useMemo(() => {
     if (!notionShortlistData) return [];
 
@@ -433,6 +443,18 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
               {(historyPanelLoading || hasHistory) && (
                 <div className="border border-foreground/20 overflow-hidden bg-background">
                   <CandidateHistoryPanel data={historyData} loading={historyPanelLoading} compact={false} notionShortlists={notionShortlistsForCandidate} />
+                </div>
+              )}
+
+              {/* Aircall History */}
+              {(aircallHistory.loading || aircallHistory.calls.length > 0) && (
+                <div className="border border-foreground/20 overflow-hidden bg-background p-3 sm:p-4">
+                  <AircallHistoryPanel
+                    calls={aircallHistory.calls}
+                    loading={aircallHistory.loading}
+                    totalCalls={aircallHistory.totalCalls}
+                    totalDuration={aircallHistory.totalDuration}
+                  />
                 </div>
               )}
 

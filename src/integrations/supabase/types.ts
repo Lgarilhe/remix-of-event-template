@@ -14,6 +14,93 @@ export type Database = {
   }
   public: {
     Tables: {
+      aircall_calls: {
+        Row: {
+          aircall_id: number
+          answered_at: string | null
+          callee_name: string | null
+          callee_number: string | null
+          caller_name: string | null
+          caller_number: string | null
+          created_at: string
+          direction: string
+          duration: number | null
+          ended_at: string | null
+          id: string
+          matched_airtable_candidate_id: string | null
+          matched_candidate_name: string | null
+          matched_candidate_phone: string | null
+          matched_linkedin_profile_id: string | null
+          notes: string | null
+          raw_data: Json | null
+          raw_number: string | null
+          recording_url: string | null
+          started_at: string | null
+          status: string | null
+          synced_at: string
+          tags: string[] | null
+          user_email: string | null
+          user_name: string | null
+          voicemail_url: string | null
+        }
+        Insert: {
+          aircall_id: number
+          answered_at?: string | null
+          callee_name?: string | null
+          callee_number?: string | null
+          caller_name?: string | null
+          caller_number?: string | null
+          created_at?: string
+          direction: string
+          duration?: number | null
+          ended_at?: string | null
+          id?: string
+          matched_airtable_candidate_id?: string | null
+          matched_candidate_name?: string | null
+          matched_candidate_phone?: string | null
+          matched_linkedin_profile_id?: string | null
+          notes?: string | null
+          raw_data?: Json | null
+          raw_number?: string | null
+          recording_url?: string | null
+          started_at?: string | null
+          status?: string | null
+          synced_at?: string
+          tags?: string[] | null
+          user_email?: string | null
+          user_name?: string | null
+          voicemail_url?: string | null
+        }
+        Update: {
+          aircall_id?: number
+          answered_at?: string | null
+          callee_name?: string | null
+          callee_number?: string | null
+          caller_name?: string | null
+          caller_number?: string | null
+          created_at?: string
+          direction?: string
+          duration?: number | null
+          ended_at?: string | null
+          id?: string
+          matched_airtable_candidate_id?: string | null
+          matched_candidate_name?: string | null
+          matched_candidate_phone?: string | null
+          matched_linkedin_profile_id?: string | null
+          notes?: string | null
+          raw_data?: Json | null
+          raw_number?: string | null
+          recording_url?: string | null
+          started_at?: string | null
+          status?: string | null
+          synced_at?: string
+          tags?: string[] | null
+          user_email?: string | null
+          user_name?: string | null
+          voicemail_url?: string | null
+        }
+        Relationships: []
+      }
       airtable_appointments: {
         Row: {
           airtable_id: string

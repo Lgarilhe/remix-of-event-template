@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 
 export interface CandidateActivity {
-  type: 'scored' | 'messaged' | 'sequence_enrolled' | 'sequence_step' | 'inmail_sent' | 'qualification_scheduled' | 'qualification_verdict' | 'stage_change' | 'note_added' | 'appointment' | 'shortlist_added';
+  type: 'scored' | 'messaged' | 'sequence_enrolled' | 'sequence_step' | 'inmail_sent' | 'qualification_scheduled' | 'qualification_verdict' | 'stage_change' | 'note_added' | 'appointment' | 'shortlist_added' | 'aircall_call';
   date: string;
   title: string;
   detail?: string;
@@ -86,6 +86,7 @@ export interface CandidateFullProfile {
   airtableShortlists: { id: string; status: string; dateAdded: string; jobTitle?: string; companyName?: string }[];
   airtableNotes: { id: string; title: string; detail: string; noteDate: string; author: string }[];
   airtableAppointments: AirtableAppointment[];
+  aircallCalls: { id: string; direction: string; status: string; startedAt: string | null; duration: number; userName: string | null; notes: string | null; tags: string[] }[];
   timeline: CandidateActivity[];
   loading: boolean;
 }
@@ -101,6 +102,7 @@ export function useCandidateFullProfile(candidateId: string, linkedinUrl: string
   const [airtableShortlists, setAirtableShortlists] = useState<any[]>([]);
   const [airtableNotes, setAirtableNotes] = useState<any[]>([]);
   const [airtableAppointments, setAirtableAppointments] = useState<AirtableAppointment[]>([]);
+  const [aircallCalls, setAircallCalls] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -113,6 +115,7 @@ export function useCandidateFullProfile(candidateId: string, linkedinUrl: string
           fetchInmails(candidateId),
           fetchScoringHistory(candidateId),
           linkedinUrl ? fetchAirtableHistory(linkedinUrl) : Promise.resolve(),
+          linkedinUrl ? fetchAircallCalls(linkedinUrl) : Promise.resolve(),
         ]);
       } finally {
         setLoading(false);
@@ -318,6 +321,36 @@ export function useCandidateFullProfile(candidateId: string, linkedinUrl: string
       }
     }
 
+    async function fetchAircallCalls(url: string) {
+      // First try to find matched calls via airtable candidate
+      const slug = extractSlug(url);
+      const { data: candidates } = await supabase
+        .from('airtable_candidates')
+        .select('airtable_id')
+        .ilike('linkedin_url', `%${slug}%`)
+        .limit(1);
+
+      if (candidates && candidates.length > 0) {
+        const { data: calls } = await supabase
+          .from('aircall_calls')
+          .select('*')
+          .eq('matched_airtable_candidate_id', candidates[0].airtable_id)
+          .order('started_at', { ascending: false })
+          .limit(50);
+
+        setAircallCalls((calls || []).map((c: any) => ({
+          id: c.id,
+          direction: c.direction,
+          status: c.status,
+          startedAt: c.started_at,
+          duration: c.duration || 0,
+          userName: c.user_name,
+          notes: c.notes,
+          tags: c.tags || [],
+        })));
+      }
+    }
+
     fetchAll();
   }, [candidateId, linkedinUrl]);
 
@@ -410,6 +443,19 @@ export function useCandidateFullProfile(candidateId: string, linkedinUrl: string
     });
   });
 
+  // Aircall calls in timeline
+  aircallCalls.forEach(c => {
+    const dirLabel = c.direction === 'inbound' ? '📞 Appel reçu' : '📞 Appel émis';
+    const statusLabel = c.status === 'missed' || c.status === 'no-answer' ? ' (manqué)' : '';
+    const durationLabel = c.duration > 0 ? ` • ${Math.floor(c.duration / 60)}min${c.duration % 60 > 0 ? ` ${c.duration % 60}s` : ''}` : '';
+    timeline.push({
+      type: 'aircall_call',
+      date: c.startedAt || '',
+      title: `${dirLabel}${statusLabel}${durationLabel}`,
+      detail: [c.userName, c.notes].filter(Boolean).join(' — ') || undefined,
+    });
+  });
+
   timeline.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
   return {
@@ -423,6 +469,7 @@ export function useCandidateFullProfile(candidateId: string, linkedinUrl: string
     airtableShortlists,
     airtableNotes,
     airtableAppointments,
+    aircallCalls,
     timeline,
     loading,
   };
