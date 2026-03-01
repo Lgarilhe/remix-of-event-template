@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
@@ -27,6 +27,7 @@ import {
   Target, CheckCircle2, AlertTriangle, PenLine, Archive, Mail,
   MessageSquare, FolderPlus,
 } from 'lucide-react';
+import { invokeUnipile } from '@/lib/invokeUnipile';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
@@ -89,9 +90,87 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
   // Reset AI analysis when profile changes
   useEffect(() => { setAiAnalysis(null); }, [profile?.id]);
 
+  // Auto-enrich pool profiles that have no work_experience data
+  const [enrichedProfile, setEnrichedProfile] = useState<LinkedInProfile | null>(null);
+  const [isEnriching, setIsEnriching] = useState(false);
+
+  useEffect(() => {
+    setEnrichedProfile(null);
+  }, [profile?.id]);
+
+  useEffect(() => {
+    if (!open || !profile || !accountId) return;
+    const isPoolShell = (profile as any)._fromPool &&
+      (!profile.work_experience || profile.work_experience.length === 0) &&
+      (!profile.skills || profile.skills.length === 0);
+    if (!isPoolShell) return;
+
+    const profileUrl = profile.public_profile_url || profile.profile_url;
+    if (!profileUrl) return;
+
+    let cancelled = false;
+    setIsEnriching(true);
+
+    (async () => {
+      try {
+        const { data: response } = await invokeUnipile({
+          body: {
+            action: 'get_profile',
+            account_id: accountId,
+            profile_url: profileUrl,
+          },
+        });
+        if (cancelled) return;
+        if (response?.success && response.profile) {
+          const p = response.profile as Record<string, any>;
+          setEnrichedProfile({
+            ...profile,
+            summary: p.about || p.summary || profile.summary,
+            skills: p.skills?.map((s: any) => typeof s === 'string' ? s : s.name) || [],
+            work_experience: (p.positions || p.experiences || []).map((exp: any) => ({
+              role: exp.title,
+              company: exp.company_name || exp.company,
+              company_logo: exp.company_logo || exp.logo_url || exp.logo,
+              description: exp.description,
+              start: exp.start_date || exp.starts_at,
+              end: exp.end_date || exp.ends_at,
+            })),
+            education: (p.education || []).map((edu: any) => ({
+              school: edu.school_name || edu.school,
+              degree: edu.degree_name || edu.degree,
+              field_of_study: edu.field_of_study || edu.field,
+              start: edu.start_date || edu.starts_at,
+              end: edu.end_date || edu.ends_at,
+            })),
+            location: p.location?.name || p.location || profile.location,
+            profile_picture_url: p.profile_picture_url || p.picture_url || profile.profile_picture_url,
+            connections_count: p.connections_count || profile.connections_count,
+            network_distance: p.network_distance || profile.network_distance,
+          } as LinkedInProfile);
+
+          // Also persist the enriched data in DB for future use
+          const { error } = await supabase
+            .from('job_candidate_status')
+            .update({ linkedin_profile_data: response.profile as any })
+            .eq('candidate_id', profile.id)
+            .is('linkedin_profile_data', null);
+          if (error) console.warn('[ProfileDetail] Failed to persist enriched data:', error);
+        }
+      } catch (err) {
+        console.warn('[ProfileDetail] Auto-enrich failed:', err);
+      } finally {
+        if (!cancelled) setIsEnriching(false);
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [open, profile?.id, accountId]);
+
+  const effectiveProfile = enrichedProfile || profile;
+
   const dummyProfile = { id: '', name: '' } as LinkedInProfile;
-  const profileData = useProfileData(profile || dummyProfile);
-  const candidateProfileUrl = (profile || dummyProfile).public_profile_url || (profile || dummyProfile).profile_url;
+  const profileData = useProfileData(effectiveProfile || dummyProfile);
+  const candidateProfileUrl = (effectiveProfile || dummyProfile).public_profile_url || (effectiveProfile || dummyProfile).profile_url;
 
   // Airtable history — fetch by both URL and direct airtable_id for reliability
   const { data: historyData, loading: historyLoading } = useCandidateHistory(
@@ -189,6 +268,9 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
 
   if (!profile) return null;
 
+  // Use enriched version if available (pool profiles auto-fetched from Unipile)
+  const displayProfile = enrichedProfile || profile;
+
   const {
     fullName, initials, currentCompany, currentRole, currentJobTenure,
     networkDistance, profileUrl, skills, education, educationPreview,
@@ -240,7 +322,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
           <SheetHeader className="px-3 sm:px-6 pt-4 sm:pt-5 pb-3 sm:pb-4 bg-muted/30 border-b border-foreground shrink-0">
             <div className="flex items-start gap-2.5 sm:gap-4">
                <Avatar className="w-11 h-11 sm:w-16 sm:h-16 border-2 border-border shadow-md shrink-0">
-                <AvatarImage src={profile.profile_picture_url} alt={fullName} className="object-cover" />
+                <AvatarImage src={displayProfile.profile_picture_url} alt={fullName} className="object-cover" />
                 <AvatarFallback className="bg-gradient-to-br from-primary to-primary/80 text-primary-foreground text-base sm:text-xl font-semibold">
                   {initials || '?'}
                 </AvatarFallback>
@@ -263,7 +345,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
                   />
                 </div>
                 <p className="text-xs sm:text-sm text-muted-foreground line-clamp-2 mt-0.5 sm:mt-1 leading-relaxed">
-                  {profile.headline || currentRole || 'Profil LinkedIn'}
+                  {displayProfile.headline || currentRole || 'Profil LinkedIn'}
                 </p>
                 <div className="flex flex-wrap items-center gap-x-3 sm:gap-x-4 gap-y-1 mt-1.5 sm:mt-2.5 text-[11px] sm:text-xs text-muted-foreground">
                   {currentCompany && (
@@ -273,10 +355,10 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
                       {currentJobTenure && <span className="text-muted-foreground/50 font-normal hidden sm:inline">• {currentJobTenure}</span>}
                     </span>
                   )}
-                  {profile.location && (
+                  {displayProfile.location && (
                     <span className="flex items-center gap-1">
                       <MapPin className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
-                      <span className="truncate max-w-[100px] sm:max-w-none">{profile.location}</span>
+                      <span className="truncate max-w-[100px] sm:max-w-none">{displayProfile.location}</span>
                     </span>
                   )}
                   {totalExperience && (
@@ -459,16 +541,24 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
               )}
 
               {/* À propos */}
-              {profile.summary && (
+              {displayProfile.summary && (
                 <div className="rounded-none sm:rounded-xl border border-border/60 bg-background p-3 sm:p-4">
                   <h3 className="text-sm font-semibold text-foreground mb-2">À propos</h3>
-                  <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-line">{profile.summary}</p>
+                  <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-line">{displayProfile.summary}</p>
+                </div>
+              )}
+
+              {/* Loading indicator for pool profile enrichment */}
+              {isEnriching && (
+                <div className="flex items-center gap-2 p-3 rounded-lg border border-border/60 bg-muted/30 text-sm text-muted-foreground">
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Chargement du profil complet…
                 </div>
               )}
 
               {/* Tabs: experience, education, skills, messages, posts */}
               <CardExpandedContent
-                profile={profile}
+                profile={displayProfile}
                 profileData={profileData}
                 selectedJob={selectedJob}
                 jobScore={jobScore}
