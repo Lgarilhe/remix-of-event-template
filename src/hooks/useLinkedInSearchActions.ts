@@ -467,7 +467,8 @@ export function useLinkedInSearchActions(
       let latestTotal: number | null = null;
       let exhausted = false;
       const seen = new Set<string>();
-      const MAX_FETCH_ROUNDS = 5; // Safety limit to prevent infinite loops
+      // More rounds in append mode since heavy filtering + dedup can yield 0 new profiles
+      const MAX_FETCH_ROUNDS = appendMode ? 10 : 7;
 
       // Pre-populate seen set with existing results for dedup
       if (appendMode) {
