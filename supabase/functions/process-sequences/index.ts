@@ -1564,7 +1564,7 @@ async function generatePersonalizedMessage(supabase: any, enrollment: Record<str
     let [profile, recentPosts, candidateHistory] = await Promise.all([profilePromise, postsPromise, historyPromise]);
 
     // Fallback: if Unipile didn't return experiences, try to get them from the DB snapshot
-    const hasExperiences = Array.isArray(profile?.experiences || profile?.positions?.values) && (profile?.experiences || profile?.positions?.values).length > 0;
+    const hasExperiences = Array.isArray(profile?.work_experience || profile?.experiences || profile?.positions?.values) && (profile?.work_experience || profile?.experiences || profile?.positions?.values).length > 0;
     if (!hasExperiences) {
       try {
         const { data: jcs } = await supabase
@@ -1578,9 +1578,10 @@ async function generatePersonalizedMessage(supabase: any, enrollment: Record<str
         const snapshot = jcs?.[0]?.linkedin_profile_data;
         if (snapshot && typeof snapshot === 'object') {
           // Merge snapshot data into profile, preserving any Unipile identity data
-          const snapshotExperiences = snapshot.experiences || snapshot.positions?.values || [];
+          const snapshotExperiences = snapshot.work_experience || snapshot.experiences || snapshot.positions?.values || [];
           const snapshotEducation = snapshot.education || [];
           const snapshotSkills = snapshot.skills || [];
+          const snapshotLanguages = snapshot.languages || [];
           const snapshotAbout = snapshot.about || snapshot.summary || '';
           
           if (Array.isArray(snapshotExperiences) && snapshotExperiences.length > 0) {
@@ -1729,7 +1730,7 @@ ${jobDescription ? `- Contexte mission: ${jobDescription.slice(0, 300)}` : ''}
 ${jobBodyContent ? `- Détails poste:\n${jobBodyContent.slice(0, 400)}` : ''}`;
 
     // Build profile context
-    const profileExperiences = profile?.experiences || profile?.positions?.values || [];
+    const profileExperiences = profile?.work_experience || profile?.experiences || profile?.positions?.values || [];
     // deno-lint-ignore no-explicit-any
     const expContext = Array.isArray(profileExperiences) ? profileExperiences.slice(0, 3).map((e: any) => {
       const title = e.title || e.role || '';
@@ -1767,11 +1768,13 @@ ${jobBodyContent ? `- Détails poste:\n${jobBodyContent.slice(0, 400)}` : ''}`;
       let earliest = 9999;
       // deno-lint-ignore no-explicit-any
       for (const exp of profileExperiences as any[]) {
-        const startDate = exp.start_date || exp.starts_at;
+        const startDate = exp.start_date || exp.starts_at || exp.start;
         if (startDate) {
-          const year = typeof startDate === 'string' 
-            ? parseInt(startDate.split('-')[0]) 
-            : (startDate.year || 9999);
+          const year = typeof startDate === 'object' && startDate?.year
+            ? startDate.year
+            : typeof startDate === 'string' 
+              ? parseInt(startDate.split('-')[0]) 
+              : 9999;
           if (year < earliest) earliest = year;
         }
       }
