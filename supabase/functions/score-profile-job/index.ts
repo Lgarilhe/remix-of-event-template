@@ -157,10 +157,10 @@ serve(async (req) => {
       customScoringInstructions?: string;
     };
     
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+    const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
 
-    if (!LOVABLE_API_KEY) {
-      throw new Error("LOVABLE_API_KEY is not configured");
+    if (!ANTHROPIC_API_KEY) {
+      throw new Error("ANTHROPIC_API_KEY is not configured");
     }
 
     const profilesToScore = profiles || (profile ? [profile] : []);
@@ -318,20 +318,18 @@ Réponds en JSON COMPACT sur UNE SEULE LIGNE. Max 3 items par array. Textes cour
 {"score":N,"recommendation":"X","summary":"...","strengths":["..."],"concerns":["..."],"missingSkills":["..."],"seniorityMatch":"X","locationMatch":"X","experienceMatch":"X","tenureAnalysis":"X","receptivityScore":N,"foreignDiplomaRisk":"none|low|medium|high","locationCompatibility":"compatible|partial|incompatible","candidatePreferencesConflict":null,"contractMismatch":null,"skipReason":"raison si score<40 sinon null"}`);
 
             const res = await fetch(
-              "https://ai.gateway.lovable.dev/v1/chat/completions",
+              "https://api.anthropic.com/v1/messages",
               {
                 method: "POST",
                 headers: {
                   "Content-Type": "application/json",
-                  "Authorization": `Bearer ${LOVABLE_API_KEY}`,
+                  "x-api-key": ANTHROPIC_API_KEY,
+                  "anthropic-version": "2023-06-01",
                 },
                 body: JSON.stringify({
-                  model: "google/gemini-3-flash-preview",
+                  model: "claude-sonnet-4-20250514",
+                  system: "Tu es un expert recruteur tech. Tu évalues des profils candidats vs des postes. Tu réponds TOUJOURS en JSON valide compact, sans markdown, sans code blocks, sur une seule ligne.",
                   messages: [
-                    {
-                      role: "system",
-                      content: "Tu es un expert recruteur tech. Tu évalues des profils candidats vs des postes. Tu réponds TOUJOURS en JSON valide compact, sans markdown, sans code blocks, sur une seule ligne."
-                    },
                     {
                       role: "user",
                       content: prompt,
@@ -345,15 +343,16 @@ Réponds en JSON COMPACT sur UNE SEULE LIGNE. Max 3 items par array. Textes cour
 
             if (!res.ok) {
               const errorBody = await res.text();
-              console.error(`Lovable AI error:`, { status: res.status, body: errorBody });
+              console.error(`Anthropic API error:`, { status: res.status, body: errorBody });
               
               if (res.status === 429) throw new Error("RATE_LIMITED");
-              if (res.status === 402) throw new Error("CREDITS_EXHAUSTED");
-              throw new Error(`AI gateway error: ${res.status}`);
+              if (res.status === 402 || res.status === 400) throw new Error("CREDITS_EXHAUSTED");
+              throw new Error(`Anthropic API error: ${res.status}`);
             }
 
             const data = await res.json();
-            const rawContent = data.choices?.[0]?.message?.content || '';
+            // Anthropic returns content as an array of blocks
+            const rawContent = data.content?.[0]?.text || '';
 
             const scoring = extractJsonRobust(rawContent);
 
