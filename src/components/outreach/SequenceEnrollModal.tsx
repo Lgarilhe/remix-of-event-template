@@ -141,6 +141,23 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
           }
 
           enrollmentResults.success++;
+
+          // Mark candidate as 'messaged' in job_candidate_status so they appear as treated in search
+          if (job?.id) {
+            await supabase
+              .from('job_candidate_status')
+              .upsert({
+                job_id: job.id,
+                candidate_id: profile.id,
+                candidate_name: profile.name || null,
+                candidate_headline: profile.headline || null,
+                linkedin_profile_url: profile.profile_url || profile.public_profile_url || null,
+                status: 'messaged',
+                created_by: userId,
+              }, {
+                onConflict: 'job_id,candidate_id,created_by'
+              });
+          }
         } catch (err: any) {
           const msg = err?.message || err?.details || err?.hint || JSON.stringify(err);
           console.error('Enrollment error for', profile.name, err);
