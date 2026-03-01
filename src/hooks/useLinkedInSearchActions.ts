@@ -467,8 +467,9 @@ export function useLinkedInSearchActions(
       let latestTotal: number | null = null;
       let exhausted = false;
       const seen = new Set<string>();
-      // More rounds in append mode since heavy filtering + dedup can yield 0 new profiles
-      const MAX_FETCH_ROUNDS = appendMode ? 10 : 7;
+      // Dynamic limit: keep fetching until we have enough or API is exhausted
+      // In append mode we allow more rounds since heavy filtering + dedup can yield few new profiles
+      const MAX_FETCH_ROUNDS = appendMode ? 15 : 10;
 
       // Pre-populate seen set with existing results for dedup
       if (appendMode) {
