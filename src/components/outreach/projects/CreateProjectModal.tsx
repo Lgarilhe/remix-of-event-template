@@ -14,14 +14,10 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import { Loader2, Briefcase, Search } from 'lucide-react';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Loader2, Briefcase, Search, Check, ChevronDown } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 interface CreateProjectModalProps {
   open: boolean;
@@ -42,6 +38,7 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
   const [linkToJob, setLinkToJob] = useState(!!preselectedJob);
   const [selectedJobId, setSelectedJobId] = useState<string>(preselectedJob?.id || '');
   const [jobSearchQuery, setJobSearchQuery] = useState('');
+  const [jobPopoverOpen, setJobPopoverOpen] = useState(false);
 
   const selectedJob = jobs.find(j => j.id === selectedJobId);
 
@@ -115,48 +112,71 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
           {linkToJob && (
             <div className="space-y-2">
               <Label>Poste associé</Label>
-              <Select value={selectedJobId} onValueChange={handleJobChange}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Sélectionner un poste..." />
-                </SelectTrigger>
-                <SelectContent className="max-h-[300px]">
-                  {/* Search input */}
-                  <div className="p-2 border-b sticky top-0 bg-white z-10">
+              <Popover open={jobPopoverOpen} onOpenChange={setJobPopoverOpen}>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    role="combobox"
+                    className="w-full justify-between font-normal"
+                  >
+                    {selectedJob ? (
+                      <span className="truncate">{selectedJob.title}{selectedJob.client?.name ? ` @ ${selectedJob.client.name}` : ''}</span>
+                    ) : (
+                      <span className="text-muted-foreground">Sélectionner un poste...</span>
+                    )}
+                    <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
+                  <div className="p-2 border-b">
                     <div className="relative">
-                      <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+                      <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
                       <Input
                         placeholder="Rechercher..."
                         value={jobSearchQuery}
                         onChange={(e) => setJobSearchQuery(e.target.value)}
                         className="pl-8 h-8 text-sm"
-                        onClick={(e) => e.stopPropagation()}
-                        onKeyDown={(e) => e.stopPropagation()}
                       />
                     </div>
                   </div>
-                  
-                  {jobsLoading ? (
-                    <div className="p-4 text-center text-gray-500">
-                      <Loader2 className="w-4 h-4 animate-spin mx-auto" />
-                    </div>
-                  ) : filteredJobs.length === 0 ? (
-                    <div className="p-4 text-center text-gray-500 text-sm">
-                      Aucun poste trouvé
-                    </div>
-                  ) : (
-                    filteredJobs.map((job) => (
-                      <SelectItem key={job.id} value={job.id}>
-                        <div className="flex items-center gap-2">
-                          <span className="font-medium">{job.title}</span>
-                          {job.client?.name && (
-                            <span className="text-xs text-gray-400">@ {job.client.name}</span>
-                          )}
-                        </div>
-                      </SelectItem>
-                    ))
-                  )}
-                </SelectContent>
-              </Select>
+                  <ScrollArea className="h-[250px]">
+                    {jobsLoading ? (
+                      <div className="p-4 text-center text-muted-foreground">
+                        <Loader2 className="w-4 h-4 animate-spin mx-auto" />
+                      </div>
+                    ) : filteredJobs.length === 0 ? (
+                      <div className="p-4 text-center text-muted-foreground text-sm">
+                        Aucun poste trouvé
+                      </div>
+                    ) : (
+                      <div className="p-1">
+                        {filteredJobs.map((job) => (
+                          <button
+                            key={job.id}
+                            type="button"
+                            onClick={() => {
+                              handleJobChange(job.id);
+                              setJobPopoverOpen(false);
+                            }}
+                            className={cn(
+                              "w-full text-left px-3 py-2 rounded-md text-sm flex items-center justify-between hover:bg-accent transition-colors",
+                              selectedJobId === job.id && "bg-accent"
+                            )}
+                          >
+                            <div className="min-w-0">
+                              <span className="font-medium block truncate">{job.title}</span>
+                              {job.client?.name && (
+                                <span className="text-xs text-muted-foreground">@ {job.client.name}</span>
+                              )}
+                            </div>
+                            {selectedJobId === job.id && <Check className="w-4 h-4 shrink-0 ml-2" />}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </ScrollArea>
+                </PopoverContent>
+              </Popover>
             </div>
           )}
 
