@@ -98,7 +98,7 @@ async function handleNewRelation(supabase: SupabaseClient, payload: WebhookPaylo
   
   // Extract the profile ID of the new connection
   // Unipile sends: { user: { provider_id: "...", ... } }
-  const newConnection = data.user as { provider_id?: string; id?: string } | undefined;
+  const newConnection = data?.user as { provider_id?: string; id?: string } | undefined;
   const profileId = newConnection?.provider_id || newConnection?.id;
   
   if (!profileId) {
@@ -109,13 +109,14 @@ async function handleNewRelation(supabase: SupabaseClient, payload: WebhookPaylo
   console.log('[unipile-webhook] new_relation: Profile connected:', profileId);
 
   // Find enrollments waiting for this connection
+  // Match on profile_id OR resolved_profile_id to handle Recruiter IDs (AEM -> ACo)
   const { data: enrollments, error: enrollError } = await supabase
     .from('sequence_enrollments')
     .select('*')
     .eq('account_id', account_id)
-    .eq('profile_id', profileId)
     .eq('status', 'active')
-    .in('connection_status', ['pending_invite', 'unknown']);
+    .in('connection_status', ['pending_invite', 'unknown'])
+    .or(`profile_id.eq.${profileId},resolved_profile_id.eq.${profileId}`);
 
   if (enrollError) {
     console.error('[unipile-webhook] Error fetching enrollments:', enrollError);
@@ -143,6 +144,85 @@ async function handleNewRelation(supabase: SupabaseClient, payload: WebhookPaylo
     if (updateError) {
       console.error('[unipile-webhook] Error updating enrollment:', updateError);
       continue;
+    }
+
+    // CRITICAL: Resolve the pending wait_connection step execution
+    // Find the wait_connection step for this enrollment that is waiting
+    const { data: waitSteps } = await supabase
+      .from('sequence_step_executions')
+      .select('id, step_id, step_order')
+      .eq('enrollment_id', enrollment.id)
+      .in('status', ['waiting_event', 'scheduled'])
+      .order('step_order', { ascending: true })
+      .limit(1);
+
+    if (waitSteps && waitSteps.length > 0) {
+      const waitStep = waitSteps[0];
+      // Verify this is indeed a wait_connection step
+      const { data: stepDef } = await supabase
+        .from('sequence_steps')
+        .select('action_type, if_true_goto_step')
+        .eq('id', waitStep.step_id)
+        .single();
+
+      if (stepDef?.action_type === 'wait_connection') {
+        // Mark as sent (connection accepted)
+        await supabase
+          .from('sequence_step_executions')
+          .update({
+            status: 'sent',
+            executed_at: new Date().toISOString(),
+          })
+          .eq('id', waitStep.id);
+
+        // Determine next step (if_true_goto_step = connection accepted path)
+        const nextStepId = stepDef.if_true_goto_step;
+        if (nextStepId) {
+          // Get the next step details to schedule it
+          const { data: nextStep } = await supabase
+            .from('sequence_steps')
+            .select('*')
+            .eq('id', nextStepId)
+            .single();
+
+          if (nextStep) {
+            // Schedule next step with appropriate delay
+            const delayMs = ((nextStep.delay_days || 0) * 86400 + (nextStep.delay_hours || 0) * 3600 + (nextStep.delay_minutes || 0) * 60) * 1000;
+            const scheduledAt = new Date(Date.now() + delayMs);
+            
+            // Check for duplicates first
+            const { data: existing } = await supabase
+              .from('sequence_step_executions')
+              .select('id')
+              .eq('enrollment_id', enrollment.id)
+              .eq('step_id', nextStepId)
+              .in('status', ['scheduled', 'sent', 'waiting_event'])
+              .limit(1);
+
+            if (!existing || existing.length === 0) {
+              await supabase
+                .from('sequence_step_executions')
+                .insert({
+                  enrollment_id: enrollment.id,
+                  step_id: nextStepId,
+                  step_order: nextStep.step_order,
+                  status: 'scheduled',
+                  scheduled_at: scheduledAt.toISOString(),
+                });
+
+              // Update enrollment current step
+              await supabase
+                .from('sequence_enrollments')
+                .update({ current_step_order: nextStep.step_order })
+                .eq('id', enrollment.id);
+
+              console.log(`[unipile-webhook] Scheduled next step ${nextStep.action_type} (order ${nextStep.step_order}) for enrollment ${enrollment.id}`);
+            }
+          }
+        }
+
+        console.log(`[unipile-webhook] Resolved wait_connection step for enrollment ${enrollment.id}`);
+      }
     }
 
     // Log analytics
