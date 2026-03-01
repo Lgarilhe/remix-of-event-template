@@ -937,10 +937,11 @@ async function handleGetChats(
     
     const data = await response.json();
     if (!response.ok) {
-      console.error('Chats error:', data);
+      console.warn('Chats attendee lookup failed (status', response.status, '):', data.detail || data.message);
+      // Return 200 with success:false so the frontend gracefully shows "no conversation"
       return new Response(
         JSON.stringify({ success: false, error: data.detail || data.message || 'Erreur', chats: [] }),
-        { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
     
