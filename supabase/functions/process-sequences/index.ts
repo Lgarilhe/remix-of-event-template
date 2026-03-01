@@ -1561,7 +1561,46 @@ async function generatePersonalizedMessage(supabase: any, enrollment: Record<str
       } catch { return null; }
     })();
 
-    const [profile, recentPosts, candidateHistory] = await Promise.all([profilePromise, postsPromise, historyPromise]);
+    let [profile, recentPosts, candidateHistory] = await Promise.all([profilePromise, postsPromise, historyPromise]);
+
+    // Fallback: if Unipile didn't return experiences, try to get them from the DB snapshot
+    const hasExperiences = Array.isArray(profile?.experiences || profile?.positions?.values) && (profile?.experiences || profile?.positions?.values).length > 0;
+    if (!hasExperiences) {
+      try {
+        const { data: jcs } = await supabase
+          .from('job_candidate_status')
+          .select('linkedin_profile_data')
+          .eq('candidate_id', enrollment.profile_id as string)
+          .not('linkedin_profile_data', 'is', null)
+          .order('updated_at', { ascending: false })
+          .limit(1);
+        
+        const snapshot = jcs?.[0]?.linkedin_profile_data;
+        if (snapshot && typeof snapshot === 'object') {
+          // Merge snapshot data into profile, preserving any Unipile identity data
+          const snapshotExperiences = snapshot.experiences || snapshot.positions?.values || [];
+          const snapshotEducation = snapshot.education || [];
+          const snapshotSkills = snapshot.skills || [];
+          const snapshotAbout = snapshot.about || snapshot.summary || '';
+          
+          if (Array.isArray(snapshotExperiences) && snapshotExperiences.length > 0) {
+            profile = { ...(profile || {}), experiences: snapshotExperiences };
+            console.log(`[generatePersonalizedMessage] Fallback: loaded ${snapshotExperiences.length} experiences from DB snapshot`);
+          }
+          if (Array.isArray(snapshotEducation) && snapshotEducation.length > 0 && !profile?.education?.length) {
+            profile = { ...(profile || {}), education: snapshotEducation };
+          }
+          if (Array.isArray(snapshotSkills) && snapshotSkills.length > 0 && !profile?.skills?.length) {
+            profile = { ...(profile || {}), skills: snapshotSkills };
+          }
+          if (snapshotAbout && !profile?.about && !profile?.summary) {
+            profile = { ...(profile || {}), about: snapshotAbout };
+          }
+        }
+      } catch (e) {
+        console.warn('[generatePersonalizedMessage] DB snapshot fallback error:', e);
+      }
+    }
 
     const { data: prevSteps } = await supabase.from('sequence_step_executions').select('*, step:sequence_steps(*)').eq('enrollment_id', enrollment.id).eq('status', 'sent').order('step_order');
     // deno-lint-ignore no-explicit-any
