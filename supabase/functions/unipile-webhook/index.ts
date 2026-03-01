@@ -417,12 +417,60 @@ async function handleNewMessage(supabase: SupabaseClient, payload: WebhookPayloa
   }
 
   // Also update inmail_queue entries for this sender (for ATS tracking)
-  // Only use exact match to avoid false positives
-  const { data: inmailMatches } = await supabase
+  // Try exact match first, then resolve AEM↔ACo ID mismatch
+  let inmailMatches: { id: string; recipient_profile_id: string }[] | null = null;
+  
+  const { data: exactInmailMatch } = await supabase
     .from('inmail_queue')
     .select('id, recipient_profile_id')
     .eq('status', 'sent')
     .eq('recipient_profile_id', senderId);
+
+  inmailMatches = exactInmailMatch;
+
+  // If no exact match, try resolving the sender's alternative ID via Unipile
+  // InMails are sent to AEM... IDs but replies come from ACo... IDs (or vice versa)
+  if ((!inmailMatches || inmailMatches.length === 0) && senderId) {
+    try {
+      const UNIPILE_DSN = Deno.env.get('UNIPILE_DSN')!;
+      const UNIPILE_API_KEY = Deno.env.get('UNIPILE_API_KEY')!;
+      
+      // Resolve the sender's profile to get alternative IDs
+      const userRes = await fetch(`https://${UNIPILE_DSN}/api/v1/users/${senderId}`, {
+        headers: { 'X-API-KEY': UNIPILE_API_KEY },
+      });
+      
+      if (userRes.ok) {
+        const userData = await userRes.json();
+        // Collect all possible IDs: provider_id, id, public_identifier
+        const altIds = new Set<string>();
+        if (userData.provider_id && userData.provider_id !== senderId) altIds.add(userData.provider_id);
+        if (userData.id && userData.id !== senderId) altIds.add(userData.id);
+        // Also check nested profile if present
+        if (userData.profile?.provider_id && userData.profile.provider_id !== senderId) altIds.add(userData.profile.provider_id);
+        
+        if (altIds.size > 0) {
+          const altIdArray = [...altIds];
+          console.log(`[unipile-webhook] Resolved sender ${senderId} → alt IDs:`, altIdArray);
+          
+          const { data: altMatch } = await supabase
+            .from('inmail_queue')
+            .select('id, recipient_profile_id')
+            .eq('status', 'sent')
+            .in('recipient_profile_id', altIdArray);
+          
+          if (altMatch && altMatch.length > 0) {
+            inmailMatches = altMatch;
+            console.log(`[unipile-webhook] InMail matched via resolved ID for ${altMatch.length} entries`);
+          }
+        }
+      } else {
+        await userRes.text(); // consume body
+      }
+    } catch (e) {
+      console.warn('[unipile-webhook] Failed to resolve sender for inmail matching:', e);
+    }
+  }
 
   if (inmailMatches && inmailMatches.length > 0) {
     console.log(`[unipile-webhook] Marking ${inmailMatches.length} inmail_queue entries as replied`);
