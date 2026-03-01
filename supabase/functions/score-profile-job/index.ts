@@ -327,7 +327,7 @@ Réponds en JSON COMPACT sur UNE SEULE LIGNE. Max 3 items par array. Textes cour
                   "anthropic-version": "2023-06-01",
                 },
                 body: JSON.stringify({
-                  model: "claude-sonnet-4-20250514",
+                  model: "claude-sonnet-4-6-20250620",
                   system: "Tu es un expert recruteur tech. Tu évalues des profils candidats vs des postes. Tu réponds TOUJOURS en JSON valide compact, sans markdown, sans code blocks, sur une seule ligne.",
                   messages: [
                     {
