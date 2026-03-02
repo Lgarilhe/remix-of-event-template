@@ -84,7 +84,7 @@ interface ScoringResult {
   experienceMatch?: string;
   tenureAnalysis?: string;
   receptivityScore?: number | null;
-  foreignDiplomaRisk?: string;
+  internationalExperienceValidation?: string;
   locationCompatibility?: string;
   candidatePreferencesConflict?: string | null;
   contractMismatch?: string | null;
@@ -481,31 +481,50 @@ ${customScoringInstructions ? '\nConsignes supplémentaires: ' + customScoringIn
 Réponds en JSON compact:
 {"softSkillsScore":N,"summary":"max 20 mots","strengths":["max 3"],"concerns":["max 3"]}`);
 
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": ANTHROPIC_API_KEY,
-      "anthropic-version": "2023-06-01",
-    },
-    body: JSON.stringify({
-      model: "claude-sonnet-4-6",
-      system: "Tu es un expert recruteur. Tu évalues UNIQUEMENT les soft skills et la cohérence de parcours. Réponds en JSON compact, sans markdown.",
-      messages: [{ role: "user", content: prompt }],
-      max_tokens: 400,
-      temperature: 0.2,
-    }),
-  });
+  const MAX_RETRIES = 2;
+  let lastError: Error | null = null;
+  let data: any = null;
 
-  if (!res.ok) {
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    if (attempt > 0) {
+      const backoffMs = Math.min(1000 * Math.pow(2, attempt - 1), 8000);
+      await new Promise(r => setTimeout(r, backoffMs));
+      console.log(`Retry attempt ${attempt} for ${profile.name} after ${backoffMs}ms`);
+    }
+
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": ANTHROPIC_API_KEY,
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify({
+        model: "claude-sonnet-4-6",
+        system: "Tu es un expert recruteur. Tu évalues UNIQUEMENT les soft skills et la cohérence de parcours. Réponds en JSON compact, sans markdown.",
+        messages: [{ role: "user", content: prompt }],
+        max_tokens: 1024,
+        temperature: 0.2,
+      }),
+    });
+
+    if (res.ok) {
+      data = await res.json();
+      break;
+    }
+
     const errorBody = await res.text();
-    console.error(`Anthropic API error:`, { status: res.status, body: errorBody });
-    if (res.status === 429) throw new Error("RATE_LIMITED");
+    console.error(`Anthropic API error (attempt ${attempt}):`, { status: res.status, body: errorBody });
+
+    if (res.status === 429 && attempt < MAX_RETRIES) {
+      lastError = new Error("RATE_LIMITED");
+      continue; // retry
+    }
     if (res.status === 402 || res.status === 400) throw new Error("CREDITS_EXHAUSTED");
     throw new Error(`Anthropic API error: ${res.status}`);
   }
 
-  const data = await res.json();
+  if (!data) throw lastError || new Error("LLM call failed after retries");
   const rawContent = data.content?.[0]?.text || '';
   const parsed = extractJsonRobust(rawContent);
 
@@ -697,7 +716,7 @@ async function scoreProfile(
     experienceMatch: weighted.dimensions.seniority?.details,
     tenureAnalysis: weighted.dimensions.company_fit?.details,
     receptivityScore: weighted.dimensions.company_fit?.score ?? null,
-    foreignDiplomaRisk: 'none',
+    internationalExperienceValidation: 'none',
     locationCompatibility: weighted.dimensions.domain?.score && weighted.dimensions.domain.score > 60 ? 'compatible' : 'partial',
     candidatePreferencesConflict: null,
     contractMismatch: null,
