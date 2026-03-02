@@ -225,15 +225,19 @@ serve(async (req) => {
 
     console.log('[calendly-webhook] Created qualification session:', session.id);
 
-    // Update candidate status to 'qualification' if matched
+    // Update candidate status to 'qualification' + pipeline_stage if matched
     if (candidateMatch?.candidate_id && candidateMatch?.job_id) {
       await supabase
         .from('job_candidate_status')
-        .update({ status: 'qualification' })
+        .update({ 
+          status: 'qualification', 
+          pipeline_stage: 'Pré-qualif',
+          updated_at: new Date().toISOString(),
+        })
         .eq('candidate_id', candidateMatch.candidate_id)
         .eq('job_id', candidateMatch.job_id);
       
-      console.log('[calendly-webhook] Updated candidate status to qualification');
+      console.log('[calendly-webhook] Updated candidate status to qualification + Pré-qualif');
     }
 
     // Stop active sequences for this candidate (booking = sequence goal achieved)
@@ -322,25 +326,104 @@ serve(async (req) => {
       }
     }
 
-    // Try to update Notion shortlist status
-    if (candidateMatch?.candidate_id && candidateMatch?.job_id) {
+    // Try to update Notion candidate & shortlist status
+    const notionKey = Deno.env.get('NOTION_API_KEY');
+    const CANDIDATS_DATABASE_ID = Deno.env.get('NOTION_CANDIDATS_DB_ID');
+    const SHORTLIST_DATABASE_ID = Deno.env.get('NOTION_SHORTLIST_DB_ID');
+
+    if (notionKey && CANDIDATS_DATABASE_ID && SHORTLIST_DATABASE_ID) {
       try {
-        const notionKey = Deno.env.get('NOTION_API_KEY');
-        if (notionKey) {
-          await fetch(`${supabaseUrl}/functions/v1/update-candidate-stage`, {
+        const notionHeaders = {
+          'Authorization': `Bearer ${notionKey}`,
+          'Notion-Version': '2022-06-28',
+          'Content-Type': 'application/json',
+        };
+
+        // Find candidate in Notion by name or LinkedIn URL
+        let notionCandidateId: string | null = null;
+        const candidateName = candidateMatch?.candidate_name || inviteeName;
+
+        // Try LinkedIn URL first
+        if (isValidLinkedinUrl && candidateLinkedinUrl) {
+          const res = await fetch(`https://api.notion.com/v1/databases/${CANDIDATS_DATABASE_ID}/query`, {
             method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${serviceRoleKey}`,
-            },
+            headers: notionHeaders,
             body: JSON.stringify({
-              candidateId: candidateMatch.candidate_id,
-              jobId: candidateMatch.job_id,
-              stage: 'Pré-qualif',
-              status: 'RDV planifié',
+              filter: { property: 'URL Linkedin', url: { equals: candidateLinkedinUrl } },
+              page_size: 1,
             }),
           });
-          console.log('[calendly-webhook] Notion status update triggered');
+          if (res.ok) {
+            const data = await res.json();
+            notionCandidateId = data.results?.[0]?.id || null;
+          }
+        }
+
+        // Fallback: try by name
+        if (!notionCandidateId && candidateName) {
+          const res = await fetch(`https://api.notion.com/v1/databases/${CANDIDATS_DATABASE_ID}/query`, {
+            method: 'POST',
+            headers: notionHeaders,
+            body: JSON.stringify({
+              filter: { property: 'Nom', title: { equals: candidateName } },
+              page_size: 1,
+            }),
+          });
+          if (res.ok) {
+            const data = await res.json();
+            notionCandidateId = data.results?.[0]?.id || null;
+          }
+        }
+
+        if (notionCandidateId) {
+          // Update Candidat "Etat" → "Pré-qualif à planifier"
+          await fetch(`https://api.notion.com/v1/pages/${notionCandidateId}`, {
+            method: 'PATCH',
+            headers: notionHeaders,
+            body: JSON.stringify({
+              properties: { 'Etat': { select: { name: 'Pré-qualif à planifier' } } },
+            }),
+          });
+          console.log(`[calendly-webhook] ✅ Notion Candidat Etat → "Pré-qualif à planifier"`);
+
+          // Update qualification_session with notion_candidate_id
+          await supabase
+            .from('qualification_sessions')
+            .update({ notion_candidate_id: notionCandidateId })
+            .eq('id', session.id);
+
+          // Find and update all related shortlists "Etape" → "Pré-qualif"
+          const slRes = await fetch(`https://api.notion.com/v1/databases/${SHORTLIST_DATABASE_ID}/query`, {
+            method: 'POST',
+            headers: notionHeaders,
+            body: JSON.stringify({
+              filter: { property: 'Candidats', relation: { contains: notionCandidateId } },
+              page_size: 10,
+            }),
+          });
+          if (slRes.ok) {
+            const slData = await slRes.json();
+            const shortlists = slData.results || [];
+            for (const sl of shortlists) {
+              await fetch(`https://api.notion.com/v1/pages/${sl.id}`, {
+                method: 'PATCH',
+                headers: notionHeaders,
+                body: JSON.stringify({
+                  properties: { 'Etape': { select: { name: 'Pré-qualif' } } },
+                }),
+              });
+            }
+            if (shortlists.length > 0) {
+              // Store first shortlist ID in qualification session
+              await supabase
+                .from('qualification_sessions')
+                .update({ notion_shortlist_id: shortlists[0].id })
+                .eq('id', session.id);
+              console.log(`[calendly-webhook] ✅ Updated ${shortlists.length} Notion shortlists Etape → "Pré-qualif"`);
+            }
+          }
+        } else {
+          console.log(`[calendly-webhook] Candidate not found in Notion: ${candidateName}`);
         }
       } catch (notionErr) {
         console.warn('[calendly-webhook] Notion update failed (non-blocking):', notionErr);
