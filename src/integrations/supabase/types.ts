@@ -1116,6 +1116,36 @@ export type Database = {
         }
         Relationships: []
       }
+      match_scores: {
+        Row: {
+          candidate_id: string
+          confidence: number
+          created_at: string
+          id: string
+          job_id: string
+          score: number
+          scoring_result: Json
+        }
+        Insert: {
+          candidate_id: string
+          confidence?: number
+          created_at?: string
+          id?: string
+          job_id: string
+          score?: number
+          scoring_result?: Json
+        }
+        Update: {
+          candidate_id?: string
+          confidence?: number
+          created_at?: string
+          id?: string
+          job_id?: string
+          score?: number
+          scoring_result?: Json
+        }
+        Relationships: []
+      }
       message_analysis_cache: {
         Row: {
           account_id: string
