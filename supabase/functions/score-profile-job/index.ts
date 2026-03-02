@@ -289,9 +289,12 @@ function applyHardFilters(profile: ProfileData, job: JobData): { passed: boolean
     ].join(' ').toLowerCase();
     
     // Education text: only school names, degrees, fields (NOT concatenated with general text)
-    const educationEntries = (profile.education || []).map((e: any) => 
-      `${e.school || ''} ${e.degree || ''} ${e.field || ''}`.toLowerCase().trim()
-    );
+    // profile.education can be string[] OR object[] depending on the caller
+    const educationEntries = (profile.education || []).map((e: any) => {
+      if (typeof e === 'string') return e.toLowerCase().trim();
+      // Object format: { school, degree, field, field_of_study }
+      return `${e.school || ''} ${e.degree || ''} ${e.field || ''} ${e.field_of_study || ''}`.toLowerCase().trim();
+    }).filter((e: string) => e.length > 0);
     const educationText = educationEntries.join(' ');
     
     // Full text for non-school terms
@@ -338,19 +341,17 @@ function applyHardFilters(profile: ProfileData, job: JobData): { passed: boolean
         }
         
         if (schoolOnly) {
-          // For school terms, match ONLY against individual education entries
-          // This prevents "centrale" matching "équipe centrale" in a job description
-          // and requires the school name to be a substantial match
-          return educationEntries.some(entry => {
-            return termVariants.some(v => {
-              // The term should appear in the school entry
-              if (!entry.includes(v)) return false;
-              // Additional check: avoid partial matches on generic words
-              // e.g. "mines" should match "Mines Paris" but not "mines de données"
-              // Check if the entry looks like a known school context
-              return true;
-            });
-          });
+          // For school terms, match against education entries AND headline
+          // (candidates often mention their school in headline, e.g. "Polytechnicien")
+          const schoolSearchText = [
+            ...educationEntries,
+            (profile.headline || '').toLowerCase(),
+          ];
+          const matched = schoolSearchText.some(entry => termVariants.some(v => entry.includes(v)));
+          if (!matched) {
+            console.log(`[hard-filter] School term "${term}" NOT found in education: ${JSON.stringify(educationEntries.slice(0, 3))}`);
+          }
+          return matched;
         }
         
         return termVariants.some(v => fullProfileText.includes(v));
