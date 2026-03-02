@@ -1,8 +1,8 @@
 import React from 'react';
-import { ScoringDetails, JobMatchResult } from './JobScoreDisplay';
+import { ScoringDetails, JobMatchResult, ScoringDimensions } from './JobScoreDisplay';
 import {
   CheckCircle2, XCircle, AlertTriangle, Shield, MapPin, Briefcase,
-  GraduationCap, Clock, Radio, FileWarning, UserX, Heart,
+  GraduationCap, Clock, Radio, FileWarning, UserX, Heart, BarChart3,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -84,6 +84,50 @@ function diplomaStatus(val?: string): { value: string; status: 'good' | 'warning
   return { value: val, status: 'neutral' };
 }
 
+// ── Dimensions Breakdown ──
+const DIMENSION_LABELS: Record<string, string> = {
+  tech_stack: 'Tech Stack',
+  seniority: 'Séniorité',
+  domain: 'Domaine',
+  company_fit: 'Company Fit',
+  soft_skills: 'Soft Skills',
+};
+
+const DimensionsBreakdown: React.FC<{ dimensions: ScoringDimensions; finalScore: number }> = ({ dimensions, finalScore }) => {
+  const entries = Object.entries(dimensions).filter(([, v]) => v != null) as [string, { score: number; weight: number }][];
+  if (entries.length === 0) return null;
+
+  return (
+    <div>
+      <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-2 flex items-center gap-1.5">
+        <BarChart3 className="w-3 h-3" />
+        Score par dimension
+      </p>
+      <div className="space-y-1.5">
+        {entries.map(([key, dim]) => (
+          <div key={key} className="flex items-center gap-2 text-[11px]">
+            <span className="w-24 text-muted-foreground font-medium truncate">{DIMENSION_LABELS[key] || key}</span>
+            <div className="flex-1 h-2 bg-muted overflow-hidden">
+              <div
+                className={cn('h-full transition-all', dim.score >= 70 ? 'bg-emerald-500' : dim.score >= 40 ? 'bg-amber-400' : 'bg-red-400')}
+                style={{ width: `${dim.score}%` }}
+              />
+            </div>
+            <span className="w-12 text-right tabular-nums font-semibold text-foreground">{dim.score}/100</span>
+            <span className="w-14 text-right text-[10px] text-muted-foreground">(poids {Math.round(dim.weight * 100)}%)</span>
+          </div>
+        ))}
+        <div className="flex items-center gap-2 pt-1 border-t border-border mt-1">
+          <span className="w-24 text-foreground font-bold text-[11px]">Score Final</span>
+          <div className="flex-1" />
+          <span className="text-sm font-bold text-foreground tabular-nums">{finalScore}/100</span>
+          <span className="w-14" />
+        </div>
+      </div>
+    </div>
+  );
+};
+
 export const ScoringBreakdown: React.FC<ScoringBreakdownProps> = ({ result }) => {
   const details = result.scoring_details;
   if (!details) return null;
@@ -106,6 +150,9 @@ export const ScoringBreakdown: React.FC<ScoringBreakdownProps> = ({ result }) =>
 
   return (
     <div className="space-y-4">
+      {/* ── Dimensions Breakdown (v2) ── */}
+      {result.dimensions && <DimensionsBreakdown dimensions={result.dimensions} finalScore={result.match_score} />}
+
       {/* ── Criteria Grid ── */}
       <div>
         <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-2 flex items-center gap-1.5">

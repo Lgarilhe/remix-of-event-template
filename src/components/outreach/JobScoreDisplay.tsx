@@ -1,5 +1,5 @@
 import React from 'react';
-import { CheckCircle2, XCircle, AlertCircle, Target, MapPin, Briefcase, TrendingUp, TrendingDown, DollarSign } from 'lucide-react';
+import { CheckCircle2, XCircle, AlertCircle, Target, MapPin, Briefcase, TrendingUp, TrendingDown, DollarSign, AlertTriangle, Search, Ban } from 'lucide-react';
 import { ScoringBreakdown } from './ScoringBreakdown';
 import { cn } from '@/lib/utils';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -19,6 +19,19 @@ export interface SalaryAnalysis {
   };
   gap_percentage?: number;
   explanation?: string;
+}
+
+export interface DimensionScore {
+  score: number;
+  weight: number;
+}
+
+export interface ScoringDimensions {
+  tech_stack?: DimensionScore;
+  seniority?: DimensionScore;
+  domain?: DimensionScore;
+  company_fit?: DimensionScore;
+  soft_skills?: DimensionScore;
 }
 
 export interface ScoringDetails {
@@ -46,6 +59,25 @@ export interface JobMatchResult {
   salary_analysis?: SalaryAnalysis;
   scoring_details?: ScoringDetails;
   error?: string;
+  // V2 fields
+  hardFilterPassed?: boolean;
+  hardFilterKO?: string;
+  confidenceScore?: number;
+  dimensions?: ScoringDimensions;
+  dataCompleteness?: 'full' | 'partial' | 'minimal';
+  missingDataPoints?: string[];
+  skippedLLM?: boolean;
+  processingTimeMs?: number;
+  tokensUsed?: { input: number; output: number } | null;
+}
+
+export interface BatchScoringStats {
+  total: number;
+  hardFiltered: number;
+  llmSkipped: number;
+  llmCalled: number;
+  avgScore: number;
+  totalTokens: number;
 }
 
 interface JobScoreDisplayProps {
@@ -208,12 +240,50 @@ export const JobScoreDisplay: React.FC<JobScoreDisplayProps> = ({
     );
   }
 
+  // ── Hard filter KO ──
+  if (result.hardFilterPassed === false && result.hardFilterKO) {
+    return (
+      <div className="flex items-start gap-2.5 p-3 border border-red-200 bg-red-50/50">
+        <Ban className="w-4 h-4 text-red-500 mt-0.5 shrink-0" />
+        <div>
+          <p className="text-xs font-semibold text-red-600">Éliminé par filtre</p>
+          <p className="text-[11px] text-red-600/80 mt-0.5">{result.hardFilterKO}</p>
+        </div>
+      </div>
+    );
+  }
+
   const expLabel = {
     compatible: { text: 'XP compatible', ok: true },
     trop_junior: { text: 'Trop junior', ok: false },
     trop_senior: { text: 'Trop senior', ok: false },
     incertain: { text: 'XP à vérifier', ok: false },
   }[result.experience_match] || { text: 'À vérifier', ok: false };
+
+  // ── Confidence badge ──
+  const confidenceBadge = result.confidenceScore != null && result.confidenceScore < 70 ? (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span className={cn(
+          "inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-medium border cursor-help",
+          result.confidenceScore < 40
+            ? "bg-amber-100 text-amber-700 border-amber-300"
+            : "bg-sky-50 text-sky-600 border-sky-200"
+        )}>
+          {result.confidenceScore < 40 ? <AlertTriangle className="w-3 h-3" /> : <Search className="w-3 h-3" />}
+          {result.confidenceScore < 40 ? 'Données insuffisantes' : 'Score partiel'}
+        </span>
+      </TooltipTrigger>
+      <TooltipContent side="top" className="max-w-xs">
+        <p className="text-xs font-medium">Confiance: {result.confidenceScore}%</p>
+        {result.missingDataPoints && result.missingDataPoints.length > 0 && (
+          <p className="text-xs text-muted-foreground mt-1">
+            Données manquantes: {result.missingDataPoints.join(', ')}
+          </p>
+        )}
+      </TooltipContent>
+    </Tooltip>
+  ) : null;
 
   // ── Compact mode (used on result cards) ──
   if (compact) {
@@ -223,6 +293,7 @@ export const JobScoreDisplay: React.FC<JobScoreDisplayProps> = ({
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <RecommendationPill rec={result.recommendation} />
+            {confidenceBadge}
             <SalaryBadge analysis={result.salary_analysis} />
             {result.matching_skills.slice(0, 2).map((skill, i) => (
               <span key={i} className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700">
@@ -256,6 +327,7 @@ export const JobScoreDisplay: React.FC<JobScoreDisplayProps> = ({
           <p className="text-sm text-foreground/90 leading-relaxed">{result.summary}</p>
           <div className="flex flex-wrap items-center gap-1.5">
             <RecommendationPill rec={result.recommendation} />
+            {confidenceBadge}
             <MetaPill icon={Briefcase} label={expLabel.text} ok={expLabel.ok} />
             <MetaPill icon={MapPin} label={result.location_match ? 'Localisation OK' : 'Localisation ?' } ok={result.location_match} />
             <SalaryBadge analysis={result.salary_analysis} />
