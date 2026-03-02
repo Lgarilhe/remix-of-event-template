@@ -334,6 +334,15 @@ export interface LinkedInProfile {
   hashtags?: string[];
   // Websites
   websites?: string[];
+  // Recent posts (fetched separately via /users/{id}/posts)
+  recent_posts?: Array<{
+    text?: string;
+    title?: string;
+    date?: string;
+    reaction_counter?: number;
+    comment_counter?: number;
+    repost_counter?: number;
+  }>;
   // Legacy fields (may still be used by some endpoints)
   current_positions?: Array<{
     company?: string;
