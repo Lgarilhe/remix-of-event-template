@@ -5,6 +5,8 @@ import { Job } from '@/types/jobs';
 import { JobCandidateStatus } from '@/hooks/useJobCandidateStatus';
 import { calculatePreScore } from '@/hooks/linkedin/preScoring';
 
+export type ScoredSortBy = 'score_desc' | 'score_asc' | 'recent' | 'name';
+
 interface FilteredResultsOptions {
   results: LinkedInProfile[];
   jobScores: Record<string, JobMatchResult>;
@@ -23,6 +25,7 @@ interface FilteredResultsOptions {
   calculatedExperienceMin?: number | null;
   calculatedExperienceMax?: number | null;
   showPoolView?: boolean;
+  scoredSortBy?: ScoredSortBy;
 }
 
 // Rehydrate a LinkedInProfile from stored DB data
@@ -68,6 +71,7 @@ export function useFilteredResults({
   candidateStatus,
   selectedProfiles,
   showPoolView = true,
+  scoredSortBy = 'score_desc',
 }: FilteredResultsOptions) {
   const { treatedIds, dismissedIds, getStatus, statuses } = candidateStatus;
 
@@ -147,8 +151,37 @@ export function useFilteredResults({
       });
     }
 
-    // Sort by LLM score if enabled, otherwise by pre-score
-    if (sortByScore && Object.keys(jobScores).length > 0) {
+    // Determine if we're in a "scored" view
+    const inScoredView = statusFilter === 'scored' || statusFilter === 'scored_go' || statusFilter === 'scored_maybe' || statusFilter === 'scored_not_contacted';
+
+    if (inScoredView && scoredSortBy) {
+      filtered = [...filtered].sort((a, b) => {
+        switch (scoredSortBy) {
+          case 'score_desc': {
+            const scoreA = jobScores[a.id]?.match_score ?? statuses?.get(a.id)?.score ?? -1;
+            const scoreB = jobScores[b.id]?.match_score ?? statuses?.get(b.id)?.score ?? -1;
+            return scoreB - scoreA;
+          }
+          case 'score_asc': {
+            const scoreA = jobScores[a.id]?.match_score ?? statuses?.get(a.id)?.score ?? -1;
+            const scoreB = jobScores[b.id]?.match_score ?? statuses?.get(b.id)?.score ?? -1;
+            return scoreA - scoreB;
+          }
+          case 'recent': {
+            const dateA = statuses?.get(a.id)?.updated_at || statuses?.get(a.id)?.created_at || '';
+            const dateB = statuses?.get(b.id)?.updated_at || statuses?.get(b.id)?.created_at || '';
+            return dateB.localeCompare(dateA);
+          }
+          case 'name': {
+            const nameA = (a.name || `${a.first_name || ''} ${a.last_name || ''}`).trim().toLowerCase();
+            const nameB = (b.name || `${b.first_name || ''} ${b.last_name || ''}`).trim().toLowerCase();
+            return nameA.localeCompare(nameB);
+          }
+          default:
+            return 0;
+        }
+      });
+    } else if (sortByScore && Object.keys(jobScores).length > 0) {
       filtered = [...filtered].sort((a, b) => {
         const scoreA = jobScores[a.id]?.match_score ?? -1;
         const scoreB = jobScores[b.id]?.match_score ?? -1;
@@ -164,7 +197,7 @@ export function useFilteredResults({
     }
 
     return filtered;
-  }, [mergedResults, jobScores, sortByScore, selectedJob, showDismissed, autoHideTreated, treatedIds, dismissedIds, getStatus, statusFilter]);
+  }, [mergedResults, jobScores, sortByScore, selectedJob, showDismissed, autoHideTreated, treatedIds, dismissedIds, getStatus, statusFilter, scoredSortBy, statuses]);
 
   // Calculate selectable profiles (exclude "peu adapté")
   const selectableProfiles = useMemo(() => {

@@ -7,6 +7,7 @@ import { SequenceEnrollButton } from '@/components/outreach/SequenceEnrollButton
 import { ProfileDetailSheet } from '@/components/outreach/result-card/ProfileDetailSheet';
 import { JobMatchResult } from '@/components/outreach/JobScoreDisplay';
 import { JobCandidateStatus } from '@/hooks/useJobCandidateStatus';
+import { ScoredSortBy } from '@/hooks/useFilteredResults';
 import { Job } from '@/types/jobs';
 import { SourcingProject } from '@/hooks/useSourcingProjects';
 import { useAirtableMatch } from '@/hooks/useAirtableMatch';
@@ -19,9 +20,10 @@ import { Progress } from '@/components/ui/progress';
 import {
   Search, Loader2, Users, Mail, Archive,
   Eye, FolderPlus, Target, Sparkles, Maximize2, Minimize2,
-  ChevronRight, CheckCircle2, Database
+  ChevronRight, CheckCircle2, Database, ArrowUpDown, ArrowDown, ArrowUp, Clock, SortAsc
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 interface SearchResultsPanelProps {
   // Results
@@ -79,6 +81,8 @@ interface SearchResultsPanelProps {
   onSetShowDismissed: (v: boolean) => void;
   onSetStatusFilter: (v: 'all' | 'untreated' | 'scored' | 'scored_go' | 'scored_maybe' | 'scored_not_contacted' | 'messaged' | 'dismissed' | 'known') => void;
   onSetSortByScore: (v: boolean) => void;
+  scoredSortBy: ScoredSortBy;
+  onSetScoredSortBy: (v: ScoredSortBy) => void;
   onSetShowBulkInMailModal: (v: boolean) => void;
   onProfileTreated: (id: string) => void;
   onArchive: (profile: LinkedInProfile) => Promise<void>;
@@ -141,6 +145,8 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
   onSetShowDismissed,
   onSetStatusFilter,
   onSetSortByScore,
+  scoredSortBy,
+  onSetScoredSortBy,
   onSetShowBulkInMailModal,
   onProfileTreated,
   onArchive,
@@ -331,8 +337,8 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
       {/* ROW 1.5: Scored sub-filters (only when scored filter active) */}
       {(statusFilter === 'scored' || statusFilter === 'scored_go' || statusFilter === 'scored_maybe' || statusFilter === 'scored_not_contacted') && statusCounts.scored > 0 && (
         <div className="overflow-x-auto no-scrollbar border-b border-border/50 bg-muted/20 shrink-0">
-          <div className="flex items-center gap-1 px-3 sm:px-4 py-1.5 w-max min-w-full">
-            <div className="flex items-center gap-0.5 bg-muted/30 p-0.5 border border-foreground">
+          <div className="flex items-center justify-between gap-2 px-3 sm:px-4 py-1.5 min-w-full">
+            <div className="flex items-center gap-0.5 bg-muted/30 p-0.5 border border-foreground shrink-0">
               {([
                 { value: 'scored' as const, label: 'Tous', count: statusCounts.scored },
                 { value: 'scored_go' as const, label: '✅ À contacter', count: statusCounts.scored_go },
@@ -357,6 +363,28 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
                 </Button>
               ))}
             </div>
+
+            {/* Sort selector for scored view */}
+            <Select value={scoredSortBy} onValueChange={(v) => onSetScoredSortBy(v as ScoredSortBy)}>
+              <SelectTrigger className="h-6 w-auto min-w-[140px] max-w-[180px] text-[10px] border-foreground/20 bg-muted/30 gap-1 px-2">
+                <ArrowUpDown className="w-3 h-3 shrink-0" />
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="score_desc" className="text-xs">
+                  <span className="flex items-center gap-1.5"><ArrowDown className="w-3 h-3" /> Score décroissant</span>
+                </SelectItem>
+                <SelectItem value="score_asc" className="text-xs">
+                  <span className="flex items-center gap-1.5"><ArrowUp className="w-3 h-3" /> Score croissant</span>
+                </SelectItem>
+                <SelectItem value="recent" className="text-xs">
+                  <span className="flex items-center gap-1.5"><Clock className="w-3 h-3" /> Plus récents</span>
+                </SelectItem>
+                <SelectItem value="name" className="text-xs">
+                  <span className="flex items-center gap-1.5"><SortAsc className="w-3 h-3" /> Nom A→Z</span>
+                </SelectItem>
+              </SelectContent>
+            </Select>
           </div>
         </div>
       )}
