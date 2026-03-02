@@ -64,6 +64,8 @@ const GC_TIME = 60 * 60 * 1000;
 
 // Map old status values to pipeline stages
 const STATUS_TO_STAGE: Record<string, string> = {
+  'discovered': 'Nouveau',
+  'untreated': 'Nouveau',
   'scored': 'Nouveau',
   'shortlisted': 'Pressenti',
   'messaged': 'Contacté',
@@ -73,6 +75,39 @@ const STATUS_TO_STAGE: Record<string, string> = {
   'not_interested': 'Perdu',
   'dismissed': 'Perdu',
 };
+
+// Stage hierarchy index (higher = more advanced, except Perdu which is terminal)
+const STAGE_ORDER: Record<string, number> = {
+  'Nouveau': 0,
+  'Contacté': 1,
+  'Répondu': 2,
+  'Pressenti': 3,
+  'Pré-qualif': 4,
+  'CV envoyé': 5,
+  'ITW en cours': 6,
+  'Offre': 7,
+  'Gagné': 8,
+  'Perdu': -1, // terminal, never auto-promoted out of it
+};
+
+// Compute effective stage: never downgrade from what the status implies
+function computeEffectiveStage(pipelineStage: string | null, status: string): string {
+  const statusDerivedStage = STATUS_TO_STAGE[status] || 'Nouveau';
+  
+  if (!pipelineStage) return statusDerivedStage;
+  
+  // If pipeline_stage is Perdu, keep it (explicit decision)
+  if (pipelineStage === 'Perdu') return 'Perdu';
+  
+  // If status implies Perdu but pipeline says otherwise, trust pipeline
+  if (statusDerivedStage === 'Perdu') return pipelineStage;
+  
+  const pipelineOrder = STAGE_ORDER[pipelineStage] ?? 0;
+  const statusOrder = STAGE_ORDER[statusDerivedStage] ?? 0;
+  
+  // Take the more advanced of the two
+  return statusOrder > pipelineOrder ? statusDerivedStage : pipelineStage;
+}
 
 // Fetch all candidates from local job_candidate_status table (primary source)
 async function fetchLocalCandidates(): Promise<ATSCandidate[]> {
@@ -86,7 +121,7 @@ async function fetchLocalCandidates(): Promise<ATSCandidate[]> {
 
   return records.map((r: any) => {
     // Use pipeline_stage if set, otherwise derive from status
-    const stage = r.pipeline_stage || STATUS_TO_STAGE[r.status] || 'Nouveau';
+    const stage = computeEffectiveStage(r.pipeline_stage, r.status);
 
     return {
       id: `local-${r.id}`,
