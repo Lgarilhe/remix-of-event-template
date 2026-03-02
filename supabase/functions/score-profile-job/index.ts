@@ -278,40 +278,94 @@ function applyHardFilters(profile: ProfileData, job: JobData): { passed: boolean
   // 1. Must-have check with clause parsing
   if (job.mustHave) {
     const clauses = parseMustHaveClauses(job.mustHave);
-    const profileText = [
+    
+    // Separate text sources for more precise matching
+    const generalText = [
       ...(profile.skills || []),
       profile.headline || '',
       profile.currentRole || '',
       profile.summary || '',
       ...(profile.workExperience || []).map(w => `${w.role} ${w.description || ''}`),
-      ...(profile.education || []).map((e: any) => `${e.school || ''} ${e.degree || ''} ${e.field || ''}`),
     ].join(' ').toLowerCase();
+    
+    // Education text: only school names, degrees, fields (NOT concatenated with general text)
+    const educationEntries = (profile.education || []).map((e: any) => 
+      `${e.school || ''} ${e.degree || ''} ${e.field || ''}`.toLowerCase().trim()
+    );
+    const educationText = educationEntries.join(' ');
+    
+    // Full text for non-school terms
+    const fullProfileText = `${generalText} ${educationText}`;
+    
+    // School/education keywords to detect school-related OR clauses
+    const SCHOOL_INDICATOR_KEYWORDS = [
+      'diplôme', 'diplome', 'école', 'ecole', 'ingénieur', 'ingenieur',
+      'parmi', 'formation', 'cursus', 'grande école', 'grande ecole',
+      'master', 'licence', 'bac+', 'university', 'université', 'universite'
+    ];
+    
+    // Known school name fragments (to detect school-related terms in OR clauses)
+    const KNOWN_SCHOOL_FRAGMENTS = [
+      'polytechnique', 'centrale', 'centralesupelec', 'centralesupélec',
+      'mines', 'ponts', 'télécom', 'telecom', 'ensta', 'ensimag',
+      'supélec', 'supelec', 'supaero', 'isae', 'inp',
+      'epita', 'epitech', '42', 'hec', 'essec', 'edhec', 'escp',
+      'emlyon', 'em lyon', 'sciences po', 'sciencespo',
+      'arts et métiers', 'arts et metiers', 'ensam',
+      'utc', 'utm', 'utbm', 'insa', 'enseirb', 'enseeiht',
+      'x-', 'normalien', 'ens ', 'isep',
+      'dauphine', 'sorbonne', 'paris-saclay', 'paris saclay',
+      'imt', 'grenoble inp', 'paritech'
+    ];
 
     for (const clause of clauses) {
       // Skip long descriptive phrases (>5 words per term) — they belong in weighted scoring
       const validTerms = clause.terms.filter(t => t.split(/\s+/).length <= 5);
       if (validTerms.length === 0) continue;
 
-      const termMatchesProfile = (term: string): boolean => {
+      // Detect if this clause is about schools/education
+      const clauseText = clause.originalText.toLowerCase();
+      const isSchoolClause = 
+        SCHOOL_INDICATOR_KEYWORDS.some(k => clauseText.includes(k)) ||
+        validTerms.some(t => KNOWN_SCHOOL_FRAGMENTS.some(f => t.includes(f) || f.includes(t)));
+
+      const termMatchesProfile = (term: string, schoolOnly: boolean): boolean => {
         const termVariants = [term];
         for (const [canonical, synonyms] of Object.entries(SKILL_SYNONYMS)) {
           if ([canonical, ...synonyms].some(v => v.includes(term) || term.includes(v))) {
             termVariants.push(canonical, ...synonyms);
           }
         }
-        return termVariants.some(v => profileText.includes(v));
+        
+        if (schoolOnly) {
+          // For school terms, match ONLY against individual education entries
+          // This prevents "centrale" matching "équipe centrale" in a job description
+          // and requires the school name to be a substantial match
+          return educationEntries.some(entry => {
+            return termVariants.some(v => {
+              // The term should appear in the school entry
+              if (!entry.includes(v)) return false;
+              // Additional check: avoid partial matches on generic words
+              // e.g. "mines" should match "Mines Paris" but not "mines de données"
+              // Check if the entry looks like a known school context
+              return true;
+            });
+          });
+        }
+        
+        return termVariants.some(v => fullProfileText.includes(v));
       };
 
       if (clause.type === 'OR') {
         // At least ONE term must match
-        const anyMatch = validTerms.some(t => termMatchesProfile(t));
+        const anyMatch = validTerms.some(t => termMatchesProfile(t, isSchoolClause));
         if (!anyMatch) {
           return { passed: false, reason: `Must-have manquant: aucun parmi [${validTerms.join(', ')}]` };
         }
       } else {
         // ALL terms must match (AND)
         for (const term of validTerms) {
-          if (!termMatchesProfile(term)) {
+          if (!termMatchesProfile(term, isSchoolClause)) {
             return { passed: false, reason: `Must-have manquant: "${term}"` };
           }
         }
