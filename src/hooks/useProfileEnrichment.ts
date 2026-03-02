@@ -28,6 +28,13 @@ export interface EnrichedProfile {
   }>;
   yearsOfExperience?: number;
   languages?: string[];
+  recentPosts?: Array<{
+    text?: string;
+    title?: string;
+    date?: string;
+    reactions?: number;
+    comments?: number;
+  }>;
 }
 
 interface UseProfileEnrichmentResult {
@@ -103,6 +110,32 @@ export function useProfileEnrichment(): UseProfileEnrichmentResult {
         })),
         languages: profile.languages?.map((l: any) => typeof l === 'string' ? l : l.name) || [],
       };
+
+      // Fetch recent posts (separate API call, fire in parallel but don't block)
+      try {
+        const profileId = profile.provider_id || profile.public_identifier || profile.id;
+        if (profileId) {
+          const { data: postsResponse } = await invokeUnipile({
+            body: {
+              action: 'get_user_posts',
+              account_id: accountId,
+              identifier: profileId,
+              limit: 5,
+            },
+          });
+          if (postsResponse?.success && Array.isArray((postsResponse as any).items)) {
+            enriched.recentPosts = (postsResponse as any).items.slice(0, 5).map((p: any) => ({
+              text: p.text,
+              title: p.title,
+              date: p.date || p.parsed_datetime,
+              reactions: p.reaction_counter,
+              comments: p.comment_counter,
+            }));
+          }
+        }
+      } catch (postErr) {
+        console.warn('Could not fetch posts:', postErr);
+      }
 
       // Calculate years of experience
       if (enriched.experiences && enriched.experiences.length > 0) {
@@ -192,6 +225,17 @@ export function formatProfileForAI(profile: EnrichedProfile): string {
   // Languages
   if (profile.languages && profile.languages.length > 0) {
     sections.push(`Langues: ${profile.languages.join(', ')}`);
+  }
+  
+  // Recent posts
+  if (profile.recentPosts && profile.recentPosts.length > 0) {
+    const postStrings = profile.recentPosts.slice(0, 3).map(p => {
+      const text = p.text ? (p.text.length > 200 ? p.text.slice(0, 200) + '...' : p.text) : '';
+      return `• ${p.title || ''}${text ? ` ${text}` : ''}`.trim();
+    }).filter(Boolean);
+    if (postStrings.length > 0) {
+      sections.push(`Posts récents:\n${postStrings.join('\n')}`);
+    }
   }
   
   return sections.join('\n');

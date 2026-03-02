@@ -150,6 +150,10 @@ Deno.serve(async (req) => {
         return await handleMarkAsRead(baseUrl, apiKey, params);
       }
 
+      case 'get_user_posts': {
+        return await handleGetUserPosts(baseUrl, apiKey, account_id, params);
+      }
+
       default:
         return new Response(
           JSON.stringify({ success: false, error: 'Action non reconnue' }),
@@ -1451,6 +1455,58 @@ async function handleMarkAsRead(
     );
   } catch (error) {
     console.error('Mark as read exception:', error);
+    return new Response(
+      JSON.stringify({ success: false, error: error instanceof Error ? error.message : 'Erreur' }),
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  }
+}
+
+/**
+ * Handle fetching user posts
+ */
+async function handleGetUserPosts(
+  baseUrl: string,
+  apiKey: string,
+  accountId: string,
+  params: any
+): Promise<Response> {
+  try {
+    const { identifier, limit = 5 } = params;
+    if (!identifier) {
+      return new Response(
+        JSON.stringify({ success: false, error: 'identifier requis' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const url = `${baseUrl}/users/${encodeURIComponent(identifier)}/posts?account_id=${accountId}&limit=${limit}`;
+    console.log('Fetching user posts:', url);
+
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'X-API-KEY': apiKey,
+        'Accept': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      console.error('Posts fetch error:', data);
+      return new Response(
+        JSON.stringify({ success: false, error: data.detail || data.message || 'Erreur récupération posts' }),
+        { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const data = await response.json();
+    return new Response(
+      JSON.stringify({ success: true, items: data.items || [] }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  } catch (error) {
+    console.error('Get user posts exception:', error);
     return new Response(
       JSON.stringify({ success: false, error: error instanceof Error ? error.message : 'Erreur' }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }

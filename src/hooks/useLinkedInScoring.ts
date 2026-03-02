@@ -120,6 +120,18 @@ async function generateCandidateEmbedding(profile: LinkedInProfile): Promise<voi
   const hashtags = (profile as any).hashtags || [];
   if (hashtags.length > 0) parts.push(`Topics: ${hashtags.join(', ')}`);
 
+  // Recent LinkedIn posts (rich signal for interests, expertise, thought leadership)
+  const posts = (profile as any).recent_posts || [];
+  if (posts.length > 0) {
+    const postParts = posts.slice(0, 5).map((p: any) => {
+      const bits: string[] = [];
+      if (p.title) bits.push(p.title);
+      if (p.text) bits.push(p.text.length > 300 ? p.text.slice(0, 300) + '...' : p.text);
+      return bits.join(' | ');
+    }).filter((t: string) => t.length > 10);
+    if (postParts.length > 0) parts.push(`Recent posts: ${postParts.join(' ; ')}`);
+  }
+
   // Interests / signals
   const interests = profile.interests || [];
   if (interests.length > 0) parts.push(`Interests: ${interests.join(', ')}`);
