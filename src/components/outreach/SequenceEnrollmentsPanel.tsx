@@ -21,6 +21,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/components/ui/collapsible';
+import { Input } from '@/components/ui/input';
 import { 
   Users, 
   ExternalLink, 
@@ -44,6 +45,7 @@ import {
   RefreshCw,
   Zap,
   CalendarCheck,
+  Search,
 } from 'lucide-react';
 import { format, formatDistanceToNow } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -197,6 +199,7 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
   const [expandedEnrollments, setExpandedEnrollments] = useState<Set<string>>(new Set());
   const [allSteps, setAllSteps] = useState<SequenceStep[]>([]);
   const [processingSequences, setProcessingSequences] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
 
   const fetchEnrollments = async () => {
     try {
@@ -453,8 +456,19 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
             </button>
           )}
 
+          {/* Search */}
+          <div className="relative">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+            <Input
+              placeholder="Rechercher un candidat…"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-8 h-8 text-xs border-foreground rounded-none"
+            />
+          </div>
+
           {/* Enrollments list */}
-          <ScrollArea className="h-[calc(100vh-300px)]">
+          <ScrollArea className="h-[calc(100vh-340px)]">
             <div className="space-y-2">
               {loading ? (
                 <BrutalLoader compact messages={['Chargement des inscriptions…', 'Récupération des étapes…', 'Synchronisation…']} />
@@ -462,8 +476,19 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
                 <div className="text-center py-8 text-muted-foreground">
                   Aucun candidat inscrit
                 </div>
-              ) : (
-                enrollments.map((enrollment) => {
+              ) : (() => {
+                const query = searchQuery.toLowerCase().trim();
+                const filtered = query
+                  ? enrollments.filter(e => 
+                      (e.profile_name || '').toLowerCase().includes(query) ||
+                      (e.profile_headline || '').toLowerCase().includes(query)
+                    )
+                  : enrollments;
+                return filtered.length === 0 ? (
+                  <div className="text-center py-8 text-muted-foreground text-sm">
+                    Aucun résultat pour « {searchQuery} »
+                  </div>
+                ) : filtered.map((enrollment) => {
                   const status = statusConfig[enrollment.status] || statusConfig.active;
                   const isExpanded = expandedEnrollments.has(enrollment.id);
                   const executions = enrollment.executions || [];
@@ -753,8 +778,8 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
                       </div>
                     </Collapsible>
                   );
-                })
-              )}
+                });
+              })()}
             </div>
           </ScrollArea>
         </div>
