@@ -299,9 +299,9 @@ serve(async (req) => {
     if (candidateId) {
       const { data: statusRecords } = await supabase
         .from('job_candidate_status')
-        .select('id, job_id, status')
+        .select('id, job_id, status, pipeline_stage')
         .or(`candidate_id.eq.${candidateId}${profileUrl ? `,linkedin_profile_url.eq.${profileUrl}` : ''}`)
-        .in('status', ['messaged', 'shortlisted', 'scored'])
+        .in('status', ['messaged', 'shortlisted', 'scored', 'replied'])
         .limit(10);
 
       if (statusRecords && statusRecords.length > 0) {
@@ -311,17 +311,30 @@ serve(async (req) => {
             ? 'not_interested'
             : 'replied';
 
+        // Also update pipeline_stage to stay in sync
+        const pipelineStage = appStatus === 'interested' ? 'Répondu' 
+          : appStatus === 'not_interested' ? 'Répondu'
+          : 'Répondu';
+
         for (const record of statusRecords) {
+          // Only update pipeline_stage if it's not already more advanced
+          const advancedStages = ['Pré-qualif', 'CV envoyé', 'ITW en cours', 'Offre', 'Gagné'];
+          const shouldUpdatePipeline = !record.pipeline_stage || 
+            record.pipeline_stage === 'Nouveau' || 
+            record.pipeline_stage === 'Contacté' ||
+            (!advancedStages.includes(record.pipeline_stage) && record.pipeline_stage !== 'Perdu');
+
           await supabase
             .from('job_candidate_status')
             .update({ 
               status: appStatus,
               recommendation: analysis.summary,
+              ...(shouldUpdatePipeline ? { pipeline_stage: pipelineStage } : {}),
               updated_at: new Date().toISOString(),
             })
             .eq('id', record.id);
         }
-        console.log(`[auto-analyze] Updated ${statusRecords.length} job_candidate_status records to "${appStatus}"`);
+        console.log(`[auto-analyze] Updated ${statusRecords.length} job_candidate_status records to "${appStatus}" (pipeline: ${pipelineStage})`);
       }
     }
 

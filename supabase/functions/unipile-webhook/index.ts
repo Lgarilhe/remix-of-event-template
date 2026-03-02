@@ -400,17 +400,26 @@ async function handleNewMessage(supabase: SupabaseClient, payload: WebhookPayloa
 
       console.log('[unipile-webhook] Enrollment', enrollment.id, 'marked as replied');
 
-      // Update job_candidate_status to 'replied'
+      // Update job_candidate_status to 'replied' and sync pipeline_stage
       const { data: jcsRows } = await supabase
         .from('job_candidate_status')
-        .select('id')
+        .select('id, pipeline_stage')
         .eq('candidate_id', enrollment.profile_id)
-        .in('status', ['contacted', 'shortlisted', 'scored', 'new']);
+        .in('status', ['contacted', 'shortlisted', 'scored', 'new', 'messaged', 'discovered', 'untreated']);
       if (jcsRows && jcsRows.length > 0) {
-        await supabase
-          .from('job_candidate_status')
-          .update({ status: 'replied', updated_at: new Date().toISOString() })
-          .in('id', jcsRows.map((m: { id: string }) => m.id));
+        for (const row of jcsRows) {
+          const shouldUpdatePipeline = !row.pipeline_stage || 
+            row.pipeline_stage === 'Nouveau' || 
+            row.pipeline_stage === 'Contacté';
+          await supabase
+            .from('job_candidate_status')
+            .update({ 
+              status: 'replied', 
+              ...(shouldUpdatePipeline ? { pipeline_stage: 'Répondu' } : {}),
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', row.id);
+        }
         console.log(`[unipile-webhook] Updated ${jcsRows.length} job_candidate_status → replied`);
       }
     }
