@@ -268,9 +268,21 @@ async function handleProcess(supabase: any, force = false) {
           // Sync Notion stage (fire-and-forget, non-blocking)
           syncNotionStageAfterAction(step.action_type, enrollment).catch(() => {});
         } else {
-          // Retry logic: if error is retryable and retry_count < MAX_RETRIES, reschedule
+          // Error handling: differentiate rate limits from other retryable errors
           const currentRetryCount = exec.retry_count || 0;
-          if (isRetryableError(executeResult.error) && currentRetryCount < MAX_RETRIES) {
+          const errorStr = executeResult.error || '';
+          
+          if (isRateLimitError(errorStr)) {
+            // Rate limit: NO retry counter increment, reschedule based on action type
+            const retryAt = getRateLimitRetryDate(step.action_type, enrollment.user_timezone || 'Europe/Paris');
+            await supabase.from('sequence_step_executions').update({ 
+              status: 'scheduled', 
+              error_message: `Rate limit (${step.action_type}) → rescheduled to ${retryAt.toISOString()}`,
+              scheduled_at: retryAt.toISOString(),
+            }).eq('id', exec.id);
+            console.log(`[process] ⏸️ Rate limit for ${enrollment.profile_name} (${step.action_type}), rescheduled to ${retryAt.toISOString()}`);
+            results.retried++;
+          } else if (isRetryableError(errorStr) && currentRetryCount < MAX_RETRIES) {
             const retryAt = new Date(Date.now() + RETRY_DELAY_MS).toISOString();
             await supabase.from('sequence_step_executions').update({ 
               status: 'scheduled', 
@@ -289,7 +301,15 @@ async function handleProcess(supabase: any, force = false) {
       } catch (err) {
         const errorMsg = err instanceof Error ? err.message : 'Unknown';
         const currentRetryCount = exec.retry_count || 0;
-        if (isRetryableError(errorMsg) && currentRetryCount < MAX_RETRIES) {
+        if (isRateLimitError(errorMsg)) {
+          const retryAt = getRateLimitRetryDate(step.action_type, enrollment.user_timezone || 'Europe/Paris');
+          await supabase.from('sequence_step_executions').update({ 
+            status: 'scheduled',
+            error_message: `Rate limit (${step.action_type}) → rescheduled to ${retryAt.toISOString()}`,
+            scheduled_at: retryAt.toISOString(),
+          }).eq('id', exec.id);
+          results.retried++;
+        } else if (isRetryableError(errorMsg) && currentRetryCount < MAX_RETRIES) {
           await supabase.from('sequence_step_executions').update({ 
             status: 'scheduled', retry_count: currentRetryCount + 1,
             error_message: `Retry ${currentRetryCount + 1}/${MAX_RETRIES}: ${errorMsg}`,
@@ -532,7 +552,13 @@ function isLikelyRealFirstName(name: string): boolean {
 }
 
 const MAX_RETRIES = 3;
-const RETRY_DELAY_MS = 30 * 60 * 1000; // 30 minutes
+const RETRY_DELAY_MS = 30 * 60 * 1000; // 30 minutes (for non-rate-limit retryable errors)
+
+function isRateLimitError(error: string | undefined): boolean {
+  if (!error) return false;
+  const e = error.toLowerCase();
+  return e.includes('429') || e.includes('rate limit') || e.includes('too many requests');
+}
 
 function isRetryableError(error: string | undefined): boolean {
   if (!error) return false;
@@ -540,6 +566,61 @@ function isRetryableError(error: string | undefined): boolean {
   return e.includes('429') || e.includes('500') || e.includes('502') || e.includes('503') || e.includes('504')
     || e.includes('timeout') || e.includes('rate limit') || e.includes('temporarily') || e.includes('econnreset')
     || e.includes('fetch failed') || e.includes('network');
+}
+
+/**
+ * For rate limit (429) errors, compute the retry delay based on the action type:
+ * - connection_request → next Monday 9am (weekly limit of ~100 pending invitations)
+ * - inmail / smart_message → 1st of next month 9am (monthly InMail credits)
+ * - message / profile_visit / other → next business day 9am (daily limits)
+ * 
+ * All times are in the enrollment's timezone (default Europe/Paris).
+ */
+function getRateLimitRetryDate(actionType: string, timezone: string): Date {
+  const now = new Date();
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: timezone,
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', hour12: false, weekday: 'short',
+  });
+  const parts = formatter.formatToParts(now);
+  const get = (t: string) => parts.find(p => p.type === t)?.value || '';
+  const dayName = get('weekday');
+  const year = parseInt(get('year'));
+  const month = parseInt(get('month'));
+  const day = parseInt(get('day'));
+
+  // Helper: create a date at 9am in the given timezone (approximate via offset)
+  const make9am = (y: number, m: number, d: number) => {
+    // Create date string and parse in timezone
+    const dateStr = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}T09:00:00`;
+    // Use a rough approach: get the offset for this timezone
+    const probe = new Date(dateStr + 'Z');
+    const localStr = probe.toLocaleString('en-US', { timeZone: timezone });
+    const localDate = new Date(localStr);
+    const offsetMs = probe.getTime() - localDate.getTime();
+    return new Date(probe.getTime() + offsetMs);
+  };
+
+  if (actionType === 'connection_request') {
+    // Next Monday
+    const dayMap: Record<string, number> = { Sun: 1, Mon: 7, Tue: 6, Wed: 5, Thu: 4, Fri: 3, Sat: 2 };
+    const daysUntilMonday = dayMap[dayName] || 7;
+    const target = new Date(year, month - 1, day + daysUntilMonday);
+    return make9am(target.getFullYear(), target.getMonth() + 1, target.getDate());
+  }
+  
+  if (actionType === 'inmail' || actionType === 'smart_message') {
+    // 1st of next month
+    const nextMonth = month === 12 ? 1 : month + 1;
+    const nextYear = month === 12 ? year + 1 : year;
+    return make9am(nextYear, nextMonth, 1);
+  }
+
+  // Default: next business day
+  const daysToAdd = dayName === 'Fri' ? 3 : dayName === 'Sat' ? 2 : 1;
+  const target = new Date(year, month - 1, day + daysToAdd);
+  return make9am(target.getFullYear(), target.getMonth() + 1, target.getDate());
 }
 
 function isWithinBusinessHours(timezone: string): boolean {
