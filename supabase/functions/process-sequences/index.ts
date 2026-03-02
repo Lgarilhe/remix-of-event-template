@@ -935,8 +935,8 @@ async function scheduleNextStep(supabase: any, enrollment: any, currentStepOrder
     + (nextStep.delay_hours || 0) * 3600000
     + (nextStep.delay_minutes || 0) * 60000
   );
-  // Add human-like jitter: ±5 minutes
-  scheduledAt.setTime(scheduledAt.getTime() + (Math.floor(Math.random() * 10) - 5) * 60000);
+  // Add human-like jitter: 0 to +10 minutes (never negative, to avoid going before preferred_hour_start)
+  scheduledAt.setTime(scheduledAt.getTime() + Math.floor(Math.random() * 10) * 60000);
   
   // Use timezone-aware hour checking for preferred hours and weekday skipping
   const tz = enrollment.user_timezone || 'Europe/Paris';
