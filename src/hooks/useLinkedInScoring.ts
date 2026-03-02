@@ -185,7 +185,7 @@ function mapScoringResult(raw: any): JobMatchResult {
       seniorityMatch: raw.seniorityMatch || raw.seniority_match || undefined,
       tenureAnalysis: raw.tenureAnalysis || raw.tenure_analysis || undefined,
       receptivityScore: raw.receptivityScore ?? raw.receptivity_score ?? null,
-      foreignDiplomaRisk: raw.foreignDiplomaRisk || raw.foreign_diploma_risk || 'none',
+      foreignDiplomaRisk: raw.internationalExperienceValidation || raw.foreignDiplomaRisk || raw.foreign_diploma_risk || 'none',
       locationCompatibility: raw.locationCompatibility || raw.location_compatibility || 'unknown',
       candidatePreferencesConflict: raw.candidatePreferencesConflict || raw.candidate_preferences_conflict || null,
       contractMismatch: raw.contractMismatch || raw.contract_mismatch || null,
