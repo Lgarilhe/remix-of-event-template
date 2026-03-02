@@ -209,7 +209,8 @@ function getRecommendation(score: number): string {
 // ─── Layer 1: Hard Filters (0 API call) ──────────────────────────────────────
 
 function applyHardFilters(profile: ProfileData, job: JobData): { passed: boolean; reason?: string } {
-  // 1. Must-have skills check
+  // 1. Must-have skills check — only for clear, short technical terms
+  // Long phrases or school/diploma criteria are handled by Layer 2 (weighted scoring)
   if (job.mustHave) {
     const mustHaveTerms = job.mustHave.split(/[,;]+/).map(s => s.trim().toLowerCase()).filter(Boolean);
     const profileText = [
@@ -218,9 +219,13 @@ function applyHardFilters(profile: ProfileData, job: JobData): { passed: boolean
       profile.currentRole || '',
       profile.summary || '',
       ...(profile.workExperience || []).map(w => `${w.role} ${w.description || ''}`),
+      ...(profile.education || []).map((e: any) => `${e.school || ''} ${e.degree || ''} ${e.field || ''}`),
     ].join(' ').toLowerCase();
 
-    for (const term of mustHaveTerms) {
+    // Skip terms that are descriptive phrases (>4 words) — those belong in weighted scoring
+    const shortTerms = mustHaveTerms.filter(t => t.split(/\s+/).length <= 4);
+
+    for (const term of shortTerms) {
       const termVariants = [term];
       for (const [canonical, synonyms] of Object.entries(SKILL_SYNONYMS)) {
         if ([canonical, ...synonyms].some(v => v.includes(term) || term.includes(v))) {
