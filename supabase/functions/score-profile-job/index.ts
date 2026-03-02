@@ -208,29 +208,76 @@ function getRecommendation(score: number): string {
 
 // ─── Layer 1: Hard Filters (0 API call) ──────────────────────────────────────
 
-// Education/school-related keywords — these should NEVER hard-filter, only weight in Layer 2
-const EDUCATION_KEYWORDS = [
-  'diplôme', 'diploma', 'école', 'ecole', 'school', 'université', 'university',
-  'ingénieur', 'ingenieur', 'engineer', 'master', 'licence', 'bachelor', 'bac+',
-  'formation', 'cursus', 'parmi', 'obligatoire',
-  // Known school names
-  'epita', 'epitech', '42', 'polytechnique', 'centrale', 'mines', 'ponts',
-  'ensimag', 'insa', 'supélec', 'supelec', 'télécom', 'telecom', 'ensta',
-  'essec', 'hec', 'em lyon', 'edhec', 'dauphine', 'sorbonne', 'ens',
-  'x', 'arts et métiers', 'ensam', 'isep', 'efrei', 'esiee', 'esiea',
-  'utc', 'utm', 'utt', 'icam', 'eigsi', 'ece', 'isae', 'supaero',
-];
+// ─── Must-Have Clause Parser ─────────────────────────────────────────────────
+// Parses mustHave text into structured clauses:
+// - "parmi : X, Y, Z" → OR clause (candidate needs at least one)
+// - "A, B" (simple list) → AND clause (candidate needs all)
+// Handles French patterns: "parmi", "dont", "ou", "among", "one of"
 
-function isEducationRelatedTerm(term: string): boolean {
-  const lower = term.toLowerCase();
-  return EDUCATION_KEYWORDS.some(kw => lower.includes(kw));
+interface MustHaveClause {
+  type: 'AND' | 'OR';
+  terms: string[];
+  originalText: string;
+}
+
+function parseMustHaveClauses(mustHave: string): MustHaveClause[] {
+  const clauses: MustHaveClause[] = [];
+  
+  // Split by newlines or periods to get separate requirements
+  const lines = mustHave.split(/[\n.]+/).map(l => l.trim()).filter(Boolean);
+  
+  for (const line of lines) {
+    const lower = line.toLowerCase();
+    
+    // Detect OR patterns: "parmi : X, Y, Z" or "X ou Y ou Z" or "among: X, Y"
+    const orPatterns = [
+      /parmi\s*[:：]\s*(.+)/i,
+      /(?:dont|including|among|one of)\s*[:：]?\s*(.+)/i,
+    ];
+    
+    let isOrClause = false;
+    let termsText = line;
+    
+    for (const pattern of orPatterns) {
+      const match = lower.match(pattern);
+      if (match) {
+        isOrClause = true;
+        termsText = match[1];
+        break;
+      }
+    }
+    
+    // Also detect "X ou Y ou Z" pattern
+    if (!isOrClause && /\bou\b/.test(lower)) {
+      const orTerms = termsText.split(/\s+ou\s+/i).map(t => t.trim()).filter(Boolean);
+      if (orTerms.length > 1) {
+        // Further split by comma within each or-term
+        const allTerms = orTerms.flatMap(t => t.split(/[,;]+/).map(s => s.trim())).filter(Boolean);
+        clauses.push({ type: 'OR', terms: allTerms.map(t => t.toLowerCase()), originalText: line });
+        continue;
+      }
+    }
+    
+    // Split remaining text by comma/semicolon
+    const terms = termsText.split(/[,;]+/).map(t => t.trim().toLowerCase()).filter(Boolean);
+    
+    if (isOrClause) {
+      clauses.push({ type: 'OR', terms, originalText: line });
+    } else {
+      // Each term is an individual AND requirement
+      for (const term of terms) {
+        clauses.push({ type: 'AND', terms: [term], originalText: term });
+      }
+    }
+  }
+  
+  return clauses;
 }
 
 function applyHardFilters(profile: ProfileData, job: JobData): { passed: boolean; reason?: string } {
-  // 1. Must-have skills check — only for clear technical terms
-  // Education/school criteria and long phrases are handled by Layer 2 (weighted scoring)
+  // 1. Must-have check with clause parsing
   if (job.mustHave) {
-    const mustHaveTerms = job.mustHave.split(/[,;]+/).map(s => s.trim().toLowerCase()).filter(Boolean);
+    const clauses = parseMustHaveClauses(job.mustHave);
     const profileText = [
       ...(profile.skills || []),
       profile.headline || '',
@@ -240,23 +287,34 @@ function applyHardFilters(profile: ProfileData, job: JobData): { passed: boolean
       ...(profile.education || []).map((e: any) => `${e.school || ''} ${e.degree || ''} ${e.field || ''}`),
     ].join(' ').toLowerCase();
 
-    // Skip terms that are:
-    // - Descriptive phrases (>4 words)
-    // - Education/school related (never hard-filter on diplomas)
-    const technicalTerms = mustHaveTerms.filter(t => 
-      t.split(/\s+/).length <= 4 && !isEducationRelatedTerm(t)
-    );
+    for (const clause of clauses) {
+      // Skip long descriptive phrases (>5 words per term) — they belong in weighted scoring
+      const validTerms = clause.terms.filter(t => t.split(/\s+/).length <= 5);
+      if (validTerms.length === 0) continue;
 
-    for (const term of technicalTerms) {
-      const termVariants = [term];
-      for (const [canonical, synonyms] of Object.entries(SKILL_SYNONYMS)) {
-        if ([canonical, ...synonyms].some(v => v.includes(term) || term.includes(v))) {
-          termVariants.push(canonical, ...synonyms);
+      const termMatchesProfile = (term: string): boolean => {
+        const termVariants = [term];
+        for (const [canonical, synonyms] of Object.entries(SKILL_SYNONYMS)) {
+          if ([canonical, ...synonyms].some(v => v.includes(term) || term.includes(v))) {
+            termVariants.push(canonical, ...synonyms);
+          }
         }
-      }
-      const found = termVariants.some(v => profileText.includes(v));
-      if (!found) {
-        return { passed: false, reason: `Must-have manquant: "${term}"` };
+        return termVariants.some(v => profileText.includes(v));
+      };
+
+      if (clause.type === 'OR') {
+        // At least ONE term must match
+        const anyMatch = validTerms.some(t => termMatchesProfile(t));
+        if (!anyMatch) {
+          return { passed: false, reason: `Must-have manquant: aucun parmi [${validTerms.join(', ')}]` };
+        }
+      } else {
+        // ALL terms must match (AND)
+        for (const term of validTerms) {
+          if (!termMatchesProfile(term)) {
+            return { passed: false, reason: `Must-have manquant: "${term}"` };
+          }
+        }
       }
     }
   }
