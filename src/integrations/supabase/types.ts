@@ -746,6 +746,42 @@ export type Database = {
         }
         Relationships: []
       }
+      candidate_profiles: {
+        Row: {
+          candidate_id: string
+          created_at: string
+          embedding: string | null
+          headline: string | null
+          id: string
+          name: string | null
+          skills: string[] | null
+          summary: string | null
+          updated_at: string
+        }
+        Insert: {
+          candidate_id: string
+          created_at?: string
+          embedding?: string | null
+          headline?: string | null
+          id?: string
+          name?: string | null
+          skills?: string[] | null
+          summary?: string | null
+          updated_at?: string
+        }
+        Update: {
+          candidate_id?: string
+          created_at?: string
+          embedding?: string | null
+          headline?: string | null
+          id?: string
+          name?: string | null
+          skills?: string[] | null
+          summary?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       candidate_reminders: {
         Row: {
           candidate_id: string
@@ -1086,6 +1122,42 @@ export type Database = {
           id?: string
           job_id?: string
           user_id?: string
+        }
+        Relationships: []
+      }
+      job_profiles: {
+        Row: {
+          created_at: string
+          description: string | null
+          embedding: string | null
+          id: string
+          job_id: string
+          requirements: string | null
+          skills: string[] | null
+          title: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          embedding?: string | null
+          id?: string
+          job_id: string
+          requirements?: string | null
+          skills?: string[] | null
+          title?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          embedding?: string | null
+          id?: string
+          job_id?: string
+          requirements?: string | null
+          skills?: string[] | null
+          title?: string | null
+          updated_at?: string
         }
         Relationships: []
       }
@@ -1954,6 +2026,10 @@ export type Database = {
       acquire_sequence_lock: {
         Args: { p_run_id: string; p_ttl_minutes?: number }
         Returns: boolean
+      }
+      cosine_similarity_match: {
+        Args: { p_candidate_id: string; p_job_id: string }
+        Returns: number
       }
       has_role: {
         Args: {
