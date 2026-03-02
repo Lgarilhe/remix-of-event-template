@@ -13,7 +13,8 @@ const RESULTS_PER_BATCH = 25;
 
 // Known geo IDs → location keywords for client-side filtering
 const GEO_ID_TO_KEYWORDS: Record<string, string[]> = {
-  '105015875': ['france', 'paris', 'lyon', 'marseille', 'toulouse', 'nantes', 'bordeaux', 'lille', 'strasbourg', 'rennes', 'montpellier', 'nice', 'île-de-france', 'idf', 'auvergne', 'rhône', 'provence', 'occitanie', 'bretagne', 'normandie', 'nouvelle-aquitaine', 'hauts-de-france', 'grand est', 'pays de la loire', 'bourgogne', 'centre-val de loire', 'corse', 'fr'],
+  '105015875': ['france', 'paris', 'lyon', 'marseille', 'toulouse', 'nantes', 'bordeaux', 'lille', 'strasbourg', 'rennes', 'montpellier', 'nice', 'île-de-france', 'ile-de-france', 'idf', 'auvergne', 'rhône', 'provence', 'occitanie', 'bretagne', 'normandie', 'nouvelle-aquitaine', 'hauts-de-france', 'grand est', 'pays de la loire', 'bourgogne', 'centre-val de loire', 'corse', 'fr'],
+  '106383538': ['paris', 'île-de-france', 'ile-de-france', 'idf', 'greater paris', 'region parisienne', 'région parisienne', 'hauts-de-seine', 'seine-saint-denis', 'val-de-marne', 'essonne', 'yvelines', 'val-d\'oise', 'seine-et-marne', 'nanterre', 'boulogne', 'saint-denis', 'montreuil', 'versailles', 'creteil', 'créteil', 'evry', 'évry', 'cergy', 'melun', 'bobigny', 'la defense', 'la défense', 'neuilly', 'levallois', 'issy', 'courbevoie', 'puteaux', 'rueil', 'massy', 'saclay', 'france'],
   '101165590': ['united kingdom', 'uk', 'london', 'manchester', 'birmingham', 'leeds', 'glasgow', 'edinburgh', 'england', 'scotland', 'wales'],
   '101174742': ['germany', 'deutschland', 'berlin', 'munich', 'münchen', 'hamburg', 'frankfurt', 'cologne', 'köln', 'düsseldorf', 'stuttgart'],
   '103644278': ['united states', 'usa', 'us', 'new york', 'san francisco', 'los angeles', 'chicago', 'boston', 'seattle', 'austin', 'california', 'texas'],
