@@ -7,14 +7,73 @@ import { toast } from 'sonner';
 
 // Fire-and-forget: generate embedding for a candidate after scoring
 async function generateCandidateEmbedding(profile: LinkedInProfile): Promise<void> {
-  const text = [
-    profile.headline,
-    profile.summary,
-    (profile.skills || []).map((s: any) => s.name || s).join(', '),
-    ...(profile.work_experience || []).slice(0, 5).map(w =>
-      `${w.role || ''} ${w.company || ''} ${w.description || ''}`.trim()
-    ),
-  ].filter(Boolean).join(' ');
+  const parts: string[] = [];
+
+  // Identity & headline
+  if (profile.name) parts.push(`Name: ${profile.name}`);
+  if (profile.headline) parts.push(`Headline: ${profile.headline}`);
+  if (profile.summary) parts.push(`Summary: ${profile.summary}`);
+  if (profile.location) parts.push(`Location: ${profile.location}`);
+  if (profile.industry) parts.push(`Industry: ${profile.industry}`);
+
+  // Skills (all of them)
+  const skills = (profile.skills || []).map(s => typeof s === 'string' ? s : s.name).filter(Boolean);
+  if (skills.length > 0) parts.push(`Skills: ${skills.join(', ')}`);
+
+  // Work experience — ALL entries with full detail
+  const workExp = profile.work_experience || [];
+  if (workExp.length > 0) {
+    const expParts = workExp.map(w => {
+      const lines: string[] = [];
+      if (w.role) lines.push(`Role: ${w.role}`);
+      if (w.company) lines.push(`Company: ${w.company}`);
+      if (w.description) lines.push(`Description: ${w.description}`);
+      if (w.industry) lines.push(`Industry: ${w.industry}`);
+      if (w.location) lines.push(`Location: ${w.location}`);
+      if (w.company_description) lines.push(`Company desc: ${w.company_description}`);
+      if (w.skills && w.skills.length > 0) lines.push(`Skills: ${w.skills.map(s => s.name).join(', ')}`);
+      return lines.join(' | ');
+    }).filter(Boolean);
+    parts.push(`Experience: ${expParts.join(' ; ')}`);
+  }
+
+  // Current positions (legacy but may contain extra data)
+  const currentPos = profile.current_positions || [];
+  if (currentPos.length > 0 && workExp.length === 0) {
+    const cpParts = currentPos.map(p =>
+      [p.role, p.company, p.description, p.location].filter(Boolean).join(' | ')
+    ).filter(Boolean);
+    parts.push(`Current positions: ${cpParts.join(' ; ')}`);
+  }
+
+  // Past positions (legacy fallback)
+  const pastPos = profile.past_positions || [];
+  if (pastPos.length > 0 && workExp.length === 0) {
+    const ppParts = pastPos.map(p =>
+      [p.role, p.company, p.description, p.location].filter(Boolean).join(' | ')
+    ).filter(Boolean);
+    parts.push(`Past positions: ${ppParts.join(' ; ')}`);
+  }
+
+  // Education — ALL entries with full detail
+  const education = profile.education || [];
+  if (education.length > 0) {
+    const eduParts = education.map(e => {
+      const lines: string[] = [];
+      if (e.school) lines.push(e.school);
+      if (e.degree) lines.push(e.degree);
+      if (e.field_of_study) lines.push(e.field_of_study);
+      if (e.school_details?.description) lines.push(e.school_details.description);
+      return lines.join(' | ');
+    }).filter(Boolean);
+    parts.push(`Education: ${eduParts.join(' ; ')}`);
+  }
+
+  // Interests / signals
+  const interests = profile.interests || [];
+  if (interests.length > 0) parts.push(`Interests: ${interests.join(', ')}`);
+
+  const text = parts.join('\n');
 
   if (text.trim().length < 20) return;
 
