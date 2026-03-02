@@ -636,6 +636,52 @@ async function setJobsCache(payload: unknown): Promise<void> {
   }
 }
 
+// Generate embeddings for jobs missing them (fire-and-forget, best-effort)
+async function generateJobEmbeddings(jobs: any[]): Promise<void> {
+  if (!Deno.env.get("OPENAI_API_KEY")) return; // Skip if no key configured
+
+  // Check which jobs already have embeddings
+  const jobIds = jobs.map(j => j.id);
+  const { data: existing } = await supabase
+    .from('job_profiles')
+    .select('job_id')
+    .in('job_id', jobIds)
+    .not('embedding', 'is', null);
+
+  const existingIds = new Set((existing || []).map(r => r.job_id));
+  const jobsToEmbed = jobs.filter(j => !existingIds.has(j.id));
+
+  if (jobsToEmbed.length === 0) return;
+  console.log(`[fetch-notion-jobs] Generating embeddings for ${jobsToEmbed.length} jobs`);
+
+  // Process up to 10 jobs per run to avoid timeouts
+  for (const job of jobsToEmbed.slice(0, 10)) {
+    const text = [
+      job.title,
+      job.description,
+      job.requirements,
+      job.mustHave,
+      job.shouldHave,
+      job.niceToHave,
+      job.bodyContent,
+      job.transversalCriteria?.context,
+      job.transversalCriteria?.must,
+      job.transversalCriteria?.should,
+    ].filter(Boolean).join(' ');
+
+    if (text.trim().length < 20) continue;
+
+    try {
+      const { error } = await supabase.functions.invoke('generate-embedding', {
+        body: { text, type: 'job', entityId: job.id },
+      });
+      if (error) console.error(`Embedding error for job ${job.id}:`, error);
+    } catch (e) {
+      console.error(`Embedding call failed for job ${job.id}:`, e);
+    }
+  }
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -917,6 +963,11 @@ serve(async (req) => {
     if (skipPagination || page === 1) {
       await setJobsCache({ success: true, jobs: transformedJobs, pagination: { total, totalPages: 1 } });
     }
+
+    // Generate embeddings for jobs that don't have one yet (fire-and-forget)
+    generateJobEmbeddings(transformedJobs).catch(err => 
+      console.error('[fetch-notion-jobs] Embedding generation error:', err)
+    );
 
     return new Response(
       JSON.stringify(responsePayload),

@@ -5,6 +5,28 @@ import { Job } from '@/types/jobs';
 import { JobMatchResult, BatchScoringStats } from '@/components/outreach/JobScoreDisplay';
 import { toast } from 'sonner';
 
+// Fire-and-forget: generate embedding for a candidate after scoring
+async function generateCandidateEmbedding(profile: LinkedInProfile): Promise<void> {
+  const text = [
+    profile.headline,
+    profile.summary,
+    (profile.skills || []).map((s: any) => s.name || s).join(', '),
+    ...(profile.work_experience || []).slice(0, 5).map(w =>
+      `${w.role || ''} ${w.company || ''} ${w.description || ''}`.trim()
+    ),
+  ].filter(Boolean).join(' ');
+
+  if (text.trim().length < 20) return;
+
+  try {
+    await supabase.functions.invoke('generate-embedding', {
+      body: { text, type: 'candidate', entityId: profile.id },
+    });
+  } catch (e) {
+    console.error('generate-embedding call failed:', e);
+  }
+}
+
 interface ScoringOptions {
   selectedJob: Job | null;
   selectedProfiles: Set<string>;
@@ -324,6 +346,11 @@ export function useLinkedInScoring({
             linkedinProfileData,
           });
         }
+
+        // Generate embedding for scored candidate (fire-and-forget)
+        generateCandidateEmbedding(profile).catch(err =>
+          console.error('Candidate embedding error:', err)
+        );
       }
     } catch (err) {
       console.error('Score error:', err);
@@ -509,6 +536,13 @@ export function useLinkedInScoring({
 
         setJobScores(prev => ({ ...prev, ...newScores }));
         setSortByScore(true);
+
+        // Generate embeddings for scored candidates (fire-and-forget)
+        profilesToScore.forEach(profile => {
+          generateCandidateEmbedding(profile).catch(err =>
+            console.error('Batch embedding error:', err)
+          );
+        });
 
         const scoredCount = Object.keys(newScores).length;
 
