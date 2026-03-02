@@ -552,7 +552,7 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
                             </CollapsibleTrigger>
 
                             {/* Actions menu */}
-                            <DropdownMenu>
+                            <DropdownMenu modal={false}>
                               <DropdownMenuTrigger asChild>
                                 <Button 
                                   variant="outline" 
@@ -563,7 +563,7 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
                                   <MoreHorizontal className="w-4 h-4" />
                                 </Button>
                               </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end" className="z-[60] bg-background border-foreground rounded-none">
+                              <DropdownMenuContent align="end" className="z-[3000] bg-background border-foreground rounded-none">
                                 {enrollment.status === 'active' ? (
                                   <DropdownMenuItem 
                                     onClick={() => stopEnrollment(enrollment.id)}
