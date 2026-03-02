@@ -222,7 +222,7 @@ async function handleProcess(supabase: any, force = false) {
           continue;
         }
         if (!conditionResult) {
-          await supabase.from('sequence_step_executions').update({ status: 'skipped', skip_reason: `Condition: ${step.condition_type}`, executed_at: now }).eq('id', exec.id);
+          await supabase.from('sequence_step_executions').update({ status: 'skipped', skip_reason: `Condition: ${step.condition_type}`, executed_at: new Date().toISOString() }).eq('id', exec.id);
           results.skipped++;
           await scheduleNextStep(supabase, enrollment, step.step_order);
           continue;
@@ -258,7 +258,7 @@ async function handleProcess(supabase: any, force = false) {
           results.skipped++;
         } else if (executeResult.success) {
           await supabase.from('sequence_step_executions').update({ 
-            status: 'sent', executed_at: now, final_subject: executeResult.subject || finalSubject, final_message: executeResult.message || finalMessage,
+            status: 'sent', executed_at: new Date().toISOString(), final_subject: executeResult.subject || finalSubject, final_message: executeResult.message || finalMessage,
           }).eq('id', exec.id);
           await supabase.from('sequence_enrollments').update({ current_step_order: step.step_order + 1 }).eq('id', enrollment.id);
           if (step.action_type !== 'check_connection') await scheduleNextStep(supabase, enrollment, step.step_order);
@@ -281,7 +281,7 @@ async function handleProcess(supabase: any, force = false) {
             console.log(`[process] Retryable error for ${enrollment.profile_id}, retry ${currentRetryCount + 1}/${MAX_RETRIES} scheduled at ${retryAt}`);
             results.retried++;
           } else {
-            await supabase.from('sequence_step_executions').update({ status: 'failed', error_message: executeResult.error, executed_at: now, final_message: finalMessage || null, final_subject: finalSubject || null }).eq('id', exec.id);
+            await supabase.from('sequence_step_executions').update({ status: 'failed', error_message: executeResult.error, executed_at: new Date().toISOString(), final_message: finalMessage || null, final_subject: finalSubject || null }).eq('id', exec.id);
             results.failed++;
             if (enrollment.sequence_id) failedSequenceIds.add(enrollment.sequence_id);
           }
