@@ -1,5 +1,6 @@
 import React from 'react';
 import { CheckCircle2, XCircle, AlertCircle, Target, MapPin, Briefcase, TrendingUp, TrendingDown, DollarSign } from 'lucide-react';
+import { ScoringBreakdown } from './ScoringBreakdown';
 import { cn } from '@/lib/utils';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 
@@ -20,6 +21,19 @@ export interface SalaryAnalysis {
   explanation?: string;
 }
 
+export interface ScoringDetails {
+  strengths?: string[];
+  concerns?: string[];
+  seniorityMatch?: string;
+  tenureAnalysis?: string;
+  receptivityScore?: number | null;
+  foreignDiplomaRisk?: 'none' | 'low' | 'medium' | 'high';
+  locationCompatibility?: 'compatible' | 'partial' | 'incompatible' | 'unknown';
+  candidatePreferencesConflict?: string | null;
+  contractMismatch?: string | null;
+  skipReason?: string | null;
+}
+
 export interface JobMatchResult {
   profile_name: string;
   match_score: number;
@@ -30,6 +44,7 @@ export interface JobMatchResult {
   summary: string;
   recommendation: 'go' | 'maybe' | 'skip';
   salary_analysis?: SalaryAnalysis;
+  scoring_details?: ScoringDetails;
   error?: string;
 }
 
@@ -288,6 +303,11 @@ export const JobScoreDisplay: React.FC<JobScoreDisplayProps> = ({
             )}
           </div>
         </div>
+      )}
+
+      {/* ── Detailed scoring breakdown ── */}
+      {result.scoring_details && (
+        <ScoringBreakdown result={result} />
       )}
 
       {/* ── Salary analysis (collapsed into a subtle line) ── */}
