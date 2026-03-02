@@ -290,6 +290,50 @@ export interface LinkedInProfile {
     start?: { month?: number; year?: number };
     end?: { month?: number; year?: number };
   }>;
+  // Certifications
+  certifications?: Array<{
+    name?: string;
+    organization?: string;
+    url?: string;
+  }>;
+  // Projects
+  projects?: Array<{
+    name?: string;
+    description?: string;
+    skills?: string[];
+    start?: string | null;
+    end?: string | null;
+  }>;
+  // Volunteering
+  volunteering_experience?: Array<{
+    company?: string;
+    description?: string;
+    role?: string;
+    cause?: string;
+    start?: string | null;
+    end?: string | null;
+  }>;
+  // Languages
+  languages?: Array<{
+    name: string;
+    proficiency?: string;
+  }>;
+  // Recommendations received
+  recommendations?: {
+    received?: Array<{
+      text?: string;
+      caption?: string;
+      actor?: { first_name?: string; last_name?: string; headline?: string };
+    }>;
+    given?: Array<{
+      text?: string;
+      caption?: string;
+    }>;
+  };
+  // Hashtags / creator topics
+  hashtags?: string[];
+  // Websites
+  websites?: string[];
   // Legacy fields (may still be used by some endpoints)
   current_positions?: Array<{
     company?: string;

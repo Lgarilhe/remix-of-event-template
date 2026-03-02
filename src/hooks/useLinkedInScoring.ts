@@ -69,6 +69,57 @@ async function generateCandidateEmbedding(profile: LinkedInProfile): Promise<voi
     parts.push(`Education: ${eduParts.join(' ; ')}`);
   }
 
+  // Certifications
+  const certs = (profile as any).certifications || [];
+  if (certs.length > 0) {
+    const certParts = certs.map((c: any) =>
+      [c.name, c.organization].filter(Boolean).join(' - ')
+    ).filter(Boolean);
+    parts.push(`Certifications: ${certParts.join('; ')}`);
+  }
+
+  // Projects
+  const projects = (profile as any).projects || [];
+  if (projects.length > 0) {
+    const projParts = projects.map((p: any) => {
+      const bits: string[] = [];
+      if (p.name) bits.push(p.name);
+      if (p.description) bits.push(p.description);
+      if (p.skills?.length) bits.push(`Skills: ${p.skills.join(', ')}`);
+      return bits.join(' | ');
+    }).filter(Boolean);
+    parts.push(`Projects: ${projParts.join('; ')}`);
+  }
+
+  // Volunteering
+  const volunteering = (profile as any).volunteering_experience || [];
+  if (volunteering.length > 0) {
+    const volParts = volunteering.map((v: any) =>
+      [v.role, v.company, v.cause, v.description].filter(Boolean).join(' | ')
+    ).filter(Boolean);
+    parts.push(`Volunteering: ${volParts.join('; ')}`);
+  }
+
+  // Languages
+  const languages = (profile as any).languages || [];
+  if (languages.length > 0) {
+    const langParts = languages.map((l: any) =>
+      l.proficiency ? `${l.name} (${l.proficiency})` : l.name
+    );
+    parts.push(`Languages: ${langParts.join(', ')}`);
+  }
+
+  // Recommendations received (text content is rich signal)
+  const recs = (profile as any).recommendations?.received || [];
+  if (recs.length > 0) {
+    const recParts = recs.slice(0, 5).map((r: any) => r.text).filter(Boolean);
+    if (recParts.length > 0) parts.push(`Recommendations: ${recParts.join(' ; ')}`);
+  }
+
+  // Hashtags / creator topics
+  const hashtags = (profile as any).hashtags || [];
+  if (hashtags.length > 0) parts.push(`Topics: ${hashtags.join(', ')}`);
+
   // Interests / signals
   const interests = profile.interests || [];
   if (interests.length > 0) parts.push(`Interests: ${interests.join(', ')}`);
