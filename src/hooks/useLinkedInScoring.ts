@@ -1,8 +1,8 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { LinkedInProfile } from '@/components/outreach/types';
 import { Job } from '@/types/jobs';
-import { JobMatchResult } from '@/components/outreach/JobScoreDisplay';
+import { JobMatchResult, BatchScoringStats } from '@/components/outreach/JobScoreDisplay';
 import { toast } from 'sonner';
 
 interface ScoringOptions {
@@ -171,7 +171,7 @@ function mapScoringResult(raw: any): JobMatchResult {
   };
   return {
     profile_name: raw.name || raw.profile_name || '',
-    match_score: Math.max(0, Math.min(100, Number(raw.score ?? raw.match_score) || 0)),
+    match_score: Math.max(0, Math.min(100, Number(raw.score ?? raw.match_score ?? raw.finalScore) || 0)),
     matching_skills: raw.matching_skills || raw.matchedSkills || [],
     missing_skills: raw.missing_skills || raw.missingSkills || [],
     experience_match: (expMap[raw.experienceMatch] || raw.experience_match || 'incertain') as JobMatchResult['experience_match'],
@@ -191,6 +191,16 @@ function mapScoringResult(raw: any): JobMatchResult {
       contractMismatch: raw.contractMismatch || raw.contract_mismatch || null,
       skipReason: raw.skipReason || raw.skip_reason || null,
     },
+    // V2 fields passthrough
+    hardFilterPassed: raw.hardFilterPassed,
+    hardFilterKO: raw.hardFilterKO,
+    confidenceScore: raw.confidenceScore,
+    dimensions: raw.dimensions,
+    dataCompleteness: raw.dataCompleteness,
+    missingDataPoints: raw.missingDataPoints,
+    skippedLLM: raw.skippedLLM,
+    processingTimeMs: raw.processingTimeMs,
+    tokensUsed: raw.tokensUsed,
   };
 }
 
@@ -231,6 +241,7 @@ export function useLinkedInScoring({
   candidateStatus,
   customScoringInstructions,
 }: ScoringOptions) {
+  const [batchStats, setBatchStats] = useState<BatchScoringStats | null>(null);
 
   // Score a single profile
   const scoreProfile = useCallback(async (profile: LinkedInProfile) => {
@@ -365,6 +376,8 @@ export function useLinkedInScoring({
 
       const allResults: JobMatchResult[] = [];
       let rateLimited = false;
+      let aggregatedStats: BatchScoringStats | null = null;
+      const batchStartTime = Date.now();
       const totalBatches = Math.ceil(profilesData.length / BATCH_SIZE);
 
       for (let i = 0; i < profilesData.length; i += BATCH_SIZE) {
@@ -407,6 +420,17 @@ export function useLinkedInScoring({
 
         if (data?.results && Array.isArray(data.results)) {
           allResults.push(...data.results);
+        }
+        // Capture batch stats from response
+        if (data?.stats) {
+          aggregatedStats = {
+            total: (aggregatedStats?.total || 0) + (data.stats.total || 0),
+            hardFiltered: (aggregatedStats?.hardFiltered || 0) + (data.stats.hardFiltered || 0),
+            llmSkipped: (aggregatedStats?.llmSkipped || 0) + (data.stats.llmSkipped || 0),
+            llmCalled: (aggregatedStats?.llmCalled || 0) + (data.stats.llmCalled || 0),
+            avgScore: data.stats.avgScore || 0,
+            totalTokens: (aggregatedStats?.totalTokens || 0) + (data.stats.totalTokens || 0),
+          };
         }
 
         // Delay between batches
@@ -504,6 +528,24 @@ export function useLinkedInScoring({
         } else {
           toast.success(`${scoredCount} profils scorés`);
         }
+        // Compute aggregate stats if not provided by backend
+        if (!aggregatedStats) {
+          const mapped = Object.values(newScores);
+          aggregatedStats = {
+            total: mapped.length,
+            hardFiltered: mapped.filter(r => r.hardFilterPassed === false).length,
+            llmSkipped: mapped.filter(r => r.skippedLLM).length,
+            llmCalled: mapped.filter(r => !r.skippedLLM && r.hardFilterPassed !== false).length,
+            avgScore: Math.round(mapped.reduce((s, r) => s + r.match_score, 0) / mapped.length),
+            totalTokens: mapped.reduce((s, r) => s + (r.tokensUsed ? r.tokensUsed.input + r.tokensUsed.output : 0), 0),
+          };
+        } else {
+          // Recalculate avg across all batches
+          const mapped = Object.values(newScores);
+          aggregatedStats.avgScore = Math.round(mapped.reduce((s, r) => s + r.match_score, 0) / mapped.length);
+          aggregatedStats.total = mapped.length;
+        }
+        setBatchStats(aggregatedStats);
       }
     } catch (err) {
       console.error('Batch score error:', err);
@@ -516,5 +558,6 @@ export function useLinkedInScoring({
   return {
     scoreProfile,
     handleBatchScore,
+    batchStats,
   };
 }
