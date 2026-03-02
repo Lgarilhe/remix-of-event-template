@@ -557,7 +557,12 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
                                 <Button 
                                   variant="ghost" 
                                   size="icon"
-                                  className="h-8 w-8 opacity-0 group-hover:opacity-100"
+                                  className={cn(
+                                    "h-8 w-8 shrink-0",
+                                    ['active', 'paused'].includes(enrollment.status)
+                                      ? "opacity-100"
+                                      : "opacity-0 group-hover:opacity-100"
+                                  )}
                                   onClick={(e) => e.stopPropagation()}
                                 >
                                   <MoreHorizontal className="w-4 h-4" />
