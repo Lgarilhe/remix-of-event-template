@@ -676,11 +676,10 @@ async function handleSearch(
     }
   }
 
-  // Company headcount - different format per API
+  // Company headcount - supported by both Recruiter and Sales Navigator
+  // Both use array of { min, max } objects
   if (company_headcount?.length) {
-    if (api === 'sales_navigator') {
-      // Sales Navigator uses array of ranges: [{ min: 1, max: 10 }, { min: 11, max: 50 }]
-      // Convert our string values to ranges
+    if (api === 'sales_navigator' || api === 'recruiter') {
       const headcountMap: Record<string, { min: number; max?: number }> = {
         'A': { min: 1, max: 1 },
         'B': { min: 1, max: 10 },
@@ -730,8 +729,8 @@ async function handleSearch(
     }
   }
 
-  // Groups (Sales Navigator)
-  if (groups?.length && api === 'sales_navigator') {
+  // Groups (Sales Navigator + Recruiter)
+  if (groups?.length && (api === 'sales_navigator' || api === 'recruiter')) {
     searchBody.groups = groups;
   }
 
