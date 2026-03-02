@@ -223,38 +223,55 @@ async function handleSearch(
     limit,
   };
 
-  // Normalise seniority values to the only ones accepted by Unipile schema.
-  // Unipile expects one of: intern | entry | associate | mid_senior | director | executive
-  // Our UI historically produced values like: Entry, Mid, Senior, Manager, Director, VP, CXO...
-  const normaliseSeniority = (value: string): string | null => {
+  // Normalise seniority values per API type.
+  // Each API has different valid enum values:
+  // - Classic Jobs: intern | entry | associate | mid_senior | director | executive
+  // - Recruiter People: owner | partner | cxo | vp | director | manager | senior | entry | training | unpaid
+  // - Sales Navigator People: owner/partner | cxo | vice_president | director | experienced_manager | entry_level_manager | strategic | senior | entry_level | in_training
+  const normaliseSeniority = (value: string, apiType: string): string | null => {
     const v = String(value).trim().toLowerCase();
     if (!v) return null;
 
-    // Already valid
-    if (['intern', 'entry', 'associate', 'mid_senior', 'director', 'executive'].includes(v)) return v;
-
-    // UI / legacy labels
-    if (v === 'entry' || v === 'junior' || v === 'débutant' || v === 'debutant') return 'entry';
-    if (v === 'associate') return 'associate';
-    if (v === 'mid' || v === 'intermédiaire' || v === 'intermediaire' || v === 'mid-level') return 'mid_senior';
-    if (v === 'senior' || v === 'mid-senior' || v === 'mid senior' || v === 'mid_senior') return 'mid_senior';
-    if (v === 'manager') return 'director';
-    if (v === 'director' || v === 'directeur') return 'director';
-    if (v === 'vp' || v === 'cxo' || v === 'c-level' || v === 'executive' || v === 'partner' || v === 'owner') return 'executive';
-
-    // Numeric codes coming from some UIs (1..10)
-    // 1=Entry, 2=Associate, 3=Mid, 4=Senior, 5=Manager, 6=Director, 7+=Executive
-    if (/^\d+$/.test(v)) {
-      const n = Number(v);
-      if (n <= 1) return 'entry';
-      if (n === 2) return 'associate';
-      if (n === 3 || n === 4) return 'mid_senior';
-      if (n === 5 || n === 6) return 'director';
-      return 'executive';
+    if (apiType === 'recruiter') {
+      // Recruiter valid: owner, partner, cxo, vp, director, manager, senior, entry, training, unpaid
+      const RECRUITER_MAP: Record<string, string> = {
+        owner: 'owner', partner: 'partner', cxo: 'cxo', vp: 'vp',
+        director: 'director', directeur: 'director', manager: 'manager',
+        senior: 'senior', entry: 'entry', junior: 'entry', training: 'training',
+        intern: 'training', unpaid: 'unpaid',
+        'c-level': 'cxo', executive: 'cxo', 'mid-senior': 'senior', mid_senior: 'senior',
+        'mid senior': 'senior', mid: 'senior', associate: 'entry',
+        débutant: 'entry', debutant: 'entry',
+      };
+      return RECRUITER_MAP[v] || null;
     }
 
-    // Unknown value → omit to avoid API 400
-    return null;
+    if (apiType === 'sales_navigator') {
+      // Sales Nav valid: owner/partner, cxo, vice_president, director, experienced_manager, entry_level_manager, strategic, senior, entry_level, in_training
+      const SN_MAP: Record<string, string> = {
+        'owner/partner': 'owner/partner', owner: 'owner/partner', partner: 'owner/partner',
+        cxo: 'cxo', 'c-level': 'cxo', executive: 'cxo',
+        vp: 'vice_president', vice_president: 'vice_president',
+        director: 'director', directeur: 'director',
+        manager: 'experienced_manager', experienced_manager: 'experienced_manager',
+        entry_level_manager: 'entry_level_manager',
+        strategic: 'strategic', senior: 'senior', 'mid-senior': 'senior', mid_senior: 'senior', mid: 'senior',
+        entry: 'entry_level', entry_level: 'entry_level', junior: 'entry_level',
+        associate: 'entry_level', débutant: 'entry_level', debutant: 'entry_level',
+        intern: 'in_training', in_training: 'in_training', training: 'in_training',
+      };
+      return SN_MAP[v] || null;
+    }
+
+    // Classic Jobs: intern | entry | associate | mid_senior | director | executive
+    const CLASSIC_MAP: Record<string, string> = {
+      intern: 'intern', entry: 'entry', junior: 'entry', débutant: 'entry', debutant: 'entry',
+      associate: 'associate',
+      mid: 'mid_senior', senior: 'mid_senior', 'mid-senior': 'mid_senior', mid_senior: 'mid_senior', 'mid senior': 'mid_senior',
+      manager: 'director', director: 'director', directeur: 'director',
+      vp: 'executive', cxo: 'executive', 'c-level': 'executive', executive: 'executive', partner: 'executive', owner: 'executive',
+    };
+    return CLASSIC_MAP[v] || null;
   };
 
   // Pagination cursor
@@ -349,15 +366,36 @@ async function handleSearch(
     searchBody.location_within_area = location_within_area;
   }
 
-  // Company filter - uses include/exclude structure for recruiter/sales_nav
+  // Company filter - different format per API:
+  // - Classic: simple array of string IDs
+  // - Recruiter: array of objects [{ id, name?, priority?, scope? }] or [{ keywords, priority?, scope? }]
+  // - Sales Navigator: { include: string[], exclude?: string[] }
   if (company) {
     if (Array.isArray(company)) {
       if (company.length > 0) {
-        const needsInclude = api === 'recruiter' || api === 'sales_navigator';
-        searchBody.company = needsInclude ? { include: company } : company;
+        if (api === 'recruiter') {
+          // Recruiter expects array of objects with id, priority, scope
+          searchBody.company = company.map((c: string | { id?: string; keywords?: string; priority?: string; scope?: string }) => {
+            if (typeof c === 'object') return c;
+            return { id: c, priority: 'MUST_HAVE', scope: 'CURRENT_OR_PAST' };
+          });
+        } else if (api === 'sales_navigator') {
+          searchBody.company = { include: company };
+        } else {
+          searchBody.company = company;
+        }
       }
     } else if (company.include?.length || company.exclude?.length) {
-      searchBody.company = company;
+      if (api === 'recruiter') {
+        // Recruiter doesn't use { include, exclude } - convert to array of objects
+        const items = [
+          ...(company.include || []).map((id: string) => ({ id, priority: 'MUST_HAVE', scope: 'CURRENT_OR_PAST' })),
+          ...(company.exclude || []).map((id: string) => ({ id, priority: 'DOESNT_HAVE', scope: 'CURRENT_OR_PAST' })),
+        ];
+        if (items.length > 0) searchBody.company = items;
+      } else {
+        searchBody.company = company;
+      }
     }
   }
 
@@ -424,22 +462,31 @@ async function handleSearch(
   }
 
   // Job title - different handling per API
+  // - Recruiter: uses `role` with array of objects { id, is_selection, priority?, scope? } or { keywords, priority?, scope? }
+  // - Sales Navigator: uses `role` with { include: [...], exclude: [...] }
+  // - Classic: no direct job_title filter
   if (job_title?.length) {
     if (api === 'recruiter') {
-      // Recruiter uses current_job_title with priority
-      searchBody.current_job_title = job_title.map(t => ({
-        id: t.id,
-        priority: t.priority,
-      }));
+      // Recruiter uses `role` (not current_job_title)
+      searchBody.role = job_title.map((t: { id?: string; keywords?: string; priority?: string; scope?: string; is_selection?: boolean }) => {
+        if (t.keywords) {
+          return { keywords: t.keywords, priority: t.priority || 'MUST_HAVE', scope: t.scope || 'CURRENT_OR_PAST' };
+        }
+        return {
+          id: t.id,
+          is_selection: t.is_selection ?? false,
+          priority: t.priority || 'MUST_HAVE',
+          scope: t.scope || 'CURRENT_OR_PAST',
+        };
+      });
     } else if (api === 'sales_navigator') {
-      // Sales Navigator uses current_job_title with include/exclude structure
-      searchBody.current_job_title = job_title.map(t => ({
-        id: t.id,
-        priority: t.priority,
-      }));
-    } else {
-      // Classic - just IDs via advanced_keywords.title or keywords
-      // Classic doesn't have job_title filter, use keywords instead
+      // Sales Navigator uses `role` with { include, exclude }
+      const includeIds = job_title.filter(t => t.priority !== 'DOESNT_HAVE').map(t => t.id);
+      const excludeIds = job_title.filter(t => t.priority === 'DOESNT_HAVE').map(t => t.id);
+      const roleObj: Record<string, string[]> = {};
+      if (includeIds.length) roleObj.include = includeIds;
+      if (excludeIds.length) roleObj.exclude = excludeIds;
+      if (Object.keys(roleObj).length) searchBody.role = roleObj;
     }
   }
 
@@ -455,29 +502,38 @@ async function handleSearch(
   }
 
   // Role filter - Recruiter specific with keywords, priority, scope
+  // Note: if job_title already set `role`, append keyword-based roles
   if (role?.length && api === 'recruiter') {
-    searchBody.role = role.map(r => ({
+    const keywordRoles = role.map(r => ({
       keywords: r.keywords,
-      priority: r.priority,
-      scope: r.scope,
+      priority: r.priority || 'MUST_HAVE',
+      scope: r.scope || 'CURRENT_OR_PAST',
     }));
+    // Merge with ID-based roles from job_title if any
+    if (Array.isArray(searchBody.role)) {
+      (searchBody.role as unknown[]).push(...keywordRoles);
+    } else {
+      searchBody.role = keywordRoles;
+    }
   }
 
-  // Function/Department filter (Recruiter/Sales Navigator)
+  // Function/Department filter
+  // - Recruiter: simple array of string IDs
+  // - Sales Navigator: { include: [...], exclude: [...] }
   if (functionFilter) {
-    if (api === 'recruiter' || api === 'sales_navigator') {
+    if (api === 'recruiter') {
+      // Recruiter: function is a simple string[] of department IDs
       if (Array.isArray(functionFilter)) {
-        if (functionFilter.length > 0) {
-          // Doc: function is an array of string IDs (DEPARTMENT)
-          searchBody.function = functionFilter;
-        }
+        if (functionFilter.length > 0) searchBody.function = functionFilter;
       } else if (functionFilter.include?.length) {
-        // Backward compat: frontend previously sent { include: [...] }
         searchBody.function = functionFilter.include;
-      } else if (functionFilter.exclude?.length) {
-        // Unipile schema for PEOPLE expects `function` as a string[], no exclude support.
-        // Keep the least-surprising behavior: drop exclude and log.
-        console.log('Function filter exclude provided but ignored (schema expects string[]):', functionFilter.exclude);
+      }
+    } else if (api === 'sales_navigator') {
+      // Sales Navigator: function is { include: [...], exclude: [...] }
+      if (Array.isArray(functionFilter)) {
+        if (functionFilter.length > 0) searchBody.function = { include: functionFilter };
+      } else if (functionFilter.include?.length || functionFilter.exclude?.length) {
+        searchBody.function = functionFilter;
       }
     }
   }
@@ -494,18 +550,20 @@ async function handleSearch(
     }
   }
 
-  // Seniority
-  // IMPORTANT: Unipile rejects `seniority` for People searches (400 invalid_parameters).
-  // Keep support for Jobs searches only.
+  // Seniority - different format per API:
+  // - Classic Jobs: simple array of strings
+  // - Recruiter People: { include: [...], exclude: [...] } with recruiter-specific enums
+  // - Sales Navigator People: { include: [...], exclude: [...] } with SN-specific enums
   if (seniority?.length) {
-    if (category !== 'jobs') {
-      console.log('Seniority provided but ignored (category != jobs):', { api, category, seniority });
-    } else {
-      const normalised = seniority.map(normaliseSeniority).filter((v): v is string => Boolean(v));
-      console.log('Seniority (jobs) received:', seniority, '→ normalised:', normalised, 'API:', api);
-      if (normalised.length) {
-        // Jobs schema expects simple array (see Unipile validation schema)
+    const normalised = seniority.map(s => normaliseSeniority(s, api)).filter((v): v is string => Boolean(v));
+    console.log('Seniority received:', seniority, '→ normalised:', normalised, 'API:', api, 'category:', category);
+    if (normalised.length) {
+      if (category === 'jobs') {
+        // Classic Jobs: simple array
         searchBody.seniority = normalised;
+      } else if (api === 'recruiter' || api === 'sales_navigator') {
+        // People searches: { include: [...] }
+        searchBody.seniority = { include: normalised };
       }
     }
   }
@@ -521,26 +579,45 @@ async function handleSearch(
   }
 
   // Years of experience / Tenure - different per API
+  // - Recruiter: `tenure` as { min, max } object
+  // - Sales Navigator: `tenure` as array of { min, max } ranges
   if (api === 'recruiter') {
-    // Recruiter uses years_of_experience as object
-    if (years_of_experience && (years_of_experience.min !== undefined || years_of_experience.max !== undefined)) {
-      searchBody.years_of_experience = years_of_experience;
+    // Recruiter uses `tenure` as a single object { min, max }
+    // Frontend may send as years_of_experience or tenure
+    const tenureSource = years_of_experience || (tenure?.length ? tenure[0] : null);
+    if (tenureSource && (tenureSource.min !== undefined || tenureSource.max !== undefined)) {
+      searchBody.tenure = tenureSource;
     }
   } else if (api === 'sales_navigator') {
-    // Sales Navigator uses tenure array of ranges
+    // Sales Navigator uses tenure as array of { min, max } ranges
     if (tenure?.length) {
       searchBody.tenure = tenure;
+    } else if (years_of_experience && (years_of_experience.min !== undefined || years_of_experience.max !== undefined)) {
+      // Fallback: convert single object to array
+      searchBody.tenure = [years_of_experience];
     }
   }
 
-  // Tenure at company (Sales Navigator/Recruiter)
+  // Tenure at company - different per API:
+  // - Recruiter: `tenure_in_company` as { min, max } object
+  // - Sales Navigator: `tenure_at_company` as array of { min, max }
   if (tenure_at_company?.length) {
-    searchBody.tenure_at_company = tenure_at_company;
+    if (api === 'recruiter') {
+      searchBody.tenure_in_company = tenure_at_company[0]; // single object
+    } else if (api === 'sales_navigator') {
+      searchBody.tenure_at_company = tenure_at_company;
+    }
   }
 
-  // Tenure at role (Recruiter)
-  if (tenure_at_role?.length && api === 'recruiter') {
-    searchBody.tenure_at_role = tenure_at_role;
+  // Tenure at role - different per API:
+  // - Recruiter: `tenure_in_position` as { min, max } object
+  // - Sales Navigator: `tenure_at_role` as array of { min, max }
+  if (tenure_at_role?.length) {
+    if (api === 'recruiter') {
+      searchBody.tenure_in_position = tenure_at_role[0]; // single object
+    } else if (api === 'sales_navigator') {
+      searchBody.tenure_at_role = tenure_at_role;
+    }
   }
 
   // Open to work / Open to
@@ -659,24 +736,63 @@ async function handleSearch(
   }
 
   // Past company
+  // Past company - different per API:
+  // - Classic: simple array of string IDs
+  // - Recruiter: array of objects [{ id, priority }]
+  // - Sales Navigator: { include: [...], exclude: [...] }
   if (past_company) {
     if (Array.isArray(past_company)) {
       if (past_company.length > 0) {
-        const needsInclude = api === 'recruiter' || api === 'sales_navigator';
-        searchBody.past_company = needsInclude ? { include: past_company } : past_company;
+        if (api === 'recruiter') {
+          searchBody.past_company = past_company.map((c: string | { id: string; priority?: string }) => {
+            if (typeof c === 'object') return c;
+            return { id: c, priority: 'MUST_HAVE' };
+          });
+        } else if (api === 'sales_navigator') {
+          searchBody.past_company = { include: past_company };
+        } else {
+          searchBody.past_company = past_company;
+        }
       }
     } else if (past_company.include?.length || past_company.exclude?.length) {
-      searchBody.past_company = past_company;
+      if (api === 'recruiter') {
+        // Convert include/exclude to array of objects
+        const items = [
+          ...(past_company.include || []).map((id: string) => ({ id, priority: 'MUST_HAVE' })),
+          ...(past_company.exclude || []).map((id: string) => ({ id, priority: 'DOESNT_HAVE' })),
+        ];
+        if (items.length > 0) searchBody.past_company = items;
+      } else {
+        searchBody.past_company = past_company;
+      }
     }
   }
 
-  // Past job title (Recruiter/Sales Navigator)
+  // Past job title - different per API:
+  // - Recruiter: merged into `role` with scope: 'PAST' (not a separate param)
+  // - Sales Navigator: `past_role` with { include: [...], exclude: [...] }
   if (past_job_title?.length) {
-    if (api === 'recruiter' || api === 'sales_navigator') {
-      searchBody.past_job_title = past_job_title.map(t => ({
+    if (api === 'recruiter') {
+      // Recruiter doesn't have a separate past_job_title. Past titles go into `role` with scope: 'PAST'
+      const pastRoles = past_job_title.map(t => ({
         id: t.id,
-        priority: t.priority,
+        is_selection: false,
+        priority: t.priority || 'MUST_HAVE',
+        scope: 'PAST',
       }));
+      if (Array.isArray(searchBody.role)) {
+        (searchBody.role as unknown[]).push(...pastRoles);
+      } else {
+        searchBody.role = pastRoles;
+      }
+    } else if (api === 'sales_navigator') {
+      // Sales Navigator uses `past_role` with { include, exclude }
+      const includeIds = past_job_title.filter(t => t.priority !== 'DOESNT_HAVE').map(t => t.id);
+      const excludeIds = past_job_title.filter(t => t.priority === 'DOESNT_HAVE').map(t => t.id);
+      const pastRoleObj: Record<string, string[]> = {};
+      if (includeIds.length) pastRoleObj.include = includeIds;
+      if (excludeIds.length) pastRoleObj.exclude = excludeIds;
+      if (Object.keys(pastRoleObj).length) searchBody.past_role = pastRoleObj;
     }
   }
 
