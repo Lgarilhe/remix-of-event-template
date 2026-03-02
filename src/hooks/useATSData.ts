@@ -71,8 +71,8 @@ const STATUS_TO_STAGE: Record<string, string> = {
   'messaged': 'Contacté',
   'replied': 'Répondu',
   'interested': 'Répondu',
+  'not_interested': 'Répondu',
   'qualification': 'Pré-qualif',
-  'not_interested': 'Perdu',
   'dismissed': 'Perdu',
 };
 
