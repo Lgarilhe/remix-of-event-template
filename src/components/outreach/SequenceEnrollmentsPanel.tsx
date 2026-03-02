@@ -468,7 +468,7 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
           </div>
 
           {/* Enrollments list */}
-          <ScrollArea className="h-[calc(100vh-340px)]">
+          <div className="h-[calc(100vh-340px)] overflow-y-auto">
             <div className="space-y-2">
               {loading ? (
                 <BrutalLoader compact messages={['Chargement des inscriptions…', 'Récupération des étapes…', 'Synchronisation…']} />
@@ -499,12 +499,12 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
                       open={isExpanded}
                       onOpenChange={() => toggleExpanded(enrollment.id)}
                     >
-                      <div className="border border-foreground overflow-hidden">
+                      <div className="border border-foreground">
                         {/* Header - always visible */}
                         <div className="p-3 bg-background hover:bg-brutal-accent/10 group">
-                          <div className="flex items-start justify-between gap-3">
+                          <div className="flex items-start gap-2 w-full">
                             <CollapsibleTrigger className="flex items-start gap-2 flex-1 min-w-0 text-left">
-                              <div className="mt-0.5">
+                              <div className="mt-0.5 shrink-0">
                                 {isExpanded ? (
                                   <ChevronDown className="w-4 h-4 text-muted-foreground" />
                                 ) : (
@@ -521,7 +521,7 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
                                       href={enrollment.profile_url}
                                       target="_blank"
                                       rel="noopener noreferrer"
-                                      className="text-muted-foreground hover:text-[#0077B5]"
+                                      className="text-muted-foreground hover:text-[#0077B5] shrink-0"
                                       onClick={(e) => e.stopPropagation()}
                                     >
                                       <ExternalLink className="w-3.5 h-3.5" />
@@ -533,7 +533,7 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
                                     {enrollment.profile_headline}
                                   </p>
                                 )}
-                                <div className="flex items-center gap-2 mt-1.5">
+                                <div className="flex items-center gap-2 mt-1.5 flex-wrap">
                                   <Badge className={`text-[10px] rounded-none ${status.className}`}>
                                     {status.icon}
                                     <span className="ml-1">{status.label}</span>
@@ -781,7 +781,7 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
                 });
               })()}
             </div>
-          </ScrollArea>
+          </div>
         </div>
       </SheetContent>
     </Sheet>
