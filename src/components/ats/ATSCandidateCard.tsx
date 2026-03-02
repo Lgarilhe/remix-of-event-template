@@ -8,7 +8,10 @@ import {
   GitBranch, 
   FileText,
   Send,
-  Target
+  Target,
+  ThumbsUp,
+  ThumbsDown,
+  MessageCircle
 } from 'lucide-react';
 
 interface ATSCandidateCardProps {
@@ -75,13 +78,32 @@ export const ATSCandidateCard: React.FC<ATSCandidateCardProps> = ({
         </div>
       </div>
 
-      {/* Source & Job */}
+      {/* Source & Job & Outreach Status */}
       <div className="flex flex-wrap items-center gap-1.5 mb-2">
         <span className="text-[10px] px-1.5 py-0.5 border border-foreground/30 bg-foreground/5 flex items-center gap-1 uppercase tracking-wider font-medium text-foreground">
           {sourceConfig.icon}
           {sourceConfig.label}
         </span>
         
+        {candidate.outreachStatus === 'interested' && (
+          <span className="text-[10px] px-1.5 py-0.5 border border-green-500 bg-green-50 text-green-700 flex items-center gap-1 uppercase tracking-wider font-bold">
+            <ThumbsUp className="w-3 h-3" />
+            Intéressé
+          </span>
+        )}
+        {candidate.outreachStatus === 'not_interested' && (
+          <span className="text-[10px] px-1.5 py-0.5 border border-red-400 bg-red-50 text-red-600 flex items-center gap-1 uppercase tracking-wider font-bold">
+            <ThumbsDown className="w-3 h-3" />
+            Pas intéressé
+          </span>
+        )}
+        {candidate.outreachStatus === 'replied' && (
+          <span className="text-[10px] px-1.5 py-0.5 border border-blue-400 bg-blue-50 text-blue-600 flex items-center gap-1 uppercase tracking-wider font-bold">
+            <MessageCircle className="w-3 h-3" />
+            Répondu
+          </span>
+        )}
+
         {candidate.jobTitle && (
           <span className="text-[10px] px-1.5 py-0.5 border border-foreground/20 bg-background text-muted-foreground truncate max-w-[140px]">
             {candidate.jobTitle.length > 20 
