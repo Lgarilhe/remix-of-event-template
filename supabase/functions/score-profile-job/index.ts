@@ -208,9 +208,27 @@ function getRecommendation(score: number): string {
 
 // ─── Layer 1: Hard Filters (0 API call) ──────────────────────────────────────
 
+// Education/school-related keywords — these should NEVER hard-filter, only weight in Layer 2
+const EDUCATION_KEYWORDS = [
+  'diplôme', 'diploma', 'école', 'ecole', 'school', 'université', 'university',
+  'ingénieur', 'ingenieur', 'engineer', 'master', 'licence', 'bachelor', 'bac+',
+  'formation', 'cursus', 'parmi', 'obligatoire',
+  // Known school names
+  'epita', 'epitech', '42', 'polytechnique', 'centrale', 'mines', 'ponts',
+  'ensimag', 'insa', 'supélec', 'supelec', 'télécom', 'telecom', 'ensta',
+  'essec', 'hec', 'em lyon', 'edhec', 'dauphine', 'sorbonne', 'ens',
+  'x', 'arts et métiers', 'ensam', 'isep', 'efrei', 'esiee', 'esiea',
+  'utc', 'utm', 'utt', 'icam', 'eigsi', 'ece', 'isae', 'supaero',
+];
+
+function isEducationRelatedTerm(term: string): boolean {
+  const lower = term.toLowerCase();
+  return EDUCATION_KEYWORDS.some(kw => lower.includes(kw));
+}
+
 function applyHardFilters(profile: ProfileData, job: JobData): { passed: boolean; reason?: string } {
-  // 1. Must-have skills check — only for clear, short technical terms
-  // Long phrases or school/diploma criteria are handled by Layer 2 (weighted scoring)
+  // 1. Must-have skills check — only for clear technical terms
+  // Education/school criteria and long phrases are handled by Layer 2 (weighted scoring)
   if (job.mustHave) {
     const mustHaveTerms = job.mustHave.split(/[,;]+/).map(s => s.trim().toLowerCase()).filter(Boolean);
     const profileText = [
@@ -222,10 +240,14 @@ function applyHardFilters(profile: ProfileData, job: JobData): { passed: boolean
       ...(profile.education || []).map((e: any) => `${e.school || ''} ${e.degree || ''} ${e.field || ''}`),
     ].join(' ').toLowerCase();
 
-    // Skip terms that are descriptive phrases (>4 words) — those belong in weighted scoring
-    const shortTerms = mustHaveTerms.filter(t => t.split(/\s+/).length <= 4);
+    // Skip terms that are:
+    // - Descriptive phrases (>4 words)
+    // - Education/school related (never hard-filter on diplomas)
+    const technicalTerms = mustHaveTerms.filter(t => 
+      t.split(/\s+/).length <= 4 && !isEducationRelatedTerm(t)
+    );
 
-    for (const term of shortTerms) {
+    for (const term of technicalTerms) {
       const termVariants = [term];
       for (const [canonical, synonyms] of Object.entries(SKILL_SYNONYMS)) {
         if ([canonical, ...synonyms].some(v => v.includes(term) || term.includes(v))) {
