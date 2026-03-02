@@ -294,17 +294,20 @@ function computeWeightedScore(profile: ProfileData, job: JobData): {
 
   // --- Tech Stack (weight: 35%) ---
   const profileSkills = (profile.skills || []).map(s => s.toLowerCase());
-  const jobSkills = (job.skills || []).map(s => s.toLowerCase());
-  const { matched, missing, ratio } = computeSkillMatch(profileSkills, jobSkills);
+  // Combine job.skills with shouldHave/niceToHave for richer matching
+  const baseJobSkills = (job.skills || []).map(s => s.toLowerCase());
+  const shouldHaveSkills = job.shouldHave ? job.shouldHave.split(/[,;]+/).map(s => s.trim().toLowerCase()).filter(Boolean) : [];
+  const allJobSkills = [...new Set([...baseJobSkills, ...shouldHaveSkills])];
+  const { matched, missing, ratio } = computeSkillMatch(profileSkills, allJobSkills);
 
-  if (jobSkills.length === 0) {
+  if (allJobSkills.length === 0) {
     dimensions.tech_stack = { score: 50, weight: 35, details: 'Pas de skills requis spécifiés' };
     missingDataPoints.push('job_skills');
   } else {
     dimensions.tech_stack = {
       score: Math.round(ratio * 100),
       weight: 35,
-      details: `${matched.length}/${jobSkills.length} skills matchés`,
+      details: `${matched.length}/${allJobSkills.length} skills matchés`,
     };
   }
 
@@ -461,8 +464,13 @@ Tech: ${preComputedData.dimensions.tech_stack?.score}/100 | Séniorité: ${preCo
 
 === POSTE ===
 ${job.title} @ ${job.client?.name || '?'} (${job.client?.sector || '?'})
-${job.description ? job.description.substring(0, 300) : ''}
+${job.description ? 'Description: ' + job.description.substring(0, 400) : ''}
+${job.requirements ? 'Exigences: ' + job.requirements.substring(0, 300) : ''}
+${job.mustHave ? 'Must-have: ' + job.mustHave : ''}
+${job.shouldHave ? 'Should-have: ' + job.shouldHave : ''}
+${job.niceToHave ? 'Nice-to-have: ' + job.niceToHave : ''}
 ${job.transversalCriteria?.context ? 'Contexte: ' + job.transversalCriteria.context.substring(0, 200) : ''}
+${job.bodyContent ? 'Détails poste: ' + job.bodyContent.substring(0, 300) : ''}
 
 === CANDIDAT ===
 ${profile.name} — ${profile.headline || profile.currentRole || '?'}
@@ -606,7 +614,7 @@ async function scoreProfile(
   customScoringInstructions?: string,
 ): Promise<ScoringResult> {
   const startTime = Date.now();
-  const candidateId = profile.name; // Use name as fallback ID
+  const candidateId = profile.name + '|' + (profile.headline || '') + '|' + (profile.currentCompany || ''); // Composite key for uniqueness
 
   // Check cache
   const cached = await getCachedScore(supabase, candidateId, job.id);
@@ -645,7 +653,8 @@ async function scoreProfile(
   // Layer 2: Weighted Criteria
   const weighted = computeWeightedScore(profile, job);
   const profileSkills = (profile.skills || []).map(s => s.toLowerCase());
-  const jobSkills = (job.skills || []).map(s => s.toLowerCase());
+  const shouldHaveSkills = job.shouldHave ? job.shouldHave.split(/[,;]+/).map(s => s.trim().toLowerCase()).filter(Boolean) : [];
+  const jobSkills = [...new Set([...(job.skills || []).map(s => s.toLowerCase()), ...shouldHaveSkills])];
   const { matched: matchedSkills, missing: missingSkills } = computeSkillMatch(profileSkills, jobSkills);
 
   // Layer 3: Semantic Similarity

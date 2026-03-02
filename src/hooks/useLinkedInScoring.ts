@@ -272,6 +272,11 @@ export function useLinkedInScoring({
             salaryMax: selectedJob.salaryMax,
             tjmMin: selectedJob.tjm,
             contractType: selectedJob.contractType,
+            mustHave: selectedJob.mustHave,
+            shouldHave: selectedJob.shouldHave,
+            niceToHave: selectedJob.niceToHave,
+            bodyContent: selectedJob.bodyContent,
+            transversalCriteria: selectedJob.transversalCriteria,
           },
           customScoringInstructions,
         }
@@ -372,6 +377,11 @@ export function useLinkedInScoring({
         salaryMax: selectedJob.salaryMax,
         tjmMin: selectedJob.tjm,
         contractType: selectedJob.contractType,
+        mustHave: selectedJob.mustHave,
+        shouldHave: selectedJob.shouldHave,
+        niceToHave: selectedJob.niceToHave,
+        bodyContent: selectedJob.bodyContent,
+        transversalCriteria: selectedJob.transversalCriteria,
       };
 
       const allResults: JobMatchResult[] = [];
