@@ -555,14 +555,9 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
                             <DropdownMenu>
                               <DropdownMenuTrigger asChild>
                                 <Button 
-                                  variant="ghost" 
+                                  variant="outline" 
                                   size="icon"
-                                  className={cn(
-                                    "h-8 w-8 shrink-0",
-                                    ['active', 'paused'].includes(enrollment.status)
-                                      ? "opacity-100"
-                                      : "opacity-0 group-hover:opacity-100"
-                                  )}
+                                  className="h-8 w-8 shrink-0 border-foreground rounded-none"
                                   onClick={(e) => e.stopPropagation()}
                                 >
                                   <MoreHorizontal className="w-4 h-4" />
