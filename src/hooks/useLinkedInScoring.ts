@@ -179,6 +179,18 @@ function mapScoringResult(raw: any): JobMatchResult {
     summary: raw.summary || '',
     recommendation: (recMap[raw.recommendation] || raw.recommendation || 'maybe') as JobMatchResult['recommendation'],
     salary_analysis: raw.salary_analysis,
+    scoring_details: {
+      strengths: raw.strengths || [],
+      concerns: raw.concerns || [],
+      seniorityMatch: raw.seniorityMatch || raw.seniority_match || undefined,
+      tenureAnalysis: raw.tenureAnalysis || raw.tenure_analysis || undefined,
+      receptivityScore: raw.receptivityScore ?? raw.receptivity_score ?? null,
+      foreignDiplomaRisk: raw.foreignDiplomaRisk || raw.foreign_diploma_risk || 'none',
+      locationCompatibility: raw.locationCompatibility || raw.location_compatibility || 'unknown',
+      candidatePreferencesConflict: raw.candidatePreferencesConflict || raw.candidate_preferences_conflict || null,
+      contractMismatch: raw.contractMismatch || raw.contract_mismatch || null,
+      skipReason: raw.skipReason || raw.skip_reason || null,
+    },
   };
 }
 
