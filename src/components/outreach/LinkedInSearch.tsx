@@ -111,6 +111,9 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
   // Pool view toggle
   const [showPoolView, setShowPoolView] = useLocalState(true);
 
+  // Scored sort
+  const [scoredSortBy, setScoredSortBy] = useLocalState<import('@/hooks/useFilteredResults').ScoredSortBy>('score_desc');
+
   // Filtered results hook
   const { filteredAndSortedResults, selectableProfiles, allSelectableSelected, poolCount } = useFilteredResults({
     results: search.results,
@@ -130,6 +133,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
     calculatedExperienceMin: search.filters.calculated_experience_min,
     calculatedExperienceMax: search.filters.calculated_experience_max,
     showPoolView,
+    scoredSortBy,
   });
 
   // Keep ref in sync with merged results so scoring hook can access pool profiles
@@ -634,6 +638,8 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
           onSetShowDismissed={search.setShowDismissed}
           onSetStatusFilter={search.setStatusFilter}
           onSetSortByScore={search.setSortByScore}
+          scoredSortBy={scoredSortBy}
+          onSetScoredSortBy={setScoredSortBy}
           onSetShowBulkInMailModal={search.setShowBulkInMailModal}
           onProfileTreated={handleProfileTreated}
           onArchive={handleArchive}
