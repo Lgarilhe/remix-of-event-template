@@ -284,7 +284,8 @@ async function evaluateMustHaveWithAI(profile: ProfileData, job: JobData): Promi
   // Build compact profile summary for the AI
   const educationEntries = (profile.education || []).map((e: any) => {
     if (typeof e === 'string') return e;
-    return `${e.school || ''} ${e.degree || ''} ${e.field || ''} ${e.field_of_study || ''}`.trim();
+    return [e.school, e.school_details?.name, e.degree, e.field, e.field_of_study]
+      .filter(Boolean).join(' - ');
   }).filter(Boolean);
 
   const profileSummary = [
@@ -293,7 +294,9 @@ async function evaluateMustHaveWithAI(profile: ProfileData, job: JobData): Promi
     profile.currentRole ? `Poste actuel: ${profile.currentRole}` : '',
     profile.currentCompany ? `Entreprise: ${profile.currentCompany}` : '',
     (profile.skills || []).length > 0 ? `Skills: ${profile.skills!.join(', ')}` : '',
-    educationEntries.length > 0 ? `Formation: ${educationEntries.join(' | ')}` : '',
+    educationEntries.length > 0 
+      ? `Formations (TOUTES les écoles/diplômes du candidat):\n${educationEntries.map((e, i) => `  ${i+1}. ${e}`).join('\n')}`
+      : 'Formation: non renseignée',
     profile.yearsOfExperience !== undefined ? `XP: ${profile.yearsOfExperience} ans` : '',
     (profile.workExperience || []).length > 0 
       ? `Expériences: ${profile.workExperience!.slice(0, 5).map(w => `${w.role} @ ${w.company}`).join(', ')}`
@@ -310,7 +313,8 @@ ${profileSummary}
 
 RÈGLES:
 - Si les critères listent plusieurs écoles/formations avec "parmi", "ou", "dont", le candidat doit en avoir AU MOINS UNE.
-- Sois intelligent sur les noms d'écoles : "École Polytechnique", "Polytechnique", "X" sont la même école. "Université Paris-Saclay" n'est PAS Polytechnique.
+- IMPORTANT: Vérifie TOUTES les formations listées dans le profil, pas juste la première. Un candidat peut avoir fait un master dans une école et un bachelor dans une autre.
+- Sois intelligent sur les noms d'écoles : "École Polytechnique", "Polytechnique", "X" sont la même école. "CentraleSupélec" = "Centrale" = "Supélec". "Université Paris-Saclay" n'est PAS Polytechnique.
 - Pour les skills techniques, accepte les synonymes évidents (React = ReactJS, K8s = Kubernetes, etc.)
 - Sois strict mais juste : ne refuse pas un candidat pour une raison farfelue.
 

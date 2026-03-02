@@ -289,11 +289,12 @@ export function buildProfileData(profile: LinkedInProfile) {
     workExperience: enrichedWorkExperience.length > 0 ? enrichedWorkExperience : undefined,
     pastPositions: pastJobs.map(p => `${p.role} chez ${p.company}`),
     education: education.map((e: any) => {
+      const school = e.school || e.school_details?.name || '';
       const degree = e.degree || '';
-      const school = e.school || '';
+      const field = e.field_of_study || '';
       const year = e.end?.year ? ` (${e.end.year})` : '';
-      return `${degree} - ${school}${year}`;
-    }) || [],
+      return [school, degree, field].filter(Boolean).join(' - ') + year;
+    }).filter((s: string) => s.trim().length > 0) || [],
     yearsOfExperience: calculateYearsFromDiploma(),
     averageTenureMonths: calculateAverageTenure(),
     openToWork: isOpenToWork,
