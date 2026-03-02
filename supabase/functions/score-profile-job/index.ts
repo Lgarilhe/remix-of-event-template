@@ -274,103 +274,91 @@ function parseMustHaveClauses(mustHave: string): MustHaveClause[] {
   return clauses;
 }
 
-function applyHardFilters(profile: ProfileData, job: JobData): { passed: boolean; reason?: string } {
-  // 1. Must-have check with clause parsing
-  if (job.mustHave) {
-    const clauses = parseMustHaveClauses(job.mustHave);
-    
-    // Separate text sources for more precise matching
-    const generalText = [
-      ...(profile.skills || []),
-      profile.headline || '',
-      profile.currentRole || '',
-      profile.summary || '',
-      ...(profile.workExperience || []).map(w => `${w.role} ${w.description || ''}`),
-    ].join(' ').toLowerCase();
-    
-    // Education text: only school names, degrees, fields (NOT concatenated with general text)
-    // profile.education can be string[] OR object[] depending on the caller
-    const educationEntries = (profile.education || []).map((e: any) => {
-      if (typeof e === 'string') return e.toLowerCase().trim();
-      // Object format: { school, degree, field, field_of_study }
-      return `${e.school || ''} ${e.degree || ''} ${e.field || ''} ${e.field_of_study || ''}`.toLowerCase().trim();
-    }).filter((e: string) => e.length > 0);
-    const educationText = educationEntries.join(' ');
-    
-    // Full text for non-school terms
-    const fullProfileText = `${generalText} ${educationText}`;
-    
-    // School/education keywords to detect school-related OR clauses
-    const SCHOOL_INDICATOR_KEYWORDS = [
-      'diplôme', 'diplome', 'école', 'ecole', 'ingénieur', 'ingenieur',
-      'parmi', 'formation', 'cursus', 'grande école', 'grande ecole',
-      'master', 'licence', 'bac+', 'university', 'université', 'universite'
-    ];
-    
-    // Known school name fragments (to detect school-related terms in OR clauses)
-    const KNOWN_SCHOOL_FRAGMENTS = [
-      'polytechnique', 'centrale', 'centralesupelec', 'centralesupélec',
-      'mines', 'ponts', 'télécom', 'telecom', 'ensta', 'ensimag',
-      'supélec', 'supelec', 'supaero', 'isae', 'inp',
-      'epita', 'epitech', '42', 'hec', 'essec', 'edhec', 'escp',
-      'emlyon', 'em lyon', 'sciences po', 'sciencespo',
-      'arts et métiers', 'arts et metiers', 'ensam',
-      'utc', 'utm', 'utbm', 'insa', 'enseirb', 'enseeiht',
-      'x-', 'normalien', 'ens ', 'isep',
-      'dauphine', 'sorbonne', 'paris-saclay', 'paris saclay',
-      'imt', 'grenoble inp', 'paritech'
-    ];
+async function evaluateMustHaveWithAI(profile: ProfileData, job: JobData): Promise<{ passed: boolean; reason?: string }> {
+  const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
+  if (!ANTHROPIC_API_KEY) {
+    console.warn("[must-have-ai] No ANTHROPIC_API_KEY, skipping must-have check");
+    return { passed: true };
+  }
 
-    for (const clause of clauses) {
-      // Skip long descriptive phrases (>5 words per term) — they belong in weighted scoring
-      const validTerms = clause.terms.filter(t => t.split(/\s+/).length <= 5);
-      if (validTerms.length === 0) continue;
+  // Build compact profile summary for the AI
+  const educationEntries = (profile.education || []).map((e: any) => {
+    if (typeof e === 'string') return e;
+    return `${e.school || ''} ${e.degree || ''} ${e.field || ''} ${e.field_of_study || ''}`.trim();
+  }).filter(Boolean);
 
-      // Detect if this clause is about schools/education
-      const clauseText = clause.originalText.toLowerCase();
-      const isSchoolClause = 
-        SCHOOL_INDICATOR_KEYWORDS.some(k => clauseText.includes(k)) ||
-        validTerms.some(t => KNOWN_SCHOOL_FRAGMENTS.some(f => t.includes(f) || f.includes(t)));
+  const profileSummary = [
+    `Nom: ${profile.name}`,
+    profile.headline ? `Headline: ${profile.headline}` : '',
+    profile.currentRole ? `Poste actuel: ${profile.currentRole}` : '',
+    profile.currentCompany ? `Entreprise: ${profile.currentCompany}` : '',
+    (profile.skills || []).length > 0 ? `Skills: ${profile.skills!.join(', ')}` : '',
+    educationEntries.length > 0 ? `Formation: ${educationEntries.join(' | ')}` : '',
+    profile.yearsOfExperience !== undefined ? `XP: ${profile.yearsOfExperience} ans` : '',
+    (profile.workExperience || []).length > 0 
+      ? `Expériences: ${profile.workExperience!.slice(0, 5).map(w => `${w.role} @ ${w.company}`).join(', ')}`
+      : '',
+  ].filter(Boolean).join('\n');
 
-      const termMatchesProfile = (term: string, schoolOnly: boolean): boolean => {
-        const termVariants = [term];
-        for (const [canonical, synonyms] of Object.entries(SKILL_SYNONYMS)) {
-          if ([canonical, ...synonyms].some(v => v.includes(term) || term.includes(v))) {
-            termVariants.push(canonical, ...synonyms);
-          }
-        }
-        
-        if (schoolOnly) {
-          // For school terms, match against education entries AND headline
-          // (candidates often mention their school in headline, e.g. "Polytechnicien")
-          const schoolSearchText = [
-            ...educationEntries,
-            (profile.headline || '').toLowerCase(),
-          ];
-          const matched = schoolSearchText.some(entry => termVariants.some(v => entry.includes(v)));
-          if (!matched) {
-            console.log(`[hard-filter] School term "${term}" NOT found in education: ${JSON.stringify(educationEntries.slice(0, 3))}`);
-          }
-          return matched;
-        }
-        
-        return termVariants.some(v => fullProfileText.includes(v));
-      };
+  const prompt = `Tu es un recruteur expert. Vérifie si ce candidat satisfait les critères OBLIGATOIRES (must-have) du poste.
 
-      if (clause.type === 'OR') {
-        // At least ONE term must match
-        const anyMatch = validTerms.some(t => termMatchesProfile(t, isSchoolClause));
-        if (!anyMatch) {
-          return { passed: false, reason: `Must-have manquant: aucun parmi [${validTerms.join(', ')}]` };
-        }
-      } else {
-        // ALL terms must match (AND)
-        for (const term of validTerms) {
-          if (!termMatchesProfile(term, isSchoolClause)) {
-            return { passed: false, reason: `Must-have manquant: "${term}"` };
-          }
-        }
-      }
+CRITÈRES OBLIGATOIRES:
+${job.mustHave}
+
+PROFIL CANDIDAT:
+${profileSummary}
+
+RÈGLES:
+- Si les critères listent plusieurs écoles/formations avec "parmi", "ou", "dont", le candidat doit en avoir AU MOINS UNE.
+- Sois intelligent sur les noms d'écoles : "École Polytechnique", "Polytechnique", "X" sont la même école. "Université Paris-Saclay" n'est PAS Polytechnique.
+- Pour les skills techniques, accepte les synonymes évidents (React = ReactJS, K8s = Kubernetes, etc.)
+- Sois strict mais juste : ne refuse pas un candidat pour une raison farfelue.
+
+Réponds UNIQUEMENT avec un JSON:
+{"passed": true/false, "reason": "explication courte si refusé, null si accepté"}`;
+
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'x-api-key': ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 150,
+        messages: [{ role: 'user', content: prompt }],
+      }),
+    });
+
+    if (!res.ok) {
+      console.error(`[must-have-ai] Anthropic error ${res.status}: ${await res.text()}`);
+      // Fallback: pass the filter (don't block candidates on API errors)
+      return { passed: true };
+    }
+
+    const data = await res.json();
+    const text = data.content?.[0]?.text || '';
+    console.log(`[must-have-ai] ${profile.name}: ${text}`);
+
+    const parsed = extractJsonRobust(text);
+    return { 
+      passed: !!parsed.passed, 
+      reason: parsed.passed ? undefined : (parsed.reason || 'Must-have non satisfait (IA)') 
+    };
+  } catch (err) {
+    console.error(`[must-have-ai] Error:`, err);
+    return { passed: true }; // Don't block on errors
+  }
+}
+
+async function applyHardFilters(profile: ProfileData, job: JobData): Promise<{ passed: boolean; reason?: string }> {
+  // 1. Must-have check via AI (intelligent matching for schools, skills, etc.)
+  if (job.mustHave && job.mustHave.trim().length > 0) {
+    const mustHaveResult = await evaluateMustHaveWithAI(profile, job);
+    if (!mustHaveResult.passed) {
+      return mustHaveResult;
     }
   }
 
@@ -406,7 +394,6 @@ function applyHardFilters(profile: ProfileData, job: JobData): { passed: boolean
     if (profile.location) {
       const jobLoc = job.location.toLowerCase();
       const profLoc = profile.location.toLowerCase();
-      // Only hard-filter if locations are in clearly different countries
       const jobCountrySignals = ['france', 'paris', 'lyon', 'marseille', 'toulouse', 'nantes', 'bordeaux', 'lille', 'strasbourg'];
       const foreignSignals = ['united states', 'usa', 'uk', 'united kingdom', 'germany', 'spain', 'india', 'canada', 'australia', 'brazil'];
       const jobInFrance = jobCountrySignals.some(s => jobLoc.includes(s));
@@ -761,7 +748,7 @@ async function scoreProfile(
   if (cached) return cached;
 
   // Layer 1: Hard Filters
-  const hardFilter = applyHardFilters(profile, job);
+  const hardFilter = await applyHardFilters(profile, job);
   if (!hardFilter.passed) {
     const result: ScoringResult = {
       name: profile.name,
