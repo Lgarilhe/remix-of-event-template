@@ -310,7 +310,7 @@ export const JobSelector: React.FC<JobSelectorProps> = ({ selectedJob, onJobChan
                 </div>
               </div>
 
-              <ScrollArea className="max-h-[300px]">
+              <div className="max-h-[300px] overflow-y-auto">
                 <button
                   type="button"
                   className={cn(
@@ -361,7 +361,7 @@ export const JobSelector: React.FC<JobSelectorProps> = ({ selectedJob, onJobChan
                     </div>
                   </button>
                 ))}
-              </ScrollArea>
+              </div>
             </div>
           )}
         </div>
