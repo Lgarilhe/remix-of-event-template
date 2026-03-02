@@ -96,10 +96,10 @@ export const FILTER_API_SUPPORT: Record<LinkedInApiType, Record<FilterKey, Filte
     spotlight: { supported: true }, // Valid: OPEN_TO_WORK, ACTIVE_TALENT, REDISCOVERED_CANDIDATES, INTERNAL_CANDIDATES, INTERESTED_IN_YOUR_COMPANY, HAVE_COMPANY_CONNECTIONS
     hiring_project: { supported: true },
     talent_pool: { supported: true },
-    company_headcount: { supported: false, tooltip: "Utilisez Sales Navigator pour filtrer par taille d'entreprise" },
-    company_type: { supported: false, tooltip: "Utilisez Sales Navigator pour filtrer par type d'entreprise" },
-    company_location: { supported: false, tooltip: "Utilisez Sales Navigator pour filtrer par localisation d'entreprise" },
-    groups: { supported: false, tooltip: "Les groupes ne sont disponibles qu'en mode Sales Navigator" },
+    company_headcount: { supported: true },
+    company_type: { supported: false, tooltip: "Le type d'entreprise n'est disponible qu'en Sales Navigator" },
+    company_location: { supported: false, tooltip: "La localisation de l'entreprise n'est disponible qu'en Sales Navigator" },
+    groups: { supported: true },
     past_company: { supported: true },
     past_job_title: { supported: true }, // With priority
     advanced_keywords: { supported: false, tooltip: "Utilisez les filtres de rôle et titre de poste en mode Recruiter" },
