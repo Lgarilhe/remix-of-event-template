@@ -65,6 +65,7 @@ const SheetContent = React.forwardRef<React.ElementRef<typeof SheetPrimitive.Con
             target?.closest?.('[data-radix-popper-content-wrapper]') ||
             target?.closest?.('[role="listbox"]') ||
             target?.closest?.('[role="dialog"]') ||
+            target?.closest?.('[role="menu"]') ||
             target?.closest?.('[data-radix-select-viewport]')
           ) {
             e.preventDefault();
@@ -76,6 +77,7 @@ const SheetContent = React.forwardRef<React.ElementRef<typeof SheetPrimitive.Con
             target?.closest?.('[data-radix-popper-content-wrapper]') ||
             target?.closest?.('[role="listbox"]') ||
             target?.closest?.('[role="dialog"]') ||
+            target?.closest?.('[role="menu"]') ||
             target?.closest?.('[data-radix-select-viewport]')
           ) {
             e.preventDefault();
