@@ -12,6 +12,11 @@ interface WebhookPayload {
   event: string;
   account_id: string;
   data?: Record<string, unknown>;
+  // new_relation format (flat)
+  user_provider_id?: string;
+  user_full_name?: string;
+  user_public_identifier?: string;
+  user_profile_url?: string;
   // message_received format (flat structure)
   chat_id?: string;
   sender?: { attendee_id?: string; attendee_provider_id?: string; attendee_name?: string; attendee_profile_url?: string };
@@ -94,19 +99,23 @@ serve(async (req) => {
 });
 
 async function handleNewRelation(supabase: SupabaseClient, payload: WebhookPayload) {
-  const { account_id, data } = payload;
+  const { account_id } = payload;
   
-  // Extract the profile ID of the new connection
-  // Unipile sends: { user: { provider_id: "...", ... } }
-  const newConnection = data?.user as { provider_id?: string; id?: string } | undefined;
-  const profileId = newConnection?.provider_id || newConnection?.id;
+  // Unipile sends flat payload: user_provider_id, user_full_name, user_public_identifier
+  // Also support legacy nested format: data.user.provider_id
+  const profileId = payload.user_provider_id 
+    || (payload.data?.user as { provider_id?: string; id?: string } | undefined)?.provider_id 
+    || (payload.data?.user as { provider_id?: string; id?: string } | undefined)?.id;
+  
+  const userName = payload.user_full_name || '';
+  const publicIdentifier = payload.user_public_identifier || '';
   
   if (!profileId) {
-    console.log('[unipile-webhook] new_relation: No profile ID in payload', data);
+    console.log('[unipile-webhook] new_relation: No profile ID in payload', JSON.stringify(payload).slice(0, 500));
     return;
   }
 
-  console.log('[unipile-webhook] new_relation: Profile connected:', profileId);
+  console.log(`[unipile-webhook] new_relation: Profile connected: ${profileId} (${userName}, slug: ${publicIdentifier})`);
 
   // Find enrollments waiting for this connection
   // Match on profile_id OR resolved_profile_id to handle Recruiter IDs (AEM -> ACo)
