@@ -350,14 +350,16 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
       setProcessingSequences(true);
       toast.info('Traitement des séquences en cours...');
       
-      // Call all sequence processing actions
-      const results = await Promise.all([
-        supabase.functions.invoke('process-sequences', { body: { action: 'process' } }),
-        supabase.functions.invoke('process-sequences', { body: { action: 'check_replies' } }),
-        supabase.functions.invoke('process-sequences', { body: { action: 'check_wait_events' } }),
-      ]);
+      // Call all sequence processing actions sequentially to avoid lock contention
+      const processRes = await supabase.functions.invoke('process-sequences', { body: { action: 'process' } });
       
-      const processResult = results[0].data;
+      if (processRes.error) {
+        console.error('[processSequencesNow] process error:', processRes.error);
+        toast.error(`Erreur: ${processRes.error.message || 'Échec du traitement'}`);
+        return;
+      }
+      
+      const processResult = processRes.data;
       
       if (processResult?.success) {
         const { processed = 0, failed = 0, skipped = 0, quota_blocked = 0 } = processResult.results || {};
@@ -367,13 +369,21 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
         if (quota_blocked > 0) message += `, ${quota_blocked} bloquée(s) (quota)`;
         
         toast.success(message);
-        await fetchEnrollments();
       } else {
-        toast.error('Erreur lors du traitement');
+        console.error('[processSequencesNow] Unexpected response:', processResult);
+        toast.error(processResult?.error || 'Erreur lors du traitement');
       }
+
+      // Run secondary checks (non-blocking)
+      await Promise.allSettled([
+        supabase.functions.invoke('process-sequences', { body: { action: 'check_replies' } }),
+        supabase.functions.invoke('process-sequences', { body: { action: 'check_wait_events' } }),
+      ]);
+      
+      await fetchEnrollments();
     } catch (error) {
-      console.error('Error processing sequences:', error);
-      toast.error('Erreur lors du traitement des séquences');
+      console.error('[processSequencesNow] Exception:', error);
+      toast.error('Erreur réseau lors du traitement');
     } finally {
       setProcessingSequences(false);
     }
