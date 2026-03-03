@@ -181,6 +181,22 @@ serve(async (req) => {
               })
               .eq('id', enrollment.id);
 
+            // Resolve any waiting_event step execution so the sequence progresses immediately
+            const { data: waitingExecs } = await supabase
+              .from('sequence_step_executions')
+              .select('id')
+              .eq('enrollment_id', enrollment.id)
+              .eq('status', 'waiting_event')
+              .limit(1);
+
+            if (waitingExecs && waitingExecs.length > 0) {
+              await supabase
+                .from('sequence_step_executions')
+                .update({ status: 'scheduled', scheduled_at: new Date().toISOString() })
+                .eq('id', waitingExecs[0].id);
+              console.log(`[check-invitation] 🔄 Resolved waiting_event for ${enrollment.profile_name}`);
+            }
+
             // Log analytics
             const today = new Date().toISOString().split('T')[0];
             await supabase
