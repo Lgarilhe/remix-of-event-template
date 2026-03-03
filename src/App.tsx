@@ -81,10 +81,12 @@ const AppContent = () => {
   );
 };
 
-const App = () => (
-  <TooltipProvider>
-    <AppContent />
-  </TooltipProvider>
-);
+const App = () => {
+  return (
+    <TooltipProvider>
+      <AppContent />
+    </TooltipProvider>
+  );
+};
 
 export default App;
