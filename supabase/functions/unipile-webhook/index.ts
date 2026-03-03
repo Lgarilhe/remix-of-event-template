@@ -115,8 +115,8 @@ async function handleNewRelation(supabase: SupabaseClient, payload: WebhookPaylo
     .select('*')
     .eq('account_id', account_id)
     .eq('status', 'active')
-    .in('connection_status', ['pending_invite', 'unknown'])
-    .or(`profile_id.eq.${profileId},resolved_profile_id.eq.${profileId}`);
+    .in('connection_status', ['pending_invite', 'unknown', 'not_connected'])
+    .or(`profile_id.eq.${profileId},resolved_profile_id.eq.${profileId},provider_id.eq.${profileId}`);
 
   if (enrollError) {
     console.error('[unipile-webhook] Error fetching enrollments:', enrollError);
