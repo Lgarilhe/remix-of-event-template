@@ -260,20 +260,18 @@ export const ChatListSidebar: React.FC<ChatListSidebarProps> = ({
               />
             ))}
             {hasMoreChats && onLoadMoreChats && (
-              <div className="p-3 text-center">
-                <Button
-                  variant="outline"
-                  size="sm"
+              <div className="p-2">
+                <button
                   onClick={onLoadMoreChats}
                   disabled={loadingMoreChats}
-                  className="w-full text-xs"
+                  className="w-full h-7 text-[10px] font-medium uppercase tracking-wider border border-foreground bg-background text-foreground hover:bg-foreground hover:text-background transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5"
                 >
                   {loadingMoreChats ? (
-                    <><RefreshCw className="w-3 h-3 animate-spin mr-1.5" />Chargement...</>
+                    <><RefreshCw className="w-3 h-3 animate-spin" />Chargement...</>
                   ) : (
                     <>Charger plus de conversations</>
                   )}
-                </Button>
+                </button>
               </div>
             )}
           </div>
