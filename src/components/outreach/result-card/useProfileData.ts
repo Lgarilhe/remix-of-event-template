@@ -92,18 +92,21 @@ export function useProfileData(profile: LinkedInProfile): ProfileData {
     const initials = `${firstName[0] || ''}${lastName[0] || ''}`.toUpperCase();
     const fullName = profile.name || `${firstName} ${lastName}`.trim();
 
-    const workExperience = profile.work_experience || [];
-    const currentJobs = workExperience.filter((exp: any) => !exp.end);
-    const currentJob = currentJobs[0] || workExperience[0];
-    const otherCurrentJobs = currentJobs.slice(1);
-    const pastJobs = workExperience.filter((exp: any) => exp.end).slice(0, 5);
+    const workExperience = (profile.work_experience || []).map((exp: any) => ({
+      ...exp,
+      role: exp.role || exp.position, // Normalize position → role
+    }));
+    const currentJobs = workExperience.filter((exp: any) => !exp.end && !exp.current === false);
+    const currentJob = workExperience.find((exp: any) => exp.current === true) || currentJobs[0] || workExperience[0];
+    const otherCurrentJobs = currentJobs.filter((j: any) => j !== currentJob);
+    const pastJobs = workExperience.filter((exp: any) => exp.end || (exp.current === false)).slice(0, 5);
 
     const currentPosition = profile.current_positions?.[0];
     const currentCompany = currentJob?.company || currentPosition?.company;
     const currentRole = currentJob?.role || currentPosition?.role;
 
     const networkDistance = typeof profile.network_distance === 'string'
-      ? parseInt(profile.network_distance.replace('DISTANCE_', ''))
+      ? parseInt(profile.network_distance.replace('DISTANCE_', '').replace('FIRST_DEGREE', '1').replace('SECOND_DEGREE', '2').replace('THIRD_DEGREE', '3'))
       : profile.network_distance;
 
     const profileUrl = profile.profile_url || profile.public_profile_url;

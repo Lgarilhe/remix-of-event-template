@@ -370,7 +370,7 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
                         <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${index === 0 && otherCurrentJobs.length > 0 ? 'bg-green-500' : 'bg-primary/40'}`} />
                       )}
                       <span className="text-muted-foreground truncate">
-                        <span className="font-medium">{pos.role}</span>
+                        <span className="font-medium">{pos.role || pos.position}</span>
                         <span className="text-muted-foreground/40"> chez </span>
                         <span>{pos.company}</span>
                       </span>

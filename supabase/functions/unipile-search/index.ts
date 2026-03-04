@@ -1016,8 +1016,11 @@ async function handleGetProfile(
     );
   }
 
+  // Normalize profile data to match search result format
+  const normalized = normalizeProfileData(data);
+
   return new Response(
-    JSON.stringify({ success: true, profile: data }),
+    JSON.stringify({ success: true, profile: normalized }),
     { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
   );
 }
@@ -1512,4 +1515,121 @@ async function handleGetUserPosts(
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
+}
+
+/**
+ * Parse a Unipile date value (string like "2019-01" or "2019") into {year, month} object.
+ * Profile API returns strings, Search API returns objects — this normalizes both.
+ */
+function parseDateValue(value: unknown): { year?: number; month?: number } | null {
+  if (!value) return null;
+  if (typeof value === 'object' && value !== null) {
+    const obj = value as Record<string, unknown>;
+    if (obj.year) return { year: Number(obj.year), month: obj.month ? Number(obj.month) : undefined };
+    return null;
+  }
+  if (typeof value === 'string') {
+    const parts = value.split('-');
+    const year = parseInt(parts[0], 10);
+    if (isNaN(year) || year < 1900) return null;
+    const month = parts[1] ? parseInt(parts[1], 10) : undefined;
+    return { year, month: month && !isNaN(month) ? month : undefined };
+  }
+  return null;
+}
+
+/**
+ * Normalize a Unipile profile response (from /users/{id}) to match our frontend interface.
+ * Key differences from search results:
+ * - work_experience uses "position" instead of "role"
+ * - work_experience.skills is string[] instead of {name, endorsement_count}[]
+ * - dates are strings instead of {year, month} objects
+ * - boolean flags use "is_" prefix (is_open_to_work, is_premium, is_open_profile)
+ * - network_distance uses FIRST_DEGREE format instead of DISTANCE_1
+ */
+function normalizeProfileData(raw: Record<string, unknown>): Record<string, unknown> {
+  const result = { ...raw };
+
+  // Normalize boolean flags: is_open_to_work → open_to_work, etc.
+  if (raw.is_open_to_work !== undefined && raw.open_to_work === undefined) {
+    result.open_to_work = raw.is_open_to_work;
+  }
+  if (raw.is_premium !== undefined && raw.premium === undefined) {
+    result.premium = raw.is_premium;
+  }
+  if (raw.is_open_profile !== undefined && raw.open_profile === undefined) {
+    result.open_profile = raw.is_open_profile;
+  }
+
+  // Normalize network_distance: FIRST_DEGREE → DISTANCE_1
+  if (typeof raw.network_distance === 'string') {
+    const distMap: Record<string, string> = {
+      'FIRST_DEGREE': 'DISTANCE_1',
+      'SECOND_DEGREE': 'DISTANCE_2',
+      'THIRD_DEGREE': 'DISTANCE_3',
+    };
+    result.network_distance = distMap[raw.network_distance as string] || raw.network_distance;
+  }
+
+  // Normalize work_experience
+  if (Array.isArray(raw.work_experience)) {
+    result.work_experience = (raw.work_experience as Record<string, unknown>[]).map(exp => {
+      const normalized: Record<string, unknown> = { ...exp };
+      
+      // position → role
+      if (exp.position && !exp.role) {
+        normalized.role = exp.position;
+      }
+      
+      // skills: string[] → {name, endorsement_count}[]
+      if (Array.isArray(exp.skills)) {
+        normalized.skills = (exp.skills as unknown[]).map(s => 
+          typeof s === 'string' ? { name: s, endorsement_count: 0 } : s
+        );
+      }
+
+      // Normalize dates: string → {year, month}
+      normalized.start = parseDateValue(exp.start);
+      normalized.end = parseDateValue(exp.end);
+
+      // current boolean → infer from end being null
+      if (exp.current === true && normalized.end) {
+        // keep end if explicitly set
+      }
+
+      return normalized;
+    });
+  }
+
+  // Normalize education dates
+  if (Array.isArray(raw.education)) {
+    result.education = (raw.education as Record<string, unknown>[]).map(edu => ({
+      ...edu,
+      start: parseDateValue(edu.start),
+      end: parseDateValue(edu.end),
+    }));
+  }
+
+  // Normalize volunteering_experience dates
+  if (Array.isArray(raw.volunteering_experience)) {
+    result.volunteering_experience = (raw.volunteering_experience as Record<string, unknown>[]).map(vol => ({
+      ...vol,
+      start: parseDateValue(vol.start),
+      end: parseDateValue(vol.end),
+    }));
+  }
+
+  // Normalize projects dates
+  if (Array.isArray(raw.projects)) {
+    result.projects = (raw.projects as Record<string, unknown>[]).map(proj => ({
+      ...proj,
+      start: parseDateValue(proj.start),
+      end: parseDateValue(proj.end),
+    }));
+  }
+
+  // Ensure contact_info is preserved
+  // provider_id → keep for reference
+  
+  return result;
 }

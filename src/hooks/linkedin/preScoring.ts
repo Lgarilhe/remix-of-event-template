@@ -50,7 +50,7 @@ function extractAllSkills(profile: LinkedInProfile): string[] {
 
   // From work experience titles + skills
   (profile.work_experience || []).forEach(w => {
-    if (w.role) extractSkillsFromText(w.role).forEach(s => skills.add(s));
+    if (w.role || w.position) extractSkillsFromText((w.role || w.position)!).forEach(s => skills.add(s));
     if (w.skills) w.skills.forEach(s => {
       const name = typeof s === 'string' ? s : s.name;
       if (name) skills.add(name.toLowerCase());
@@ -231,7 +231,7 @@ function parseSeniorityLevel(seniority?: string): number | null {
 }
 
 function scoreSeniority(profile: LinkedInProfile, job: Job, flags: string[]): number {
-  const currentRole = profile.work_experience?.find(w => !w.end)?.role;
+  const currentRole = profile.work_experience?.find(w => !w.end)?.role || profile.work_experience?.find(w => !w.end)?.position;
   const candidateLevel = inferSeniorityLevel(profile.headline, currentRole);
   const jobLevel = parseSeniorityLevel(job.seniority);
 

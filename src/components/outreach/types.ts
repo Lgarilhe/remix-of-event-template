@@ -244,48 +244,86 @@ export interface LinkedInProfile {
   public_profile_url?: string;
   profile_picture_url?: string;
   profile_picture_url_large?: string;
+  background_picture_url?: string;
   location?: string;
   industry?: string;
   network_distance?: string | number;
   open_to_work?: boolean;
+  is_open_to_work?: boolean; // Profile API format
   premium?: boolean;
+  is_premium?: boolean; // Profile API format
   open_profile?: boolean;
+  is_open_profile?: boolean; // Profile API format
+  is_hiring?: boolean;
+  is_influencer?: boolean;
+  is_creator?: boolean;
   pending_invitation?: boolean;
+  invitation?: { type: 'SENT' | 'RECEIVED'; status: 'PENDING' | 'IGNORED' | 'WITHDRAWN' };
   can_send_inmail?: boolean;
   recruiter_candidate_id?: string;
   member_urn?: string;
   public_identifier?: string;
+  provider_id?: string;
+  pronoun?: string;
   connections_count?: number;
+  followers_count?: number;
+  shared_connections_count?: number;
   interests?: string[];
+  // Contact info (profile API only)
+  contact_info?: {
+    emails?: string[];
+    phones?: string[];
+    adresses?: string[];
+    socials?: Array<{ type: string; name: string }>;
+  };
+  primary_locale?: { country: string; language: string };
   skills?: Array<{
     name: string;
     endorsement_count?: number;
+    endorsement_id?: number | null;
+    insights?: string[];
+    endorsed?: boolean;
   }>;
   education?: Array<{
+    id?: string;
     school?: string;
     school_id?: string;
+    school_url?: string;
+    school_picture_url?: string;
     degree?: string;
+    grade?: string;
+    description?: string;
+    activities?: string;
     field_of_study?: string;
+    skills?: string[];
     start?: string | { year?: number; month?: number } | null;
     end?: string | { year?: number; month?: number } | null;
     school_details?: {
       name?: string;
+      employeeCount?: number;
+      location?: string;
       description?: string;
-      logo?: string;
+      url?: string;
+      logo?: string | null;
     };
   }>;
   // API returns work_experience (full history)
   work_experience?: Array<{
+    id?: string;
     company?: string;
     company_id?: string;
     company_url?: string;
+    company_picture_url?: string;
     company_description?: string;
-    company_headcount?: { min?: number; max?: number };
-    industry?: string;
+    company_headcount?: { min?: number; max?: number } | null;
+    industry?: string | string[];
     location?: string;
-    role?: string;
+    role?: string; // Search API field name
+    position?: string; // Profile API field name (normalized to role by edge function)
     description?: string;
-    skills?: Array<{ name: string; endorsement_count?: number }>;
+    current?: boolean;
+    status?: string;
+    skills?: Array<{ name: string; endorsement_count?: number }> | string[];
     logo?: string;
     start?: string | { month?: number; year?: number } | null;
     end?: string | { month?: number; year?: number } | null;
@@ -323,17 +361,27 @@ export interface LinkedInProfile {
     received?: Array<{
       text?: string;
       caption?: string;
-      actor?: { first_name?: string; last_name?: string; headline?: string };
+      actor?: { first_name?: string; last_name?: string; provider_id?: string; headline?: string; public_identifier?: string; public_profile_url?: string };
     }>;
+    received_total_count?: number;
     given?: Array<{
       text?: string;
       caption?: string;
     }>;
+    given_total_count?: number;
   };
   // Hashtags / creator topics
   hashtags?: string[];
   // Websites
   websites?: string[];
+  // Tags (Recruiter)
+  tags?: Array<{ id: string; name: string }>;
+  // Recruiter notes
+  notes?: Array<{ project_id: string; content: string; created_at: number; author: any }>;
+  // Recruiting activity (profile API)
+  recruiting_activity?: Array<Record<string, unknown>>;
+  // Throttled sections indicator
+  throttled_sections?: string[];
   // Recent posts (fetched separately via /users/{id}/posts)
   recent_posts?: Array<{
     text?: string;
@@ -343,14 +391,30 @@ export interface LinkedInProfile {
     comment_counter?: number;
     repost_counter?: number;
   }>;
+  // Search result specific fields
+  keywords_match?: string;
+  recently_hired?: boolean;
+  mentioned_in_the_news?: boolean;
+  verified?: boolean;
+  hiddenCandidate?: boolean;
+  interestLikelihood?: string;
+  last_outreach_activity?: { type: string; performed_at: string };
+  recent_posts_count?: number;
   // Legacy fields (may still be used by some endpoints)
   current_positions?: Array<{
     company?: string;
     company_id?: string;
+    company_url?: string;
+    company_description?: string;
+    company_headcount?: { min?: number; max?: number } | null;
+    logo?: string;
     role?: string;
     description?: string;
     location?: string;
-    start?: { month?: number; year?: number };
+    industry?: string[];
+    skills?: Array<{ name: string; endorsement_count?: number }> | null;
+    start?: string | { month?: number; year?: number };
+    end?: string | { month?: number; year?: number };
     tenure_at_company?: { years?: number; months?: number };
     tenure_at_role?: { years?: number; months?: number };
   }>;
@@ -360,8 +424,8 @@ export interface LinkedInProfile {
     role?: string;
     description?: string;
     location?: string;
-    start?: { month?: number; year?: number };
-    end?: { month?: number; year?: number };
+    start?: string | { month?: number; year?: number };
+    end?: string | { month?: number; year?: number };
   }>;
 }
 
