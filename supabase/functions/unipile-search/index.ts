@@ -26,7 +26,6 @@ interface SearchParams {
   
   // Priority filters (Recruiter/Sales Nav)
   job_title?: Array<{ id: string; priority: string }>;
-  current_job_title?: Array<{ id: string; priority: string }>;
   skills?: Array<{ id: string; priority: string }>;
   
   // Role filter (Recruiter)
