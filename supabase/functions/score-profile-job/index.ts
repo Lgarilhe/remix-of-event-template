@@ -931,12 +931,15 @@ async function maybeEnrichProfile(
     );
 
     if (!response.ok) {
-      console.warn(`[enrichment] ⚠️ Failed for ${profile.name}: HTTP ${response.status}`);
+      const errBody = await response.text();
+      console.warn(`[enrichment] HTTP ${response.status} for ${profile.name}: ${errBody.slice(0, 200)}`);
       return false;
     }
 
     const data = await response.json();
-    const enrichedExp = (data.work_experience || data.positions || []).slice(0, 5);
+    const dataKeys = Object.keys(data).join(', ');
+    const enrichedExp = (data.work_experience || data.positions || data.experiences || []).slice(0, 5);
+    console.info(`[enrichment] API response for ${profile.name}: keys=[${dataKeys}], work_exp=${enrichedExp.length}, about=${!!data.about || !!data.summary}`);
 
     if (enrichedExp.length > 0) {
       const formatDuration = (m: number) => {
@@ -978,11 +981,13 @@ async function maybeEnrichProfile(
 
     if (!profile.summary && (data.about || data.summary)) {
       profile.summary = (data.about || data.summary).slice(0, 300);
+      console.info(`[enrichment] Added summary for ${profile.name}: ${profile.summary.slice(0, 80)}...`);
     }
     if ((!profile.skills || profile.skills.length === 0) && data.skills) {
       profile.skills = (data.skills as any[]).map((s: any) => (typeof s === "string" ? s : s.name)).slice(0, 15);
     }
 
+    console.info(`[enrichment] DONE ${profile.name}: exp=${enrichedExp.length}, summary=${!!profile.summary}, skills=${profile.skills?.length || 0}`);
     return true;
   } catch (err) {
     console.error(`[enrichment] ERROR for ${profile.name}:`, err);
