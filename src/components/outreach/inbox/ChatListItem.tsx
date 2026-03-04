@@ -52,7 +52,7 @@ export const ChatListItem: React.FC<ChatListItemProps> = ({
   const categoryInfo = category ? CHAT_CATEGORIES[category] : null;
 
   return (
-    <div className="relative group">
+    <div className="relative group overflow-hidden">
       <button
         onClick={onClick}
         className={cn(
@@ -76,10 +76,10 @@ export const ChatListItem: React.FC<ChatListItemProps> = ({
           )}
         </div>
         
-        <div className="flex-1 min-w-0">
+        <div className="flex-1 min-w-0 overflow-hidden">
           <div className="flex items-center gap-1.5 min-w-0">
             <span className={cn(
-              "text-sm truncate",
+              "text-sm truncate min-w-0",
               unread ? "font-semibold text-foreground" : "font-medium text-foreground"
             )}>
               {displayName}
@@ -87,7 +87,7 @@ export const ChatListItem: React.FC<ChatListItemProps> = ({
             {/* Source type badge */}
             {sourceType && (
               <span className={cn(
-                "shrink-0 px-1.5 py-0.5 text-[9px] font-medium border uppercase tracking-wider",
+                "shrink-0 px-1 py-0.5 text-[8px] font-medium border uppercase tracking-wider whitespace-nowrap",
                 sourceType.color
               )}>
                 {sourceType.label}

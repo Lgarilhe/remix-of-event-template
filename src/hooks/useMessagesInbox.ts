@@ -986,16 +986,28 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
 
         const freshChats = data.chats as Chat[] || [];
         setChats(prev => {
-          // Only update if something changed (compare first chat timestamps + count)
-          if (prev.length !== freshChats.length) return freshChats;
-          const prevFirst = prev[0];
-          const freshFirst = freshChats[0];
-          if (prevFirst?.id !== freshFirst?.id || prevFirst?.timestamp !== freshFirst?.timestamp) return freshChats;
-          // Check unread counts changed
-          const prevUnread = prev.reduce((a, c) => a + getUnreadCount(c), 0);
-          const freshUnread = freshChats.reduce((a, c) => a + getUnreadCount(c), 0);
-          if (prevUnread !== freshUnread) return freshChats;
-          return prev;
+          // Merge fresh first-page with any extra-loaded chats beyond the first page
+          const freshIds = new Set(freshChats.map(c => c.id));
+          const extraChats = prev.filter(c => !freshIds.has(c.id));
+          if (extraChats.length === 0) {
+            // No extra loaded chats — only update if something changed
+            if (prev.length !== freshChats.length) return freshChats;
+            const prevFirst = prev[0];
+            const freshFirst = freshChats[0];
+            if (prevFirst?.id !== freshFirst?.id || prevFirst?.timestamp !== freshFirst?.timestamp) return freshChats;
+            const prevUnread = prev.reduce((a, c) => a + getUnreadCount(c), 0);
+            const freshUnread = freshChats.reduce((a, c) => a + getUnreadCount(c), 0);
+            if (prevUnread !== freshUnread) return freshChats;
+            return prev;
+          }
+          // Merge: fresh first page + extra loaded chats, sorted by timestamp
+          const merged = [...freshChats, ...extraChats];
+          merged.sort((a, b) => {
+            const timeA = new Date(a.timestamp || '').getTime();
+            const timeB = new Date(b.timestamp || '').getTime();
+            return timeB - timeA;
+          });
+          return merged;
         });
       } catch {
         // Silently ignore polling errors
