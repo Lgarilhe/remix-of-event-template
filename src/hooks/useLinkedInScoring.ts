@@ -303,6 +303,7 @@ export function buildProfileData(profile: LinkedInProfile) {
     : parseInt(String(profile.network_distance).replace('DISTANCE_', '').replace('FIRST_DEGREE', '1').replace('SECOND_DEGREE', '2').replace('THIRD_DEGREE', '3'), 10) || null;
 
   return {
+    id: profile.id || profile.provider_id || profile.public_identifier || profile.member_urn || `${profile.first_name}_${profile.last_name}`.toLowerCase(),
     name: profile.name || `${profile.first_name || ''} ${profile.last_name || ''}`.trim(),
     headline: profile.headline,
     currentRole: currentJob?.role || currentJob?.position,
