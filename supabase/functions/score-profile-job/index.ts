@@ -923,7 +923,7 @@ async function maybeEnrichProfile(
       resolvedId = resolvedId.replace(/\/+$/, "").split("/").pop() || resolvedId;
     }
 
-    const sectionsParams = ["experience_preview", "about", "skills_preview"]
+    const sectionsParams = ["experience", "about", "skills"]
       .map(s => `linkedin_sections=${encodeURIComponent(s)}`)
       .join("&");
     const response = await fetch(
@@ -976,9 +976,29 @@ async function maybeEnrichProfile(
         };
       });
 
-      profile.workExperience = enrichedMapped;
+      // Merge: enrich existing experiences with descriptions/skills from API, then append new ones
+      const existingExps = profile.workExperience || [];
+      for (const enriched of enrichedMapped) {
+        const match = existingExps.find((e: any) => 
+          e.company && enriched.company && 
+          e.company.toLowerCase().includes(enriched.company.toLowerCase().slice(0, 15)) &&
+          e.role && enriched.role &&
+          e.role.toLowerCase().includes(enriched.role.toLowerCase().slice(0, 15))
+        );
+        if (match) {
+          // Enrich existing entry with missing data
+          if (!match.description && enriched.description) match.description = enriched.description;
+          if ((!match.skills || match.skills.length === 0) && enriched.skills?.length > 0) match.skills = enriched.skills;
+          if (!match.duration && enriched.duration) match.duration = enriched.duration;
+        } else {
+          // New experience not in original data — append
+          existingExps.push(enriched);
+        }
+      }
+      profile.workExperience = existingExps;
+      const withDesc = existingExps.filter((e: any) => e.description && e.description.length > 30).length;
       console.info(
-        `[enrichment] SUCCESS ${profile.name}: enriched ${enrichedMapped.length} exp (${enrichedMapped.filter((e: any) => e.description && e.description.length > 30).length} with desc)`,
+        `[enrichment] SUCCESS ${profile.name}: merged ${enrichedMapped.length} enriched into ${existingExps.length} total exp (${withDesc} with desc)`,
       );
     }
 
