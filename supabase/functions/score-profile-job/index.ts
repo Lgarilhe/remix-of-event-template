@@ -965,8 +965,8 @@ async function maybeEnrichProfile(
       });
 
       profile.workExperience = enrichedMapped;
-      console.log(
-        `[enrichment] ✅ ${profile.name}: enriched ${enrichedMapped.length} exp (${enrichedMapped.filter((e: any) => e.description && e.description.length > 30).length} with desc)`,
+      console.info(
+        `[enrichment] SUCCESS ${profile.name}: enriched ${enrichedMapped.length} exp (${enrichedMapped.filter((e: any) => e.description && e.description.length > 30).length} with desc)`,
       );
     }
 
@@ -979,7 +979,7 @@ async function maybeEnrichProfile(
 
     return true;
   } catch (err) {
-    console.error(`[enrichment] ❌ Error for ${profile.name}:`, err);
+    console.error(`[enrichment] ERROR for ${profile.name}:`, err);
     return false;
   }
 }
@@ -1027,6 +1027,7 @@ async function scoreProfile(
       skipReason: hardFilter.reason,
     };
     await setCachedScore(supabase, candidateId, job.id, result);
+    return result;
   }
 
   // ─── Enrichment: after hard filter pass, before weighted scoring ──────────
