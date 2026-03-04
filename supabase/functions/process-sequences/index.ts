@@ -132,8 +132,8 @@ async function handleProcess(supabase: any, force = false) {
     // Smart batching: fetch more candidates, then split by action visibility
     // Non-visible actions (profile_visit, check_connection) = safe to batch aggressively
     // Visible actions (message, inmail, connection_request) = keep conservative
-    const INVISIBLE_ACTIONS = new Set(['profile_visit', 'check_connection']);
-    const MAX_INVISIBLE_PER_CYCLE = 4;
+    const INVISIBLE_ACTIONS = new Set(['profile_visit', 'check_connection', 'wait_connection']);
+    const MAX_INVISIBLE_PER_CYCLE = 8;
     const MAX_VISIBLE_PER_CYCLE = 2;
     const FETCH_LIMIT = 12; // Overfetch to compensate for dedup, skips, quota blocks
 
