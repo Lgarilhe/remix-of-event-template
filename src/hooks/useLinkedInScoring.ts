@@ -199,9 +199,15 @@ interface ScoringOptions {
 
 // Build enriched profile data for scoring
 export function buildProfileData(profile: LinkedInProfile) {
-  const workExperience = profile.work_experience || [];
-  const currentJob = workExperience.find(exp => !exp.end) || workExperience[0];
-  const pastJobs = workExperience.filter(exp => exp.end).slice(0, 5);
+  // Merge work_experience with current_positions/past_positions fallback
+  let workExperience = profile.work_experience || [];
+  if (workExperience.length === 0) {
+    const currentPositions = (profile.current_positions || []).map(p => ({ ...p, current: true }));
+    const pastPositions = (profile.past_positions || []).map(p => ({ ...p, current: false }));
+    workExperience = [...currentPositions, ...pastPositions];
+  }
+  const currentJob = workExperience.find(exp => !exp.end || exp.current) || workExperience[0];
+  const pastJobs = workExperience.filter(exp => exp.end && !exp.current).slice(0, 5);
   const education = profile.education || [];
 
   // Calculate years of experience from diploma, with work experience fallback
@@ -216,7 +222,7 @@ export function buildProfileData(profile: LinkedInProfile) {
 
     const relevantEdu = education
       .filter((edu: any) => {
-        if (!edu.end?.year) return false;
+        if (!getYear(edu.end)) return false;
         const combined = `${edu.degree || ''} ${edu.school || ''} ${edu.field_of_study || ''}`.toLowerCase();
         return relevantDegreeKeywords.some(kw => combined.includes(kw));
       })
