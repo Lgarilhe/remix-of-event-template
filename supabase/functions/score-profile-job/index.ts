@@ -405,10 +405,15 @@ async function evaluateMustHaveWithAI(
       : "Formation: non renseignée",
     profile.yearsOfExperience !== undefined ? `XP: ${profile.yearsOfExperience} ans` : "",
     (profile.workExperience || []).length > 0
-      ? `Expériences: ${profile
-          .workExperience!.slice(0, 5)
-          .map((w) => `${w.role} @ ${w.company}`)
-          .join(", ")}`
+      ? `Expériences:\n${profile
+          .workExperience!
+          .map((w) => {
+            let line = `- ${w.role} @ ${w.company}`;
+            if (w.duration) line += ` (${w.duration})`;
+            if (w.description) line += ` — ${w.description.substring(0, 200)}`;
+            return line;
+          })
+          .join("\n")}`
       : "",
   ]
     .filter(Boolean)
@@ -681,16 +686,14 @@ async function callLLM(
 
   const workExpText =
     (profile.workExperience || [])
-      .slice(0, 3)
       .map((w) => {
         let line = `- ${w.role} @ ${w.company}`;
         if (w.duration) line += ` (${w.duration})`;
-        if (w.description) line += ` | ${w.description.substring(0, 100)}`;
+        if (w.description) line += ` — ${w.description.substring(0, 300)}`;
         return line;
       })
       .join("\n") ||
     (profile.pastPositions || [])
-      .slice(0, 3)
       .map((p) => `- ${p}`)
       .join("\n") ||
     "N/A";

@@ -287,17 +287,16 @@ export function buildProfileData(profile: LinkedInProfile) {
     return Math.round(totalMonths / positionsWithDates.length);
   };
 
-  // Build enriched work experience
-  const recentPositions = workExperience.slice(0, 3);
-  const enrichedWorkExperience = recentPositions.map(exp => {
+  // Build enriched work experience — send ALL positions for accurate scoring
+  const enrichedWorkExperience = workExperience.map(exp => {
     const durationMonths = calculateDurationMonths(exp.start, exp.end);
     return {
       role: exp.role || exp.position || '',
       company: exp.company || '',
       duration: durationMonths > 0 ? formatDuration(durationMonths) : undefined,
       durationMonths,
-      description: exp.description?.slice(0, 200) || undefined,
-      skills: exp.skills?.slice(0, 5).map(s => s.name || String(s)) || undefined,
+      description: exp.description?.slice(0, 500) || undefined,
+      skills: exp.skills?.slice(0, 8).map(s => s.name || String(s)) || undefined,
     };
   });
 
