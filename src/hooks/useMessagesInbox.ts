@@ -400,7 +400,7 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
 
     setLoadingAllChats(true);
     let currentCursors = { ...chatCursors };
-    let totalLoaded = 0;
+    const allNewChats: Chat[] = [];
 
     try {
       while (Object.values(currentCursors).some(c => c !== null)) {
@@ -416,19 +416,7 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
         if (!data?.success) break;
 
         const newChats = data.chats as Chat[] || [];
-        totalLoaded += newChats.length;
-
-        setChats(prev => {
-          const existingIds = new Set(prev.map(c => c.id));
-          const uniqueNew = newChats.filter(c => !existingIds.has(c.id));
-          const merged = [...prev, ...uniqueNew];
-          merged.sort((a, b) => {
-            const timeA = new Date(a.timestamp || '').getTime();
-            const timeB = new Date(b.timestamp || '').getTime();
-            return timeB - timeA;
-          });
-          return merged;
-        });
+        allNewChats.push(...newChats);
 
         if (data.cursors) {
           currentCursors = data.cursors as Record<string, string | null>;
@@ -439,10 +427,25 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
         if (newChats.length === 0) break;
       }
 
+      // Single state update with all accumulated chats
+      if (allNewChats.length > 0) {
+        setChats(prev => {
+          const existingIds = new Set(prev.map(c => c.id));
+          const uniqueNew = allNewChats.filter(c => !existingIds.has(c.id));
+          const merged = [...prev, ...uniqueNew];
+          merged.sort((a, b) => {
+            const timeA = new Date(a.timestamp || '').getTime();
+            const timeB = new Date(b.timestamp || '').getTime();
+            return timeB - timeA;
+          });
+          return merged;
+        });
+      }
+
       setChatCursors(currentCursors);
       setHasMoreChats(Object.values(currentCursors).some(c => c !== null));
-      if (totalLoaded > 0) {
-        toast.success(`${totalLoaded} conversations supplémentaires chargées`);
+      if (allNewChats.length > 0) {
+        toast.success(`${allNewChats.length} conversations supplémentaires chargées`);
       }
     } catch (error) {
       console.error('Error loading all chats:', error);
