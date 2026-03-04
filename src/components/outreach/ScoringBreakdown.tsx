@@ -1,8 +1,8 @@
 import React from 'react';
-import { ScoringDetails, JobMatchResult, ScoringDimensions } from './JobScoreDisplay';
+import { type JobMatchResult, type ScoringDimensions } from './JobScoreDisplay';
 import {
   CheckCircle2, XCircle, AlertTriangle, Shield, MapPin, Briefcase,
-  GraduationCap, Clock, Radio, FileWarning, UserX, Heart, BarChart3,
+  GraduationCap, Clock, Radio, FileWarning, UserX, BarChart3,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -10,7 +10,7 @@ interface ScoringBreakdownProps {
   result: JobMatchResult;
 }
 
-// ── Criterion Row (brutal) ──
+// ── Criterion Row (monochrome brutal) ──
 const CriterionRow: React.FC<{
   icon: React.ElementType;
   label: string;
@@ -18,39 +18,30 @@ const CriterionRow: React.FC<{
   status: 'good' | 'warning' | 'bad' | 'neutral';
   detail?: string | null;
 }> = ({ icon: Icon, label, value, status, detail }) => {
-  const statusStyles = {
-    good: 'bg-brutal-accent/10 border-brutal-accent/40 text-foreground',
-    warning: 'bg-amber-50 border-amber-300 text-amber-800',
-    bad: 'bg-red-50 border-red-300 text-red-700',
-    neutral: 'bg-muted/30 border-foreground/10 text-muted-foreground',
-  };
-
-  const iconStyles = {
-    good: 'text-foreground',
-    warning: 'text-amber-600',
-    bad: 'text-red-500',
-    neutral: 'text-muted-foreground',
+  const badgeStyle = {
+    good: 'bg-brutal-accent/15 border-brutal-accent/40 text-foreground',
+    warning: 'bg-muted border-foreground/20 text-foreground',
+    bad: 'bg-foreground text-background border-foreground',
+    neutral: 'bg-muted/50 border-foreground/10 text-muted-foreground',
   };
 
   return (
     <div className="flex items-start gap-2.5 p-2.5 border border-foreground/10 bg-background hover:bg-muted/10 transition-colors rounded-none">
-      <Icon className={cn('w-4 h-4 mt-0.5 shrink-0', iconStyles[status])} />
+      <Icon className="w-4 h-4 mt-0.5 shrink-0 text-foreground/60" />
       <div className="flex-1 min-w-0">
         <div className="flex items-center justify-between gap-2">
           <span className="text-[10px] font-bold text-foreground uppercase tracking-widest">{label}</span>
-          <span className={cn('text-[10px] font-bold px-2 py-0.5 border rounded-none', statusStyles[status])}>
+          <span className={cn('text-[10px] font-bold px-2 py-0.5 border rounded-none', badgeStyle[status])}>
             {value}
           </span>
         </div>
-        {detail && (
-          <p className="text-[11px] text-muted-foreground mt-1 leading-relaxed">{detail}</p>
-        )}
+        {detail && <p className="text-[11px] text-muted-foreground mt-1 leading-relaxed">{detail}</p>}
       </div>
     </div>
   );
 };
 
-// ── Helpers ──
+
 function seniorityStatus(val?: string): { value: string; status: 'good' | 'warning' | 'bad' | 'neutral' } {
   if (!val) return { value: '—', status: 'neutral' };
   const v = val.toUpperCase();
@@ -84,7 +75,7 @@ function diplomaStatus(val?: string): { value: string; status: 'good' | 'warning
   return { value: val, status: 'neutral' };
 }
 
-// ── Dimensions Breakdown (brutal bars) ──
+// ── Dimensions Breakdown (monochrome with brutal-accent bars) ──
 const DIMENSION_LABELS: Record<string, string> = {
   tech_stack: 'Tech Stack',
   seniority: 'Séniorité',
@@ -109,11 +100,8 @@ const DimensionsBreakdown: React.FC<{ dimensions: ScoringDimensions; finalScore:
             <span className="w-24 text-muted-foreground font-medium truncate">{DIMENSION_LABELS[key] || key}</span>
             <div className="flex-1 h-2.5 bg-muted/40 overflow-hidden rounded-none border border-foreground/5">
               <div
-                className={cn(
-                  'h-full transition-all duration-500',
-                  dim.score >= 70 ? 'bg-brutal-accent' : dim.score >= 40 ? 'bg-amber-400' : 'bg-red-400'
-                )}
-                style={{ width: `${dim.score}%` }}
+                className="h-full transition-all duration-500 bg-brutal-accent"
+                style={{ width: `${dim.score}%`, opacity: dim.score >= 50 ? 1 : 0.5 }}
               />
             </div>
             <span className="w-12 text-right tabular-nums font-bold text-foreground">{dim.score}/100</span>
@@ -153,10 +141,8 @@ export const ScoringBreakdown: React.FC<ScoringBreakdownProps> = ({ result }) =>
 
   return (
     <div className="space-y-4">
-      {/* ── Dimensions Breakdown (v2) ── */}
       {result.dimensions && <DimensionsBreakdown dimensions={result.dimensions} finalScore={result.match_score} />}
 
-      {/* ── Criteria Grid ── */}
       <div>
         <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-2 flex items-center gap-1.5">
           <Shield className="w-3 h-3" />
@@ -179,17 +165,16 @@ export const ScoringBreakdown: React.FC<ScoringBreakdownProps> = ({ result }) =>
         </div>
       </div>
 
-      {/* ── Strengths & Concerns ── */}
       {(strengths.length > 0 || concerns.length > 0) && (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           {strengths.length > 0 && (
             <div className="space-y-1.5">
               <p className="text-[10px] font-bold uppercase tracking-widest text-foreground flex items-center gap-1">
-                <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                <CheckCircle2 className="w-3 h-3" />
                 Points forts ({strengths.length})
               </p>
               {strengths.map((s, i) => (
-                <div key={i} className="flex items-start gap-2 text-[11px] text-foreground/80 bg-brutal-accent/10 px-2.5 py-1.5 border border-brutal-accent/30 rounded-none">
+                <div key={i} className="flex items-start gap-2 text-[11px] text-foreground/80 bg-brutal-accent/10 px-2.5 py-1.5 border border-brutal-accent/20 rounded-none">
                   <span className="text-foreground mt-0.5 shrink-0">✓</span>
                   <span>{s}</span>
                 </div>
@@ -199,12 +184,12 @@ export const ScoringBreakdown: React.FC<ScoringBreakdownProps> = ({ result }) =>
           {concerns.length > 0 && (
             <div className="space-y-1.5">
               <p className="text-[10px] font-bold uppercase tracking-widest text-foreground flex items-center gap-1">
-                <AlertTriangle className="w-3 h-3 text-amber-600" />
+                <AlertTriangle className="w-3 h-3" />
                 Points d'attention ({concerns.length})
               </p>
               {concerns.map((c, i) => (
                 <div key={i} className="flex items-start gap-2 text-[11px] text-foreground/80 bg-muted/30 px-2.5 py-1.5 border border-foreground/10 rounded-none">
-                  <span className="text-amber-500 mt-0.5 shrink-0">!</span>
+                  <span className="text-foreground/50 mt-0.5 shrink-0">!</span>
                   <span>{c}</span>
                 </div>
               ))}
@@ -213,9 +198,8 @@ export const ScoringBreakdown: React.FC<ScoringBreakdownProps> = ({ result }) =>
         </div>
       )}
 
-      {/* ── Skip Reason ── */}
       {details.skipReason && (
-        <div className="flex items-start gap-2 text-xs text-red-600 bg-red-50/50 px-3 py-2 border border-red-300 rounded-none">
+        <div className="flex items-start gap-2 text-xs text-foreground bg-foreground/5 px-3 py-2 border border-foreground/20 rounded-none">
           <XCircle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
           <span className="font-bold uppercase tracking-wider text-[10px]">{details.skipReason}</span>
         </div>
