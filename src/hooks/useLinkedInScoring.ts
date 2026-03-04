@@ -203,7 +203,7 @@ export function buildProfileData(profile: LinkedInProfile) {
   const pastJobs = workExperience.filter(exp => exp.end).slice(0, 5);
   const education = profile.education || [];
 
-  // Calculate years of experience from diploma
+  // Calculate years of experience from diploma, with work experience fallback
   const calculateYearsFromDiploma = () => {
     const relevantDegreeKeywords = [
       'bachelor', 'licence', 'bac+3',
@@ -223,9 +223,27 @@ export function buildProfileData(profile: LinkedInProfile) {
 
     const diplomaToUse = relevantEdu[0] || education.filter((edu: any) => edu.end?.year).sort((a: any, b: any) => (b.end?.year || 0) - (a.end?.year || 0))[0];
 
-    if (!diplomaToUse?.end?.year) return null;
-    const years = new Date().getFullYear() - diplomaToUse.end.year;
-    return years > 0 ? years : null;
+    if (diplomaToUse?.end?.year) {
+      const years = new Date().getFullYear() - diplomaToUse.end.year;
+      if (years > 0) return years;
+    }
+
+    // Fallback: use earliest work experience start date
+    let earliestYear: number | null = null;
+    for (const exp of workExperience) {
+      const startYear = exp.start?.year;
+      if (startYear && startYear > 1970) {
+        if (!earliestYear || startYear < earliestYear) {
+          earliestYear = startYear;
+        }
+      }
+    }
+    if (earliestYear) {
+      const years = new Date().getFullYear() - earliestYear;
+      return years > 0 ? years : null;
+    }
+
+    return null;
   };
 
   // Calculate duration in months
