@@ -1,8 +1,8 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
+import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
+import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 
 const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Origin": "*", // TODO: restreindre à ton domaine Lovable en prod
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
@@ -18,6 +18,7 @@ interface WorkExperienceItem {
 }
 
 interface ProfileData {
+  id: string; // IMPORTANT: UUID stable depuis ta table candidates
   name: string;
   headline?: string;
   currentRole?: string;
@@ -92,7 +93,6 @@ interface ScoringResult {
   matchedSkills?: string[];
   matchedSkillCount?: number;
   totalRequiredSkills?: number;
-  // v2 fields
   hardFilterPassed: boolean;
   hardFilterKO?: string;
   weightedCriteriaScore: number;
@@ -101,264 +101,272 @@ interface ScoringResult {
   finalScore: number;
   confidenceScore: number;
   dimensions: Record<string, DimensionScore>;
-  dataCompleteness: 'full' | 'partial' | 'minimal';
+  dataCompleteness: "full" | "partial" | "minimal";
   missingDataPoints: string[];
   skippedLLM: boolean;
   processingTimeMs: number;
   tokensUsed: { input: number; output: number } | null;
 }
 
+// ─── Constants ───────────────────────────────────────────────────────────────
+
+const CLAUDE_MODEL = "claude-sonnet-4-20250514";
+const BATCH_SIZE = 5;
+const DELAY_BETWEEN_BATCHES_MS = 200;
+const CACHE_TTL_MS = 48 * 60 * 60 * 1000; // 48h
+const MAX_LLM_RETRIES = 2;
+
 // ─── Skill Synonyms ─────────────────────────────────────────────────────────
 
 const SKILL_SYNONYMS: Record<string, string[]> = {
-  'kubernetes': ['k8s', 'kube', 'container orchestration'],
-  'javascript': ['js', 'ecmascript', 'es6', 'es2015'],
-  'typescript': ['ts'],
-  'python': ['py', 'python3'],
-  'react': ['reactjs', 'react.js'],
-  'vue': ['vuejs', 'vue.js'],
-  'angular': ['angularjs', 'angular.js'],
-  'node': ['nodejs', 'node.js'],
-  'postgres': ['postgresql', 'psql', 'pg'],
-  'mongodb': ['mongo'],
-  'redis': ['redis cache'],
-  'elasticsearch': ['elastic', 'es'],
-  'docker': ['containers', 'containerization'],
-  'aws': ['amazon web services', 'amazon aws'],
-  'gcp': ['google cloud', 'google cloud platform'],
-  'azure': ['microsoft azure'],
-  'ci/cd': ['cicd', 'continuous integration', 'continuous deployment', 'devops'],
-  'machine learning': ['ml', 'deep learning', 'ai'],
-  'api': ['rest api', 'restful', 'graphql'],
-  'agile': ['scrum', 'kanban'],
-  'sql': ['mysql', 'mariadb', 'sqlite'],
-  'java': ['jvm', 'spring', 'spring boot'],
-  'go': ['golang'],
-  'rust': ['rustlang'],
-  'terraform': ['iac', 'infrastructure as code'],
-  'kafka': ['event streaming', 'message queue'],
-  'rabbitmq': ['message broker', 'amqp'],
+  kubernetes: ["k8s", "kube", "container orchestration"],
+  javascript: ["js", "ecmascript", "es6", "es2015"],
+  typescript: ["ts"],
+  python: ["py", "python3"],
+  react: ["reactjs", "react.js"],
+  vue: ["vuejs", "vue.js"],
+  angular: ["angularjs", "angular.js"],
+  nodejs: ["node.js", "node js"],
+  postgres: ["postgresql", "psql"],
+  mongodb: ["mongo"],
+  redis: ["redis cache"],
+  elasticsearch: ["elastic search"],
+  docker: ["containers", "containerization"],
+  aws: ["amazon web services", "amazon aws"],
+  gcp: ["google cloud", "google cloud platform"],
+  azure: ["microsoft azure"],
+  "ci/cd": ["cicd", "continuous integration", "continuous deployment"],
+  "machine learning": ["ml", "deep learning"],
+  graphql: ["graph ql"],
+  "rest api": ["restful", "rest"],
+  agile: ["scrum", "kanban"],
+  mysql: ["mariadb"],
+  java: ["spring", "spring boot"],
+  golang: ["go lang"],
+  rust: ["rustlang"],
+  terraform: ["iac", "infrastructure as code"],
+  kafka: ["event streaming", "apache kafka"],
+  rabbitmq: ["message broker", "amqp"],
+  fastify: ["fastify.js"],
+  nextjs: ["next.js", "next js"],
+  nuxtjs: ["nuxt.js", "nuxt"],
+  tailwind: ["tailwindcss", "tailwind css"],
+  devops: ["dev ops", "sre"],
 };
+
+// Build a flat lookup: variant → canonical
+const VARIANT_TO_CANONICAL = new Map<string, string>();
+for (const [canonical, synonyms] of Object.entries(SKILL_SYNONYMS)) {
+  VARIANT_TO_CANONICAL.set(canonical, canonical);
+  for (const syn of synonyms) {
+    VARIANT_TO_CANONICAL.set(syn, canonical);
+  }
+}
 
 // ─── Utilities ───────────────────────────────────────────────────────────────
 
+/** Normalize a skill string to its canonical form */
+function normalizeSkill(skill: string): string {
+  const lower = skill.trim().toLowerCase();
+  return VARIANT_TO_CANONICAL.get(lower) ?? lower;
+}
+
+/** Word-boundary-safe skill matching */
 function skillsMatch(profileSkill: string, jobSkill: string): boolean {
-  if (profileSkill.includes(jobSkill) || jobSkill.includes(profileSkill)) return true;
-  for (const [canonical, synonyms] of Object.entries(SKILL_SYNONYMS)) {
-    const allVariants = [canonical, ...synonyms];
-    const pMatch = allVariants.some(v => profileSkill.includes(v) || v.includes(profileSkill));
-    const jMatch = allVariants.some(v => jobSkill.includes(v) || v.includes(jobSkill));
-    if (pMatch && jMatch) return true;
+  const pNorm = normalizeSkill(profileSkill);
+  const jNorm = normalizeSkill(jobSkill);
+
+  // Exact canonical match
+  if (pNorm === jNorm) return true;
+
+  // For skills >= 3 chars, allow word-boundary substring match
+  // This avoids false positives on short skills like "go", "r", "c"
+  if (pNorm.length >= 3 && jNorm.length >= 3) {
+    const pRegex = new RegExp(`\\b${escapeRegex(pNorm)}\\b`, "i");
+    const jRegex = new RegExp(`\\b${escapeRegex(jNorm)}\\b`, "i");
+    if (pRegex.test(jNorm) || jRegex.test(pNorm)) return true;
   }
+
   return false;
 }
 
-function computeSkillMatch(profileSkills: string[], jobSkills: string[]): { matched: string[]; missing: string[]; ratio: number } {
-  const matched = jobSkills.filter(js => profileSkills.some(ps => skillsMatch(ps, js)));
-  const missing = jobSkills.filter(js => !profileSkills.some(ps => skillsMatch(ps, js)));
-  return { matched, missing, ratio: jobSkills.length > 0 ? matched.length / jobSkills.length : 0 };
+function escapeRegex(str: string): string {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function computeSkillMatch(
+  profileSkills: string[],
+  jobSkills: string[],
+): { matched: string[]; missing: string[]; ratio: number } {
+  const matched = jobSkills.filter((js) => profileSkills.some((ps) => skillsMatch(ps, js)));
+  const missing = jobSkills.filter((js) => !profileSkills.some((ps) => skillsMatch(ps, js)));
+  return {
+    matched,
+    missing,
+    ratio: jobSkills.length > 0 ? matched.length / jobSkills.length : 0,
+  };
+}
+
+/** Extract implicit skills from headline and work experience descriptions */
+function extractImplicitSkills(profile: ProfileData): string[] {
+  const implicit: Set<string> = new Set();
+  const allText: string[] = [];
+
+  if (profile.headline) allText.push(profile.headline);
+  if (profile.summary) allText.push(profile.summary);
+  for (const exp of profile.workExperience ?? []) {
+    if (exp.description) allText.push(exp.description);
+    if (exp.role) allText.push(exp.role);
+    for (const s of exp.skills ?? []) implicit.add(s.toLowerCase());
+  }
+
+  const combined = allText.join(" ").toLowerCase();
+
+  // Check all known skills/synonyms against the text
+  for (const [canonical, synonyms] of Object.entries(SKILL_SYNONYMS)) {
+    const allVariants = [canonical, ...synonyms];
+    for (const variant of allVariants) {
+      if (variant.length >= 3) {
+        const regex = new RegExp(`\\b${escapeRegex(variant)}\\b`, "i");
+        if (regex.test(combined)) {
+          implicit.add(canonical);
+          break;
+        }
+      }
+    }
+  }
+
+  return [...implicit];
 }
 
 function sanitizeText(text: string | undefined | null): string {
-  if (!text) return '';
-  try {
-    const encoder = new TextEncoder();
-    const decoder = new TextDecoder();
-    return decoder.decode(encoder.encode(text));
-  } catch {
-    return text.replace(/[\uD800-\uDFFF]/g, '');
-  }
+  if (!text) return "";
+  // Remove isolated surrogate pairs and control characters
+  return text.replace(/[\uD800-\uDFFF]/g, "").replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, "");
 }
 
 function extractJsonRobust(raw: string): any {
-  let content = raw.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
-  const startIdx = content.indexOf('{');
+  let content = raw
+    .replace(/```json\s*/gi, "")
+    .replace(/```\s*/g, "")
+    .trim();
+  const startIdx = content.indexOf("{");
   if (startIdx === -1) throw new Error("No JSON found in response");
 
   let depth = 0;
   let endIdx = -1;
   for (let i = startIdx; i < content.length; i++) {
-    if (content[i] === '{') depth++;
-    else if (content[i] === '}') { depth--; if (depth === 0) { endIdx = i; break; } }
+    if (content[i] === "{") depth++;
+    else if (content[i] === "}") {
+      depth--;
+      if (depth === 0) {
+        endIdx = i;
+        break;
+      }
+    }
   }
 
   let jsonStr: string;
   if (endIdx !== -1) {
     jsonStr = content.substring(startIdx, endIdx + 1);
   } else {
+    // Attempt to repair truncated JSON
     jsonStr = content.substring(startIdx);
-    jsonStr = jsonStr.replace(/,\s*"[^"]*"?\s*:?\s*[^,}\]]*$/, '');
+    jsonStr = jsonStr.replace(/,\s*"[^"]*"?\s*:?\s*[^,}\]]*$/, "");
     const openBrackets = (jsonStr.match(/\[/g) || []).length - (jsonStr.match(/\]/g) || []).length;
-    for (let i = 0; i < openBrackets; i++) jsonStr += ']';
+    for (let i = 0; i < openBrackets; i++) jsonStr += "]";
     const openBraces = (jsonStr.match(/\{/g) || []).length - (jsonStr.match(/\}/g) || []).length;
-    for (let i = 0; i < openBraces; i++) jsonStr += '}';
+    for (let i = 0; i < openBraces; i++) jsonStr += "}";
   }
 
-  jsonStr = jsonStr.replace(/,\s*}/g, '}').replace(/,\s*]/g, ']').replace(/[\x00-\x1F\x7F]/g, '');
+  jsonStr = jsonStr
+    .replace(/,\s*}/g, "}")
+    .replace(/,\s*]/g, "]")
+    .replace(/[\x00-\x1F\x7F]/g, "");
+
   return JSON.parse(jsonStr);
 }
 
 function getRecommendation(score: number): string {
-  if (score >= 80) return 'STRONG_MATCH';
-  if (score >= 61) return 'GOOD_MATCH';
-  if (score >= 46) return 'POSSIBLE_MATCH';
-  if (score >= 31) return 'WEAK_MATCH';
-  return 'NO_MATCH';
+  if (score >= 80) return "STRONG_MATCH";
+  if (score >= 61) return "GOOD_MATCH";
+  if (score >= 46) return "POSSIBLE_MATCH";
+  if (score >= 31) return "WEAK_MATCH";
+  return "NO_MATCH";
 }
 
-// ─── Layer 1: Hard Filters (0 API call) ──────────────────────────────────────
-
-// ─── Must-Have Clause Parser ─────────────────────────────────────────────────
-// Parses mustHave text into structured clauses:
-// - "parmi : X, Y, Z" → OR clause (candidate needs at least one)
-// - "A, B" (simple list) → AND clause (candidate needs all)
-// Handles French patterns: "parmi", "dont", "ou", "among", "one of"
-
-interface MustHaveClause {
-  type: 'AND' | 'OR';
-  terms: string[];
-  originalText: string;
-}
-
-function parseMustHaveClauses(mustHave: string): MustHaveClause[] {
-  const clauses: MustHaveClause[] = [];
-  
-  // Split by newlines or periods to get separate requirements
-  const lines = mustHave.split(/[\n.]+/).map(l => l.trim()).filter(Boolean);
-  
-  for (const line of lines) {
-    const lower = line.toLowerCase();
-    
-    // Detect OR patterns: "parmi : X, Y, Z" or "X ou Y ou Z" or "among: X, Y"
-    const orPatterns = [
-      /parmi\s*[:：]\s*(.+)/i,
-      /(?:dont|including|among|one of)\s*[:：]?\s*(.+)/i,
-    ];
-    
-    let isOrClause = false;
-    let termsText = line;
-    
-    for (const pattern of orPatterns) {
-      const match = lower.match(pattern);
-      if (match) {
-        isOrClause = true;
-        termsText = match[1];
-        break;
-      }
-    }
-    
-    // Also detect "X ou Y ou Z" pattern
-    if (!isOrClause && /\bou\b/.test(lower)) {
-      const orTerms = termsText.split(/\s+ou\s+/i).map(t => t.trim()).filter(Boolean);
-      if (orTerms.length > 1) {
-        // Further split by comma within each or-term
-        const allTerms = orTerms.flatMap(t => t.split(/[,;]+/).map(s => s.trim())).filter(Boolean);
-        clauses.push({ type: 'OR', terms: allTerms.map(t => t.toLowerCase()), originalText: line });
-        continue;
-      }
-    }
-    
-    // Split remaining text by comma/semicolon
-    const terms = termsText.split(/[,;]+/).map(t => t.trim().toLowerCase()).filter(Boolean);
-    
-    if (isOrClause) {
-      clauses.push({ type: 'OR', terms, originalText: line });
-    } else {
-      // Each term is an individual AND requirement
-      for (const term of terms) {
-        clauses.push({ type: 'AND', terms: [term], originalText: term });
-      }
-    }
-  }
-  
-  return clauses;
-}
-
-async function evaluateMustHaveWithAI(profile: ProfileData, job: JobData): Promise<{ passed: boolean; reason?: string }> {
-  const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
-  if (!ANTHROPIC_API_KEY) {
-    console.warn("[must-have-ai] No ANTHROPIC_API_KEY, skipping must-have check");
-    return { passed: true };
-  }
-
-  // Build compact profile summary for the AI
-  const educationEntries = (profile.education || []).map((e: any) => {
-    if (typeof e === 'string') return e;
-    return [e.school, e.school_details?.name, e.degree, e.field, e.field_of_study]
-      .filter(Boolean).join(' - ');
-  }).filter(Boolean);
-
-  const profileSummary = [
-    `Nom: ${profile.name}`,
-    profile.headline ? `Headline: ${profile.headline}` : '',
-    profile.currentRole ? `Poste actuel: ${profile.currentRole}` : '',
-    profile.currentCompany ? `Entreprise: ${profile.currentCompany}` : '',
-    (profile.skills || []).length > 0 ? `Skills: ${profile.skills!.join(', ')}` : '',
-    educationEntries.length > 0 
-      ? `Formations (TOUTES les écoles/diplômes du candidat):\n${educationEntries.map((e, i) => `  ${i+1}. ${e}`).join('\n')}`
-      : 'Formation: non renseignée',
-    profile.yearsOfExperience !== undefined ? `XP: ${profile.yearsOfExperience} ans` : '',
-    (profile.workExperience || []).length > 0 
-      ? `Expériences: ${profile.workExperience!.slice(0, 5).map(w => `${w.role} @ ${w.company}`).join(', ')}`
-      : '',
-  ].filter(Boolean).join('\n');
-
-  const prompt = `Tu es un recruteur expert. Vérifie si ce candidat satisfait les critères OBLIGATOIRES (must-have) du poste.
-
-CRITÈRES OBLIGATOIRES:
-${job.mustHave}
-
-PROFIL CANDIDAT:
-${profileSummary}
-
-RÈGLES:
-- Si les critères listent plusieurs écoles/formations avec "parmi", "ou", "dont", le candidat doit en avoir AU MOINS UNE.
-- IMPORTANT: Vérifie TOUTES les formations listées dans le profil, pas juste la première. Un candidat peut avoir fait un master dans une école et un bachelor dans une autre.
-- Sois intelligent sur les noms d'écoles : "École Polytechnique", "Polytechnique", "X" sont la même école. "CentraleSupélec" = "Centrale" = "Supélec". "Université Paris-Saclay" n'est PAS Polytechnique.
-- Pour les skills techniques, accepte les synonymes évidents (React = ReactJS, K8s = Kubernetes, etc.)
-- Sois strict mais juste : ne refuse pas un candidat pour une raison farfelue.
-
-Réponds UNIQUEMENT avec un JSON:
-{"passed": true/false, "reason": "explication courte si refusé, null si accepté"}`;
-
-  try {
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'x-api-key': ANTHROPIC_API_KEY,
-        'anthropic-version': '2023-06-01',
-        'content-type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 150,
-        messages: [{ role: 'user', content: prompt }],
-      }),
-    });
-
-    if (!res.ok) {
-      console.error(`[must-have-ai] Anthropic error ${res.status}: ${await res.text()}`);
-      // Fallback: pass the filter (don't block candidates on API errors)
-      return { passed: true };
-    }
-
-    const data = await res.json();
-    const text = data.content?.[0]?.text || '';
-    console.log(`[must-have-ai] ${profile.name}: ${text}`);
-
-    const parsed = extractJsonRobust(text);
-    return { 
-      passed: !!parsed.passed, 
-      reason: parsed.passed ? undefined : (parsed.reason || 'Must-have non satisfait (IA)') 
-    };
-  } catch (err) {
-    console.error(`[must-have-ai] Error:`, err);
-    return { passed: true }; // Don't block on errors
-  }
-}
+// ─── Layer 1: Hard Filters (cheapest first, AI last) ─────────────────────────
 
 async function applyHardFilters(profile: ProfileData, job: JobData): Promise<{ passed: boolean; reason?: string }> {
-  // 1. Must-have check via AI (intelligent matching for schools, skills, etc.)
+  // 1. Minimum experience check (FREE — no API call)
+  if (job.xpMin && profile.yearsOfExperience !== undefined) {
+    if (profile.yearsOfExperience < job.xpMin * 0.6) {
+      return {
+        passed: false,
+        reason: `XP insuffisante: ${profile.yearsOfExperience}ans vs ${job.xpMin}ans min requis`,
+      };
+    }
+  }
+
+  // 2. Gross seniority mismatch (FREE)
+  if (job.seniority && profile.headline) {
+    const headline = profile.headline.toLowerCase();
+    const jobSeniority = job.seniority.toLowerCase();
+    const seniorRoles = ["director", "vp", "vice president", "head of", "c-level", "cto", "coo", "ceo"];
+    const juniorRoles = ["junior", "intern", "stagiaire", "alternant", "apprenti", "student"];
+
+    const isJobSenior = seniorRoles.some((r) => jobSeniority.includes(r));
+    const isProfileJunior = juniorRoles.some((r) => headline.includes(r));
+    const isJobJunior = juniorRoles.some((r) => jobSeniority.includes(r));
+    const isProfileSenior = seniorRoles.some((r) => headline.includes(r));
+
+    if (isJobSenior && isProfileJunior) {
+      return { passed: false, reason: `Mismatch séniorité: profil junior vs poste ${job.seniority}` };
+    }
+    if (isJobJunior && isProfileSenior) {
+      return { passed: false, reason: `Mismatch séniorité: profil senior vs poste junior` };
+    }
+  }
+
+  // 3. Location hard filter for on-site roles (FREE)
+  if (job.location && job.remote && !["full", "full remote", "remote"].includes(job.remote.toLowerCase())) {
+    if (profile.location) {
+      const jobLoc = job.location.toLowerCase();
+      const profLoc = profile.location.toLowerCase();
+      const frenchCities = [
+        "france",
+        "paris",
+        "lyon",
+        "marseille",
+        "toulouse",
+        "nantes",
+        "bordeaux",
+        "lille",
+        "strasbourg",
+        "courbevoie",
+        "la défense",
+      ];
+      const foreignSignals = [
+        "united states",
+        "usa",
+        "uk",
+        "united kingdom",
+        "germany",
+        "spain",
+        "india",
+        "canada",
+        "australia",
+        "brazil",
+      ];
+      const jobInFrance = frenchCities.some((s) => jobLoc.includes(s));
+      const profileAbroad = foreignSignals.some((s) => profLoc.includes(s));
+      if (jobInFrance && profileAbroad) {
+        return { passed: false, reason: `Localisation incompatible: ${profile.location} vs ${job.location} (on-site)` };
+      }
+    }
+  }
+
+  // 4. Must-have check via AI (LAST — costs tokens, only if other filters passed)
   if (job.mustHave && job.mustHave.trim().length > 0) {
     const mustHaveResult = await evaluateMustHaveWithAI(profile, job);
     if (!mustHaveResult.passed) {
@@ -366,74 +374,137 @@ async function applyHardFilters(profile: ProfileData, job: JobData): Promise<{ p
     }
   }
 
-  // 2. Minimum experience check
-  if (job.xpMin && profile.yearsOfExperience !== undefined) {
-    if (profile.yearsOfExperience < job.xpMin * 0.6) {
-      return { passed: false, reason: `XP insuffisante: ${profile.yearsOfExperience}ans vs ${job.xpMin}ans min requis` };
-    }
-  }
-
-  // 3. Gross seniority mismatch
-  if (job.seniority && profile.headline) {
-    const headline = profile.headline.toLowerCase();
-    const jobSeniority = job.seniority.toLowerCase();
-    const seniorRoles = ['director', 'vp', 'vice president', 'head of', 'c-level', 'cto', 'coo', 'ceo'];
-    const juniorRoles = ['junior', 'intern', 'stagiaire', 'alternant', 'apprenti', 'student'];
-
-    const isJobSenior = seniorRoles.some(r => jobSeniority.includes(r));
-    const isProfileJunior = juniorRoles.some(r => headline.includes(r));
-    const isJobJunior = juniorRoles.some(r => jobSeniority.includes(r));
-    const isProfileSenior = seniorRoles.some(r => headline.includes(r));
-
-    if (isJobSenior && isProfileJunior) {
-      return { passed: false, reason: `Mismatch séniorité: profil junior vs poste ${job.seniority}` };
-    }
-    if (isJobJunior && isProfileSenior) {
-      return { passed: false, reason: `Mismatch séniorité: profil ${profile.headline} vs poste junior` };
-    }
-  }
-
-  // 4. Location hard filter for on-site roles
-  if (job.location && job.remote && !['full', 'full remote', 'remote'].includes(job.remote.toLowerCase())) {
-    if (profile.location) {
-      const jobLoc = job.location.toLowerCase();
-      const profLoc = profile.location.toLowerCase();
-      const jobCountrySignals = ['france', 'paris', 'lyon', 'marseille', 'toulouse', 'nantes', 'bordeaux', 'lille', 'strasbourg'];
-      const foreignSignals = ['united states', 'usa', 'uk', 'united kingdom', 'germany', 'spain', 'india', 'canada', 'australia', 'brazil'];
-      const jobInFrance = jobCountrySignals.some(s => jobLoc.includes(s));
-      const profileAbroad = foreignSignals.some(s => profLoc.includes(s));
-      if (jobInFrance && profileAbroad) {
-        return { passed: false, reason: `Localisation incompatible: ${profile.location} vs ${job.location} (on-site)` };
-      }
-    }
-  }
-
   return { passed: true };
 }
 
-// ─── Layer 2: Weighted Criteria Scoring (algorithmic) ────────────────────────
+async function evaluateMustHaveWithAI(
+  profile: ProfileData,
+  job: JobData,
+): Promise<{ passed: boolean; reason?: string }> {
+  const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
+  if (!ANTHROPIC_API_KEY) {
+    console.warn("[must-have-ai] No ANTHROPIC_API_KEY, skipping must-have check");
+    return { passed: true };
+  }
 
-function computeWeightedScore(profile: ProfileData, job: JobData): {
+  const educationEntries = (profile.education || [])
+    .map((e: any) => {
+      if (typeof e === "string") return e;
+      return [e.school, e.school_details?.name, e.degree, e.field, e.field_of_study].filter(Boolean).join(" - ");
+    })
+    .filter(Boolean);
+
+  const profileSummary = [
+    `Nom: ${profile.name}`,
+    profile.headline ? `Headline: ${profile.headline}` : "",
+    profile.currentRole ? `Poste actuel: ${profile.currentRole}` : "",
+    profile.currentCompany ? `Entreprise: ${profile.currentCompany}` : "",
+    (profile.skills || []).length > 0 ? `Skills: ${profile.skills!.join(", ")}` : "",
+    educationEntries.length > 0
+      ? `Formations:\n${educationEntries.map((e, i) => `  ${i + 1}. ${e}`).join("\n")}`
+      : "Formation: non renseignée",
+    profile.yearsOfExperience !== undefined ? `XP: ${profile.yearsOfExperience} ans` : "",
+    (profile.workExperience || []).length > 0
+      ? `Expériences: ${profile
+          .workExperience!.slice(0, 5)
+          .map((w) => `${w.role} @ ${w.company}`)
+          .join(", ")}`
+      : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  const prompt = sanitizeText(
+    `Tu es un recruteur expert. Vérifie si ce candidat satisfait les critères OBLIGATOIRES (must-have) du poste.
+
+CRITÈRES OBLIGATOIRES: ${job.mustHave}
+
+PROFIL CANDIDAT:
+${profileSummary}
+
+RÈGLES:
+- Si les critères listent plusieurs écoles/formations avec "parmi", "ou", "dont", le candidat doit en avoir AU MOINS UNE.
+- Vérifie TOUTES les formations listées dans le profil.
+- Sois intelligent sur les noms d'écoles : "École Polytechnique" = "Polytechnique" = "X". "CentraleSupélec" = "Centrale" = "Supélec".
+- Pour les skills techniques, accepte les synonymes évidents (React = ReactJS, K8s = Kubernetes, etc.)
+- Sois strict mais juste.
+
+Réponds UNIQUEMENT avec un JSON: {"passed": true/false, "reason": "explication courte si refusé, null si accepté"}`,
+  );
+
+  try {
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "x-api-key": ANTHROPIC_API_KEY,
+        "anthropic-version": "2023-06-01",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        model: CLAUDE_MODEL,
+        max_tokens: 150,
+        messages: [{ role: "user", content: prompt }],
+      }),
+    });
+
+    if (!res.ok) {
+      console.error(`[must-have-ai] Anthropic error ${res.status}`);
+      return { passed: true }; // Don't block on API errors
+    }
+
+    const data = await res.json();
+    const text = data.content?.[0]?.text || "";
+    console.log(`[must-have-ai] ${profile.name}: ${text.substring(0, 200)}`);
+
+    const parsed = extractJsonRobust(text);
+    return {
+      passed: !!parsed.passed,
+      reason: parsed.passed ? undefined : parsed.reason || "Must-have non satisfait (IA)",
+    };
+  } catch (err) {
+    console.error("[must-have-ai] Error:", err);
+    return { passed: true };
+  }
+}
+
+// ─── Layer 2: Weighted Criteria Scoring ──────────────────────────────────────
+
+interface WeightedResult {
   score: number;
   dimensions: Record<string, DimensionScore>;
   confidenceScore: number;
-  dataCompleteness: 'full' | 'partial' | 'minimal';
+  dataCompleteness: "full" | "partial" | "minimal";
   missingDataPoints: string[];
-} {
+  matchedSkills: string[];
+  missingSkills: string[];
+  allJobSkills: string[];
+}
+
+function computeWeightedScore(profile: ProfileData, job: JobData): WeightedResult {
   const dimensions: Record<string, DimensionScore> = {};
   const missingDataPoints: string[] = [];
 
-  // --- Tech Stack (weight: 35%) ---
-  const profileSkills = (profile.skills || []).map(s => s.toLowerCase());
-  // Combine job.skills with shouldHave/niceToHave for richer matching
-  const baseJobSkills = (job.skills || []).map(s => s.toLowerCase());
-  const shouldHaveSkills = job.shouldHave ? job.shouldHave.split(/[,;]+/).map(s => s.trim().toLowerCase()).filter(Boolean) : [];
+  // --- Enrich profile skills with implicit skills from text ---
+  const explicitSkills = (profile.skills || []).map((s) => s.toLowerCase());
+  const implicitSkills = extractImplicitSkills(profile);
+  const profileSkills = [...new Set([...explicitSkills, ...implicitSkills])];
+
+  // --- Combine job skills ---
+  const baseJobSkills = (job.skills || []).map((s) => s.toLowerCase());
+  const shouldHaveSkills = job.shouldHave
+    ? job.shouldHave
+        .split(/[,;]+/)
+        .map((s) => s.trim().toLowerCase())
+        .filter(Boolean)
+    : [];
   const allJobSkills = [...new Set([...baseJobSkills, ...shouldHaveSkills])];
+
+  // --- Tech Stack (weight: 35%) ---
   const { matched, missing, ratio } = computeSkillMatch(profileSkills, allJobSkills);
 
   if (allJobSkills.length === 0) {
-    dimensions.tech_stack = { score: 50, weight: 35, details: 'Pas de skills requis spécifiés' };
-    missingDataPoints.push('job_skills');
+    dimensions.tech_stack = { score: 50, weight: 35, details: "Pas de skills requis spécifiés" };
+    missingDataPoints.push("job_skills");
   } else {
     dimensions.tech_stack = {
       score: Math.round(ratio * 100),
@@ -454,7 +525,7 @@ function computeWeightedScore(profile: ProfileData, job: JobData): {
     } else if (xp < xpMin) {
       seniorityScore = Math.max(0, 100 - (xpMin - xp) * 15);
     } else {
-      seniorityScore = Math.max(50, 100 - (xp - xpMax) * 5); // overqualified penalty is lighter
+      seniorityScore = Math.max(50, 100 - (xp - xpMax) * 5);
     }
     dimensions.seniority = {
       score: Math.round(seniorityScore),
@@ -462,61 +533,84 @@ function computeWeightedScore(profile: ProfileData, job: JobData): {
       details: `${xp}ans XP vs ${xpMin}-${xpMax}ans requis`,
     };
   } else {
-    dimensions.seniority = { score: 50, weight: 25, details: 'Données XP incomplètes' };
-    if (profile.yearsOfExperience === undefined) missingDataPoints.push('candidate_xp');
-    if (!job.xpMin && !job.xpMax) missingDataPoints.push('job_xp_range');
+    dimensions.seniority = { score: 50, weight: 25, details: "Données XP incomplètes" };
+    if (profile.yearsOfExperience === undefined) missingDataPoints.push("candidate_xp");
+    if (!job.xpMin && !job.xpMax) missingDataPoints.push("job_xp_range");
   }
 
-  // --- Domain / Sector fit (weight: 15%) ---
-  let domainScore = 50; // neutral by default
+  // --- Domain / Sector (weight: 15%) ---
+  let domainScore = 50;
   if (job.client?.sector && profile.workExperience && profile.workExperience.length > 0) {
     const sector = job.client.sector.toLowerCase();
-    const workText = profile.workExperience.map(w => `${w.company} ${w.role} ${w.description || ''}`).join(' ').toLowerCase();
-    // Simple heuristic: check if sector keywords appear in work history
-    const sectorKeywords = sector.split(/[\s/,]+/).filter(s => s.length > 3);
-    const sectorHits = sectorKeywords.filter(k => workText.includes(k)).length;
-    domainScore = sectorKeywords.length > 0
-      ? Math.min(100, 40 + (sectorHits / sectorKeywords.length) * 60)
-      : 50;
+    const workText = profile.workExperience
+      .map((w) => `${w.company} ${w.role} ${w.description || ""}`)
+      .join(" ")
+      .toLowerCase();
+    const sectorKeywords = sector.split(/[\s/,]+/).filter((s) => s.length > 3);
+    const sectorHits = sectorKeywords.filter((k) => {
+      const regex = new RegExp(`\\b${escapeRegex(k)}\\b`, "i");
+      return regex.test(workText);
+    }).length;
+    domainScore = sectorKeywords.length > 0 ? Math.min(100, 40 + (sectorHits / sectorKeywords.length) * 60) : 50;
   } else {
-    if (!job.client?.sector) missingDataPoints.push('job_sector');
+    if (!job.client?.sector) missingDataPoints.push("job_sector");
   }
-  dimensions.domain = { score: Math.round(domainScore), weight: 15, details: job.client?.sector || 'Secteur non spécifié' };
+  dimensions.domain = {
+    score: Math.round(domainScore),
+    weight: 15,
+    details: job.client?.sector || "Secteur non spécifié",
+  };
 
   // --- Company Fit / Receptivity (weight: 15%) ---
   let companyFitScore = 50;
   const boosts: string[] = [];
 
-  if (profile.openToWork) { companyFitScore += 20; boosts.push('Open to Work'); }
-  if (profile.openProfile) { companyFitScore += 10; boosts.push('Open Profile'); }
-  if (profile.networkDistance === 1) { companyFitScore += 15; boosts.push('1st degree'); }
-  else if (profile.networkDistance === 2) { companyFitScore += 5; boosts.push('2nd degree'); }
-
-  // Tenure analysis
-  if (profile.averageTenureMonths !== null && profile.averageTenureMonths !== undefined) {
-    if (profile.averageTenureMonths < 12) { companyFitScore -= 10; boosts.push('Tenure courte <12m'); }
-    else if (profile.averageTenureMonths > 24) { companyFitScore += 5; boosts.push('Tenure stable >24m'); }
+  if (profile.openToWork) {
+    companyFitScore += 20;
+    boosts.push("Open to Work");
+  }
+  if (profile.openProfile) {
+    companyFitScore += 10;
+    boosts.push("Open Profile");
+  }
+  if (profile.networkDistance === 1) {
+    companyFitScore += 15;
+    boosts.push("1st degree");
+  } else if (profile.networkDistance === 2) {
+    companyFitScore += 5;
+    boosts.push("2nd degree");
   }
 
-  // Contract mismatch: freelance vs CDI
+  if (profile.averageTenureMonths !== null && profile.averageTenureMonths !== undefined) {
+    if (profile.averageTenureMonths < 12) {
+      companyFitScore -= 10;
+      boosts.push("Tenure courte <12m");
+    } else if (profile.averageTenureMonths > 24) {
+      companyFitScore += 5;
+      boosts.push("Tenure stable >24m");
+    }
+  }
+
   if (profile.headline) {
     const headline = profile.headline.toLowerCase();
-    const isFreelance = ['freelance', 'indépendant', 'auto-entrepreneur', 'consultant indépendant'].some(f => headline.includes(f));
-    const isCDI = job.contractType && ['cdi', 'permanent'].includes(job.contractType.toLowerCase());
+    const isFreelance = ["freelance", "indépendant", "auto-entrepreneur", "consultant indépendant"].some((f) =>
+      headline.includes(f),
+    );
+    const isCDI = job.contractType && ["cdi", "permanent"].includes(job.contractType.toLowerCase());
     if (isFreelance && isCDI) {
       companyFitScore -= 15;
-      boosts.push('Freelance vs CDI');
+      boosts.push("Freelance vs CDI");
     }
   }
 
   dimensions.company_fit = {
     score: Math.max(0, Math.min(100, Math.round(companyFitScore))),
     weight: 15,
-    details: boosts.join(', ') || 'Neutre',
+    details: boosts.join(", ") || "Neutre",
   };
 
-  // --- Soft Skills placeholder (weight: 10% — filled by LLM) ---
-  dimensions.soft_skills = { score: 50, weight: 10, details: 'En attente LLM' };
+  // --- Soft Skills placeholder (weight: 10% — filled by LLM later) ---
+  dimensions.soft_skills = { score: 50, weight: 10, details: "En attente LLM" };
 
   // Calculate weighted total
   let totalWeightedScore = 0;
@@ -527,22 +621,30 @@ function computeWeightedScore(profile: ProfileData, job: JobData): {
   }
   const score = totalWeight > 0 ? Math.round(totalWeightedScore / totalWeight) : 0;
 
-  // Confidence based on data completeness
+  // Confidence
   const maxDataPoints = 6;
   const availableDataPoints = maxDataPoints - missingDataPoints.length;
   const confidenceScore = Math.round((availableDataPoints / maxDataPoints) * 100);
-  const dataCompleteness: 'full' | 'partial' | 'minimal' =
-    missingDataPoints.length === 0 ? 'full' :
-    missingDataPoints.length <= 2 ? 'partial' : 'minimal';
+  const dataCompleteness: "full" | "partial" | "minimal" =
+    missingDataPoints.length === 0 ? "full" : missingDataPoints.length <= 2 ? "partial" : "minimal";
 
-  return { score, dimensions, confidenceScore, dataCompleteness, missingDataPoints };
+  return {
+    score,
+    dimensions,
+    confidenceScore,
+    dataCompleteness,
+    missingDataPoints,
+    matchedSkills: matched,
+    missingSkills: missing,
+    allJobSkills,
+  };
 }
 
 // ─── Layer 3: Semantic Similarity (pgvector) ─────────────────────────────────
 
-async function getSemanticScore(supabase: any, candidateId: string, jobId: string): Promise<number | null> {
+async function getSemanticScore(supabase: SupabaseClient, candidateId: string, jobId: string): Promise<number | null> {
   try {
-    const { data, error } = await supabase.rpc('cosine_similarity_match', {
+    const { data, error } = await supabase.rpc("cosine_similarity_match", {
       p_candidate_id: candidateId,
       p_job_id: jobId,
     });
@@ -553,7 +655,7 @@ async function getSemanticScore(supabase: any, candidateId: string, jobId: strin
   }
 }
 
-// ─── Layer 4: LLM (Claude) — soft skills + synthesis only ────────────────────
+// ─── Layer 4: LLM (Claude) — soft skills + synthesis ─────────────────────────
 
 async function callLLM(
   profile: ProfileData,
@@ -577,35 +679,45 @@ async function callLLM(
   const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
   if (!ANTHROPIC_API_KEY) throw new Error("ANTHROPIC_API_KEY is not configured");
 
-  const workExpText = (profile.workExperience || []).slice(0, 3).map(w => {
-    let line = `- ${w.role} @ ${w.company}`;
-    if (w.duration) line += ` (${w.duration})`;
-    if (w.description) line += ` | ${w.description.substring(0, 100)}`;
-    return line;
-  }).join('\n') || (profile.pastPositions || []).slice(0, 3).map(p => `- ${p}`).join('\n') || 'N/A';
+  const workExpText =
+    (profile.workExperience || [])
+      .slice(0, 3)
+      .map((w) => {
+        let line = `- ${w.role} @ ${w.company}`;
+        if (w.duration) line += ` (${w.duration})`;
+        if (w.description) line += ` | ${w.description.substring(0, 100)}`;
+        return line;
+      })
+      .join("\n") ||
+    (profile.pastPositions || [])
+      .slice(0, 3)
+      .map((p) => `- ${p}`)
+      .join("\n") ||
+    "N/A";
 
-  const prompt = sanitizeText(`Tu évalues UNIQUEMENT les aspects QUALITATIFS de ce candidat. Les aspects techniques/quantitatifs sont déjà pré-calculés.
+  const prompt = sanitizeText(
+    `Tu évalues UNIQUEMENT les aspects QUALITATIFS de ce candidat. Les aspects techniques/quantitatifs sont déjà pré-calculés.
 
 === PRÉ-CALCULS (ne pas réévaluer) ===
 Score algo: ${preComputedData.weightedScore}/100
-Skills matchés: ${preComputedData.matchedSkills.join(', ') || 'Aucun'}
-Skills manquants: ${preComputedData.missingSkills.join(', ') || 'Aucun'}
-Similarité sémantique: ${preComputedData.semanticScore !== null ? preComputedData.semanticScore + '/100' : 'N/A'}
+Skills matchés: ${preComputedData.matchedSkills.join(", ") || "Aucun"}
+Skills manquants: ${preComputedData.missingSkills.join(", ") || "Aucun"}
+Similarité sémantique: ${preComputedData.semanticScore !== null ? preComputedData.semanticScore + "/100" : "N/A"}
 Tech: ${preComputedData.dimensions.tech_stack?.score}/100 | Séniorité: ${preComputedData.dimensions.seniority?.score}/100 | Domaine: ${preComputedData.dimensions.domain?.score}/100 | Fit: ${preComputedData.dimensions.company_fit?.score}/100
 
 === POSTE ===
-${job.title} @ ${job.client?.name || '?'} (${job.client?.sector || '?'})
-${job.description ? 'Description: ' + job.description.substring(0, 400) : ''}
-${job.requirements ? 'Exigences: ' + job.requirements.substring(0, 300) : ''}
-${job.mustHave ? 'Must-have: ' + job.mustHave : ''}
-${job.shouldHave ? 'Should-have: ' + job.shouldHave : ''}
-${job.niceToHave ? 'Nice-to-have: ' + job.niceToHave : ''}
-${job.transversalCriteria?.context ? 'Contexte: ' + job.transversalCriteria.context.substring(0, 200) : ''}
-${job.bodyContent ? 'Détails poste: ' + job.bodyContent.substring(0, 300) : ''}
+${job.title} @ ${job.client?.name || "?"} (${job.client?.sector || "?"})
+${job.description ? "Description: " + job.description.substring(0, 400) : ""}
+${job.requirements ? "Exigences: " + job.requirements.substring(0, 300) : ""}
+${job.mustHave ? "Must-have: " + job.mustHave : ""}
+${job.shouldHave ? "Should-have: " + job.shouldHave : ""}
+${job.niceToHave ? "Nice-to-have: " + job.niceToHave : ""}
+${job.transversalCriteria?.context ? "Contexte: " + job.transversalCriteria.context.substring(0, 200) : ""}
+${job.bodyContent ? "Détails poste: " + job.bodyContent.substring(0, 300) : ""}
 
 === CANDIDAT ===
-${profile.name} — ${profile.headline || profile.currentRole || '?'}
-${profile.summary ? 'About: ' + profile.summary.substring(0, 300) : ''}
+${profile.name} — ${profile.headline || profile.currentRole || "?"}
+${profile.summary ? "About: " + profile.summary.substring(0, 300) : ""}
 Expériences:
 ${workExpText}
 
@@ -615,34 +727,35 @@ ${workExpText}
 2. Cohérence du parcours (progression, spécialisation)
 3. Adéquation culturelle potentielle avec le contexte client
 4. Signaux positifs/négatifs dans le résumé/headline
-${customScoringInstructions ? '\nConsignes supplémentaires: ' + customScoringInstructions.slice(0, 300) : ''}
+${customScoringInstructions ? "\nConsignes supplémentaires: " + customScoringInstructions.slice(0, 300) : ""}
 
 Réponds en JSON compact:
-{"softSkillsScore":N,"summary":"max 20 mots","strengths":["max 3"],"concerns":["max 3"]}`);
+{"softSkillsScore":N,"summary":"max 20 mots","strengths":["max 3"],"concerns":["max 3"]}`,
+  );
 
-  const MAX_RETRIES = 2;
   let lastError: Error | null = null;
   let data: any = null;
 
-  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+  for (let attempt = 0; attempt <= MAX_LLM_RETRIES; attempt++) {
     if (attempt > 0) {
       const backoffMs = Math.min(1000 * Math.pow(2, attempt - 1), 8000);
-      await new Promise(r => setTimeout(r, backoffMs));
-      console.log(`Retry attempt ${attempt} for ${profile.name} after ${backoffMs}ms`);
+      await new Promise((r) => setTimeout(r, backoffMs));
+      console.log(`[llm] Retry ${attempt} for ${profile.name} after ${backoffMs}ms`);
     }
 
     const res = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: {
-        "Content-Type": "application/json",
+        "content-type": "application/json",
         "x-api-key": ANTHROPIC_API_KEY,
         "anthropic-version": "2023-06-01",
       },
       body: JSON.stringify({
-        model: "claude-sonnet-4-6",
-        system: "Tu es un expert recruteur. Tu évalues UNIQUEMENT les soft skills et la cohérence de parcours. Réponds en JSON compact, sans markdown.",
+        model: CLAUDE_MODEL,
+        system:
+          "Tu es un expert recruteur. Tu évalues UNIQUEMENT les soft skills et la cohérence de parcours. Réponds en JSON compact, sans markdown.",
         messages: [{ role: "user", content: prompt }],
-        max_tokens: 1024,
+        max_tokens: 512,
         temperature: 0.2,
       }),
     });
@@ -652,41 +765,38 @@ Réponds en JSON compact:
       break;
     }
 
-    const errorBody = await res.text();
-    console.error(`Anthropic API error (attempt ${attempt}):`, { status: res.status, body: errorBody });
+    const status = res.status;
+    console.error(`[llm] Anthropic error (attempt ${attempt}): ${status}`);
 
-    if (res.status === 429 && attempt < MAX_RETRIES) {
+    if (status === 429 && attempt < MAX_LLM_RETRIES) {
       lastError = new Error("RATE_LIMITED");
-      continue; // retry
+      continue;
     }
-    if (res.status === 402 || res.status === 400) throw new Error("CREDITS_EXHAUSTED");
-    throw new Error(`Anthropic API error: ${res.status}`);
+    if (status === 402 || status === 400) throw new Error("CREDITS_EXHAUSTED");
+    throw new Error(`Anthropic API error: ${status}`);
   }
 
   if (!data) throw lastError || new Error("LLM call failed after retries");
-  const rawContent = data.content?.[0]?.text || '';
-  const parsed = extractJsonRobust(rawContent);
 
-  const inputTokens = data.usage?.input_tokens || 0;
-  const outputTokens = data.usage?.output_tokens || 0;
+  const rawContent = data.content?.[0]?.text || "";
+  const parsed = extractJsonRobust(rawContent);
 
   return {
     llmScore: parsed.softSkillsScore ?? 50,
-    summary: parsed.summary || '',
+    summary: parsed.summary || "",
     strengths: parsed.strengths || [],
     concerns: parsed.concerns || [],
     softSkillsScore: parsed.softSkillsScore ?? 50,
-    tokensUsed: { input: inputTokens, output: outputTokens },
+    tokensUsed: {
+      input: data.usage?.input_tokens || 0,
+      output: data.usage?.output_tokens || 0,
+    },
   };
 }
 
 // ─── Score Combiner ──────────────────────────────────────────────────────────
 
-function computeFinalScore(
-  weightedScore: number,
-  semanticScore: number | null,
-  llmScore: number | null,
-): number {
+function computeFinalScore(weightedScore: number, semanticScore: number | null, llmScore: number | null): number {
   // Weights: algo 60%, semantic 20%, LLM 20%
   let total = weightedScore * 0.6;
   let totalWeight = 0.6;
@@ -695,72 +805,91 @@ function computeFinalScore(
     total += semanticScore * 0.2;
     totalWeight += 0.2;
   }
-
   if (llmScore !== null) {
     total += llmScore * 0.2;
     totalWeight += 0.2;
   }
 
-  // Normalize if some layers are missing
   return Math.round(total / totalWeight);
 }
 
 // ─── Cache ───────────────────────────────────────────────────────────────────
 
-async function getCachedScore(supabase: any, candidateId: string, jobId: string): Promise<ScoringResult | null> {
+async function getCachedScore(
+  supabase: SupabaseClient,
+  candidateId: string,
+  jobId: string,
+): Promise<ScoringResult | null> {
   try {
     const { data, error } = await supabase
-      .from('match_scores')
-      .select('scoring_result')
-      .eq('candidate_id', candidateId)
-      .eq('job_id', jobId)
+      .from("match_scores")
+      .select("scoring_result, created_at")
+      .eq("candidate_id", candidateId)
+      .eq("job_id", jobId)
       .maybeSingle();
+
     if (error || !data) return null;
+
+    // TTL check: invalidate cache older than 48h
+    const createdAt = new Date(data.created_at).getTime();
+    if (Date.now() - createdAt > CACHE_TTL_MS) {
+      return null; // Cache expired, will re-score
+    }
+
     return data.scoring_result as ScoringResult;
   } catch {
     return null;
   }
 }
 
-async function setCachedScore(supabase: any, candidateId: string, jobId: string, result: ScoringResult): Promise<void> {
+async function setCachedScore(
+  supabase: SupabaseClient,
+  candidateId: string,
+  jobId: string,
+  result: ScoringResult,
+): Promise<void> {
   try {
-    await supabase.from('match_scores').upsert({
-      candidate_id: candidateId,
-      job_id: jobId,
-      score: result.finalScore,
-      confidence: result.confidenceScore,
-      scoring_result: result,
-    }, { onConflict: 'candidate_id,job_id' });
+    await supabase.from("match_scores").upsert(
+      {
+        candidate_id: candidateId,
+        job_id: jobId,
+        score: result.finalScore,
+        confidence: result.confidenceScore,
+        scoring_result: result,
+        created_at: new Date().toISOString(),
+      },
+      { onConflict: "candidate_id,job_id" },
+    );
   } catch (err) {
-    console.error('Cache write error:', err);
+    console.error("[cache] Write error:", err);
   }
 }
 
 // ─── Main Scoring Pipeline ───────────────────────────────────────────────────
 
 async function scoreProfile(
-  supabase: any,
+  supabase: SupabaseClient,
   profile: ProfileData,
   job: JobData,
   customScoringInstructions?: string,
 ): Promise<ScoringResult> {
   const startTime = Date.now();
-  const candidateId = profile.name + '|' + (profile.headline || '') + '|' + (profile.currentCompany || ''); // Composite key for uniqueness
+  const candidateId = profile.id; // Stable ID from your candidates table
 
   // Check cache
   const cached = await getCachedScore(supabase, candidateId, job.id);
   if (cached) return cached;
 
-  // Layer 1: Hard Filters
+  // Layer 1: Hard Filters (cheapest first, AI must-have last)
   const hardFilter = await applyHardFilters(profile, job);
   if (!hardFilter.passed) {
     const result: ScoringResult = {
       name: profile.name,
       score: 0,
-      recommendation: 'NO_MATCH',
-      summary: hardFilter.reason || 'Éliminé par filtre',
+      recommendation: "NO_MATCH",
+      summary: hardFilter.reason || "Éliminé par filtre",
       strengths: [],
-      concerns: [hardFilter.reason || 'Hard filter KO'],
+      concerns: [hardFilter.reason || "Hard filter KO"],
       missingSkills: [],
       hardFilterPassed: false,
       hardFilterKO: hardFilter.reason,
@@ -770,7 +899,7 @@ async function scoreProfile(
       finalScore: 0,
       confidenceScore: 100,
       dimensions: {},
-      dataCompleteness: 'full',
+      dataCompleteness: "full",
       missingDataPoints: [],
       skippedLLM: true,
       processingTimeMs: Date.now() - startTime,
@@ -781,67 +910,67 @@ async function scoreProfile(
     return result;
   }
 
-  // Layer 2: Weighted Criteria
+  // Layer 2: Weighted Criteria (now returns matched/missing skills too)
   const weighted = computeWeightedScore(profile, job);
-  const profileSkills = (profile.skills || []).map(s => s.toLowerCase());
-  const shouldHaveSkills = job.shouldHave ? job.shouldHave.split(/[,;]+/).map(s => s.trim().toLowerCase()).filter(Boolean) : [];
-  const jobSkills = [...new Set([...(job.skills || []).map(s => s.toLowerCase()), ...shouldHaveSkills])];
-  const { matched: matchedSkills, missing: missingSkills } = computeSkillMatch(profileSkills, jobSkills);
 
   // Layer 3: Semantic Similarity
   const semanticScore = await getSemanticScore(supabase, candidateId, job.id);
 
-  // Layer 4: LLM — only if score is in the "maybe" zone (30-75) or high confidence needed
+  // Layer 4: LLM — only if score is in the "maybe" zone
   let llmResult: Awaited<ReturnType<typeof callLLM>> | null = null;
   let skippedLLM = false;
 
   if (weighted.score < 25) {
-    // Too low — skip LLM, save tokens
     skippedLLM = true;
   } else if (weighted.score > 80 && semanticScore !== null && semanticScore > 70) {
-    // Clear match — skip LLM
     skippedLLM = true;
   } else {
     try {
-      llmResult = await callLLM(profile, job, {
-        weightedScore: weighted.score,
-        dimensions: weighted.dimensions,
-        matchedSkills,
-        missingSkills,
-        semanticScore,
-      }, customScoringInstructions);
+      llmResult = await callLLM(
+        profile,
+        job,
+        {
+          weightedScore: weighted.score,
+          dimensions: weighted.dimensions,
+          matchedSkills: weighted.matchedSkills,
+          missingSkills: weighted.missingSkills,
+          semanticScore,
+        },
+        customScoringInstructions,
+      );
 
-      // Update soft_skills dimension with LLM result
       weighted.dimensions.soft_skills = {
         score: llmResult.softSkillsScore,
         weight: 10,
-        details: 'Évalué par LLM',
+        details: "Évalué par LLM",
       };
     } catch (err) {
-      console.error(`LLM error for ${profile.name}:`, err);
+      console.error(`[llm] Error for ${profile.name}:`, err);
       skippedLLM = true;
     }
   }
 
-  const finalScore = computeFinalScore(
-    weighted.score,
-    semanticScore,
-    llmResult?.llmScore ?? null,
-  );
+  const finalScore = computeFinalScore(weighted.score, semanticScore, llmResult?.llmScore ?? null);
 
   const recommendation = getRecommendation(finalScore);
 
-  // Build v1-compatible fields
-  const summary = llmResult?.summary ||
-    (finalScore >= 60 ? `Bon match algo (${weighted.score}/100)` :
-     finalScore >= 40 ? `Match partiel (${weighted.score}/100)` :
-     `Faible match (${weighted.score}/100)`);
+  const summary =
+    llmResult?.summary ||
+    (finalScore >= 60
+      ? `Bon match algo (${weighted.score}/100)`
+      : finalScore >= 40
+        ? `Match partiel (${weighted.score}/100)`
+        : `Faible match (${weighted.score}/100)`);
 
   const strengths = llmResult?.strengths || [];
-  if (matchedSkills.length > 0) strengths.unshift(`${matchedSkills.length}/${jobSkills.length} skills matchés`);
+  if (weighted.matchedSkills.length > 0) {
+    strengths.unshift(`${weighted.matchedSkills.length}/${weighted.allJobSkills.length} skills matchés`);
+  }
 
   const concerns = llmResult?.concerns || [];
-  if (missingSkills.length > 0) concerns.push(`Skills manquants: ${missingSkills.slice(0, 3).join(', ')}`);
+  if (weighted.missingSkills.length > 0) {
+    concerns.push(`Skills manquants: ${weighted.missingSkills.slice(0, 3).join(", ")}`);
+  }
 
   const result: ScoringResult = {
     name: profile.name,
@@ -850,21 +979,21 @@ async function scoreProfile(
     summary,
     strengths: strengths.slice(0, 5),
     concerns: concerns.slice(0, 5),
-    missingSkills,
+    missingSkills: weighted.missingSkills,
     seniorityMatch: weighted.dimensions.seniority?.details,
     locationMatch: weighted.dimensions.domain?.details,
     experienceMatch: weighted.dimensions.seniority?.details,
     tenureAnalysis: weighted.dimensions.company_fit?.details,
     receptivityScore: weighted.dimensions.company_fit?.score ?? null,
-    internationalExperienceValidation: 'none',
-    locationCompatibility: weighted.dimensions.domain?.score && weighted.dimensions.domain.score > 60 ? 'compatible' : 'partial',
+    internationalExperienceValidation: "none",
+    locationCompatibility:
+      weighted.dimensions.domain?.score && weighted.dimensions.domain.score > 60 ? "compatible" : "partial",
     candidatePreferencesConflict: null,
     contractMismatch: null,
     skipReason: finalScore < 40 ? summary : null,
-    matchedSkills,
-    matchedSkillCount: matchedSkills.length,
-    totalRequiredSkills: jobSkills.length,
-    // v2 fields
+    matchedSkills: weighted.matchedSkills,
+    matchedSkillCount: weighted.matchedSkills.length,
+    totalRequiredSkills: weighted.allJobSkills.length,
     hardFilterPassed: true,
     weightedCriteriaScore: weighted.score,
     semanticScore,
@@ -879,9 +1008,7 @@ async function scoreProfile(
     tokensUsed: llmResult?.tokensUsed ?? null,
   };
 
-  // Cache result
   await setCachedScore(supabase, candidateId, job.id, result);
-
   return result;
 }
 
@@ -895,24 +1022,45 @@ serve(async (req) => {
   }
 
   try {
-    const { profile, job, profiles, customScoringInstructions } = await req.json() as {
+    const body = await req.json();
+    const { profile, job, profiles, customScoringInstructions } = body as {
       profile?: ProfileData;
-      job: JobData;
+      job?: JobData;
       profiles?: ProfileData[];
       customScoringInstructions?: string;
     };
+
+    // Input validation
+    if (!job || !job.id || !job.title) {
+      return new Response(JSON.stringify({ error: "Missing or invalid job data (id and title required)" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const profilesToScore = profiles || (profile ? [profile] : []);
+    if (profilesToScore.length === 0) {
+      return new Response(JSON.stringify({ error: "No profile(s) provided" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // Validate all profiles have an id
+    const missingIds = profilesToScore.filter((p) => !p.id);
+    if (missingIds.length > 0) {
+      return new Response(
+        JSON.stringify({
+          error: `${missingIds.length} profile(s) missing 'id' field. Each profile must have a stable unique id.`,
+        }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    const profilesToScore = profiles || (profile ? [profile] : []);
-    if (profilesToScore.length === 0) {
-      throw new Error("No profile(s) provided");
-    }
-
-    const BATCH_SIZE = 10;
-    const DELAY_BETWEEN_BATCHES_MS = 100;
     const results: ScoringResult[] = [];
     let totalTokensInput = 0;
     let totalTokensOutput = 0;
@@ -928,12 +1076,12 @@ serve(async (req) => {
           try {
             return await scoreProfile(supabase, p, job, customScoringInstructions);
           } catch (err) {
-            console.error(`Error scoring ${p.name}:`, err);
+            console.error(`[scoring] Error for ${p.name}:`, err);
             return {
               name: p.name,
               score: 0,
-              recommendation: 'ERROR',
-              summary: err instanceof Error ? err.message : 'Unknown error',
+              recommendation: "ERROR",
+              summary: "Erreur lors du scoring",
               strengths: [],
               concerns: [],
               missingSkills: [],
@@ -944,15 +1092,14 @@ serve(async (req) => {
               finalScore: 0,
               confidenceScore: 0,
               dimensions: {},
-              dataCompleteness: 'minimal' as const,
+              dataCompleteness: "minimal" as const,
               missingDataPoints: [],
               skippedLLM: true,
               processingTimeMs: 0,
               tokensUsed: null,
-              error: err instanceof Error ? err.message : 'Unknown error',
-            } as ScoringResult & { error: string };
+            } as ScoringResult;
           }
-        })
+        }),
       );
 
       for (const r of batchResults) {
@@ -972,9 +1119,8 @@ serve(async (req) => {
       }
     }
 
-    const avgScore = results.length > 0
-      ? Math.round(results.reduce((sum, r) => sum + r.finalScore, 0) / results.length)
-      : 0;
+    const avgScore =
+      results.length > 0 ? Math.round(results.reduce((sum, r) => sum + r.finalScore, 0) / results.length) : 0;
 
     const stats = {
       total: results.length,
@@ -985,24 +1131,29 @@ serve(async (req) => {
       totalTokens: totalTokensInput + totalTokensOutput,
     };
 
-    const responseData = profiles
-      ? { results, stats }
-      : { result: results[0] };
+    const responseData = profiles ? { results, stats } : { result: results[0] };
 
-    return new Response(
-      JSON.stringify({ success: true, ...responseData }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+    return new Response(JSON.stringify({ success: true, ...responseData }), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
   } catch (error) {
-    console.error("Score profile error:", error);
+    console.error("[handler] Score profile error:", error);
+
+    // Don't leak internal error details to client
     const message = error instanceof Error ? error.message : "Unknown error";
-    const status = message.includes("RATE_LIMITED") ? 429
-                 : message.includes("CREDITS_EXHAUSTED") ? 402
-                 : 500;
+    const isRateLimited = message.includes("RATE_LIMITED");
+    const isCreditsExhausted = message.includes("CREDITS_EXHAUSTED");
+    const status = isRateLimited ? 429 : isCreditsExhausted ? 402 : 500;
 
     return new Response(
-      JSON.stringify({ error: message }),
-      { status, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      JSON.stringify({
+        error: isRateLimited
+          ? "Rate limited, please retry later"
+          : isCreditsExhausted
+            ? "API credits exhausted"
+            : "Internal scoring error",
+      }),
+      { status, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   }
 });
