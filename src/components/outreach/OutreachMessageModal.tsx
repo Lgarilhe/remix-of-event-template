@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { LinkedInProfile } from './types';
+import { getYear } from './dateUtils';
 import { Job } from '@/types/jobs';
 import { supabase } from '@/integrations/supabase/client';
 import { invokeUnipile } from '@/lib/invokeUnipile';
@@ -116,10 +117,11 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
       currentCompany: currentJob?.company,
       location: profile.location,
       skills: profile.skills?.map((s: any) => s.name || s).slice(0, 10) || [],
-      pastPositions: pastJobs.map(p => `${p.role} chez ${p.company}${p.start?.year ? ` (${p.start.year}${p.end?.year ? `-${p.end.year}` : ''})` : ''}`),
-      education: education.slice(0, 3).map((edu: any) => 
-        `${edu.degree || edu.field_of_study || 'Diplôme'} – ${edu.school || 'École'}${edu.end?.year ? ` (${edu.end.year})` : ''}`
-      ),
+      pastPositions: pastJobs.map(p => { const sy = getYear(p.start); const ey = getYear(p.end); return `${p.role} chez ${p.company}${sy ? ` (${sy}${ey ? `-${ey}` : ''})` : ''}`; }),
+      education: education.slice(0, 3).map((edu: any) => {
+        const ey = getYear(edu.end);
+        return `${edu.degree || edu.field_of_study || 'Diplôme'} – ${edu.school || 'École'}${ey ? ` (${ey})` : ''}`;
+      }),
       yearsOfExperience: calcYearsOfExperience(),
       summary: profile.summary || '', // LinkedIn "About" section
     };
@@ -277,8 +279,8 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
         
         // Compute years of experience
         const earliestYear = workExp
-          .filter(exp => exp.start?.year)
-          .map(exp => exp.start!.year!)
+          .map(exp => getYear(exp.start))
+          .filter((y): y is number => !!y)
           .sort((a, b) => a - b)[0];
         const yearsOfExperience = earliestYear ? new Date().getFullYear() - earliestYear : undefined;
 

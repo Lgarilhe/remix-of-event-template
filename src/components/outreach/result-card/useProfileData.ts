@@ -1,11 +1,14 @@
 import { useMemo } from 'react';
 import { LinkedInProfile } from '../types';
 import { ProfileData } from './types';
+import { parseDate, getYear } from '../dateUtils';
 
-const getTenureDisplay = (start?: { year?: number; month?: number }, end?: { year?: number; month?: number }) => {
-  if (!start?.year) return null;
-  const startDate = new Date(start.year, (start.month || 1) - 1);
-  const endDate = end?.year ? new Date(end.year, (end.month || 12) - 1) : new Date();
+const getTenureDisplay = (start?: any, end?: any) => {
+  const s = parseDate(start);
+  const e = parseDate(end);
+  if (!s?.year) return null;
+  const startDate = new Date(s.year, (s.month || 1) - 1);
+  const endDate = e?.year ? new Date(e.year, (e.month || 12) - 1) : new Date();
   const diffMonths = (endDate.getFullYear() - startDate.getFullYear()) * 12 + (endDate.getMonth() - startDate.getMonth());
   const years = Math.floor(diffMonths / 12);
   const months = diffMonths % 12;
@@ -31,26 +34,28 @@ const calculateExperienceFromDiploma = (education: any[], workExperience?: any[]
   if (education && education.length > 0) {
     const relevantEducation = education
       .filter((edu: any) => {
-        if (!edu.end?.year) return false;
+        if (!getYear(edu.end)) return false;
         const combined = `${(edu.degree || '').toLowerCase()} ${(edu.school || '').toLowerCase()} ${(edu.field_of_study || '').toLowerCase()}`;
         return relevantDegreeKeywords.some(keyword => combined.includes(keyword));
       })
-      .sort((a: any, b: any) => (b.end?.year || 0) - (a.end?.year || 0));
+      .sort((a: any, b: any) => (getYear(b.end) || 0) - (getYear(a.end) || 0));
 
     diplomaToUse = relevantEducation[0] ||
-      education.filter((edu: any) => edu.end?.year).sort((a: any, b: any) => (b.end?.year || 0) - (a.end?.year || 0))[0];
+      education.filter((edu: any) => getYear(edu.end)).sort((a: any, b: any) => (getYear(b.end) || 0) - (getYear(a.end) || 0))[0];
   }
 
-  if (diplomaToUse?.end?.year) {
-    const diplomaYear = diplomaToUse.end.year;
-    const currentYear = new Date().getFullYear();
-    const yearsOfExperience = currentYear - diplomaYear;
-    if (yearsOfExperience > 0) {
-      return {
-        years: yearsOfExperience,
-        diplomaYear,
-        diplomaName: diplomaToUse.degree || diplomaToUse.school,
-      };
+  if (diplomaToUse) {
+    const diplomaYear = getYear(diplomaToUse.end);
+    if (diplomaYear) {
+      const currentYear = new Date().getFullYear();
+      const yearsOfExperience = currentYear - diplomaYear;
+      if (yearsOfExperience > 0) {
+        return {
+          years: yearsOfExperience,
+          diplomaYear,
+          diplomaName: diplomaToUse.degree || diplomaToUse.school,
+        };
+      }
     }
   }
 
@@ -58,7 +63,7 @@ const calculateExperienceFromDiploma = (education: any[], workExperience?: any[]
   if (workExperience && workExperience.length > 0) {
     let earliestYear: number | null = null;
     for (const exp of workExperience) {
-      const startYear = exp.start?.year;
+      const startYear = getYear(exp.start);
       if (startYear && startYear > 1970) {
         if (!earliestYear || startYear < earliestYear) {
           earliestYear = startYear;

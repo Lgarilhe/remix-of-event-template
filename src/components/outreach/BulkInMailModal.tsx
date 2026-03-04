@@ -41,6 +41,7 @@ import { cn } from '@/lib/utils';
 import { Job } from '@/types/jobs';
 import { useInMailBalance } from '@/hooks/useInMailBalance';
 import { LinkedInProfile } from './types';
+import { getYear } from './dateUtils';
 
 interface Recipient {
   id: string;
@@ -218,10 +219,11 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
       currentCompany: currentJob?.company,
       location: profile.location,
       skills: profile.skills?.map((s: any) => s.name || s).slice(0, 10) || [],
-      pastPositions: pastJobs.map(p => `${p.role} chez ${p.company}${p.start?.year ? ` (${p.start.year}${p.end?.year ? `-${p.end.year}` : ''})` : ''}`),
-      education: education.slice(0, 3).map((edu: any) => 
-        `${edu.degree || edu.field_of_study || 'Diplôme'} – ${edu.school || 'École'}${edu.end?.year ? ` (${edu.end.year})` : ''}`
-      ),
+      pastPositions: pastJobs.map(p => { const sy = getYear(p.start); const ey = getYear(p.end); return `${p.role} chez ${p.company}${sy ? ` (${sy}${ey ? `-${ey}` : ''})` : ''}`; }),
+      education: education.slice(0, 3).map((edu: any) => {
+        const ey = getYear(edu.end);
+        return `${edu.degree || edu.field_of_study || 'Diplôme'} – ${edu.school || 'École'}${ey ? ` (${ey})` : ''}`;
+      }),
       yearsOfExperience: calcYearsOfExperience(),
       summary: profile.summary || '',
     };

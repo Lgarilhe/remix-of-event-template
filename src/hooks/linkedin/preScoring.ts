@@ -3,6 +3,7 @@
  * Déterministe, gratuit, transparent.
  */
 import { LinkedInProfile } from '@/components/outreach/types';
+import { getYear, parseDate } from '@/components/outreach/dateUtils';
 import { Job } from '@/types/jobs';
 import { SKILL_SYNONYMS, skillsMatch } from './skillSynonyms';
 
@@ -132,7 +133,7 @@ function calculateExperienceFromProfile(profile: LinkedInProfile): number | null
   const edu = profile.education || [];
   let earliestGradYear: number | null = null;
   for (const e of edu) {
-    const endYear = e.end?.year;
+    const endYear = getYear(e.end);
     if (endYear && endYear > 1970 && endYear < new Date().getFullYear() + 2) {
       if (!earliestGradYear || endYear < earliestGradYear) {
         earliestGradYear = endYear;
@@ -148,7 +149,7 @@ function calculateExperienceFromProfile(profile: LinkedInProfile): number | null
   if (work.length > 0) {
     let earliestYear: number | null = null;
     for (const w of work) {
-      const startYear = w.start?.year;
+      const startYear = getYear(w.start);
       if (startYear && startYear > 1970) {
         if (!earliestYear || startYear < earliestYear) {
           earliestYear = startYear;
@@ -330,10 +331,12 @@ function scoreTenure(profile: LinkedInProfile, flags: string[]): number {
   let count = 0;
 
   for (const w of work) {
-    if (!w.start?.year) continue;
-    const startDate = new Date(w.start.year, (w.start.month || 1) - 1);
-    const endDate = w.end?.year
-      ? new Date(w.end.year, (w.end.month || 1) - 1)
+    const startParsed = parseDate(w.start);
+    if (!startParsed?.year) continue;
+    const startDate = new Date(startParsed.year, (startParsed.month || 1) - 1);
+    const endParsed = parseDate(w.end);
+    const endDate = endParsed?.year
+      ? new Date(endParsed.year, (endParsed.month || 1) - 1)
       : now;
     const months = Math.max(1, (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24 * 30.44));
     totalMonths += months;
