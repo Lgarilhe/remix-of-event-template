@@ -1102,7 +1102,7 @@ async function executeStepAction(actionType: string, enrollment: Record<string, 
         console.log(`[executeStepAction] ${(enrollment as any).profile_name} | actionType=${actionType} | network_distance=${p?.network_distance} | connection_status=${(enrollment as any).connection_status} | isConnected=${isConnected} | needsInMail=${needsInMail}`);
         const fd = new FormData();
         fd.append('account_id', accountId); fd.append('attendees_ids', profileId); fd.append('text', msg);
-        if (needsInMail) { fd.append('linkedin[api]', 'recruiter'); fd.append('linkedin[inmail]', 'true'); if (subj) fd.append('linkedin[subject]', subj); }
+        if (needsInMail) { fd.append('linkedin[api]', 'recruiter'); fd.append('linkedin[inmail]', 'true'); if (subj) fd.append('subject', subj); }
         const r = await fetch(`${UNIPILE_DSN}/api/v1/chats`, { method: 'POST', headers: { 'X-API-KEY': UNIPILE_API_KEY! }, body: fd });
         if (!r.ok) { const e = await r.text(); return { success: false, error: `Unipile ${r.status}: ${e}` }; }
         await r.json();

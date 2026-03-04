@@ -302,7 +302,7 @@ serve(async (req: Request) => {
             console.log(`Sending InMail to ${item.recipient_name} (${item.network_distance || 'unknown'} degree)`);
             formData.append("linkedin[api]", "recruiter");
             formData.append("linkedin[inmail]", "true");
-            formData.append("linkedin[subject]", item.subject);
+            formData.append("subject", item.subject);
           }
 
           console.log(`Sending to Unipile:`, {
