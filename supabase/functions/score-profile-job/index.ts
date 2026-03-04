@@ -870,6 +870,120 @@ async function setCachedScore(
   }
 }
 
+// ─── Profile Enrichment Context ──────────────────────────────────────────────
+
+interface EnrichmentContext {
+  accountId: string;
+  apiKey: string;
+  baseUrl: string;
+  dailyCount: number;
+  dailyLimit: number;
+}
+
+const ENRICHMENT_MIN_DELAY_MS = 2000;
+const ENRICHMENT_MAX_DELAY_MS = 4000;
+
+/**
+ * Enrich a profile via Unipile get_profile if it lacks descriptions.
+ * Returns true if enrichment was performed (counts toward daily quota).
+ */
+async function maybeEnrichProfile(
+  profile: ProfileData,
+  ctx: EnrichmentContext,
+): Promise<boolean> {
+  if (ctx.dailyCount >= ctx.dailyLimit) return false;
+
+  // Check if top 3 experiences already have descriptions
+  const top3 = (profile.workExperience || []).slice(0, 3);
+  const hasDescriptions = top3.some((exp) => exp.description && exp.description.length > 30);
+  if (hasDescriptions) return false;
+
+  // Need a profile identifier
+  const profileId = profile.providerId || profile.profileUrl;
+  if (!profileId) {
+    console.log(`[enrichment] No profile identifier for ${profile.name}, skipping`);
+    return false;
+  }
+
+  // Random delay 2-4s
+  const delay = Math.floor(
+    Math.random() * (ENRICHMENT_MAX_DELAY_MS - ENRICHMENT_MIN_DELAY_MS) + ENRICHMENT_MIN_DELAY_MS,
+  );
+  await sleep(delay);
+
+  try {
+    let resolvedId = profileId;
+    if (resolvedId.includes("linkedin.com")) {
+      resolvedId = resolvedId.replace(/\/+$/, "").split("/").pop() || resolvedId;
+    }
+
+    const response = await fetch(
+      `${ctx.baseUrl}/users/${encodeURIComponent(resolvedId)}?account_id=${ctx.accountId}`,
+      {
+        headers: { "X-API-KEY": ctx.apiKey, Accept: "application/json" },
+      },
+    );
+
+    if (!response.ok) {
+      console.warn(`[enrichment] ⚠️ Failed for ${profile.name}: HTTP ${response.status}`);
+      return false;
+    }
+
+    const data = await response.json();
+    const enrichedExp = (data.work_experience || data.positions || []).slice(0, 5);
+
+    if (enrichedExp.length > 0) {
+      const formatDuration = (m: number) => {
+        const y = Math.floor(m / 12);
+        const mo = m % 12;
+        if (y === 0) return `${mo} mois`;
+        if (mo === 0) return `${y} an${y > 1 ? "s" : ""}`;
+        return `${y} an${y > 1 ? "s" : ""} ${mo} mois`;
+      };
+
+      const enrichedMapped = enrichedExp.map((exp: any) => {
+        const role = exp.role || exp.position || exp.title || "";
+        const company = exp.company || exp.company_name || "";
+        const description = exp.description || "";
+        const skills = (exp.skills || []).map((s: any) => (typeof s === "string" ? s : s.name));
+        let durationMonths = 0;
+        const startYear = exp.start?.year || (typeof exp.start === "string" ? parseInt(exp.start.split("-")[0]) : null);
+        const endYear = exp.end?.year || (typeof exp.end === "string" ? parseInt(exp.end.split("-")[0]) : null) || new Date().getFullYear();
+        if (startYear) {
+          const startMonth = exp.start?.month || 1;
+          const endMonth = exp.end?.month || new Date().getMonth() + 1;
+          durationMonths = (endYear - startYear) * 12 + (endMonth - startMonth);
+        }
+        return {
+          role,
+          company,
+          duration: durationMonths > 0 ? formatDuration(durationMonths) : undefined,
+          durationMonths,
+          description: description.slice(0, 500) || undefined,
+          skills: skills.slice(0, 8),
+        };
+      });
+
+      profile.workExperience = enrichedMapped;
+      console.log(
+        `[enrichment] ✅ ${profile.name}: enriched ${enrichedMapped.length} exp (${enrichedMapped.filter((e: any) => e.description && e.description.length > 30).length} with desc)`,
+      );
+    }
+
+    if (!profile.summary && (data.about || data.summary)) {
+      profile.summary = (data.about || data.summary).slice(0, 300);
+    }
+    if ((!profile.skills || profile.skills.length === 0) && data.skills) {
+      profile.skills = (data.skills as any[]).map((s: any) => (typeof s === "string" ? s : s.name)).slice(0, 15);
+    }
+
+    return true;
+  } catch (err) {
+    console.error(`[enrichment] ❌ Error for ${profile.name}:`, err);
+    return false;
+  }
+}
+
 // ─── Main Scoring Pipeline ───────────────────────────────────────────────────
 
 async function scoreProfile(
@@ -877,6 +991,7 @@ async function scoreProfile(
   profile: ProfileData,
   job: JobData,
   customScoringInstructions?: string,
+  enrichmentCtx?: EnrichmentContext | null,
 ): Promise<ScoringResult> {
   const startTime = Date.now();
   const candidateId = profile.id; // Stable ID from your candidates table
@@ -912,7 +1027,15 @@ async function scoreProfile(
       skipReason: hardFilter.reason,
     };
     await setCachedScore(supabase, candidateId, job.id, result);
-    return result;
+  }
+
+  // ─── Enrichment: after hard filter pass, before weighted scoring ──────────
+  // Only enrich profiles that passed hard filters and lack experience descriptions
+  if (enrichmentCtx) {
+    const enriched = await maybeEnrichProfile(profile, enrichmentCtx);
+    if (enriched) {
+      enrichmentCtx.dailyCount++;
+    }
   }
 
   // Layer 2: Weighted Criteria (now returns matched/missing skills too)
@@ -1067,20 +1190,15 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // ─── Profile Enrichment ──────────────────────────────────────────────────
-    // For profiles missing descriptions in their top 3 experiences,
-    // call Unipile get_profile to fetch full data before scoring.
-    // Limited to 500 enrichments per day with 2-4s random delay.
+    // ─── Enrichment Context Setup ──────────────────────────────────────────────
+    // Enrichment happens INSIDE scoreProfile, AFTER hard filter pass.
+    // This avoids wasting get_profile calls on profiles that would be eliminated.
     const ENRICHMENT_DAILY_LIMIT = 500;
-    const ENRICHMENT_MIN_DELAY_MS = 2000;
-    const ENRICHMENT_MAX_DELAY_MS = 4000;
-
     const unipileApiKey = Deno.env.get("UNIPILE_API_KEY");
     const unipileDsn = Deno.env.get("UNIPILE_DSN");
-    const canEnrich = !!accountId && !!unipileApiKey && !!unipileDsn;
+    let enrichmentCtx: EnrichmentContext | null = null;
 
-    if (canEnrich) {
-      // Check daily enrichment count from DB
+    if (accountId && unipileApiKey && unipileDsn) {
       const today = new Date().toISOString().split("T")[0];
       const countKey = `enrichment_count_${today}`;
       const { data: countRow } = await supabase
@@ -1088,118 +1206,16 @@ serve(async (req) => {
         .select("value")
         .eq("key", countKey)
         .maybeSingle();
-      let dailyCount = countRow ? parseInt(countRow.value, 10) : 0;
+      const dailyCount = countRow ? parseInt(countRow.value, 10) : 0;
 
-      const baseUrl = `https://${unipileDsn}/api/v1`;
-
-      for (const p of profilesToScore) {
-        if (dailyCount >= ENRICHMENT_DAILY_LIMIT) {
-          console.log(`[enrichment] Daily limit reached (${ENRICHMENT_DAILY_LIMIT}), skipping remaining`);
-          break;
-        }
-
-        // Check if top 3 experiences have descriptions
-        const top3 = (p.workExperience || []).slice(0, 3);
-        const hasDescriptions = top3.some((exp) => exp.description && exp.description.length > 30);
-        if (hasDescriptions) {
-          continue; // Already has descriptions, no need to enrich
-        }
-
-        // Need a profile identifier to call Unipile
-        const profileId = p.providerId || p.profileUrl;
-        if (!profileId) {
-          console.log(`[enrichment] No profile identifier for ${p.name}, skipping`);
-          continue;
-        }
-
-        // Random delay 2-4s
-        const delay = Math.floor(Math.random() * (ENRICHMENT_MAX_DELAY_MS - ENRICHMENT_MIN_DELAY_MS) + ENRICHMENT_MIN_DELAY_MS);
-        await sleep(delay);
-
-        try {
-          // Resolve profile ID from URL if needed
-          let resolvedId = profileId;
-          if (resolvedId.includes("linkedin.com")) {
-            resolvedId = resolvedId.replace(/\/+$/, "").split("/").pop() || resolvedId;
-          }
-
-          const response = await fetch(
-            `${baseUrl}/users/${encodeURIComponent(resolvedId)}?account_id=${accountId}`,
-            {
-              headers: {
-                "X-API-KEY": unipileApiKey!,
-                Accept: "application/json",
-              },
-            },
-          );
-
-          if (response.ok) {
-            const data = await response.json();
-            const enrichedExp = (data.work_experience || data.positions || []).slice(0, 5);
-
-            if (enrichedExp.length > 0) {
-              // Merge enriched experience descriptions back
-              const enrichedMapped = enrichedExp.map((exp: any) => {
-                const role = exp.role || exp.position || exp.title || "";
-                const company = exp.company || exp.company_name || "";
-                const description = exp.description || "";
-                const skills = (exp.skills || []).map((s: any) => (typeof s === "string" ? s : s.name));
-                // Calculate duration
-                let durationMonths = 0;
-                const startYear = exp.start?.year || (typeof exp.start === "string" ? parseInt(exp.start.split("-")[0]) : null);
-                const endYear = exp.end?.year || (typeof exp.end === "string" ? parseInt(exp.end.split("-")[0]) : null) || new Date().getFullYear();
-                if (startYear) {
-                  const startMonth = exp.start?.month || 1;
-                  const endMonth = exp.end?.month || new Date().getMonth() + 1;
-                  durationMonths = (endYear - startYear) * 12 + (endMonth - startMonth);
-                }
-                const formatDuration = (m: number) => {
-                  const y = Math.floor(m / 12);
-                  const mo = m % 12;
-                  if (y === 0) return `${mo} mois`;
-                  if (mo === 0) return `${y} an${y > 1 ? "s" : ""}`;
-                  return `${y} an${y > 1 ? "s" : ""} ${mo} mois`;
-                };
-                return {
-                  role,
-                  company,
-                  duration: durationMonths > 0 ? formatDuration(durationMonths) : undefined,
-                  durationMonths,
-                  description: description.slice(0, 500) || undefined,
-                  skills: skills.slice(0, 8),
-                };
-              });
-
-              // Replace work experience with enriched data
-              p.workExperience = enrichedMapped;
-              console.log(`[enrichment] ✅ ${p.name}: enriched ${enrichedMapped.length} experiences (${enrichedMapped.filter((e: any) => e.description && e.description.length > 30).length} with desc)`);
-            }
-
-            // Also enrich summary if missing
-            if (!p.summary && (data.about || data.summary)) {
-              p.summary = (data.about || data.summary).slice(0, 300);
-            }
-
-            // Enrich skills if missing
-            if ((!p.skills || p.skills.length === 0) && data.skills) {
-              p.skills = (data.skills as any[]).map((s: any) => (typeof s === "string" ? s : s.name)).slice(0, 15);
-            }
-
-            dailyCount++;
-          } else {
-            console.warn(`[enrichment] ⚠️ Failed for ${p.name}: HTTP ${response.status}`);
-          }
-        } catch (err) {
-          console.error(`[enrichment] ❌ Error for ${p.name}:`, err);
-        }
-      }
-
-      // Update daily count in DB
-      await supabase.from("internal_config").upsert(
-        { key: countKey, value: String(dailyCount) },
-        { onConflict: "key" },
-      );
-      console.log(`[enrichment] Daily count: ${dailyCount}/${ENRICHMENT_DAILY_LIMIT}`);
+      enrichmentCtx = {
+        accountId,
+        apiKey: unipileApiKey,
+        baseUrl: `https://${unipileDsn}/api/v1`,
+        dailyCount,
+        dailyLimit: ENRICHMENT_DAILY_LIMIT,
+      };
+      console.log(`[enrichment] Context initialized: ${dailyCount}/${ENRICHMENT_DAILY_LIMIT} used today`);
     }
 
     // ─── Scoring ─────────────────────────────────────────────────────────────
@@ -1213,9 +1229,10 @@ serve(async (req) => {
     for (let i = 0; i < profilesToScore.length; i += BATCH_SIZE) {
       const batch = profilesToScore.slice(i, i + BATCH_SIZE);
 
-      const batchResults = await Promise.all(
-        batch.map(async (p) => {
-          try {
+      // Note: with enrichment, we process sequentially to respect delays
+      const batchResults: ScoringResult[] = [];
+      for (const p of batch) {
+        try {
             // Diagnostic: log work experience data received
             const expCount = (p.workExperience || []).length;
             const expWithDesc = (p.workExperience || []).filter((w: any) => w.description && w.description.length > 0).length;
@@ -1231,10 +1248,11 @@ serve(async (req) => {
               }));
               console.log(`[scoring-input] ${p.name} sample:`, JSON.stringify(sample));
             }
-            return await scoreProfile(supabase, p, job, customScoringInstructions);
+            const result = await scoreProfile(supabase, p, job, customScoringInstructions, enrichmentCtx);
+            batchResults.push(result);
           } catch (err) {
             console.error(`[scoring] Error for ${p.name}:`, err);
-            return {
+            batchResults.push({
               name: p.name,
               score: 0,
               recommendation: "ERROR",
@@ -1254,10 +1272,9 @@ serve(async (req) => {
               skippedLLM: true,
               processingTimeMs: 0,
               tokensUsed: null,
-            } as ScoringResult;
+            } as ScoringResult);
           }
-        }),
-      );
+      }
 
       for (const r of batchResults) {
         if (!r.hardFilterPassed) hardFilteredCount++;
@@ -1274,6 +1291,16 @@ serve(async (req) => {
       if (i + BATCH_SIZE < profilesToScore.length) {
         await sleep(DELAY_BETWEEN_BATCHES_MS);
       }
+    }
+
+    // Persist enrichment daily count
+    if (enrichmentCtx) {
+      const today = new Date().toISOString().split("T")[0];
+      await supabase.from("internal_config").upsert(
+        { key: `enrichment_count_${today}`, value: String(enrichmentCtx.dailyCount) },
+        { onConflict: "key" },
+      );
+      console.log(`[enrichment] Final daily count: ${enrichmentCtx.dailyCount}/${enrichmentCtx.dailyLimit}`);
     }
 
     const avgScore =
