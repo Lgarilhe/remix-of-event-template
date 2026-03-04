@@ -1366,7 +1366,7 @@ async function handleSendMessage(
       formData.append('linkedin[api]', 'recruiter');
       formData.append('linkedin[inmail]', 'true');
       if (subject) {
-        formData.append('linkedin[subject]', subject as string);
+        formData.append('subject', subject as string);
       }
     }
   }
