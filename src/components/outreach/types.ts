@@ -266,8 +266,8 @@ export interface LinkedInProfile {
     school_id?: string;
     degree?: string;
     field_of_study?: string;
-    start?: { year?: number; month?: number };
-    end?: { year?: number; month?: number };
+    start?: string | { year?: number; month?: number } | null;
+    end?: string | { year?: number; month?: number } | null;
     school_details?: {
       name?: string;
       description?: string;
@@ -287,8 +287,8 @@ export interface LinkedInProfile {
     description?: string;
     skills?: Array<{ name: string; endorsement_count?: number }>;
     logo?: string;
-    start?: { month?: number; year?: number };
-    end?: { month?: number; year?: number };
+    start?: string | { month?: number; year?: number } | null;
+    end?: string | { month?: number; year?: number } | null;
   }>;
   // Certifications
   certifications?: Array<{

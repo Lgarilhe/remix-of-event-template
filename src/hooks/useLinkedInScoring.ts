@@ -1,6 +1,7 @@
 import React, { useCallback, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { LinkedInProfile } from '@/components/outreach/types';
+import { getYear, parseDate } from '@/components/outreach/dateUtils';
 import { Job } from '@/types/jobs';
 import { JobMatchResult, BatchScoringStats } from '@/components/outreach/JobScoreDisplay';
 import { toast } from 'sonner';
@@ -219,19 +220,22 @@ export function buildProfileData(profile: LinkedInProfile) {
         const combined = `${edu.degree || ''} ${edu.school || ''} ${edu.field_of_study || ''}`.toLowerCase();
         return relevantDegreeKeywords.some(kw => combined.includes(kw));
       })
-      .sort((a: any, b: any) => (b.end?.year || 0) - (a.end?.year || 0));
+      .sort((a: any, b: any) => (getYear(b.end) || 0) - (getYear(a.end) || 0));
 
-    const diplomaToUse = relevantEdu[0] || education.filter((edu: any) => edu.end?.year).sort((a: any, b: any) => (b.end?.year || 0) - (a.end?.year || 0))[0];
+    const diplomaToUse = relevantEdu[0] || education.filter((edu: any) => getYear(edu.end)).sort((a: any, b: any) => (getYear(b.end) || 0) - (getYear(a.end) || 0))[0];
 
-    if (diplomaToUse?.end?.year) {
-      const years = new Date().getFullYear() - diplomaToUse.end.year;
-      if (years > 0) return years;
+    if (diplomaToUse) {
+      const endYear = getYear(diplomaToUse.end);
+      if (endYear) {
+        const years = new Date().getFullYear() - endYear;
+        if (years > 0) return years;
+      }
     }
 
     // Fallback: use earliest work experience start date
     let earliestYear: number | null = null;
     for (const exp of workExperience) {
-      const startYear = exp.start?.year;
+      const startYear = getYear(exp.start);
       if (startYear && startYear > 1970) {
         if (!earliestYear || startYear < earliestYear) {
           earliestYear = startYear;
@@ -247,7 +251,9 @@ export function buildProfileData(profile: LinkedInProfile) {
   };
 
   // Calculate duration in months
-  const calculateDurationMonths = (start?: { year?: number; month?: number }, end?: { year?: number; month?: number }): number => {
+  const calculateDurationMonths = (startRaw?: any, endRaw?: any): number => {
+    const start = parseDate(startRaw);
+    const end = parseDate(endRaw);
     if (!start?.year) return 0;
     const endYear = end?.year || new Date().getFullYear();
     const endMonth = end?.month || new Date().getMonth() + 1;
@@ -267,7 +273,7 @@ export function buildProfileData(profile: LinkedInProfile) {
 
   // Calculate average tenure
   const calculateAverageTenure = (): number | null => {
-    const positionsWithDates = workExperience.filter(exp => exp.start?.year);
+    const positionsWithDates = workExperience.filter(exp => getYear(exp.start));
     if (positionsWithDates.length === 0) return null;
 
     const tenures = positionsWithDates.map(exp => calculateDurationMonths(exp.start, exp.end));
