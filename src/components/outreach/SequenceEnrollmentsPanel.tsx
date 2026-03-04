@@ -548,15 +548,48 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
                                     {status.icon}
                                     <span className="ml-1">{status.label}</span>
                                   </Badge>
-                                  <span className="text-[10px] text-muted-foreground">
-                                    {executions.length} étape(s)
-                                  </span>
-                                  <span className="text-[10px] text-muted-foreground">
-                                    · {formatDistanceToNow(new Date(enrollment.created_at), { 
-                                      addSuffix: true, 
-                                      locale: fr 
-                                    })}
-                                  </span>
+                                  {(() => {
+                                    // Find next scheduled or last executed action
+                                    const scheduledExecs = executions
+                                      .filter(e => e.status === 'scheduled')
+                                      .sort((a, b) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime());
+                                    const executedExecs = executions
+                                      .filter(e => (e.status === 'executed' || e.status === 'sent') && e.executed_at)
+                                      .sort((a, b) => new Date(b.executed_at!).getTime() - new Date(a.executed_at!).getTime());
+                                    const waitingExecs = executions.filter(e => e.status === 'waiting_event');
+
+                                    const nextScheduled = scheduledExecs[0];
+                                    const lastExecuted = executedExecs[0];
+
+                                    return (
+                                      <>
+                                        {lastExecuted && (
+                                          <span className="text-[10px] text-emerald-600">
+                                            ✓ {format(new Date(lastExecuted.executed_at!), 'dd/MM à HH:mm', { locale: fr })}
+                                          </span>
+                                        )}
+                                        {nextScheduled && (
+                                          <span className="text-[10px] text-blue-600 font-medium">
+                                            → {(() => {
+                                              const actionType = nextScheduled.step?.action_type || '';
+                                              const label = actionTypeConfig[actionType]?.label || actionType;
+                                              return label;
+                                            })()} le {format(new Date(nextScheduled.scheduled_at), 'dd/MM à HH:mm', { locale: fr })}
+                                          </span>
+                                        )}
+                                        {waitingExecs.length > 0 && !nextScheduled && (
+                                          <span className="text-[10px] text-amber-600">
+                                            ⏳ Attente connexion
+                                          </span>
+                                        )}
+                                        {!nextScheduled && !lastExecuted && waitingExecs.length === 0 && (
+                                          <span className="text-[10px] text-muted-foreground">
+                                            {executions.length} étape(s)
+                                          </span>
+                                        )}
+                                      </>
+                                    );
+                                  })()}
                                 </div>
                               </div>
                             </CollapsibleTrigger>
