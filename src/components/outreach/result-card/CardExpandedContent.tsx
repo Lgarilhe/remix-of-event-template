@@ -54,9 +54,9 @@ export const CardExpandedContent: React.FC<CardExpandedContentProps> = ({
   const workExperience = profile.work_experience || [];
 
   return (
-    <div className="border-2 border-foreground bg-background overflow-hidden">
+    <div className="border border-foreground bg-background overflow-hidden">
       <Tabs defaultValue="experience" className="w-full">
-        <div className="border-b-2 border-foreground bg-muted/20 overflow-x-auto">
+        <div className="border-b border-foreground bg-muted/20 overflow-x-auto">
           <TabsList className="w-max min-w-full h-10 sm:h-11 bg-transparent p-0 rounded-none gap-0">
             {[
               { value: 'experience', icon: Briefcase, label: 'Expérience', shortLabel: 'Exp.' },
@@ -88,7 +88,7 @@ export const CardExpandedContent: React.FC<CardExpandedContentProps> = ({
                 return (
                   <div
                     key={index}
-                    className={`relative p-3 sm:p-4 border-2 transition-colors ${
+                    className={`relative p-3 sm:p-4 border transition-colors ${
                       isCurrent
                         ? 'bg-brutal-accent/5 border-foreground'
                         : 'bg-background border-foreground/30 hover:border-foreground'
@@ -99,11 +99,11 @@ export const CardExpandedContent: React.FC<CardExpandedContentProps> = ({
                         <img
                           src={exp.logo}
                           alt={exp.company || ''}
-                          className="mt-0.5 w-9 h-9 sm:w-10 sm:h-10 object-contain bg-background border-2 border-foreground/30 shrink-0 p-0.5"
+                          className="mt-0.5 w-9 h-9 sm:w-10 sm:h-10 object-contain bg-background border border-foreground/30 shrink-0 p-0.5"
                           onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; (e.target as HTMLImageElement).nextElementSibling && ((e.target as HTMLImageElement).nextElementSibling as HTMLElement).classList.remove('hidden'); }}
                         />
                       ) : null}
-                      <div className={`mt-0.5 w-9 h-9 sm:w-10 sm:h-10 flex items-center justify-center shrink-0 border-2 ${
+                      <div className={`mt-0.5 w-9 h-9 sm:w-10 sm:h-10 flex items-center justify-center shrink-0 border ${
                         isCurrent ? 'bg-foreground text-background border-foreground' : 'bg-muted/60 border-foreground/30'
                       } ${exp.logo ? 'hidden' : ''}`}>
                         <Briefcase className="w-4 h-4" />
@@ -149,17 +149,17 @@ export const CardExpandedContent: React.FC<CardExpandedContentProps> = ({
               {education.map((edu: any, index: number) => {
                 const schoolLogo = edu.logo || edu.school_logo || edu.school_details?.logo;
                 return (
-                <div key={index} className="p-3 sm:p-4 border-2 border-foreground/30 bg-background hover:border-foreground transition-colors">
+                <div key={index} className="p-3 sm:p-4 border border-foreground/30 bg-background hover:border-foreground transition-colors">
                   <div className="flex items-start gap-2.5 sm:gap-3">
                     {schoolLogo ? (
                       <img
                         src={schoolLogo}
                         alt={edu.school || ''}
-                        className="mt-0.5 w-9 h-9 sm:w-10 sm:h-10 object-contain bg-background border-2 border-foreground/30 shrink-0 p-0.5"
+                        className="mt-0.5 w-9 h-9 sm:w-10 sm:h-10 object-contain bg-background border border-foreground/30 shrink-0 p-0.5"
                         onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; (e.target as HTMLImageElement).nextElementSibling && ((e.target as HTMLImageElement).nextElementSibling as HTMLElement).classList.remove('hidden'); }}
                       />
                     ) : null}
-                    <div className={`mt-0.5 w-9 h-9 sm:w-10 sm:h-10 bg-muted flex items-center justify-center shrink-0 border-2 border-foreground/30 ${schoolLogo ? 'hidden' : ''}`}>
+                    <div className={`mt-0.5 w-9 h-9 sm:w-10 sm:h-10 bg-muted flex items-center justify-center shrink-0 border border-foreground/30 ${schoolLogo ? 'hidden' : ''}`}>
                       <GraduationCap className="w-4 h-4 text-foreground" />
                     </div>
                     <div className="flex-1 min-w-0">
@@ -191,7 +191,7 @@ export const CardExpandedContent: React.FC<CardExpandedContentProps> = ({
               {skills.map((skill: any, index: number) => (
                 <span
                   key={index}
-                  className="text-xs px-2.5 py-1.5 bg-background text-foreground border-2 border-foreground/30 font-medium hover:border-foreground transition-colors"
+                  className="text-xs px-2.5 py-1.5 bg-background text-foreground border border-foreground/30 font-medium hover:border-foreground transition-colors"
                 >
                   {skill.name || skill}
                   {skill.endorsement_count && (
@@ -224,7 +224,7 @@ export const CardExpandedContent: React.FC<CardExpandedContentProps> = ({
             <p className="text-xs text-muted-foreground mb-4">
               Consultez les dernières publications de ce candidat
             </p>
-            <Button variant="outline" size="sm" className="rounded-none border-2 border-foreground text-foreground hover:bg-foreground hover:text-background uppercase tracking-wider text-xs font-semibold">
+            <Button variant="outline" size="sm" className="rounded-none border border-foreground text-foreground hover:bg-foreground hover:text-background uppercase tracking-wider text-xs font-semibold">
               <Newspaper className="w-4 h-4 mr-2" />
               Voir les posts
             </Button>
