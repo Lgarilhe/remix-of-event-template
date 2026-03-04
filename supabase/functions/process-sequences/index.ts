@@ -465,7 +465,29 @@ async function handleCheckTimeouts(supabase: any) {
 
 // deno-lint-ignore no-explicit-any
 async function handleCheckWaitEvents(supabase: any) {
-  // Throttle: run at most every 4 hours to avoid burning Unipile quota
+  // Phase 1: Fast DB-only pass — immediately unblock candidates already marked as connected
+  // This runs every time without throttle since it doesn't call Unipile
+  const { data: dbConnected } = await supabase.from('sequence_step_executions')
+    .select(`id, enrollment:sequence_enrollments!inner(id, connection_status, network_distance, sequence_id, profile_name)`)
+    .eq('status', 'waiting_event')
+    .eq('enrollment.connection_status', 'connected')
+    .limit(100);
+
+  let fastUnblocked = 0;
+  for (const exec of dbConnected || []) {
+    const enrollment = exec.enrollment;
+    if (!enrollment) continue;
+    await supabase.from('sequence_step_executions').update({ status: 'scheduled', scheduled_at: new Date().toISOString() }).eq('id', exec.id);
+    await logAnalytics(supabase, enrollment.sequence_id, 'invites_accepted');
+    fastUnblocked++;
+    console.log(`[handleCheckWaitEvents] Fast unblock: ${enrollment.profile_name}`);
+  }
+
+  if (fastUnblocked > 0) {
+    console.log(`[handleCheckWaitEvents] Fast-unblocked ${fastUnblocked} already-connected candidates`);
+  }
+
+  // Phase 2: Throttled Unipile check for remaining waiting_event candidates
   const MIN_INTERVAL_MS = 8 * 60 * 60 * 1000;
   const { data: lastRun } = await supabase
     .from('internal_config')
@@ -474,8 +496,8 @@ async function handleCheckWaitEvents(supabase: any) {
     .maybeSingle();
 
   if (lastRun?.value && Date.now() - new Date(lastRun.value).getTime() < MIN_INTERVAL_MS) {
-    console.log('[handleCheckWaitEvents] Skipped — last run too recent:', lastRun.value);
-    return new Response(JSON.stringify({ skipped: 'too_recent', last_run: lastRun.value }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    console.log('[handleCheckWaitEvents] API check skipped — last run too recent:', lastRun.value);
+    return new Response(JSON.stringify({ success: true, fastUnblocked, eventsTriggered: 0, skipped_api: 'too_recent' }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
   }
 
   // Update last run timestamp
@@ -495,9 +517,9 @@ async function handleCheckWaitEvents(supabase: any) {
     let eventOccurred = false;
     if (step.wait_for_event === 'connection_accepted') {
       // Use DB-stored network_distance first → avoids Unipile API call
-      if (enrollment.network_distance === 'FIRST_DEGREE') {
+      if (enrollment.network_distance === 'FIRST_DEGREE' || enrollment.connection_status === 'connected') {
         eventOccurred = true;
-        console.log(`[handleCheckWaitEvents] DB hit: ${enrollment.profile_name} already FIRST_DEGREE`);
+        console.log(`[handleCheckWaitEvents] DB hit: ${enrollment.profile_name} already FIRST_DEGREE/connected`);
       } else {
         const profile = await getProfileInfo(enrollment.account_id, enrollment.profile_id, enrollment.profile_url);
         eventOccurred = profile?.network_distance === 'FIRST_DEGREE';
@@ -522,7 +544,7 @@ async function handleCheckWaitEvents(supabase: any) {
       eventsTriggered++;
     }
   }
-  return new Response(JSON.stringify({ success: true, eventsTriggered }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+  return new Response(JSON.stringify({ success: true, fastUnblocked, eventsTriggered }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 }
 
 // ============ UTILITIES ============
