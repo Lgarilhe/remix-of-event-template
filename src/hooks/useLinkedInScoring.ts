@@ -286,7 +286,7 @@ export function buildProfileData(profile: LinkedInProfile) {
   const enrichedWorkExperience = recentPositions.map(exp => {
     const durationMonths = calculateDurationMonths(exp.start, exp.end);
     return {
-      role: exp.role || '',
+      role: exp.role || exp.position || '',
       company: exp.company || '',
       duration: durationMonths > 0 ? formatDuration(durationMonths) : undefined,
       durationMonths,
@@ -296,27 +296,28 @@ export function buildProfileData(profile: LinkedInProfile) {
   });
 
   // Receptivity signals
-  const isOpenToWork = profile.open_to_work === true;
-  const isOpenProfile = profile.open_profile === true;
+  const isOpenToWork = profile.open_to_work === true || profile.is_open_to_work === true;
+  const isOpenProfile = profile.open_profile === true || profile.is_open_profile === true;
   const networkDistance = typeof profile.network_distance === 'number'
     ? profile.network_distance
-    : parseInt(String(profile.network_distance), 10) || null;
+    : parseInt(String(profile.network_distance).replace('DISTANCE_', '').replace('FIRST_DEGREE', '1').replace('SECOND_DEGREE', '2').replace('THIRD_DEGREE', '3'), 10) || null;
 
   return {
     name: profile.name || `${profile.first_name || ''} ${profile.last_name || ''}`.trim(),
     headline: profile.headline,
-    currentRole: currentJob?.role,
+    currentRole: currentJob?.role || currentJob?.position,
     currentCompany: currentJob?.company,
     location: profile.location,
     skills: profile.skills?.map((s: any) => s.name || s).slice(0, 15) || [],
     summary: profile.summary?.slice(0, 300) || undefined,
     workExperience: enrichedWorkExperience.length > 0 ? enrichedWorkExperience : undefined,
-    pastPositions: pastJobs.map(p => `${p.role} chez ${p.company}`),
+    pastPositions: pastJobs.map(p => `${p.role || p.position} chez ${p.company}`),
     education: education.map((e: any) => {
       const school = e.school || e.school_details?.name || '';
       const degree = e.degree || '';
       const field = e.field_of_study || '';
-      const year = e.end?.year ? ` (${e.end.year})` : '';
+      const endYear = getYear(e.end);
+      const year = endYear ? ` (${endYear})` : '';
       return [school, degree, field].filter(Boolean).join(' - ') + year;
     }).filter((s: string) => s.trim().length > 0) || [],
     yearsOfExperience: calculateYearsFromDiploma(),

@@ -288,7 +288,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
         currentCompany,
         location: profile.location,
         skills: skills.map((s: any) => s.name || s).slice(0, 10),
-        pastPositions: pastJobs.map((p: any) => `${p.role} chez ${p.company}`),
+        pastPositions: pastJobs.map((p: any) => `${p.role || p.position} chez ${p.company}`),
         education: education.map((e: any) => `${e.degree || ''} - ${e.school}`),
       };
       const { data, error } = await supabase.functions.invoke('analyze-linkedin-profile', {
