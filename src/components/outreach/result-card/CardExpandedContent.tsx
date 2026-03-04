@@ -54,10 +54,10 @@ export const CardExpandedContent: React.FC<CardExpandedContentProps> = ({
   const workExperience = profile.work_experience || [];
 
   return (
-    <div className="rounded-none sm:rounded-xl border border-border/60 bg-background overflow-hidden">
+    <div className="border-2 border-foreground bg-background overflow-hidden">
       <Tabs defaultValue="experience" className="w-full">
-        <div className="border-b border-border/50 bg-muted/20 overflow-x-auto">
-          <TabsList className="w-max min-w-full h-11 sm:h-12 bg-transparent p-0 rounded-none gap-0">
+        <div className="border-b-2 border-foreground bg-muted/20 overflow-x-auto">
+          <TabsList className="w-max min-w-full h-10 sm:h-11 bg-transparent p-0 rounded-none gap-0">
             {[
               { value: 'experience', icon: Briefcase, label: 'Expérience', shortLabel: 'Exp.' },
               { value: 'education', icon: GraduationCap, label: 'Formation', shortLabel: 'Form.' },
@@ -68,7 +68,7 @@ export const CardExpandedContent: React.FC<CardExpandedContentProps> = ({
               <TabsTrigger
                 key={tab.value}
                 value={tab.value}
-                className="shrink-0 min-w-[74px] sm:min-w-0 sm:flex-1 text-[11px] sm:text-xs h-full rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary data-[state=active]:shadow-none gap-1 sm:gap-1.5 px-1.5 sm:px-2 transition-all"
+                className="shrink-0 min-w-[74px] sm:min-w-0 sm:flex-1 text-[10px] sm:text-xs h-full rounded-none border-b-2 border-transparent data-[state=active]:border-foreground data-[state=active]:bg-foreground data-[state=active]:text-background data-[state=active]:shadow-none gap-1 sm:gap-1.5 px-1.5 sm:px-2 transition-all uppercase tracking-wider font-semibold"
               >
                 <tab.icon className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
                 <span className="hidden sm:inline">{tab.label}</span>
@@ -88,10 +88,10 @@ export const CardExpandedContent: React.FC<CardExpandedContentProps> = ({
                 return (
                   <div
                     key={index}
-                    className={`relative p-3 sm:p-4 rounded-none sm:rounded-xl border transition-colors ${
+                    className={`relative p-3 sm:p-4 border-2 transition-colors ${
                       isCurrent
-                        ? 'bg-primary/[0.03] border-primary/20 shadow-sm'
-                        : 'bg-background border-border/50 hover:border-border'
+                        ? 'bg-brutal-accent/5 border-foreground'
+                        : 'bg-background border-foreground/30 hover:border-foreground'
                     }`}
                   >
                     <div className="flex items-start gap-2.5 sm:gap-3">
@@ -99,22 +99,22 @@ export const CardExpandedContent: React.FC<CardExpandedContentProps> = ({
                         <img
                           src={exp.logo}
                           alt={exp.company || ''}
-                          className="mt-0.5 w-9 h-9 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl object-contain bg-white border border-border/40 shrink-0 p-0.5"
+                          className="mt-0.5 w-9 h-9 sm:w-10 sm:h-10 object-contain bg-background border-2 border-foreground/30 shrink-0 p-0.5"
                           onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; (e.target as HTMLImageElement).nextElementSibling && ((e.target as HTMLImageElement).nextElementSibling as HTMLElement).classList.remove('hidden'); }}
                         />
                       ) : null}
-                      <div className={`mt-0.5 w-9 h-9 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl flex items-center justify-center shrink-0 ${
-                        isCurrent ? 'bg-primary/10' : 'bg-muted/60'
+                      <div className={`mt-0.5 w-9 h-9 sm:w-10 sm:h-10 flex items-center justify-center shrink-0 border-2 ${
+                        isCurrent ? 'bg-foreground text-background border-foreground' : 'bg-muted/60 border-foreground/30'
                       } ${exp.logo ? 'hidden' : ''}`}>
-                        <Briefcase className={`w-4 h-4 ${isCurrent ? 'text-primary' : 'text-muted-foreground'}`} />
+                        <Briefcase className="w-4 h-4" />
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-start justify-between gap-2">
-                          <p className="font-semibold text-foreground text-sm leading-tight">{exp.role}</p>
+                          <p className="font-bold text-foreground text-sm leading-tight">{exp.role}</p>
                           {isCurrent && (
-                            <Badge variant="secondary" className="text-[10px] bg-emerald-100 text-emerald-700 border-0 px-1.5 py-0 font-semibold shrink-0">
+                            <span className="text-[10px] bg-foreground text-background px-1.5 py-0.5 font-bold uppercase tracking-wider shrink-0">
                               En poste
-                            </Badge>
+                            </span>
                           )}
                         </div>
                         <p className="text-xs sm:text-sm text-muted-foreground mt-0.5 flex items-center gap-1">
@@ -149,21 +149,21 @@ export const CardExpandedContent: React.FC<CardExpandedContentProps> = ({
               {education.map((edu: any, index: number) => {
                 const schoolLogo = edu.logo || edu.school_logo || edu.school_details?.logo;
                 return (
-                <div key={index} className="p-3 sm:p-4 rounded-none sm:rounded-xl border border-border/50 bg-background hover:border-border transition-colors">
+                <div key={index} className="p-3 sm:p-4 border-2 border-foreground/30 bg-background hover:border-foreground transition-colors">
                   <div className="flex items-start gap-2.5 sm:gap-3">
                     {schoolLogo ? (
                       <img
                         src={schoolLogo}
                         alt={edu.school || ''}
-                        className="mt-0.5 w-9 h-9 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl object-contain bg-white border border-border/40 shrink-0 p-0.5"
+                        className="mt-0.5 w-9 h-9 sm:w-10 sm:h-10 object-contain bg-background border-2 border-foreground/30 shrink-0 p-0.5"
                         onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; (e.target as HTMLImageElement).nextElementSibling && ((e.target as HTMLImageElement).nextElementSibling as HTMLElement).classList.remove('hidden'); }}
                       />
                     ) : null}
-                    <div className={`mt-0.5 w-9 h-9 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl bg-amber-100/60 flex items-center justify-center shrink-0 ${schoolLogo ? 'hidden' : ''}`}>
-                      <GraduationCap className="w-4 h-4 text-amber-600" />
+                    <div className={`mt-0.5 w-9 h-9 sm:w-10 sm:h-10 bg-muted flex items-center justify-center shrink-0 border-2 border-foreground/30 ${schoolLogo ? 'hidden' : ''}`}>
+                      <GraduationCap className="w-4 h-4 text-foreground" />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="font-semibold text-foreground text-sm">{edu.school}</p>
+                      <p className="font-bold text-foreground text-sm">{edu.school}</p>
                       <p className="text-xs sm:text-sm text-muted-foreground mt-0.5">
                         {edu.degree}{edu.field_of_study && ` · ${edu.field_of_study}`}
                       </p>
@@ -187,18 +187,17 @@ export const CardExpandedContent: React.FC<CardExpandedContentProps> = ({
         {/* Skills Tab */}
         <TabsContent value="skills" className="mt-0 p-2 sm:p-4">
           {skills.length > 0 ? (
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-1.5">
               {skills.map((skill: any, index: number) => (
-                <Badge
+                <span
                   key={index}
-                  variant="outline"
-                  className="text-xs px-3 py-2 bg-background text-foreground/80 border-border/80 font-medium hover:bg-muted/50 transition-colors rounded-lg"
+                  className="text-xs px-2.5 py-1.5 bg-background text-foreground border-2 border-foreground/30 font-medium hover:border-foreground transition-colors"
                 >
                   {skill.name || skill}
                   {skill.endorsement_count && (
                     <span className="ml-1.5 text-[10px] text-muted-foreground font-normal">+{skill.endorsement_count}</span>
                   )}
-                </Badge>
+                </span>
               ))}
             </div>
           ) : (
@@ -221,11 +220,11 @@ export const CardExpandedContent: React.FC<CardExpandedContentProps> = ({
         <TabsContent value="posts" className="mt-0 p-2 sm:p-4">
           <div className="text-center py-12 text-muted-foreground">
             <Newspaper className="w-10 h-10 mx-auto mb-3 opacity-30" />
-            <p className="text-sm font-medium mb-1">Publications LinkedIn</p>
+            <p className="text-xs font-bold mb-1 uppercase tracking-wider">Publications LinkedIn</p>
             <p className="text-xs text-muted-foreground mb-4">
               Consultez les dernières publications de ce candidat
             </p>
-            <Button variant="outline" size="sm" className="text-primary border-primary/20 hover:bg-primary/5 rounded-lg">
+            <Button variant="outline" size="sm" className="rounded-none border-2 border-foreground text-foreground hover:bg-foreground hover:text-background uppercase tracking-wider text-xs font-semibold">
               <Newspaper className="w-4 h-4 mr-2" />
               Voir les posts
             </Button>
@@ -239,6 +238,6 @@ export const CardExpandedContent: React.FC<CardExpandedContentProps> = ({
 const EmptyState: React.FC<{ icon: React.FC<any>; text: string }> = ({ icon: Icon, text }) => (
   <div className="text-center py-12 text-muted-foreground">
     <Icon className="w-10 h-10 mx-auto mb-3 opacity-30" />
-    <p className="text-sm font-medium">{text}</p>
+    <p className="text-xs font-bold uppercase tracking-wider">{text}</p>
   </div>
 );

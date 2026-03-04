@@ -317,19 +317,19 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
   return (
     <>
       <Sheet open={open} onOpenChange={onOpenChange}>
-        <SheetContent side="right" className="!w-full !max-w-[100vw] min-w-0 sm:!w-[95vw] sm:!max-w-[820px] p-0 flex flex-col overflow-x-auto overflow-y-hidden rounded-none border-l-0 sm:border-l border-foreground">
+        <SheetContent side="right" className="!w-full !max-w-[100vw] min-w-0 sm:!w-[95vw] sm:!max-w-[820px] p-0 flex flex-col overflow-x-auto overflow-y-hidden rounded-none border-l-2 border-foreground">
           {/* ─── HEADER ─── */}
-          <SheetHeader className="px-3 sm:px-6 pt-4 sm:pt-5 pb-3 sm:pb-4 bg-muted/30 border-b border-foreground shrink-0">
+          <SheetHeader className="px-3 sm:px-6 pt-4 sm:pt-5 pb-3 sm:pb-4 bg-background border-b-2 border-foreground shrink-0">
             <div className="flex items-start gap-2.5 sm:gap-4">
-               <Avatar className="w-11 h-11 sm:w-16 sm:h-16 border-2 border-border shadow-md shrink-0">
+               <Avatar className="w-11 h-11 sm:w-16 sm:h-16 border-2 border-foreground shrink-0 rounded-none">
                 <AvatarImage src={displayProfile.profile_picture_url} alt={fullName} className="object-cover" />
-                <AvatarFallback className="bg-gradient-to-br from-primary to-primary/80 text-primary-foreground text-base sm:text-xl font-semibold">
+                <AvatarFallback className="bg-foreground text-background text-base sm:text-xl font-bold rounded-none">
                   {initials || '?'}
                 </AvatarFallback>
               </Avatar>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <SheetTitle className="text-base sm:text-xl font-bold text-foreground truncate">
+                  <SheetTitle className="text-base sm:text-xl font-bold text-foreground truncate uppercase tracking-wide">
                     {fullName || 'Profil LinkedIn'}
                   </SheetTitle>
                   <CardStatusBadges
@@ -350,7 +350,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
                 <div className="flex flex-wrap items-center gap-x-3 sm:gap-x-4 gap-y-1 mt-1.5 sm:mt-2.5 text-[11px] sm:text-xs text-muted-foreground">
                   {currentCompany && (
                     <span className="flex items-center gap-1 font-medium text-foreground/80">
-                      <Building2 className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-primary" />
+                      <Building2 className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
                       <span className="truncate max-w-[120px] sm:max-w-none">{currentCompany}</span>
                       {currentJobTenure && <span className="text-muted-foreground/50 font-normal hidden sm:inline">• {currentJobTenure}</span>}
                     </span>
@@ -362,7 +362,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
                     </span>
                   )}
                   {totalExperience && (
-                    <span className="flex items-center gap-1 text-emerald-600 font-medium">
+                    <span className="flex items-center gap-1 font-medium text-foreground">
                       <TrendingUp className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
                       {totalExperience}
                     </span>
@@ -372,13 +372,13 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
             </div>
 
             {/* ─── ACTIONS BAR ─── */}
-            <div className="flex items-center gap-1.5 sm:gap-2 mt-3 sm:mt-4 pt-2.5 sm:pt-3 border-t border-foreground/20 flex-wrap">
+            <div className="flex items-center gap-1.5 sm:gap-2 mt-3 sm:mt-4 pt-2.5 sm:pt-3 border-t-2 border-foreground/20 flex-wrap">
               {/* Primary actions */}
               {selectedJob && (
                 <Button
                   size="sm"
                   onClick={() => setShowMessageModal(true)}
-                   className="h-7 sm:h-8 gap-1 sm:gap-1.5 text-[11px] sm:text-xs rounded-none border border-foreground px-2 sm:px-3"
+                  className="h-7 sm:h-8 gap-1 sm:gap-1.5 text-[11px] sm:text-xs rounded-none border-2 border-foreground bg-foreground text-background hover:bg-foreground/80 px-2 sm:px-3 uppercase tracking-wider font-semibold"
                 >
                   <PenLine className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
                   <span className="hidden sm:inline">Message</span>
@@ -392,7 +392,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
                   size="sm"
                   onClick={handleScore}
                   disabled={isScoring}
-                   className="h-7 sm:h-8 gap-1 sm:gap-1.5 text-[11px] sm:text-xs rounded-none text-purple-600 border-purple-300 hover:bg-purple-50 px-2 sm:px-3"
+                  className="h-7 sm:h-8 gap-1 sm:gap-1.5 text-[11px] sm:text-xs rounded-none border-2 border-foreground text-foreground hover:bg-brutal-accent/20 px-2 sm:px-3 uppercase tracking-wider font-semibold"
                 >
                   {isScoring ? <Loader2 className="w-3 h-3 sm:w-3.5 sm:h-3.5 animate-spin" /> : <Target className="w-3 h-3 sm:w-3.5 sm:h-3.5" />}
                   {isScoring ? '...' : 'Scorer'}
@@ -404,7 +404,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
                 size="sm"
                 onClick={handleAiAnalysis}
                 disabled={isAnalyzing}
-                className="h-7 sm:h-8 gap-1 sm:gap-1.5 text-[11px] sm:text-xs rounded-none text-purple-600 border-purple-300 hover:bg-purple-50 px-2 sm:px-3"
+                className="h-7 sm:h-8 gap-1 sm:gap-1.5 text-[11px] sm:text-xs rounded-none border-2 border-foreground text-foreground hover:bg-brutal-accent/20 px-2 sm:px-3 uppercase tracking-wider font-semibold"
               >
                 {isAnalyzing ? <Loader2 className="w-3 h-3 sm:w-3.5 sm:h-3.5 animate-spin" /> : <Bot className="w-3 h-3 sm:w-3.5 sm:h-3.5" />}
                 <span className="hidden sm:inline">{aiAnalysis ? 'Masquer IA' : 'Analyse IA'}</span>
@@ -445,7 +445,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
               {onArchive && (
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <Button variant="ghost" size="sm" onClick={onArchive} className="h-7 sm:h-8 w-7 sm:w-8 p-0 text-muted-foreground hover:text-destructive">
+                    <Button variant="ghost" size="sm" onClick={onArchive} className="h-7 sm:h-8 w-7 sm:w-8 p-0 text-muted-foreground hover:text-destructive rounded-none">
                       <Archive className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                     </Button>
                   </TooltipTrigger>
@@ -454,7 +454,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
               )}
 
               {profileUrl && (
-                <Button variant="outline" size="sm" asChild className="h-7 sm:h-8 gap-1 sm:gap-1.5 text-[11px] sm:text-xs rounded-none px-2 sm:px-3">
+                <Button variant="outline" size="sm" asChild className="h-7 sm:h-8 gap-1 sm:gap-1.5 text-[11px] sm:text-xs rounded-none border-2 border-foreground px-2 sm:px-3 uppercase tracking-wider font-semibold">
                   <a href={profileUrl} target="_blank" rel="noopener noreferrer">
                     <ExternalLink className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
                     <span className="hidden sm:inline">LinkedIn</span>
@@ -467,55 +467,55 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
 
           {/* ─── CONTENT ─── */}
           <div className="flex-1 overflow-y-auto overflow-x-auto">
-            <div className="p-2 sm:p-6 space-y-3 sm:space-y-6 min-w-0 max-w-full">
+            <div className="p-2 sm:p-6 space-y-3 sm:space-y-5 min-w-0 max-w-full">
               {/* Job Score */}
               {jobScore && (
-                <div className="border border-foreground p-5 bg-muted/20">
+                <div className="border-2 border-foreground p-5 bg-background">
                   <JobScoreDisplay result={jobScore} jobTitle={selectedJob?.title} compact={false} />
                 </div>
               )}
 
               {/* AI Analysis */}
               {aiAnalysis && (
-                <div className="p-4 bg-accent/20 border border-foreground/20">
+                <div className="p-4 bg-background border-2 border-foreground">
                   <div className="flex items-center justify-between mb-3">
                     <div className="flex items-center gap-2">
-                      <Bot className="w-4 h-4 text-primary" />
-                      <span className="text-sm font-semibold text-foreground">Analyse IA</span>
+                      <Bot className="w-4 h-4 text-foreground" />
+                      <span className="text-xs font-bold text-foreground uppercase tracking-wider">Analyse IA</span>
                     </div>
-                    <Badge variant="outline" className={`text-sm font-bold ${
-                      aiAnalysis.fit_score >= 70 ? 'text-emerald-600 border-emerald-300' :
-                      aiAnalysis.fit_score >= 50 ? 'text-amber-600 border-amber-300' : 'text-destructive border-destructive/30'
+                    <span className={`text-sm font-bold px-2 py-0.5 border-2 ${
+                      aiAnalysis.fit_score >= 70 ? 'border-foreground bg-brutal-accent/30 text-foreground' :
+                      aiAnalysis.fit_score >= 50 ? 'border-foreground bg-muted text-foreground' : 'border-foreground bg-destructive/10 text-destructive'
                     }`}>
                       {aiAnalysis.fit_score}/100
-                    </Badge>
+                    </span>
                   </div>
                   <p className="text-sm text-foreground/80 leading-relaxed mb-4">{aiAnalysis.summary}</p>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                     <div className="space-y-2">
-                      <p className="text-[11px] font-semibold text-emerald-700 uppercase tracking-wider flex items-center gap-1">
+                      <p className="text-[10px] font-bold text-foreground uppercase tracking-widest flex items-center gap-1">
                         <CheckCircle2 className="w-3 h-3" /> Points forts
                       </p>
                       {(aiAnalysis.strengths || []).map((s, i) => (
-                        <div key={i} className="flex items-start gap-2 text-xs text-foreground/70 bg-emerald-50/50 px-2.5 py-1.5 border border-emerald-200">
-                          <span className="text-emerald-500 mt-0.5 shrink-0">✓</span><span>{s}</span>
+                        <div key={i} className="flex items-start gap-2 text-xs text-foreground/70 bg-brutal-accent/10 px-2.5 py-1.5 border border-foreground/20">
+                          <span className="text-foreground mt-0.5 shrink-0">✓</span><span>{s}</span>
                         </div>
                       ))}
                     </div>
                     <div className="space-y-2">
-                      <p className="text-[11px] font-semibold text-amber-700 uppercase tracking-wider flex items-center gap-1">
+                      <p className="text-[10px] font-bold text-foreground uppercase tracking-widest flex items-center gap-1">
                         <AlertTriangle className="w-3 h-3" /> À vérifier
                       </p>
                       {(aiAnalysis.concerns || []).map((c, i) => (
-                        <div key={i} className="flex items-start gap-2 text-xs text-foreground/70 bg-amber-50/50 px-2.5 py-1.5 border border-amber-200">
-                          <span className="text-amber-500 mt-0.5 shrink-0">!</span><span>{c}</span>
+                        <div key={i} className="flex items-start gap-2 text-xs text-foreground/70 bg-muted px-2.5 py-1.5 border border-foreground/20">
+                          <span className="text-foreground mt-0.5 shrink-0">!</span><span>{c}</span>
                         </div>
                       ))}
                     </div>
                   </div>
                   {aiAnalysis.recommendation && (
-                    <div className="mt-3 pt-3 border-t border-primary/10">
-                      <p className="text-xs text-primary/80 italic">💡 {aiAnalysis.recommendation}</p>
+                    <div className="mt-3 pt-3 border-t border-foreground/20">
+                      <p className="text-xs text-foreground/70 italic">💡 {aiAnalysis.recommendation}</p>
                     </div>
                   )}
                 </div>
@@ -523,14 +523,14 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
 
               {/* Airtable History Panel — always show if we have data or are loading */}
               {(historyPanelLoading || hasHistory) && (
-                <div className="border border-foreground/20 overflow-hidden bg-background">
+                <div className="border-2 border-foreground overflow-hidden bg-background">
                   <CandidateHistoryPanel data={historyData} loading={historyPanelLoading} compact={false} notionShortlists={notionShortlistsForCandidate} />
                 </div>
               )}
 
               {/* Aircall History */}
               {(aircallHistory.loading || aircallHistory.calls.length > 0) && (
-                <div className="border border-foreground/20 overflow-hidden bg-background p-3 sm:p-4">
+                <div className="border-2 border-foreground overflow-hidden bg-background p-3 sm:p-4">
                   <AircallHistoryPanel
                     calls={aircallHistory.calls}
                     loading={aircallHistory.loading}
@@ -542,15 +542,15 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
 
               {/* À propos */}
               {displayProfile.summary && (
-                <div className="rounded-none sm:rounded-xl border border-border/60 bg-background p-3 sm:p-4">
-                  <h3 className="text-sm font-semibold text-foreground mb-2">À propos</h3>
+                <div className="border-2 border-foreground bg-background p-3 sm:p-4">
+                  <h3 className="text-xs font-bold text-foreground mb-2 uppercase tracking-wider">À propos</h3>
                   <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-line">{displayProfile.summary}</p>
                 </div>
               )}
 
               {/* Loading indicator for pool profile enrichment */}
               {isEnriching && (
-                <div className="flex items-center gap-2 p-3 rounded-lg border border-border/60 bg-muted/30 text-sm text-muted-foreground">
+                <div className="flex items-center gap-2 p-3 border-2 border-foreground bg-muted/30 text-sm text-muted-foreground">
                   <Loader2 className="w-4 h-4 animate-spin" />
                   Chargement du profil complet…
                 </div>
