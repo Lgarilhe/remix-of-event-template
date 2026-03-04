@@ -56,7 +56,7 @@ export const CardExpandedContent: React.FC<CardExpandedContentProps> = ({
   return (
     <div className="border border-foreground bg-background overflow-hidden">
       <Tabs defaultValue="experience" className="w-full">
-        <div className="border-b border-foreground bg-muted/20 overflow-x-auto">
+        <div className="border-b border-foreground bg-foreground overflow-x-auto">
           <TabsList className="w-max min-w-full h-10 sm:h-11 bg-transparent p-0 rounded-none gap-0">
             {[
               { value: 'experience', icon: Briefcase, label: 'Expérience', shortLabel: 'Exp.' },
@@ -68,7 +68,7 @@ export const CardExpandedContent: React.FC<CardExpandedContentProps> = ({
               <TabsTrigger
                 key={tab.value}
                 value={tab.value}
-                className="shrink-0 min-w-[74px] sm:min-w-0 sm:flex-1 text-[10px] sm:text-xs h-full rounded-none border-b-2 border-transparent data-[state=active]:border-foreground data-[state=active]:bg-foreground data-[state=active]:text-background data-[state=active]:shadow-none gap-1 sm:gap-1.5 px-1.5 sm:px-2 transition-all uppercase tracking-wider font-semibold"
+                className="shrink-0 min-w-[74px] sm:min-w-0 sm:flex-1 text-[10px] sm:text-xs h-full rounded-none border-b-2 border-transparent text-background/60 hover:text-background data-[state=active]:border-brutal-accent data-[state=active]:bg-brutal-accent data-[state=active]:text-foreground data-[state=active]:shadow-none gap-1 sm:gap-1.5 px-1.5 sm:px-2 transition-all uppercase tracking-wider font-semibold"
               >
                 <tab.icon className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
                 <span className="hidden sm:inline">{tab.label}</span>

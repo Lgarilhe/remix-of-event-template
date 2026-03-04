@@ -318,12 +318,14 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
     <>
       <Sheet open={open} onOpenChange={onOpenChange}>
         <SheetContent side="right" className="!w-full !max-w-[100vw] min-w-0 sm:!w-[95vw] sm:!max-w-[820px] p-0 flex flex-col overflow-x-auto overflow-y-hidden rounded-none border-l border-foreground">
+          {/* ─── ACCENT BAR ─── */}
+          <div className="h-1.5 w-full bg-brutal-accent shrink-0" />
           {/* ─── HEADER ─── */}
           <SheetHeader className="px-3 sm:px-6 pt-4 sm:pt-5 pb-3 sm:pb-4 bg-background border-b border-foreground shrink-0">
             <div className="flex items-start gap-2.5 sm:gap-4">
                <Avatar className="w-11 h-11 sm:w-16 sm:h-16 border border-foreground shrink-0 rounded-none">
                 <AvatarImage src={displayProfile.profile_picture_url} alt={fullName} className="object-cover" />
-                <AvatarFallback className="bg-foreground text-background text-base sm:text-xl font-bold rounded-none">
+                <AvatarFallback className="bg-brutal-accent text-foreground text-base sm:text-xl font-bold rounded-none">
                   {initials || '?'}
                 </AvatarFallback>
               </Avatar>
@@ -378,7 +380,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
                 <Button
                   size="sm"
                   onClick={() => setShowMessageModal(true)}
-                  className="h-7 sm:h-8 gap-1 sm:gap-1.5 text-[11px] sm:text-xs rounded-none border border-foreground bg-foreground text-background hover:bg-foreground/80 px-2 sm:px-3 uppercase tracking-wider font-semibold"
+                  className="h-7 sm:h-8 gap-1 sm:gap-1.5 text-[11px] sm:text-xs rounded-none border border-foreground bg-brutal-accent text-foreground hover:bg-brutal-accent/80 px-2 sm:px-3 uppercase tracking-wider font-semibold"
                 >
                   <PenLine className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
                   <span className="hidden sm:inline">Message</span>
