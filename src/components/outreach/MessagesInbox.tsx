@@ -115,7 +115,9 @@ const MessagesInboxInner: React.FC<
           onRefresh={() => inbox.fetchChats(true)}
           hasMoreChats={inbox.hasMoreChats}
           loadingMoreChats={inbox.loadingMoreChats}
+          loadingAllChats={inbox.loadingAllChats}
           onLoadMoreChats={inbox.loadMoreChats}
+          onLoadAllChats={inbox.loadAllChats}
         />
 
         {/* Desktop Message View */}

@@ -32,7 +32,9 @@ interface ChatListSidebarProps {
   onRefresh: () => void;
   hasMoreChats?: boolean;
   loadingMoreChats?: boolean;
+  loadingAllChats?: boolean;
   onLoadMoreChats?: () => void;
+  onLoadAllChats?: () => void;
 }
 
 export const ChatListSidebar: React.FC<ChatListSidebarProps> = ({
@@ -57,7 +59,9 @@ export const ChatListSidebar: React.FC<ChatListSidebarProps> = ({
   onRefresh,
   hasMoreChats = false,
   loadingMoreChats = false,
+  loadingAllChats = false,
   onLoadMoreChats,
+  onLoadAllChats,
 }) => {
   const [filtersExpanded, setFiltersExpanded] = useState(false);
 
@@ -245,6 +249,19 @@ export const ChatListSidebar: React.FC<ChatListSidebarProps> = ({
             <p className="text-sm">
               {searchQuery ? 'Aucune conversation trouvée' : 'Aucune conversation'}
             </p>
+            {searchQuery && hasMoreChats && onLoadAllChats && (
+              <button
+                onClick={onLoadAllChats}
+                disabled={loadingAllChats}
+                className="mt-3 w-full h-7 text-[10px] font-medium uppercase tracking-wider border border-foreground bg-foreground text-background hover:bg-foreground/80 transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5"
+              >
+                {loadingAllChats ? (
+                  <><RefreshCw className="w-3 h-3 animate-spin" />Recherche en cours...</>
+                ) : (
+                  <><Search className="w-3 h-3" />Rechercher dans tout l'inbox</>
+                )}
+              </button>
+            )}
           </div>
         ) : (
           <div className="divide-y divide-foreground/5">
@@ -259,7 +276,22 @@ export const ChatListSidebar: React.FC<ChatListSidebarProps> = ({
                 onClick={() => onChatSelect(chat)}
               />
             ))}
-            {hasMoreChats && onLoadMoreChats && (
+            {hasMoreChats && searchQuery && onLoadAllChats && (
+              <div className="p-2">
+                <button
+                  onClick={onLoadAllChats}
+                  disabled={loadingAllChats}
+                  className="w-full h-7 text-[10px] font-medium uppercase tracking-wider border border-foreground bg-foreground text-background hover:bg-foreground/80 transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5"
+                >
+                  {loadingAllChats ? (
+                    <><RefreshCw className="w-3 h-3 animate-spin" />Recherche en cours...</>
+                  ) : (
+                    <><Search className="w-3 h-3" />Rechercher dans tout l'inbox</>
+                  )}
+                </button>
+              </div>
+            )}
+            {hasMoreChats && !searchQuery && onLoadMoreChats && (
               <div className="p-2">
                 <button
                   onClick={onLoadMoreChats}
