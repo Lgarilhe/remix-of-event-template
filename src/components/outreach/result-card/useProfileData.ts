@@ -15,9 +15,7 @@ const getTenureDisplay = (start?: { year?: number; month?: number }, end?: { yea
   return null;
 };
 
-const calculateExperienceFromDiploma = (education: any[]) => {
-  if (!education || education.length === 0) return null;
-
+const calculateExperienceFromDiploma = (education: any[], workExperience?: any[]) => {
   const relevantDegreeKeywords = [
     'bachelor', 'licence', 'bac+3', 'bac +3',
     'master', 'msc', 'm.sc', 'bac+5', 'bac +5', 'maîtrise',
@@ -28,29 +26,58 @@ const calculateExperienceFromDiploma = (education: any[]) => {
     'grande école', 'grande ecole'
   ];
 
-  const relevantEducation = education
-    .filter((edu: any) => {
-      if (!edu.end?.year) return false;
-      const combined = `${(edu.degree || '').toLowerCase()} ${(edu.school || '').toLowerCase()} ${(edu.field_of_study || '').toLowerCase()}`;
-      return relevantDegreeKeywords.some(keyword => combined.includes(keyword));
-    })
-    .sort((a: any, b: any) => (b.end?.year || 0) - (a.end?.year || 0));
+  let diplomaToUse: any = null;
 
-  const diplomaToUse = relevantEducation[0] ||
-    education.filter((edu: any) => edu.end?.year).sort((a: any, b: any) => (b.end?.year || 0) - (a.end?.year || 0))[0];
+  if (education && education.length > 0) {
+    const relevantEducation = education
+      .filter((edu: any) => {
+        if (!edu.end?.year) return false;
+        const combined = `${(edu.degree || '').toLowerCase()} ${(edu.school || '').toLowerCase()} ${(edu.field_of_study || '').toLowerCase()}`;
+        return relevantDegreeKeywords.some(keyword => combined.includes(keyword));
+      })
+      .sort((a: any, b: any) => (b.end?.year || 0) - (a.end?.year || 0));
 
-  if (!diplomaToUse?.end?.year) return null;
+    diplomaToUse = relevantEducation[0] ||
+      education.filter((edu: any) => edu.end?.year).sort((a: any, b: any) => (b.end?.year || 0) - (a.end?.year || 0))[0];
+  }
 
-  const diplomaYear = diplomaToUse.end.year;
-  const currentYear = new Date().getFullYear();
-  const yearsOfExperience = currentYear - diplomaYear;
+  if (diplomaToUse?.end?.year) {
+    const diplomaYear = diplomaToUse.end.year;
+    const currentYear = new Date().getFullYear();
+    const yearsOfExperience = currentYear - diplomaYear;
+    if (yearsOfExperience > 0) {
+      return {
+        years: yearsOfExperience,
+        diplomaYear,
+        diplomaName: diplomaToUse.degree || diplomaToUse.school,
+      };
+    }
+  }
 
-  if (yearsOfExperience <= 0) return null;
-  return {
-    years: yearsOfExperience,
-    diplomaYear,
-    diplomaName: diplomaToUse.degree || diplomaToUse.school,
-  };
+  // Fallback: use earliest work experience start date
+  if (workExperience && workExperience.length > 0) {
+    let earliestYear: number | null = null;
+    for (const exp of workExperience) {
+      const startYear = exp.start?.year;
+      if (startYear && startYear > 1970) {
+        if (!earliestYear || startYear < earliestYear) {
+          earliestYear = startYear;
+        }
+      }
+    }
+    if (earliestYear) {
+      const years = new Date().getFullYear() - earliestYear;
+      if (years > 0) {
+        return {
+          years,
+          diplomaYear: earliestYear,
+          diplomaName: 'Début de carrière',
+        };
+      }
+    }
+  }
+
+  return null;
 };
 
 export function useProfileData(profile: LinkedInProfile): ProfileData {
@@ -86,7 +113,7 @@ export function useProfileData(profile: LinkedInProfile): ProfileData {
     const isLikelyToRespond = interests.includes('LIKELY_TO_RESPOND');
     const isActiveTalent = interests.includes('ACTIVE_TALENT');
 
-    const experienceFromDiploma = calculateExperienceFromDiploma(education);
+    const experienceFromDiploma = calculateExperienceFromDiploma(education, workExperience);
     const totalExperience = experienceFromDiploma
       ? `${experienceFromDiploma.years} an${experienceFromDiploma.years > 1 ? 's' : ''} d'exp.`
       : null;

@@ -18,56 +18,70 @@ const RELEVANT_DEGREES = [
  * @returns Estimated years of experience, or null if cannot be calculated
  */
 export function calculateExperienceFromEducation(profile: LinkedInProfile): number | null {
-  if (!profile.education || profile.education.length === 0) {
-    return null;
-  }
-
   const currentYear = new Date().getFullYear();
-  let mostRecentRelevantYear: number | null = null;
 
-  for (const edu of profile.education) {
-    const endYear = edu.end?.year;
-    if (!endYear) continue;
+  // Try education end date first
+  if (profile.education && profile.education.length > 0) {
+    let mostRecentRelevantYear: number | null = null;
 
-    // Check if this is a relevant degree
-    const degreeText = (edu.degree || '').toLowerCase();
-    const fieldText = (edu.field_of_study || '').toLowerCase();
-    const combinedText = `${degreeText} ${fieldText}`;
-
-    const isRelevantDegree = RELEVANT_DEGREES.some(d => combinedText.includes(d));
-
-    if (isRelevantDegree) {
-      if (mostRecentRelevantYear === null || endYear > mostRecentRelevantYear) {
-        mostRecentRelevantYear = endYear;
-      }
-    }
-  }
-
-  // If no relevant degree found, try to use any education end date
-  if (mostRecentRelevantYear === null) {
     for (const edu of profile.education) {
       const endYear = edu.end?.year;
-      if (endYear) {
+      if (!endYear) continue;
+
+      const degreeText = (edu.degree || '').toLowerCase();
+      const fieldText = (edu.field_of_study || '').toLowerCase();
+      const combinedText = `${degreeText} ${fieldText}`;
+
+      const isRelevantDegree = RELEVANT_DEGREES.some(d => combinedText.includes(d));
+
+      if (isRelevantDegree) {
         if (mostRecentRelevantYear === null || endYear > mostRecentRelevantYear) {
           mostRecentRelevantYear = endYear;
         }
       }
     }
+
+    // If no relevant degree found, try any education end date
+    if (mostRecentRelevantYear === null) {
+      for (const edu of profile.education) {
+        const endYear = edu.end?.year;
+        if (endYear) {
+          if (mostRecentRelevantYear === null || endYear > mostRecentRelevantYear) {
+            mostRecentRelevantYear = endYear;
+          }
+        }
+      }
+    }
+
+    if (mostRecentRelevantYear !== null) {
+      const experience = currentYear - mostRecentRelevantYear;
+      if (experience >= 0 && experience <= 50) {
+        return experience;
+      }
+    }
   }
 
-  if (mostRecentRelevantYear === null) {
-    return null;
+  // Fallback: use earliest work experience start date
+  const workExperience = profile.work_experience || [];
+  if (workExperience.length > 0) {
+    let earliestYear: number | null = null;
+    for (const exp of workExperience) {
+      const startYear = exp.start?.year;
+      if (startYear && startYear > 1970) {
+        if (!earliestYear || startYear < earliestYear) {
+          earliestYear = startYear;
+        }
+      }
+    }
+    if (earliestYear) {
+      const experience = currentYear - earliestYear;
+      if (experience >= 0 && experience <= 50) {
+        return experience;
+      }
+    }
   }
 
-  // Calculate experience: current year - graduation year
-  const experience = currentYear - mostRecentRelevantYear;
-  
-  // Sanity check: experience should be between 0 and 50 years
-  if (experience < 0 || experience > 50) {
-    return null;
-  }
-
-  return experience;
+  return null;
 }
 
 /**
