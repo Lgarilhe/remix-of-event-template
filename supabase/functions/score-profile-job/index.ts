@@ -893,10 +893,16 @@ async function maybeEnrichProfile(
 ): Promise<boolean> {
   if (ctx.dailyCount >= ctx.dailyLimit) return false;
 
-  // Check if top 3 experiences already have descriptions
+  // Check if enrichment is needed: missing summary OR missing descriptions in top 3 experiences
   const top3 = (profile.workExperience || []).slice(0, 3);
   const hasDescriptions = top3.some((exp) => exp.description && exp.description.length > 30);
-  if (hasDescriptions) return false;
+  const hasSummary = !!profile.summary && profile.summary.length > 20;
+  if (hasDescriptions && hasSummary) return false;
+
+  const reasons: string[] = [];
+  if (!hasDescriptions) reasons.push('no descriptions');
+  if (!hasSummary) reasons.push('no summary/about');
+  console.info(`[enrichment] Triggering for ${profile.name}: ${reasons.join(', ')}`);
 
   // Need a profile identifier
   const profileId = profile.providerId || profile.profileUrl;
