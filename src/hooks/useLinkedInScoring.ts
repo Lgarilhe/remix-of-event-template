@@ -163,6 +163,7 @@ interface ScoringOptions {
   setSelectedProfiles?: React.Dispatch<React.SetStateAction<Set<string>>>;
   autoHideTreatedRef?: React.MutableRefObject<boolean>;
   customScoringInstructions?: string;
+  accountId?: string | null;
   candidateStatus?: {
     batchDismiss: (profiles: Array<{
       id: string;
@@ -331,6 +332,8 @@ export function buildProfileData(profile: LinkedInProfile) {
     openToWork: isOpenToWork,
     openProfile: isOpenProfile,
     networkDistance,
+    profileUrl: profile.public_profile_url || profile.profile_url || undefined,
+    providerId: profile.provider_id || profile.public_identifier || undefined,
   };
 }
 
@@ -416,6 +419,7 @@ export function useLinkedInScoring({
   autoHideTreatedRef,
   candidateStatus,
   customScoringInstructions,
+  accountId,
 }: ScoringOptions) {
   const [batchStats, setBatchStats] = useState<BatchScoringStats | null>(null);
 
@@ -455,6 +459,7 @@ export function useLinkedInScoring({
             transversalCriteria: selectedJob.transversalCriteria,
           },
           customScoringInstructions,
+          accountId: accountId || undefined,
         }
       });
 
@@ -510,7 +515,7 @@ export function useLinkedInScoring({
       console.error('Score error:', err);
       toast.error('Erreur lors du scoring');
     }
-  }, [selectedJob, setJobScores, candidateStatus, setSelectedProfiles, customScoringInstructions]);
+  }, [selectedJob, setJobScores, candidateStatus, setSelectedProfiles, customScoringInstructions, accountId]);
 
   // Batch score selected profiles
   const handleBatchScore = useCallback(async () => {
@@ -580,7 +585,7 @@ export function useLinkedInScoring({
         }
 
         const { data, error } = await supabase.functions.invoke('score-profile-job', {
-          body: { profiles: batch, job: jobPayload, customScoringInstructions }
+          body: { profiles: batch, job: jobPayload, customScoringInstructions, accountId: accountId || undefined }
         });
 
         if (error) {
@@ -751,7 +756,7 @@ export function useLinkedInScoring({
     } finally {
       setScoringInProgress(false);
     }
-  }, [selectedJob, selectedProfiles, results, allAvailableProfilesRef, autoHideTreatedRef, candidateStatus, setJobScores, setScoringInProgress, setSortByScore, setResults, setSelectedProfiles, customScoringInstructions]);
+  }, [selectedJob, selectedProfiles, results, allAvailableProfilesRef, autoHideTreatedRef, candidateStatus, setJobScores, setScoringInProgress, setSortByScore, setResults, setSelectedProfiles, customScoringInstructions, accountId]);
 
   return {
     scoreProfile,

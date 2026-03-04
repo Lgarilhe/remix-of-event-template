@@ -106,6 +106,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
       batchSaveScores: search.candidateStatus.batchSaveScores,
     },
     customScoringInstructions: scoringInstructions.trim() || undefined,
+    accountId: selectedAccount,
   });
 
   // Pool view toggle
