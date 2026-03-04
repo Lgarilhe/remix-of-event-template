@@ -1077,6 +1077,21 @@ serve(async (req) => {
       const batchResults = await Promise.all(
         batch.map(async (p) => {
           try {
+            // Diagnostic: log work experience data received
+            const expCount = (p.workExperience || []).length;
+            const expWithDesc = (p.workExperience || []).filter((w: any) => w.description && w.description.length > 0).length;
+            const expWithSkills = (p.workExperience || []).filter((w: any) => w.skills && w.skills.length > 0).length;
+            console.log(`[scoring-input] ${p.name}: ${expCount} experiences, ${expWithDesc} with description, ${expWithSkills} with skills`);
+            if (expCount > 0) {
+              const sample = (p.workExperience || []).slice(0, 2).map((w: any) => ({
+                role: w.role,
+                company: w.company,
+                descLength: w.description?.length || 0,
+                descPreview: w.description?.substring(0, 80) || '(none)',
+                skillsCount: w.skills?.length || 0,
+              }));
+              console.log(`[scoring-input] ${p.name} sample:`, JSON.stringify(sample));
+            }
             return await scoreProfile(supabase, p, job, customScoringInstructions);
           } catch (err) {
             console.error(`[scoring] Error for ${p.name}:`, err);
