@@ -88,7 +88,7 @@ export const ChatListSidebar: React.FC<ChatListSidebarProps> = ({
 
   return (
     <div className={cn(
-      "w-full md:w-80 border-r border-foreground flex flex-col flex-shrink-0 bg-background min-h-0",
+      "w-full md:w-80 border-r border-foreground flex flex-col flex-shrink-0 bg-background min-h-0 overflow-x-hidden",
       selectedChat ? "hidden md:flex" : "flex"
     )}>
       {/* Compact Header */}

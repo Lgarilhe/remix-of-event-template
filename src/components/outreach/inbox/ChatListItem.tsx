@@ -107,7 +107,7 @@ export const ChatListItem: React.FC<ChatListItemProps> = ({
           )}
           
           {/* Category badge + Status info */}
-          <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+          <div className="flex items-center gap-1.5 mt-0.5 overflow-hidden">
             {categoryInfo && (
               <span className={cn(
                 "inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[9px] font-medium border rounded-sm",
@@ -117,7 +117,7 @@ export const ChatListItem: React.FC<ChatListItemProps> = ({
               </span>
             )}
             {statusInfo && (
-              <p className={cn("text-xs truncate flex items-center gap-1", statusInfo.color)}>
+              <p className={cn("text-xs truncate flex items-center gap-1 shrink min-w-0", statusInfo.color)}>
                 {statusInfo.icon}
                 <span>{statusInfo.text}</span>
               </p>
