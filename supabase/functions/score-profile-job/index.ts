@@ -923,8 +923,9 @@ async function maybeEnrichProfile(
       resolvedId = resolvedId.replace(/\/+$/, "").split("/").pop() || resolvedId;
     }
 
+    const sections = encodeURIComponent(JSON.stringify(["experience_preview", "about", "skills_preview"]));
     const response = await fetch(
-      `${ctx.baseUrl}/users/${encodeURIComponent(resolvedId)}?account_id=${ctx.accountId}`,
+      `${ctx.baseUrl}/users/${encodeURIComponent(resolvedId)}?account_id=${ctx.accountId}&linkedin_sections=${sections}&notify=false`,
       {
         headers: { "X-API-KEY": ctx.apiKey, Accept: "application/json" },
       },
