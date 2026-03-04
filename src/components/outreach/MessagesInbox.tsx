@@ -113,6 +113,9 @@ const MessagesInboxInner: React.FC<
           onSetCategory={inbox.chatCategories.setCategory}
           onChatSelect={inbox.setSelectedChat}
           onRefresh={() => inbox.fetchChats(true)}
+          hasMoreChats={inbox.hasMoreChats}
+          loadingMoreChats={inbox.loadingMoreChats}
+          onLoadMoreChats={inbox.loadMoreChats}
         />
 
         {/* Desktop Message View */}

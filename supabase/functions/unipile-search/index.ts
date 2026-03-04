@@ -1040,7 +1040,7 @@ async function handleGetChats(
   accountId: string,
   params: Record<string, unknown>
 ): Promise<Response> {
-  const { attendee_provider_id, limit = 100, cursor, folder } = params;
+  const { attendee_provider_id, limit = 100, cursor, folder, cursors } = params;
 
   // If we have an attendee_provider_id, use the dedicated endpoint
   if (attendee_provider_id) {
@@ -1083,17 +1083,29 @@ async function handleGetChats(
   }
 
   // For inbox: fetch LinkedIn Classic, Recruiter, AND generic INBOX folders in parallel
-  // The generic INBOX folder may contain Recruiter messages when the license isn't detected
-  const folders = ['INBOX_LINKEDIN_CLASSIC', 'INBOX_LINKEDIN_RECRUITER', 'INBOX'];
+  // Support per-folder cursors for proper pagination across merged folders
+  const folderNames = ['INBOX_LINKEDIN_CLASSIC', 'INBOX_LINKEDIN_RECRUITER', 'INBOX'];
   
-  console.log('Fetching chats from folders:', folders, '| Account:', accountId);
+  // Parse per-folder cursors: { INBOX_LINKEDIN_CLASSIC: "xxx", INBOX_LINKEDIN_RECRUITER: null, INBOX: "yyy" }
+  // A cursor value of null means that folder is exhausted. undefined means first fetch.
+  const folderCursors = (cursors as Record<string, string | null> | undefined) || {};
   
-  const fetchFromFolder = async (folderName: string) => {
+  console.log('Fetching chats from folders:', folderNames, '| Account:', accountId, '| Cursors:', JSON.stringify(folderCursors));
+  
+  const fetchFromFolder = async (folderName: string): Promise<{ items: Record<string, unknown>[]; cursor: string | null }> => {
+    // If cursor is explicitly null (not undefined), this folder is exhausted
+    if (folderCursors[folderName] === null && Object.prototype.hasOwnProperty.call(folderCursors, folderName)) {
+      console.log(`Folder ${folderName}: exhausted (cursor=null), skipping`);
+      return { items: [], cursor: null };
+    }
+    
+    const folderCursor = folderCursors[folderName]; // undefined on first fetch, string on subsequent
+    
     const queryParams = new URLSearchParams();
     queryParams.set('account_id', accountId);
     queryParams.set('limit', String(Math.min(Number(limit), 125)));
     queryParams.set('folder', folderName);
-    if (cursor) queryParams.set('cursor', String(cursor));
+    if (folderCursor) queryParams.set('cursor', String(folderCursor));
     
     const url = `${baseUrl}/chats?${queryParams.toString()}`;
     console.log(`Fetching folder ${folderName}:`, url);
@@ -1106,29 +1118,39 @@ async function handleGetChats(
       const data = await response.json();
       if (!response.ok) {
         console.error(`Error fetching ${folderName}:`, data);
-        return [];
+        return { items: [], cursor: null };
       }
       
       const items = data.items || [];
-      console.log(`Folder ${folderName}: ${items.length} chats`);
-      return items;
+      console.log(`Folder ${folderName}: ${items.length} chats, cursor: ${data.cursor || 'null'}`);
+      return { items, cursor: data.cursor || null };
     } catch (error) {
       console.error(`Exception fetching ${folderName}:`, error);
-      return [];
+      return { items: [], cursor: null };
     }
   };
   
   // Fetch all folders in parallel
-  const [classicChats, recruiterChats, genericChats] = await Promise.all([
+  const [classicResult, recruiterResult, genericResult] = await Promise.all([
     fetchFromFolder('INBOX_LINKEDIN_CLASSIC'),
     fetchFromFolder('INBOX_LINKEDIN_RECRUITER'),
     fetchFromFolder('INBOX'),
   ]);
   
+  // Build next cursors object
+  const nextCursors: Record<string, string | null> = {
+    INBOX_LINKEDIN_CLASSIC: classicResult.cursor,
+    INBOX_LINKEDIN_RECRUITER: recruiterResult.cursor,
+    INBOX: genericResult.cursor,
+  };
+  
+  // hasMore = at least one folder still has a cursor
+  const hasMore = Object.values(nextCursors).some(c => c !== null);
+  
   // Merge and dedupe by chat ID, then sort by timestamp (most recent first)
   const chatMap = new Map<string, Record<string, unknown>>();
   
-  [...classicChats, ...recruiterChats, ...genericChats].forEach((chat: Record<string, unknown>) => {
+  [...classicResult.items, ...recruiterResult.items, ...genericResult.items].forEach((chat: Record<string, unknown>) => {
     const chatId = chat.id as string;
     if (!chatMap.has(chatId)) {
       chatMap.set(chatId, chat);
@@ -1141,7 +1163,7 @@ async function handleGetChats(
     return timeB - timeA; // Most recent first
   });
   
-  console.log(`Total merged chats: ${chats.length} (Classic: ${classicChats.length}, Recruiter: ${recruiterChats.length}, Generic: ${genericChats.length})`);
+  console.log(`Total merged chats: ${chats.length} (Classic: ${classicResult.items.length}, Recruiter: ${recruiterResult.items.length}, Generic: ${genericResult.items.length})`);
 
   // Log folder distribution for debugging
   const folderCounts: Record<string, number> = {};
@@ -1250,8 +1272,8 @@ async function handleGetChats(
     JSON.stringify({ 
       success: true, 
       chats: enrichedChats,
-      // No cursor for merged results - pagination would need separate handling
-      cursor: null,
+      cursors: nextCursors,
+      cursor: hasMore ? '__has_more__' : null,
     }),
     { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
   );

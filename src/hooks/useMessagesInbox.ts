@@ -144,6 +144,9 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
   const [sending, setSending] = useState(false);
   const [cursor, setCursor] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(true);
+  const [chatCursors, setChatCursors] = useState<Record<string, string | null>>({});
+  const [hasMoreChats, setHasMoreChats] = useState(false);
+  const [loadingMoreChats, setLoadingMoreChats] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   
@@ -312,6 +315,15 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
       setChats(fetchedChats);
       setFilteredChats(fetchedChats);
       
+      // Store per-folder cursors for pagination
+      if (data.cursors) {
+        setChatCursors(data.cursors as Record<string, string | null>);
+        setHasMoreChats(Object.values(data.cursors as Record<string, string | null>).some(c => c !== null));
+      } else {
+        setChatCursors({});
+        setHasMoreChats(false);
+      }
+      
       // Replace placeholder with full chat object (without triggering onChatChange)
       if (pendingInitialChatId.current) {
         const match = fetchedChats.find((c: Chat) => c.id === pendingInitialChatId.current);
@@ -329,6 +341,57 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
       setLoadingChats(false);
     }
   }, [selectedAccount]);
+
+  // Load more chats using per-folder cursors
+  const loadMoreChats = useCallback(async () => {
+    if (!selectedAccount || !hasMoreChats || loadingMoreChats) return;
+
+    setLoadingMoreChats(true);
+    try {
+      const { data } = await invokeUnipile({
+        body: { 
+          action: 'get_chats', 
+          account_id: selectedAccount,
+          limit: 250,
+          cursors: chatCursors,
+        },
+      });
+
+      if (!data?.success) throw new Error(data?.error as string);
+
+      const newChats = data.chats as Chat[] || [];
+      
+      // Merge with existing chats, deduplicating by ID
+      setChats(prev => {
+        const existingIds = new Set(prev.map(c => c.id));
+        const uniqueNew = newChats.filter(c => !existingIds.has(c.id));
+        const merged = [...prev, ...uniqueNew];
+        // Sort by timestamp
+        merged.sort((a, b) => {
+          const timeA = new Date(a.timestamp || '').getTime();
+          const timeB = new Date(b.timestamp || '').getTime();
+          return timeB - timeA;
+        });
+        return merged;
+      });
+      
+      // Update cursors
+      if (data.cursors) {
+        setChatCursors(data.cursors as Record<string, string | null>);
+        setHasMoreChats(Object.values(data.cursors as Record<string, string | null>).some(c => c !== null));
+      } else {
+        setChatCursors({});
+        setHasMoreChats(false);
+      }
+      
+      toast.success(`${newChats.length} conversations supplémentaires chargées`);
+    } catch (error) {
+      console.error('Error loading more chats:', error);
+      toast.error('Erreur lors du chargement');
+    } finally {
+      setLoadingMoreChats(false);
+    }
+  }, [selectedAccount, chatCursors, hasMoreChats, loadingMoreChats]);
 
   // Fetch messages for a chat - use ref for cursor to avoid stale closure
   const cursorRef = useRef<string | null>(null);
@@ -1069,6 +1132,9 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
     
     // Actions
     fetchChats,
+    loadMoreChats,
+    hasMoreChats,
+    loadingMoreChats,
     fetchMessages,
     sendMessage,
     handleSuggestionClick,

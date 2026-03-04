@@ -30,6 +30,9 @@ interface ChatListSidebarProps {
   onSetCategory: (chatId: string, accountId: string, category: ChatCategory | null) => void;
   onChatSelect: (chat: Chat) => void;
   onRefresh: () => void;
+  hasMoreChats?: boolean;
+  loadingMoreChats?: boolean;
+  onLoadMoreChats?: () => void;
 }
 
 export const ChatListSidebar: React.FC<ChatListSidebarProps> = ({
@@ -52,6 +55,9 @@ export const ChatListSidebar: React.FC<ChatListSidebarProps> = ({
   onSetCategory,
   onChatSelect,
   onRefresh,
+  hasMoreChats = false,
+  loadingMoreChats = false,
+  onLoadMoreChats,
 }) => {
   const [filtersExpanded, setFiltersExpanded] = useState(false);
 
@@ -253,6 +259,23 @@ export const ChatListSidebar: React.FC<ChatListSidebarProps> = ({
                 onClick={() => onChatSelect(chat)}
               />
             ))}
+            {hasMoreChats && onLoadMoreChats && (
+              <div className="p-3 text-center">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={onLoadMoreChats}
+                  disabled={loadingMoreChats}
+                  className="w-full text-xs"
+                >
+                  {loadingMoreChats ? (
+                    <><RefreshCw className="w-3 h-3 animate-spin mr-1.5" />Chargement...</>
+                  ) : (
+                    <>Charger plus de conversations</>
+                  )}
+                </Button>
+              </div>
+            )}
           </div>
         )}
       </ScrollArea>
