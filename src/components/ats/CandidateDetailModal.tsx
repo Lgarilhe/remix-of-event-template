@@ -121,6 +121,13 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
   
   const enrichLoading = false;
 
+  // Fetch job details for split-screen panel
+  const [jobDetails, setJobDetails] = useState<{
+    title?: string; client?: string; description?: string; criteria?: string;
+    city?: string; salary?: string; contractType?: string; notes?: string;
+    skills?: string[];
+  } | null>(null);
+
   useEffect(() => {
     const fetchData = async () => {
       setLoading(true);
@@ -131,10 +138,35 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
         ]);
         setNotes(notesData || []);
         setReminders(remindersData || []);
+
+        // Fetch job details
+        if (candidate.jobId) {
+          const [{ data: projectData }, { data: airtableJob }] = await Promise.all([
+            supabase.from('sourcing_projects').select('*').eq('job_id', candidate.jobId).maybeSingle(),
+            supabase.from('airtable_jobs').select('*').eq('airtable_id', candidate.jobId).maybeSingle(),
+          ]);
+
+          const job = airtableJob || null;
+          const project = projectData || null;
+
+          if (job || project) {
+            setJobDetails({
+              title: job?.title || project?.job_title || candidate.jobTitle || undefined,
+              client: project?.client_name || undefined,
+              description: job?.description || project?.description || undefined,
+              criteria: job?.criteria || undefined,
+              city: job?.city || undefined,
+              salary: job?.salary || undefined,
+              contractType: job?.contract_type || undefined,
+              notes: project?.notes || undefined,
+              skills: undefined,
+            });
+          }
+        }
       } finally { setLoading(false); }
     };
     fetchData();
-  }, [candidate.candidateId]);
+  }, [candidate.candidateId, candidate.jobId]);
 
   const handleAddNote = async () => {
     if (!newNote.trim()) return;
@@ -375,6 +407,75 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
                   )}
                 </div>
               )}
+
+              {/* Separator + Job details */}
+              <div className="border-t border-foreground/10" />
+
+              {(jobDetails || candidate.jobTitle) && (
+                <div className="space-y-2">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                    <Target className="w-3 h-3" /> Poste : {jobDetails?.title || candidate.jobTitle}
+                  </p>
+                  <div className="flex flex-wrap items-center gap-2 text-[10px] text-muted-foreground">
+                    {jobDetails?.client && (
+                      <span className="flex items-center gap-1"><Building2 className="w-3 h-3" /> {jobDetails.client}</span>
+                    )}
+                    {jobDetails?.city && (
+                      <span className="flex items-center gap-1"><MapPin className="w-3 h-3" /> {jobDetails.city}</span>
+                    )}
+                    {jobDetails?.contractType && (
+                      <span className="px-1.5 py-0.5 border border-foreground/20 font-medium uppercase tracking-wider text-[9px]">{jobDetails.contractType}</span>
+                    )}
+                    {jobDetails?.salary && (
+                      <span className="px-1.5 py-0.5 border border-foreground/20 font-medium uppercase tracking-wider text-[9px]">{jobDetails.salary}</span>
+                    )}
+                  </div>
+                  {jobDetails?.description && (
+                    <CollapsibleSection title="Description du poste" defaultOpen={false}>
+                      <p className="text-[10px] text-muted-foreground leading-relaxed whitespace-pre-wrap">{jobDetails.description}</p>
+                    </CollapsibleSection>
+                  )}
+                  {jobDetails?.criteria && (
+                    <CollapsibleSection title="Critères de sélection" defaultOpen={false}>
+                      <p className="text-[10px] text-muted-foreground leading-relaxed whitespace-pre-wrap">{jobDetails.criteria}</p>
+                    </CollapsibleSection>
+                  )}
+                  {jobDetails?.notes && (
+                    <CollapsibleSection title="Notes projet" defaultOpen={false}>
+                      <p className="text-[10px] text-muted-foreground leading-relaxed whitespace-pre-wrap">{jobDetails.notes}</p>
+                    </CollapsibleSection>
+                  )}
+                  {candidate.scoringDetails && (
+                    <CollapsibleSection title="Détails du matching" defaultOpen={false}>
+                      <div className="space-y-2 text-[10px]">
+                        <p className="text-muted-foreground">{candidate.scoringDetails.summary}</p>
+                        {candidate.scoringDetails.matching_skills?.length > 0 && (
+                          <div>
+                            <p className="font-medium text-emerald-600 mb-0.5">Compétences matchées</p>
+                            <div className="flex flex-wrap gap-1">
+                              {candidate.scoringDetails.matching_skills.map(s => (
+                                <span key={s} className="text-[9px] px-1.5 py-0.5 border border-emerald-300 bg-emerald-50 text-emerald-700 font-medium">{s}</span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        {candidate.scoringDetails.missing_skills?.length > 0 && (
+                          <div>
+                            <p className="font-medium text-red-600 mb-0.5">Compétences manquantes</p>
+                            <div className="flex flex-wrap gap-1">
+                              {candidate.scoringDetails.missing_skills.map(s => (
+                                <span key={s} className="text-[9px] px-1.5 py-0.5 border border-red-300 bg-red-50 text-red-700 font-medium">{s}</span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </CollapsibleSection>
+                  )}
+                </div>
+              )}
+
+              <div className="border-t border-foreground/10" />
 
               {/* À propos — collapsible */}
               {enrichedProfile?.summary && (
