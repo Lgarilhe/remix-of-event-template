@@ -78,6 +78,13 @@ export const Navbar: React.FC = () => {
         {user ? (
           <>
             <Link
+              to="/dashboard"
+              className="relative overflow-hidden bg-background text-foreground h-[34px] px-3 flex items-center text-[11px] font-medium uppercase border-l-0 border border-foreground leading-none group"
+            >
+              <span className="relative z-10">DASHBOARD</span>
+              <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out"></span>
+            </Link>
+            <Link
               to="/candidates" 
               className="relative overflow-hidden bg-background text-foreground h-[34px] px-3 flex items-center text-[11px] font-medium uppercase border-l-0 border border-foreground leading-none group"
             >
@@ -136,6 +143,14 @@ export const Navbar: React.FC = () => {
           <div className="flex-1 flex flex-col bg-background">
             {user ? (
               <>
+                <Link
+                  to="/dashboard"
+                  onClick={() => setIsMobileMenuOpen(false)}
+                  className="flex-1 flex items-center justify-center text-foreground text-[17px] font-medium uppercase border-b border-foreground tracking-[-0.34px] animate-fade-in"
+                  style={{ animationDelay: '0.15s', animationFillMode: 'both' }}
+                >
+                  DASHBOARD
+                </Link>
                 <Link
                   to="/candidates" 
                   onClick={() => setIsMobileMenuOpen(false)}
