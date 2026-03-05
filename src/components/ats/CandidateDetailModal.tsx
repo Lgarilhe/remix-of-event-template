@@ -382,274 +382,281 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
               <ScorecardTab candidate={candidate} enrichedProfile={enrichedProfile} />
             </div>
             {/* RIGHT: Compact profile */}
-            <div className="w-[380px] shrink-0 overflow-y-auto px-4 pt-4 pb-6 space-y-3">
-              {/* Name + headline */}
-              <div>
-                <p className="text-sm font-bold text-foreground">{enrichedProfile?.name || candidate.name}</p>
-                {enrichedProfile?.headline && (
-                  <p className="text-[11px] text-muted-foreground mt-0.5">{enrichedProfile.headline}</p>
-                )}
-              </div>
-
-              {/* City + years of experience */}
-              <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
-                {enrichedProfile?.location && (
-                  <span className="flex items-center gap-1">
-                    <MapPin className="w-3 h-3" /> {enrichedProfile.location}
-                  </span>
-                )}
-                {enrichedProfile?.yearsOfExperience && (
-                  <span className="flex items-center gap-1">
-                    <Briefcase className="w-3 h-3" /> ~{enrichedProfile.yearsOfExperience} ans
-                  </span>
-                )}
-              </div>
-
-              {/* LinkedIn link */}
-              {candidate.linkedin && (
-                <a href={candidate.linkedin} target="_blank" rel="noopener noreferrer"
-                  className="flex items-center gap-1.5 text-[10px] text-foreground font-medium uppercase tracking-wider hover:text-blue-600">
-                  <ExternalLink className="w-3 h-3" /> Voir sur LinkedIn
-                </a>
-              )}
-
-              {/* Score */}
-              {candidate.score != null && (
-                <div className="border border-foreground/15 p-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Score IA</span>
-                    <span className={cn("text-sm font-bold",
-                      candidate.score >= 75 ? "text-emerald-600" :
-                      candidate.score >= 50 ? "text-amber-600" : "text-red-600"
-                    )}>{candidate.score}/100</span>
-                  </div>
-                  {candidate.recommendation && (
-                    <p className="text-[10px] text-muted-foreground mt-1">{candidate.recommendation}</p>
-                  )}
+            <div className="w-[400px] shrink-0 overflow-y-auto px-4 pt-4 pb-6 space-y-4">
+              {/* ========== CARD 1: Candidat ========== */}
+              <div className="border border-foreground bg-card">
+                <div className="bg-foreground text-background px-3 py-1.5 flex items-center gap-1.5">
+                  <User className="w-3.5 h-3.5" />
+                  <span className="text-[10px] font-bold uppercase tracking-wider">Candidat</span>
                 </div>
-              )}
+                <div className="p-3 space-y-3">
+                  {/* Name + headline */}
+                  <div>
+                    <p className="text-sm font-bold text-foreground">{enrichedProfile?.name || candidate.name}</p>
+                    {enrichedProfile?.headline && (
+                      <p className="text-[11px] text-muted-foreground mt-0.5">{enrichedProfile.headline}</p>
+                    )}
+                  </div>
 
-              {/* Separator + Job details */}
-              <div className="border-t border-foreground/10" />
-
-              {(jobDetails || candidate.jobTitle) && (
-                <div className="space-y-2">
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-                    <Target className="w-3 h-3" /> Poste : {jobDetails?.title || candidate.jobTitle}
-                  </p>
-                  {/* Quick job meta */}
-                  <div className="flex flex-wrap items-center gap-2 text-[10px] text-muted-foreground">
-                    {jobDetails?.client && (
-                      <span className="flex items-center gap-1"><Building2 className="w-3 h-3" /> {jobDetails.client}</span>
-                    )}
-                    {jobDetails?.location && (
-                      <span className="flex items-center gap-1"><MapPin className="w-3 h-3" /> {jobDetails.location}</span>
-                    )}
-                    {jobDetails?.contractType && (
-                      <span className="px-1.5 py-0.5 border border-foreground/20 font-medium uppercase tracking-wider text-[9px]">{jobDetails.contractType}</span>
-                    )}
-                    {jobDetails?.remote && (
-                      <span className="px-1.5 py-0.5 border border-foreground/20 font-medium uppercase tracking-wider text-[9px]">{jobDetails.remote}</span>
-                    )}
-                    {jobDetails?.seniority && (
-                      <span className="px-1.5 py-0.5 border border-foreground/20 font-medium uppercase tracking-wider text-[9px]">{jobDetails.seniority}</span>
-                    )}
-                    {(jobDetails?.salaryMin || jobDetails?.salaryMax) && (
-                      <span className="px-1.5 py-0.5 border border-foreground/20 font-medium uppercase tracking-wider text-[9px]">
-                        {jobDetails.salaryMin && jobDetails.salaryMax
-                          ? `${jobDetails.salaryMin}k - ${jobDetails.salaryMax}k`
-                          : jobDetails.salaryMin ? `${jobDetails.salaryMin}k+` : `≤${jobDetails.salaryMax}k`}
+                  {/* City + years of experience */}
+                  <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
+                    {enrichedProfile?.location && (
+                      <span className="flex items-center gap-1">
+                        <MapPin className="w-3 h-3" /> {enrichedProfile.location}
                       </span>
                     )}
-                    {(jobDetails?.xpMin || jobDetails?.xpMax) && (
-                      <span className="text-[9px]">
-                        XP: {jobDetails.xpMin || 0}-{jobDetails.xpMax || '?'} ans
+                    {enrichedProfile?.yearsOfExperience && (
+                      <span className="flex items-center gap-1">
+                        <Briefcase className="w-3 h-3" /> ~{enrichedProfile.yearsOfExperience} ans
                       </span>
                     )}
                   </div>
 
-                  {/* Skills */}
-                  {jobDetails?.skills && jobDetails.skills.length > 0 && (
-                    <CollapsibleSection title={`Compétences recherchées (${jobDetails.skills.length})`} defaultOpen={false}>
+                  {/* LinkedIn link */}
+                  {candidate.linkedin && (
+                    <a href={candidate.linkedin} target="_blank" rel="noopener noreferrer"
+                      className="flex items-center gap-1.5 text-[10px] text-foreground font-medium uppercase tracking-wider hover:text-blue-600">
+                      <ExternalLink className="w-3 h-3" /> Voir sur LinkedIn
+                    </a>
+                  )}
+
+                  {/* Score */}
+                  {candidate.score != null && (
+                    <div className="border border-foreground/15 p-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Score IA</span>
+                        <span className={cn("text-sm font-bold",
+                          candidate.score >= 75 ? "text-emerald-600" :
+                          candidate.score >= 50 ? "text-amber-600" : "text-red-600"
+                        )}>{candidate.score}/100</span>
+                      </div>
+                      {candidate.recommendation && (
+                        <p className="text-[10px] text-muted-foreground mt-1">{candidate.recommendation}</p>
+                      )}
+                    </div>
+                  )}
+
+                  {/* À propos */}
+                  {enrichedProfile?.summary && (
+                    <CollapsibleSection title="À propos" defaultOpen={false}>
+                      <p className="text-[10px] text-muted-foreground leading-relaxed">{enrichedProfile.summary}</p>
+                    </CollapsibleSection>
+                  )}
+
+                  {/* Expériences */}
+                  {enrichedProfile?.experiences && enrichedProfile.experiences.length > 0 && (
+                    <CollapsibleSection title="Expériences" defaultOpen={true}>
+                      <div className="space-y-0 relative">
+                        <div className="absolute left-[5px] top-2 bottom-2 w-px bg-foreground/15" />
+                        {enrichedProfile.experiences.map((exp, i) => (
+                          <ExperienceItem key={i} exp={exp} />
+                        ))}
+                      </div>
+                    </CollapsibleSection>
+                  )}
+
+                  {/* Formation */}
+                  {enrichedProfile?.education && enrichedProfile.education.length > 0 && (
+                    <CollapsibleSection title="Formation" defaultOpen={false}>
+                      <div className="space-y-0 relative">
+                        <div className="absolute left-[5px] top-2 bottom-2 w-px bg-foreground/15" />
+                        {enrichedProfile.education.map((edu, i) => (
+                          <EducationItem key={i} edu={edu} />
+                        ))}
+                      </div>
+                    </CollapsibleSection>
+                  )}
+
+                  {/* Compétences */}
+                  {enrichedProfile?.skills && enrichedProfile.skills.length > 0 && (
+                    <CollapsibleSection title="Compétences" defaultOpen={false}>
                       <div className="flex flex-wrap gap-1">
-                        {jobDetails.skills.map(s => (
+                        {enrichedProfile.skills.map(s => (
                           <span key={s} className="text-[9px] px-1.5 py-0.5 border border-foreground/20 text-muted-foreground font-medium uppercase tracking-wider">{s}</span>
                         ))}
                       </div>
                     </CollapsibleSection>
                   )}
 
-                  {/* Description */}
-                  {jobDetails?.description && (
-                    <CollapsibleSection title="Description du poste" defaultOpen={false}>
-                      <p className="text-[10px] text-muted-foreground leading-relaxed whitespace-pre-wrap">{jobDetails.description}</p>
-                    </CollapsibleSection>
-                  )}
-
-                  {/* Requirements */}
-                  {jobDetails?.requirements && (
-                    <CollapsibleSection title="Prérequis" defaultOpen={false}>
-                      <p className="text-[10px] text-muted-foreground leading-relaxed whitespace-pre-wrap">{jobDetails.requirements}</p>
-                    </CollapsibleSection>
-                  )}
-
-                  {/* Must / Should / Nice to have */}
-                  {(jobDetails?.mustHave || jobDetails?.shouldHave || jobDetails?.niceToHave) && (
-                    <CollapsibleSection title="Critères (Must / Should / Nice)" defaultOpen={false}>
-                      <div className="space-y-1.5 text-[10px]">
-                        {jobDetails.mustHave && (
-                          <div><span className="font-bold text-red-600">Must:</span> <span className="text-muted-foreground">{jobDetails.mustHave}</span></div>
-                        )}
-                        {jobDetails.shouldHave && (
-                          <div><span className="font-bold text-amber-600">Should:</span> <span className="text-muted-foreground">{jobDetails.shouldHave}</span></div>
-                        )}
-                        {jobDetails.niceToHave && (
-                          <div><span className="font-bold text-emerald-600">Nice:</span> <span className="text-muted-foreground">{jobDetails.niceToHave}</span></div>
-                        )}
-                      </div>
-                    </CollapsibleSection>
-                  )}
-
-                  {/* Transversal criteria */}
-                  {jobDetails?.transversalCriteria && (
-                    <CollapsibleSection title="Critères transverses" defaultOpen={false}>
-                      <div className="space-y-1.5 text-[10px]">
-                        {jobDetails.transversalCriteria.must && (
-                          <div><span className="font-bold text-red-600">Must:</span> <span className="text-muted-foreground">{jobDetails.transversalCriteria.must}</span></div>
-                        )}
-                        {jobDetails.transversalCriteria.should && (
-                          <div><span className="font-bold text-amber-600">Should:</span> <span className="text-muted-foreground">{jobDetails.transversalCriteria.should}</span></div>
-                        )}
-                        {jobDetails.transversalCriteria.niceToHave && (
-                          <div><span className="font-bold text-emerald-600">Nice:</span> <span className="text-muted-foreground">{jobDetails.transversalCriteria.niceToHave}</span></div>
-                        )}
-                        {jobDetails.transversalCriteria.context && (
-                          <div><span className="font-bold">Contexte:</span> <span className="text-muted-foreground">{jobDetails.transversalCriteria.context}</span></div>
-                        )}
-                      </div>
-                    </CollapsibleSection>
-                  )}
-
-                  {/* Interview process */}
-                  {jobDetails?.interviewProcess && (
-                    <CollapsibleSection title="Process d'entretien" defaultOpen={false}>
-                      <p className="text-[10px] text-muted-foreground leading-relaxed whitespace-pre-wrap">{jobDetails.interviewProcess}</p>
-                    </CollapsibleSection>
-                  )}
-
-                  {/* Team info */}
-                  {jobDetails?.teamInfo && (
-                    <CollapsibleSection title="Équipe" defaultOpen={false}>
-                      <p className="text-[10px] text-muted-foreground leading-relaxed whitespace-pre-wrap">{jobDetails.teamInfo}</p>
-                    </CollapsibleSection>
-                  )}
-
-                  {/* Sourcing criteria */}
-                  {jobDetails?.sourcingCriteria && (
-                    <CollapsibleSection title="Critères de sourcing" defaultOpen={false}>
-                      <p className="text-[10px] text-muted-foreground leading-relaxed whitespace-pre-wrap">{jobDetails.sourcingCriteria}</p>
-                    </CollapsibleSection>
-                  )}
-
-                  {/* Body content from Notion page */}
-                  {jobDetails?.bodyContent && (
-                    <CollapsibleSection title="Contenu Notion" defaultOpen={false}>
-                      <p className="text-[10px] text-muted-foreground leading-relaxed whitespace-pre-wrap">{jobDetails.bodyContent}</p>
-                    </CollapsibleSection>
-                  )}
-
-                  {/* Project notes */}
-                  {jobDetails?.notes && (
-                    <CollapsibleSection title="Notes projet" defaultOpen={false}>
-                      <p className="text-[10px] text-muted-foreground leading-relaxed whitespace-pre-wrap">{jobDetails.notes}</p>
-                    </CollapsibleSection>
-                  )}
-
-                  {/* Scoring match details */}
-                  {candidate.scoringDetails && (
-                    <CollapsibleSection title="Détails du matching" defaultOpen={false}>
-                      <div className="space-y-2 text-[10px]">
-                        <p className="text-muted-foreground">{candidate.scoringDetails.summary}</p>
-                        {candidate.scoringDetails.matching_skills?.length > 0 && (
-                          <div>
-                            <p className="font-medium text-emerald-600 mb-0.5">Compétences matchées</p>
-                            <div className="flex flex-wrap gap-1">
-                              {candidate.scoringDetails.matching_skills.map(s => (
-                                <span key={s} className="text-[9px] px-1.5 py-0.5 border border-emerald-300 bg-emerald-50 text-emerald-700 font-medium">{s}</span>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                        {candidate.scoringDetails.missing_skills?.length > 0 && (
-                          <div>
-                            <p className="font-medium text-red-600 mb-0.5">Compétences manquantes</p>
-                            <div className="flex flex-wrap gap-1">
-                              {candidate.scoringDetails.missing_skills.map(s => (
-                                <span key={s} className="text-[9px] px-1.5 py-0.5 border border-red-300 bg-red-50 text-red-700 font-medium">{s}</span>
-                              ))}
-                            </div>
-                          </div>
-                        )}
+                  {/* Langues */}
+                  {enrichedProfile?.languages && enrichedProfile.languages.length > 0 && (
+                    <CollapsibleSection title="Langues" defaultOpen={false}>
+                      <div className="flex flex-wrap gap-1">
+                        {enrichedProfile.languages.map(l => (
+                          <span key={l} className="text-[9px] px-1.5 py-0.5 border border-foreground/20 text-muted-foreground font-medium uppercase tracking-wider">{l}</span>
+                        ))}
                       </div>
                     </CollapsibleSection>
                   )}
                 </div>
-              )}
+              </div>
 
-              <div className="border-t border-foreground/10" />
-
-              {/* À propos — collapsible */}
-              {enrichedProfile?.summary && (
-                <CollapsibleSection title="À propos" defaultOpen={false}>
-                  <p className="text-[10px] text-muted-foreground leading-relaxed">{enrichedProfile.summary}</p>
-                </CollapsibleSection>
-              )}
-
-              {/* Expériences — collapsible timeline */}
-              {enrichedProfile?.experiences && enrichedProfile.experiences.length > 0 && (
-                <CollapsibleSection title="Expériences" defaultOpen={true}>
-                  <div className="space-y-0 relative">
-                    {/* Timeline line */}
-                    <div className="absolute left-[5px] top-2 bottom-2 w-px bg-foreground/15" />
-                    {enrichedProfile.experiences.map((exp, i) => (
-                      <ExperienceItem key={i} exp={exp} />
-                    ))}
+              {/* ========== CARD 2: Poste ========== */}
+              {(jobDetails || candidate.jobTitle) && (
+                <div className="border border-foreground bg-card">
+                  <div className="bg-brutal-accent text-foreground px-3 py-1.5 flex items-center gap-1.5">
+                    <Target className="w-3.5 h-3.5" />
+                    <span className="text-[10px] font-bold uppercase tracking-wider">Poste — {jobDetails?.title || candidate.jobTitle}</span>
                   </div>
-                </CollapsibleSection>
-              )}
+                  <div className="p-3 space-y-2">
+                    {/* Quick job meta */}
+                    <div className="flex flex-wrap items-center gap-2 text-[10px] text-muted-foreground">
+                      {jobDetails?.client && (
+                        <span className="flex items-center gap-1"><Building2 className="w-3 h-3" /> {jobDetails.client}</span>
+                      )}
+                      {jobDetails?.location && (
+                        <span className="flex items-center gap-1"><MapPin className="w-3 h-3" /> {jobDetails.location}</span>
+                      )}
+                      {jobDetails?.contractType && (
+                        <span className="px-1.5 py-0.5 border border-foreground/20 font-medium uppercase tracking-wider text-[9px]">{jobDetails.contractType}</span>
+                      )}
+                      {jobDetails?.remote && (
+                        <span className="px-1.5 py-0.5 border border-foreground/20 font-medium uppercase tracking-wider text-[9px]">{jobDetails.remote}</span>
+                      )}
+                      {jobDetails?.seniority && (
+                        <span className="px-1.5 py-0.5 border border-foreground/20 font-medium uppercase tracking-wider text-[9px]">{jobDetails.seniority}</span>
+                      )}
+                      {(jobDetails?.salaryMin || jobDetails?.salaryMax) && (
+                        <span className="px-1.5 py-0.5 border border-foreground/20 font-medium uppercase tracking-wider text-[9px]">
+                          {jobDetails.salaryMin && jobDetails.salaryMax
+                            ? `${jobDetails.salaryMin}k - ${jobDetails.salaryMax}k`
+                            : jobDetails.salaryMin ? `${jobDetails.salaryMin}k+` : `≤${jobDetails.salaryMax}k`}
+                        </span>
+                      )}
+                      {(jobDetails?.xpMin || jobDetails?.xpMax) && (
+                        <span className="text-[9px]">
+                          XP: {jobDetails.xpMin || 0}-{jobDetails.xpMax || '?'} ans
+                        </span>
+                      )}
+                    </div>
 
-              {/* Diplômes — collapsible */}
-              {enrichedProfile?.education && enrichedProfile.education.length > 0 && (
-                <CollapsibleSection title="Formation" defaultOpen={false}>
-                  <div className="space-y-0 relative">
-                    <div className="absolute left-[5px] top-2 bottom-2 w-px bg-foreground/15" />
-                    {enrichedProfile.education.map((edu, i) => (
-                      <EducationItem key={i} edu={edu} />
-                    ))}
-                  </div>
-                </CollapsibleSection>
-              )}
+                    {/* Skills */}
+                    {jobDetails?.skills && jobDetails.skills.length > 0 && (
+                      <CollapsibleSection title={`Compétences recherchées (${jobDetails.skills.length})`} defaultOpen={false}>
+                        <div className="flex flex-wrap gap-1">
+                          {jobDetails.skills.map(s => (
+                            <span key={s} className="text-[9px] px-1.5 py-0.5 border border-foreground/20 text-muted-foreground font-medium uppercase tracking-wider">{s}</span>
+                          ))}
+                        </div>
+                      </CollapsibleSection>
+                    )}
 
-              {/* Compétences — collapsible */}
-              {enrichedProfile?.skills && enrichedProfile.skills.length > 0 && (
-                <CollapsibleSection title="Compétences" defaultOpen={false}>
-                  <div className="flex flex-wrap gap-1">
-                    {enrichedProfile.skills.map(s => (
-                      <span key={s} className="text-[9px] px-1.5 py-0.5 border border-foreground/20 text-muted-foreground font-medium uppercase tracking-wider">{s}</span>
-                    ))}
-                  </div>
-                </CollapsibleSection>
-              )}
+                    {/* Description */}
+                    {jobDetails?.description && (
+                      <CollapsibleSection title="Description du poste" defaultOpen={false}>
+                        <p className="text-[10px] text-muted-foreground leading-relaxed whitespace-pre-wrap">{jobDetails.description}</p>
+                      </CollapsibleSection>
+                    )}
 
-              {/* Langues */}
-              {enrichedProfile?.languages && enrichedProfile.languages.length > 0 && (
-                <CollapsibleSection title="Langues" defaultOpen={false}>
-                  <div className="flex flex-wrap gap-1">
-                    {enrichedProfile.languages.map(l => (
-                      <span key={l} className="text-[9px] px-1.5 py-0.5 border border-foreground/20 text-muted-foreground font-medium uppercase tracking-wider">{l}</span>
-                    ))}
+                    {/* Requirements */}
+                    {jobDetails?.requirements && (
+                      <CollapsibleSection title="Prérequis" defaultOpen={false}>
+                        <p className="text-[10px] text-muted-foreground leading-relaxed whitespace-pre-wrap">{jobDetails.requirements}</p>
+                      </CollapsibleSection>
+                    )}
+
+                    {/* Must / Should / Nice to have */}
+                    {(jobDetails?.mustHave || jobDetails?.shouldHave || jobDetails?.niceToHave) && (
+                      <CollapsibleSection title="Critères (Must / Should / Nice)" defaultOpen={false}>
+                        <div className="space-y-1.5 text-[10px]">
+                          {jobDetails.mustHave && (
+                            <div><span className="font-bold text-red-600">Must:</span> <span className="text-muted-foreground">{jobDetails.mustHave}</span></div>
+                          )}
+                          {jobDetails.shouldHave && (
+                            <div><span className="font-bold text-amber-600">Should:</span> <span className="text-muted-foreground">{jobDetails.shouldHave}</span></div>
+                          )}
+                          {jobDetails.niceToHave && (
+                            <div><span className="font-bold text-emerald-600">Nice:</span> <span className="text-muted-foreground">{jobDetails.niceToHave}</span></div>
+                          )}
+                        </div>
+                      </CollapsibleSection>
+                    )}
+
+                    {/* Transversal criteria */}
+                    {jobDetails?.transversalCriteria && (
+                      <CollapsibleSection title="Critères transverses" defaultOpen={false}>
+                        <div className="space-y-1.5 text-[10px]">
+                          {jobDetails.transversalCriteria.must && (
+                            <div><span className="font-bold text-red-600">Must:</span> <span className="text-muted-foreground">{jobDetails.transversalCriteria.must}</span></div>
+                          )}
+                          {jobDetails.transversalCriteria.should && (
+                            <div><span className="font-bold text-amber-600">Should:</span> <span className="text-muted-foreground">{jobDetails.transversalCriteria.should}</span></div>
+                          )}
+                          {jobDetails.transversalCriteria.niceToHave && (
+                            <div><span className="font-bold text-emerald-600">Nice:</span> <span className="text-muted-foreground">{jobDetails.transversalCriteria.niceToHave}</span></div>
+                          )}
+                          {jobDetails.transversalCriteria.context && (
+                            <div><span className="font-bold">Contexte:</span> <span className="text-muted-foreground">{jobDetails.transversalCriteria.context}</span></div>
+                          )}
+                        </div>
+                      </CollapsibleSection>
+                    )}
+
+                    {/* Interview process */}
+                    {jobDetails?.interviewProcess && (
+                      <CollapsibleSection title="Process d'entretien" defaultOpen={false}>
+                        <p className="text-[10px] text-muted-foreground leading-relaxed whitespace-pre-wrap">{jobDetails.interviewProcess}</p>
+                      </CollapsibleSection>
+                    )}
+
+                    {/* Team info */}
+                    {jobDetails?.teamInfo && (
+                      <CollapsibleSection title="Équipe" defaultOpen={false}>
+                        <p className="text-[10px] text-muted-foreground leading-relaxed whitespace-pre-wrap">{jobDetails.teamInfo}</p>
+                      </CollapsibleSection>
+                    )}
+
+                    {/* Sourcing criteria */}
+                    {jobDetails?.sourcingCriteria && (
+                      <CollapsibleSection title="Critères de sourcing" defaultOpen={false}>
+                        <p className="text-[10px] text-muted-foreground leading-relaxed whitespace-pre-wrap">{jobDetails.sourcingCriteria}</p>
+                      </CollapsibleSection>
+                    )}
+
+                    {/* Body content from Notion page */}
+                    {jobDetails?.bodyContent && (
+                      <CollapsibleSection title="Contenu Notion" defaultOpen={false}>
+                        <p className="text-[10px] text-muted-foreground leading-relaxed whitespace-pre-wrap">{jobDetails.bodyContent}</p>
+                      </CollapsibleSection>
+                    )}
+
+                    {/* Project notes */}
+                    {jobDetails?.notes && (
+                      <CollapsibleSection title="Notes projet" defaultOpen={false}>
+                        <p className="text-[10px] text-muted-foreground leading-relaxed whitespace-pre-wrap">{jobDetails.notes}</p>
+                      </CollapsibleSection>
+                    )}
+
+                    {/* Scoring match details */}
+                    {candidate.scoringDetails && (
+                      <CollapsibleSection title="Détails du matching" defaultOpen={false}>
+                        <div className="space-y-2 text-[10px]">
+                          <p className="text-muted-foreground">{candidate.scoringDetails.summary}</p>
+                          {candidate.scoringDetails.matching_skills?.length > 0 && (
+                            <div>
+                              <p className="font-medium text-emerald-600 mb-0.5">Compétences matchées</p>
+                              <div className="flex flex-wrap gap-1">
+                                {candidate.scoringDetails.matching_skills.map(s => (
+                                  <span key={s} className="text-[9px] px-1.5 py-0.5 border border-emerald-300 bg-emerald-50 text-emerald-700 font-medium">{s}</span>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                          {candidate.scoringDetails.missing_skills?.length > 0 && (
+                            <div>
+                              <p className="font-medium text-red-600 mb-0.5">Compétences manquantes</p>
+                              <div className="flex flex-wrap gap-1">
+                                {candidate.scoringDetails.missing_skills.map(s => (
+                                  <span key={s} className="text-[9px] px-1.5 py-0.5 border border-red-300 bg-red-50 text-red-700 font-medium">{s}</span>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </CollapsibleSection>
+                    )}
                   </div>
-                </CollapsibleSection>
+                </div>
               )}
             </div>
           </div>
