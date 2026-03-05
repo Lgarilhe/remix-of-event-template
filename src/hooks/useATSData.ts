@@ -32,6 +32,7 @@ export interface ATSCandidate {
   outreachStatus?: string | null;
   notionShortlistId?: string | null;
   notionCandidateId?: string | null;
+  tags?: string[];
   scoringDetails?: {
     match_score: number;
     matching_skills: string[];
@@ -157,6 +158,7 @@ async function fetchLocalCandidates(): Promise<ATSCandidate[]> {
       outreachStatus: r.status,
       notionShortlistId: r.notion_shortlist_id || null,
       notionCandidateId: r.notion_candidate_id || null,
+      tags: r.tags || [],
       scoringDetails: r.scoring_details || null,
       linkedinProfileData: r.linkedin_profile_data || null,
     };
@@ -393,6 +395,29 @@ export function useATSData() {
     }
   }, [candidates, queryClient]);
 
+  // Handle tags update
+  const handleTagsChange = useCallback(async (candidateId: string, tags: string[]) => {
+    const candidate = candidates.find(c => c.id === candidateId);
+    if (!candidate || candidate.source !== 'local') return;
+
+    // Optimistic update
+    queryClient.setQueryData<ATSCandidate[]>(['ats-candidates'], (old) =>
+      old?.map(c => c.id === candidateId ? { ...c, tags } : c) ?? []
+    );
+
+    try {
+      const { error: updateError } = await supabase
+        .from('job_candidate_status')
+        .update({ tags })
+        .eq('id', candidate.sourceId);
+      if (updateError) throw updateError;
+    } catch (error) {
+      console.error('Error updating tags:', error);
+      toast.error('Erreur lors de la mise à jour des tags');
+      queryClient.invalidateQueries({ queryKey: ['ats-candidates'] });
+    }
+  }, [candidates, queryClient]);
+
   const isFromCache = !loading && !isFetching && candidates.length > 0;
 
   return {
@@ -403,5 +428,6 @@ export function useATSData() {
     error: error ? (error instanceof Error ? error.message : 'Failed to load data') : null,
     refetch: () => refetch(),
     handleStageChange,
+    handleTagsChange,
   };
 }

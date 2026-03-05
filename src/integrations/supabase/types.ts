@@ -1048,6 +1048,7 @@ export type Database = {
           scoring_details: Json | null
           skip_reason: string | null
           status: string
+          tags: string[] | null
           updated_at: string
         }
         Insert: {
@@ -1070,6 +1071,7 @@ export type Database = {
           scoring_details?: Json | null
           skip_reason?: string | null
           status?: string
+          tags?: string[] | null
           updated_at?: string
         }
         Update: {
@@ -1092,6 +1094,7 @@ export type Database = {
           scoring_details?: Json | null
           skip_reason?: string | null
           status?: string
+          tags?: string[] | null
           updated_at?: string
         }
         Relationships: [

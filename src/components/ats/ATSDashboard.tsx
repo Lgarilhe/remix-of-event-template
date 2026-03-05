@@ -691,6 +691,73 @@ export function ATSDashboard({ candidates, stages }: ATSDashboardProps) {
           </div>
         </Section>
       )}
+
+      {/* ─── Pipeline Conversion Report ─── */}
+      <Section title="Conversion pipeline" icon={TrendingUp}>
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="border-b border-foreground">
+                <th className="text-left px-4 py-2 text-[9px] uppercase tracking-wider font-bold text-muted-foreground">Transition</th>
+                <th className="text-center px-3 py-2 text-[9px] uppercase tracking-wider font-bold text-muted-foreground">Entrée</th>
+                <th className="text-center px-3 py-2 text-[9px] uppercase tracking-wider font-bold text-muted-foreground">Sortie</th>
+                <th className="text-center px-3 py-2 text-[9px] uppercase tracking-wider font-bold text-muted-foreground">Taux</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              <ConversionRows candidates={candidates} stages={stages} />
+            </tbody>
+          </table>
+        </div>
+      </Section>
     </div>
   );
+}
+
+// ─── Pipeline conversion rows ───
+const STAGE_ORDER_CONV = ['Nouveau', 'Contacté', 'Répondu', 'Pré-qualif', 'CV envoyé', 'ITW en cours', 'Offre', 'Gagné'];
+
+function ConversionRows({ candidates, stages }: { candidates: ATSCandidate[]; stages: { key: string }[] }) {
+  const stageOrderMap: Record<string, number> = {};
+  STAGE_ORDER_CONV.forEach((s, i) => { stageOrderMap[s] = i; });
+
+  // Count candidates at or beyond each stage
+  const atOrBeyond = (stage: string) => {
+    const idx = stageOrderMap[stage];
+    if (idx === undefined) return 0;
+    return candidates.filter(c => {
+      const cIdx = stageOrderMap[c.stage];
+      return cIdx !== undefined && cIdx >= idx;
+    }).length;
+  };
+
+  const rows = [];
+  for (let i = 0; i < STAGE_ORDER_CONV.length - 1; i++) {
+    const from = STAGE_ORDER_CONV[i];
+    const to = STAGE_ORDER_CONV[i + 1];
+    const fromCount = atOrBeyond(from);
+    const toCount = atOrBeyond(to);
+    if (fromCount === 0) continue;
+    const rate = Math.round((toCount / fromCount) * 100);
+    rows.push(
+      <tr key={`${from}-${to}`} className="hover:bg-muted/50 transition-colors">
+        <td className="px-4 py-2 font-medium">
+          <span className="text-muted-foreground">{from}</span>
+          <span className="mx-1.5 text-muted-foreground">→</span>
+          <span>{to}</span>
+        </td>
+        <td className="text-center px-3 py-2 font-mono">{fromCount}</td>
+        <td className="text-center px-3 py-2 font-mono">{toCount}</td>
+        <td className="text-center px-3 py-2">
+          <span className={cn(
+            "font-mono font-bold px-1.5 py-0.5 text-[10px]",
+            rate >= 50 ? "bg-brutal-accent/20 text-foreground" : rate >= 25 ? "bg-muted" : "text-muted-foreground"
+          )}>
+            {rate}%
+          </span>
+        </td>
+      </tr>
+    );
+  }
+  return <>{rows}</>;
 }

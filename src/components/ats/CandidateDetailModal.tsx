@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import linkedinLogo from '@/assets/linkedin-logo.png';
 import { supabase } from '@/integrations/supabase/client';
-import { ATSCandidate, ATS_STAGES } from '@/pages/ATS';
+import { ATSCandidate, ATS_STAGES } from '@/hooks/useATSData';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
@@ -25,6 +25,7 @@ interface CandidateDetailModalProps {
   candidate: ATSCandidate;
   onClose: () => void;
   onStageChange: (candidateId: string, newStage: string) => void;
+  onTagsChange?: (candidateId: string, tags: string[]) => void;
   onRefresh: () => void;
 }
 
@@ -52,7 +53,7 @@ const tabsConfig = [
 ] as const;
 
 export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
-  candidate, onClose, onStageChange, onRefresh,
+  candidate, onClose, onStageChange, onTagsChange, onRefresh,
 }) => {
   const [activeTab, setActiveTab] = useState('profile');
   const [notes, setNotes] = useState<Note[]>([]);
@@ -64,6 +65,7 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
   const [newReminderTitle, setNewReminderTitle] = useState('');
   const [newReminderDate, setNewReminderDate] = useState('');
   const [addingReminder, setAddingReminder] = useState(false);
+  const [newTag, setNewTag] = useState('');
 
   const fullProfile = useCandidateFullProfile(candidate.candidateId, candidate.linkedin);
 
@@ -251,6 +253,37 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
                 </BrutalButton>
               )}
             </div>
+          </div>
+
+          {/* Tags */}
+          <div className="flex flex-wrap items-center gap-1.5 mt-3 pb-4 border-b border-foreground/20">
+            {(candidate.tags || []).map(tag => (
+              <span
+                key={tag}
+                className="text-[10px] px-2 py-0.5 bg-brutal-accent/20 text-foreground border border-brutal-accent/40 font-medium flex items-center gap-1 cursor-pointer hover:bg-destructive/10 hover:border-destructive/40 hover:text-destructive transition-colors"
+                onClick={() => onTagsChange?.(candidate.id, (candidate.tags || []).filter(t => t !== tag))}
+                title="Cliquer pour supprimer"
+              >
+                {tag} ×
+              </span>
+            ))}
+            <form
+              className="flex items-center gap-0"
+              onSubmit={(e) => {
+                e.preventDefault();
+                const tag = newTag.trim().toLowerCase();
+                if (!tag || (candidate.tags || []).includes(tag)) return;
+                onTagsChange?.(candidate.id, [...(candidate.tags || []), tag]);
+                setNewTag('');
+              }}
+            >
+              <Input
+                value={newTag}
+                onChange={(e) => setNewTag(e.target.value)}
+                placeholder="+ tag"
+                className="h-6 w-20 text-[10px] rounded-none border-foreground/30 px-1.5"
+              />
+            </form>
           </div>
         </div>
 

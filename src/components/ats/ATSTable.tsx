@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
-import { ATSCandidate } from '@/pages/ATS';
+import { ATSCandidate } from '@/hooks/useATSData';
+import { differenceInDays, parseISO } from 'date-fns';
 import linkedinLogo from '@/assets/linkedin-logo.png';
 import {
   Table,
@@ -17,7 +18,8 @@ import {
   GitBranch,
   FileText,
   Send,
-  Target
+  Target,
+  AlertTriangle
 } from 'lucide-react';
 
 interface ATSTableProps {
@@ -125,8 +127,15 @@ export const ATSTable: React.FC<ATSTableProps> = ({ candidates, onCandidateClick
                 </div>
               </TableCell>
               <TableCell>
-                <span className="text-[10px] px-2 py-0.5 border border-foreground/30 bg-foreground/5 uppercase tracking-wider font-medium">
+                <span className="text-[10px] px-2 py-0.5 border border-foreground/30 bg-foreground/5 uppercase tracking-wider font-medium flex items-center gap-1 w-fit">
                   {candidate.stage}
+                  {(() => {
+                    const GUIDE_TIMES: Record<string, number> = { 'Nouveau': 3, 'Contacté': 5, 'Répondu': 3, 'Pressenti': 5, 'Pré-qualif': 7, 'CV envoyé': 5, 'ITW en cours': 10, 'Offre': 7 };
+                    const gt = GUIDE_TIMES[candidate.stage];
+                    const ds = candidate.lastActivity ? differenceInDays(new Date(), parseISO(candidate.lastActivity)) : null;
+                    if (gt && ds && ds > gt) return <span title={`Inactif ${ds}j (max ${gt}j)`}><AlertTriangle className="w-3 h-3 text-destructive" /></span>;
+                    return null;
+                  })()}
                 </span>
               </TableCell>
               <TableCell>
