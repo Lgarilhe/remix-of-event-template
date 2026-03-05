@@ -8,6 +8,7 @@ export interface ScheduledMessage {
   recipientName: string | null;
   recipientHeadline: string | null;
   subject: string | null;
+  messageContent: string | null;
   scheduledAt: string;
   status: string;
   sequenceName?: string;
@@ -24,7 +25,7 @@ async function fetchTodayScheduledMessages(): Promise<ScheduledMessage[]> {
   // 1. InMails scheduled for today
   const { data: inmails } = await supabase
     .from('inmail_queue')
-    .select('id, recipient_name, recipient_headline, subject, scheduled_at, status')
+    .select('id, recipient_name, recipient_headline, subject, message, scheduled_at, status')
     .gte('scheduled_at', dayStart)
     .lte('scheduled_at', dayEnd)
     .in('status', ['pending', 'scheduled', 'sent'])
@@ -38,6 +39,7 @@ async function fetchTodayScheduledMessages(): Promise<ScheduledMessage[]> {
         recipientName: im.recipient_name,
         recipientHeadline: im.recipient_headline,
         subject: im.subject,
+        messageContent: im.message || null,
         scheduledAt: im.scheduled_at,
         status: im.status,
       });
@@ -47,7 +49,7 @@ async function fetchTodayScheduledMessages(): Promise<ScheduledMessage[]> {
   // 2. Sequence step executions scheduled for today
   const { data: executions } = await supabase
     .from('sequence_step_executions' as any)
-    .select('id, scheduled_at, status, step_order, enrollment_id, final_subject')
+    .select('id, scheduled_at, status, step_order, enrollment_id, final_subject, final_message')
     .gte('scheduled_at', dayStart)
     .lte('scheduled_at', dayEnd)
     .in('status', ['scheduled', 'executed', 'sent'])
@@ -85,6 +87,7 @@ async function fetchTodayScheduledMessages(): Promise<ScheduledMessage[]> {
         recipientName: enrollment?.name || 'Profil LinkedIn',
         recipientHeadline: enrollment?.headline || null,
         subject: exec.final_subject || null,
+        messageContent: exec.final_message || null,
         scheduledAt: exec.scheduled_at,
         status: exec.status,
         sequenceName: enrollment?.sequenceName,
