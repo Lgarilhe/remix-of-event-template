@@ -716,6 +716,54 @@ export type Database = {
         }
         Relationships: []
       }
+      call_coaching_sessions: {
+        Row: {
+          alerts_log: Json | null
+          candidate_id: string
+          coach_feed: Json | null
+          created_at: string | null
+          created_by: string
+          criteria_detected: Json | null
+          duration_seconds: number | null
+          id: string
+          job_id: string
+          report: Json | null
+          scorecard_id: string
+          status: string | null
+          transcript: string | null
+        }
+        Insert: {
+          alerts_log?: Json | null
+          candidate_id: string
+          coach_feed?: Json | null
+          created_at?: string | null
+          created_by: string
+          criteria_detected?: Json | null
+          duration_seconds?: number | null
+          id?: string
+          job_id: string
+          report?: Json | null
+          scorecard_id: string
+          status?: string | null
+          transcript?: string | null
+        }
+        Update: {
+          alerts_log?: Json | null
+          candidate_id?: string
+          coach_feed?: Json | null
+          created_at?: string | null
+          created_by?: string
+          criteria_detected?: Json | null
+          duration_seconds?: number | null
+          id?: string
+          job_id?: string
+          report?: Json | null
+          scorecard_id?: string
+          status?: string | null
+          transcript?: string | null
+        }
+        Relationships: []
+      }
       candidate_evaluations: {
         Row: {
           ai_generated: boolean
