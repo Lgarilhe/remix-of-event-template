@@ -403,7 +403,7 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
   const elapsedMinutes = callStartRef.current ? Math.round((Date.now() - callStartRef.current) / 60000) : 0;
 
   return (
-    <div className="border-2 border-foreground/20 bg-foreground/[0.02] mb-4">
+    <div className="border-2 border-foreground/20 bg-foreground/[0.02] mb-4 max-h-[420px] flex flex-col overflow-hidden">
       {/* Header */}
       <div className="flex items-center justify-between p-3 border-b border-foreground/10">
         <div className="flex items-center gap-2">
@@ -446,9 +446,9 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
 
       {/* Content grid */}
       {(isRecording || callStopped) && !report && (
-        <div className="grid grid-cols-2 divide-x divide-foreground/10" style={{ maxHeight: '300px' }}>
+        <div className="grid grid-cols-2 divide-x divide-foreground/10 flex-1 min-h-0">
           {/* Transcript */}
-          <ScrollArea className="h-[300px]">
+            <ScrollArea className="h-full">
             <div className="p-3">
               <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-2">Transcription</p>
               <div className="text-[11px] leading-relaxed text-foreground whitespace-pre-wrap">
@@ -460,7 +460,7 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
           </ScrollArea>
 
           {/* Coach feed */}
-          <ScrollArea className="h-[300px]">
+          <ScrollArea className="h-full">
             <div className="p-3">
               <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-2">Feed Coach</p>
               {coachFeed.length === 0 ? (
