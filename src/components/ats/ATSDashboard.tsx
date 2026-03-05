@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import { ATSCandidate } from '@/hooks/useATSData';
 import { useTodayScheduledMessages, ScheduledMessage } from '@/hooks/useTodayScheduledMessages';
+import { useOutreachAcceptanceStats } from '@/hooks/useOutreachAcceptanceStats';
 import { useNavigate } from 'react-router-dom';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -11,7 +12,7 @@ import { fr } from 'date-fns/locale';
 import {
   TrendingUp, Users, MessageCircle, CheckCircle, Target, Clock,
   ArrowRight, Briefcase, UserCheck, AlertCircle, Star, Send,
-  Calendar, ExternalLink, Mail, Zap,
+  Calendar, ExternalLink, Mail, Zap, UserPlus, UserX,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -87,6 +88,7 @@ function Section({ title, subtitle, icon: Icon, children, action, className }: {
 export function ATSDashboard({ candidates, stages }: ATSDashboardProps) {
   const navigate = useNavigate();
   const { data: scheduledMessages = [], isLoading: loadingMessages } = useTodayScheduledMessages();
+  const { data: acceptanceStats, isLoading: loadingAcceptance } = useOutreachAcceptanceStats();
   const [expandedMessageId, setExpandedMessageId] = React.useState<string | null>(null);
 
   // ═══ KPIs ═══
@@ -691,6 +693,92 @@ export function ATSDashboard({ candidates, stages }: ATSDashboardProps) {
           </div>
         </Section>
       )}
+
+      {/* ─── Outreach Acceptance Stats ─── */}
+      <Section title="Taux d'acceptation séquences" icon={UserPlus}>
+        {loadingAcceptance ? (
+          <div className="p-4 space-y-2">
+            {[1, 2, 3].map(i => (
+              <div key={i} className="h-8 bg-muted animate-pulse" />
+            ))}
+          </div>
+        ) : !acceptanceStats || acceptanceStats.global.totalEnrolled === 0 ? (
+          <div className="p-6 flex flex-col items-center gap-2">
+            <UserPlus className="w-6 h-6 text-muted-foreground/40" />
+            <p className="text-xs text-muted-foreground">Aucune donnée de séquences</p>
+          </div>
+        ) : (
+          <>
+            {/* Global KPI strip */}
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-0 border-b border-border">
+              {[
+                { label: 'Inscrits', value: acceptanceStats.global.totalEnrolled, icon: Users },
+                { label: 'Connectés', value: acceptanceStats.global.connected, icon: UserCheck },
+                { label: 'Non connectés', value: acceptanceStats.global.notConnected, icon: UserX },
+                { label: 'En attente', value: acceptanceStats.global.pending, icon: Clock },
+                { label: 'Taux acceptation', value: `${acceptanceStats.global.acceptanceRate}%`, icon: Target, accent: acceptanceStats.global.acceptanceRate >= 30 },
+              ].map((kpi, i) => {
+                const Icon = kpi.icon;
+                return (
+                  <div
+                    key={kpi.label}
+                    className={cn(
+                      "p-3 flex flex-col gap-1",
+                      i > 0 && "sm:border-l border-border",
+                      i % 2 !== 0 && "max-sm:border-l border-border",
+                      i >= 2 && "max-sm:border-t border-border",
+                      (kpi as any).accent ? "bg-brutal-accent/10" : "",
+                    )}
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <Icon className="w-3 h-3 text-muted-foreground" />
+                      <span className="text-[9px] uppercase tracking-wider text-muted-foreground font-medium truncate">{kpi.label}</span>
+                    </div>
+                    <span className="text-lg font-bold font-mono tracking-tight">{kpi.value}</span>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* By consultant table */}
+            {acceptanceStats.byConsultant.length > 0 && (
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="border-b border-foreground">
+                      <th className="text-left px-4 py-2 text-[9px] uppercase tracking-wider font-bold text-muted-foreground">Consultant</th>
+                      <th className="text-center px-3 py-2 text-[9px] uppercase tracking-wider font-bold text-muted-foreground">Inscrits</th>
+                      <th className="text-center px-3 py-2 text-[9px] uppercase tracking-wider font-bold text-muted-foreground">Connectés</th>
+                      <th className="text-center px-3 py-2 text-[9px] uppercase tracking-wider font-bold text-muted-foreground">Non conn.</th>
+                      <th className="text-center px-3 py-2 text-[9px] uppercase tracking-wider font-bold text-muted-foreground">En attente</th>
+                      <th className="text-center px-3 py-2 text-[9px] uppercase tracking-wider font-bold text-muted-foreground">Taux</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {acceptanceStats.byConsultant.map(consultant => (
+                      <tr key={consultant.userId} className="hover:bg-muted/50 transition-colors">
+                        <td className="px-4 py-2.5 font-medium truncate max-w-[180px]">{consultant.displayName}</td>
+                        <td className="text-center px-3 py-2.5 font-mono font-bold">{consultant.totalEnrolled}</td>
+                        <td className="text-center px-3 py-2.5 font-mono">{consultant.connected}</td>
+                        <td className="text-center px-3 py-2.5 font-mono">{consultant.notConnected}</td>
+                        <td className="text-center px-3 py-2.5 font-mono text-muted-foreground">{consultant.pending}</td>
+                        <td className="text-center px-3 py-2.5">
+                          <span className={cn(
+                            "font-mono font-bold px-1.5 py-0.5 text-[10px]",
+                            consultant.acceptanceRate >= 40 ? "bg-brutal-accent/20 text-foreground" : consultant.acceptanceRate >= 20 ? "bg-muted" : "text-muted-foreground"
+                          )}>
+                            {consultant.acceptanceRate}%
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </>
+        )}
+      </Section>
 
       {/* ─── Pipeline Conversion Report ─── */}
       <Section title="Conversion pipeline" icon={TrendingUp}>
