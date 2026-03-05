@@ -256,7 +256,7 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
           : "max-w-2xl max-h-[90vh]"
       )}>
         {/* Header */}
-        <div className="p-6 pb-0">
+        <div className="p-4 sm:p-6 pb-0">
           <div className="flex items-start justify-between">
             <div className="flex-1 min-w-0">
               <h2 className="text-xl font-bold text-foreground">{candidate.name}</h2>
@@ -383,7 +383,7 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
         </div>
 
         {/* Tabs */}
-        <div className="px-6 pt-4">
+        <div className="px-4 sm:px-6 pt-3 sm:pt-4">
           <div className="flex gap-0 border-b border-foreground/20 overflow-x-auto">
             {tabsConfig.map(tab => {
               const Icon = tab.icon;
@@ -396,11 +396,11 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
               return (
                 <button key={tab.key} onClick={() => setActiveTab(tab.key)}
                   className={cn(
-                    "flex items-center gap-1.5 px-3 py-2.5 text-[10px] font-medium uppercase tracking-wider border-b-2 transition-colors -mb-px whitespace-nowrap",
+                    "flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-2.5 text-[10px] font-medium uppercase tracking-wider border-b-2 transition-colors -mb-px whitespace-nowrap",
                     isActive ? "border-foreground text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"
                   )}>
                   <Icon className="w-3.5 h-3.5" />
-                  {tab.label}
+                  <span className="hidden sm:inline">{tab.label}</span>
                   {count !== null && count > 0 && <span className="text-[9px] text-muted-foreground">({count})</span>}
                 </button>
               );
@@ -416,7 +416,7 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
               <ScorecardTab candidate={candidate} enrichedProfile={enrichedProfile} />
             </div>
             {/* RIGHT: Compact profile */}
-            <div className="w-full lg:w-[400px] shrink-0 overflow-y-auto px-4 pt-4 pb-6 space-y-3">
+            <div className="hidden lg:block w-[400px] shrink-0 overflow-y-auto px-4 pt-4 pb-6 space-y-3">
               {/* ========== CARD 1: Candidat ========== */}
               <CollapsibleCard
                 title={enrichedProfile?.name || candidate.name}
