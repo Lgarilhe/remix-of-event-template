@@ -329,6 +329,9 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
                         job_title: candidate.jobTitle,
                         pipeline_stage: candidate.stage,
                         created_by: user.id,
+                        recruiter_name: user.user_metadata?.full_name || user.email?.split('@')[0] || null,
+                        recruiter_email: user.email || null,
+                        stage_updated_at: new Date().toISOString(),
                       })
                       .select('token')
                       .single();

@@ -855,48 +855,75 @@ export type Database = {
         Row: {
           candidate_id: string
           candidate_name: string | null
+          company_description: string | null
+          company_logo_url: string | null
           company_name: string | null
           created_at: string
           created_by: string
+          documents: Json | null
+          estimated_days_to_next: number | null
           expires_at: string | null
+          faq: Json | null
           id: string
           is_active: boolean
           job_id: string | null
           job_title: string | null
           next_steps: string | null
           pipeline_stage: string | null
+          recruiter_email: string | null
+          recruiter_name: string | null
+          recruiter_phone: string | null
+          stage_updated_at: string | null
           token: string
           updated_at: string
         }
         Insert: {
           candidate_id: string
           candidate_name?: string | null
+          company_description?: string | null
+          company_logo_url?: string | null
           company_name?: string | null
           created_at?: string
           created_by: string
+          documents?: Json | null
+          estimated_days_to_next?: number | null
           expires_at?: string | null
+          faq?: Json | null
           id?: string
           is_active?: boolean
           job_id?: string | null
           job_title?: string | null
           next_steps?: string | null
           pipeline_stage?: string | null
+          recruiter_email?: string | null
+          recruiter_name?: string | null
+          recruiter_phone?: string | null
+          stage_updated_at?: string | null
           token?: string
           updated_at?: string
         }
         Update: {
           candidate_id?: string
           candidate_name?: string | null
+          company_description?: string | null
+          company_logo_url?: string | null
           company_name?: string | null
           created_at?: string
           created_by?: string
+          documents?: Json | null
+          estimated_days_to_next?: number | null
           expires_at?: string | null
+          faq?: Json | null
           id?: string
           is_active?: boolean
           job_id?: string | null
           job_title?: string | null
           next_steps?: string | null
           pipeline_stage?: string | null
+          recruiter_email?: string | null
+          recruiter_name?: string | null
+          recruiter_phone?: string | null
+          stage_updated_at?: string | null
           token?: string
           updated_at?: string
         }
