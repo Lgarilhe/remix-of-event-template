@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { ATSCandidate } from '@/hooks/useATSData';
 import { EnrichedProfile } from '@/hooks/useProfileEnrichment';
-import { Loader2, Sparkles, Star, Save, RotateCcw, ChevronDown, ChevronUp } from 'lucide-react';
+import { Loader2, Sparkles, Star, Save, RotateCcw, ChevronDown, ChevronUp, Pencil, Check } from 'lucide-react';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -26,6 +26,7 @@ interface EvaluationData {
   ratings: Record<string, number>;
   comments: Record<string, string>;
   overallScore: number | null;
+  savedAt?: string;
 }
 
 const CATEGORY_CONFIG: Record<string, { label: string; color: string }> = {
@@ -41,6 +42,8 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
   const [expandedCriteria, setExpandedCriteria] = useState<Set<string>>(new Set());
+  const [collapsed, setCollapsed] = useState(false);
+  const [editing, setEditing] = useState(false);
 
   // Load existing evaluation
   useEffect(() => {
@@ -66,7 +69,10 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
             ratings: (data.ratings as any) || {},
             comments: (data.comments as any) || {},
             overallScore: data.overall_score ? Number(data.overall_score) : null,
+            savedAt: data.updated_at,
           });
+          // If already saved, start collapsed
+          setCollapsed(true);
         }
       } catch (err) {
         console.error('Error loading evaluation:', err);
@@ -91,12 +97,10 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
         yearsOfExperience: enrichedProfile?.yearsOfExperience,
       };
 
-      // Build job context from available data
       const jobContext: any = {
         title: candidate.jobTitle || 'Non spécifié',
       };
 
-      // Try to get job details from Notion via sourcing project
       if (candidate.jobId) {
         const { data: project } = await supabase
           .from('sourcing_projects')
@@ -111,7 +115,6 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
           jobContext.description = project.description;
         }
 
-        // Try to get Notion job data
         try {
           const { data: notionData } = await supabase.functions.invoke('fetch-notion-jobs', {
             body: { jobId: candidate.jobId },
@@ -145,6 +148,8 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
         comments: prev?.comments || {},
         overallScore: null,
       }));
+      setCollapsed(false);
+      setEditing(true);
 
       toast.success(`${criteria.length} critères générés sur mesure`);
     } catch (err: any) {
@@ -164,7 +169,6 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
     return Math.round((weightedSum / totalWeight) * 10) / 10;
   }, []);
 
-  // Update rating
   const handleRate = useCallback((criterionId: string, rating: number) => {
     setEvaluation(prev => {
       if (!prev) return prev;
@@ -177,7 +181,6 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
     });
   }, [computeOverallScore]);
 
-  // Update comment
   const handleComment = useCallback((criterionId: string, comment: string) => {
     setEvaluation(prev => {
       if (!prev) return prev;
@@ -185,7 +188,7 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
     });
   }, []);
 
-  // Save to DB
+  // Save to DB then collapse
   const handleSave = useCallback(async () => {
     if (!evaluation) return;
     setSaving(true);
@@ -193,6 +196,7 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
+      const now = new Date().toISOString();
       const payload = {
         candidate_id: candidate.candidateId,
         job_id: candidate.jobId,
@@ -202,7 +206,7 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
         comments: evaluation.comments as any,
         overall_score: evaluation.overallScore,
         created_by: user.id,
-        updated_at: new Date().toISOString(),
+        updated_at: now,
       };
 
       if (evaluation.id) {
@@ -221,6 +225,9 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
         setEvaluation(prev => prev ? { ...prev, id: data.id } : prev);
       }
 
+      setEvaluation(prev => prev ? { ...prev, savedAt: now } : prev);
+      setCollapsed(true);
+      setEditing(false);
       toast.success('Évaluation sauvegardée');
     } catch (err: any) {
       console.error('Error saving:', err);
@@ -230,13 +237,17 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
     }
   }, [evaluation, candidate]);
 
-  // Toggle criterion expansion
   const toggleExpand = (id: string) => {
     setExpandedCriteria(prev => {
       const next = new Set(prev);
       next.has(id) ? next.delete(id) : next.add(id);
       return next;
     });
+  };
+
+  const handleEditReopen = () => {
+    setCollapsed(false);
+    setEditing(true);
   };
 
   if (loading) {
@@ -284,6 +295,68 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
   const ratedCount = evaluation.criteria.filter(c => evaluation.ratings[c.id] != null).length;
   const totalCriteria = evaluation.criteria.length;
 
+  // ─── Collapsed summary view ───
+  if (collapsed) {
+    return (
+      <div className="space-y-3">
+        <div
+          className="border border-foreground/15 p-4 cursor-pointer hover:bg-foreground/[0.02] transition-colors"
+          onClick={handleEditReopen}
+        >
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-3">
+              {evaluation.overallScore != null && (
+                <div className={cn(
+                  "h-12 w-12 flex items-center justify-center border-2 text-lg font-bold",
+                  evaluation.overallScore >= 4 ? "border-emerald-400 bg-emerald-50 text-emerald-700" :
+                  evaluation.overallScore >= 3 ? "border-amber-400 bg-amber-50 text-amber-700" :
+                  "border-red-400 bg-red-50 text-red-700"
+                )}>
+                  {evaluation.overallScore}
+                </div>
+              )}
+              <div>
+                <p className="text-[11px] font-bold uppercase tracking-wider text-foreground">
+                  Scorecard — {ratedCount}/{totalCriteria} critères
+                </p>
+                <p className="text-[10px] text-muted-foreground">
+                  {candidate.jobTitle || 'Poste non spécifié'}
+                  {evaluation.savedAt && (
+                    <> · Sauvegardée le {new Date(evaluation.savedAt).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</>
+                  )}
+                </p>
+              </div>
+            </div>
+            <button className="h-[30px] px-3 flex items-center gap-1.5 border border-foreground text-foreground text-[10px] font-medium uppercase tracking-wider hover:bg-foreground hover:text-background transition-colors">
+              <Pencil className="w-3 h-3" />
+              Modifier
+            </button>
+          </div>
+
+          {/* Mini summary of ratings */}
+          <div className="flex flex-wrap gap-1.5">
+            {evaluation.criteria.map(c => {
+              const r = evaluation.ratings[c.id];
+              const catConfig = CATEGORY_CONFIG[c.category] || CATEGORY_CONFIG.technical;
+              return (
+                <div key={c.id} className="flex items-center gap-1 text-[10px] border border-foreground/10 px-2 py-1">
+                  <span className={cn("w-1.5 h-1.5 rounded-full", 
+                    r != null && r >= 4 ? "bg-emerald-400" :
+                    r != null && r >= 3 ? "bg-amber-400" :
+                    r != null ? "bg-red-400" : "bg-foreground/20"
+                  )} />
+                  <span className="text-muted-foreground truncate max-w-[120px]">{c.label}</span>
+                  {r != null && <span className="font-bold text-foreground">{r}/5</span>}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ─── Full editing view ───
   return (
     <div className="space-y-4 pr-1">
       {/* Header bar */}
@@ -323,7 +396,7 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
             disabled={saving}
             className="relative overflow-hidden h-[30px] px-3 flex items-center gap-1.5 border border-foreground -ml-px bg-foreground text-background text-[10px] font-medium uppercase tracking-wider group disabled:opacity-50"
           >
-            {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
+            {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
             <span>Sauvegarder</span>
           </button>
         </div>
@@ -339,7 +412,6 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
 
           return (
             <div key={criterion.id} className="border border-foreground/15 bg-foreground/[0.02]">
-              {/* Criterion header */}
               <div
                 className="flex items-center gap-3 p-3 cursor-pointer hover:bg-foreground/[0.03] transition-colors"
                 onClick={() => toggleExpand(criterion.id)}
@@ -363,7 +435,6 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
                   <p className="text-sm font-medium text-foreground leading-tight">{criterion.label}</p>
                 </div>
 
-                {/* Star rating (inline) */}
                 <div className="flex items-center gap-0.5 shrink-0" onClick={e => e.stopPropagation()}>
                   {[1, 2, 3, 4, 5].map(star => (
                     <button
@@ -386,7 +457,6 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
                 {isExpanded ? <ChevronUp className="w-4 h-4 text-muted-foreground shrink-0" /> : <ChevronDown className="w-4 h-4 text-muted-foreground shrink-0" />}
               </div>
 
-              {/* Expanded: description + comment */}
               {isExpanded && (
                 <div className="px-3 pb-3 space-y-2 border-t border-foreground/10">
                   <p className="text-[11px] text-muted-foreground leading-relaxed pt-2 italic">
