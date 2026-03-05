@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import linkedinLogo from '@/assets/linkedin-logo.png';
 import { supabase } from '@/integrations/supabase/client';
 import { ATSCandidate, ATS_STAGES } from '@/hooks/useATSData';
@@ -251,14 +252,17 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
   return (
     <>
     <Dialog open onOpenChange={onClose}>
-       <DialogContent className={cn(
-        "overflow-hidden flex flex-col p-0 rounded-none border-foreground gap-0 [&>button]:hidden transition-all duration-300",
-        "w-[100vw] h-[100dvh] max-w-[100vw] max-h-[100dvh]",
-        "sm:w-auto sm:h-auto",
-        isSplitMode
-          ? "sm:max-w-[95vw] sm:max-h-[95vh] sm:w-[95vw] sm:h-[95vh]"
-          : "sm:max-w-2xl sm:max-h-[90vh]"
-      )}>
+       <DialogContent 
+        onInteractOutside={(e) => { if (mobileProfileOpen) e.preventDefault(); }}
+        onPointerDownOutside={(e) => { if (mobileProfileOpen) e.preventDefault(); }}
+        className={cn(
+         "overflow-hidden flex flex-col p-0 rounded-none border-foreground gap-0 [&>button]:hidden transition-all duration-300",
+         "w-[100vw] h-[100dvh] max-w-[100vw] max-h-[100dvh]",
+         "sm:w-auto sm:h-auto",
+         isSplitMode
+           ? "sm:max-w-[95vw] sm:max-h-[95vh] sm:w-[95vw] sm:h-[95vh]"
+           : "sm:max-w-2xl sm:max-h-[90vh]"
+       )}>
         {/* Header */}
         <div className="p-3 sm:p-6 pb-0">
           <div className="flex items-start justify-between gap-2">
@@ -1132,9 +1136,13 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
       </DialogContent>
     </Dialog>
 
-    {/* Mobile profile panel — plain fixed div to avoid Radix Dialog conflicts */}
-    {isSplitMode && mobileProfileOpen && (
-      <div className="fixed inset-x-0 bottom-0 h-[55dvh] z-[9999] bg-background border-t-2 border-foreground shadow-[0_-8px_30px_rgba(0,0,0,0.3)] flex flex-col animate-in slide-in-from-bottom duration-300">
+    {/* Mobile profile panel — rendered via portal to escape Radix Dialog focus trap */}
+    {isSplitMode && mobileProfileOpen && createPortal(
+      <div 
+        className="fixed inset-x-0 bottom-0 h-[55dvh] z-[9999] bg-background border-t-2 border-foreground shadow-[0_-8px_30px_rgba(0,0,0,0.3)] flex flex-col animate-in slide-in-from-bottom duration-300"
+        onPointerDown={(e) => e.stopPropagation()}
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="px-4 py-3 border-b border-foreground/15 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-2">
             <User className="w-4 h-4" />
@@ -1170,7 +1178,8 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
             </CollapsibleCard>
           )}
         </div>
-      </div>
+      </div>,
+      document.body
     )}
     </>
   );
