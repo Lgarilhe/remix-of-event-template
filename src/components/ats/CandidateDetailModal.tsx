@@ -382,22 +382,16 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
               <ScorecardTab candidate={candidate} enrichedProfile={enrichedProfile} />
             </div>
             {/* RIGHT: Compact profile */}
-            <div className="w-[400px] shrink-0 overflow-y-auto px-4 pt-4 pb-6 space-y-4">
+            <div className="w-[400px] shrink-0 overflow-y-auto px-4 pt-4 pb-6 space-y-3">
               {/* ========== CARD 1: Candidat ========== */}
-              <div className="border border-foreground bg-card">
-                <div className="bg-foreground text-background px-3 py-1.5 flex items-center gap-1.5">
-                  <User className="w-3.5 h-3.5" />
-                  <span className="text-[10px] font-bold uppercase tracking-wider">Candidat</span>
-                </div>
-                <div className="p-3 space-y-3">
-                  {/* Name + headline */}
-                  <div>
-                    <p className="text-sm font-bold text-foreground">{enrichedProfile?.name || candidate.name}</p>
-                    {enrichedProfile?.headline && (
-                      <p className="text-[11px] text-muted-foreground mt-0.5">{enrichedProfile.headline}</p>
-                    )}
-                  </div>
-
+              <CollapsibleCard
+                title={enrichedProfile?.name || candidate.name}
+                subtitle={enrichedProfile?.headline || candidate.headline}
+                icon={<User className="w-3.5 h-3.5" />}
+                variant="dark"
+                defaultOpen={false}
+              >
+                <div className="space-y-3">
                   {/* City + years of experience */}
                   <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
                     {enrichedProfile?.location && (
@@ -489,24 +483,20 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
                     </CollapsibleSection>
                   )}
                 </div>
-              </div>
+              </CollapsibleCard>
 
               {/* ========== CARD 2: Poste ========== */}
               {(jobDetails || candidate.jobTitle) && (
-                <div className="border border-foreground bg-card">
-                  <div className="bg-brutal-accent text-foreground px-3 py-1.5 flex items-center gap-1.5">
-                    <Target className="w-3.5 h-3.5" />
-                    <span className="text-[10px] font-bold uppercase tracking-wider">Poste — {jobDetails?.title || candidate.jobTitle}</span>
-                  </div>
-                  <div className="p-3 space-y-2">
+                <CollapsibleCard
+                  title={jobDetails?.title || candidate.jobTitle || 'Poste'}
+                  subtitle={jobDetails?.client ? `${jobDetails.client}${jobDetails.location ? ` · ${jobDetails.location}` : ''}` : undefined}
+                  icon={<Target className="w-3.5 h-3.5" />}
+                  variant="accent"
+                  defaultOpen={false}
+                >
+                  <div className="space-y-2">
                     {/* Quick job meta */}
                     <div className="flex flex-wrap items-center gap-2 text-[10px] text-muted-foreground">
-                      {jobDetails?.client && (
-                        <span className="flex items-center gap-1"><Building2 className="w-3 h-3" /> {jobDetails.client}</span>
-                      )}
-                      {jobDetails?.location && (
-                        <span className="flex items-center gap-1"><MapPin className="w-3 h-3" /> {jobDetails.location}</span>
-                      )}
                       {jobDetails?.contractType && (
                         <span className="px-1.5 py-0.5 border border-foreground/20 font-medium uppercase tracking-wider text-[9px]">{jobDetails.contractType}</span>
                       )}
@@ -541,21 +531,18 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
                       </CollapsibleSection>
                     )}
 
-                    {/* Description */}
                     {jobDetails?.description && (
                       <CollapsibleSection title="Description du poste" defaultOpen={false}>
                         <p className="text-[10px] text-muted-foreground leading-relaxed whitespace-pre-wrap">{jobDetails.description}</p>
                       </CollapsibleSection>
                     )}
 
-                    {/* Requirements */}
                     {jobDetails?.requirements && (
                       <CollapsibleSection title="Prérequis" defaultOpen={false}>
                         <p className="text-[10px] text-muted-foreground leading-relaxed whitespace-pre-wrap">{jobDetails.requirements}</p>
                       </CollapsibleSection>
                     )}
 
-                    {/* Must / Should / Nice to have */}
                     {(jobDetails?.mustHave || jobDetails?.shouldHave || jobDetails?.niceToHave) && (
                       <CollapsibleSection title="Critères (Must / Should / Nice)" defaultOpen={false}>
                         <div className="space-y-1.5 text-[10px]">
@@ -572,7 +559,6 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
                       </CollapsibleSection>
                     )}
 
-                    {/* Transversal criteria */}
                     {jobDetails?.transversalCriteria && (
                       <CollapsibleSection title="Critères transverses" defaultOpen={false}>
                         <div className="space-y-1.5 text-[10px]">
@@ -592,42 +578,36 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
                       </CollapsibleSection>
                     )}
 
-                    {/* Interview process */}
                     {jobDetails?.interviewProcess && (
                       <CollapsibleSection title="Process d'entretien" defaultOpen={false}>
                         <p className="text-[10px] text-muted-foreground leading-relaxed whitespace-pre-wrap">{jobDetails.interviewProcess}</p>
                       </CollapsibleSection>
                     )}
 
-                    {/* Team info */}
                     {jobDetails?.teamInfo && (
                       <CollapsibleSection title="Équipe" defaultOpen={false}>
                         <p className="text-[10px] text-muted-foreground leading-relaxed whitespace-pre-wrap">{jobDetails.teamInfo}</p>
                       </CollapsibleSection>
                     )}
 
-                    {/* Sourcing criteria */}
                     {jobDetails?.sourcingCriteria && (
                       <CollapsibleSection title="Critères de sourcing" defaultOpen={false}>
                         <p className="text-[10px] text-muted-foreground leading-relaxed whitespace-pre-wrap">{jobDetails.sourcingCriteria}</p>
                       </CollapsibleSection>
                     )}
 
-                    {/* Body content from Notion page */}
                     {jobDetails?.bodyContent && (
                       <CollapsibleSection title="Contenu Notion" defaultOpen={false}>
                         <p className="text-[10px] text-muted-foreground leading-relaxed whitespace-pre-wrap">{jobDetails.bodyContent}</p>
                       </CollapsibleSection>
                     )}
 
-                    {/* Project notes */}
                     {jobDetails?.notes && (
                       <CollapsibleSection title="Notes projet" defaultOpen={false}>
                         <p className="text-[10px] text-muted-foreground leading-relaxed whitespace-pre-wrap">{jobDetails.notes}</p>
                       </CollapsibleSection>
                     )}
 
-                    {/* Scoring match details */}
                     {candidate.scoringDetails && (
                       <CollapsibleSection title="Détails du matching" defaultOpen={false}>
                         <div className="space-y-2 text-[10px]">
@@ -656,7 +636,7 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
                       </CollapsibleSection>
                     )}
                   </div>
-                </div>
+                </CollapsibleCard>
               )}
             </div>
           </div>
@@ -1296,6 +1276,36 @@ function CollapsibleSection({ title, defaultOpen = false, children }: { title: s
         {open ? <ChevronUp className="w-3 h-3 text-muted-foreground" /> : <ChevronDown className="w-3 h-3 text-muted-foreground" />}
       </button>
       {open && <div className="px-3 pb-3">{children}</div>}
+    </div>
+  );
+}
+
+function CollapsibleCard({ title, subtitle, icon, variant = 'dark', defaultOpen = false, children }: {
+  title: string;
+  subtitle?: string | null;
+  icon: React.ReactNode;
+  variant?: 'dark' | 'accent';
+  defaultOpen?: boolean;
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = React.useState(defaultOpen);
+  return (
+    <div className="border border-foreground bg-card">
+      <button
+        onClick={() => setOpen(!open)}
+        className={cn(
+          "w-full px-3 py-2 flex items-center gap-2 transition-colors",
+          variant === 'dark' ? "bg-foreground text-background hover:bg-foreground/90" : "bg-brutal-accent text-foreground hover:bg-brutal-accent/80"
+        )}
+      >
+        {icon}
+        <div className="flex-1 min-w-0 text-left">
+          <span className="text-[10px] font-bold uppercase tracking-wider">{title}</span>
+          {subtitle && <span className="text-[9px] opacity-70 ml-2">{subtitle}</span>}
+        </div>
+        {open ? <ChevronUp className="w-3.5 h-3.5 shrink-0" /> : <ChevronDown className="w-3.5 h-3.5 shrink-0" />}
+      </button>
+      {open && <div className="p-3">{children}</div>}
     </div>
   );
 }
