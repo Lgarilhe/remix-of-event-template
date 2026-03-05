@@ -1,12 +1,17 @@
 import React, { useMemo } from 'react';
 import { ATSCandidate } from '@/hooks/useATSData';
+import { useNavigate } from 'react-router-dom';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, AreaChart, Area, CartesianGrid,
 } from 'recharts';
-import { format, subDays, parseISO, isAfter } from 'date-fns';
+import { format, subDays, parseISO, isAfter, differenceInDays, isToday, isTomorrow } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import { TrendingUp, Users, MessageCircle, CheckCircle, Target, Zap, Clock } from 'lucide-react';
+import {
+  TrendingUp, Users, MessageCircle, CheckCircle, Target, Clock,
+  ArrowRight, Briefcase, UserCheck, AlertCircle, Star, Send,
+  Calendar, ExternalLink,
+} from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface ATSDashboardProps {
@@ -28,37 +33,85 @@ const STAGE_COLORS: Record<string, string> = {
 };
 
 const SOURCE_COLORS = [
-  'hsl(271, 81%, 56%)',
+  'hsl(var(--foreground))',
+  'hsl(var(--brutal-accent))',
   'hsl(217, 91%, 60%)',
-  'hsl(187, 85%, 53%)',
 ];
 
 const SOURCE_LABELS: Record<string, string> = {
-  local: 'Pipeline direct',
+  local: 'Pipeline',
   sequence: 'Séquences',
   inmail: 'InMail',
 };
 
+// ─── Compact tooltip ───
+const ChartTooltip = ({ active, payload, label }: any) => {
+  if (!active || !payload?.length) return null;
+  return (
+    <div className="border border-foreground bg-background px-3 py-2 text-xs font-mono">
+      <p className="font-medium mb-0.5">{label}</p>
+      {payload.map((p: any, i: number) => (
+        <p key={i} className="text-muted-foreground">
+          {p.name || p.dataKey}: <span className="font-bold text-foreground">{p.value}</span>
+        </p>
+      ))}
+    </div>
+  );
+};
+
+// ─── Section wrapper ───
+function Section({ title, icon: Icon, children, action, className }: {
+  title: string;
+  icon: React.ElementType;
+  children: React.ReactNode;
+  action?: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <div className={cn("border border-foreground bg-background", className)}>
+      <div className="flex items-center justify-between px-4 py-2.5 border-b border-foreground">
+        <div className="flex items-center gap-2">
+          <Icon className="w-3.5 h-3.5" />
+          <h3 className="text-[11px] uppercase tracking-wider font-bold">{title}</h3>
+        </div>
+        {action}
+      </div>
+      {children}
+    </div>
+  );
+}
+
 export function ATSDashboard({ candidates, stages }: ATSDashboardProps) {
-  // KPIs
+  const navigate = useNavigate();
+
+  // ═══ KPIs ═══
   const kpis = useMemo(() => {
     const total = candidates.length;
     const contacted = candidates.filter(c => c.stage !== 'Nouveau').length;
-    const replied = candidates.filter(c => ['Répondu', 'Pressenti', 'Pré-qualif', 'CV envoyé', 'ITW en cours', 'Offre', 'Gagné'].includes(c.stage)).length;
+    const replied = candidates.filter(c =>
+      ['Répondu', 'Pressenti', 'Pré-qualif', 'CV envoyé', 'ITW en cours', 'Offre', 'Gagné'].includes(c.stage)
+    ).length;
     const won = candidates.filter(c => c.stage === 'Gagné').length;
+    const inProcess = candidates.filter(c =>
+      ['Pré-qualif', 'CV envoyé', 'ITW en cours', 'Offre'].includes(c.stage)
+    ).length;
     const responseRate = contacted > 0 ? Math.round((replied / contacted) * 100) : 0;
-    const conversionRate = total > 0 ? Math.round((won / total) * 100) : 0;
 
-    return [
-      { label: 'Total candidats', value: total, icon: Users, suffix: '' },
-      { label: 'Contactés', value: contacted, icon: MessageCircle, suffix: '' },
-      { label: 'Taux réponse', value: responseRate, icon: Zap, suffix: '%' },
-      { label: 'Conversion', value: conversionRate, icon: Target, suffix: '%' },
-      { label: 'Gagnés', value: won, icon: CheckCircle, suffix: '' },
-    ];
+    return { total, contacted, replied, won, inProcess, responseRate };
   }, [candidates]);
 
-  // Pipeline funnel
+  // ═══ Candidates needing attention (Répondu without action for 2+ days) ═══
+  const urgentCandidates = useMemo(() => {
+    return candidates
+      .filter(c => {
+        if (c.stage !== 'Répondu') return false;
+        if (!c.lastActivity) return true;
+        return differenceInDays(new Date(), parseISO(c.lastActivity)) >= 2;
+      })
+      .slice(0, 5);
+  }, [candidates]);
+
+  // ═══ Pipeline visual (funnel data) ═══
   const funnelData = useMemo(() => {
     return stages
       .filter(s => s.key !== 'Perdu')
@@ -69,29 +122,24 @@ export function ATSDashboard({ candidates, stages }: ATSDashboardProps) {
       }));
   }, [candidates, stages]);
 
-  // Source breakdown
+  // ═══ Source breakdown ═══
   const sourceData = useMemo(() => {
     const counts: Record<string, number> = {};
-    candidates.forEach(c => {
-      counts[c.source] = (counts[c.source] || 0) + 1;
-    });
+    candidates.forEach(c => { counts[c.source] = (counts[c.source] || 0) + 1; });
     return Object.entries(counts).map(([key, value]) => ({
       name: SOURCE_LABELS[key] || key,
       value,
     }));
   }, [candidates]);
 
-  // Activity over time (last 30 days)
+  // ═══ Activity over time (30 days) ═══
   const activityData = useMemo(() => {
     const now = new Date();
     const thirtyDaysAgo = subDays(now, 30);
     const dayCounts: Record<string, number> = {};
-    
     for (let i = 0; i <= 30; i++) {
-      const day = format(subDays(now, 30 - i), 'yyyy-MM-dd');
-      dayCounts[day] = 0;
+      dayCounts[format(subDays(now, 30 - i), 'yyyy-MM-dd')] = 0;
     }
-    
     candidates.forEach(c => {
       if (!c.createdAt) return;
       try {
@@ -102,262 +150,377 @@ export function ATSDashboard({ candidates, stages }: ATSDashboardProps) {
         }
       } catch {}
     });
-    
     return Object.entries(dayCounts).map(([date, count]) => ({
       date: format(parseISO(date), 'dd MMM', { locale: fr }),
       candidats: count,
     }));
   }, [candidates]);
 
-  // Top jobs
+  // ═══ Top performing jobs ═══
   const topJobs = useMemo(() => {
-    const jobCounts: Record<string, { title: string; count: number }> = {};
+    const jobMap: Record<string, { title: string; total: number; replied: number; won: number }> = {};
     candidates.forEach(c => {
       if (!c.jobId || !c.jobTitle) return;
-      if (!jobCounts[c.jobId]) jobCounts[c.jobId] = { title: c.jobTitle, count: 0 };
-      jobCounts[c.jobId].count++;
+      if (!jobMap[c.jobId]) jobMap[c.jobId] = { title: c.jobTitle, total: 0, replied: 0, won: 0 };
+      jobMap[c.jobId].total++;
+      if (['Répondu', 'Pressenti', 'Pré-qualif', 'CV envoyé', 'ITW en cours', 'Offre', 'Gagné'].includes(c.stage)) jobMap[c.jobId].replied++;
+      if (c.stage === 'Gagné') jobMap[c.jobId].won++;
     });
-    return Object.values(jobCounts)
-      .sort((a, b) => b.count - a.count)
+    return Object.entries(jobMap)
+      .sort((a, b) => b[1].total - a[1].total)
       .slice(0, 5)
-      .map(j => ({
-        name: j.title.length > 28 ? j.title.substring(0, 28) + '…' : j.title,
-        candidats: j.count,
-      }));
+      .map(([id, data]) => ({ id, ...data }));
   }, [candidates]);
 
-  // Recent activity
+  // ═══ Top scored candidates ═══
+  const topScored = useMemo(() => {
+    return [...candidates]
+      .filter(c => c.score != null && c.score > 0)
+      .sort((a, b) => (b.score || 0) - (a.score || 0))
+      .slice(0, 6);
+  }, [candidates]);
+
+  // ═══ Recent activity feed ═══
   const recentActivity = useMemo(() => {
     return [...candidates]
       .filter(c => c.lastActivity || c.createdAt)
-      .sort((a, b) => {
-        const da = a.lastActivity || a.createdAt;
-        const db = b.lastActivity || b.createdAt;
-        return new Date(db).getTime() - new Date(da).getTime();
-      })
-      .slice(0, 8);
+      .sort((a, b) => new Date(b.lastActivity || b.createdAt).getTime() - new Date(a.lastActivity || a.createdAt).getTime())
+      .slice(0, 6);
   }, [candidates]);
 
-  const CustomTooltip = ({ active, payload, label }: any) => {
-    if (!active || !payload?.length) return null;
-    return (
-      <div className="border border-foreground bg-background px-3 py-2 text-xs">
-        <p className="font-medium">{label}</p>
-        {payload.map((p: any, i: number) => (
-          <p key={i} className="text-muted-foreground">{p.name || p.dataKey}: <span className="font-bold text-foreground">{p.value}</span></p>
-        ))}
-      </div>
-    );
-  };
+  // ═══ Candidates added today ═══
+  const todayCount = useMemo(() => {
+    return candidates.filter(c => {
+      try { return isToday(parseISO(c.createdAt)); } catch { return false; }
+    }).length;
+  }, [candidates]);
 
   return (
     <div className="space-y-4">
-      {/* KPI Row */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-0">
-        {kpis.map((kpi, i) => {
+      {/* ─── Hero KPI Strip ─── */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-0">
+        {[
+          { label: 'Candidats', value: kpis.total, icon: Users, accent: false },
+          { label: "Aujourd'hui", value: `+${todayCount}`, icon: TrendingUp, accent: todayCount > 0 },
+          { label: 'Contactés', value: kpis.contacted, icon: Send, accent: false },
+          { label: 'Taux réponse', value: `${kpis.responseRate}%`, icon: MessageCircle, accent: kpis.responseRate > 20 },
+          { label: 'En process', value: kpis.inProcess, icon: Briefcase, accent: false },
+          { label: 'Gagnés', value: kpis.won, icon: CheckCircle, accent: kpis.won > 0 },
+        ].map((kpi, i) => {
           const Icon = kpi.icon;
           return (
             <div
               key={kpi.label}
               className={cn(
-                "border border-foreground bg-background p-3 sm:p-4 flex flex-col gap-1",
-                i > 0 && "border-l-0",
-                i >= 2 && "max-sm:border-l max-sm:border-t-0",
-                i >= 3 && "max-md:border-t-0",
+                "border border-foreground p-3 sm:p-4 flex flex-col gap-1",
+                i > 0 && "sm:border-l-0",
+                i % 2 !== 0 && "max-sm:border-l-0",
+                i >= 2 && "max-sm:border-t-0",
+                i >= 3 && "max-sm:border-t-0 sm:border-t-0 lg:border-t",
+                kpi.accent ? "bg-brutal-accent/10" : "bg-background",
               )}
             >
               <div className="flex items-center gap-1.5">
-                <Icon className="w-3.5 h-3.5 text-muted-foreground" />
-                <span className="text-[9px] uppercase tracking-wider text-muted-foreground font-medium">{kpi.label}</span>
+                <Icon className="w-3 h-3 text-muted-foreground" />
+                <span className="text-[9px] uppercase tracking-wider text-muted-foreground font-medium truncate">{kpi.label}</span>
               </div>
-              <span className="text-2xl sm:text-3xl font-bold font-mono tracking-tight">
-                {kpi.value}{kpi.suffix}
-              </span>
+              <span className="text-xl sm:text-2xl font-bold font-mono tracking-tight">{kpi.value}</span>
             </div>
           );
         })}
       </div>
 
-      {/* Charts Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-0">
-        {/* Pipeline Funnel */}
-        <div className="border border-foreground bg-background p-4">
-          <div className="flex items-center gap-2 mb-4">
-            <TrendingUp className="w-3.5 h-3.5" />
-            <h3 className="text-[11px] uppercase tracking-wider font-bold">Pipeline</h3>
-          </div>
-          <div className="h-[220px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={funnelData} layout="vertical" margin={{ left: 0, right: 16, top: 0, bottom: 0 }}>
-                <XAxis type="number" hide />
-                <YAxis
-                  type="category"
-                  dataKey="name"
-                  width={80}
-                  tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
-                  axisLine={false}
-                  tickLine={false}
-                />
-                <Tooltip content={<CustomTooltip />} />
-                <Bar dataKey="count" radius={0} barSize={18}>
-                  {funnelData.map((entry, index) => (
-                    <Cell key={index} fill={entry.fill} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
+      {/* ─── Main Grid ─── */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-0">
 
-        {/* Source Breakdown */}
-        <div className="border border-foreground md:border-l-0 max-md:border-t-0 bg-background p-4">
-          <div className="flex items-center gap-2 mb-4">
-            <Target className="w-3.5 h-3.5" />
-            <h3 className="text-[11px] uppercase tracking-wider font-bold">Sources</h3>
-          </div>
-          <div className="h-[220px] flex items-center justify-center">
-            {sourceData.length === 0 ? (
-              <p className="text-xs text-muted-foreground">Aucune donnée</p>
-            ) : (
-              <div className="flex items-center gap-4 w-full">
-                <div className="w-1/2 h-[180px]">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie
-                        data={sourceData}
-                        cx="50%"
-                        cy="50%"
-                        innerRadius={40}
-                        outerRadius={70}
-                        dataKey="value"
-                        stroke="hsl(var(--foreground))"
-                        strokeWidth={1.5}
-                      >
-                        {sourceData.map((_, i) => (
-                          <Cell key={i} fill={SOURCE_COLORS[i % SOURCE_COLORS.length]} />
-                        ))}
-                      </Pie>
-                      <Tooltip content={<CustomTooltip />} />
-                    </PieChart>
-                  </ResponsiveContainer>
-                </div>
-                <div className="flex flex-col gap-2">
-                  {sourceData.map((s, i) => (
-                    <div key={s.name} className="flex items-center gap-2">
-                      <div
-                        className="w-2.5 h-2.5 border border-foreground"
-                        style={{ backgroundColor: SOURCE_COLORS[i % SOURCE_COLORS.length] }}
-                      />
-                      <span className="text-[10px] text-muted-foreground">{s.name}</span>
-                      <span className="text-xs font-bold font-mono">{s.value}</span>
+        {/* ─── Left column (2/3) ─── */}
+        <div className="lg:col-span-2 flex flex-col">
+
+          {/* Urgent / Needs attention */}
+          {urgentCandidates.length > 0 && (
+            <Section
+              title={`À traiter (${urgentCandidates.length})`}
+              icon={AlertCircle}
+              className="border-b-0 lg:border-r-0"
+              action={
+                <button
+                  onClick={() => navigate('/ats')}
+                  className="text-[10px] text-muted-foreground uppercase tracking-wider hover:text-foreground transition-colors flex items-center gap-1"
+                >
+                  Voir ATS <ArrowRight className="w-3 h-3" />
+                </button>
+              }
+            >
+              <div className="divide-y divide-border">
+                {urgentCandidates.map(c => (
+                  <div key={c.id} className="flex items-center gap-3 px-4 py-2.5 hover:bg-muted/50 transition-colors cursor-pointer group">
+                    <div className="w-7 h-7 bg-destructive/10 border border-destructive/30 flex items-center justify-center shrink-0">
+                      <Clock className="w-3 h-3 text-destructive" />
                     </div>
-                  ))}
-                </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs font-medium truncate">{c.name}</p>
+                      <p className="text-[10px] text-muted-foreground truncate">{c.headline || c.jobTitle || 'Pas de détails'}</p>
+                    </div>
+                    <span className="text-[9px] text-destructive font-medium uppercase tracking-wider whitespace-nowrap">
+                      {c.lastActivity ? `${differenceInDays(new Date(), parseISO(c.lastActivity))}j` : '?'}
+                    </span>
+                    <ArrowRight className="w-3 h-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+                  </div>
+                ))}
               </div>
-            )}
-          </div>
-        </div>
+            </Section>
+          )}
 
-        {/* Activity Over Time */}
-        <div className="border border-foreground border-t-0 bg-background p-4">
-          <div className="flex items-center gap-2 mb-4">
-            <Clock className="w-3.5 h-3.5" />
-            <h3 className="text-[11px] uppercase tracking-wider font-bold">Activité (30j)</h3>
-          </div>
-          <div className="h-[180px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={activityData} margin={{ left: 0, right: 8, top: 4, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                <XAxis
-                  dataKey="date"
-                  tick={{ fontSize: 9, fill: 'hsl(var(--muted-foreground))' }}
-                  axisLine={false}
-                  tickLine={false}
-                  interval="preserveStartEnd"
-                />
-                <YAxis
-                  tick={{ fontSize: 9, fill: 'hsl(var(--muted-foreground))' }}
-                  axisLine={false}
-                  tickLine={false}
-                  width={24}
-                  allowDecimals={false}
-                />
-                <Tooltip content={<CustomTooltip />} />
-                <Area
-                  type="monotone"
-                  dataKey="candidats"
-                  stroke="hsl(var(--brutal-accent))"
-                  fill="hsl(var(--brutal-accent) / 0.15)"
-                  strokeWidth={2}
-                />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
+          {/* Pipeline funnel */}
+          <Section title="Pipeline" icon={TrendingUp} className={cn("lg:border-r-0", urgentCandidates.length === 0 ? "" : "border-t-0")}>
+            <div className="p-4">
+              {/* Visual pipeline bar */}
+              <div className="flex h-8 mb-4 border border-foreground overflow-hidden">
+                {funnelData.filter(d => d.count > 0).map((d, i) => {
+                  const total = funnelData.reduce((s, x) => s + x.count, 0);
+                  const pct = total > 0 ? (d.count / total) * 100 : 0;
+                  return (
+                    <div
+                      key={d.name}
+                      className="relative flex items-center justify-center text-[9px] font-bold transition-all group hover:opacity-90"
+                      style={{ width: `${Math.max(pct, 5)}%`, backgroundColor: d.fill }}
+                      title={`${d.name}: ${d.count}`}
+                    >
+                      <span className={cn(
+                        "relative z-10 mix-blend-difference text-white truncate px-1",
+                        pct < 8 && "hidden sm:inline"
+                      )}>
+                        {d.count}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+              {/* Legend */}
+              <div className="flex flex-wrap gap-x-4 gap-y-1">
+                {funnelData.map(d => (
+                  <div key={d.name} className="flex items-center gap-1.5">
+                    <div className="w-2 h-2 border border-foreground/30" style={{ backgroundColor: d.fill }} />
+                    <span className="text-[9px] text-muted-foreground">{d.name}</span>
+                    <span className="text-[10px] font-bold font-mono">{d.count}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </Section>
 
-        {/* Top Jobs */}
-        <div className="border border-foreground border-t-0 md:border-l-0 bg-background p-4">
-          <div className="flex items-center gap-2 mb-4">
-            <Users className="w-3.5 h-3.5" />
-            <h3 className="text-[11px] uppercase tracking-wider font-bold">Top postes</h3>
-          </div>
-          <div className="h-[180px]">
-            {topJobs.length === 0 ? (
-              <p className="text-xs text-muted-foreground">Aucune donnée</p>
-            ) : (
+          {/* Activity chart */}
+          <Section title="Activité (30 jours)" icon={Calendar} className="border-t-0 lg:border-r-0">
+            <div className="p-4 h-[200px]">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={topJobs} layout="vertical" margin={{ left: 0, right: 16, top: 0, bottom: 0 }}>
-                  <XAxis type="number" hide />
-                  <YAxis
-                    type="category"
-                    dataKey="name"
-                    width={110}
+                <AreaChart data={activityData} margin={{ left: -10, right: 8, top: 4, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                  <XAxis
+                    dataKey="date"
                     tick={{ fontSize: 9, fill: 'hsl(var(--muted-foreground))' }}
                     axisLine={false}
                     tickLine={false}
+                    interval="preserveStartEnd"
                   />
-                  <Tooltip content={<CustomTooltip />} />
-                  <Bar dataKey="candidats" fill="hsl(var(--foreground))" radius={0} barSize={14} />
-                </BarChart>
+                  <YAxis
+                    tick={{ fontSize: 9, fill: 'hsl(var(--muted-foreground))' }}
+                    axisLine={false}
+                    tickLine={false}
+                    width={28}
+                    allowDecimals={false}
+                  />
+                  <Tooltip content={<ChartTooltip />} />
+                  <Area
+                    type="monotone"
+                    dataKey="candidats"
+                    stroke="hsl(var(--foreground))"
+                    fill="hsl(var(--foreground) / 0.08)"
+                    strokeWidth={2}
+                  />
+                </AreaChart>
               </ResponsiveContainer>
+            </div>
+          </Section>
+        </div>
+
+        {/* ─── Right column (1/3) ─── */}
+        <div className="flex flex-col">
+
+          {/* Source breakdown */}
+          <Section title="Sources" icon={Target} className="max-lg:border-t-0">
+            <div className="p-4">
+              {sourceData.length === 0 ? (
+                <p className="text-xs text-muted-foreground">Aucune donnée</p>
+              ) : (
+                <div className="flex items-center gap-4">
+                  <div className="w-24 h-24 sm:w-28 sm:h-28 shrink-0">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie
+                          data={sourceData}
+                          cx="50%"
+                          cy="50%"
+                          innerRadius="55%"
+                          outerRadius="90%"
+                          dataKey="value"
+                          stroke="hsl(var(--foreground))"
+                          strokeWidth={1}
+                        >
+                          {sourceData.map((_, i) => (
+                            <Cell key={i} fill={SOURCE_COLORS[i % SOURCE_COLORS.length]} />
+                          ))}
+                        </Pie>
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </div>
+                  <div className="flex flex-col gap-2 flex-1">
+                    {sourceData.map((s, i) => {
+                      const total = sourceData.reduce((sum, x) => sum + x.value, 0);
+                      const pct = total > 0 ? Math.round((s.value / total) * 100) : 0;
+                      return (
+                        <div key={s.name} className="flex items-center gap-2">
+                          <div
+                            className="w-2.5 h-2.5 shrink-0 border border-foreground/30"
+                            style={{ backgroundColor: SOURCE_COLORS[i % SOURCE_COLORS.length] }}
+                          />
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-baseline justify-between">
+                              <span className="text-[10px] text-muted-foreground truncate">{s.name}</span>
+                              <span className="text-xs font-bold font-mono ml-2">{s.value}</span>
+                            </div>
+                            <div className="h-1 bg-muted mt-1 w-full">
+                              <div
+                                className="h-full transition-all"
+                                style={{
+                                  width: `${pct}%`,
+                                  backgroundColor: SOURCE_COLORS[i % SOURCE_COLORS.length],
+                                }}
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          </Section>
+
+          {/* Top scored candidates */}
+          <Section title="Meilleurs profils" icon={Star} className="border-t-0">
+            {topScored.length === 0 ? (
+              <p className="text-xs text-muted-foreground p-4">Aucun score</p>
+            ) : (
+              <div className="divide-y divide-border">
+                {topScored.map(c => (
+                  <div key={c.id} className="flex items-center gap-2.5 px-4 py-2 hover:bg-muted/50 transition-colors cursor-pointer">
+                    <div className="w-7 h-7 bg-foreground text-background flex items-center justify-center shrink-0 text-[10px] font-bold font-mono">
+                      {c.score}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs font-medium truncate">{c.name}</p>
+                      <p className="text-[10px] text-muted-foreground truncate">{c.headline || '—'}</p>
+                    </div>
+                    <div
+                      className="w-1.5 h-6"
+                      style={{ backgroundColor: STAGE_COLORS[c.stage] || 'hsl(var(--muted))' }}
+                      title={c.stage}
+                    />
+                  </div>
+                ))}
+              </div>
             )}
-          </div>
+          </Section>
+
+          {/* Recent activity */}
+          <Section title="Dernières activités" icon={Clock} className="border-t-0">
+            {recentActivity.length === 0 ? (
+              <p className="text-xs text-muted-foreground p-4">Aucune activité</p>
+            ) : (
+              <div className="divide-y divide-border">
+                {recentActivity.map(c => (
+                  <div key={c.id} className="flex items-center gap-2.5 px-4 py-2 hover:bg-muted/50 transition-colors">
+                    <div
+                      className="w-2 h-2 shrink-0 border border-foreground/20"
+                      style={{ backgroundColor: STAGE_COLORS[c.stage] || 'hsl(var(--muted))' }}
+                    />
+                    <span className="text-xs font-medium truncate flex-1 min-w-0">{c.name}</span>
+                    <span className="text-[9px] uppercase tracking-wider px-1.5 py-0.5 border border-foreground/15 text-muted-foreground whitespace-nowrap">
+                      {c.stage}
+                    </span>
+                    <span className="text-[9px] text-muted-foreground font-mono whitespace-nowrap">
+                      {c.lastActivity || c.createdAt
+                        ? format(parseISO(c.lastActivity || c.createdAt), 'dd/MM', { locale: fr })
+                        : '—'}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Section>
         </div>
       </div>
 
-      {/* Recent Activity */}
-      <div className="border border-foreground bg-background">
-        <div className="flex items-center gap-2 px-4 py-3 border-b border-foreground">
-          <Clock className="w-3.5 h-3.5" />
-          <h3 className="text-[11px] uppercase tracking-wider font-bold">Activité récente</h3>
-        </div>
-        {recentActivity.length === 0 ? (
-          <p className="text-xs text-muted-foreground p-4">Aucune activité</p>
-        ) : (
-          <div className="divide-y divide-border">
-            {recentActivity.map(c => (
-              <div key={c.id} className="flex items-center gap-3 px-4 py-2.5 text-xs hover:bg-muted/50 transition-colors">
-                <div
-                  className="w-2 h-2 shrink-0 border border-foreground/30"
-                  style={{ backgroundColor: STAGE_COLORS[c.stage] || 'hsl(var(--muted))' }}
-                />
-                <span className="font-medium truncate min-w-0 flex-1">{c.name}</span>
-                <span className="text-[10px] uppercase tracking-wider px-2 py-0.5 border border-foreground/20 text-muted-foreground whitespace-nowrap">
-                  {c.stage}
-                </span>
-                {c.jobTitle && (
-                  <span className="text-muted-foreground truncate max-w-[120px] hidden sm:inline">{c.jobTitle}</span>
-                )}
-                <span className="text-muted-foreground whitespace-nowrap text-[10px]">
-                  {c.lastActivity || c.createdAt
-                    ? format(parseISO(c.lastActivity || c.createdAt), 'dd MMM', { locale: fr })
-                    : '—'}
-                </span>
-              </div>
-            ))}
+      {/* ─── Jobs Performance Table ─── */}
+      {topJobs.length > 0 && (
+        <Section
+          title="Performance par poste"
+          icon={Briefcase}
+          action={
+            <button
+              onClick={() => navigate('/outreach')}
+              className="text-[10px] text-muted-foreground uppercase tracking-wider hover:text-foreground transition-colors flex items-center gap-1"
+            >
+              Outreach <ArrowRight className="w-3 h-3" />
+            </button>
+          }
+        >
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b border-foreground">
+                  <th className="text-left px-4 py-2 text-[9px] uppercase tracking-wider font-bold text-muted-foreground">Poste</th>
+                  <th className="text-center px-3 py-2 text-[9px] uppercase tracking-wider font-bold text-muted-foreground">Candidats</th>
+                  <th className="text-center px-3 py-2 text-[9px] uppercase tracking-wider font-bold text-muted-foreground">Réponses</th>
+                  <th className="text-center px-3 py-2 text-[9px] uppercase tracking-wider font-bold text-muted-foreground">Taux</th>
+                  <th className="text-center px-3 py-2 text-[9px] uppercase tracking-wider font-bold text-muted-foreground">Gagnés</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {topJobs.map(job => {
+                  const rate = job.total > 0 ? Math.round((job.replied / job.total) * 100) : 0;
+                  return (
+                    <tr key={job.id} className="hover:bg-muted/50 transition-colors">
+                      <td className="px-4 py-2.5 font-medium truncate max-w-[200px]">{job.title}</td>
+                      <td className="text-center px-3 py-2.5 font-mono font-bold">{job.total}</td>
+                      <td className="text-center px-3 py-2.5 font-mono">{job.replied}</td>
+                      <td className="text-center px-3 py-2.5">
+                        <span className={cn(
+                          "font-mono font-bold px-1.5 py-0.5 text-[10px]",
+                          rate >= 30 ? "bg-brutal-accent/20 text-foreground" : rate >= 15 ? "bg-muted" : "text-muted-foreground"
+                        )}>
+                          {rate}%
+                        </span>
+                      </td>
+                      <td className="text-center px-3 py-2.5">
+                        {job.won > 0 ? (
+                          <span className="inline-flex items-center gap-1 text-foreground font-bold font-mono">
+                            <CheckCircle className="w-3 h-3" style={{ color: STAGE_COLORS['Gagné'] }} />
+                            {job.won}
+                          </span>
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
-        )}
-      </div>
+        </Section>
+      )}
     </div>
   );
 }
