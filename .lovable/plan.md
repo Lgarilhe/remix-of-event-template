@@ -1,78 +1,48 @@
 
-# Refonte Landing Page SaaS - Style Zeliq
 
-## Objectif
-Reecrire completement `src/pages/SkalrLanding.tsx` pour presenter Skalr comme une plateforme SaaS de recrutement, en s'inspirant du storytelling et de la structure de Zeliq.
+## Plan: Add a "Dashboard" tab to the ATS page
 
-## Structure de la nouvelle page
+Inspired by SaaS tools like Lemlist, Teamtailor, and recruitment analytics dashboards, I'll create a rich analytics dashboard as the first tab in the ATS view.
 
-### 1. Navigation
-- Logo "skalr."
-- Liens : Fonctionnalites, Comment ca marche, Resultats
-- Bouton "Commencer gratuitement" qui redirige vers `/auth`
-- Bouton "Reserver une demo" qui ouvre le modal Calendly (conserve)
+### Dashboard Layout (brutal design, responsive)
 
-### 2. Hero (fond sombre + video de fond conservee)
-- Titre large et impactant : **"Trouvez, engagez et recrutez vos meilleurs talents"**
-- Sous-titre : "La plateforme tout-en-un qui combine sourcing LinkedIn, sequences automatisees et suivi candidat."
-- 2 CTA : "Commencer gratuitement" (vers /auth) + "Voir comment ca marche" (scroll)
-- Badges en bas du hero : "Sourcing IA", "Sequences auto", "ATS integre"
+```text
+Desktop (2-col grid):
+┌─────────────────────────────┬──────────────────────────┐
+│  Pipeline Funnel (BarChart) │  Source Breakdown (Pie)  │
+├─────────────────────────────┼──────────────────────────┤
+│  Activity Over Time (Area)  │  Top Jobs (horizontal)   │
+├─────────────────────────────┴──────────────────────────┤
+│  Recent Activity Feed (latest stage changes)           │
+└────────────────────────────────────────────────────────┘
 
-### 3. Section "Tout ce dont vous avez besoin" (etapes numerotees, style Zeliq)
-5 blocs numerotes avec icone, titre et description :
-1. **Trouvez les bons profils** - Recherche LinkedIn avancee avec filtres (poste, experience, ecole, localisation)
-2. **Qualifiez avec l'IA** - Scoring automatique de chaque profil par rapport a vos offres
-3. **Engagez en automatique** - Sequences d'InMails et messages personnalises par l'IA
-4. **Centralisez les echanges** - Inbox unifiee pour gerer toutes vos conversations candidats
-5. **Suivez dans l'ATS** - Pipeline kanban avec statuts automatiques et timeline complete
+Mobile: single column, stacked
+```
 
-### 4. Section "Pour toutes les equipes" (onglets par persona, style Zeliq)
-Composant Tabs avec 4 onglets :
-- **Recruteur interne** : Automatisez le sourcing, concentrez-vous sur les entretiens
-- **Talent Acquisition** : Vue complete du pipeline, metriques et reporting
-- **Fondateur** : Recrutez vos premiers talents sans passer par une agence
-- **Cabinet de recrutement** : Gerez plusieurs mandats et centralisez vos candidats
+### What gets built
 
-### 5. Section "Resultats concrets" (stats impact)
-3 gros chiffres animes :
-- **x3** profils contactes par semaine
-- **-60%** temps de sourcing
-- **+80%** taux de reponse avec les sequences IA
+1. **New component `src/components/ats/ATSDashboard.tsx`**
+   - Receives `candidates: ATSCandidate[]` and `stages: ATS_STAGES`
+   - Uses `recharts` (already installed) with the project's `ChartContainer`/`ChartTooltip` wrappers
+   - **Pipeline Funnel**: Horizontal bar chart showing count per stage (Nouveau → Gagné), ordered by pipeline progression, with stage colors
+   - **Source Breakdown**: Donut/pie chart showing candidates by source (local, sequence, inmail)
+   - **Activity Over Time**: Area chart grouping candidates by `createdAt` date (last 30 days), showing new candidates added per day
+   - **Top Jobs**: Horizontal bar chart of top 5 jobs by candidate count
+   - **Recent Activity**: Simple list of the 10 most recent candidates with stage badge and timestamp
+   - **KPI Cards row** at top: Total, Response Rate, Conversion Rate, Avg time in pipeline (computed from data)
 
-### 6. Section Temoignage (conserve et adapte)
-Citation adaptee au produit SaaS
+2. **Update `src/pages/ATS.tsx`**
+   - Add `dashboard` to the `viewTabs` array with a `BarChart3` icon, as the **first** tab
+   - Default `activeView` to `'dashboard'`
+   - Add `TabsContent` for dashboard view rendering `ATSDashboard`
+   - Update the type for `activeView` state
 
-### 7. FAQ (adaptee au SaaS)
-- Comment ca marche ?
-- Mon compte LinkedIn est-il en securite ?
-- Combien de messages puis-je envoyer ?
-- C'est gratuit ?
+3. **Design system consistency**
+   - All cards use `border border-foreground` brutal style (no rounded corners, no shadows)
+   - Chart colors use the existing `brutal-accent` and foreground palette
+   - Responsive: 2-col grid on `md:`, single col on mobile
+   - Compact spacing matching the existing ATS brutal aesthetic
 
-### 8. CTA Final (fond sombre)
-"Vos prochains talents vous attendent" + boutons vers /auth et Calendly
+### Data source
+All data is derived client-side from the existing `candidates` array (already loaded by `useATSData`). No new API calls or database queries needed.
 
-### 9. Footer (conserve)
-
-## Elements conserves tels quels
-- Modal Calendly (logique + iframe)
-- Modal Contact (formulaire + envoi base de donnees + Notion)
-- Video de fond hero
-- SEOHead (meta tags mis a jour pour le SaaS)
-- Animations framer-motion
-
-## Details techniques
-
-### Fichier modifie
-- `src/pages/SkalrLanding.tsx` : reecriture complete
-
-### Ajout de `useNavigate`
-Import de `useNavigate` depuis `react-router-dom` pour les redirections vers `/auth`
-
-### Composants utilises
-- `Tabs`, `TabsList`, `TabsTrigger`, `TabsContent` pour la section personas
-- `Button` pour tous les CTA
-- `motion` de framer-motion pour les animations au scroll
-- Icones lucide-react : `Search`, `Brain`, `Send`, `MessageSquare`, `LayoutGrid`, `ArrowRight`, `Check`, `Linkedin`, `Shield`, `Zap`
-
-### Aucune nouvelle dependance
-Tout est deja installe dans le projet
