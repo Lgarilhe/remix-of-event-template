@@ -14,7 +14,8 @@ import { ATSStatsSkeleton } from '@/components/ats/ATSStatsSkeleton';
 import { RemindersSidebar } from '@/components/ats/RemindersSidebar';
 import { CandidateDetailModal } from '@/components/ats/CandidateDetailModal';
 import { Tabs, TabsContent } from '@/components/ui/tabs';
-import { LayoutGrid, Table, Clock, Bell, Users, RefreshCw } from 'lucide-react';
+import { LayoutGrid, Table, Clock, Bell, Users, RefreshCw, BarChart3 } from 'lucide-react';
+import { ATSDashboard } from '@/components/ats/ATSDashboard';
 import { useATSData, ATSCandidate, ATS_STAGES } from '@/hooks/useATSData';
 import { cn } from '@/lib/utils';
 
@@ -22,6 +23,7 @@ export type { ATSCandidate };
 export { ATS_STAGES };
 
 const viewTabs = [
+  { value: 'dashboard', label: 'Dashboard', icon: BarChart3 },
   { value: 'kanban', label: 'Kanban', icon: LayoutGrid },
   { value: 'table', label: 'Table', icon: Table },
   { value: 'timeline', label: 'Timeline', icon: Clock },
@@ -29,7 +31,7 @@ const viewTabs = [
 
 export default function ATS() {
   const [user, setUser] = useState<User | null>(null);
-  const [activeView, setActiveView] = useState<'kanban' | 'table' | 'timeline'>('kanban');
+  const [activeView, setActiveView] = useState<'dashboard' | 'kanban' | 'table' | 'timeline'>('dashboard');
   const [showReminders, setShowReminders] = useState(false);
   const [selectedCandidate, setSelectedCandidate] = useState<ATSCandidate | null>(null);
   
@@ -210,6 +212,17 @@ export default function ATS() {
               ) : (
                 <div className="flex gap-6">
                   <div className="flex-1 min-w-0">
+                    <TabsContent value="dashboard" className="mt-0">
+                      {loading && candidates.length === 0 ? (
+                        <ATSKanbanSkeleton />
+                      ) : (
+                        <ATSDashboard
+                          candidates={filteredCandidates}
+                          stages={ATS_STAGES}
+                        />
+                      )}
+                    </TabsContent>
+
                     <TabsContent value="kanban" className="mt-0">
                       {loading && candidates.length === 0 ? (
                         <ATSKanbanSkeleton />
