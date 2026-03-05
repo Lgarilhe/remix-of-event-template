@@ -1,74 +1,69 @@
 
 
-## Plan — Coach Live Scorecard avec Transcription Deepgram
+## Recherche ATS — Features tendances qu'on pourrait ajouter
 
-Ton spec est excellente et bien pensée. Voici mon analyse et le plan d'implémentation adapté au projet.
+### Ce qu'on a déjà
+- Kanban / Table / Timeline views
+- Drag & drop entre stages
+- Scoring AI multi-couche (hard filters + LLM)
+- Scorecard structurée par étape d'entretien
+- Live coaching Deepgram + CR auto
+- Rappels / Notes / Tags
+- Dashboard KPIs + funnel
+- Séquences outreach automatisées
+- Inbox messages LinkedIn
+- Intégration Notion + Airtable + Aircall
 
-### Analyse de la spec
+### Features repérées chez les leaders (Ashby, Greenhouse, Lever, Teamtailor, Workable, Gem)
 
-**Ce qui est solide :**
-- Architecture WebSocket Deepgram directe (pas de chunks HTTP) -- approche optimale
-- Clé temporaire via Edge Function -- bonne pratique sécurité
-- Coach toutes les 15s ou fin d'utterance -- bon compromis coût/réactivité
-- Génération CR en fin de call -- workflow naturel
-- Table `call_coaching_sessions` pour persister l'historique
-
-**Ajustements nécessaires pour le projet :**
-- Les Edge Functions doivent utiliser les CORS headers du projet et `verify_jwt = false` dans config.toml
-- L'API Deepgram pour clés temporaires nécessite le `PROJECT_ID` Deepgram comme secret supplémentaire
-- La table ne doit PAS utiliser de CHECK constraint (utiliser un trigger de validation ou laisser le champ libre)
-- Le coach utilise déjà `ANTHROPIC_API_KEY` (déjà configuré comme secret)
-- Il faut un secret `DEEPGRAM_API_KEY` (pas encore configuré)
+Voici les features les plus pertinentes qu'on n'a **pas encore** et qui apporteraient une vraie valeur :
 
 ---
 
-### Implémentation en 5 étapes
+#### 1. **Candidate Fraud Detection / AI Anomaly Alerts** (Ashby)
+Détection automatique d'incohérences dans les profils : dates qui se chevauchent, diplômes douteux, expériences gonflées. Un badge d'alerte sur la card candidat.
 
-#### 1. Secret Deepgram + Migration DB
+#### 2. **AI Feedback Summary / Debrief automatique** (Ashby, Greenhouse)
+Après que plusieurs évaluateurs ont rempli une scorecard, l'IA synthétise les avis, identifie les consensus et divergences, et génère une recommandation consolidée. Utile quand plusieurs personnes interviennent dans le process.
 
-- Demander le secret `DEEPGRAM_API_KEY` via l'outil add_secret
-- Créer la table `call_coaching_sessions` (sans CHECK constraint, statut libre) avec RLS policies pour l'utilisateur authentifié
-- Index sur `candidate_id, created_at desc`
+#### 3. **Candidate Experience Portal** (Teamtailor, Greenhouse)
+Un portail candidat (page publique) où le candidat peut suivre l'avancement de sa candidature en temps réel, voir les prochaines étapes, et recevoir des updates automatiques. Améliore drastiquement l'image employeur.
 
-#### 2. Edge Function `deepgram-temp-key`
+#### 4. **Interview Scheduling / Calendrier intégré** (Ashby, Lever, Greenhouse)
+Proposer automatiquement des créneaux d'entretien (lié à Calendly/Google Calendar), avec round-robin entre interviewers, gestion des conflits, et relance auto si pas de réponse.
 
-- Approche MVP simplifiée : retourne directement la clé API (pas de clé temporaire pour commencer, car l'API de clés temporaires Deepgram nécessite aussi le PROJECT_ID)
-- CORS headers standards, `verify_jwt = false`
+#### 5. **Pipeline Analytics avancés — Time-in-Stage + Bottleneck Detection** (Ashby, Gem)
+Au-delà du dashboard actuel : temps moyen par stage, détection automatique des goulots d'étranglement ("17 candidats bloqués en Technique depuis > 7j"), SLA alerts, et benchmarks par poste.
 
-#### 3. Edge Function `live-coach`
+#### 6. **Duplicate Detection / Merge Candidates** (Greenhouse, Lever)
+Détection automatique de candidats en double (même email, même LinkedIn URL, nom similaire) avec interface de merge pour consolider les historiques.
 
-- Reçoit `session_id`, `full_transcript`, `latest_chunk`, `criteria`, `job_context`, `elapsed_seconds`
-- Appelle Claude via Anthropic API (clé déjà configurée)
-- Retourne `{ alerts, suggestions, criteria_updates }`
-- Sauvegarde transcript + coach_feed dans `call_coaching_sessions`
+#### 7. **AI Auto-Reply Status Detection** (Ashby)
+Classifier automatiquement le statut des réponses reçues : intéressé, pas intéressé, demande d'infos, out-of-office, relance nécessaire. On a déjà `auto-analyze-message` mais pas d'affichage visuel clair dans le Kanban.
 
-#### 4. Edge Function `generate-call-report`
+#### 8. **Offer Management** (Greenhouse, Lever)
+Module de gestion des offres : template d'offre, workflow d'approbation (manager → RH → direction), suivi accepté/refusé/négociation, comparaison package.
 
-- Reçoit transcript complet, critères avec scores, contexte poste, alertes
-- Claude génère : summary, évaluation par critère avec verbatims, forces, red flags, questions ouvertes, recommandation GO/NO_GO/A_CREUSER, message de suivi
-- Sauvegarde le rapport dans la session
+#### 9. **DEI Analytics / Diversity Dashboard** (Ashby, Greenhouse)
+Tableau de bord diversité : répartition par genre/origine à chaque étape du funnel, détection de biais dans les taux de conversion, objectifs DEI.
 
-#### 5. UI Coaching Live dans ScorecardTab
-
-- Bouton "COACHING LIVE" en haut de la scorecard active
-- Au clic : zone coach slide-down avec :
-  - **Transcription live** (texte défilant avec interim en gris)
-  - **Feed coach** (alertes danger/warning/info + suggestions de questions)
-  - **Critères auto-détectés** (badges verts sur les critères couverts avec verbatim)
-- Bouton "ARRÊTER" ferme le WebSocket et le micro
-- Bouton "GÉNÉRER LE CR" appelle `generate-call-report` et affiche le rapport avec boutons copier/sauvegarder
-- Les auto-scores du coach pré-remplissent les ratings de la scorecard
+#### 10. **Collaborative Evaluation — @mentions + Activity Feed** (Lever, Ashby)
+Système de mentions dans les notes (@collègue), feed d'activité en temps réel sur un candidat (qui a fait quoi, quand), et notifications push quand on est mentionné.
 
 ---
 
-### Fichiers créés/modifiés
+### Recommandation de priorité
 
-| Fichier | Action |
-|---|---|
-| `supabase/functions/deepgram-temp-key/index.ts` | Nouveau |
-| `supabase/functions/live-coach/index.ts` | Nouveau |
-| `supabase/functions/generate-call-report/index.ts` | Nouveau |
-| `src/components/ats/ScorecardTab.tsx` | Modifié (bouton + UI coach + logique WebSocket) |
-| `supabase/config.toml` | Ajout 3 fonctions `verify_jwt = false` |
-| Migration SQL | Table `call_coaching_sessions` + index + RLS |
+| Priorité | Feature | Impact | Effort |
+|---|---|---|---|
+| 1 | Pipeline Analytics + Bottleneck Detection | Très haut — actionnable immédiatement | Moyen |
+| 2 | AI Feedback Summary / Debrief | Haut — différenciateur fort | Moyen |
+| 3 | Duplicate Detection / Merge | Haut — pain point courant | Moyen |
+| 4 | Interview Scheduling (Calendly) | Haut — gain de temps quotidien | Élevé |
+| 5 | @mentions + Activity Feed | Moyen-haut — collaboration | Moyen |
+| 6 | Auto-Reply Status visible dans Kanban | Moyen — on a déjà le backend | Faible |
+| 7 | Candidate Portal | Moyen — image employeur | Élevé |
+| 8 | Offer Management | Moyen | Élevé |
+| 9 | Fraud Detection | Niche mais impressionnant | Moyen |
+| 10 | DEI Dashboard | Important à terme | Moyen |
 
