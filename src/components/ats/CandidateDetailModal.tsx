@@ -445,7 +445,7 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
 
                   {/* Expériences */}
                   {enrichedProfile?.experiences && enrichedProfile.experiences.length > 0 && (
-                    <CollapsibleSection title="Expériences" defaultOpen={true}>
+                    <CollapsibleSection title="Expériences" defaultOpen={false}>
                       <div className="space-y-0 relative">
                         <div className="absolute left-[5px] top-2 bottom-2 w-px bg-foreground/15" />
                         {enrichedProfile.experiences.map((exp, i) => (
