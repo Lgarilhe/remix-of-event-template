@@ -418,7 +418,7 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
           <div className="flex-1 min-h-0 flex flex-col lg:flex-row divide-y lg:divide-y-0 lg:divide-x divide-foreground/15 relative">
             {/* LEFT: Scorecard */}
             <div className="flex-1 min-w-0 min-h-0 overflow-y-auto px-4 sm:px-6 pt-4 pb-20 lg:pb-6">
-              <ScorecardTab candidate={candidate} enrichedProfile={enrichedProfile} />
+              <ScorecardTab candidate={candidate} enrichedProfile={enrichedProfile} onOpenProfile={() => setMobileProfileOpen(true)} />
             </div>
 
             {/* Mobile: floating button to open candidate context */}
@@ -968,7 +968,7 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
 
             {/* ==================== EVALUATION TAB ==================== */}
             {activeTab === 'evaluation' && (
-              <ScorecardTab candidate={candidate} enrichedProfile={enrichedProfile} />
+              <ScorecardTab candidate={candidate} enrichedProfile={enrichedProfile} onOpenProfile={() => setMobileProfileOpen(true)} />
             )}
 
             {/* ==================== FRAUD DETECTION TAB ==================== */}

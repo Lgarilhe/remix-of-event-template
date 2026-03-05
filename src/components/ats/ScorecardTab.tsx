@@ -15,6 +15,7 @@ import { LiveCoachingPanel } from './LiveCoachingPanel';
 interface ScorecardTabProps {
   candidate: ATSCandidate;
   enrichedProfile: EnrichedProfile | null;
+  onOpenProfile?: () => void;
 }
 
 interface Criterion {
@@ -67,7 +68,7 @@ const CATEGORY_CONFIG: Record<string, { label: string; color: string }> = {
   motivation: { label: 'Motiv.', color: 'border-emerald-400 bg-emerald-50 text-emerald-700' },
 };
 
-export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedProfile }) => {
+export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedProfile, onOpenProfile }) => {
   const [evaluations, setEvaluations] = useState<EvaluationData[]>([]);
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const [generating, setGenerating] = useState(false);
@@ -462,6 +463,7 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
               }));
             }}
             onClose={() => setShowCoaching(false)}
+            onOpenProfile={onOpenProfile}
           />
         )}
 
