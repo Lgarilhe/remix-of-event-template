@@ -131,11 +131,11 @@ async function handleProcess(supabase: any, force = false) {
     
     // Smart batching: fetch more candidates, then split by action visibility
     // Non-visible actions (profile_visit, check_connection) = safe to batch aggressively
-    // Visible actions (message, inmail, connection_request) = keep conservative
+    // Visible actions (message, inmail, connection_request) = keep conservative but maximized
     const INVISIBLE_ACTIONS = new Set(['profile_visit', 'check_connection', 'wait_connection']);
-    const MAX_INVISIBLE_PER_CYCLE = 8;
-    const MAX_VISIBLE_PER_CYCLE = 2;
-    const FETCH_LIMIT = 12; // Overfetch to compensate for dedup, skips, quota blocks
+    const MAX_INVISIBLE_PER_CYCLE = 15;
+    const MAX_VISIBLE_PER_CYCLE = 5;
+    const FETCH_LIMIT = 25; // Overfetch to compensate for dedup, skips, quota blocks
 
     const { data: executions, error: fetchError } = await supabase
       .from('sequence_step_executions')
@@ -176,9 +176,9 @@ async function handleProcess(supabase: any, force = false) {
 
     console.log(`[process] Smart batch: ${invisibleCount} invisible + ${visibleCount} visible actions (from ${dedupedExecutions.length} candidates)`);
 
-    // Random jitter (0-20s) only before visible actions to appear more human
+    // Random jitter (0-10s) only before visible actions to appear more human
     if (visibleCount > 0) {
-      const jitterMs = Math.floor(Math.random() * 20000);
+      const jitterMs = Math.floor(Math.random() * 10000);
       if (jitterMs > 0) {
         console.log(`[process] Jitter: waiting ${Math.round(jitterMs / 1000)}s before visible actions`);
         await new Promise(r => setTimeout(r, jitterMs));
@@ -241,9 +241,9 @@ async function handleProcess(supabase: any, force = false) {
           if (personalized) { finalMessage = personalized.message; finalSubject = personalized.subject || finalSubject; }
         }
 
-        // Inter-visible-action spacing: 2-5s delay between visible actions to look human
+        // Inter-visible-action spacing: 1-3s delay between visible actions to look human
         if (!INVISIBLE_ACTIONS.has(step.action_type) && visibleActionsExecuted > 0) {
-          const spacingMs = 2000 + Math.floor(Math.random() * 3000);
+          const spacingMs = 1000 + Math.floor(Math.random() * 2000);
           console.log(`[process] Spacing: ${Math.round(spacingMs / 1000)}s between visible actions`);
           await new Promise(r => setTimeout(r, spacingMs));
         }
