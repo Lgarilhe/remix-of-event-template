@@ -88,9 +88,14 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
 
   const COACH_INTERVAL_MS = 15000;
 
-  // Auto-scroll transcript
+  // Auto-scroll transcript within its own ScrollArea only
   useEffect(() => {
-    transcriptEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (transcriptEndRef.current) {
+      const scrollContainer = transcriptEndRef.current.closest('[data-radix-scroll-area-viewport]');
+      if (scrollContainer) {
+        scrollContainer.scrollTop = scrollContainer.scrollHeight;
+      }
+    }
   }, [transcript, interimText]);
 
   // Propagate criteria updates
