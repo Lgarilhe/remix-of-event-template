@@ -329,105 +329,106 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
               <ScorecardTab candidate={candidate} enrichedProfile={enrichedProfile} />
             </div>
             {/* RIGHT: Compact profile */}
-            <div className="w-[340px] shrink-0 overflow-y-auto px-4 pt-4 pb-6">
-              <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-3">Profil candidat</p>
-              
-              {/* Quick info */}
-              <div className="space-y-3">
-                {enrichedProfile?.currentCompany && (
-                  <div className="flex items-center gap-2 text-[11px]">
-                    <Building2 className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
-                    <span className="text-foreground font-medium">{enrichedProfile.currentRole} @ {enrichedProfile.currentCompany}</span>
-                  </div>
-                )}
-                {enrichedProfile?.location && (
-                  <div className="flex items-center gap-2 text-[11px]">
-                    <MapPin className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
-                    <span className="text-muted-foreground">{enrichedProfile.location}</span>
-                  </div>
-                )}
-                {enrichedProfile?.yearsOfExperience && (
-                  <div className="flex items-center gap-2 text-[11px]">
-                    <TrendingUp className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
-                    <span className="text-muted-foreground">~{enrichedProfile.yearsOfExperience} ans d'expérience</span>
-                  </div>
-                )}
-
-                {/* Scoring summary */}
-                {candidate.score != null && (
-                  <div className="border border-foreground/15 p-2 mt-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Score IA</span>
-                      <span className={cn("text-sm font-bold",
-                        candidate.score >= 75 ? "text-emerald-600" :
-                        candidate.score >= 50 ? "text-amber-600" : "text-red-600"
-                      )}>{candidate.score}/100</span>
-                    </div>
-                    {candidate.recommendation && (
-                      <p className="text-[10px] text-muted-foreground mt-1">{candidate.recommendation}</p>
-                    )}
-                  </div>
-                )}
-
-                {/* Skills */}
-                {enrichedProfile?.skills && enrichedProfile.skills.length > 0 && (
-                  <div>
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5">Compétences</p>
-                    <div className="flex flex-wrap gap-1">
-                      {enrichedProfile.skills.slice(0, 15).map(s => (
-                        <span key={s} className="text-[9px] px-1.5 py-0.5 border border-foreground/20 text-muted-foreground font-medium uppercase tracking-wider">{s}</span>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Experiences compact */}
-                {enrichedProfile?.experiences && enrichedProfile.experiences.length > 0 && (
-                  <div>
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5">Parcours</p>
-                    <div className="space-y-1.5">
-                      {enrichedProfile.experiences.slice(0, 4).map((exp, i) => (
-                        <div key={i} className="text-[10px]">
-                          <span className="font-medium text-foreground">{exp.title}</span>
-                          <span className="text-muted-foreground"> · {exp.company}</span>
-                          {exp.isCurrent && <span className="text-emerald-600 ml-1 font-bold">•</span>}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Education compact */}
-                {enrichedProfile?.education && enrichedProfile.education.length > 0 && (
-                  <div>
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5">Formation</p>
-                    <div className="space-y-1">
-                      {enrichedProfile.education.slice(0, 3).map((edu, i) => (
-                        <div key={i} className="text-[10px]">
-                          <span className="font-medium text-foreground">{edu.school}</span>
-                          {edu.degree && <span className="text-muted-foreground"> · {edu.degree}</span>}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Summary */}
-                {enrichedProfile?.summary && (
-                  <div>
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1">À propos</p>
-                    <p className="text-[10px] text-muted-foreground leading-relaxed line-clamp-6">{enrichedProfile.summary}</p>
-                  </div>
-                )}
-
-                {/* LinkedIn link */}
-                {candidate.linkedin && (
-                  <a href={candidate.linkedin} target="_blank" rel="noopener noreferrer"
-                    className="flex items-center gap-1.5 text-[10px] text-foreground font-medium uppercase tracking-wider hover:text-brutal-accent mt-2">
-                    <ExternalLink className="w-3 h-3" /> Voir sur LinkedIn
-                  </a>
+            <div className="w-[380px] shrink-0 overflow-y-auto px-4 pt-4 pb-6 space-y-3">
+              {/* Name + headline */}
+              <div>
+                <p className="text-sm font-bold text-foreground">{enrichedProfile?.name || candidate.name}</p>
+                {enrichedProfile?.headline && (
+                  <p className="text-[11px] text-muted-foreground mt-0.5">{enrichedProfile.headline}</p>
                 )}
               </div>
+
+              {/* City + years of experience */}
+              <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
+                {enrichedProfile?.location && (
+                  <span className="flex items-center gap-1">
+                    <MapPin className="w-3 h-3" /> {enrichedProfile.location}
+                  </span>
+                )}
+                {enrichedProfile?.yearsOfExperience && (
+                  <span className="flex items-center gap-1">
+                    <Briefcase className="w-3 h-3" /> ~{enrichedProfile.yearsOfExperience} ans
+                  </span>
+                )}
+              </div>
+
+              {/* LinkedIn link */}
+              {candidate.linkedin && (
+                <a href={candidate.linkedin} target="_blank" rel="noopener noreferrer"
+                  className="flex items-center gap-1.5 text-[10px] text-foreground font-medium uppercase tracking-wider hover:text-blue-600">
+                  <ExternalLink className="w-3 h-3" /> Voir sur LinkedIn
+                </a>
+              )}
+
+              {/* Score */}
+              {candidate.score != null && (
+                <div className="border border-foreground/15 p-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Score IA</span>
+                    <span className={cn("text-sm font-bold",
+                      candidate.score >= 75 ? "text-emerald-600" :
+                      candidate.score >= 50 ? "text-amber-600" : "text-red-600"
+                    )}>{candidate.score}/100</span>
+                  </div>
+                  {candidate.recommendation && (
+                    <p className="text-[10px] text-muted-foreground mt-1">{candidate.recommendation}</p>
+                  )}
+                </div>
+              )}
+
+              {/* À propos — collapsible */}
+              {enrichedProfile?.summary && (
+                <CollapsibleSection title="À propos" defaultOpen={false}>
+                  <p className="text-[10px] text-muted-foreground leading-relaxed">{enrichedProfile.summary}</p>
+                </CollapsibleSection>
+              )}
+
+              {/* Expériences — collapsible timeline */}
+              {enrichedProfile?.experiences && enrichedProfile.experiences.length > 0 && (
+                <CollapsibleSection title="Expériences" defaultOpen={true}>
+                  <div className="space-y-0 relative">
+                    {/* Timeline line */}
+                    <div className="absolute left-[5px] top-2 bottom-2 w-px bg-foreground/15" />
+                    {enrichedProfile.experiences.map((exp, i) => (
+                      <ExperienceItem key={i} exp={exp} />
+                    ))}
+                  </div>
+                </CollapsibleSection>
+              )}
+
+              {/* Diplômes — collapsible */}
+              {enrichedProfile?.education && enrichedProfile.education.length > 0 && (
+                <CollapsibleSection title="Formation" defaultOpen={false}>
+                  <div className="space-y-0 relative">
+                    <div className="absolute left-[5px] top-2 bottom-2 w-px bg-foreground/15" />
+                    {enrichedProfile.education.map((edu, i) => (
+                      <EducationItem key={i} edu={edu} />
+                    ))}
+                  </div>
+                </CollapsibleSection>
+              )}
+
+              {/* Compétences — collapsible */}
+              {enrichedProfile?.skills && enrichedProfile.skills.length > 0 && (
+                <CollapsibleSection title="Compétences" defaultOpen={false}>
+                  <div className="flex flex-wrap gap-1">
+                    {enrichedProfile.skills.map(s => (
+                      <span key={s} className="text-[9px] px-1.5 py-0.5 border border-foreground/20 text-muted-foreground font-medium uppercase tracking-wider">{s}</span>
+                    ))}
+                  </div>
+                </CollapsibleSection>
+              )}
+
+              {/* Langues */}
+              {enrichedProfile?.languages && enrichedProfile.languages.length > 0 && (
+                <CollapsibleSection title="Langues" defaultOpen={false}>
+                  <div className="flex flex-wrap gap-1">
+                    {enrichedProfile.languages.map(l => (
+                      <span key={l} className="text-[9px] px-1.5 py-0.5 border border-foreground/20 text-muted-foreground font-medium uppercase tracking-wider">{l}</span>
+                    ))}
+                  </div>
+                </CollapsibleSection>
+              )}
             </div>
           </div>
         ) : (
@@ -1053,6 +1054,97 @@ function EmptyState({ icon: Icon, label }: { icon: any; label: string }) {
     <div className="text-center py-12">
       <Icon className="w-10 h-10 mx-auto mb-3 text-muted-foreground opacity-30" />
       <p className="text-muted-foreground text-[11px] uppercase tracking-wider">{label}</p>
+    </div>
+  );
+}
+
+function CollapsibleSection({ title, defaultOpen = false, children }: { title: string; defaultOpen?: boolean; children: React.ReactNode }) {
+  const [open, setOpen] = React.useState(defaultOpen);
+  return (
+    <div className="border border-foreground/15">
+      <button onClick={() => setOpen(!open)} className="w-full flex items-center justify-between px-3 py-2 hover:bg-foreground/[0.03] transition-colors">
+        <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{title}</span>
+        {open ? <ChevronUp className="w-3 h-3 text-muted-foreground" /> : <ChevronDown className="w-3 h-3 text-muted-foreground" />}
+      </button>
+      {open && <div className="px-3 pb-3">{children}</div>}
+    </div>
+  );
+}
+
+function formatExpDate(dateStr?: string) {
+  if (!dateStr) return '';
+  const parts = dateStr.split('-');
+  return parts[0] || '';
+}
+
+function calcDuration(startDate?: string, endDate?: string) {
+  if (!startDate) return '';
+  const startYear = parseInt(startDate.split('-')[0]);
+  const endYear = endDate ? parseInt(endDate.split('-')[0]) : new Date().getFullYear();
+  if (isNaN(startYear) || isNaN(endYear)) return '';
+  const diff = endYear - startYear;
+  return diff <= 0 ? '<1 an' : diff === 1 ? '1 an' : `${diff} ans`;
+}
+
+function ExperienceItem({ exp }: { exp: { title: string; company: string; description?: string; startDate?: string; endDate?: string; isCurrent?: boolean } }) {
+  const [expanded, setExpanded] = React.useState(false);
+  const duration = calcDuration(exp.startDate, exp.endDate);
+  return (
+    <div className="relative pl-5 py-1.5">
+      {/* Dot */}
+      <div className={cn("absolute left-0.5 top-3 w-2 h-2 rounded-full border-2", exp.isCurrent ? "bg-emerald-500 border-emerald-500" : "bg-background border-foreground/30")} />
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex-1 min-w-0">
+          <p className="text-[10px] font-medium text-foreground leading-tight">{exp.title}</p>
+          <p className="text-[9px] text-muted-foreground">{exp.company}</p>
+        </div>
+        <div className="text-right shrink-0">
+          <p className="text-[9px] text-muted-foreground">{formatExpDate(exp.startDate)} — {exp.isCurrent ? 'Auj.' : formatExpDate(exp.endDate)}</p>
+          {duration && <p className="text-[8px] text-muted-foreground/70">{duration}</p>}
+        </div>
+      </div>
+      {exp.description && (
+        <>
+          <button onClick={() => setExpanded(!expanded)} className="text-[8px] text-muted-foreground hover:text-foreground mt-0.5 flex items-center gap-0.5">
+            {expanded ? <ChevronUp className="w-2.5 h-2.5" /> : <ChevronDown className="w-2.5 h-2.5" />}
+            {expanded ? 'Masquer' : 'Détails'}
+          </button>
+          {expanded && <p className="text-[9px] text-muted-foreground leading-relaxed mt-1">{exp.description}</p>}
+        </>
+      )}
+    </div>
+  );
+}
+
+function EducationItem({ edu }: { edu: { school: string; degree?: string; field?: string; startYear?: string; endYear?: string } }) {
+  const [expanded, setExpanded] = React.useState(false);
+  const hasDetails = edu.degree || edu.field;
+  return (
+    <div className="relative pl-5 py-1.5">
+      <div className="absolute left-0.5 top-3 w-2 h-2 rounded-full border-2 bg-background border-foreground/30" />
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex-1 min-w-0">
+          <p className="text-[10px] font-medium text-foreground leading-tight">{edu.school}</p>
+          {!expanded && edu.degree && <p className="text-[9px] text-muted-foreground truncate">{edu.degree}</p>}
+        </div>
+        <div className="text-right shrink-0">
+          <p className="text-[9px] text-muted-foreground">{edu.startYear || ''}{edu.startYear && edu.endYear ? ' — ' : ''}{edu.endYear || ''}</p>
+        </div>
+      </div>
+      {hasDetails && (
+        <>
+          <button onClick={() => setExpanded(!expanded)} className="text-[8px] text-muted-foreground hover:text-foreground mt-0.5 flex items-center gap-0.5">
+            {expanded ? <ChevronUp className="w-2.5 h-2.5" /> : <ChevronDown className="w-2.5 h-2.5" />}
+            {expanded ? 'Masquer' : 'Détails'}
+          </button>
+          {expanded && (
+            <div className="text-[9px] text-muted-foreground mt-1 space-y-0.5">
+              {edu.degree && <p>Diplôme: {edu.degree}</p>}
+              {edu.field && <p>Domaine: {edu.field}</p>}
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 }
