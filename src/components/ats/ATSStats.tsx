@@ -1,5 +1,5 @@
 import React from 'react';
-import { Users, UserCheck, Send, MessageCircle, Trophy, XCircle } from 'lucide-react';
+import { Users, Send, MessageCircle, UserCheck, Trophy } from 'lucide-react';
 import { ATSCandidate } from '@/pages/ATS';
 
 interface ATSStatsProps {
@@ -8,24 +8,24 @@ interface ATSStatsProps {
 }
 
 const STAT_CONFIG: { key: string; label: string; icon: typeof Users; suffix?: string }[] = [
-  { key: 'total', label: 'TOTAL', icon: Users },
-  { key: 'contacted', label: 'CONTACTÉS', icon: Send },
-  { key: 'responseRate', label: 'TAUX RÉPONSE', icon: MessageCircle, suffix: '%' },
-  { key: 'inProgress', label: 'EN COURS', icon: UserCheck },
-  { key: 'won', label: 'GAGNÉS', icon: Trophy },
-  { key: 'conversionRate', label: 'CONVERSION', icon: Trophy, suffix: '%' },
+  { key: 'total', label: 'Total', icon: Users },
+  { key: 'contacted', label: 'Contactés', icon: Send },
+  { key: 'responseRate', label: 'Réponse', icon: MessageCircle, suffix: '%' },
+  { key: 'inProgress', label: 'En cours', icon: UserCheck },
+  { key: 'won', label: 'Gagnés', icon: Trophy },
+  { key: 'conversionRate', label: 'Conv.', icon: Trophy, suffix: '%' },
 ];
 
 export const ATSStats: React.FC<ATSStatsProps> = ({ candidates, stages }) => {
   const stats = React.useMemo(() => {
     const total = candidates.length;
-    const contacted = candidates.filter(c => 
+    const contacted = candidates.filter(c =>
       ['Contacté', 'CV envoyé', 'ITW en cours', 'Offre', 'Gagné', 'Répondu'].includes(c.stage)
     ).length;
-    const replied = candidates.filter(c => 
+    const replied = candidates.filter(c =>
       ['Répondu', 'ITW en cours', 'Offre', 'Gagné'].includes(c.stage)
     ).length;
-    const inProgress = candidates.filter(c => 
+    const inProgress = candidates.filter(c =>
       ['CV envoyé', 'ITW en cours', 'Offre'].includes(c.stage)
     ).length;
     const won = candidates.filter(c => c.stage === 'Gagné').length;
@@ -47,31 +47,26 @@ export const ATSStats: React.FC<ATSStatsProps> = ({ candidates, stages }) => {
   };
 
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-0 mb-6">
+    <div className="flex flex-wrap gap-0 mb-4">
       {STAT_CONFIG.map((stat, index) => {
         const Icon = stat.icon;
+        const value = values[stat.key];
         return (
           <div
             key={stat.key}
             className={`
-              p-4 border border-foreground bg-background
-              ${index > 0 ? 'border-l-0' : ''}
-              group hover:bg-brutal-accent transition-colors duration-200
+              flex items-center gap-2 px-3 py-2 border border-foreground bg-background
+              ${index > 0 ? '-ml-px' : ''}
+              hover:bg-brutal-accent transition-colors duration-200 cursor-default
             `}
           >
-            <div className="flex items-center gap-3">
-              <div className="h-8 w-8 bg-foreground text-background flex items-center justify-center flex-shrink-0">
-                <Icon className="w-4 h-4" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold text-foreground">
-                  {values[stat.key]}{stat.suffix || ''}
-                </p>
-                <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">
-                  {stat.label}
-                </p>
-              </div>
-            </div>
+            <Icon className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+            <span className="text-sm font-bold text-foreground tabular-nums">
+              {value}{stat.suffix || ''}
+            </span>
+            <span className="text-[9px] text-muted-foreground uppercase tracking-wider font-medium hidden sm:inline">
+              {stat.label}
+            </span>
           </div>
         );
       })}
