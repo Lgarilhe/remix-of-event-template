@@ -1,73 +1,74 @@
 
 
-## Recherche et Analyse des Best Practices
+## Plan — Coach Live Scorecard avec Transcription Deepgram
 
-D'après la recherche, voici ce que les meilleurs ATS et guides de recrutement recommandent et que notre scorecard ne fait **pas encore** :
+Ton spec est excellente et bien pensée. Voici mon analyse et le plan d'implémentation adapté au projet.
 
-### Ce qui manque aujourd'hui
+### Analyse de la spec
 
-| Best Practice (industrie) | Notre scorecard actuelle |
-|---|---|
-| **Questions d'entretien suggérées** par critère | Juste une description vague |
-| **Rubrique de notation** (définition de chaque niveau 1-5) | Étoiles sans explication |
-| **Verdict final / Recommandation** (Go/No-Go + justification) | Absent |
-| **Signaux d'alerte (red flags)** générés par l'IA | Absent |
-| **Questions de suivi** pour le prochain round | Absent |
-| **Scorecard par étape** (phone screen vs technique vs final) | Pas de distinction |
-| **Résumé IA post-évaluation** basé sur les notes saisies | Absent |
+**Ce qui est solide :**
+- Architecture WebSocket Deepgram directe (pas de chunks HTTP) -- approche optimale
+- Clé temporaire via Edge Function -- bonne pratique sécurité
+- Coach toutes les 15s ou fin d'utterance -- bon compromis coût/réactivité
+- Génération CR en fin de call -- workflow naturel
+- Table `call_coaching_sessions` pour persister l'historique
 
-### Plan d'amélioration
-
-#### 1. Enrichir le modèle de critère (Edge Function + types)
-
-L'IA générera pour chaque critère :
-- `suggestedQuestions: string[]` — 2-3 questions d'entretien spécifiques à poser
-- `ratingRubric: Record<string, string>` — description de ce que signifie chaque note (1="Aucune connaissance", 3="Compétent", 5="Expert")
-- `redFlags: string[]` — signaux d'alerte à surveiller
-
-Mise à jour du prompt dans `generate-scorecard/index.ts` pour demander ces champs supplémentaires.
-
-#### 2. Ajouter un type d'étape (interview stage)
-
-Ajouter un champ `stage` à `EvaluationData` permettant de choisir le type d'entretien : "Phone Screen", "Technique", "Culture Fit", "Final". L'IA adaptera les critères en fonction.
-- Sélecteur dans l'UI avant la génération
-- Passé au prompt pour contextualiser
-
-#### 3. Section verdict final
-
-En bas de la scorecard active, ajouter :
-- **Recommandation** : Strong Yes / Yes / Maybe / No / Strong No (boutons radio)
-- **Résumé libre** : textarea pour la justification
-- **Points de suivi** : textarea pour les questions à creuser au prochain round
-- Persistés dans les champs `recommendation`, `summary`, `follow_up_notes` du record
-
-#### 4. Rubrique de notation visible
-
-Quand un critère est expandé, afficher sous la description un mini-tableau des niveaux (1 à 5) avec la définition spécifique générée par l'IA. L'utilisateur sait exactement ce que signifie chaque étoile.
-
-#### 5. Questions d'entretien suggérées
-
-Dans la zone expandée de chaque critère, afficher les 2-3 questions suggérées par l'IA avec un style "prompt card" copiable.
-
-#### 6. Red flags IA
-
-Afficher les signaux d'alerte en badge rouge dans chaque critère concerné.
+**Ajustements nécessaires pour le projet :**
+- Les Edge Functions doivent utiliser les CORS headers du projet et `verify_jwt = false` dans config.toml
+- L'API Deepgram pour clés temporaires nécessite le `PROJECT_ID` Deepgram comme secret supplémentaire
+- La table ne doit PAS utiliser de CHECK constraint (utiliser un trigger de validation ou laisser le champ libre)
+- Le coach utilise déjà `ANTHROPIC_API_KEY` (déjà configuré comme secret)
+- Il faut un secret `DEEPGRAM_API_KEY` (pas encore configuré)
 
 ---
 
-### Modifications techniques
+### Implémentation en 5 étapes
 
-**`supabase/functions/generate-scorecard/index.ts`** :
-- Enrichir le prompt pour demander `suggestedQuestions`, `ratingRubric` (objet avec clés "1" à "5"), `redFlags` par critère
-- Ajouter un paramètre `interviewStage` au body pour contextualiser
+#### 1. Secret Deepgram + Migration DB
 
-**`src/components/ats/ScorecardTab.tsx`** :
-- Étendre `Criterion` avec les nouveaux champs
-- Ajouter `EvaluationData.recommendation`, `summary`, `followUpNotes`, `interviewStage`
-- Sélecteur d'étape avant génération
-- UI expandée enrichie : rubrique, questions, red flags
-- Section verdict en bas avec recommandation + résumé + suivi
+- Demander le secret `DEEPGRAM_API_KEY` via l'outil add_secret
+- Créer la table `call_coaching_sessions` (sans CHECK constraint, statut libre) avec RLS policies pour l'utilisateur authentifié
+- Index sur `candidate_id, created_at desc`
 
-**Migration SQL** :
-- Ajouter colonnes `recommendation text`, `summary text`, `follow_up_notes text`, `interview_stage text` à `candidate_evaluations`
+#### 2. Edge Function `deepgram-temp-key`
+
+- Approche MVP simplifiée : retourne directement la clé API (pas de clé temporaire pour commencer, car l'API de clés temporaires Deepgram nécessite aussi le PROJECT_ID)
+- CORS headers standards, `verify_jwt = false`
+
+#### 3. Edge Function `live-coach`
+
+- Reçoit `session_id`, `full_transcript`, `latest_chunk`, `criteria`, `job_context`, `elapsed_seconds`
+- Appelle Claude via Anthropic API (clé déjà configurée)
+- Retourne `{ alerts, suggestions, criteria_updates }`
+- Sauvegarde transcript + coach_feed dans `call_coaching_sessions`
+
+#### 4. Edge Function `generate-call-report`
+
+- Reçoit transcript complet, critères avec scores, contexte poste, alertes
+- Claude génère : summary, évaluation par critère avec verbatims, forces, red flags, questions ouvertes, recommandation GO/NO_GO/A_CREUSER, message de suivi
+- Sauvegarde le rapport dans la session
+
+#### 5. UI Coaching Live dans ScorecardTab
+
+- Bouton "COACHING LIVE" en haut de la scorecard active
+- Au clic : zone coach slide-down avec :
+  - **Transcription live** (texte défilant avec interim en gris)
+  - **Feed coach** (alertes danger/warning/info + suggestions de questions)
+  - **Critères auto-détectés** (badges verts sur les critères couverts avec verbatim)
+- Bouton "ARRÊTER" ferme le WebSocket et le micro
+- Bouton "GÉNÉRER LE CR" appelle `generate-call-report` et affiche le rapport avec boutons copier/sauvegarder
+- Les auto-scores du coach pré-remplissent les ratings de la scorecard
+
+---
+
+### Fichiers créés/modifiés
+
+| Fichier | Action |
+|---|---|
+| `supabase/functions/deepgram-temp-key/index.ts` | Nouveau |
+| `supabase/functions/live-coach/index.ts` | Nouveau |
+| `supabase/functions/generate-call-report/index.ts` | Nouveau |
+| `src/components/ats/ScorecardTab.tsx` | Modifié (bouton + UI coach + logique WebSocket) |
+| `supabase/config.toml` | Ajout 3 fonctions `verify_jwt = false` |
+| Migration SQL | Table `call_coaching_sessions` + index + RLS |
 
