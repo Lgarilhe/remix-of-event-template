@@ -12,6 +12,69 @@ serve(async (req) => {
   }
 
   try {
+    const body = await req.json();
+
+    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+    if (!LOVABLE_API_KEY) {
+      return new Response(
+        JSON.stringify({ error: "LOVABLE_API_KEY not configured" }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // === INTRO GENERATION MODE ===
+    if (body.action === 'generate_intro') {
+      const { candidate_name, candidate_headline, candidate_profile_summary, job_title, job_context, criteria } = body;
+      
+      const introPrompt = `Tu es un coach de recrutement. Génère une introduction d'appel personnalisée et chaleureuse.
+
+CANDIDAT : ${candidate_name}
+HEADLINE : ${candidate_headline || 'N/A'}
+RÉSUMÉ PROFIL : ${candidate_profile_summary || 'N/A'}
+POSTE : ${job_title}
+CONTEXTE : ${job_context}
+CRITÈRES À ÉVALUER : ${JSON.stringify(criteria)}
+
+Génère une intro de 3-4 phrases que le recruteur peut dire mot pour mot au début de l'appel :
+- Commence par une accroche personnalisée basée sur le parcours/headline du candidat (pas générique)
+- Mentionne brièvement pourquoi tu l'appelles (le poste)
+- Donne le cadre de l'échange (durée ~30min, objectif : se connaître mutuellement)
+- Termine par une question ouverte pour lancer la conversation
+
+Sois naturel, humain, pas corporate. Tutoie si le contexte s'y prête (tech/startup).`;
+
+      const introResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${LOVABLE_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "google/gemini-3-flash-preview",
+          max_tokens: 300,
+          messages: [
+            { role: "user", content: introPrompt },
+          ],
+        }),
+      });
+
+      if (!introResponse.ok) {
+        const errText = await introResponse.text();
+        console.error("Intro AI error:", introResponse.status, errText);
+        return new Response(JSON.stringify({ intro: null }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const introRes = await introResponse.json();
+      const intro = introRes.choices?.[0]?.message?.content?.trim() || null;
+      
+      return new Response(JSON.stringify({ intro }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // === NORMAL COACHING MODE ===
     const {
       session_id,
       full_transcript,
@@ -20,7 +83,7 @@ serve(async (req) => {
       job_context,
       elapsed_seconds,
       pending_signals,
-    } = await req.json();
+    } = body;
 
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) {

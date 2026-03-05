@@ -443,6 +443,11 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
           <LiveCoachingPanel
             candidateId={candidate.candidateId}
             candidateName={candidate.name}
+            candidateHeadline={candidate.headline || ''}
+            candidateProfileSummary={(() => {
+              const p = candidate.linkedinProfileData as any;
+              return p?.summary || p?.about || p?.headline || '';
+            })()}
             jobId={candidate.jobId || ''}
             jobTitle={candidate.jobTitle || ''}
             jobContext={`Poste: ${candidate.jobTitle || 'N/A'}`}
