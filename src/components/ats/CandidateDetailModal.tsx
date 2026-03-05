@@ -5,6 +5,7 @@ import { ATSCandidate, ATS_STAGES } from '@/hooks/useATSData';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
+import { useNotionJobs } from '@/hooks/useNotionJobs';
 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useCandidateFullProfile, ScoringRecord } from '@/hooks/useCandidateFullProfile';
@@ -71,6 +72,7 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
   const [newTag, setNewTag] = useState('');
 
   const fullProfile = useCandidateFullProfile(candidate.candidateId, candidate.linkedin);
+  const { data: notionJobs } = useNotionJobs();
 
   // Build enriched profile from stored LinkedIn data (no API call needed)
   const enrichedProfile: EnrichedProfile | null = React.useMemo(() => {
@@ -121,12 +123,43 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
   
   const enrichLoading = false;
 
-  // Fetch job details for split-screen panel
-  const [jobDetails, setJobDetails] = useState<{
-    title?: string; client?: string; description?: string; criteria?: string;
-    city?: string; salary?: string; contractType?: string; notes?: string;
-    skills?: string[];
-  } | null>(null);
+  // Build job details from Notion jobs + sourcing project
+  const [projectNotes, setProjectNotes] = useState<string | null>(null);
+  const [projectCalendly, setProjectCalendly] = useState<string | null>(null);
+
+  const jobDetails = React.useMemo(() => {
+    if (!candidate.jobId) return null;
+    const notionJob = notionJobs?.find(j => j.id === candidate.jobId);
+    if (!notionJob) return null;
+    return {
+      title: notionJob.title,
+      client: notionJob.client?.name,
+      clientSector: notionJob.client?.sector,
+      clientSize: notionJob.client?.size,
+      description: notionJob.description,
+      requirements: notionJob.requirements,
+      interviewProcess: notionJob.interviewProcess,
+      sourcingCriteria: notionJob.sourcingCriteria,
+      teamInfo: notionJob.teamInfo,
+      location: notionJob.location,
+      remote: notionJob.remote,
+      salaryMin: notionJob.salaryMin,
+      salaryMax: notionJob.salaryMax,
+      contractType: notionJob.contractType,
+      seniority: notionJob.seniority,
+      skills: notionJob.skills,
+      mustHave: notionJob.mustHave,
+      shouldHave: notionJob.shouldHave,
+      niceToHave: notionJob.niceToHave,
+      bodyContent: notionJob.bodyContent,
+      xpMin: notionJob.xpMin,
+      xpMax: notionJob.xpMax,
+      accompagnement: notionJob.accompagnement,
+      transversalCriteria: notionJob.transversalCriteria,
+      entity: notionJob.entity,
+      notes: projectNotes,
+    };
+  }, [candidate.jobId, notionJobs, projectNotes]);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -139,28 +172,16 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
         setNotes(notesData || []);
         setReminders(remindersData || []);
 
-        // Fetch job details
+        // Fetch project notes
         if (candidate.jobId) {
-          const [{ data: projectData }, { data: airtableJob }] = await Promise.all([
-            supabase.from('sourcing_projects').select('*').eq('job_id', candidate.jobId).maybeSingle(),
-            supabase.from('airtable_jobs').select('*').eq('airtable_id', candidate.jobId).maybeSingle(),
-          ]);
-
-          const job = airtableJob || null;
-          const project = projectData || null;
-
-          if (job || project) {
-            setJobDetails({
-              title: job?.title || project?.job_title || candidate.jobTitle || undefined,
-              client: project?.client_name || undefined,
-              description: job?.description || project?.description || undefined,
-              criteria: job?.criteria || undefined,
-              city: job?.city || undefined,
-              salary: job?.salary || undefined,
-              contractType: job?.contract_type || undefined,
-              notes: project?.notes || undefined,
-              skills: undefined,
-            });
+          const { data: projectData } = await supabase
+            .from('sourcing_projects')
+            .select('notes, calendly_link')
+            .eq('job_id', candidate.jobId)
+            .maybeSingle();
+          if (projectData) {
+            setProjectNotes(projectData.notes || null);
+            setProjectCalendly(projectData.calendly_link || null);
           }
         }
       } finally { setLoading(false); }
@@ -416,35 +437,135 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
                   <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
                     <Target className="w-3 h-3" /> Poste : {jobDetails?.title || candidate.jobTitle}
                   </p>
+                  {/* Quick job meta */}
                   <div className="flex flex-wrap items-center gap-2 text-[10px] text-muted-foreground">
                     {jobDetails?.client && (
                       <span className="flex items-center gap-1"><Building2 className="w-3 h-3" /> {jobDetails.client}</span>
                     )}
-                    {jobDetails?.city && (
-                      <span className="flex items-center gap-1"><MapPin className="w-3 h-3" /> {jobDetails.city}</span>
+                    {jobDetails?.location && (
+                      <span className="flex items-center gap-1"><MapPin className="w-3 h-3" /> {jobDetails.location}</span>
                     )}
                     {jobDetails?.contractType && (
                       <span className="px-1.5 py-0.5 border border-foreground/20 font-medium uppercase tracking-wider text-[9px]">{jobDetails.contractType}</span>
                     )}
-                    {jobDetails?.salary && (
-                      <span className="px-1.5 py-0.5 border border-foreground/20 font-medium uppercase tracking-wider text-[9px]">{jobDetails.salary}</span>
+                    {jobDetails?.remote && (
+                      <span className="px-1.5 py-0.5 border border-foreground/20 font-medium uppercase tracking-wider text-[9px]">{jobDetails.remote}</span>
+                    )}
+                    {jobDetails?.seniority && (
+                      <span className="px-1.5 py-0.5 border border-foreground/20 font-medium uppercase tracking-wider text-[9px]">{jobDetails.seniority}</span>
+                    )}
+                    {(jobDetails?.salaryMin || jobDetails?.salaryMax) && (
+                      <span className="px-1.5 py-0.5 border border-foreground/20 font-medium uppercase tracking-wider text-[9px]">
+                        {jobDetails.salaryMin && jobDetails.salaryMax
+                          ? `${jobDetails.salaryMin}k - ${jobDetails.salaryMax}k`
+                          : jobDetails.salaryMin ? `${jobDetails.salaryMin}k+` : `≤${jobDetails.salaryMax}k`}
+                      </span>
+                    )}
+                    {(jobDetails?.xpMin || jobDetails?.xpMax) && (
+                      <span className="text-[9px]">
+                        XP: {jobDetails.xpMin || 0}-{jobDetails.xpMax || '?'} ans
+                      </span>
                     )}
                   </div>
+
+                  {/* Skills */}
+                  {jobDetails?.skills && jobDetails.skills.length > 0 && (
+                    <CollapsibleSection title={`Compétences recherchées (${jobDetails.skills.length})`} defaultOpen={false}>
+                      <div className="flex flex-wrap gap-1">
+                        {jobDetails.skills.map(s => (
+                          <span key={s} className="text-[9px] px-1.5 py-0.5 border border-foreground/20 text-muted-foreground font-medium uppercase tracking-wider">{s}</span>
+                        ))}
+                      </div>
+                    </CollapsibleSection>
+                  )}
+
+                  {/* Description */}
                   {jobDetails?.description && (
                     <CollapsibleSection title="Description du poste" defaultOpen={false}>
                       <p className="text-[10px] text-muted-foreground leading-relaxed whitespace-pre-wrap">{jobDetails.description}</p>
                     </CollapsibleSection>
                   )}
-                  {jobDetails?.criteria && (
-                    <CollapsibleSection title="Critères de sélection" defaultOpen={false}>
-                      <p className="text-[10px] text-muted-foreground leading-relaxed whitespace-pre-wrap">{jobDetails.criteria}</p>
+
+                  {/* Requirements */}
+                  {jobDetails?.requirements && (
+                    <CollapsibleSection title="Prérequis" defaultOpen={false}>
+                      <p className="text-[10px] text-muted-foreground leading-relaxed whitespace-pre-wrap">{jobDetails.requirements}</p>
                     </CollapsibleSection>
                   )}
+
+                  {/* Must / Should / Nice to have */}
+                  {(jobDetails?.mustHave || jobDetails?.shouldHave || jobDetails?.niceToHave) && (
+                    <CollapsibleSection title="Critères (Must / Should / Nice)" defaultOpen={false}>
+                      <div className="space-y-1.5 text-[10px]">
+                        {jobDetails.mustHave && (
+                          <div><span className="font-bold text-red-600">Must:</span> <span className="text-muted-foreground">{jobDetails.mustHave}</span></div>
+                        )}
+                        {jobDetails.shouldHave && (
+                          <div><span className="font-bold text-amber-600">Should:</span> <span className="text-muted-foreground">{jobDetails.shouldHave}</span></div>
+                        )}
+                        {jobDetails.niceToHave && (
+                          <div><span className="font-bold text-emerald-600">Nice:</span> <span className="text-muted-foreground">{jobDetails.niceToHave}</span></div>
+                        )}
+                      </div>
+                    </CollapsibleSection>
+                  )}
+
+                  {/* Transversal criteria */}
+                  {jobDetails?.transversalCriteria && (
+                    <CollapsibleSection title="Critères transverses" defaultOpen={false}>
+                      <div className="space-y-1.5 text-[10px]">
+                        {jobDetails.transversalCriteria.must && (
+                          <div><span className="font-bold text-red-600">Must:</span> <span className="text-muted-foreground">{jobDetails.transversalCriteria.must}</span></div>
+                        )}
+                        {jobDetails.transversalCriteria.should && (
+                          <div><span className="font-bold text-amber-600">Should:</span> <span className="text-muted-foreground">{jobDetails.transversalCriteria.should}</span></div>
+                        )}
+                        {jobDetails.transversalCriteria.niceToHave && (
+                          <div><span className="font-bold text-emerald-600">Nice:</span> <span className="text-muted-foreground">{jobDetails.transversalCriteria.niceToHave}</span></div>
+                        )}
+                        {jobDetails.transversalCriteria.context && (
+                          <div><span className="font-bold">Contexte:</span> <span className="text-muted-foreground">{jobDetails.transversalCriteria.context}</span></div>
+                        )}
+                      </div>
+                    </CollapsibleSection>
+                  )}
+
+                  {/* Interview process */}
+                  {jobDetails?.interviewProcess && (
+                    <CollapsibleSection title="Process d'entretien" defaultOpen={false}>
+                      <p className="text-[10px] text-muted-foreground leading-relaxed whitespace-pre-wrap">{jobDetails.interviewProcess}</p>
+                    </CollapsibleSection>
+                  )}
+
+                  {/* Team info */}
+                  {jobDetails?.teamInfo && (
+                    <CollapsibleSection title="Équipe" defaultOpen={false}>
+                      <p className="text-[10px] text-muted-foreground leading-relaxed whitespace-pre-wrap">{jobDetails.teamInfo}</p>
+                    </CollapsibleSection>
+                  )}
+
+                  {/* Sourcing criteria */}
+                  {jobDetails?.sourcingCriteria && (
+                    <CollapsibleSection title="Critères de sourcing" defaultOpen={false}>
+                      <p className="text-[10px] text-muted-foreground leading-relaxed whitespace-pre-wrap">{jobDetails.sourcingCriteria}</p>
+                    </CollapsibleSection>
+                  )}
+
+                  {/* Body content from Notion page */}
+                  {jobDetails?.bodyContent && (
+                    <CollapsibleSection title="Contenu Notion" defaultOpen={false}>
+                      <p className="text-[10px] text-muted-foreground leading-relaxed whitespace-pre-wrap">{jobDetails.bodyContent}</p>
+                    </CollapsibleSection>
+                  )}
+
+                  {/* Project notes */}
                   {jobDetails?.notes && (
                     <CollapsibleSection title="Notes projet" defaultOpen={false}>
                       <p className="text-[10px] text-muted-foreground leading-relaxed whitespace-pre-wrap">{jobDetails.notes}</p>
                     </CollapsibleSection>
                   )}
+
+                  {/* Scoring match details */}
                   {candidate.scoringDetails && (
                     <CollapsibleSection title="Détails du matching" defaultOpen={false}>
                       <div className="space-y-2 text-[10px]">
