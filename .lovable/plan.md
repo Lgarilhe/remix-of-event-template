@@ -1,85 +1,73 @@
 
 
-# Analyse comparative Teamtailor vs Konekt ATS
+## Recherche et Analyse des Best Practices
 
-## Features Teamtailor que Konekt possede deja
-- Kanban / pipeline personnalisable
-- Scoring / matching candidat-job (AI)
-- Sourcing LinkedIn + extension
-- Sequences d'outreach automatisees
-- Notes et rappels sur candidats
-- Dashboard analytics (funnel, activite, KPIs)
-- Nurturing / relance candidats passifs
-- Inbox messages
-- Filtres avances et recherche
-- Integration Notion / Airtable (equivalent des integrations tierces)
+D'après la recherche, voici ce que les meilleurs ATS et guides de recrutement recommandent et que notre scorecard ne fait **pas encore** :
 
----
+### Ce qui manque aujourd'hui
 
-## Features manquantes interessantes a integrer
+| Best Practice (industrie) | Notre scorecard actuelle |
+|---|---|
+| **Questions d'entretien suggérées** par critère | Juste une description vague |
+| **Rubrique de notation** (définition de chaque niveau 1-5) | Étoiles sans explication |
+| **Verdict final / Recommandation** (Go/No-Go + justification) | Absent |
+| **Signaux d'alerte (red flags)** générés par l'IA | Absent |
+| **Questions de suivi** pour le prochain round | Absent |
+| **Scorecard par étape** (phone screen vs technique vs final) | Pas de distinction |
+| **Résumé IA post-évaluation** basé sur les notes saisies | Absent |
 
-### 1. Scorecards d'evaluation structurees
-Teamtailor permet de creer des grilles d'evaluation (scorecards) avec criteres ponderes pour noter les candidats en entretien. Konekt a un scoring AI automatique mais pas de grille manuelle collaborative.
+### Plan d'amélioration
 
-**Implementation**: Ajouter un onglet "Evaluation" dans le CandidateDetailModal avec des criteres configurables par poste, notation 1-5 par critere, et calcul d'un score moyen. Stockage dans une table `candidate_evaluations`.
+#### 1. Enrichir le modèle de critère (Edge Function + types)
 
-### 2. Comparaison de candidats cote a cote
-Pouvoir selectionner 2-4 candidats et les comparer sur un meme ecran (scoring, experience, competences, notes).
+L'IA générera pour chaque critère :
+- `suggestedQuestions: string[]` — 2-3 questions d'entretien spécifiques à poser
+- `ratingRubric: Record<string, string>` — description de ce que signifie chaque note (1="Aucune connaissance", 3="Compétent", 5="Expert")
+- `redFlags: string[]` — signaux d'alerte à surveiller
 
-**Implementation**: Bouton "Comparer" dans la vue Table/Kanban, ouvre un modal avec colonnes paralleles par candidat. Donnees deja disponibles via `useATSData`.
+Mise à jour du prompt dans `generate-scorecard/index.ts` pour demander ces champs supplémentaires.
 
-### 3. Guide times / Alertes de stagnation
-Definir un temps max par etape du pipeline. Si un candidat depasse ce delai, alerte visuelle.
+#### 2. Ajouter un type d'étape (interview stage)
 
-**Implementation**: Config par stage (ex: "Contacte" = 5 jours max). Dans le Kanban/Table, badge rouge si `daysSinceStageChange > guideTime`. La donnee `lastActivity` existe deja. Table `stage_guide_times` pour stocker les configs.
+Ajouter un champ `stage` à `EvaluationData` permettant de choisir le type d'entretien : "Phone Screen", "Technique", "Culture Fit", "Final". L'IA adaptera les critères en fonction.
+- Sélecteur dans l'UI avant la génération
+- Passé au prompt pour contextualiser
 
-### 4. Smart Schedule (planification d'entretiens)
-Integration calendrier pour proposer des creneaux aux candidats automatiquement. Teamtailor genere un lien avec les dispos du recruteur.
+#### 3. Section verdict final
 
-**Implementation**: Konekt a deja `calendly_link` sur les projets. Enrichir avec un bouton "Planifier entretien" dans le detail candidat qui genere un lien Calendly pre-rempli ou un mini-scheduler interne.
+En bas de la scorecard active, ajouter :
+- **Recommandation** : Strong Yes / Yes / Maybe / No / Strong No (boutons radio)
+- **Résumé libre** : textarea pour la justification
+- **Points de suivi** : textarea pour les questions à creuser au prochain round
+- Persistés dans les champs `recommendation`, `summary`, `follow_up_notes` du record
 
-### 5. Partage de profil candidat (lien externe)
-Generer un lien securise pour partager un profil candidat avec un client ou hiring manager externe, sans acces a l'ATS.
+#### 4. Rubrique de notation visible
 
-**Implementation**: Edge function qui genere un token unique, page publique `/shared/candidate/:token` avec les infos selectionnees (nom, headline, scoring, notes filtrees). Table `candidate_shares`.
+Quand un critère est expandé, afficher sous la description un mini-tableau des niveaux (1 à 5) avec la définition spécifique générée par l'IA. L'utilisateur sait exactement ce que signifie chaque étoile.
 
-### 6. Templates de messages
-Bibliotheque de modeles de messages reutilisables (rejection, relance, offre) avec variables dynamiques.
+#### 5. Questions d'entretien suggérées
 
-**Implementation**: Table `message_templates` avec `name`, `category`, `subject_template`, `body_template`, `variables`. Selector dans le compose d'InMail et les sequences. Variables type `{{candidate_name}}`, `{{job_title}}`.
+Dans la zone expandée de chaque critère, afficher les 2-3 questions suggérées par l'IA avec un style "prompt card" copiable.
 
-### 7. NPS / Surveys candidats
-Envoyer un court sondage aux candidats apres le process pour mesurer leur experience.
+#### 6. Red flags IA
 
-**Implementation**: Plus complexe, necessite un formulaire public. Pourrait etre simplifie avec un lien Google Forms ou Typeform integre.
-
-### 8. Pipeline reporting avance
-Rapport de conversion par etape : combien passent de "Contacte" a "Repondu", de "Repondu" a "Pre-qualif", etc. Temps moyen par etape.
-
-**Implementation**: Deja partiellement dans le Dashboard (funnel). Ajouter les taux de conversion inter-etapes et le temps moyen par etape. Calcul client-side depuis `candidates`.
-
-### 9. Tags candidats
-Systeme de tags libres sur les candidats pour filtrer/organiser (ex: "urgent", "top profil", "a recontacter").
-
-**Implementation**: Table `candidate_tags` ou champ `tags text[]` sur `job_candidate_status`. Filtre dans ATSFilters. UI chips dans les cards.
+Afficher les signaux d'alerte en badge rouge dans chaque critère concerné.
 
 ---
 
-## Priorites recommandees (impact vs effort)
+### Modifications techniques
 
-```text
-Feature                    | Impact | Effort | Priorite
----------------------------|--------|--------|----------
-Tags candidats             | Haut   | Faible | 1
-Guide times / stagnation   | Haut   | Faible | 2
-Pipeline reporting avance  | Haut   | Moyen  | 3
-Comparaison candidats      | Moyen  | Moyen  | 4
-Scorecards d'evaluation    | Haut   | Moyen  | 5
-Templates de messages      | Moyen  | Moyen  | 6
-Partage profil externe     | Moyen  | Eleve  | 7
-Smart Schedule enrichi     | Moyen  | Eleve  | 8
-NPS Surveys                | Faible | Eleve  | 9
-```
+**`supabase/functions/generate-scorecard/index.ts`** :
+- Enrichir le prompt pour demander `suggestedQuestions`, `ratingRubric` (objet avec clés "1" à "5"), `redFlags` par critère
+- Ajouter un paramètre `interviewStage` au body pour contextualiser
 
-Les 3 premieres features (tags, guide times, pipeline reporting) sont realisables rapidement car elles s'appuient sur des donnees deja presentes dans l'app. Les scorecards et la comparaison apporteraient une vraie valeur collaborative.
+**`src/components/ats/ScorecardTab.tsx`** :
+- Étendre `Criterion` avec les nouveaux champs
+- Ajouter `EvaluationData.recommendation`, `summary`, `followUpNotes`, `interviewStage`
+- Sélecteur d'étape avant génération
+- UI expandée enrichie : rubrique, questions, red flags
+- Section verdict en bas avec recommandation + résumé + suivi
+
+**Migration SQL** :
+- Ajouter colonnes `recommendation text`, `summary text`, `follow_up_notes text`, `interview_stage text` à `candidate_evaluations`
 
