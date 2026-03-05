@@ -85,6 +85,7 @@ function Section({ title, icon: Icon, children, action, className }: {
 export function ATSDashboard({ candidates, stages }: ATSDashboardProps) {
   const navigate = useNavigate();
   const { data: scheduledMessages = [], isLoading: loadingMessages } = useTodayScheduledMessages();
+  const [expandedMessageId, setExpandedMessageId] = React.useState<string | null>(null);
 
   // ═══ KPIs ═══
   const kpis = useMemo(() => {
@@ -457,49 +458,79 @@ export function ATSDashboard({ candidates, stages }: ATSDashboardProps) {
                 <p className="text-xs text-muted-foreground">Aucun envoi prévu aujourd'hui</p>
               </div>
             ) : (
-              <div className="divide-y divide-border max-h-[320px] overflow-y-auto">
+              <div className="divide-y divide-border max-h-[400px] overflow-y-auto">
                 {scheduledMessages.map(msg => {
                   const time = format(parseISO(msg.scheduledAt), 'HH:mm');
                   const isPast = new Date(msg.scheduledAt) < new Date();
                   const isSent = msg.status === 'sent' || msg.status === 'executed';
+                  const isExpanded = expandedMessageId === msg.id;
+                  const hasContent = isSent && !!msg.messageContent;
                   return (
-                    <div key={msg.id} className="flex items-center gap-2.5 px-4 py-2.5 hover:bg-muted/50 transition-colors">
-                      {/* Time */}
-                      <span className={cn(
-                        "text-[11px] font-mono font-bold w-11 shrink-0",
-                        isSent ? "text-muted-foreground line-through" : isPast ? "text-destructive" : "text-foreground"
-                      )}>
-                        {time}
-                      </span>
-                      {/* Type badge */}
-                      <div className={cn(
-                        "w-5 h-5 flex items-center justify-center shrink-0 border",
-                        msg.type === 'inmail'
-                          ? "bg-brutal-accent/15 border-brutal-accent/40"
-                          : "bg-foreground/5 border-foreground/20"
-                      )}>
-                        {msg.type === 'inmail' ? (
-                          <Mail className="w-2.5 h-2.5" />
+                    <div key={msg.id}>
+                      <div
+                        className={cn(
+                          "flex items-center gap-2.5 px-4 py-2.5 hover:bg-muted/50 transition-colors",
+                          hasContent && "cursor-pointer"
+                        )}
+                        onClick={() => hasContent && setExpandedMessageId(isExpanded ? null : msg.id)}
+                      >
+                        {/* Time */}
+                        <span className={cn(
+                          "text-[11px] font-mono font-bold w-11 shrink-0",
+                          isSent ? "text-muted-foreground line-through" : isPast ? "text-destructive" : "text-foreground"
+                        )}>
+                          {time}
+                        </span>
+                        {/* Type badge */}
+                        <div className={cn(
+                          "w-5 h-5 flex items-center justify-center shrink-0 border",
+                          msg.type === 'inmail'
+                            ? "bg-brutal-accent/15 border-brutal-accent/40"
+                            : "bg-foreground/5 border-foreground/20"
+                        )}>
+                          {msg.type === 'inmail' ? (
+                            <Mail className="w-2.5 h-2.5" />
+                          ) : (
+                            <Zap className="w-2.5 h-2.5" />
+                          )}
+                        </div>
+                        {/* Content */}
+                        <div className="min-w-0 flex-1">
+                          <p className="text-xs font-medium truncate">{msg.recipientName || 'Profil LinkedIn'}</p>
+                          <p className="text-[9px] text-muted-foreground truncate">
+                            {msg.type === 'inmail' && msg.subject
+                              ? msg.subject
+                              : msg.sequenceName
+                                ? `${msg.sequenceName} · Étape ${(msg.stepOrder || 0) + 1}`
+                                : msg.recipientHeadline || '—'}
+                          </p>
+                        </div>
+                        {/* Status / Toggle */}
+                        {hasContent ? (
+                          <div className={cn(
+                            "w-5 h-5 flex items-center justify-center shrink-0 border border-foreground/20 transition-transform",
+                            isExpanded && "rotate-180"
+                          )}>
+                            <ArrowRight className="w-2.5 h-2.5 rotate-90" />
+                          </div>
+                        ) : isSent ? (
+                          <CheckCircle className="w-3 h-3 text-muted-foreground shrink-0" />
                         ) : (
-                          <Zap className="w-2.5 h-2.5" />
+                          <Clock className="w-3 h-3 text-muted-foreground shrink-0" />
                         )}
                       </div>
-                      {/* Content */}
-                      <div className="min-w-0 flex-1">
-                        <p className="text-xs font-medium truncate">{msg.recipientName || 'Profil LinkedIn'}</p>
-                        <p className="text-[9px] text-muted-foreground truncate">
-                          {msg.type === 'inmail' && msg.subject
-                            ? msg.subject
-                            : msg.sequenceName
-                              ? `${msg.sequenceName} · Étape ${(msg.stepOrder || 0) + 1}`
-                              : msg.recipientHeadline || '—'}
-                        </p>
-                      </div>
-                      {/* Status */}
-                      {isSent ? (
-                        <CheckCircle className="w-3 h-3 text-muted-foreground shrink-0" />
-                      ) : (
-                        <Clock className="w-3 h-3 text-muted-foreground shrink-0" />
+                      {/* Expanded message content */}
+                      {isExpanded && msg.messageContent && (
+                        <div className="px-4 pb-3 pt-0">
+                          <div className="ml-[4.5rem] border border-border bg-muted/30 p-3 text-[11px] leading-relaxed text-foreground whitespace-pre-wrap max-h-[200px] overflow-y-auto font-mono">
+                            {msg.subject && (
+                              <p className="font-bold mb-2 text-[10px] uppercase tracking-wider text-muted-foreground">
+                                {msg.subject}
+                              </p>
+                            )}
+                            {msg.messageContent}
+                          </div>
+                        </div>
                       )}
                     </div>
                   );
