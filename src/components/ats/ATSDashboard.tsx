@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
 import { ATSCandidate } from '@/hooks/useATSData';
+import { useTodayScheduledMessages, ScheduledMessage } from '@/hooks/useTodayScheduledMessages';
 import { useNavigate } from 'react-router-dom';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -10,7 +11,7 @@ import { fr } from 'date-fns/locale';
 import {
   TrendingUp, Users, MessageCircle, CheckCircle, Target, Clock,
   ArrowRight, Briefcase, UserCheck, AlertCircle, Star, Send,
-  Calendar, ExternalLink,
+  Calendar, ExternalLink, Mail, Zap,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -83,6 +84,7 @@ function Section({ title, icon: Icon, children, action, className }: {
 
 export function ATSDashboard({ candidates, stages }: ATSDashboardProps) {
   const navigate = useNavigate();
+  const { data: scheduledMessages = [], isLoading: loadingMessages } = useTodayScheduledMessages();
 
   // ═══ KPIs ═══
   const kpis = useMemo(() => {
@@ -427,6 +429,83 @@ export function ATSDashboard({ candidates, stages }: ATSDashboardProps) {
                 </div>
               )}
             </div>
+          </Section>
+
+
+          {/* Scheduled messages today */}
+          <Section
+            title={`Envois prévus (${scheduledMessages.length})`}
+            icon={Send}
+            className="border-t-0"
+            action={
+              <button
+                onClick={() => navigate('/outreach')}
+                className="text-[10px] text-muted-foreground uppercase tracking-wider hover:text-foreground transition-colors flex items-center gap-1"
+              >
+                Outreach <ArrowRight className="w-3 h-3" />
+              </button>
+            }
+          >
+            {loadingMessages ? (
+              <div className="p-4 space-y-2">
+                {[1, 2, 3].map(i => (
+                  <div key={i} className="h-10 bg-muted animate-pulse" />
+                ))}
+              </div>
+            ) : scheduledMessages.length === 0 ? (
+              <div className="p-4 text-center">
+                <p className="text-xs text-muted-foreground">Aucun envoi prévu aujourd'hui</p>
+              </div>
+            ) : (
+              <div className="divide-y divide-border max-h-[320px] overflow-y-auto">
+                {scheduledMessages.map(msg => {
+                  const time = format(parseISO(msg.scheduledAt), 'HH:mm');
+                  const isPast = new Date(msg.scheduledAt) < new Date();
+                  const isSent = msg.status === 'sent' || msg.status === 'executed';
+                  return (
+                    <div key={msg.id} className="flex items-center gap-2.5 px-4 py-2.5 hover:bg-muted/50 transition-colors">
+                      {/* Time */}
+                      <span className={cn(
+                        "text-[11px] font-mono font-bold w-11 shrink-0",
+                        isSent ? "text-muted-foreground line-through" : isPast ? "text-destructive" : "text-foreground"
+                      )}>
+                        {time}
+                      </span>
+                      {/* Type badge */}
+                      <div className={cn(
+                        "w-5 h-5 flex items-center justify-center shrink-0 border",
+                        msg.type === 'inmail'
+                          ? "bg-brutal-accent/15 border-brutal-accent/40"
+                          : "bg-foreground/5 border-foreground/20"
+                      )}>
+                        {msg.type === 'inmail' ? (
+                          <Mail className="w-2.5 h-2.5" />
+                        ) : (
+                          <Zap className="w-2.5 h-2.5" />
+                        )}
+                      </div>
+                      {/* Content */}
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs font-medium truncate">{msg.recipientName || 'Profil LinkedIn'}</p>
+                        <p className="text-[9px] text-muted-foreground truncate">
+                          {msg.type === 'inmail' && msg.subject
+                            ? msg.subject
+                            : msg.sequenceName
+                              ? `${msg.sequenceName} · Étape ${(msg.stepOrder || 0) + 1}`
+                              : msg.recipientHeadline || '—'}
+                        </p>
+                      </div>
+                      {/* Status */}
+                      {isSent ? (
+                        <CheckCircle className="w-3 h-3 text-muted-foreground shrink-0" />
+                      ) : (
+                        <Clock className="w-3 h-3 text-muted-foreground shrink-0" />
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </Section>
 
           {/* Top scored candidates */}
