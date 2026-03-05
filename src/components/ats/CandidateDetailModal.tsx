@@ -1135,8 +1135,8 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
 
     {/* Mobile profile sheet — rendered outside Dialog to avoid z-index/overflow issues */}
     {isSplitMode && (
-      <Sheet open={mobileProfileOpen} onOpenChange={setMobileProfileOpen}>
-        <SheetContent side="bottom" className="h-[80dvh] rounded-none border-foreground p-0 flex flex-col z-[3000]">
+      <Sheet open={mobileProfileOpen} onOpenChange={setMobileProfileOpen} modal={false}>
+        <SheetContent side="bottom" className="h-[55dvh] rounded-none border-t-2 border-foreground p-0 flex flex-col z-[2600] shadow-[0_-8px_30px_rgba(0,0,0,0.3)]">
           <div className="px-4 py-3 border-b border-foreground/15 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <User className="w-4 h-4" />
