@@ -1,48 +1,85 @@
 
 
-## Plan: Add a "Dashboard" tab to the ATS page
+# Analyse comparative Teamtailor vs Konekt ATS
 
-Inspired by SaaS tools like Lemlist, Teamtailor, and recruitment analytics dashboards, I'll create a rich analytics dashboard as the first tab in the ATS view.
+## Features Teamtailor que Konekt possede deja
+- Kanban / pipeline personnalisable
+- Scoring / matching candidat-job (AI)
+- Sourcing LinkedIn + extension
+- Sequences d'outreach automatisees
+- Notes et rappels sur candidats
+- Dashboard analytics (funnel, activite, KPIs)
+- Nurturing / relance candidats passifs
+- Inbox messages
+- Filtres avances et recherche
+- Integration Notion / Airtable (equivalent des integrations tierces)
 
-### Dashboard Layout (brutal design, responsive)
+---
+
+## Features manquantes interessantes a integrer
+
+### 1. Scorecards d'evaluation structurees
+Teamtailor permet de creer des grilles d'evaluation (scorecards) avec criteres ponderes pour noter les candidats en entretien. Konekt a un scoring AI automatique mais pas de grille manuelle collaborative.
+
+**Implementation**: Ajouter un onglet "Evaluation" dans le CandidateDetailModal avec des criteres configurables par poste, notation 1-5 par critere, et calcul d'un score moyen. Stockage dans une table `candidate_evaluations`.
+
+### 2. Comparaison de candidats cote a cote
+Pouvoir selectionner 2-4 candidats et les comparer sur un meme ecran (scoring, experience, competences, notes).
+
+**Implementation**: Bouton "Comparer" dans la vue Table/Kanban, ouvre un modal avec colonnes paralleles par candidat. Donnees deja disponibles via `useATSData`.
+
+### 3. Guide times / Alertes de stagnation
+Definir un temps max par etape du pipeline. Si un candidat depasse ce delai, alerte visuelle.
+
+**Implementation**: Config par stage (ex: "Contacte" = 5 jours max). Dans le Kanban/Table, badge rouge si `daysSinceStageChange > guideTime`. La donnee `lastActivity` existe deja. Table `stage_guide_times` pour stocker les configs.
+
+### 4. Smart Schedule (planification d'entretiens)
+Integration calendrier pour proposer des creneaux aux candidats automatiquement. Teamtailor genere un lien avec les dispos du recruteur.
+
+**Implementation**: Konekt a deja `calendly_link` sur les projets. Enrichir avec un bouton "Planifier entretien" dans le detail candidat qui genere un lien Calendly pre-rempli ou un mini-scheduler interne.
+
+### 5. Partage de profil candidat (lien externe)
+Generer un lien securise pour partager un profil candidat avec un client ou hiring manager externe, sans acces a l'ATS.
+
+**Implementation**: Edge function qui genere un token unique, page publique `/shared/candidate/:token` avec les infos selectionnees (nom, headline, scoring, notes filtrees). Table `candidate_shares`.
+
+### 6. Templates de messages
+Bibliotheque de modeles de messages reutilisables (rejection, relance, offre) avec variables dynamiques.
+
+**Implementation**: Table `message_templates` avec `name`, `category`, `subject_template`, `body_template`, `variables`. Selector dans le compose d'InMail et les sequences. Variables type `{{candidate_name}}`, `{{job_title}}`.
+
+### 7. NPS / Surveys candidats
+Envoyer un court sondage aux candidats apres le process pour mesurer leur experience.
+
+**Implementation**: Plus complexe, necessite un formulaire public. Pourrait etre simplifie avec un lien Google Forms ou Typeform integre.
+
+### 8. Pipeline reporting avance
+Rapport de conversion par etape : combien passent de "Contacte" a "Repondu", de "Repondu" a "Pre-qualif", etc. Temps moyen par etape.
+
+**Implementation**: Deja partiellement dans le Dashboard (funnel). Ajouter les taux de conversion inter-etapes et le temps moyen par etape. Calcul client-side depuis `candidates`.
+
+### 9. Tags candidats
+Systeme de tags libres sur les candidats pour filtrer/organiser (ex: "urgent", "top profil", "a recontacter").
+
+**Implementation**: Table `candidate_tags` ou champ `tags text[]` sur `job_candidate_status`. Filtre dans ATSFilters. UI chips dans les cards.
+
+---
+
+## Priorites recommandees (impact vs effort)
 
 ```text
-Desktop (2-col grid):
-┌─────────────────────────────┬──────────────────────────┐
-│  Pipeline Funnel (BarChart) │  Source Breakdown (Pie)  │
-├─────────────────────────────┼──────────────────────────┤
-│  Activity Over Time (Area)  │  Top Jobs (horizontal)   │
-├─────────────────────────────┴──────────────────────────┤
-│  Recent Activity Feed (latest stage changes)           │
-└────────────────────────────────────────────────────────┘
-
-Mobile: single column, stacked
+Feature                    | Impact | Effort | Priorite
+---------------------------|--------|--------|----------
+Tags candidats             | Haut   | Faible | 1
+Guide times / stagnation   | Haut   | Faible | 2
+Pipeline reporting avance  | Haut   | Moyen  | 3
+Comparaison candidats      | Moyen  | Moyen  | 4
+Scorecards d'evaluation    | Haut   | Moyen  | 5
+Templates de messages      | Moyen  | Moyen  | 6
+Partage profil externe     | Moyen  | Eleve  | 7
+Smart Schedule enrichi     | Moyen  | Eleve  | 8
+NPS Surveys                | Faible | Eleve  | 9
 ```
 
-### What gets built
-
-1. **New component `src/components/ats/ATSDashboard.tsx`**
-   - Receives `candidates: ATSCandidate[]` and `stages: ATS_STAGES`
-   - Uses `recharts` (already installed) with the project's `ChartContainer`/`ChartTooltip` wrappers
-   - **Pipeline Funnel**: Horizontal bar chart showing count per stage (Nouveau → Gagné), ordered by pipeline progression, with stage colors
-   - **Source Breakdown**: Donut/pie chart showing candidates by source (local, sequence, inmail)
-   - **Activity Over Time**: Area chart grouping candidates by `createdAt` date (last 30 days), showing new candidates added per day
-   - **Top Jobs**: Horizontal bar chart of top 5 jobs by candidate count
-   - **Recent Activity**: Simple list of the 10 most recent candidates with stage badge and timestamp
-   - **KPI Cards row** at top: Total, Response Rate, Conversion Rate, Avg time in pipeline (computed from data)
-
-2. **Update `src/pages/ATS.tsx`**
-   - Add `dashboard` to the `viewTabs` array with a `BarChart3` icon, as the **first** tab
-   - Default `activeView` to `'dashboard'`
-   - Add `TabsContent` for dashboard view rendering `ATSDashboard`
-   - Update the type for `activeView` state
-
-3. **Design system consistency**
-   - All cards use `border border-foreground` brutal style (no rounded corners, no shadows)
-   - Chart colors use the existing `brutal-accent` and foreground palette
-   - Responsive: 2-col grid on `md:`, single col on mobile
-   - Compact spacing matching the existing ATS brutal aesthetic
-
-### Data source
-All data is derived client-side from the existing `candidates` array (already loaded by `useATSData`). No new API calls or database queries needed.
+Les 3 premieres features (tags, guide times, pipeline reporting) sont realisables rapidement car elles s'appuient sur des donnees deja presentes dans l'app. Les scorecards et la comparaison apporteraient une vraie valeur collaborative.
 
