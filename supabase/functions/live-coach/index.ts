@@ -30,9 +30,9 @@ serve(async (req) => {
       );
     }
 
-    // Truncate transcript to last ~3000 chars for speed
-    const truncatedTranscript = full_transcript.length > 3000
-      ? '...' + full_transcript.slice(-3000)
+    // Truncate transcript to last ~2000 chars for speed
+    const truncatedTranscript = full_transcript.length > 2000
+      ? '...' + full_transcript.slice(-2000)
       : full_transcript;
 
     const pendingSignalsContext = pending_signals?.length
@@ -81,28 +81,54 @@ IMPORTANT : Sois CONCIS et RAPIDE. Réponds uniquement en JSON valide.`;
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash-lite",
+        model: "google/gemini-3-flash-preview",
         max_tokens: 512,
         messages: [
           { role: "system", content: systemPrompt },
           {
             role: "user",
-            content: `CALL EN COURS (${elapsed_seconds}s écoulées)
-
-TRANSCRIPTION RÉCENTE :
-${truncatedTranscript}
-
-DERNIER SEGMENT :
-${latest_chunk}
-
-Retourne UNIQUEMENT ce JSON (pas de texte avant/après) :
-{
-  "resolved_signals": [],
-  "dig_deeper": [],
-  "criteria_updates": {}
-}`,
+            content: `CALL EN COURS (${elapsed_seconds}s écoulées)\n\nTRANSCRIPTION RÉCENTE :\n${truncatedTranscript}\n\nDERNIER SEGMENT :\n${latest_chunk}`,
           },
         ],
+        tools: [
+          {
+            type: "function",
+            function: {
+              name: "coach_analysis",
+              description: "Return live coaching analysis for the ongoing interview",
+              parameters: {
+                type: "object",
+                properties: {
+                  resolved_signals: {
+                    type: "array",
+                    items: { type: "string" },
+                    description: "Signals from pending_signals that have been addressed"
+                  },
+                  dig_deeper: {
+                    type: "array",
+                    items: {
+                      type: "object",
+                      properties: {
+                        signal: { type: "string" },
+                        question: { type: "string" }
+                      },
+                      required: ["signal", "question"],
+                      additionalProperties: false
+                    },
+                    description: "0-3 items worth digging into"
+                  },
+                  criteria_updates: {
+                    type: "object",
+                    description: "Map of criterion ID to update object with covered, verbatim, auto_score, sentiment fields"
+                  }
+                },
+                required: ["resolved_signals", "dig_deeper", "criteria_updates"],
+                additionalProperties: false
+              }
+            }
+          }
+        ],
+        tool_choice: { type: "function", function: { name: "coach_analysis" } },
       }),
     });
 
@@ -113,32 +139,27 @@ Retourne UNIQUEMENT ce JSON (pas de texte avant/après) :
     }
 
     const aiRes = await response.json();
-    const text = aiRes.choices?.[0]?.message?.content || "{}";
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
-    let analysis = { resolved_signals: [], dig_deeper: [], criteria_updates: {} };
-    if (jsonMatch) {
+    let analysis = { resolved_signals: [] as string[], dig_deeper: [] as any[], criteria_updates: {} };
+
+    // Try tool_calls first (structured output), fall back to content parsing
+    const toolCall = aiRes.choices?.[0]?.message?.tool_calls?.[0];
+    if (toolCall?.function?.arguments) {
       try {
-        analysis = JSON.parse(jsonMatch[0]);
+        analysis = JSON.parse(toolCall.function.arguments);
       } catch {
-        // Attempt repair on truncated/malformed JSON
-        let cleaned = jsonMatch[0]
-          .replace(/,\s*}/g, "}")
-          .replace(/,\s*]/g, "]")
-          .replace(/[\x00-\x1F\x7F]/g, "");
-        // Balance braces/brackets
-        let braces = 0, brackets = 0;
-        for (const c of cleaned) {
-          if (c === '{') braces++;
-          if (c === '}') braces--;
-          if (c === '[') brackets++;
-          if (c === ']') brackets--;
-        }
-        while (brackets > 0) { cleaned += ']'; brackets--; }
-        while (braces > 0) { cleaned += '}'; braces--; }
+        console.warn("Tool call JSON parse failed, trying content fallback");
+      }
+    }
+    
+    // Fallback: parse from content if tool_calls didn't work
+    if (!toolCall?.function?.arguments || !analysis.criteria_updates) {
+      const text = aiRes.choices?.[0]?.message?.content || "{}";
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
         try {
-          analysis = JSON.parse(cleaned);
-        } catch (e2) {
-          console.warn("JSON repair failed, using defaults:", e2);
+          analysis = JSON.parse(jsonMatch[0]);
+        } catch {
+          console.warn("Content JSON parse also failed, using defaults");
         }
       }
     }
