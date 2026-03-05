@@ -21,6 +21,7 @@ import {
   Eye,
   MessageSquare,
   Activity,
+  Zap,
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -96,6 +97,30 @@ export const SequencesList: React.FC<SequencesListProps> = ({
   const [showActivityLog, setShowActivityLog] = useState(false);
   const [showGlobalAnalytics, setShowGlobalAnalytics] = useState(false);
   const [analyticsSequence, setAnalyticsSequence] = useState<SequenceWithStats | null>(null);
+  const [forceRescheduling, setForceRescheduling] = useState(false);
+
+  const handleForceReschedule = async () => {
+    setForceRescheduling(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('process-sequences', {
+        body: { action: 'force_reschedule' },
+      });
+      if (error) throw error;
+      const count = data?.rescheduled || 0;
+      if (count > 0) {
+        toast.success(`${count} action(s) avancée(s) à maintenant — elles partent dans les prochaines minutes !`);
+        // Trigger process immediately after reschedule
+        await supabase.functions.invoke('process-sequences', { body: { action: 'process', force: true } });
+      } else {
+        toast.info('Aucune action en attente à avancer pour aujourd\'hui');
+      }
+    } catch (err) {
+      console.error('Force reschedule error:', err);
+      toast.error('Erreur lors de l\'accélération');
+    } finally {
+      setForceRescheduling(false);
+    }
+  };
 
   const fetchSequences = async () => {
     try {
@@ -448,6 +473,15 @@ export const SequencesList: React.FC<SequencesListProps> = ({
             <BarChart3 className="w-3.5 h-3.5 relative z-10" />
             <span className="hidden sm:inline relative z-10">Analytics</span>
             <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
+          </button>
+          <button 
+            onClick={handleForceReschedule}
+            disabled={forceRescheduling}
+            className="relative overflow-hidden flex items-center gap-1.5 h-[34px] px-3 sm:px-4 text-[11px] sm:text-xs font-medium uppercase tracking-wider border border-foreground border-l-0 bg-brutal-accent text-foreground group shrink-0 disabled:opacity-50"
+            title="Envoyer toutes les actions du jour maintenant"
+          >
+            <Zap className={cn("w-3.5 h-3.5 relative z-10", forceRescheduling && "animate-pulse")} />
+            <span className="hidden sm:inline relative z-10">{forceRescheduling ? 'En cours...' : 'Envoyer tout'}</span>
           </button>
           <button 
             onClick={() => setShowActivityLog(true)}

@@ -86,6 +86,8 @@ serve(async (req) => {
         return await handleCheckTimeouts(supabase);
       case 'check_wait_events':
         return await handleCheckWaitEvents(supabase);
+      case 'force_reschedule':
+        return await handleForceReschedule(supabase);
       default:
         return new Response(JSON.stringify({ error: 'Unknown action' }), {
           status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -971,6 +973,40 @@ async function checkStepCondition(conditionType: string, accountId: string, prof
   }
 }
 
+// Force reschedule: move all today's scheduled executions to NOW so they get picked up immediately
+async function handleForceReschedule(supabase: any) {
+  const now = new Date();
+  const tz = 'Europe/Paris';
+  
+  // Get today's end in Paris timezone
+  const todayEnd = new Date(now);
+  todayEnd.setDate(todayEnd.getDate() + 1);
+  setLocalHour(todayEnd, tz, 0, 0);
+  
+  // Reschedule all 'scheduled' executions that are due today but haven't been processed yet
+  const { data: updated, error } = await supabase
+    .from('sequence_step_executions')
+    .update({ scheduled_at: now.toISOString() })
+    .eq('status', 'scheduled')
+    .gt('scheduled_at', now.toISOString())
+    .lte('scheduled_at', todayEnd.toISOString())
+    .select('id');
+  
+  if (error) {
+    console.error('[force_reschedule] Error:', error);
+    return new Response(JSON.stringify({ success: false, error: error.message }), {
+      status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+  }
+  
+  const count = updated?.length || 0;
+  console.log(`[force_reschedule] Rescheduled ${count} executions to now`);
+  
+  return new Response(JSON.stringify({ success: true, rescheduled: count }), {
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  });
+}
+
 // deno-lint-ignore no-explicit-any
 async function scheduleNextStep(supabase: any, enrollment: any, currentStepOrder: number, forceBranchStepId?: string) {
   let nextStep;
@@ -1038,8 +1074,8 @@ async function scheduleNextStep(supabase: any, enrollment: any, currentStepOrder
     + (nextStep.delay_hours || 0) * 3600000
     + (nextStep.delay_minutes || 0) * 60000
   );
-  // Add human-like jitter: 0 to +10 minutes (never negative, to avoid going before preferred_hour_start)
-  scheduledAt.setTime(scheduledAt.getTime() + Math.floor(Math.random() * 10) * 60000);
+  // Add human-like jitter: 0 to +3 minutes (never negative, to avoid going before preferred_hour_start)
+  scheduledAt.setTime(scheduledAt.getTime() + Math.floor(Math.random() * 3) * 60000);
   
   // Use timezone-aware hour checking for preferred hours and weekday skipping
   const tz = enrollment.user_timezone || 'Europe/Paris';
