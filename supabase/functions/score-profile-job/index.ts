@@ -942,7 +942,16 @@ async function maybeEnrichProfile(
     const data = await response.json();
     const dataKeys = Object.keys(data).join(', ');
     const enrichedExp = (data.work_experience || data.positions || data.experiences || []).slice(0, 5);
-    console.info(`[enrichment] API response for ${profile.name}: keys=[${dataKeys}], work_exp=${enrichedExp.length}, about=${!!data.about || !!data.summary}`);
+    const hasSummaryData = !!(data.about || data.summary);
+    console.info(`[enrichment] API response for ${profile.name}: keys=[${dataKeys}], work_exp=${enrichedExp.length}, about=${hasSummaryData}`);
+    if (data.summary) console.info(`[enrichment] summary found (${data.summary.length} chars): ${data.summary.slice(0, 120)}...`);
+    if (data.about) console.info(`[enrichment] about found (${data.about.length} chars): ${data.about.slice(0, 120)}...`);
+    if (data.throttled_sections) console.warn(`[enrichment] THROTTLED sections for ${profile.name}: ${JSON.stringify(data.throttled_sections)}`);
+    // Log first exp description for debug
+    if (enrichedExp.length > 0) {
+      const firstDesc = enrichedExp[0]?.description;
+      console.info(`[enrichment] First exp desc: ${firstDesc ? `${firstDesc.length} chars - "${firstDesc.slice(0, 100)}"` : 'NONE'}`);
+    }
 
     if (enrichedExp.length > 0) {
       const formatDuration = (m: number) => {
