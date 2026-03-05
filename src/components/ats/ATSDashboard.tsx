@@ -14,6 +14,10 @@ import {
   Calendar, ExternalLink, Mail, Zap,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import illustFunnel from '@/assets/illust-funnel.png';
+import illustRocket from '@/assets/illust-rocket.png';
+import illustInbox from '@/assets/illust-inbox.png';
+import illustTrophy from '@/assets/illust-trophy.png';
 
 interface ATSDashboardProps {
   candidates: ATSCandidate[];
@@ -224,37 +228,46 @@ export function ATSDashboard({ candidates, stages }: ATSDashboardProps) {
 
   return (
     <div className="space-y-4">
-      {/* ─── Hero KPI Strip ─── */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-0">
-        {[
-          { label: 'Candidats', value: kpis.total, icon: Users, accent: false },
-          { label: "Aujourd'hui", value: `+${todayCount}`, icon: TrendingUp, accent: todayCount > 0 },
-          { label: 'Contactés', value: kpis.contacted, icon: Send, accent: false },
-          { label: 'Taux réponse', value: `${kpis.responseRate}%`, icon: MessageCircle, accent: kpis.responseRate > 20 },
-          { label: 'En process', value: kpis.inProcess, icon: Briefcase, accent: false },
-          { label: 'Gagnés', value: kpis.won, icon: CheckCircle, accent: kpis.won > 0 },
-        ].map((kpi, i) => {
-          const Icon = kpi.icon;
-          return (
-            <div
-              key={kpi.label}
-              className={cn(
-                "border border-foreground p-3 sm:p-4 flex flex-col gap-1",
-                i > 0 && "sm:border-l-0",
-                i % 2 !== 0 && "max-sm:border-l-0",
-                i >= 2 && "max-sm:border-t-0",
-                i >= 3 && "max-sm:border-t-0 sm:border-t-0 lg:border-t",
-                kpi.accent ? "bg-brutal-accent/10" : "bg-background",
-              )}
-            >
-              <div className="flex items-center gap-1.5">
-                <Icon className="w-3 h-3 text-muted-foreground" />
-                <span className="text-[9px] uppercase tracking-wider text-muted-foreground font-medium truncate">{kpi.label}</span>
+      {/* ─── Hero KPI Strip with decorative illustration ─── */}
+      <div className="relative overflow-hidden">
+        {/* Decorative rocket illustration */}
+        <img
+          src={illustRocket}
+          alt=""
+          className="absolute -right-4 -top-4 w-28 h-28 sm:w-36 sm:h-36 opacity-[0.06] pointer-events-none select-none object-contain"
+          aria-hidden="true"
+        />
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-0 relative z-10">
+          {[
+            { label: 'Candidats', value: kpis.total, icon: Users, accent: false },
+            { label: "Aujourd'hui", value: `+${todayCount}`, icon: TrendingUp, accent: todayCount > 0 },
+            { label: 'Contactés', value: kpis.contacted, icon: Send, accent: false },
+            { label: 'Taux réponse', value: `${kpis.responseRate}%`, icon: MessageCircle, accent: kpis.responseRate > 20 },
+            { label: 'En process', value: kpis.inProcess, icon: Briefcase, accent: false },
+            { label: 'Gagnés', value: kpis.won, icon: CheckCircle, accent: kpis.won > 0 },
+          ].map((kpi, i) => {
+            const Icon = kpi.icon;
+            return (
+              <div
+                key={kpi.label}
+                className={cn(
+                  "border border-foreground p-3 sm:p-4 flex flex-col gap-1",
+                  i > 0 && "sm:border-l-0",
+                  i % 2 !== 0 && "max-sm:border-l-0",
+                  i >= 2 && "max-sm:border-t-0",
+                  i >= 3 && "max-sm:border-t-0 sm:border-t-0 lg:border-t",
+                  kpi.accent ? "bg-brutal-accent/10" : "bg-background",
+                )}
+              >
+                <div className="flex items-center gap-1.5">
+                  <Icon className="w-3 h-3 text-muted-foreground" />
+                  <span className="text-[9px] uppercase tracking-wider text-muted-foreground font-medium truncate">{kpi.label}</span>
+                </div>
+                <span className="text-xl sm:text-2xl font-bold font-mono tracking-tight">{kpi.value}</span>
               </div>
-              <span className="text-xl sm:text-2xl font-bold font-mono tracking-tight">{kpi.value}</span>
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
       </div>
 
       {/* ─── Main Grid ─── */}
@@ -301,9 +314,16 @@ export function ATSDashboard({ candidates, stages }: ATSDashboardProps) {
 
           {/* Pipeline funnel */}
           <Section title="Pipeline" icon={TrendingUp} className={cn("lg:border-r-0", urgentCandidates.length === 0 ? "" : "border-t-0")}>
-            <div className="p-4">
+            <div className="p-4 relative">
+              {/* Decorative funnel illustration */}
+              <img
+                src={illustFunnel}
+                alt=""
+                className="absolute right-2 top-1 w-16 h-16 opacity-[0.07] pointer-events-none select-none object-contain"
+                aria-hidden="true"
+              />
               {/* Visual pipeline bar */}
-              <div className="flex h-8 mb-4 border border-foreground overflow-hidden">
+              <div className="flex h-8 mb-4 border border-foreground overflow-hidden relative z-10">
                 {funnelData.filter(d => d.count > 0).map((d, i) => {
                   const total = funnelData.reduce((s, x) => s + x.count, 0);
                   const pct = total > 0 ? (d.count / total) * 100 : 0;
@@ -325,7 +345,7 @@ export function ATSDashboard({ candidates, stages }: ATSDashboardProps) {
                 })}
               </div>
               {/* Legend */}
-              <div className="flex flex-wrap gap-x-4 gap-y-1">
+              <div className="flex flex-wrap gap-x-4 gap-y-1 relative z-10">
                 {funnelData.map(d => (
                   <div key={d.name} className="flex items-center gap-1.5">
                     <div className="w-2 h-2 border border-foreground/30" style={{ backgroundColor: d.fill }} />
@@ -457,7 +477,8 @@ export function ATSDashboard({ candidates, stages }: ATSDashboardProps) {
                 ))}
               </div>
             ) : scheduledMessages.length === 0 ? (
-              <div className="p-4 text-center">
+              <div className="p-6 flex flex-col items-center gap-2">
+                <img src={illustInbox} alt="" className="w-14 h-14 opacity-15" aria-hidden="true" />
                 <p className="text-xs text-muted-foreground">Aucun envoi prévu aujourd'hui</p>
               </div>
             ) : (
@@ -545,7 +566,10 @@ export function ATSDashboard({ candidates, stages }: ATSDashboardProps) {
           {/* Top scored candidates */}
           <Section title="Meilleurs profils" icon={Star} className="border-t-0">
             {topScored.length === 0 ? (
-              <p className="text-xs text-muted-foreground p-4">Aucun score</p>
+              <div className="p-6 flex flex-col items-center gap-2">
+                <img src={illustTrophy} alt="" className="w-12 h-12 opacity-10" aria-hidden="true" />
+                <p className="text-xs text-muted-foreground">Aucun score</p>
+              </div>
             ) : (
               <div className="divide-y divide-border">
                 {topScored.map(c => (
