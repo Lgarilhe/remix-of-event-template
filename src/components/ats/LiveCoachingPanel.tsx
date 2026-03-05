@@ -1,8 +1,6 @@
-import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { Mic, Square, FileText, AlertTriangle, Lightbulb, Info, Copy, CheckCircle2, Loader2, X } from 'lucide-react';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import { Badge } from '@/components/ui/badge';
+import { Mic, Square, FileText, Copy, CheckCircle2, Loader2, X, Search, CircleDot, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
@@ -14,11 +12,9 @@ interface Criterion {
   weight: number;
 }
 
-interface CoachAlert {
-  type: 'danger' | 'warning' | 'info' | 'suggestion';
-  message: string;
-  why?: string;
-  timestamp: number;
+interface DigDeeperItem {
+  signal: string;
+  question: string;
 }
 
 interface CriterionUpdate {
@@ -75,7 +71,7 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
   const [segments, setSegments] = useState<TranscriptSegment[]>([]);
   const [interimText, setInterimText] = useState('');
   const [interimSpeaker, setInterimSpeaker] = useState<number | null>(null);
-  const [coachFeed, setCoachFeed] = useState<CoachAlert[]>([]);
+  const [digDeeper, setDigDeeper] = useState<DigDeeperItem[]>([]);
   const [criteriaStatus, setCriteriaStatus] = useState<Record<string, CriterionUpdate>>({});
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -89,13 +85,13 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
   const callStartRef = useRef(0);
   const pendingFinalTextRef = useRef('');
   const lastCoachCallRef = useRef(0);
-  const alertsLogRef = useRef<CoachAlert[]>([]);
+  const alertsLogRef = useRef<DigDeeperItem[]>([]);
   const transcriptEndRef = useRef<HTMLDivElement>(null);
   const lastSpeakerRef = useRef<number | null>(null);
 
   const speakerLabel = (speaker: number) => speaker === 0 ? 'Recruteur' : 'Candidat';
   const speakerColor = (speaker: number) => speaker === 0 ? 'text-blue-600' : 'text-emerald-600';
-  const COACH_INTERVAL_MS = 15000;
+  const COACH_INTERVAL_MS = 30000;
 
   // Auto-scroll transcript within its own ScrollArea only
   useEffect(() => {
@@ -140,19 +136,12 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
 
       if (!data) return;
 
-      if (data.alerts?.length) {
-        const newAlerts = data.alerts.map((a: any) => ({ ...a, timestamp: Date.now() }));
-        setCoachFeed(prev => [...newAlerts, ...prev]);
-        alertsLogRef.current = [...newAlerts, ...alertsLogRef.current];
-      }
-      if (data.suggestions?.length) {
-        const newSuggestions = data.suggestions.map((s: any) => ({
-          type: 'suggestion' as const,
-          message: s.question,
-          why: s.why,
-          timestamp: Date.now(),
-        }));
-        setCoachFeed(prev => [...newSuggestions, ...prev]);
+      // dig_deeper replaces alerts + suggestions
+      if (data.dig_deeper) {
+        setDigDeeper(data.dig_deeper);
+        if (data.dig_deeper.length > 0) {
+          alertsLogRef.current = [...data.dig_deeper, ...alertsLogRef.current];
+        }
       }
       if (data.criteria_updates) {
         setCriteriaStatus(prev => {
@@ -267,11 +256,11 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
             setInterimText('');
             setInterimSpeaker(null);
 
-            // If speech_final (end of utterance) or enough time passed, send to coach
+            // Only trigger on UtteranceEnd or timer — removed speech_final trigger
+            // Timer-based trigger still here as fallback
             const now = Date.now();
-            const isSpeechFinal = data.speech_final === true;
             if (
-              (isSpeechFinal || now - lastCoachCallRef.current > COACH_INTERVAL_MS) &&
+              now - lastCoachCallRef.current > COACH_INTERVAL_MS &&
               pendingFinalTextRef.current.trim()
             ) {
               lastCoachCallRef.current = now;
@@ -407,29 +396,12 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
     toast.success('Copié !');
   };
 
-  const alertIcon = (type: string) => {
-    switch (type) {
-      case 'danger': return <AlertTriangle className="w-3.5 h-3.5 text-red-500 shrink-0" />;
-      case 'warning': return <AlertTriangle className="w-3.5 h-3.5 text-amber-500 shrink-0" />;
-      case 'suggestion': return <Lightbulb className="w-3.5 h-3.5 text-blue-500 shrink-0" />;
-      default: return <Info className="w-3.5 h-3.5 text-muted-foreground shrink-0" />;
-    }
-  };
-
-  const alertBg = (type: string) => {
-    switch (type) {
-      case 'danger': return 'border-red-300 bg-red-50';
-      case 'warning': return 'border-amber-300 bg-amber-50';
-      case 'suggestion': return 'border-blue-300 bg-blue-50';
-      default: return 'border-foreground/15 bg-foreground/[0.02]';
-    }
-  };
-
   const coveredCount = Object.values(criteriaStatus).filter(c => c.covered).length;
-  const elapsedMinutes = callStartRef.current ? Math.round((Date.now() - callStartRef.current) / 60000) : 0;
+
+  const [expandedCriterion, setExpandedCriterion] = useState<string | null>(null);
 
   return (
-    <div className="border-2 border-foreground/20 bg-foreground/[0.02] mb-4 max-h-[320px] sm:max-h-[420px] flex flex-col overflow-hidden">
+    <div className="border-2 border-foreground/20 bg-foreground/[0.02] mb-4 max-h-[420px] flex flex-col overflow-hidden">
       {/* Header */}
       <div className="flex items-center justify-between p-3 border-b border-foreground/10">
         <div className="flex items-center gap-2">
@@ -440,7 +412,7 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
             </span>
           )}
           <span className="text-[11px] font-bold uppercase tracking-wider text-foreground">
-            {isRecording ? `Live — ${coveredCount}/${criteria.length} critères détectés` : callStopped ? 'Session terminée' : 'Coach Live'}
+            {isRecording ? `Live — ${coveredCount}/${criteria.length} critères` : callStopped ? 'Session terminée' : 'Coach Live'}
           </span>
           {isAnalyzing && <Loader2 className="w-3 h-3 animate-spin text-muted-foreground" />}
         </div>
@@ -470,55 +442,73 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
         </div>
       </div>
 
-      {/* Content grid */}
+      {/* Dashboard: Checklist + Dig Deeper */}
       {(isRecording || callStopped) && !report && (
-        <div className="flex-1 min-h-0">
-
-          {/* Coach feed */}
-          <ScrollArea className="h-full">
-            <div className="p-3">
-              <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-2">Feed Coach</p>
-              {coachFeed.length === 0 ? (
-                <p className="text-[10px] text-muted-foreground italic">Les suggestions apparaîtront ici pendant l'entretien...</p>
-              ) : (
-                <div className="space-y-1.5">
-                  {coachFeed.map((item, i) => (
-                    <div key={i} className={cn("flex items-start gap-2 px-2 py-1.5 border text-[10px]", alertBg(item.type))}>
-                      {alertIcon(item.type)}
-                      <div className="flex-1 min-w-0">
-                        <p className="leading-relaxed">{item.message}</p>
-                        {item.why && <p className="text-muted-foreground mt-0.5 italic">{item.why}</p>}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
+        <div className="flex-1 min-h-0 overflow-y-auto p-3 space-y-3">
+          {/* Criteria checklist */}
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-2">Checklist critères</p>
+            <div className="grid grid-cols-2 gap-1">
+              {criteria.map(c => {
+                const status = criteriaStatus[c.id];
+                const isExpanded = expandedCriterion === c.id;
+                return (
+                  <button
+                    key={c.id}
+                    onClick={() => status?.covered && setExpandedCriterion(isExpanded ? null : c.id)}
+                    className={cn(
+                      "flex items-center gap-1.5 px-2 py-1.5 border text-[9px] font-medium text-left transition-all",
+                      !status?.covered && "border-foreground/10 bg-foreground/[0.02] text-muted-foreground",
+                      status?.covered && status.signal === 'positive' && "border-emerald-300 bg-emerald-50 text-emerald-700",
+                      status?.covered && status.signal === 'negative' && "border-red-300 bg-red-50 text-red-700",
+                      status?.covered && status.signal === 'neutral' && "border-amber-300 bg-amber-50 text-amber-700",
+                      status?.covered && "cursor-pointer",
+                    )}
+                  >
+                    {!status?.covered ? (
+                      <CircleDot className="w-3 h-3 shrink-0 opacity-30" />
+                    ) : status.signal === 'negative' ? (
+                      <AlertTriangle className="w-3 h-3 shrink-0" />
+                    ) : (
+                      <CheckCircle2 className="w-3 h-3 shrink-0" />
+                    )}
+                    <span className="truncate">{c.label}</span>
+                    {status?.auto_score && (
+                      <span className="ml-auto font-bold shrink-0">{status.auto_score}/5</span>
+                    )}
+                  </button>
+                );
+              })}
             </div>
-          </ScrollArea>
-        </div>
-      )}
+            {/* Expanded verbatim */}
+            {expandedCriterion && criteriaStatus[expandedCriterion]?.verbatim && (
+              <div className="mt-1.5 px-2 py-1.5 border border-foreground/10 bg-foreground/[0.02] text-[9px] text-muted-foreground italic">
+                "{criteriaStatus[expandedCriterion].verbatim}"
+              </div>
+            )}
+          </div>
 
-      {/* Criteria coverage badges */}
-      {(isRecording || callStopped) && !report && Object.keys(criteriaStatus).length > 0 && (
-        <div className="px-3 py-2 border-t border-foreground/10">
-          <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5">Critères détectés</p>
-          <div className="flex flex-wrap gap-1">
-            {criteria.map(c => {
-              const status = criteriaStatus[c.id];
-              if (!status?.covered) return null;
-              return (
-                <div key={c.id} className={cn(
-                  "px-2 py-1 border text-[9px] font-medium uppercase tracking-wider flex items-center gap-1",
-                  status.signal === 'positive' ? 'border-emerald-300 bg-emerald-50 text-emerald-700' :
-                  status.signal === 'negative' ? 'border-red-300 bg-red-50 text-red-700' :
-                  'border-amber-300 bg-amber-50 text-amber-700'
-                )}>
-                  <CheckCircle2 className="w-2.5 h-2.5" />
-                  {c.label}
-                  {status.auto_score && <span className="ml-1 font-bold">{status.auto_score}/5</span>}
-                </div>
-              );
-            })}
+          {/* Dig Deeper section */}
+          <div>
+            <div className="flex items-center gap-1.5 mb-2">
+              <Search className="w-3 h-3 text-muted-foreground" />
+              <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">À creuser</p>
+            </div>
+            {digDeeper.length === 0 ? (
+              <p className="text-[10px] text-muted-foreground italic px-2">
+                {isRecording ? "RAS — continuez l'entretien" : "Aucun signal détecté"}
+              </p>
+            ) : (
+              <div className="space-y-1.5">
+                {digDeeper.slice(0, 3).map((item, i) => (
+                  <div key={`${i}-${item.signal.slice(0, 20)}`}
+                    className="px-2 py-2 border border-amber-300 bg-amber-50 text-[10px] animate-in fade-in slide-in-from-top-1 duration-300">
+                    <p className="font-medium text-amber-800">"{item.signal}"</p>
+                    <p className="text-amber-700 mt-0.5">→ {item.question}</p>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       )}

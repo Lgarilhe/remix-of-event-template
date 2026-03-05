@@ -49,12 +49,21 @@ CRITÈRES DE LA SCORECARD À ÉVALUER :
 ${JSON.stringify(criteria)}
 
 RÈGLES :
-- Ultra concis : 1 phrase par alerte ou suggestion
-- Ne marque "covered" que si le sujet a été clairement abordé
+- Ne marque "covered" que si le sujet a été CLAIREMENT et SUBSTANTIELLEMENT abordé
 - Extrais le verbatim le plus pertinent (1 phrase max du candidat)
-- Détecte : contre-offre, salaire hors range, red flags, hésitations, questions candidat
 - auto_score : 5=parfait, 4=bon, 3=correct, 2=faible, 1=red flag
-- Si rien de nouveau à signaler, retourne alerts et suggestions vides`,
+
+SECTION "dig_deeper" — TRÈS IMPORTANT :
+- Retourne des items UNIQUEMENT quand tu détectes quelque chose de concret qui mérite d'être creusé :
+  • Hésitation ou réponse évasive du candidat
+  • Contradiction avec ce qui a été dit avant
+  • Red flag (gap inexpliqué, salaire hors range, contre-offre)
+  • Opportunité de creuser un point fort
+  • Information manquante critique
+- Maximum 3 items
+- Si rien d'intéressant ou de nouveau à signaler, retourne dig_deeper VIDE []
+- NE GÉNÈRE PAS d'items juste pour en générer
+- Chaque item = { "signal": "observation courte", "question": "question à poser" }`,
         messages: [
           {
             role: "user",
@@ -68,8 +77,9 @@ ${latest_chunk}
 
 Retourne UNIQUEMENT ce JSON (pas de texte avant/après) :
 {
-  "alerts": [{"type": "danger|warning|info", "message": "..."}],
-  "suggestions": [{"question": "...", "why": "..."}],
+  "dig_deeper": [
+    {"signal": "...", "question": "..."}
+  ],
   "criteria_updates": {
     "CRITERIA_ID": {
       "covered": true,
@@ -95,7 +105,7 @@ Retourne UNIQUEMENT ce JSON (pas de texte avant/après) :
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     const analysis = jsonMatch
       ? JSON.parse(jsonMatch[0])
-      : { alerts: [], suggestions: [], criteria_updates: {} };
+      : { dig_deeper: [], criteria_updates: {} };
 
     // Save to DB
     const supabase = createClient(
