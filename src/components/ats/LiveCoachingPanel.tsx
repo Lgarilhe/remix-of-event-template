@@ -472,35 +472,7 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
 
       {/* Content grid */}
       {(isRecording || callStopped) && !report && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 sm:divide-x divide-foreground/10 flex-1 min-h-0">
-          {/* Transcript - hidden on mobile */}
-          <ScrollArea className="h-full hidden sm:block">
-            <div className="p-3">
-              <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-2">Transcription</p>
-              <div className="text-[11px] leading-relaxed space-y-1.5">
-                {segments.length === 0 && !interimText && (
-                  <span className="text-muted-foreground italic">En attente de parole...</span>
-                )}
-                {segments.map((seg, i) => (
-                  <div key={i}>
-                    <span className={cn("font-bold text-[10px] uppercase tracking-wider", speakerColor(seg.speaker))}>
-                      {speakerLabel(seg.speaker)}:
-                    </span>{' '}
-                    <span className="text-foreground">{seg.text}</span>
-                  </div>
-                ))}
-                {interimText && (
-                  <div className="opacity-50 italic">
-                    <span className={cn("font-bold text-[10px] uppercase tracking-wider", speakerColor(interimSpeaker ?? 0))}>
-                      {speakerLabel(interimSpeaker ?? 0)}:
-                    </span>{' '}
-                    {interimText}
-                  </div>
-                )}
-                <div ref={transcriptEndRef} />
-              </div>
-            </div>
-          </ScrollArea>
+        <div className="flex-1 min-h-0">
 
           {/* Coach feed */}
           <ScrollArea className="h-full">
