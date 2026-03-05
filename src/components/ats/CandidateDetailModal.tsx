@@ -251,20 +251,22 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
     <Dialog open onOpenChange={onClose}>
        <DialogContent className={cn(
         "overflow-hidden flex flex-col p-0 rounded-none border-foreground gap-0 [&>button]:hidden transition-all duration-300",
+        "w-[100vw] h-[100dvh] max-w-[100vw] max-h-[100dvh]",
+        "sm:w-auto sm:h-auto",
         isSplitMode
-          ? "max-w-[95vw] max-h-[95vh] w-[95vw] h-[95vh] lg:max-w-[95vw]"
-          : "max-w-2xl max-h-[90vh]"
+          ? "sm:max-w-[95vw] sm:max-h-[95vh] sm:w-[95vw] sm:h-[95vh]"
+          : "sm:max-w-2xl sm:max-h-[90vh]"
       )}>
         {/* Header */}
-        <div className="p-4 sm:p-6 pb-0">
-          <div className="flex items-start justify-between">
+        <div className="p-3 sm:p-6 pb-0">
+          <div className="flex items-start justify-between gap-2">
             <div className="flex-1 min-w-0">
-              <h2 className="text-xl font-bold text-foreground">{candidate.name}</h2>
+              <h2 className="text-base sm:text-xl font-bold text-foreground truncate">{candidate.name}</h2>
               {(enrichedProfile?.headline || candidate.headline) && (
-                <p className="text-sm text-muted-foreground mt-1 truncate">{enrichedProfile?.headline || candidate.headline}</p>
+                <p className="text-xs sm:text-sm text-muted-foreground mt-0.5 sm:mt-1 truncate">{enrichedProfile?.headline || candidate.headline}</p>
               )}
-              {/* Quick info from enrichment */}
-              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1.5 text-[11px] text-muted-foreground">
+              {/* Quick info from enrichment - hidden on mobile */}
+              <div className="hidden sm:flex flex-wrap items-center gap-x-3 gap-y-1 mt-1.5 text-[11px] text-muted-foreground">
                 {enrichedProfile?.currentCompany && (
                   <span className="flex items-center gap-1 font-medium text-foreground/80">
                     <Building2 className="w-3 h-3 text-muted-foreground" />
@@ -285,16 +287,16 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
                 )}
               </div>
             </div>
-            <button onClick={onClose} className="h-8 w-8 flex items-center justify-center border border-foreground text-foreground hover:bg-brutal-accent transition-colors shrink-0">
+            <button onClick={onClose} className="h-7 w-7 sm:h-8 sm:w-8 flex items-center justify-center border border-foreground text-foreground hover:bg-brutal-accent transition-colors shrink-0">
               <X className="w-4 h-4" />
             </button>
           </div>
 
           {/* Stage + Actions */}
-          <div className="flex flex-wrap items-center gap-2 sm:gap-4 mt-4 pb-4 border-b border-foreground/20">
-            <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Étape :</span>
+          <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 mt-2 sm:mt-4 pb-2 sm:pb-4 border-b border-foreground/20">
+            <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground hidden sm:inline">Étape :</span>
             <Select value={candidate.stage} onValueChange={(v) => onStageChange(candidate.id, v)}>
-              <SelectTrigger className="w-[180px] rounded-none border-foreground h-9">
+              <SelectTrigger className="w-[140px] sm:w-[180px] rounded-none border-foreground h-8 sm:h-9 text-xs">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent className="rounded-none border-foreground">
@@ -351,7 +353,7 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
           </div>
 
           {/* Tags */}
-          <div className="flex flex-wrap items-center gap-1.5 mt-3 pb-4 border-b border-foreground/20">
+          <div className="hidden sm:flex flex-wrap items-center gap-1.5 mt-3 pb-4 border-b border-foreground/20">
             {(candidate.tags || []).map(tag => (
               <span
                 key={tag}
@@ -383,7 +385,7 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
         </div>
 
         {/* Tabs */}
-        <div className="px-4 sm:px-6 pt-3 sm:pt-4">
+        <div className="px-3 sm:px-6 pt-2 sm:pt-4">
           <div className="flex gap-0 border-b border-foreground/20 overflow-x-auto">
             {tabsConfig.map(tab => {
               const Icon = tab.icon;
