@@ -716,6 +716,51 @@ export type Database = {
         }
         Relationships: []
       }
+      candidate_evaluations: {
+        Row: {
+          ai_generated: boolean
+          candidate_id: string
+          comments: Json
+          created_at: string
+          created_by: string
+          criteria: Json
+          id: string
+          job_id: string | null
+          job_title: string | null
+          overall_score: number | null
+          ratings: Json
+          updated_at: string
+        }
+        Insert: {
+          ai_generated?: boolean
+          candidate_id: string
+          comments?: Json
+          created_at?: string
+          created_by: string
+          criteria?: Json
+          id?: string
+          job_id?: string | null
+          job_title?: string | null
+          overall_score?: number | null
+          ratings?: Json
+          updated_at?: string
+        }
+        Update: {
+          ai_generated?: boolean
+          candidate_id?: string
+          comments?: Json
+          created_at?: string
+          created_by?: string
+          criteria?: Json
+          id?: string
+          job_id?: string | null
+          job_title?: string | null
+          overall_score?: number | null
+          ratings?: Json
+          updated_at?: string
+        }
+        Relationships: []
+      }
       candidate_notes: {
         Row: {
           candidate_id: string

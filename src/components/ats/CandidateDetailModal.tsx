@@ -14,8 +14,9 @@ import {
   Loader2, Trash2, Calendar, Brain, CheckCircle2, AlertTriangle, MapPin,
   Briefcase, Clock, MessageSquare, CalendarPlus, FolderPlus, Activity,
   FileText, Award, ExternalLink, GraduationCap, Languages, ChevronDown,
-  ChevronUp, Building2, TrendingUp
+  ChevronUp, Building2, TrendingUp, ClipboardCheck
 } from 'lucide-react';
+import { ScorecardTab } from './ScorecardTab';
 import { format, parseISO, formatDistanceToNow } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { toast } from 'sonner';
@@ -47,6 +48,7 @@ interface Reminder {
 const tabsConfig = [
   { key: 'profile', label: 'Profil', icon: User },
   { key: 'scoring', label: 'Scoring', icon: Target },
+  { key: 'evaluation', label: 'Évaluation', icon: ClipboardCheck },
   { key: 'activity', label: 'Activité', icon: Activity },
   { key: 'notes', label: 'Notes', icon: StickyNote },
   { key: 'reminders', label: 'Rappels', icon: Bell },
@@ -572,6 +574,11 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
                   ))
                 )}
               </div>
+          )}
+
+          {/* ==================== EVALUATION TAB ==================== */}
+          {activeTab === 'evaluation' && (
+            <ScorecardTab candidate={candidate} enrichedProfile={enrichedProfile} />
           )}
 
           {/* ==================== ACTIVITY TAB ==================== */}
