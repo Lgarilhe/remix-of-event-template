@@ -58,6 +58,7 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
   candidate, onClose, onStageChange, onTagsChange, onRefresh,
 }) => {
   const [activeTab, setActiveTab] = useState('profile');
+  const isSplitMode = activeTab === 'evaluation';
   const [notes, setNotes] = useState<Note[]>([]);
   const [reminders, setReminders] = useState<Reminder[]>([]);
   const [loading, setLoading] = useState(false);
@@ -193,7 +194,12 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
 
   return (
     <Dialog open onOpenChange={onClose}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-hidden flex flex-col p-0 rounded-none border-foreground gap-0 [&>button]:hidden">
+      <DialogContent className={cn(
+        "overflow-hidden flex flex-col p-0 rounded-none border-foreground gap-0 [&>button]:hidden transition-all duration-300",
+        isSplitMode
+          ? "max-w-[95vw] max-h-[95vh] w-[95vw] h-[95vh]"
+          : "max-w-2xl max-h-[90vh]"
+      )}>
         {/* Header */}
         <div className="p-6 pb-0">
           <div className="flex items-start justify-between">
@@ -315,12 +321,120 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
           </div>
         </div>
 
-        {/* Tab content */}
-        <div className="flex-1 min-h-0 overflow-y-auto px-6 pt-4 pb-6">
-          {/* ==================== PROFIL TAB ==================== */}
-          {activeTab === 'profile' && (
-            <div className="space-y-4 pr-1">
-                {/* Enrichment loading */}
+        {/* Tab content - split or normal */}
+        {isSplitMode ? (
+          <div className="flex-1 min-h-0 flex divide-x divide-foreground/15">
+            {/* LEFT: Scorecard */}
+            <div className="flex-1 min-w-0 overflow-y-auto px-6 pt-4 pb-6">
+              <ScorecardTab candidate={candidate} enrichedProfile={enrichedProfile} />
+            </div>
+            {/* RIGHT: Compact profile */}
+            <div className="w-[340px] shrink-0 overflow-y-auto px-4 pt-4 pb-6">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-3">Profil candidat</p>
+              
+              {/* Quick info */}
+              <div className="space-y-3">
+                {enrichedProfile?.currentCompany && (
+                  <div className="flex items-center gap-2 text-[11px]">
+                    <Building2 className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                    <span className="text-foreground font-medium">{enrichedProfile.currentRole} @ {enrichedProfile.currentCompany}</span>
+                  </div>
+                )}
+                {enrichedProfile?.location && (
+                  <div className="flex items-center gap-2 text-[11px]">
+                    <MapPin className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                    <span className="text-muted-foreground">{enrichedProfile.location}</span>
+                  </div>
+                )}
+                {enrichedProfile?.yearsOfExperience && (
+                  <div className="flex items-center gap-2 text-[11px]">
+                    <TrendingUp className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                    <span className="text-muted-foreground">~{enrichedProfile.yearsOfExperience} ans d'expérience</span>
+                  </div>
+                )}
+
+                {/* Scoring summary */}
+                {candidate.score != null && (
+                  <div className="border border-foreground/15 p-2 mt-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Score IA</span>
+                      <span className={cn("text-sm font-bold",
+                        candidate.score >= 75 ? "text-emerald-600" :
+                        candidate.score >= 50 ? "text-amber-600" : "text-red-600"
+                      )}>{candidate.score}/100</span>
+                    </div>
+                    {candidate.recommendation && (
+                      <p className="text-[10px] text-muted-foreground mt-1">{candidate.recommendation}</p>
+                    )}
+                  </div>
+                )}
+
+                {/* Skills */}
+                {enrichedProfile?.skills && enrichedProfile.skills.length > 0 && (
+                  <div>
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5">Compétences</p>
+                    <div className="flex flex-wrap gap-1">
+                      {enrichedProfile.skills.slice(0, 15).map(s => (
+                        <span key={s} className="text-[9px] px-1.5 py-0.5 border border-foreground/20 text-muted-foreground font-medium uppercase tracking-wider">{s}</span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Experiences compact */}
+                {enrichedProfile?.experiences && enrichedProfile.experiences.length > 0 && (
+                  <div>
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5">Parcours</p>
+                    <div className="space-y-1.5">
+                      {enrichedProfile.experiences.slice(0, 4).map((exp, i) => (
+                        <div key={i} className="text-[10px]">
+                          <span className="font-medium text-foreground">{exp.title}</span>
+                          <span className="text-muted-foreground"> · {exp.company}</span>
+                          {exp.isCurrent && <span className="text-emerald-600 ml-1 font-bold">•</span>}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Education compact */}
+                {enrichedProfile?.education && enrichedProfile.education.length > 0 && (
+                  <div>
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5">Formation</p>
+                    <div className="space-y-1">
+                      {enrichedProfile.education.slice(0, 3).map((edu, i) => (
+                        <div key={i} className="text-[10px]">
+                          <span className="font-medium text-foreground">{edu.school}</span>
+                          {edu.degree && <span className="text-muted-foreground"> · {edu.degree}</span>}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Summary */}
+                {enrichedProfile?.summary && (
+                  <div>
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1">À propos</p>
+                    <p className="text-[10px] text-muted-foreground leading-relaxed line-clamp-6">{enrichedProfile.summary}</p>
+                  </div>
+                )}
+
+                {/* LinkedIn link */}
+                {candidate.linkedin && (
+                  <a href={candidate.linkedin} target="_blank" rel="noopener noreferrer"
+                    className="flex items-center gap-1.5 text-[10px] text-foreground font-medium uppercase tracking-wider hover:text-brutal-accent mt-2">
+                    <ExternalLink className="w-3 h-3" /> Voir sur LinkedIn
+                  </a>
+                )}
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="flex-1 min-h-0 overflow-y-auto px-6 pt-4 pb-6">
+            {/* ==================== PROFIL TAB ==================== */}
+            {activeTab === 'profile' && (
+              <div className="space-y-4 pr-1">
                 {enrichLoading && (
                   <div className="flex items-center gap-2 p-3 bg-foreground/[0.03] border border-foreground/10 text-muted-foreground text-[11px]">
                     <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -328,7 +442,6 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
                   </div>
                 )}
 
-                {/* Source */}
                 <Section title="Source">
                   <div className="flex flex-wrap gap-2">
                     <BadgeItem icon={
@@ -345,7 +458,6 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
                   </div>
                 </Section>
 
-                {/* Enriched Profile - Experiences */}
                 {enrichedProfile?.experiences && enrichedProfile.experiences.length > 0 && (
                   <Section title="Expériences">
                     <div className="space-y-3">
@@ -383,7 +495,6 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
                   </Section>
                 )}
 
-                {/* Enriched Profile - Education */}
                 {enrichedProfile?.education && enrichedProfile.education.length > 0 && (
                   <Section title="Formation">
                     <div className="space-y-2">
@@ -407,7 +518,6 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
                   </Section>
                 )}
 
-                {/* Enriched Profile - Skills */}
                 {enrichedProfile?.skills && enrichedProfile.skills.length > 0 && (
                   <Section title="Compétences">
                     <div className="flex flex-wrap gap-1.5">
@@ -418,7 +528,6 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
                   </Section>
                 )}
 
-                {/* Enriched Profile - Languages */}
                 {enrichedProfile?.languages && enrichedProfile.languages.length > 0 && (
                   <Section title="Langues">
                     <div className="flex flex-wrap gap-2">
@@ -429,14 +538,12 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
                   </Section>
                 )}
 
-                {/* Enriched Profile - Summary */}
                 {enrichedProfile?.summary && (
                   <Section title="À propos">
                     <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-wrap line-clamp-6">{enrichedProfile.summary}</p>
                   </Section>
                 )}
 
-                {/* Fallback: show basic skills from ATSCandidate if no enrichment */}
                 {!enrichedProfile && candidate.expertise.length > 0 && (
                   <Section title="Compétences">
                     <div className="flex flex-wrap gap-1.5">
@@ -447,7 +554,6 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
                   </Section>
                 )}
 
-                {/* Qualification */}
                 {fullProfile.qualificationSessions.length > 0 && (
                   <Section title="Qualification">
                     <div className="space-y-3">
@@ -487,7 +593,6 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
                   </Section>
                 )}
 
-                {/* Airtable history */}
                 {fullProfile.airtableMatch && (
                   <Section title="Historique CRM">
                     <div className="space-y-2 text-sm">
@@ -525,7 +630,6 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
                   </Section>
                 )}
 
-                {/* Contact */}
                 {(candidate.email || candidate.phone || candidate.linkedin) && (
                   <Section title="Contact">
                     <div className="space-y-2 text-sm">
@@ -541,7 +645,6 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
                   </Section>
                 )}
 
-                {/* Historique */}
                 <Section title="Historique">
                   <div className="space-y-2 text-sm">
                     <div className="flex items-center justify-between">
@@ -557,15 +660,13 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
                   </div>
                 </Section>
               </div>
-          )}
+            )}
 
-          {/* ==================== SCORING TAB ==================== */}
-          {activeTab === 'scoring' && (
-            <div className="space-y-4">
+            {/* ==================== SCORING TAB ==================== */}
+            {activeTab === 'scoring' && (
+              <div className="space-y-4">
                 {fullProfile.loading ? (
-                  <div className="flex items-center justify-center py-12">
-                    <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
-                  </div>
+                  <CenteredLoader />
                 ) : fullProfile.scoringHistory.length === 0 ? (
                   <EmptyState icon={Target} label="Aucun scoring" />
                 ) : (
@@ -574,20 +675,18 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
                   ))
                 )}
               </div>
-          )}
+            )}
 
-          {/* ==================== EVALUATION TAB ==================== */}
-          {activeTab === 'evaluation' && (
-            <ScorecardTab candidate={candidate} enrichedProfile={enrichedProfile} />
-          )}
+            {/* ==================== EVALUATION TAB ==================== */}
+            {activeTab === 'evaluation' && (
+              <ScorecardTab candidate={candidate} enrichedProfile={enrichedProfile} />
+            )}
 
-          {/* ==================== ACTIVITY TAB ==================== */}
-          {activeTab === 'activity' && (
-            <div>
+            {/* ==================== ACTIVITY TAB ==================== */}
+            {activeTab === 'activity' && (
+              <div>
                 {fullProfile.loading ? (
-                  <div className="flex items-center justify-center py-12">
-                    <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
-                  </div>
+                  <CenteredLoader />
                 ) : fullProfile.timeline.length === 0 ? (
                   <EmptyState icon={Activity} label="Aucune activité enregistrée" />
                 ) : (
@@ -600,141 +699,127 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
                           <div className={cn("absolute -left-6 top-1 w-5 h-5 flex items-center justify-center", typeConfig.color)}>
                             {typeConfig.icon}
                           </div>
-                          <div className="bg-foreground/[0.03] border border-foreground/10 p-3 hover:border-foreground/30 transition-colors">
-                            <div className="flex items-start justify-between gap-2">
-                              <span className="text-sm font-medium text-foreground">{event.title}</span>
-                              {event.date && (
-                                <span className="text-[10px] text-muted-foreground whitespace-nowrap">
-                                  {formatDistanceToNow(parseISO(event.date), { locale: fr, addSuffix: true })}
-                                </span>
-                              )}
-                            </div>
-                            {event.detail && <p className="text-[11px] text-muted-foreground mt-1">{event.detail}</p>}
+                          <div>
+                            <p className="text-sm font-medium text-foreground">{event.title}</p>
+                            {event.detail && <p className="text-[11px] text-muted-foreground mt-0.5">{event.detail}</p>}
+                            <p className="text-[10px] text-muted-foreground mt-1">
+                              {formatDistanceToNow(parseISO(event.date), { addSuffix: true, locale: fr })}
+                            </p>
                           </div>
                         </div>
                       );
                     })}
                   </div>
                 )}
-
-                {/* Airtable notes */}
-                {fullProfile.airtableNotes.length > 0 && (
-                  <div className="mt-6">
-                    <h4 className="text-[11px] font-bold uppercase tracking-wider text-foreground mb-3">Notes CRM</h4>
-                    <div className="space-y-2">
-                      {fullProfile.airtableNotes.slice(0, 10).map(n => (
-                        <div key={n.id} className="p-3 bg-foreground/[0.03] border border-foreground/10">
-                          {n.title && <p className="text-sm font-medium text-foreground">{n.title}</p>}
-                          {n.detail && <p className="text-[11px] text-muted-foreground mt-1 line-clamp-3">{n.detail}</p>}
-                          <div className="flex items-center gap-2 mt-1.5 text-[10px] text-muted-foreground">
-                            {n.author && <span>{n.author}</span>}
-                            {n.noteDate && <span>• {n.noteDate}</span>}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
               </div>
-          )}
+            )}
 
-          {/* ==================== NOTES TAB ==================== */}
-          {activeTab === 'notes' && (
-            <div className="h-full flex flex-col">
-              <div className="flex-shrink-0 mb-4">
-                <Textarea value={newNote} onChange={(e) => setNewNote(e.target.value)} placeholder="Ajouter une note..."
-                  className="mb-2 rounded-none border-foreground/30 focus:border-foreground" rows={3} />
-                <BrutalActionButton onClick={handleAddNote} disabled={!newNote.trim() || addingNote} loading={addingNote}>
-                  <Plus className="w-3.5 h-3.5 relative z-10" /> <span className="relative z-10">Ajouter</span>
-                </BrutalActionButton>
-              </div>
-              <div className="flex-1">
-                {loading ? <CenteredLoader /> : notes.length === 0 ? (
+            {/* ==================== NOTES TAB ==================== */}
+            {activeTab === 'notes' && (
+              <div className="space-y-4">
+                <div className="flex gap-0">
+                  <Textarea
+                    value={newNote}
+                    onChange={(e) => setNewNote(e.target.value)}
+                    placeholder="Ajouter une note..."
+                    className="flex-1 min-h-[60px] rounded-none border-foreground/30 text-sm resize-none"
+                  />
+                  <button onClick={handleAddNote} disabled={addingNote || !newNote.trim()}
+                    className="h-auto px-4 border border-foreground -ml-px bg-foreground text-background text-[10px] font-medium uppercase tracking-wider disabled:opacity-50">
+                    {addingNote ? <Loader2 className="w-3 h-3 animate-spin" /> : <Plus className="w-3 h-3" />}
+                  </button>
+                </div>
+                {loading ? (
+                  <CenteredLoader />
+                ) : notes.length === 0 ? (
                   <EmptyState icon={StickyNote} label="Aucune note" />
                 ) : (
-                  <div className="space-y-3">
+                  <div className="space-y-2">
                     {notes.map(note => (
-                      <div key={note.id} className="p-3 bg-foreground/[0.03] border border-foreground/10 group hover:border-foreground/30 transition-colors">
-                        <p className="text-sm text-foreground whitespace-pre-wrap">{note.content}</p>
-                        <div className="flex items-center justify-between mt-2">
-                          <span className="text-[10px] text-muted-foreground uppercase tracking-wider">
-                            {format(parseISO(note.created_at), 'd MMM yyyy à HH:mm', { locale: fr })}
-                          </span>
-                          <button className="h-6 w-6 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-destructive/10"
-                            onClick={() => handleDeleteNote(note.id)}>
-                            <Trash2 className="w-3 h-3 text-destructive" />
+                      <div key={note.id} className="group p-3 border border-foreground/10 bg-foreground/[0.02]">
+                        <div className="flex items-start justify-between gap-2">
+                          <p className="text-sm text-foreground whitespace-pre-wrap flex-1">{note.content}</p>
+                          <button onClick={() => handleDeleteNote(note.id)}
+                            className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive p-1">
+                            <Trash2 className="w-3 h-3" />
                           </button>
                         </div>
+                        <p className="text-[10px] text-muted-foreground mt-2">
+                          {formatDistanceToNow(parseISO(note.created_at), { addSuffix: true, locale: fr })}
+                        </p>
                       </div>
                     ))}
                   </div>
                 )}
               </div>
-            </div>
-          )}
+            )}
 
-          {/* ==================== REMINDERS TAB ==================== */}
-          {activeTab === 'reminders' && (
-            <div className="h-full flex flex-col">
-              <div className="flex-shrink-0 mb-4">
-                {showNewReminder ? (
-                  <div className="p-4 bg-foreground/[0.03] border border-foreground/20 space-y-3">
-                    <Input value={newReminderTitle} onChange={(e) => setNewReminderTitle(e.target.value)}
-                      placeholder="Titre du rappel (ex: Relancer pour ITW)" className="rounded-none border-foreground/30 focus:border-foreground" />
-                    <Input type="datetime-local" value={newReminderDate} onChange={(e) => setNewReminderDate(e.target.value)}
-                      className="rounded-none border-foreground/30 focus:border-foreground" />
-                    <div className="flex gap-0">
-                      <BrutalActionButton onClick={handleAddReminder} disabled={!newReminderTitle.trim() || !newReminderDate || addingReminder} loading={addingReminder}>
-                        <Plus className="w-3.5 h-3.5 relative z-10" /> <span className="relative z-10">Créer</span>
-                      </BrutalActionButton>
+            {/* ==================== REMINDERS TAB ==================== */}
+            {activeTab === 'reminders' && (
+              <div className="space-y-4">
+                {!showNewReminder ? (
+                  <button onClick={() => setShowNewReminder(true)}
+                    className="w-full h-[38px] flex items-center justify-center gap-2 border border-dashed border-foreground/30 text-foreground text-[11px] font-medium uppercase tracking-wider hover:border-foreground hover:bg-foreground/[0.03] transition-colors">
+                    <Plus className="w-3.5 h-3.5" />
+                    Nouveau rappel
+                  </button>
+                ) : (
+                  <div className="space-y-2 p-3 border border-foreground/15 bg-foreground/[0.02]">
+                    <Input value={newReminderTitle} onChange={e => setNewReminderTitle(e.target.value)}
+                      placeholder="Titre du rappel" className="rounded-none border-foreground/30 text-sm" />
+                    <Input type="datetime-local" value={newReminderDate} onChange={e => setNewReminderDate(e.target.value)}
+                      className="rounded-none border-foreground/30 text-sm" />
+                    <div className="flex gap-2">
+                      <button onClick={handleAddReminder} disabled={addingReminder || !newReminderTitle.trim() || !newReminderDate}
+                        className="h-[30px] px-4 bg-foreground text-background text-[10px] font-medium uppercase tracking-wider disabled:opacity-50">
+                        {addingReminder ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Créer'}
+                      </button>
                       <button onClick={() => setShowNewReminder(false)}
-                        className="relative overflow-hidden h-[34px] px-4 flex items-center border border-l-0 border-foreground text-foreground text-[11px] font-medium uppercase tracking-wider group">
-                        <span className="relative z-10">Annuler</span>
-                        <span className="absolute inset-0 bg-foreground/10 translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
+                        className="h-[30px] px-4 border border-foreground/30 text-foreground text-[10px] font-medium uppercase tracking-wider">
+                        Annuler
                       </button>
                     </div>
                   </div>
-                ) : (
-                  <button onClick={() => setShowNewReminder(true)}
-                    className="relative overflow-hidden w-full h-[34px] px-4 flex items-center justify-center gap-2 border border-foreground text-foreground text-[11px] font-medium uppercase tracking-wider group">
-                    <Plus className="w-3.5 h-3.5 relative z-10" />
-                    <span className="relative z-10">Nouveau rappel</span>
-                    <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
-                  </button>
                 )}
-              </div>
-              <div className="flex-1">
-                {loading ? <CenteredLoader /> : reminders.length === 0 ? (
+                {loading ? (
+                  <CenteredLoader />
+                ) : reminders.length === 0 ? (
                   <EmptyState icon={Bell} label="Aucun rappel" />
                 ) : (
-                  <div className="space-y-3">
-                    {reminders.map(r => (
-                      <div key={r.id} className={cn("p-3 border group transition-colors",
-                        r.completed_at ? 'bg-muted/50 border-foreground/10 opacity-60' : 'bg-foreground/[0.03] border-foreground/10 hover:border-foreground/30'
-                      )}>
-                        <div className="flex items-start justify-between">
-                          <div>
-                            <p className={cn("font-medium text-sm", r.completed_at ? 'line-through text-muted-foreground' : 'text-foreground')}>{r.title}</p>
-                            <div className="flex items-center gap-2 mt-1">
-                              <Calendar className="w-3 h-3 text-muted-foreground" />
-                              <span className="text-[10px] text-muted-foreground uppercase tracking-wider">
-                                {format(parseISO(r.due_at), 'd MMM yyyy à HH:mm', { locale: fr })}
-                              </span>
+                  <div className="space-y-2">
+                    {reminders.map(reminder => {
+                      const isPast = new Date(reminder.due_at) < new Date();
+                      const isDone = !!reminder.completed_at;
+                      return (
+                        <div key={reminder.id} className={cn(
+                          "group p-3 border",
+                          isDone ? 'border-foreground/10 bg-foreground/[0.02] opacity-60' :
+                          isPast ? 'border-destructive/30 bg-destructive/5' :
+                          'border-foreground/10 bg-foreground/[0.02]'
+                        )}>
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="flex-1">
+                              <p className={cn("text-sm font-medium", isDone && 'line-through text-muted-foreground')}>{reminder.title}</p>
+                              <p className="text-[10px] text-muted-foreground mt-1 flex items-center gap-1">
+                                <Calendar className="w-3 h-3" />
+                                {format(parseISO(reminder.due_at), 'd MMM yyyy à HH:mm', { locale: fr })}
+                                {isPast && !isDone && <span className="text-destructive font-bold ml-1">En retard</span>}
+                              </p>
                             </div>
+                            <button onClick={() => handleDeleteReminder(reminder.id)}
+                              className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive p-1">
+                              <Trash2 className="w-3 h-3" />
+                            </button>
                           </div>
-                          <button className="h-6 w-6 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-destructive/10"
-                            onClick={() => handleDeleteReminder(r.id)}>
-                            <Trash2 className="w-3 h-3 text-destructive" />
-                          </button>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </div>
-            </div>
-          )}
-        </div>
+            )}
+          </div>
+        )}
 
         {/* Quick Actions Bar */}
         <div className="border-t border-foreground/20 px-6 py-3 flex items-center gap-0 bg-foreground/[0.02]">
