@@ -233,13 +233,23 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
           if (!alt) return;
 
           if (data.is_final) {
-            pendingFinalTextRef.current += ' ' + alt.transcript;
-            fullTranscriptRef.current += ' ' + alt.transcript;
-            setTranscript(fullTranscriptRef.current);
+            const finalText = alt.transcript?.trim();
+            // Only append non-empty final transcripts
+            if (finalText) {
+              pendingFinalTextRef.current += ' ' + finalText;
+              fullTranscriptRef.current += ' ' + finalText;
+              setTranscript(fullTranscriptRef.current);
+            }
+            // Always clear interim on final result
             setInterimText('');
 
+            // If speech_final (end of utterance) or enough time passed, send to coach
             const now = Date.now();
-            if (now - lastCoachCallRef.current > COACH_INTERVAL_MS && pendingFinalTextRef.current.trim()) {
+            const isSpeechFinal = data.speech_final === true;
+            if (
+              (isSpeechFinal || now - lastCoachCallRef.current > COACH_INTERVAL_MS) &&
+              pendingFinalTextRef.current.trim()
+            ) {
               lastCoachCallRef.current = now;
               const chunkForCoach = pendingFinalTextRef.current.trim();
               pendingFinalTextRef.current = '';
@@ -254,7 +264,10 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
               });
             }
           } else {
-            setInterimText(alt.transcript);
+            // Interim result: show as preview text alongside accumulated transcript
+            if (alt.transcript?.trim()) {
+              setInterimText(alt.transcript);
+            }
           }
         }
 
