@@ -134,6 +134,13 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
         </div>
 
         <div className="flex items-center gap-2">
+          {selectedAccountData?.profile_picture_url && (
+            <img 
+              src={selectedAccountData.profile_picture_url} 
+              alt={selectedAccountData.name || ''} 
+              className="w-8 h-8 rounded-none border border-foreground object-cover shrink-0"
+            />
+          )}
           <Select value={selectedAccount || ''} onValueChange={onAccountChange}>
             <SelectTrigger className="h-8 text-sm flex-1">
               <SelectValue placeholder="Sélectionner" />
@@ -142,6 +149,13 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
                 {accounts.map((account) => (
                   <SelectItem key={account.id} value={account.id}>
                     <div className="flex items-center gap-2">
+                      {account.profile_picture_url && (
+                        <img 
+                          src={account.profile_picture_url} 
+                          alt="" 
+                          className="w-5 h-5 rounded-none object-cover"
+                        />
+                      )}
                       <span>{account.name || account.identifier}</span>
                       <div className="flex gap-1">
                         {account.subscriptions?.recruiter && (
