@@ -388,11 +388,11 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
         </button>
 
         {/* Header bar */}
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             {activeEval.overallScore != null && (
               <div className={cn(
-                "h-12 w-12 flex items-center justify-center border-2 text-lg font-bold",
+                "h-10 w-10 sm:h-12 sm:w-12 flex items-center justify-center border-2 text-base sm:text-lg font-bold",
                 activeEval.overallScore >= 4 ? "border-emerald-400 bg-emerald-50 text-emerald-700" :
                 activeEval.overallScore >= 3 ? "border-amber-400 bg-amber-50 text-amber-700" :
                 "border-red-400 bg-red-50 text-red-700"
@@ -416,23 +416,23 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
               </p>
             </div>
           </div>
-          <div className="flex gap-0">
+          <div className="flex gap-0 self-end sm:self-auto">
             <button onClick={() => setShowCoaching(true)} disabled={showCoaching}
-              className="relative overflow-hidden h-[30px] px-3 flex items-center gap-1.5 border border-red-500 text-red-500 text-[10px] font-medium uppercase tracking-wider group disabled:opacity-50">
+              className="relative overflow-hidden h-[30px] px-2 sm:px-3 flex items-center gap-1.5 border border-red-500 text-red-500 text-[10px] font-medium uppercase tracking-wider group disabled:opacity-50">
               <Mic className="w-3 h-3 relative z-10" />
-              <span className="relative z-10">Coaching Live</span>
+              <span className="relative z-10 hidden sm:inline">Coaching Live</span>
               <span className="absolute inset-0 bg-red-50 translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
             </button>
             <button onClick={handleGenerate} disabled={generating}
-              className="relative overflow-hidden h-[30px] px-3 flex items-center gap-1.5 border border-foreground text-foreground text-[10px] font-medium uppercase tracking-wider group disabled:opacity-50 -ml-px">
+              className="relative overflow-hidden h-[30px] px-2 sm:px-3 flex items-center gap-1.5 border border-foreground text-foreground text-[10px] font-medium uppercase tracking-wider group disabled:opacity-50 -ml-px">
               {generating ? <Loader2 className="w-3 h-3 animate-spin relative z-10" /> : <RotateCcw className="w-3 h-3 relative z-10" />}
-              <span className="relative z-10">Régénérer</span>
+              <span className="relative z-10 hidden sm:inline">Régénérer</span>
               <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
             </button>
             <button onClick={handleSave} disabled={saving}
-              className="relative overflow-hidden h-[30px] px-3 flex items-center gap-1.5 border border-foreground -ml-px bg-foreground text-background text-[10px] font-medium uppercase tracking-wider disabled:opacity-50">
+              className="relative overflow-hidden h-[30px] px-2 sm:px-3 flex items-center gap-1.5 border border-foreground -ml-px bg-foreground text-background text-[10px] font-medium uppercase tracking-wider disabled:opacity-50">
               {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
-              <span>Sauvegarder</span>
+              <span className="hidden sm:inline">Sauvegarder</span>
             </button>
           </div>
         </div>

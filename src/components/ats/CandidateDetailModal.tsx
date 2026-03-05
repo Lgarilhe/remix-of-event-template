@@ -249,10 +249,10 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
 
   return (
     <Dialog open onOpenChange={onClose}>
-      <DialogContent className={cn(
+       <DialogContent className={cn(
         "overflow-hidden flex flex-col p-0 rounded-none border-foreground gap-0 [&>button]:hidden transition-all duration-300",
         isSplitMode
-          ? "max-w-[95vw] max-h-[95vh] w-[95vw] h-[95vh]"
+          ? "max-w-[95vw] max-h-[95vh] w-[95vw] h-[95vh] lg:max-w-[95vw]"
           : "max-w-2xl max-h-[90vh]"
       )}>
         {/* Header */}
@@ -291,7 +291,7 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
           </div>
 
           {/* Stage + Actions */}
-          <div className="flex items-center gap-4 mt-4 pb-4 border-b border-foreground/20">
+          <div className="flex flex-wrap items-center gap-2 sm:gap-4 mt-4 pb-4 border-b border-foreground/20">
             <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Étape :</span>
             <Select value={candidate.stage} onValueChange={(v) => onStageChange(candidate.id, v)}>
               <SelectTrigger className="w-[180px] rounded-none border-foreground h-9">
@@ -302,17 +302,17 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
               </SelectContent>
             </Select>
 
-            <div className="flex items-center gap-0 ml-auto">
+            <div className="flex items-center gap-0 ml-auto flex-wrap">
               {candidate.linkedin && (
                 <BrutalButton onClick={() => window.open(candidate.linkedin!, '_blank')} first>
                   <img src={linkedinLogo} alt="LinkedIn" className="w-4 h-4 object-contain relative z-10" />
-                  <span className="relative z-10">LinkedIn</span>
+                  <span className="relative z-10 hidden sm:inline">LinkedIn</span>
                 </BrutalButton>
               )}
               {candidate.email && (
                 <BrutalButton onClick={() => window.open(`mailto:${candidate.email}`, '_blank')} first={!candidate.linkedin}>
                   <Mail className="w-3.5 h-3.5 relative z-10" />
-                  <span className="relative z-10">Email</span>
+                  <span className="relative z-10 hidden sm:inline">Email</span>
                 </BrutalButton>
               )}
               <button
@@ -345,7 +345,7 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
                 }}
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 ml-2 border-2 border-emerald-600 bg-emerald-600 text-white text-[11px] font-bold uppercase tracking-wider hover:bg-emerald-700 transition-colors"
               >
-                <Link2 className="w-3.5 h-3.5" /> Portail
+                <Link2 className="w-3.5 h-3.5" /> <span className="hidden sm:inline">Portail</span>
               </button>
             </div>
           </div>
@@ -410,13 +410,13 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
 
         {/* Tab content - split or normal */}
         {isSplitMode ? (
-          <div className="flex-1 min-h-0 flex divide-x divide-foreground/15">
+          <div className="flex-1 min-h-0 flex flex-col lg:flex-row divide-y lg:divide-y-0 lg:divide-x divide-foreground/15">
             {/* LEFT: Scorecard */}
-            <div className="flex-1 min-w-0 overflow-y-auto px-6 pt-4 pb-6">
+            <div className="flex-1 min-w-0 overflow-y-auto px-4 sm:px-6 pt-4 pb-6">
               <ScorecardTab candidate={candidate} enrichedProfile={enrichedProfile} />
             </div>
             {/* RIGHT: Compact profile */}
-            <div className="w-[400px] shrink-0 overflow-y-auto px-4 pt-4 pb-6 space-y-3">
+            <div className="w-full lg:w-[400px] shrink-0 overflow-y-auto px-4 pt-4 pb-6 space-y-3">
               {/* ========== CARD 1: Candidat ========== */}
               <CollapsibleCard
                 title={enrichedProfile?.name || candidate.name}

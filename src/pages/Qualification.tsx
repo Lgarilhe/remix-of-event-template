@@ -149,30 +149,30 @@ export default function Qualification() {
   return (
     <div className="min-h-screen bg-background text-foreground">
       {/* Header */}
-      <div className="sticky top-0 z-10 bg-background/95 backdrop-blur border-b border-border px-6 py-4">
-        <div className="max-w-6xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <Button variant="ghost" size="icon" onClick={() => navigate(-1)}>
+      <div className="sticky top-0 z-10 bg-background/95 backdrop-blur border-b border-border px-4 sm:px-6 py-4">
+        <div className="max-w-6xl mx-auto flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-3 sm:gap-4 min-w-0">
+            <Button variant="ghost" size="icon" onClick={() => navigate(-1)} className="shrink-0">
               <ArrowLeft className="w-5 h-5" />
             </Button>
-            <div>
-              <h1 className="text-xl font-semibold">
+            <div className="min-w-0">
+              <h1 className="text-lg sm:text-xl font-semibold truncate">
                 Qualification — {session.candidate_name || 'Candidat'}
               </h1>
-              <p className="text-sm text-muted-foreground">
+              <p className="text-sm text-muted-foreground truncate">
                 {session.job_title && `${session.job_title}`}
                 {session.client_name && ` • ${session.client_name}`}
               </p>
             </div>
           </div>
-          <Button onClick={handleSave} disabled={saving} className="gap-2">
+          <Button onClick={handleSave} disabled={saving} className="gap-2 self-end sm:self-auto shrink-0">
             <Save className="w-4 h-4" />
             {saving ? 'Sauvegarde...' : 'Sauvegarder'}
           </Button>
         </div>
       </div>
 
-      <div className="max-w-6xl mx-auto px-6 py-8 grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6 sm:py-8 grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left column: Candidate info + Scoring */}
         <div className="lg:col-span-1 space-y-6">
           {/* Candidate Card */}
