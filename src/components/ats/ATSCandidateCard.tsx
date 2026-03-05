@@ -1,5 +1,6 @@
 import React from 'react';
-import { ATSCandidate } from '@/pages/ATS';
+import { ATSCandidate } from '@/hooks/useATSData';
+import { differenceInDays, parseISO } from 'date-fns';
 import linkedinLogo from '@/assets/linkedin-logo.png';
 import { 
   Mail, 
@@ -11,7 +12,9 @@ import {
   Target,
   ThumbsUp,
   ThumbsDown,
-  MessageCircle
+  MessageCircle,
+  AlertTriangle,
+  Tag
 } from 'lucide-react';
 
 interface ATSCandidateCardProps {
@@ -33,6 +36,17 @@ export const ATSCandidateCard: React.FC<ATSCandidateCardProps> = ({
   onClick,
 }) => {
   const sourceConfig = SOURCE_CONFIG[candidate.source] || SOURCE_CONFIG.shortlist;
+
+  // Stagnation detection: guide times per stage (days)
+  const GUIDE_TIMES: Record<string, number> = {
+    'Nouveau': 3, 'Contacté': 5, 'Répondu': 3, 'Pressenti': 5,
+    'Pré-qualif': 7, 'CV envoyé': 5, 'ITW en cours': 10, 'Offre': 7,
+  };
+  const guideTime = GUIDE_TIMES[candidate.stage];
+  const daysSince = candidate.lastActivity
+    ? differenceInDays(new Date(), parseISO(candidate.lastActivity))
+    : null;
+  const isStagnant = guideTime != null && daysSince != null && daysSince > guideTime;
 
   return (
     <div
@@ -123,6 +137,30 @@ export const ATSCandidateCard: React.FC<ATSCandidateCardProps> = ({
               {candidate.sequenceStatus}
             </span>
           )}
+        </div>
+      )}
+
+      {/* Tags */}
+      {(candidate.tags || []).length > 0 && (
+        <div className="flex flex-wrap gap-1 mb-2">
+          {(candidate.tags || []).slice(0, 3).map(tag => (
+            <span key={tag} className="text-[9px] px-1.5 py-0 bg-brutal-accent/20 text-foreground border border-brutal-accent/40 font-medium">
+              {tag}
+            </span>
+          ))}
+          {(candidate.tags || []).length > 3 && (
+            <span className="text-[9px] px-1.5 py-0 bg-foreground/5 text-muted-foreground border border-foreground/10">
+              +{(candidate.tags || []).length - 3}
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* Stagnation alert */}
+      {isStagnant && (
+        <div className="flex items-center gap-1 text-[9px] text-destructive font-medium mb-2">
+          <AlertTriangle className="w-3 h-3" />
+          Inactif depuis {daysSince}j (max {guideTime}j)
         </div>
       )}
 

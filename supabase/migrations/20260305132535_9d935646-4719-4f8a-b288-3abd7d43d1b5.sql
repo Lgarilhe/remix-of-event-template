@@ -1,0 +1,1 @@
+ALTER TABLE public.job_candidate_status ADD COLUMN tags text[] DEFAULT '{}'::text[];

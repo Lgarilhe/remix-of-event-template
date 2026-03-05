@@ -11,6 +11,7 @@ interface ATSFiltersProps {
     stage: string[];
     source: string[];
     job: string[];
+    tag: string[];
     hasReminder: boolean;
   };
   onFiltersChange: (filters: ATSFiltersProps['filters']) => void;
@@ -18,6 +19,7 @@ interface ATSFiltersProps {
     stages: string[];
     sources: string[];
     jobs: { id: string; title: string }[];
+    tags: string[];
   };
 }
 
@@ -60,10 +62,11 @@ export const ATSFilters: React.FC<ATSFiltersProps> = ({ filters, onFiltersChange
     filters.stage.length + 
     filters.source.length + 
     filters.job.length + 
+    filters.tag.length +
     (filters.hasReminder ? 1 : 0);
 
   const clearAllFilters = () => {
-    onFiltersChange({ search: '', stage: [], source: [], job: [], hasReminder: false });
+    onFiltersChange({ search: '', stage: [], source: [], job: [], tag: [], hasReminder: false });
   };
 
   return (
@@ -135,7 +138,25 @@ export const ATSFilters: React.FC<ATSFiltersProps> = ({ filters, onFiltersChange
         </FilterButton>
       )}
 
-      {/* Reminder filter */}
+      {/* Tag Filter */}
+      {options.tags.length > 0 && (
+        <FilterButton label="Tags" count={filters.tag.length}>
+          <div className="space-y-2 max-h-64 overflow-y-auto">
+            {options.tags.map(tag => (
+              <label key={tag} className="flex items-center gap-2 cursor-pointer text-sm">
+                <Checkbox
+                  checked={filters.tag.includes(tag)}
+                  onCheckedChange={(checked) => {
+                    if (checked) onFiltersChange({ ...filters, tag: [...filters.tag, tag] });
+                    else onFiltersChange({ ...filters, tag: filters.tag.filter(t => t !== tag) });
+                  }}
+                />
+                <span className="truncate">{tag}</span>
+              </label>
+            ))}
+          </div>
+        </FilterButton>
+      )}
       <button
         onClick={() => onFiltersChange({ ...filters, hasReminder: !filters.hasReminder })}
         className={cn(

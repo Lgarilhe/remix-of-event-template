@@ -33,13 +33,14 @@ export default function ATS() {
   const [showReminders, setShowReminders] = useState(false);
   const [selectedCandidate, setSelectedCandidate] = useState<ATSCandidate | null>(null);
   
-  const { candidates, loading, isFetching, isFromCache, error, refetch, handleStageChange } = useATSData();
+  const { candidates, loading, isFetching, isFromCache, error, refetch, handleStageChange, handleTagsChange } = useATSData();
 
   const [filters, setFilters] = useState({
     search: '',
     stage: [] as string[],
     source: [] as string[],
     job: [] as string[],
+    tag: [] as string[],
     hasReminder: false,
   });
 
@@ -54,15 +55,18 @@ export default function ATS() {
     const stages = new Set<string>();
     const sources = new Set<string>();
     const jobsMap = new Map<string, string>();
+    const tagsSet = new Set<string>();
     candidates.forEach(candidate => {
       stages.add(candidate.stage);
       sources.add(candidate.source);
       if (candidate.jobId && candidate.jobTitle) jobsMap.set(candidate.jobId, candidate.jobTitle);
+      (candidate.tags || []).forEach(t => tagsSet.add(t));
     });
     return {
       stages: Array.from(stages),
       sources: Array.from(sources),
       jobs: Array.from(jobsMap.entries()).map(([id, title]) => ({ id, title })),
+      tags: Array.from(tagsSet).sort(),
     };
   }, [candidates]);
 
@@ -79,6 +83,10 @@ export default function ATS() {
       if (filters.stage.length > 0 && !filters.stage.includes(candidate.stage)) return false;
       if (filters.source.length > 0 && !filters.source.includes(candidate.source)) return false;
       if (filters.job.length > 0 && candidate.jobId && !filters.job.includes(candidate.jobId)) return false;
+      if (filters.tag.length > 0) {
+        const candidateTags = candidate.tags || [];
+        if (!filters.tag.some(t => candidateTags.includes(t))) return false;
+      }
       if (filters.hasReminder && !candidate.hasReminder) return false;
       return true;
     });
@@ -263,6 +271,7 @@ export default function ATS() {
           candidate={selectedCandidate}
           onClose={() => setSelectedCandidate(null)}
           onStageChange={handleStageChange}
+          onTagsChange={handleTagsChange}
           onRefresh={refetch}
         />
       )}
