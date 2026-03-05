@@ -83,15 +83,15 @@ interface SequenceActivityLogProps {
   onClose: () => void;
 }
 
+// Actions to hide from activity log (internal/noise)
+const HIDDEN_ACTION_TYPES = new Set(['wait_connection', 'check_connection', 'wait_reply', 'wait_for_event']);
+
 const actionTypeConfig: Record<string, { label: string; icon: React.ReactNode; color: string; bgColor: string }> = {
   profile_visit: { label: 'Visite profil', icon: <Eye className="w-4 h-4" />, color: 'text-foreground', bgColor: 'bg-muted' },
   connection_request: { label: 'Invitation', icon: <UserPlus className="w-4 h-4" />, color: 'text-emerald-900', bgColor: 'bg-emerald-400' },
   message: { label: 'Message', icon: <Send className="w-4 h-4" />, color: 'text-blue-900', bgColor: 'bg-blue-400' },
   inmail: { label: 'InMail', icon: <Mail className="w-4 h-4" />, color: 'text-purple-900', bgColor: 'bg-purple-400' },
   smart_message: { label: 'Smart Message', icon: <MessageSquare className="w-4 h-4" />, color: 'text-indigo-900', bgColor: 'bg-indigo-400' },
-  check_connection: { label: 'Check connexion', icon: <Users className="w-4 h-4" />, color: 'text-orange-900', bgColor: 'bg-orange-400' },
-  wait_connection: { label: 'Attente connexion', icon: <Timer className="w-4 h-4" />, color: 'text-amber-900', bgColor: 'bg-amber-400' },
-  wait_reply: { label: 'Attente réponse', icon: <Timer className="w-4 h-4" />, color: 'text-amber-900', bgColor: 'bg-amber-400' },
 };
 
 const statusConfig: Record<string, { label: string; icon: React.ReactNode; className: string }> = {
@@ -232,6 +232,10 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
     const weekAgo = subDays(now, 7);
 
     return executions.filter(exec => {
+      // Hide internal actions (wait_connection, check_connection, etc.)
+      const actionType = exec.step?.action_type || '';
+      if (HIDDEN_ACTION_TYPES.has(actionType)) return false;
+
       // Status filter
       if (statusFilter !== 'all' && exec.status !== statusFilter) {
         return false;
