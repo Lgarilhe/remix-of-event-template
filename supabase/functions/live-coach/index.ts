@@ -115,9 +115,33 @@ Retourne UNIQUEMENT ce JSON (pas de texte avant/après) :
     const aiRes = await response.json();
     const text = aiRes.choices?.[0]?.message?.content || "{}";
     const jsonMatch = text.match(/\{[\s\S]*\}/);
-    const analysis = jsonMatch
-      ? JSON.parse(jsonMatch[0])
-      : { resolved_signals: [], dig_deeper: [], criteria_updates: {} };
+    let analysis = { resolved_signals: [], dig_deeper: [], criteria_updates: {} };
+    if (jsonMatch) {
+      try {
+        analysis = JSON.parse(jsonMatch[0]);
+      } catch {
+        // Attempt repair on truncated/malformed JSON
+        let cleaned = jsonMatch[0]
+          .replace(/,\s*}/g, "}")
+          .replace(/,\s*]/g, "]")
+          .replace(/[\x00-\x1F\x7F]/g, "");
+        // Balance braces/brackets
+        let braces = 0, brackets = 0;
+        for (const c of cleaned) {
+          if (c === '{') braces++;
+          if (c === '}') braces--;
+          if (c === '[') brackets++;
+          if (c === ']') brackets--;
+        }
+        while (brackets > 0) { cleaned += ']'; brackets--; }
+        while (braces > 0) { cleaned += '}'; braces--; }
+        try {
+          analysis = JSON.parse(cleaned);
+        } catch (e2) {
+          console.warn("JSON repair failed, using defaults:", e2);
+        }
+      }
+    }
 
     // Save to DB (fire-and-forget for speed)
     const supabase = createClient(
