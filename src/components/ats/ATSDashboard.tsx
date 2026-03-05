@@ -61,8 +61,9 @@ const ChartTooltip = ({ active, payload, label }: any) => {
 };
 
 // ─── Section wrapper ───
-function Section({ title, icon: Icon, children, action, className }: {
+function Section({ title, subtitle, icon: Icon, children, action, className }: {
   title: string;
+  subtitle?: string;
   icon: React.ElementType;
   children: React.ReactNode;
   action?: React.ReactNode;
@@ -74,6 +75,7 @@ function Section({ title, icon: Icon, children, action, className }: {
         <div className="flex items-center gap-2">
           <Icon className="w-3.5 h-3.5" />
           <h3 className="text-[11px] uppercase tracking-wider font-bold">{title}</h3>
+          {subtitle && <span className="text-[9px] text-muted-foreground tracking-wide hidden sm:inline">— {subtitle}</span>}
         </div>
         {action}
       </div>
@@ -265,6 +267,7 @@ export function ATSDashboard({ candidates, stages }: ATSDashboardProps) {
           {urgentCandidates.length > 0 && (
             <Section
               title={`À traiter (${urgentCandidates.length})`}
+              subtitle="Candidats ayant répondu sans action depuis 2+ jours"
               icon={AlertCircle}
               className="border-b-0 lg:border-r-0"
               action={
