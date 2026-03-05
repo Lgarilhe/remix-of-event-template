@@ -92,7 +92,7 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
 
   const speakerLabel = (speaker: number) => speaker === 0 ? 'Recruteur' : 'Candidat';
   const speakerColor = (speaker: number) => speaker === 0 ? 'text-blue-600' : 'text-emerald-600';
-  const COACH_INTERVAL_MS = 30000;
+  const COACH_INTERVAL_MS = 15000;
 
   // Auto-scroll transcript within its own ScrollArea only
   useEffect(() => {

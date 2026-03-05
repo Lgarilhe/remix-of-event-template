@@ -22,29 +22,24 @@ serve(async (req) => {
       pending_signals,
     } = await req.json();
 
-    const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
-    if (!ANTHROPIC_API_KEY) {
+    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+    if (!LOVABLE_API_KEY) {
       return new Response(
-        JSON.stringify({ error: "ANTHROPIC_API_KEY not configured" }),
+        JSON.stringify({ error: "LOVABLE_API_KEY not configured" }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
+
+    // Truncate transcript to last ~3000 chars for speed
+    const truncatedTranscript = full_transcript.length > 3000
+      ? '...' + full_transcript.slice(-3000)
+      : full_transcript;
 
     const pendingSignalsContext = pending_signals?.length
       ? `\nSIGNAUX EN ATTENTE (questions suggérées précédemment, pas encore traitées) :\n${JSON.stringify(pending_signals)}\n\nPour chaque signal en attente, vérifie dans la transcription si la question a été posée ET si le candidat y a répondu. Si oui, ajoute le signal exact dans "resolved_signals". Ne propose PAS de nouveaux signaux sur le même sujet qu'un signal en attente non résolu.`
       : '';
 
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "x-api-key": ANTHROPIC_API_KEY,
-        "anthropic-version": "2023-06-01",
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "claude-sonnet-4-20250514",
-        max_tokens: 1024,
-        system: `Tu es un coach de recrutement senior en temps réel.
+    const systemPrompt = `Tu es un coach de recrutement senior en temps réel.
 Tu analyses un entretien en cours et tu aides le recruteur.
 
 CONTEXTE DU POSTE :
@@ -75,32 +70,36 @@ SECTION "dig_deeper" — TRÈS IMPORTANT :
 SECTION "resolved_signals" :
 - Liste des signaux (valeurs exactes du champ "signal") des pending_signals qui ont été traités dans la conversation
 - Un signal est résolu quand la question a été posée ET le candidat a donné une réponse substantielle
-- Si aucun signal résolu, retourne []`,
+- Si aucun signal résolu, retourne []
+
+IMPORTANT : Sois CONCIS et RAPIDE. Réponds uniquement en JSON valide.`;
+
+    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${LOVABLE_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "google/gemini-2.5-flash-lite",
+        max_tokens: 512,
         messages: [
+          { role: "system", content: systemPrompt },
           {
             role: "user",
             content: `CALL EN COURS (${elapsed_seconds}s écoulées)
 
-TRANSCRIPTION COMPLÈTE :
-${full_transcript}
+TRANSCRIPTION RÉCENTE :
+${truncatedTranscript}
 
 DERNIER SEGMENT :
 ${latest_chunk}
 
 Retourne UNIQUEMENT ce JSON (pas de texte avant/après) :
 {
-  "resolved_signals": ["signal exact résolu 1", ...],
-  "dig_deeper": [
-    {"signal": "...", "question": "..."}
-  ],
-  "criteria_updates": {
-    "CRITERIA_ID": {
-      "covered": true,
-      "signal": "positive|negative|neutral",
-      "verbatim": "...",
-      "auto_score": 4
-    }
-  }
+  "resolved_signals": [],
+  "dig_deeper": [],
+  "criteria_updates": {}
 }`,
           },
         ],
@@ -109,31 +108,32 @@ Retourne UNIQUEMENT ce JSON (pas de texte avant/après) :
 
     if (!response.ok) {
       const errText = await response.text();
-      console.error("Anthropic error:", response.status, errText);
-      throw new Error(`Anthropic error: ${response.status}`);
+      console.error("Lovable AI error:", response.status, errText);
+      throw new Error(`AI error: ${response.status}`);
     }
 
-    const claudeRes = await response.json();
-    const text = claudeRes.content?.[0]?.text || "{}";
+    const aiRes = await response.json();
+    const text = aiRes.choices?.[0]?.message?.content || "{}";
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     const analysis = jsonMatch
       ? JSON.parse(jsonMatch[0])
       : { resolved_signals: [], dig_deeper: [], criteria_updates: {} };
 
-    // Save to DB
+    // Save to DB (fire-and-forget for speed)
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    await supabase
+    supabase
       .from("call_coaching_sessions")
       .update({
         transcript: full_transcript,
         criteria_detected: analysis.criteria_updates,
         duration_seconds: elapsed_seconds,
       })
-      .eq("id", session_id);
+      .eq("id", session_id)
+      .then(() => {});
 
     return new Response(JSON.stringify(analysis), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
