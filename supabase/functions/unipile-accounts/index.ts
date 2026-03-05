@@ -66,15 +66,21 @@ Deno.serve(async (req) => {
             // Fetch profile picture via /users/me
             let profilePictureUrl: string | null = null;
             try {
-              const profileRes = await fetch(`${baseUrl}/users/me?account_id=${acc.id}`, {
+              const profileUrl = `${baseUrl}/users/me?account_id=${acc.id}`;
+              console.log(`[accounts] Fetching profile picture from: ${profileUrl}`);
+              const profileRes = await fetch(profileUrl, {
                 headers: { 'X-API-KEY': apiKey!, 'Accept': 'application/json' },
               });
               if (profileRes.ok) {
                 const profileData = await profileRes.json();
-                profilePictureUrl = profileData.profile_picture_url || profileData.picture_url || profileData.avatar || null;
+                console.log(`[accounts] Profile data keys: ${Object.keys(profileData).join(', ')}`);
+                console.log(`[accounts] profile_picture_url: ${profileData.profile_picture_url}`);
+                profilePictureUrl = profileData.profile_picture_url || null;
+              } else {
+                console.warn(`[accounts] Profile fetch failed: ${profileRes.status} ${profileRes.statusText}`);
               }
             } catch (e) {
-              console.warn(`Failed to fetch profile picture for ${acc.id}:`, e);
+              console.warn(`[accounts] Failed to fetch profile picture for ${acc.id}:`, e);
             }
             
             return {
