@@ -1,44 +1,64 @@
 
 
-# Plan : Rendre l'évaluation et la scorecard responsive mobile
+# Plan : Refonte du coaching live -- mode "checklist + signaux"
 
-## Problèmes identifiés
+## Concept
 
-### 1. CandidateDetailModal (`CandidateDetailModal.tsx`)
-- **Dialog** : en mode split (onglet Évaluation), forcé à `95vw/95vh` avec un panneau droit fixe de `w-[400px]` -- inutilisable sur mobile
-- **Header** : boutons d'action (`LinkedIn`, `Email`, `Portail`) en `flex ml-auto` débordent sur petit écran
-- **Stage + actions** (l.294) : `flex items-center gap-4` non wrappé
-- **Tabs** : `overflow-x-auto` OK mais les tabs sont petits et serrés
+Remplacer le feed chronologique (liste d'alertes qui s'empilent) par deux sections stables :
 
-### 2. ScorecardTab (`ScorecardTab.tsx`)
-- **Header bar** (l.391-438) : `flex items-center justify-between` avec 3 boutons (`Coaching Live`, `Régénérer`, `Sauvegarder`) côte à côte -- déborde sur mobile
-- **Critères** : les étoiles (5 boutons) + chevron + badges tiennent difficilement sur petit écran
-- **Verdict section** : `flex flex-wrap gap-1.5` pour les 5 recommandations -- OK mais les boutons sont larges
+1. **Checklist des critères** : la liste complète des critères de la scorecard, chacun avec un statut (pas encore abordé / couvert / signal positif/négatif). L'IA coche automatiquement quand le sujet est traité. Le recruteur voit d'un coup d'oeil ce qu'il reste à couvrir.
 
-### 3. Qualification page (`Qualification.tsx`)
-- **Header** (l.152-173) : `flex items-center justify-between` avec titre long + bouton Sauvegarder
-- **Grid** (l.175) : `grid-cols-1 lg:grid-cols-3` -- déjà responsive, OK
-- **Verdict buttons** (l.327) : `grid grid-cols-2 sm:grid-cols-4` -- OK
+2. **Signaux à creuser** : uniquement les points que l'IA détecte comme méritant d'être approfondis (hésitation, contradiction, red flag, opportunité). Maximum 2-3 items visibles, remplacés à chaque cycle (pas d'accumulation). Si rien d'intéressant, la section reste vide -- pas de bruit.
 
-## Changements prévus
+```text
+┌─────────────────────────────────────────┐
+│ ✅ Leadership          ⬜ Salaire       │
+│ ✅ Expérience tech     ⬜ Disponibilité │
+│ ⚠️ Motivation (négatif) ⬜ Culture fit  │
+├─────────────────────────────────────────┤
+│ 🔍 CREUSER                              │
+│ "Il hésite sur sa date de dispo"        │
+│  → Demander : quand exactement ?        │
+│                                         │
+│ "Mentionne une contre-offre"            │
+│  → Creuser le montant et la timeline    │
+└─────────────────────────────────────────┘
+```
 
-### CandidateDetailModal
-- Mode split sur mobile : **empiler verticalement** au lieu de `flex` horizontal. Le panneau droit passe en dessous ou est masqué derrière un bouton toggle
-- Remplacer `w-[400px] shrink-0` par `w-full lg:w-[400px]` et `flex` par `flex flex-col lg:flex-row`
-- Header actions : wrapper avec `flex-wrap` et cacher les labels sur mobile (icônes seules)
-- Stage row : `flex flex-wrap gap-2` au lieu de `gap-4`
+## Changements
 
-### ScorecardTab
-- Header buttons : stack vertical sur mobile (`flex flex-col sm:flex-row`)
-- Boutons d'action : texte caché sur mobile, icônes seules via `hidden sm:inline`
-- Étoiles : réduire taille sur mobile (`w-4 h-4` au lieu de `w-5 h-5` sur `< sm`)
+### 1. Prompt backend (`supabase/functions/live-coach/index.ts`)
 
-### Qualification page
-- Header : `flex flex-col sm:flex-row` pour empiler titre et bouton sur mobile
-- Padding : réduire `px-6` à `px-4` sur mobile
+Modifier le prompt système pour demander un output différent :
+- **`criteria_updates`** : inchangé (l'IA marque les critères couverts)
+- **`dig_deeper`** : remplace `alerts` + `suggestions`. Liste de 0 à 3 items avec `{ signal: string, question: string }`. L'IA ne retourne des items que quand il y a quelque chose de pertinent à creuser
+- Supprimer le champ `alerts` du JSON de sortie
+- Augmenter la consigne : "Si rien de nouveau ou intéressant à signaler, retourne dig_deeper vide. Ne génère PAS d'items juste pour en générer."
+
+### 2. Frontend (`src/components/ats/LiveCoachingPanel.tsx`)
+
+**State** :
+- Remplacer `coachFeed: CoachAlert[]` par `digDeeper: { signal: string; question: string }[]`
+- Conserver `criteriaStatus` inchangé
+- Conserver `alertsLogRef` pour le rapport final (stocker tous les dig_deeper historiques)
+
+**Intervalle** :
+- Passer `COACH_INTERVAL_MS` de 15s à 30s
+- Ne plus déclencher sur `speech_final`, uniquement sur `UtteranceEnd` + timer (réduire les appels)
+
+**UI** :
+- **Section haute** : grille de tous les critères (compacte, 2 colonnes). Chaque critère = badge avec icone (⬜ pas couvert, ✅ couvert positif, ⚠️ couvert négatif). Clickable pour voir le verbatim
+- **Section basse** : "À creuser" -- les 2-3 derniers `dig_deeper` items. Remplacés à chaque cycle, pas accumulés. Animation `animate-in` quand ça change. Si vide, afficher "RAS -- continuez l'entretien"
+- Supprimer le `ScrollArea` du coach feed (plus besoin de scroller, tout tient dans l'espace fixe)
+
+### 3. Réponse du coach (`analyzeWithCoach`)
+
+Adapter le parsing :
+- `data.dig_deeper` remplace `data.alerts` + `data.suggestions`
+- Setter `setDigDeeper(data.dig_deeper || [])` (remplacement, pas accumulation)
+- Pousser dans `alertsLogRef` pour historique
 
 ## Fichiers modifiés
-1. `src/components/ats/CandidateDetailModal.tsx` -- layout split, header, tabs, actions
-2. `src/components/ats/ScorecardTab.tsx` -- header buttons, criteria rows, verdict
-3. `src/pages/Qualification.tsx` -- header responsive, padding
+1. `supabase/functions/live-coach/index.ts` -- nouveau prompt + nouveau format JSON
+2. `src/components/ats/LiveCoachingPanel.tsx` -- nouveau state, nouvelle UI, intervalle 30s
 
