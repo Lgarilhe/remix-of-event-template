@@ -3,7 +3,6 @@ import linkedinLogo from '@/assets/linkedin-logo.png';
 import { supabase } from '@/integrations/supabase/client';
 import { ATSCandidate, ATS_STAGES } from '@/hooks/useATSData';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
-import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import { useNotionJobs } from '@/hooks/useNotionJobs';
@@ -1133,43 +1132,41 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
       </DialogContent>
     </Dialog>
 
-    {/* Mobile profile sheet — rendered outside Dialog to avoid z-index/overflow issues */}
-    {isSplitMode && (
-      <Sheet open={mobileProfileOpen} onOpenChange={setMobileProfileOpen} modal={false}>
-        <SheetContent side="bottom" className="h-[55dvh] rounded-none border-t-2 border-foreground p-0 flex flex-col z-[2600] shadow-[0_-8px_30px_rgba(0,0,0,0.3)]">
-          <div className="px-4 py-3 border-b border-foreground/15 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <User className="w-4 h-4" />
-              <span className="text-[11px] font-bold uppercase tracking-wider">Profil & Poste</span>
-            </div>
-            <button onClick={() => setMobileProfileOpen(false)} className="h-7 w-7 flex items-center justify-center hover:bg-foreground/10">
-              <X className="w-4 h-4" />
-            </button>
+    {/* Mobile profile panel — plain fixed div to avoid Radix Dialog conflicts */}
+    {isSplitMode && mobileProfileOpen && (
+      <div className="fixed inset-x-0 bottom-0 h-[55dvh] z-[9999] bg-background border-t-2 border-foreground shadow-[0_-8px_30px_rgba(0,0,0,0.3)] flex flex-col animate-in slide-in-from-bottom duration-300">
+        <div className="px-4 py-3 border-b border-foreground/15 flex items-center justify-between shrink-0">
+          <div className="flex items-center gap-2">
+            <User className="w-4 h-4" />
+            <span className="text-[11px] font-bold uppercase tracking-wider">Profil & Poste</span>
           </div>
-          <div className="flex-1 overflow-y-auto px-4 pt-3 pb-6 space-y-3">
+          <button onClick={() => setMobileProfileOpen(false)} className="h-7 w-7 flex items-center justify-center hover:bg-foreground/10">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+        <div className="flex-1 overflow-y-auto px-4 pt-3 pb-6 space-y-3">
+          <CollapsibleCard
+            title={enrichedProfile?.name || candidate.name}
+            subtitle={enrichedProfile?.headline || candidate.headline}
+            icon={<User className="w-3.5 h-3.5" />}
+            variant="dark"
+            defaultOpen={true}
+          >
+            <MobileProfileContent candidate={candidate} enrichedProfile={enrichedProfile} />
+          </CollapsibleCard>
+          {(jobDetails || candidate.jobTitle) && (
             <CollapsibleCard
-              title={enrichedProfile?.name || candidate.name}
-              subtitle={enrichedProfile?.headline || candidate.headline}
-              icon={<User className="w-3.5 h-3.5" />}
-              variant="dark"
+              title={jobDetails?.title || candidate.jobTitle || 'Poste'}
+              subtitle={jobDetails?.client ? `${jobDetails.client}${jobDetails.location ? ` · ${jobDetails.location}` : ''}` : undefined}
+              icon={<Target className="w-3.5 h-3.5" />}
+              variant="accent"
               defaultOpen={true}
             >
-              <MobileProfileContent candidate={candidate} enrichedProfile={enrichedProfile} />
+              <MobileJobContent jobDetails={jobDetails} candidate={candidate} />
             </CollapsibleCard>
-            {(jobDetails || candidate.jobTitle) && (
-              <CollapsibleCard
-                title={jobDetails?.title || candidate.jobTitle || 'Poste'}
-                subtitle={jobDetails?.client ? `${jobDetails.client}${jobDetails.location ? ` · ${jobDetails.location}` : ''}` : undefined}
-                icon={<Target className="w-3.5 h-3.5" />}
-                variant="accent"
-                defaultOpen={true}
-              >
-                <MobileJobContent jobDetails={jobDetails} candidate={candidate} />
-              </CollapsibleCard>
-            )}
-          </div>
-        </SheetContent>
-      </Sheet>
+          )}
+        </div>
+      </div>
     )}
     </>
   );
