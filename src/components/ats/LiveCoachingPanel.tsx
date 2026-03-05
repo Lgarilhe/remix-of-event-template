@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback, useEffect } from 'react';
+import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Mic, Square, FileText, AlertTriangle, Lightbulb, Info, Copy, CheckCircle2, Loader2, X } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -53,6 +53,11 @@ interface LiveCoachingPanelProps {
   onClose: () => void;
 }
 
+interface TranscriptSegment {
+  speaker: number;
+  text: string;
+}
+
 export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
   candidateId,
   candidateName,
@@ -67,8 +72,9 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
   onClose,
 }) => {
   const [isRecording, setIsRecording] = useState(false);
-  const [transcript, setTranscript] = useState('');
+  const [segments, setSegments] = useState<TranscriptSegment[]>([]);
   const [interimText, setInterimText] = useState('');
+  const [interimSpeaker, setInterimSpeaker] = useState<number | null>(null);
   const [coachFeed, setCoachFeed] = useState<CoachAlert[]>([]);
   const [criteriaStatus, setCriteriaStatus] = useState<Record<string, CriterionUpdate>>({});
   const [sessionId, setSessionId] = useState<string | null>(null);
@@ -85,7 +91,10 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
   const lastCoachCallRef = useRef(0);
   const alertsLogRef = useRef<CoachAlert[]>([]);
   const transcriptEndRef = useRef<HTMLDivElement>(null);
+  const lastSpeakerRef = useRef<number | null>(null);
 
+  const speakerLabel = (speaker: number) => speaker === 0 ? 'Recruteur' : 'Candidat';
+  const speakerColor = (speaker: number) => speaker === 0 ? 'text-blue-600' : 'text-emerald-600';
   const COACH_INTERVAL_MS = 15000;
 
   // Auto-scroll transcript within its own ScrollArea only
@@ -96,7 +105,7 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
         scrollContainer.scrollTop = scrollContainer.scrollHeight;
       }
     }
-  }, [transcript, interimText]);
+  }, [segments, interimText]);
 
   // Propagate criteria updates
   useEffect(() => {
@@ -202,6 +211,7 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
           utterance_end_ms: '1500',
           endpointing: '300',
           vad_events: 'true',
+          diarize: 'true',
         }).toString(),
         ['token', keyData.key]
       );
@@ -234,14 +244,28 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
 
           if (data.is_final) {
             const finalText = alt.transcript?.trim();
-            // Only append non-empty final transcripts
+            const words = alt.words || [];
+            const speaker = words.length > 0 ? (words[0].speaker ?? 0) : (lastSpeakerRef.current ?? 0);
+            
             if (finalText) {
               pendingFinalTextRef.current += ' ' + finalText;
               fullTranscriptRef.current += ' ' + finalText;
-              setTranscript(fullTranscriptRef.current);
+              
+              setSegments(prev => {
+                if (prev.length > 0 && prev[prev.length - 1].speaker === speaker) {
+                  const updated = [...prev];
+                  updated[updated.length - 1] = {
+                    ...updated[updated.length - 1],
+                    text: updated[updated.length - 1].text + ' ' + finalText,
+                  };
+                  return updated;
+                }
+                return [...prev, { speaker, text: finalText }];
+              });
+              lastSpeakerRef.current = speaker;
             }
-            // Always clear interim on final result
             setInterimText('');
+            setInterimSpeaker(null);
 
             // If speech_final (end of utterance) or enough time passed, send to coach
             const now = Date.now();
@@ -264,9 +288,11 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
               });
             }
           } else {
-            // Interim result: show as preview text alongside accumulated transcript
             if (alt.transcript?.trim()) {
+              const words = alt.words || [];
+              const speaker = words.length > 0 ? (words[0].speaker ?? 0) : (lastSpeakerRef.current ?? 0);
               setInterimText(alt.transcript);
+              setInterimSpeaker(speaker);
             }
           }
         }
@@ -451,9 +477,26 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
             <ScrollArea className="h-full">
             <div className="p-3">
               <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-2">Transcription</p>
-              <div className="text-[11px] leading-relaxed text-foreground whitespace-pre-wrap">
-                {transcript || <span className="text-muted-foreground italic">En attente de parole...</span>}
-                {interimText && <span className="text-muted-foreground/60 italic"> {interimText}</span>}
+              <div className="text-[11px] leading-relaxed space-y-1.5">
+                {segments.length === 0 && !interimText && (
+                  <span className="text-muted-foreground italic">En attente de parole...</span>
+                )}
+                {segments.map((seg, i) => (
+                  <div key={i}>
+                    <span className={cn("font-bold text-[10px] uppercase tracking-wider", speakerColor(seg.speaker))}>
+                      {speakerLabel(seg.speaker)}:
+                    </span>{' '}
+                    <span className="text-foreground">{seg.text}</span>
+                  </div>
+                ))}
+                {interimText && (
+                  <div className="opacity-50 italic">
+                    <span className={cn("font-bold text-[10px] uppercase tracking-wider", speakerColor(interimSpeaker ?? 0))}>
+                      {speakerLabel(interimSpeaker ?? 0)}:
+                    </span>{' '}
+                    {interimText}
+                  </div>
+                )}
                 <div ref={transcriptEndRef} />
               </div>
             </div>
