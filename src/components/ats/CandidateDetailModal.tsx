@@ -315,6 +315,35 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
                   <span className="relative z-10">Email</span>
                 </BrutalButton>
               )}
+              <button
+                onClick={async () => {
+                  try {
+                    const user = (await supabase.auth.getUser()).data.user;
+                    if (!user) return;
+                    const { data: tokenData, error: insertError } = await supabase
+                      .from('candidate_portal_tokens')
+                      .insert({
+                        candidate_id: candidate.candidateId,
+                        candidate_name: candidate.name,
+                        job_id: candidate.jobId,
+                        job_title: candidate.jobTitle,
+                        pipeline_stage: candidate.stage,
+                        created_by: user.id,
+                      })
+                      .select('token')
+                      .single();
+                    if (insertError) throw insertError;
+                    const url = `${window.location.origin}/portal/${tokenData.token}`;
+                    await navigator.clipboard.writeText(url);
+                    toast.success('Lien portail copié !');
+                  } catch (e: any) {
+                    toast.error('Erreur : ' + (e.message || 'impossible de créer le lien'));
+                  }
+                }}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 ml-2 border-2 border-emerald-600 bg-emerald-600 text-white text-[11px] font-bold uppercase tracking-wider hover:bg-emerald-700 transition-colors"
+              >
+                <Link2 className="w-3.5 h-3.5" /> Portail
+              </button>
             </div>
           </div>
 
