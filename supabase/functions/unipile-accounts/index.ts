@@ -40,6 +40,7 @@ Deno.serve(async (req) => {
           .map((acc: { 
             id: string; 
             name: string; 
+            profile_picture_url?: string;
             connection_params?: {
               im?: {
                 premiumFeatures?: string[];
@@ -68,6 +69,7 @@ Deno.serve(async (req) => {
               name: acc.name,
               identifier: acc.name,
               status: mainStatus,
+              profile_picture_url: acc.profile_picture_url || null,
               subscriptions: {
                 classic: true, // Always available
                 recruiter: hasRecruiter,

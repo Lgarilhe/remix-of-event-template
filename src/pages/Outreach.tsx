@@ -29,6 +29,7 @@ export interface LinkedInAccount {
   name: string;
   identifier: string;
   status: string;
+  profile_picture_url?: string | null;
   subscriptions?: LinkedInAccountSubscriptions;
 }
 
