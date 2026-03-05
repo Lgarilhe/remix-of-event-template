@@ -442,9 +442,9 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
                         toast.error('Erreur : ' + (e.message || 'impossible de créer le lien'));
                       }
                     }}
-                    className="flex items-center gap-1.5 text-[10px] text-foreground font-medium uppercase tracking-wider hover:text-emerald-600"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-emerald-600 text-white text-xs font-semibold hover:bg-emerald-700 transition-colors"
                   >
-                    <Link2 className="w-3 h-3" /> Portail candidat
+                    <Link2 className="w-3.5 h-3.5" /> Portail candidat
                   </button>
 
                   {/* Score */}
