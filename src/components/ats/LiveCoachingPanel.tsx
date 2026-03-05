@@ -93,6 +93,7 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
   const [report, setReport] = useState<CallReport | null>(null);
   const [callStopped, setCallStopped] = useState(false);
   const [loadingIntro, setLoadingIntro] = useState(false);
+  const introLockedRef = useRef(true); // Lock nextTopic during intro phase
 
   const socketRef = useRef<WebSocket | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -182,15 +183,21 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
           return updated;
         });
       }
-      // Proactive next topic — only update if substantially different
+      // Proactive next topic — only update once intro phase is over
       if (data.next_topic?.topic) {
-        setNextTopic(prev => {
-          if (!prev) return data.next_topic;
-          // Compare normalized: strip emojis, lowercase, first 20 chars
-          const normalize = (s: string) => s.replace(/[^\w\s]/g, '').toLowerCase().trim().slice(0, 20);
-          if (normalize(prev.topic) === normalize(data.next_topic.topic)) return prev;
-          return data.next_topic;
-        });
+        // Unlock intro once transcript has enough content (>200 chars = conversation started)
+        if (introLockedRef.current && params.fullTranscript.length > 200) {
+          introLockedRef.current = false;
+        }
+        // Skip update while intro is locked
+        if (!introLockedRef.current) {
+          setNextTopic(prev => {
+            if (!prev) return data.next_topic;
+            const normalize = (s: string) => s.replace(/[^\w\s]/g, '').toLowerCase().trim().slice(0, 20);
+            if (normalize(prev.topic) === normalize(data.next_topic.topic)) return prev;
+            return data.next_topic;
+          });
+        }
       }
     } catch (err) {
       console.error('Coach analysis error:', err);
