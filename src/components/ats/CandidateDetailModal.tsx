@@ -1140,7 +1140,11 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
             <User className="w-4 h-4" />
             <span className="text-[11px] font-bold uppercase tracking-wider">Profil & Poste</span>
           </div>
-          <button onClick={() => setMobileProfileOpen(false)} className="h-7 w-7 flex items-center justify-center hover:bg-foreground/10">
+          <button 
+            onPointerDown={(e) => { e.stopPropagation(); setMobileProfileOpen(false); }}
+            onClick={(e) => { e.stopPropagation(); setMobileProfileOpen(false); }}
+            className="h-7 w-7 flex items-center justify-center hover:bg-foreground/10"
+          >
             <X className="w-4 h-4" />
           </button>
         </div>
