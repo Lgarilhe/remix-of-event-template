@@ -167,7 +167,7 @@ async function fetchLocalCandidates(): Promise<ATSCandidate[]> {
 async function fetchSequenceEnrichment(): Promise<Map<string, { sequenceId: string; sequenceName: string; sequenceStatus: string; connectionStatus: string }>> {
   const { data: enrollments, error } = await supabase
     .from('sequence_enrollments')
-    .select('profile_id, sequence_id, status, connection_status, outreach_sequences (id, name)')
+    .select('profile_id, sequence_id, status, connection_status, job_id, job_title, outreach_sequences (id, name)')
     .order('created_at', { ascending: false });
 
   const map = new Map();
@@ -179,6 +179,8 @@ async function fetchSequenceEnrichment(): Promise<Map<string, { sequenceId: stri
           sequenceName: (e as any).outreach_sequences?.name || null,
           sequenceStatus: e.status,
           connectionStatus: e.connection_status,
+          jobId: e.job_id || null,
+          jobTitle: e.job_title || null,
         });
       }
     }
@@ -285,17 +287,37 @@ async function fetchMetadata(candidates: ATSCandidate[]): Promise<ATSCandidate[]
   }));
 }
 
+// Fetch job titles from sourcing_projects
+async function fetchJobTitlesMap(): Promise<Map<string, string>> {
+  const { data } = await supabase
+    .from('sourcing_projects')
+    .select('job_id, job_title')
+    .not('job_id', 'is', null)
+    .not('job_title', 'is', null);
+
+  const map = new Map<string, string>();
+  if (data) {
+    data.forEach((p: any) => {
+      if (p.job_id && p.job_title) map.set(p.job_id, p.job_title);
+    });
+  }
+  return map;
+}
+
 // Main fetch: local table is primary, sequences & inmails fill gaps
 async function fetchAllCandidates(): Promise<ATSCandidate[]> {
-  const [localCandidates, sequenceEnrichment] = await Promise.all([
+  const [localCandidates, sequenceEnrichment, jobTitlesMap] = await Promise.all([
     fetchLocalCandidates(),
     fetchSequenceEnrichment(),
+    fetchJobTitlesMap(),
   ]);
 
-  // Enrich local candidates with sequence data
+  // Enrich local candidates with sequence data AND job titles
   const enrichedLocal = localCandidates.map(c => {
     const seqData = sequenceEnrichment.get(c.candidateId);
-    return seqData ? { ...c, ...seqData } : c;
+    const jobTitle = c.jobTitle || (c.jobId ? jobTitlesMap.get(c.jobId) : null) || (seqData as any)?.jobTitle || null;
+    const enriched = seqData ? { ...c, ...seqData } : c;
+    return { ...enriched, jobTitle: enriched.jobTitle || jobTitle };
   });
 
   const existingIds = new Set(enrichedLocal.map(c => c.candidateId));
