@@ -130,7 +130,6 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
   const jobDetails = React.useMemo(() => {
     if (!candidate.jobId) return null;
     const notionJob = notionJobs?.find(j => j.id === candidate.jobId);
-    console.log('[CandidateDetail] jobId:', candidate.jobId, 'found:', !!notionJob, 'mustHave:', notionJob?.mustHave, 'shouldHave:', notionJob?.shouldHave, 'niceToHave:', notionJob?.niceToHave, 'description:', notionJob?.description?.substring(0, 50));
     if (!notionJob) return null;
     return {
       title: notionJob.title,
