@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { ATSCandidate } from '@/hooks/useATSData';
 import { EnrichedProfile } from '@/hooks/useProfileEnrichment';
-import { Loader2, Sparkles, Star, RotateCcw, ChevronDown, ChevronUp, Pencil, Check, Plus, Trash2, AlertTriangle, MessageSquare, Copy } from 'lucide-react';
+import { Loader2, Sparkles, Star, RotateCcw, ChevronDown, ChevronUp, Pencil, Check, Plus, Trash2, AlertTriangle, MessageSquare, Copy, Mic } from 'lucide-react';
 import { Textarea } from '@/components/ui/textarea';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { LiveCoachingPanel } from './LiveCoachingPanel';
 
 interface ScorecardTabProps {
   candidate: ATSCandidate;
@@ -74,6 +75,7 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
   const [loading, setLoading] = useState(true);
   const [expandedCriteria, setExpandedCriteria] = useState<Set<string>>(new Set());
   const [selectedStage, setSelectedStage] = useState<InterviewStage | ''>('');
+  const [showCoaching, setShowCoaching] = useState(false);
 
   const activeEval = activeIndex !== null ? evaluations[activeIndex] : null;
 
@@ -415,8 +417,14 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
             </div>
           </div>
           <div className="flex gap-0">
+            <button onClick={() => setShowCoaching(true)} disabled={showCoaching}
+              className="relative overflow-hidden h-[30px] px-3 flex items-center gap-1.5 border border-red-500 text-red-500 text-[10px] font-medium uppercase tracking-wider group disabled:opacity-50">
+              <Mic className="w-3 h-3 relative z-10" />
+              <span className="relative z-10">Coaching Live</span>
+              <span className="absolute inset-0 bg-red-50 translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
+            </button>
             <button onClick={handleGenerate} disabled={generating}
-              className="relative overflow-hidden h-[30px] px-3 flex items-center gap-1.5 border border-foreground text-foreground text-[10px] font-medium uppercase tracking-wider group disabled:opacity-50">
+              className="relative overflow-hidden h-[30px] px-3 flex items-center gap-1.5 border border-foreground text-foreground text-[10px] font-medium uppercase tracking-wider group disabled:opacity-50 -ml-px">
               {generating ? <Loader2 className="w-3 h-3 animate-spin relative z-10" /> : <RotateCcw className="w-3 h-3 relative z-10" />}
               <span className="relative z-10">Régénérer</span>
               <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
@@ -428,6 +436,34 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
             </button>
           </div>
         </div>
+
+        {/* Live Coaching Panel */}
+        {showCoaching && activeEval && (
+          <LiveCoachingPanel
+            candidateId={candidate.candidateId}
+            candidateName={candidate.name}
+            jobId={candidate.jobId || ''}
+            jobTitle={candidate.jobTitle || ''}
+            jobContext={`Poste: ${candidate.jobTitle || 'N/A'}`}
+            criteria={activeEval.criteria}
+            scorecardId={activeEval.id}
+            onCriteriaUpdate={() => {}}
+            onAutoScores={(scores) => {
+              for (const [id, score] of Object.entries(scores)) {
+                handleRate(id, score);
+              }
+            }}
+            onReportGenerated={(report) => {
+              updateActiveEval(ev => ({
+                ...ev,
+                summary: report.summary,
+                recommendation: report.recommendation === 'GO' ? 'strong_yes' : report.recommendation === 'NO_GO' ? 'strong_no' : 'maybe',
+                followUpNotes: report.open_questions?.join('\n• ') || '',
+              }));
+            }}
+            onClose={() => setShowCoaching(false)}
+          />
+        )}
 
         {/* Criteria list */}
         <div className="space-y-2">
