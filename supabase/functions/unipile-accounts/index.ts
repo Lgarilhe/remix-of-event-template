@@ -35,12 +35,11 @@ Deno.serve(async (req) => {
 
         const data = await response.json();
         // Filter only LinkedIn accounts and extract subscription info
-        const linkedinAccounts = (data.items || [])
+        const linkedinAccounts = await Promise.all((data.items || [])
           .filter((acc: { type: string }) => acc.type === 'LINKEDIN')
-          .map((acc: { 
+          .map(async (acc: { 
             id: string; 
             name: string; 
-            profile_picture_url?: string;
             connection_params?: {
               im?: {
                 premiumFeatures?: string[];
@@ -63,20 +62,34 @@ Deno.serve(async (req) => {
             const sources = acc.sources || [];
             const okSource = sources.find((s: { status: string }) => s.status === 'OK');
             const mainStatus = okSource?.status || sources[0]?.status || 'UNKNOWN';
+
+            // Fetch profile picture via /users/me
+            let profilePictureUrl: string | null = null;
+            try {
+              const profileRes = await fetch(`${baseUrl}/users/me?account_id=${acc.id}`, {
+                headers: { 'X-API-KEY': apiKey!, 'Accept': 'application/json' },
+              });
+              if (profileRes.ok) {
+                const profileData = await profileRes.json();
+                profilePictureUrl = profileData.profile_picture_url || profileData.picture_url || profileData.avatar || null;
+              }
+            } catch (e) {
+              console.warn(`Failed to fetch profile picture for ${acc.id}:`, e);
+            }
             
             return {
               id: acc.id,
               name: acc.name,
               identifier: acc.name,
               status: mainStatus,
-              profile_picture_url: acc.profile_picture_url || null,
+              profile_picture_url: profilePictureUrl,
               subscriptions: {
-                classic: true, // Always available
+                classic: true,
                 recruiter: hasRecruiter,
                 sales_navigator: hasSalesNavigator,
               },
             };
-          });
+          }));
         
         return new Response(
           JSON.stringify({ success: true, accounts: linkedinAccounts }),
