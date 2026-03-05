@@ -93,28 +93,31 @@ export function ATSDashboard({ candidates, stages }: ATSDashboardProps) {
   const kpis = useMemo(() => {
     const total = candidates.length;
     
-    // "Contacted" = candidates where actual outreach happened
-    // Check BOTH outreachStatus AND stage/sequence enrichment
+    // "Contacted" = candidates where a message was ACTUALLY sent
+    // NOT shortlisted/scored candidates who were never messaged
     const contacted = candidates.filter(c => {
-      // If stage is beyond Nouveau, the candidate was contacted regardless of source
-      if (['Contacté', 'Répondu', 'Pressenti', 'Pré-qualif', 'CV envoyé', 'ITW en cours', 'Offre', 'Gagné'].includes(c.stage)) {
-        return true;
-      }
-      // Local candidates with outreach status
+      // outreachStatus proves a message was sent
       if (['messaged', 'replied', 'interested', 'not_interested'].includes(c.outreachStatus || '')) {
         return true;
       }
-      // Local candidates enriched with sequence data (active sequence = contacted)
-      if (c.sequenceStatus && c.sequenceStatus !== 'paused' && c.sequenceStatus !== 'cancelled') {
+      // Stage explicitly set to Contacté or beyond (manual pipeline move = real action)
+      if (['Contacté', 'Répondu'].includes(c.stage)) {
+        return true;
+      }
+      // Sequence enrollment that actually sent something (active/completed/replied, not just enrolled & paused)
+      if (c.sequenceStatus && ['active', 'completed', 'replied'].includes(c.sequenceStatus)) {
+        return true;
+      }
+      // InMail candidates with stage beyond Nouveau (sent)
+      if (c.source === 'inmail' && c.stage !== 'Nouveau') {
         return true;
       }
       return false;
     }).length;
     
     // "Replied" = candidates who actually responded
-    // Check stage OR outreachStatus — whichever indicates a response
     const replied = candidates.filter(c => {
-      // Stage-based: if they reached Répondu or beyond
+      // Stage-based: Répondu or beyond (but not Pressenti which is just shortlisted)
       if (['Répondu', 'Pré-qualif', 'CV envoyé', 'ITW en cours', 'Offre', 'Gagné'].includes(c.stage)) {
         return true;
       }
