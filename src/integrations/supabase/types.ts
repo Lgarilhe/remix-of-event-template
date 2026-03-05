@@ -851,6 +851,57 @@ export type Database = {
         }
         Relationships: []
       }
+      candidate_portal_tokens: {
+        Row: {
+          candidate_id: string
+          candidate_name: string | null
+          company_name: string | null
+          created_at: string
+          created_by: string
+          expires_at: string | null
+          id: string
+          is_active: boolean
+          job_id: string | null
+          job_title: string | null
+          next_steps: string | null
+          pipeline_stage: string | null
+          token: string
+          updated_at: string
+        }
+        Insert: {
+          candidate_id: string
+          candidate_name?: string | null
+          company_name?: string | null
+          created_at?: string
+          created_by: string
+          expires_at?: string | null
+          id?: string
+          is_active?: boolean
+          job_id?: string | null
+          job_title?: string | null
+          next_steps?: string | null
+          pipeline_stage?: string | null
+          token?: string
+          updated_at?: string
+        }
+        Update: {
+          candidate_id?: string
+          candidate_name?: string | null
+          company_name?: string | null
+          created_at?: string
+          created_by?: string
+          expires_at?: string | null
+          id?: string
+          is_active?: boolean
+          job_id?: string | null
+          job_title?: string | null
+          next_steps?: string | null
+          pipeline_stage?: string | null
+          token?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       candidate_profiles: {
         Row: {
           candidate_id: string

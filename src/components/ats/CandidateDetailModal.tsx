@@ -15,9 +15,10 @@ import {
   Loader2, Trash2, Calendar, Brain, CheckCircle2, AlertTriangle, MapPin,
   Briefcase, Clock, MessageSquare, CalendarPlus, FolderPlus, Activity,
   FileText, Award, ExternalLink, GraduationCap, Languages, ChevronDown,
-  ChevronUp, Building2, TrendingUp, ClipboardCheck
+  ChevronUp, Building2, TrendingUp, ClipboardCheck, Shield, Link2, Copy
 } from 'lucide-react';
 import { ScorecardTab } from './ScorecardTab';
+import { FraudDetectionTab } from './FraudDetectionTab';
 import { format, parseISO, formatDistanceToNow } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { toast } from 'sonner';
@@ -50,6 +51,7 @@ const tabsConfig = [
   { key: 'profile', label: 'Profil', icon: User },
   { key: 'scoring', label: 'Scoring', icon: Target },
   { key: 'evaluation', label: 'Évaluation', icon: ClipboardCheck },
+  { key: 'fraud', label: 'Vérification', icon: Shield },
   { key: 'activity', label: 'Activité', icon: Activity },
   { key: 'notes', label: 'Notes', icon: StickyNote },
   { key: 'reminders', label: 'Rappels', icon: Bell },
@@ -413,6 +415,37 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
                       <ExternalLink className="w-3 h-3" /> Voir sur LinkedIn
                     </a>
                   )}
+
+                  {/* Portal share button */}
+                  <button
+                    onClick={async () => {
+                      try {
+                        const user = (await supabase.auth.getUser()).data.user;
+                        if (!user) return;
+                        const { data: tokenData, error: insertError } = await supabase
+                          .from('candidate_portal_tokens')
+                          .insert({
+                            candidate_id: candidate.candidateId,
+                            candidate_name: candidate.name,
+                            job_id: candidate.jobId,
+                            job_title: candidate.jobTitle,
+                            pipeline_stage: candidate.stage,
+                            created_by: user.id,
+                          })
+                          .select('token')
+                          .single();
+                        if (insertError) throw insertError;
+                        const url = `${window.location.origin}/portal/${tokenData.token}`;
+                        await navigator.clipboard.writeText(url);
+                        toast.success('Lien portail copié dans le presse-papier !');
+                      } catch (e: any) {
+                        toast.error('Erreur : ' + (e.message || 'impossible de créer le lien'));
+                      }
+                    }}
+                    className="flex items-center gap-1.5 text-[10px] text-foreground font-medium uppercase tracking-wider hover:text-emerald-600"
+                  >
+                    <Link2 className="w-3 h-3" /> Portail candidat
+                  </button>
 
                   {/* Score */}
                   {candidate.score != null && (
@@ -890,6 +923,11 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
             {/* ==================== EVALUATION TAB ==================== */}
             {activeTab === 'evaluation' && (
               <ScorecardTab candidate={candidate} enrichedProfile={enrichedProfile} />
+            )}
+
+            {/* ==================== FRAUD DETECTION TAB ==================== */}
+            {activeTab === 'fraud' && (
+              <FraudDetectionTab candidate={candidate} />
             )}
 
             {/* ==================== ACTIVITY TAB ==================== */}
