@@ -540,15 +540,19 @@ PROFIL DU CANDIDAT:
 ${profile.yearsOfExperience ? `- Années d'expérience: ~${profile.yearsOfExperience} ans` : ''}
 ${profile.education?.length ? `- Formation: ${profile.education.slice(0, 2).join('; ')}` : ''}
 ${profile.summary ? `
-=== SECTION "À PROPOS" DU CANDIDAT (SOURCE CLÉ DE PERSONNALISATION ET DE STYLE) ===
-"${profile.summary.slice(0, 800)}"
+=== SECTION "À PROPOS" DU CANDIDAT (SOURCE PRIORITAIRE DE PERSONNALISATION) ===
+"${profile.summary.slice(0, 1200)}"
 === FIN À PROPOS ===
 
-IMPORTANT - ANALYSE LE STYLE D'ÉCRITURE DU CANDIDAT:
-- Observe comment il écrit: phrases courtes ou longues ? Formel ou décontracté ?
-- Utilise-t-il des émojis, de l'humour, des expressions familières ?
-- Son ton est-il corporate, startup, créatif, technique ?
-- ADAPTE TON MESSAGE À SON STYLE pour créer une résonance naturelle` : ''}
+ANALYSE OBLIGATOIRE DU "À PROPOS" — EXTRAIS AU MOINS UN ÉLÉMENT:
+1. Motivations profondes ("j'ai quitté X pour Y", "ce qui me drive c'est Z")
+2. Convictions techniques ("je crois au DDD", "les tests d'abord", "clean code")
+3. Side projects, contributions open source, passions tech
+4. Style de travail préféré ("petites équipes", "ownership", "impact direct")
+5. Éléments différenciants (reconversion, double compétence, hobby inhabituel)
+→ UTILISE l'un de ces éléments dans la PHRASE 1 du message (accroche)
+→ NE DIS JAMAIS d'où vient l'info ("dans ton À propos", "tu mentionnes") — cite DIRECTEMENT comme une observation naturelle
+→ ADAPTE TON STYLE au style d'écriture du candidat (formel/décontracté, phrases courtes/longues, émojis ou pas)` : ''}
 ${postsSection}
 ${historySection}
 
@@ -581,10 +585,19 @@ ${statusInstructions[candidateStatus] || statusInstructions.other}
 1. PERSONNALISATION = FACTEUR N°1 (NON NÉGOCIABLE)
    Chaque message DOIT contenir au moins UN élément hyper-spécifique au candidat. Cherche dans cet ordre de priorité:
    
-   a) PUBLICATIONS LINKEDIN RÉCENTES (si fournies, c'est la MEILLEURE source):
+   a) SECTION "À PROPOS" + PUBLICATIONS LINKEDIN (sources PRIMAIRES, ÉGALES en priorité):
+      
+      "À PROPOS" (mine d'or de personnalisation):
+      - Une conviction technique ("le DDD", "la qualité avant la vélocité") → fais écho dans ton message
+      - Une motivation personnelle ("j'ai quitté X pour Y", "ce qui m'anime") → rebondis dessus
+      - Un side project, contribution open source → montre que tu l'as vu
+      - Un style de travail ("petites équipes", "ownership") → fais le pont avec le poste
+      - ⚠️ JAMAIS écrire "dans ton À propos", "tu mentionnes dans ton profil" → cite le contenu DIRECTEMENT comme si tu le savais naturellement
+      - EXEMPLE: si le candidat écrit "je crois que le bon code c'est du code testable" → "L'approche test-first, c'est aussi ce qu'on pousse chez ${clientName}."
+      
+      PUBLICATIONS LINKEDIN RÉCENTES (si fournies):
       - Un post sur un sujet technique lié au poste → "j'ai vu ton post sur [sujet]"
       - Une prise de position sur un enjeu du secteur → montre que tu l'as lu
-      - Un partage d'expérience professionnelle → fais le lien avec le poste
       - ATTENTION: n'utilise un post QUE s'il est pertinent par rapport au poste. Sinon ignore-le.
    
    a-bis) HISTORIQUE INTERNE (si fourni, TRÈS FORT pour personnaliser):
@@ -593,14 +606,6 @@ ${statusInstructions[candidateStatus] || statusInstructions.other}
       - ATTENTION: utilise l'historique UNIQUEMENT quand c'est pertinent et récent. Ne force pas.
       - JAMAIS citer les notes internes textuellement, ce sont des infos confidentielles.
       - Le but: transformer un cold outreach en warm intro grâce à la relation existante.
-   
-   b) SECTION "À PROPOS" (mine d'or si pas de posts pertinents):
-       ⚠️ JAMAIS écrire "dans ton À propos", "tu mentionnes dans ton profil", "dans ta bio" → cite le contenu DIRECTEMENT comme si tu le savais naturellement.
-       - Une passion technique ("j'aime les systèmes distribués")
-       - Un side project, une contribution open source
-       - Une motivation personnelle ("j'ai quitté X pour Y")
-       - Un style de travail ("petites équipes", "ownership")
-       - Un hobby ou intérêt inhabituel mentionné
    
    c) PARCOURS PROFESSIONNEL:
       - Un ancien employeur commun avec le client → +27% de réponse, TOUJOURS le mentionner si applicable
