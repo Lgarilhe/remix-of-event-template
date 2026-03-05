@@ -40,7 +40,7 @@ serve(async (req) => {
       : '';
 
     const systemPrompt = `Tu es un coach de recrutement senior en temps réel.
-Tu analyses un entretien en cours et tu aides le recruteur.
+Tu analyses un entretien en cours et tu GUIDES PROACTIVEMENT le recruteur.
 
 CONTEXTE DU POSTE :
 ${job_context}
@@ -72,7 +72,16 @@ SECTION "resolved_signals" :
 - Un signal est résolu quand la question a été posée ET le candidat a donné une réponse substantielle
 - Si aucun signal résolu, retourne []
 
-IMPORTANT : Sois CONCIS et RAPIDE. Réponds uniquement en JSON valide.`;
+SECTION "next_topic" — PROACTIVITÉ :
+- Analyse quels critères n'ont PAS encore été couverts et le contexte de la conversation
+- Suggère LE prochain sujet à aborder avec :
+  • "topic" : le nom du critère ou sujet à aborder ensuite
+  • "transition" : une phrase de transition naturelle que le recruteur peut utiliser mot pour mot pour enchaîner
+  • "why" : pourquoi aborder ce sujet maintenant (1 phrase max)
+- Choisis le sujet le plus pertinent en fonction du flow naturel de la conversation (pas forcément le premier critère non couvert)
+- Si tous les critères sont couverts, suggère de passer aux questions du candidat ou de conclure
+
+IMPORTANT : Sois CONCIS et RAPIDE.`;
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
@@ -120,9 +129,20 @@ IMPORTANT : Sois CONCIS et RAPIDE. Réponds uniquement en JSON valide.`;
                   criteria_updates: {
                     type: "object",
                     description: "Map of criterion ID to update object with covered, verbatim, auto_score, sentiment fields"
+                  },
+                  next_topic: {
+                    type: "object",
+                    properties: {
+                      topic: { type: "string", description: "Next criterion or subject to cover" },
+                      transition: { type: "string", description: "Natural transition phrase the recruiter can use verbatim" },
+                      why: { type: "string", description: "Why this topic now (1 sentence)" }
+                    },
+                    required: ["topic", "transition", "why"],
+                    additionalProperties: false,
+                    description: "Proactive suggestion for the next interview topic"
                   }
                 },
-                required: ["resolved_signals", "dig_deeper", "criteria_updates"],
+                required: ["resolved_signals", "dig_deeper", "criteria_updates", "next_topic"],
                 additionalProperties: false
               }
             }

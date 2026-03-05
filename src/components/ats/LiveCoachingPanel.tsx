@@ -1,6 +1,6 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { Mic, Square, FileText, Copy, CheckCircle2, Loader2, X, Search, CircleDot, AlertTriangle, User } from 'lucide-react';
+import { Mic, Square, FileText, Copy, CheckCircle2, Loader2, X, Search, CircleDot, AlertTriangle, User, ArrowRight } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
@@ -15,6 +15,12 @@ interface Criterion {
 interface DigDeeperItem {
   signal: string;
   question: string;
+}
+
+interface NextTopicItem {
+  topic: string;
+  transition: string;
+  why: string;
 }
 
 interface CriterionUpdate {
@@ -75,6 +81,7 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
   const [interimSpeaker, setInterimSpeaker] = useState<number | null>(null);
   const [digDeeper, setDigDeeper] = useState<DigDeeperItem[]>([]);
   const digDeeperRef = useRef<DigDeeperItem[]>([]);
+  const [nextTopic, setNextTopic] = useState<NextTopicItem | null>(null);
   const [criteriaStatus, setCriteriaStatus] = useState<Record<string, CriterionUpdate>>({});
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -169,6 +176,10 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
           }
           return updated;
         });
+      }
+      // Proactive next topic
+      if (data.next_topic?.topic) {
+        setNextTopic(data.next_topic);
       }
     } catch (err) {
       console.error('Coach analysis error:', err);
@@ -545,6 +556,20 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
               </div>
             )}
           </div>
+
+          {/* Next Topic — proactive guidance */}
+          {nextTopic && isRecording && (
+            <div className="border border-blue-300 bg-blue-50 dark:bg-blue-950/30 dark:border-blue-800 px-3 py-2.5 animate-in fade-in slide-in-from-bottom-1 duration-300">
+              <div className="flex items-center gap-1.5 mb-1.5">
+                <ArrowRight className="w-3 h-3 text-blue-600 dark:text-blue-400" />
+                <p className="text-[10px] font-bold uppercase tracking-wider text-blue-700 dark:text-blue-300">Prochain sujet → {nextTopic.topic}</p>
+              </div>
+              <p className="text-[11px] font-medium text-blue-900 dark:text-blue-100 italic">
+                "{nextTopic.transition}"
+              </p>
+              <p className="text-[9px] text-blue-600 dark:text-blue-400 mt-1">{nextTopic.why}</p>
+            </div>
+          )}
         </div>
       )}
 
