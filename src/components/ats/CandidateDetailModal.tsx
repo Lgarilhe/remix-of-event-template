@@ -1134,9 +1134,9 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
           </BrutalActionButton>
         </div>
 
-        {/* Mobile profile panel — INSIDE DialogContent to stay within Radix focus scope */}
+        {/* Mobile profile panel — normal flex child at bottom of DialogContent */}
         {isSplitMode && mobileProfileOpen && (
-          <div className="fixed inset-x-0 bottom-0 h-[55dvh] z-[9999] bg-background border-t-2 border-foreground shadow-[0_-8px_30px_rgba(0,0,0,0.3)] flex flex-col animate-in slide-in-from-bottom duration-300">
+          <div className="h-[55dvh] shrink-0 border-t-2 border-foreground bg-background flex flex-col lg:hidden">
             <div className="px-4 py-3 border-b border-foreground/15 flex items-center justify-between shrink-0">
               <div className="flex items-center gap-2">
                 <User className="w-4 h-4" />
