@@ -724,11 +724,15 @@ export type Database = {
           created_at: string
           created_by: string
           criteria: Json
+          follow_up_notes: string | null
           id: string
+          interview_stage: string | null
           job_id: string | null
           job_title: string | null
           overall_score: number | null
           ratings: Json
+          recommendation: string | null
+          summary: string | null
           updated_at: string
         }
         Insert: {
@@ -738,11 +742,15 @@ export type Database = {
           created_at?: string
           created_by: string
           criteria?: Json
+          follow_up_notes?: string | null
           id?: string
+          interview_stage?: string | null
           job_id?: string | null
           job_title?: string | null
           overall_score?: number | null
           ratings?: Json
+          recommendation?: string | null
+          summary?: string | null
           updated_at?: string
         }
         Update: {
@@ -752,11 +760,15 @@ export type Database = {
           created_at?: string
           created_by?: string
           criteria?: Json
+          follow_up_notes?: string | null
           id?: string
+          interview_stage?: string | null
           job_id?: string | null
           job_title?: string | null
           overall_score?: number | null
           ratings?: Json
+          recommendation?: string | null
+          summary?: string | null
           updated_at?: string
         }
         Relationships: []

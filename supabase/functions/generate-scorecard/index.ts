@@ -11,7 +11,7 @@ serve(async (req) => {
   }
 
   try {
-    const { candidateProfile, jobContext, scoringDetails } = await req.json();
+    const { candidateProfile, jobContext, scoringDetails, interviewStage } = await req.json();
 
     if (!candidateProfile || !jobContext) {
       return new Response(
@@ -28,6 +28,14 @@ serve(async (req) => {
       );
     }
 
+    const stageContext = interviewStage
+      ? `\n\nCONTEXTE D'ÉTAPE: Cette scorecard est pour un entretien de type "${interviewStage}". Adapte les critères en conséquence:
+- "Phone Screen": critères rapides de qualification (motivation, disponibilité, prétentions, fit basique)
+- "Technique": critères techniques approfondis, exercices pratiques, architecture, problem-solving
+- "Culture Fit": valeurs, travail d'équipe, communication, alignement avec la culture d'entreprise
+- "Final": critères de décision finale, leadership, vision long terme, négociation`
+      : '';
+
     const systemPrompt = `Tu es un expert en recrutement tech/digital. Tu dois générer une grille d'évaluation (scorecard) sur mesure pour un entretien de qualification.
 
 RÈGLES:
@@ -37,19 +45,11 @@ RÈGLES:
 - Inclus un mix de : compétences techniques, soft skills, adéquation culturelle, motivation
 - Pour chaque critère, fournis une description courte qui guide l'évaluateur sur quoi observer
 - Ordonne les critères du plus critique au moins critique
+- Pour chaque critère, génère 2-3 questions d'entretien spécifiques à poser
+- Pour chaque critère, génère une rubrique de notation avec la définition de chaque niveau (1 à 5)
+- Pour chaque critère, identifie 1-2 signaux d'alerte (red flags) à surveiller${stageContext}
 
-FORMAT DE SORTIE (JSON strict):
-{
-  "criteria": [
-    {
-      "id": "crit_1",
-      "label": "Nom du critère (ex: Maîtrise de React dans un contexte SaaS B2B)",
-      "description": "Ce qu'il faut évaluer pendant l'entretien (ex: Demander des exemples de projets React complexes, patterns utilisés, gestion d'état)",
-      "category": "technical" | "soft_skill" | "culture_fit" | "motivation",
-      "weight": 1-3
-    }
-  ]
-}
+FORMAT DE SORTIE (JSON strict via tool call)
 
 weight: 1 = nice-to-have, 2 = important, 3 = critique/éliminatoire`;
 
@@ -75,6 +75,8 @@ ${scoringDetails ? `SCORING IA EXISTANT:
 - Lacunes potentielles: ${(scoringDetails.missing_skills || []).join(', ')}
 - Recommandation: ${scoringDetails.recommendation || 'N/A'}
 - Résumé: ${scoringDetails.summary || 'N/A'}` : ''}
+
+${interviewStage ? `TYPE D'ENTRETIEN: ${interviewStage}` : ''}
 
 Génère la scorecard d'évaluation sur mesure.`;
 
@@ -107,9 +109,31 @@ Génère la scorecard d'évaluation sur mesure.`;
                         id: { type: "string", description: "Unique identifier for the criterion" },
                         label: { type: "string", description: "Short label for the criterion" },
                         description: { type: "string", description: "Detailed description of what to evaluate" },
-                        category: { type: "string", description: "Category: technical, soft_skill, culture_fit, or motivation" },
+                        category: { type: "string", enum: ["technical", "soft_skill", "culture_fit", "motivation"], description: "Category of the criterion" },
                         weight: { type: "number", description: "Weight 1 to 3" },
+                        suggestedQuestions: {
+                          type: "array",
+                          items: { type: "string" },
+                          description: "2-3 specific interview questions to ask for this criterion"
+                        },
+                        ratingRubric: {
+                          type: "object",
+                          properties: {
+                            "1": { type: "string", description: "Description for rating 1 (very weak)" },
+                            "2": { type: "string", description: "Description for rating 2 (weak)" },
+                            "3": { type: "string", description: "Description for rating 3 (adequate)" },
+                            "4": { type: "string", description: "Description for rating 4 (strong)" },
+                            "5": { type: "string", description: "Description for rating 5 (exceptional)" },
+                          },
+                          description: "Rating rubric with descriptions for each level 1-5"
+                        },
+                        redFlags: {
+                          type: "array",
+                          items: { type: "string" },
+                          description: "1-2 warning signs to watch for during the interview"
+                        },
                       },
+                      required: ["id", "label", "description", "category", "weight", "suggestedQuestions", "ratingRubric", "redFlags"],
                     },
                   },
                 },
