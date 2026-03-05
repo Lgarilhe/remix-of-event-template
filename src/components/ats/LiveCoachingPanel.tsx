@@ -72,6 +72,7 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
   const [interimText, setInterimText] = useState('');
   const [interimSpeaker, setInterimSpeaker] = useState<number | null>(null);
   const [digDeeper, setDigDeeper] = useState<DigDeeperItem[]>([]);
+  const digDeeperRef = useRef<DigDeeperItem[]>([]);
   const [criteriaStatus, setCriteriaStatus] = useState<Record<string, CriterionUpdate>>({});
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -120,6 +121,7 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
     criteria: Criterion[];
     jobContext: string;
     elapsedSeconds: number;
+    pendingSignals: DigDeeperItem[];
   }) => {
     setIsAnalyzing(true);
     try {
@@ -131,17 +133,29 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
           criteria: params.criteria,
           job_context: params.jobContext,
           elapsed_seconds: params.elapsedSeconds,
+          pending_signals: params.pendingSignals,
         },
       });
 
       if (!data) return;
+
+      // Auto-dismiss signals the AI detected as resolved
+      if (data.resolved_signals?.length) {
+        setDigDeeper(prev => {
+          const next = prev.filter(d => !data.resolved_signals.includes(d.signal));
+          digDeeperRef.current = next;
+          return next;
+        });
+      }
 
       // dig_deeper: append new items (deduplicated), keep existing until dismissed
       if (data.dig_deeper?.length) {
         setDigDeeper(prev => {
           const existingSignals = new Set(prev.map(d => d.signal));
           const newItems = data.dig_deeper.filter((d: DigDeeperItem) => !existingSignals.has(d.signal));
-          return [...prev, ...newItems];
+          const next = [...prev, ...newItems];
+          digDeeperRef.current = next;
+          return next;
         });
         alertsLogRef.current = [...data.dig_deeper, ...alertsLogRef.current];
       }
@@ -269,13 +283,14 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
               const chunkForCoach = pendingFinalTextRef.current.trim();
               pendingFinalTextRef.current = '';
 
-              analyzeWithCoach({
+               analyzeWithCoach({
                 sessionId: session.id,
                 fullTranscript: fullTranscriptRef.current,
                 latestChunk: chunkForCoach,
                 criteria,
                 jobContext,
                 elapsedSeconds: Math.round((now - callStartRef.current) / 1000),
+                pendingSignals: digDeeperRef.current,
               });
             }
           } else {
@@ -302,6 +317,7 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
               criteria,
               jobContext,
               elapsedSeconds: Math.round((now - callStartRef.current) / 1000),
+              pendingSignals: digDeeperRef.current,
             });
           }
         }
@@ -344,6 +360,7 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
         criteria,
         jobContext,
         elapsedSeconds: Math.round((now - callStartRef.current) / 1000),
+        pendingSignals: digDeeperRef.current,
       });
       pendingFinalTextRef.current = '';
     }
@@ -510,7 +527,7 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
                       <p className="text-amber-700 mt-0.5">→ {item.question}</p>
                     </div>
                     <button
-                      onClick={() => setDigDeeper(prev => prev.filter((_, idx) => idx !== i))}
+                      onClick={() => setDigDeeper(prev => { const next = prev.filter((_, idx) => idx !== i); digDeeperRef.current = next; return next; })}
                       className="shrink-0 mt-0.5 text-amber-400 hover:text-amber-700 transition-colors"
                       title="Question posée — retirer"
                     >

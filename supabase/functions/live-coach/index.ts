@@ -19,6 +19,7 @@ serve(async (req) => {
       criteria,
       job_context,
       elapsed_seconds,
+      pending_signals,
     } = await req.json();
 
     const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
@@ -28,6 +29,10 @@ serve(async (req) => {
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
+
+    const pendingSignalsContext = pending_signals?.length
+      ? `\nSIGNAUX EN ATTENTE (questions suggérées précédemment, pas encore traitées) :\n${JSON.stringify(pending_signals)}\n\nPour chaque signal en attente, vérifie dans la transcription si la question a été posée ET si le candidat y a répondu. Si oui, ajoute le signal exact dans "resolved_signals". Ne propose PAS de nouveaux signaux sur le même sujet qu'un signal en attente non résolu.`
+      : '';
 
     const response = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
@@ -47,6 +52,7 @@ ${job_context}
 
 CRITÈRES DE LA SCORECARD À ÉVALUER :
 ${JSON.stringify(criteria)}
+${pendingSignalsContext}
 
 RÈGLES :
 - Ne marque "covered" que si le sujet a été CLAIREMENT et SUBSTANTIELLEMENT abordé
@@ -63,7 +69,13 @@ SECTION "dig_deeper" — TRÈS IMPORTANT :
 - Maximum 3 items
 - Si rien d'intéressant ou de nouveau à signaler, retourne dig_deeper VIDE []
 - NE GÉNÈRE PAS d'items juste pour en générer
-- Chaque item = { "signal": "observation courte", "question": "question à poser" }`,
+- NE DUPLIQUE PAS un signal déjà en attente (pending_signals)
+- Chaque item = { "signal": "observation courte", "question": "question à poser" }
+
+SECTION "resolved_signals" :
+- Liste des signaux (valeurs exactes du champ "signal") des pending_signals qui ont été traités dans la conversation
+- Un signal est résolu quand la question a été posée ET le candidat a donné une réponse substantielle
+- Si aucun signal résolu, retourne []`,
         messages: [
           {
             role: "user",
@@ -77,6 +89,7 @@ ${latest_chunk}
 
 Retourne UNIQUEMENT ce JSON (pas de texte avant/après) :
 {
+  "resolved_signals": ["signal exact résolu 1", ...],
   "dig_deeper": [
     {"signal": "...", "question": "..."}
   ],
@@ -105,7 +118,7 @@ Retourne UNIQUEMENT ce JSON (pas de texte avant/après) :
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     const analysis = jsonMatch
       ? JSON.parse(jsonMatch[0])
-      : { dig_deeper: [], criteria_updates: {} };
+      : { resolved_signals: [], dig_deeper: [], criteria_updates: {} };
 
     // Save to DB
     const supabase = createClient(
