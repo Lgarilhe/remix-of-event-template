@@ -87,10 +87,32 @@ export function ATSDashboard({ candidates, stages }: ATSDashboardProps) {
   // ═══ KPIs ═══
   const kpis = useMemo(() => {
     const total = candidates.length;
-    const contacted = candidates.filter(c => c.stage !== 'Nouveau').length;
-    const replied = candidates.filter(c =>
-      ['Répondu', 'Pressenti', 'Pré-qualif', 'CV envoyé', 'ITW en cours', 'Offre', 'Gagné'].includes(c.stage)
-    ).length;
+    
+    // "Contacted" = candidates where actual outreach happened
+    // local: outreachStatus is 'messaged','replied','interested','not_interested'
+    // sequence: active/completed (not paused) = message was sent
+    // inmail: stage is 'Contacté' or beyond (status = 'sent')
+    const contacted = candidates.filter(c => {
+      if (c.source === 'local') {
+        return ['messaged', 'replied', 'interested', 'not_interested'].includes(c.outreachStatus || '');
+      }
+      if (c.source === 'sequence') {
+        return c.stage !== 'Nouveau'; // paused = Nouveau, active = contacted
+      }
+      if (c.source === 'inmail') {
+        return c.stage !== 'Nouveau'; // pending = Nouveau, sent = Contacté
+      }
+      return false;
+    }).length;
+    
+    // "Replied" = candidates who actually responded
+    const replied = candidates.filter(c => {
+      if (c.source === 'local') {
+        return ['replied', 'interested', 'not_interested'].includes(c.outreachStatus || '');
+      }
+      return ['Répondu', 'Pré-qualif', 'CV envoyé', 'ITW en cours', 'Offre', 'Gagné'].includes(c.stage);
+    }).length;
+    
     const won = candidates.filter(c => c.stage === 'Gagné').length;
     const inProcess = candidates.filter(c =>
       ['Pré-qualif', 'CV envoyé', 'ITW en cours', 'Offre'].includes(c.stage)
