@@ -111,11 +111,23 @@ function computeEffectiveStage(pipelineStage: string | null, status: string): st
 
 // Fetch all candidates from local job_candidate_status table (primary source)
 async function fetchLocalCandidates(): Promise<ATSCandidate[]> {
-  const { data: records, error } = await supabase
-    .from('job_candidate_status')
-    .select('*')
-    .order('updated_at', { ascending: false })
-    .limit(1000);
+  // Fetch all records (no limit) to avoid truncation
+  const allRecords: any[] = [];
+  let from = 0;
+  const PAGE_SIZE = 1000;
+  while (true) {
+    const { data: page, error: pageError } = await supabase
+      .from('job_candidate_status')
+      .select('*')
+      .order('updated_at', { ascending: false })
+      .range(from, from + PAGE_SIZE - 1);
+    if (pageError || !page || page.length === 0) break;
+    allRecords.push(...page);
+    if (page.length < PAGE_SIZE) break;
+    from += PAGE_SIZE;
+  }
+  const records = allRecords;
+  const error = null;
 
   if (error || !records) return [];
 

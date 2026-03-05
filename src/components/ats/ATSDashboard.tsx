@@ -94,28 +94,39 @@ export function ATSDashboard({ candidates, stages }: ATSDashboardProps) {
     const total = candidates.length;
     
     // "Contacted" = candidates where actual outreach happened
-    // local: outreachStatus is 'messaged','replied','interested','not_interested'
-    // sequence: active/completed (not paused) = message was sent
-    // inmail: stage is 'Contacté' or beyond (status = 'sent')
+    // Check BOTH outreachStatus AND stage/sequence enrichment
     const contacted = candidates.filter(c => {
-      if (c.source === 'local') {
-        return ['messaged', 'replied', 'interested', 'not_interested'].includes(c.outreachStatus || '');
+      // If stage is beyond Nouveau, the candidate was contacted regardless of source
+      if (['Contacté', 'Répondu', 'Pressenti', 'Pré-qualif', 'CV envoyé', 'ITW en cours', 'Offre', 'Gagné'].includes(c.stage)) {
+        return true;
       }
-      if (c.source === 'sequence') {
-        return c.stage !== 'Nouveau'; // paused = Nouveau, active = contacted
+      // Local candidates with outreach status
+      if (['messaged', 'replied', 'interested', 'not_interested'].includes(c.outreachStatus || '')) {
+        return true;
       }
-      if (c.source === 'inmail') {
-        return c.stage !== 'Nouveau'; // pending = Nouveau, sent = Contacté
+      // Local candidates enriched with sequence data (active sequence = contacted)
+      if (c.sequenceStatus && c.sequenceStatus !== 'paused' && c.sequenceStatus !== 'cancelled') {
+        return true;
       }
       return false;
     }).length;
     
     // "Replied" = candidates who actually responded
+    // Check stage OR outreachStatus — whichever indicates a response
     const replied = candidates.filter(c => {
-      if (c.source === 'local') {
-        return ['replied', 'interested', 'not_interested'].includes(c.outreachStatus || '');
+      // Stage-based: if they reached Répondu or beyond
+      if (['Répondu', 'Pré-qualif', 'CV envoyé', 'ITW en cours', 'Offre', 'Gagné'].includes(c.stage)) {
+        return true;
       }
-      return ['Répondu', 'Pré-qualif', 'CV envoyé', 'ITW en cours', 'Offre', 'Gagné'].includes(c.stage);
+      // OutreachStatus-based
+      if (['replied', 'interested', 'not_interested'].includes(c.outreachStatus || '')) {
+        return true;
+      }
+      // Sequence replied
+      if (c.sequenceStatus === 'replied') {
+        return true;
+      }
+      return false;
     }).length;
     
     const won = candidates.filter(c => c.stage === 'Gagné').length;
