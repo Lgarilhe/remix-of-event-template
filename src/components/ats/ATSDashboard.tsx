@@ -199,16 +199,31 @@ export function ATSDashboard({ candidates, stages }: ATSDashboardProps) {
 
   // ═══ Top performing jobs ═══
   const topJobs = useMemo(() => {
-    const jobMap: Record<string, { title: string; total: number; replied: number; won: number }> = {};
+    const isContacted = (c: ATSCandidate) => {
+      if (['messaged', 'replied', 'interested', 'not_interested'].includes(c.outreachStatus || '')) return true;
+      if (['Contacté', 'Répondu'].includes(c.stage)) return true;
+      if (c.sequenceStatus && ['active', 'completed', 'replied'].includes(c.sequenceStatus)) return true;
+      if (c.source === 'inmail' && c.stage !== 'Nouveau') return true;
+      return false;
+    };
+    const isReplied = (c: ATSCandidate) => {
+      if (['Répondu', 'Pré-qualif', 'CV envoyé', 'ITW en cours', 'Offre', 'Gagné'].includes(c.stage)) return true;
+      if (['replied', 'interested', 'not_interested'].includes(c.outreachStatus || '')) return true;
+      if (c.sequenceStatus === 'replied') return true;
+      return false;
+    };
+
+    const jobMap: Record<string, { title: string; contacted: number; replied: number; won: number }> = {};
     candidates.forEach(c => {
       if (!c.jobId || !c.jobTitle) return;
-      if (!jobMap[c.jobId]) jobMap[c.jobId] = { title: c.jobTitle, total: 0, replied: 0, won: 0 };
-      jobMap[c.jobId].total++;
-      if (['Répondu', 'Pressenti', 'Pré-qualif', 'CV envoyé', 'ITW en cours', 'Offre', 'Gagné'].includes(c.stage)) jobMap[c.jobId].replied++;
+      if (!jobMap[c.jobId]) jobMap[c.jobId] = { title: c.jobTitle, contacted: 0, replied: 0, won: 0 };
+      if (isContacted(c)) jobMap[c.jobId].contacted++;
+      if (isReplied(c)) jobMap[c.jobId].replied++;
       if (c.stage === 'Gagné') jobMap[c.jobId].won++;
     });
     return Object.entries(jobMap)
-      .sort((a, b) => b[1].total - a[1].total)
+      .filter(([, data]) => data.contacted > 0)
+      .sort((a, b) => b[1].contacted - a[1].contacted)
       .slice(0, 5)
       .map(([id, data]) => ({ id, ...data }));
   }, [candidates]);
@@ -635,8 +650,8 @@ export function ATSDashboard({ candidates, stages }: ATSDashboardProps) {
             <table className="w-full text-xs">
               <thead>
                 <tr className="border-b border-foreground">
-                  <th className="text-left px-4 py-2 text-[9px] uppercase tracking-wider font-bold text-muted-foreground">Poste</th>
-                  <th className="text-center px-3 py-2 text-[9px] uppercase tracking-wider font-bold text-muted-foreground">Candidats</th>
+                   <th className="text-left px-4 py-2 text-[9px] uppercase tracking-wider font-bold text-muted-foreground">Poste</th>
+                  <th className="text-center px-3 py-2 text-[9px] uppercase tracking-wider font-bold text-muted-foreground">Contactés</th>
                   <th className="text-center px-3 py-2 text-[9px] uppercase tracking-wider font-bold text-muted-foreground">Réponses</th>
                   <th className="text-center px-3 py-2 text-[9px] uppercase tracking-wider font-bold text-muted-foreground">Taux</th>
                   <th className="text-center px-3 py-2 text-[9px] uppercase tracking-wider font-bold text-muted-foreground">Gagnés</th>
@@ -644,11 +659,11 @@ export function ATSDashboard({ candidates, stages }: ATSDashboardProps) {
               </thead>
               <tbody className="divide-y divide-border">
                 {topJobs.map(job => {
-                  const rate = job.total > 0 ? Math.round((job.replied / job.total) * 100) : 0;
+                  const rate = job.contacted > 0 ? Math.round((job.replied / job.contacted) * 100) : 0;
                   return (
                     <tr key={job.id} className="hover:bg-muted/50 transition-colors">
                       <td className="px-4 py-2.5 font-medium truncate max-w-[200px]">{job.title}</td>
-                      <td className="text-center px-3 py-2.5 font-mono font-bold">{job.total}</td>
+                      <td className="text-center px-3 py-2.5 font-mono font-bold">{job.contacted}</td>
                       <td className="text-center px-3 py-2.5 font-mono">{job.replied}</td>
                       <td className="text-center px-3 py-2.5">
                         <span className={cn(
