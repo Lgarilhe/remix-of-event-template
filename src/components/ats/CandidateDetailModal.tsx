@@ -62,6 +62,7 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
   candidate, onClose, onStageChange, onTagsChange, onRefresh,
 }) => {
   const [activeTab, setActiveTab] = useState('profile');
+  const [mobileProfileOpen, setMobileProfileOpen] = useState(false);
   const isSplitMode = activeTab === 'evaluation';
   const [notes, setNotes] = useState<Note[]>([]);
   const [reminders, setReminders] = useState<Reminder[]>([]);
@@ -249,6 +250,7 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
   const activeRemindersCount = reminders.filter(r => !r.completed_at).length;
 
   return (
+    <>
     <Dialog open onOpenChange={onClose}>
        <DialogContent className={cn(
         "overflow-hidden flex flex-col p-0 rounded-none border-foreground gap-0 [&>button]:hidden transition-all duration-300",
@@ -420,44 +422,12 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
             </div>
 
             {/* Mobile: floating button to open candidate context */}
-            <div className="lg:hidden fixed bottom-4 right-4 z-50">
-              <Sheet>
-                <SheetTrigger asChild>
-                  <button className="h-12 w-12 flex items-center justify-center bg-foreground text-background shadow-lg border-2 border-foreground">
-                    <User className="w-5 h-5" />
-                  </button>
-                </SheetTrigger>
-                <SheetContent side="bottom" className="h-[80dvh] rounded-none border-foreground p-0 flex flex-col">
-                  <div className="px-4 py-3 border-b border-foreground/15 flex items-center gap-2">
-                    <User className="w-4 h-4" />
-                    <span className="text-[11px] font-bold uppercase tracking-wider">Profil & Poste</span>
-                  </div>
-                  <div className="flex-1 overflow-y-auto px-4 pt-3 pb-6 space-y-3">
-                    {/* Reuse the same candidate + job cards */}
-                    <CollapsibleCard
-                      title={enrichedProfile?.name || candidate.name}
-                      subtitle={enrichedProfile?.headline || candidate.headline}
-                      icon={<User className="w-3.5 h-3.5" />}
-                      variant="dark"
-                      defaultOpen={true}
-                    >
-                      <MobileProfileContent candidate={candidate} enrichedProfile={enrichedProfile} />
-                    </CollapsibleCard>
-                    {(jobDetails || candidate.jobTitle) && (
-                      <CollapsibleCard
-                        title={jobDetails?.title || candidate.jobTitle || 'Poste'}
-                        subtitle={jobDetails?.client ? `${jobDetails.client}${jobDetails.location ? ` · ${jobDetails.location}` : ''}` : undefined}
-                        icon={<Target className="w-3.5 h-3.5" />}
-                        variant="accent"
-                        defaultOpen={true}
-                      >
-                        <MobileJobContent jobDetails={jobDetails} candidate={candidate} />
-                      </CollapsibleCard>
-                    )}
-                  </div>
-                </SheetContent>
-              </Sheet>
-            </div>
+            <button
+              onClick={() => setMobileProfileOpen(true)}
+              className="lg:hidden fixed bottom-4 right-4 z-[2600] h-12 w-12 flex items-center justify-center bg-foreground text-background shadow-lg border-2 border-foreground"
+            >
+              <User className="w-5 h-5" />
+            </button>
 
             {/* RIGHT: Compact profile (desktop only) */}
             <div className="hidden lg:block w-[400px] shrink-0 overflow-y-auto px-4 pt-4 pb-6 space-y-3">
@@ -1162,6 +1132,46 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
         </div>
       </DialogContent>
     </Dialog>
+
+    {/* Mobile profile sheet — rendered outside Dialog to avoid z-index/overflow issues */}
+    {isSplitMode && (
+      <Sheet open={mobileProfileOpen} onOpenChange={setMobileProfileOpen}>
+        <SheetContent side="bottom" className="h-[80dvh] rounded-none border-foreground p-0 flex flex-col z-[3000]">
+          <div className="px-4 py-3 border-b border-foreground/15 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <User className="w-4 h-4" />
+              <span className="text-[11px] font-bold uppercase tracking-wider">Profil & Poste</span>
+            </div>
+            <button onClick={() => setMobileProfileOpen(false)} className="h-7 w-7 flex items-center justify-center hover:bg-foreground/10">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+          <div className="flex-1 overflow-y-auto px-4 pt-3 pb-6 space-y-3">
+            <CollapsibleCard
+              title={enrichedProfile?.name || candidate.name}
+              subtitle={enrichedProfile?.headline || candidate.headline}
+              icon={<User className="w-3.5 h-3.5" />}
+              variant="dark"
+              defaultOpen={true}
+            >
+              <MobileProfileContent candidate={candidate} enrichedProfile={enrichedProfile} />
+            </CollapsibleCard>
+            {(jobDetails || candidate.jobTitle) && (
+              <CollapsibleCard
+                title={jobDetails?.title || candidate.jobTitle || 'Poste'}
+                subtitle={jobDetails?.client ? `${jobDetails.client}${jobDetails.location ? ` · ${jobDetails.location}` : ''}` : undefined}
+                icon={<Target className="w-3.5 h-3.5" />}
+                variant="accent"
+                defaultOpen={true}
+              >
+                <MobileJobContent jobDetails={jobDetails} candidate={candidate} />
+              </CollapsibleCard>
+            )}
+          </div>
+        </SheetContent>
+      </Sheet>
+    )}
+    </>
   );
 };
 
