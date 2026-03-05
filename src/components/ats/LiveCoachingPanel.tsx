@@ -92,7 +92,6 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
   const [generatingReport, setGeneratingReport] = useState(false);
   const [report, setReport] = useState<CallReport | null>(null);
   const [callStopped, setCallStopped] = useState(false);
-  const [introSuggestion, setIntroSuggestion] = useState<string | null>(null);
   const [loadingIntro, setLoadingIntro] = useState(false);
 
   const socketRef = useRef<WebSocket | null>(null);
@@ -214,7 +213,7 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
       if (sessionError) throw sessionError;
       setSessionId(session.id);
 
-      // Generate personalized intro suggestion (fire-and-forget, non-blocking)
+      // Generate personalized intro as the first nextTopic (non-blocking)
       setLoadingIntro(true);
       supabase.functions.invoke('live-coach', {
         body: {
@@ -227,7 +226,13 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
           criteria: criteria.map(c => c.label),
         },
       }).then(({ data }) => {
-        if (data?.intro) setIntroSuggestion(data.intro);
+        if (data?.intro) {
+          setNextTopic({
+            topic: '👋 Introduction',
+            transition: data.intro,
+            why: `Accroche personnalisée pour ${candidateName}`,
+          });
+        }
       }).catch(() => {}).finally(() => setLoadingIntro(false));
 
       // Get Deepgram key
@@ -504,34 +509,10 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
       {/* Dashboard: Checklist + Dig Deeper */}
       {(isRecording || callStopped) && !report && (
         <div className="flex-1 min-h-0 overflow-y-auto p-3 space-y-3">
-          {/* Personalized intro suggestion */}
-          {introSuggestion && (
-            <div className="border border-purple-300 bg-purple-50 dark:bg-purple-950/30 dark:border-purple-800 px-3 py-2.5 animate-in fade-in slide-in-from-top-2 duration-500 relative">
-              <div className="flex items-center gap-1.5 mb-1.5">
-                <Mic className="w-3 h-3 text-purple-600 dark:text-purple-400" />
-                <p className="text-[10px] font-bold uppercase tracking-wider text-purple-700 dark:text-purple-300">Introduction suggérée</p>
-                <button
-                  onClick={() => setIntroSuggestion(null)}
-                  className="ml-auto text-purple-400 hover:text-purple-700 transition-colors"
-                >
-                  <X className="w-3 h-3" />
-                </button>
-              </div>
-              <p className="text-[11px] text-purple-900 dark:text-purple-100 leading-relaxed whitespace-pre-line">
-                {introSuggestion}
-              </p>
-              <button
-                onClick={() => { navigator.clipboard.writeText(introSuggestion); toast.success('Intro copiée'); }}
-                className="mt-2 flex items-center gap-1 text-[9px] text-purple-600 dark:text-purple-400 hover:text-purple-800 uppercase tracking-wider font-medium"
-              >
-                <Copy className="w-3 h-3" /> Copier
-              </button>
-            </div>
-          )}
-          {loadingIntro && !introSuggestion && (
-            <div className="border border-purple-200 bg-purple-50/50 dark:bg-purple-950/20 px-3 py-2.5 flex items-center gap-2">
-              <Loader2 className="w-3 h-3 animate-spin text-purple-500" />
-              <p className="text-[10px] text-purple-600 dark:text-purple-400">Préparation de votre introduction…</p>
+          {loadingIntro && !nextTopic && (
+            <div className="border border-blue-200 bg-blue-50/50 dark:bg-blue-950/20 px-3 py-2.5 flex items-center gap-2">
+              <Loader2 className="w-3 h-3 animate-spin text-blue-500" />
+              <p className="text-[10px] text-blue-600 dark:text-blue-400">Préparation de votre introduction…</p>
             </div>
           )}
           {/* Criteria checklist */}
@@ -609,17 +590,25 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
             )}
           </div>
 
-          {/* Next Topic — proactive guidance */}
+          {/* Next Topic / Intro — proactive guidance */}
           {nextTopic && isRecording && (
             <div className="border border-blue-300 bg-blue-50 dark:bg-blue-950/30 dark:border-blue-800 px-3 py-2.5 animate-in fade-in slide-in-from-bottom-1 duration-300">
               <div className="flex items-center gap-1.5 mb-1.5">
                 <ArrowRight className="w-3 h-3 text-blue-600 dark:text-blue-400" />
                 <p className="text-[10px] font-bold uppercase tracking-wider text-blue-700 dark:text-blue-300">Prochain sujet → {nextTopic.topic}</p>
               </div>
-              <p className="text-[11px] font-medium text-blue-900 dark:text-blue-100 italic">
+              <p className="text-[11px] font-medium text-blue-900 dark:text-blue-100 italic whitespace-pre-line">
                 "{nextTopic.transition}"
               </p>
-              <p className="text-[9px] text-blue-600 dark:text-blue-400 mt-1">{nextTopic.why}</p>
+              <div className="flex items-center justify-between mt-1">
+                <p className="text-[9px] text-blue-600 dark:text-blue-400">{nextTopic.why}</p>
+                <button
+                  onClick={() => { navigator.clipboard.writeText(nextTopic.transition); toast.success('Copié !'); }}
+                  className="text-[9px] text-blue-500 hover:text-blue-700 flex items-center gap-0.5"
+                >
+                  <Copy className="w-2.5 h-2.5" />
+                </button>
+              </div>
             </div>
           )}
         </div>
