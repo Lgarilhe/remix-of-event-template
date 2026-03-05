@@ -44,6 +44,8 @@ interface CallReport {
 interface LiveCoachingPanelProps {
   candidateId: string;
   candidateName: string;
+  candidateHeadline?: string;
+  candidateProfileSummary?: string;
   jobId: string;
   jobTitle: string;
   jobContext: string;
@@ -64,6 +66,8 @@ interface TranscriptSegment {
 export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
   candidateId,
   candidateName,
+  candidateHeadline,
+  candidateProfileSummary,
   jobId,
   jobTitle,
   jobContext,
@@ -88,6 +92,8 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
   const [generatingReport, setGeneratingReport] = useState(false);
   const [report, setReport] = useState<CallReport | null>(null);
   const [callStopped, setCallStopped] = useState(false);
+  const [introSuggestion, setIntroSuggestion] = useState<string | null>(null);
+  const [loadingIntro, setLoadingIntro] = useState(false);
 
   const socketRef = useRef<WebSocket | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -207,6 +213,22 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
 
       if (sessionError) throw sessionError;
       setSessionId(session.id);
+
+      // Generate personalized intro suggestion (fire-and-forget, non-blocking)
+      setLoadingIntro(true);
+      supabase.functions.invoke('live-coach', {
+        body: {
+          action: 'generate_intro',
+          candidate_name: candidateName,
+          candidate_headline: candidateHeadline || '',
+          candidate_profile_summary: candidateProfileSummary || '',
+          job_title: jobTitle,
+          job_context: jobContext,
+          criteria: criteria.map(c => c.label),
+        },
+      }).then(({ data }) => {
+        if (data?.intro) setIntroSuggestion(data.intro);
+      }).catch(() => {}).finally(() => setLoadingIntro(false));
 
       // Get Deepgram key
       const { data: keyData, error: keyError } = await supabase.functions.invoke('deepgram-temp-key');
@@ -433,7 +455,7 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
   const [expandedCriterion, setExpandedCriterion] = useState<string | null>(null);
 
   return (
-    <div className="border-2 border-foreground/20 bg-foreground/[0.02] mb-4 max-h-[420px] flex flex-col overflow-hidden">
+    <div className="border-2 border-foreground/20 bg-foreground/[0.02] mb-4 max-h-[520px] flex flex-col overflow-hidden">
       {/* Header */}
       <div className="flex items-center justify-between p-3 border-b border-foreground/10">
         <div className="flex items-center gap-2">
@@ -482,6 +504,36 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
       {/* Dashboard: Checklist + Dig Deeper */}
       {(isRecording || callStopped) && !report && (
         <div className="flex-1 min-h-0 overflow-y-auto p-3 space-y-3">
+          {/* Personalized intro suggestion */}
+          {introSuggestion && (
+            <div className="border border-purple-300 bg-purple-50 dark:bg-purple-950/30 dark:border-purple-800 px-3 py-2.5 animate-in fade-in slide-in-from-top-2 duration-500 relative">
+              <div className="flex items-center gap-1.5 mb-1.5">
+                <Mic className="w-3 h-3 text-purple-600 dark:text-purple-400" />
+                <p className="text-[10px] font-bold uppercase tracking-wider text-purple-700 dark:text-purple-300">Introduction suggérée</p>
+                <button
+                  onClick={() => setIntroSuggestion(null)}
+                  className="ml-auto text-purple-400 hover:text-purple-700 transition-colors"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </div>
+              <p className="text-[11px] text-purple-900 dark:text-purple-100 leading-relaxed whitespace-pre-line">
+                {introSuggestion}
+              </p>
+              <button
+                onClick={() => { navigator.clipboard.writeText(introSuggestion); toast.success('Intro copiée'); }}
+                className="mt-2 flex items-center gap-1 text-[9px] text-purple-600 dark:text-purple-400 hover:text-purple-800 uppercase tracking-wider font-medium"
+              >
+                <Copy className="w-3 h-3" /> Copier
+              </button>
+            </div>
+          )}
+          {loadingIntro && !introSuggestion && (
+            <div className="border border-purple-200 bg-purple-50/50 dark:bg-purple-950/20 px-3 py-2.5 flex items-center gap-2">
+              <Loader2 className="w-3 h-3 animate-spin text-purple-500" />
+              <p className="text-[10px] text-purple-600 dark:text-purple-400">Préparation de votre introduction…</p>
+            </div>
+          )}
           {/* Criteria checklist */}
           <div>
             <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-2">Checklist critères</p>
