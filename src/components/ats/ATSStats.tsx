@@ -1,6 +1,6 @@
 import React from 'react';
 import { Users, Send, MessageCircle, UserCheck, Trophy } from 'lucide-react';
-import { ATSCandidate } from '@/pages/ATS';
+import { ATSCandidate } from '@/hooks/useATSData';
 
 interface ATSStatsProps {
   candidates: ATSCandidate[];
@@ -16,17 +16,28 @@ const STAT_CONFIG: { key: string; label: string; icon: typeof Users; suffix?: st
   { key: 'conversionRate', label: 'Conv.', icon: Trophy, suffix: '%' },
 ];
 
+function isContacted(c: ATSCandidate): boolean {
+  if (['messaged', 'replied', 'interested', 'not_interested'].includes(c.outreachStatus || '')) return true;
+  if (['Contacté', 'Répondu'].includes(c.stage)) return true;
+  if (c.sequenceStatus && ['active', 'completed', 'replied'].includes(c.sequenceStatus)) return true;
+  if (c.source === 'inmail' && c.stage !== 'Nouveau') return true;
+  return false;
+}
+
+function isReplied(c: ATSCandidate): boolean {
+  if (['Répondu', 'Pré-qualif', 'CV envoyé', 'ITW en cours', 'Offre', 'Gagné'].includes(c.stage)) return true;
+  if (['replied', 'interested', 'not_interested'].includes(c.outreachStatus || '')) return true;
+  if (c.sequenceStatus === 'replied') return true;
+  return false;
+}
+
 export const ATSStats: React.FC<ATSStatsProps> = ({ candidates, stages }) => {
   const stats = React.useMemo(() => {
     const total = candidates.length;
-    const contacted = candidates.filter(c =>
-      ['Contacté', 'CV envoyé', 'ITW en cours', 'Offre', 'Gagné', 'Répondu'].includes(c.stage)
-    ).length;
-    const replied = candidates.filter(c =>
-      ['Répondu', 'ITW en cours', 'Offre', 'Gagné'].includes(c.stage)
-    ).length;
+    const contacted = candidates.filter(isContacted).length;
+    const replied = candidates.filter(isReplied).length;
     const inProgress = candidates.filter(c =>
-      ['CV envoyé', 'ITW en cours', 'Offre'].includes(c.stage)
+      ['Pré-qualif', 'CV envoyé', 'ITW en cours', 'Offre'].includes(c.stage)
     ).length;
     const won = candidates.filter(c => c.stage === 'Gagné').length;
     const lost = candidates.filter(c => c.stage === 'Perdu').length;
