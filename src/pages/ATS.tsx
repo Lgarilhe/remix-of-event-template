@@ -6,6 +6,7 @@ import { SEOHead } from '@/components/SEOHead';
 import { ATSKanban } from '@/components/ats/ATSKanban';
 import { ATSTable } from '@/components/ats/ATSTable';
 import { ATSTimeline } from '@/components/ats/ATSTimeline';
+import { ATSPipelineAnalytics } from '@/components/ats/ATSPipelineAnalytics';
 import { ATSFilters } from '@/components/ats/ATSFilters';
 import { ATSStats } from '@/components/ats/ATSStats';
 import { ATSKanbanSkeleton } from '@/components/ats/ATSKanbanSkeleton';
@@ -14,7 +15,7 @@ import { ATSStatsSkeleton } from '@/components/ats/ATSStatsSkeleton';
 import { RemindersSidebar } from '@/components/ats/RemindersSidebar';
 import { CandidateDetailModal } from '@/components/ats/CandidateDetailModal';
 import { Tabs, TabsContent } from '@/components/ui/tabs';
-import { LayoutGrid, Table, Clock, Bell, Users, RefreshCw } from 'lucide-react';
+import { LayoutGrid, Table, Clock, Bell, Users, RefreshCw, BarChart3 } from 'lucide-react';
 import { useATSData, ATSCandidate, ATS_STAGES } from '@/hooks/useATSData';
 import { cn } from '@/lib/utils';
 
@@ -25,11 +26,12 @@ const viewTabs = [
   { value: 'kanban', label: 'Kanban', icon: LayoutGrid },
   { value: 'table', label: 'Table', icon: Table },
   { value: 'timeline', label: 'Timeline', icon: Clock },
+  { value: 'analytics', label: 'Analytics', icon: BarChart3 },
 ] as const;
 
 export default function ATS() {
   const [user, setUser] = useState<User | null>(null);
-  const [activeView, setActiveView] = useState<'kanban' | 'table' | 'timeline'>('kanban');
+  const [activeView, setActiveView] = useState<'kanban' | 'table' | 'timeline' | 'analytics'>('kanban');
   const [showReminders, setShowReminders] = useState(false);
   const [selectedCandidate, setSelectedCandidate] = useState<ATSCandidate | null>(null);
   
@@ -247,6 +249,10 @@ export default function ATS() {
                         candidates={filteredCandidates}
                         onCandidateClick={handleCandidateClick}
                       />
+                    </TabsContent>
+
+                    <TabsContent value="analytics" className="mt-0">
+                      <ATSPipelineAnalytics candidates={filteredCandidates} />
                     </TabsContent>
                   </div>
 

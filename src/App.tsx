@@ -20,8 +20,9 @@ import ATS from "./pages/ATS";
 import Dashboard from "./pages/Dashboard";
 import Qualification from "./pages/Qualification";
 import NotFound from "./pages/NotFound";
+import CandidatePortal from "./pages/CandidatePortal";
 
-const PUBLIC_ROUTES = ['/', '/auth', '/discover', '/event'];
+const PUBLIC_ROUTES = ['/', '/auth', '/discover', '/event', '/portal'];
 
 const AppContent = () => {
   const [sessionExpired, setSessionExpired] = useState(false);
@@ -73,6 +74,7 @@ const AppContent = () => {
         <Route path="/ats" element={<ProtectedRoute><ATS /></ProtectedRoute>} />
         <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
         <Route path="/qualification/:id" element={<ProtectedRoute><Qualification /></ProtectedRoute>} />
+        <Route path="/portal/:token" element={<CandidatePortal />} />
         <Route path="*" element={<NotFound />} />
       </Routes>
       <SessionExpiredDialog 
