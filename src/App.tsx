@@ -17,6 +17,7 @@ import SkalrLanding from "./pages/SkalrLanding";
 import Candidates from "./pages/Candidates";
 import Outreach from "./pages/Outreach";
 import ATS from "./pages/ATS";
+import Dashboard from "./pages/Dashboard";
 import Qualification from "./pages/Qualification";
 import NotFound from "./pages/NotFound";
 
@@ -70,6 +71,7 @@ const AppContent = () => {
         <Route path="/candidates" element={<ProtectedRoute><Candidates /></ProtectedRoute>} />
         <Route path="/outreach" element={<ProtectedRoute><Outreach /></ProtectedRoute>} />
         <Route path="/ats" element={<ProtectedRoute><ATS /></ProtectedRoute>} />
+        <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
         <Route path="/qualification/:id" element={<ProtectedRoute><Qualification /></ProtectedRoute>} />
         <Route path="*" element={<NotFound />} />
       </Routes>
