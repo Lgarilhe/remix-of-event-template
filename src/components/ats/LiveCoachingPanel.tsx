@@ -1,6 +1,6 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { Mic, Square, FileText, Copy, CheckCircle2, Loader2, X, Search, CircleDot, AlertTriangle } from 'lucide-react';
+import { Mic, Square, FileText, Copy, CheckCircle2, Loader2, X, Search, CircleDot, AlertTriangle, User } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
@@ -47,6 +47,7 @@ interface LiveCoachingPanelProps {
   onAutoScores: (scores: Record<string, number>) => void;
   onReportGenerated: (report: CallReport) => void;
   onClose: () => void;
+  onOpenProfile?: () => void;
 }
 
 interface TranscriptSegment {
@@ -66,6 +67,7 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
   onAutoScores,
   onReportGenerated,
   onClose,
+  onOpenProfile,
 }) => {
   const [isRecording, setIsRecording] = useState(false);
   const [segments, setSegments] = useState<TranscriptSegment[]>([]);
@@ -453,6 +455,11 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
               className="h-[28px] px-3 flex items-center gap-1.5 bg-foreground text-background text-[10px] font-bold uppercase tracking-wider disabled:opacity-50">
               {generatingReport ? <Loader2 className="w-3 h-3 animate-spin" /> : <FileText className="w-3 h-3" />}
               Générer le CR
+            </button>
+          )}
+          {onOpenProfile && (
+            <button onClick={onOpenProfile} className="lg:hidden h-[28px] px-2 flex items-center gap-1 border border-foreground/20 text-muted-foreground text-[10px] font-medium uppercase tracking-wider hover:bg-foreground/5 transition-colors">
+              <User className="w-3 h-3" /> <span className="hidden sm:inline">CV</span>
             </button>
           )}
           <button onClick={onClose} className="h-[28px] px-2 flex items-center border border-foreground/20 text-muted-foreground text-[10px] hover:bg-foreground/5 transition-colors">
