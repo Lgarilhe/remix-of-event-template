@@ -106,7 +106,7 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
 
   const speakerLabel = (speaker: number) => speaker === 0 ? 'Recruteur' : 'Candidat';
   const speakerColor = (speaker: number) => speaker === 0 ? 'text-blue-600' : 'text-emerald-600';
-  const COACH_INTERVAL_MS = 15000;
+  const COACH_INTERVAL_MS = 25000;
 
   // Auto-scroll transcript within its own ScrollArea only
   useEffect(() => {
@@ -182,10 +182,13 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
           return updated;
         });
       }
-      // Proactive next topic — only update if topic actually changed
+      // Proactive next topic — only update if substantially different
       if (data.next_topic?.topic) {
         setNextTopic(prev => {
-          if (prev?.topic === data.next_topic.topic) return prev;
+          if (!prev) return data.next_topic;
+          // Compare normalized: strip emojis, lowercase, first 20 chars
+          const normalize = (s: string) => s.replace(/[^\w\s]/g, '').toLowerCase().trim().slice(0, 20);
+          if (normalize(prev.topic) === normalize(data.next_topic.topic)) return prev;
           return data.next_topic;
         });
       }
