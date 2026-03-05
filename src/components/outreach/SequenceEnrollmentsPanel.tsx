@@ -124,20 +124,19 @@ const statusConfig: Record<string, { label: string; icon: React.ReactNode; class
   },
 };
 
+// Actions to hide from UI (internal/noise)
+const HIDDEN_ACTION_TYPES = new Set(['wait_connection', 'check_connection', 'wait_reply', 'wait_for_event']);
+
 const actionTypeConfig: Record<string, { label: string; icon: React.ReactNode; color: string; bgColor: string }> = {
   send_inmail: { label: 'InMail', icon: <Mail className="w-3.5 h-3.5" />, color: 'text-purple-700', bgColor: 'bg-purple-500' },
   send_message: { label: 'Message', icon: <Send className="w-3.5 h-3.5" />, color: 'text-blue-700', bgColor: 'bg-blue-500' },
   send_invitation: { label: 'Invitation', icon: <UserPlus className="w-3.5 h-3.5" />, color: 'text-emerald-700', bgColor: 'bg-emerald-500' },
   visit_profile: { label: 'Visite du profil', icon: <Eye className="w-3.5 h-3.5" />, color: 'text-foreground', bgColor: 'bg-muted' },
   smart_message: { label: 'Message intelligent', icon: <MessageCircle className="w-3.5 h-3.5" />, color: 'text-indigo-700', bgColor: 'bg-indigo-500' },
-  check_connection: { label: 'Vérification connexion', icon: <Users className="w-3.5 h-3.5" />, color: 'text-orange-700', bgColor: 'bg-orange-500' },
-  wait_for_event: { label: 'Attente événement', icon: <Timer className="w-3.5 h-3.5" />, color: 'text-amber-700', bgColor: 'bg-amber-500' },
   profile_visit: { label: 'Visite du profil', icon: <Eye className="w-3.5 h-3.5" />, color: 'text-foreground', bgColor: 'bg-muted' },
   connection_request: { label: 'Demande de connexion', icon: <UserPlus className="w-3.5 h-3.5" />, color: 'text-emerald-700', bgColor: 'bg-emerald-500' },
   message: { label: 'Message', icon: <Send className="w-3.5 h-3.5" />, color: 'text-blue-700', bgColor: 'bg-blue-500' },
   inmail: { label: 'InMail', icon: <Mail className="w-3.5 h-3.5" />, color: 'text-purple-700', bgColor: 'bg-purple-500' },
-  wait_connection: { label: 'Attente connexion', icon: <Timer className="w-3.5 h-3.5" />, color: 'text-amber-700', bgColor: 'bg-amber-500' },
-  wait_reply: { label: 'Attente réponse', icon: <Timer className="w-3.5 h-3.5" />, color: 'text-amber-700', bgColor: 'bg-amber-500' },
 };
 
 // Helper to format error messages nicely
@@ -552,11 +551,11 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
                                     // Find next scheduled or last executed action
                                     const scheduledExecs = executions
                                       .filter(e => e.status === 'scheduled')
+                                      .filter(e => e.status === 'scheduled' && !HIDDEN_ACTION_TYPES.has(e.step?.action_type || ''))
                                       .sort((a, b) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime());
                                     const executedExecs = executions
-                                      .filter(e => (e.status === 'executed' || e.status === 'sent') && e.executed_at)
+                                      .filter(e => (e.status === 'executed' || e.status === 'sent') && e.executed_at && !HIDDEN_ACTION_TYPES.has(e.step?.action_type || ''))
                                       .sort((a, b) => new Date(b.executed_at!).getTime() - new Date(a.executed_at!).getTime());
-                                    const waitingExecs = executions.filter(e => e.status === 'waiting_event');
 
                                     const nextScheduled = scheduledExecs[0];
                                     const lastExecuted = executedExecs[0];
@@ -577,12 +576,7 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
                                             })()} le {format(new Date(nextScheduled.scheduled_at), 'dd/MM à HH:mm', { locale: fr })}
                                           </span>
                                         )}
-                                        {waitingExecs.length > 0 && !nextScheduled && (
-                                          <span className="text-[10px] text-amber-600">
-                                            ⏳ Attente connexion
-                                          </span>
-                                        )}
-                                        {!nextScheduled && !lastExecuted && waitingExecs.length === 0 && (
+                                        {!nextScheduled && !lastExecuted && (
                                           <span className="text-[10px] text-muted-foreground">
                                             {executions.length} étape(s)
                                           </span>
@@ -651,9 +645,9 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
                             ) : (
                               <div className="space-y-2">
                                 <p className="text-xs font-medium text-foreground mb-2 uppercase tracking-wide">
-                                  Workflow complet ({allSteps.length} étapes) :
+                                  Workflow :
                                 </p>
-                                {allSteps.map((step, idx) => {
+                                {allSteps.filter(s => !HIDDEN_ACTION_TYPES.has(s.action_type)).map((step, idx) => {
                                   // Find execution for this step if it exists
                                   const exec = executions.find(e => e.step_id === step.id);
                                   const actionConfig = actionTypeConfig[step.action_type] || { 
@@ -712,52 +706,6 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
                                           )}
                                         </div>
 
-                                        {/* Contextual info for wait/check steps */}
-                                        {(step.action_type === 'wait_connection' || step.action_type === 'wait_reply') && (
-                                          <div className="mt-1.5 text-[10px] text-foreground bg-amber-500/10 px-2 py-1.5 border border-amber-500/30 space-y-0.5">
-                                            <div className="font-medium">
-                                              ⏳ {step.timeout_days 
-                                                ? `Timeout : ${step.timeout_days} jour${step.timeout_days > 1 ? 's' : ''}`
-                                                : 'Attente indéfinie (pas de timeout)'
-                                              }
-                                            </div>
-                                            {step.timeout_days && step.timeout_branch_step_id && (() => {
-                                              const timeoutStep = allSteps.find(s => s.id === step.timeout_branch_step_id);
-                                              const timeoutLabel = timeoutStep ? (actionTypeConfig[timeoutStep.action_type]?.label || timeoutStep.action_type) : '?';
-                                              return (
-                                                <div>→ Si non accepté : <strong>{timeoutLabel}</strong> (étape {timeoutStep?.step_order})</div>
-                                              );
-                                            })()}
-                                            {step.timeout_days && !step.timeout_branch_step_id && (
-                                              <div>→ Si non accepté : fin de séquence</div>
-                                            )}
-                                            {exec?.status === 'scheduled' && step.timeout_days && (
-                                              <div className="text-muted-foreground">
-                                                📅 Expire le {format(
-                                                  new Date(new Date(exec.scheduled_at).getTime() + (step.timeout_days * 24 * 60 * 60 * 1000)),
-                                                  'dd/MM/yyyy à HH:mm',
-                                                  { locale: fr }
-                                                )}
-                                              </div>
-                                            )}
-                                          </div>
-                                        )}
-
-                                        {step.action_type === 'check_connection' && (
-                                          <div className="mt-1.5 text-[10px] text-foreground bg-indigo-500/10 px-2 py-1.5 border border-indigo-500/30 space-y-0.5">
-                                            <div className="font-medium">🔀 Branchement</div>
-                                            {step.if_true_goto_step && (() => {
-                                              const trueStep = allSteps.find(s => s.id === step.if_true_goto_step);
-                                              const trueLabel = trueStep ? (actionTypeConfig[trueStep.action_type]?.label || trueStep.action_type) : '?';
-                                              return <div>✅ Si connecté → <strong>{trueLabel}</strong> (étape {trueStep?.step_order})</div>;
-                                            })()}
-                                            {step.if_false_goto_step && (() => {
-                                              const falseStep = allSteps.find(s => s.id === step.if_false_goto_step);
-                                              const falseLabel = falseStep ? (actionTypeConfig[falseStep.action_type]?.label || falseStep.action_type) : '?';
-                                              return <div>❌ Si non connecté → <strong>{falseLabel}</strong> (étape {falseStep?.step_order})</div>;
-                                            })()}
-                                          </div>
-                                        )}
 
                                         {/* Timing info from execution */}
                                         {exec && (

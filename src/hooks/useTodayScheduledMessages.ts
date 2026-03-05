@@ -46,19 +46,39 @@ async function fetchTodayScheduledMessages(): Promise<ScheduledMessage[]> {
     });
   }
 
-  // 2. Sequence step executions scheduled for today
+  // 2. Sequence step executions scheduled for today (only visible actions)
+  const HIDDEN_ACTIONS = ['wait_connection', 'check_connection', 'wait_reply', 'wait_for_event'];
   const { data: executions } = await supabase
     .from('sequence_step_executions' as any)
-    .select('id, scheduled_at, status, step_order, enrollment_id, final_subject, final_message')
+    .select('id, scheduled_at, status, step_order, enrollment_id, final_subject, final_message, step_id')
     .gte('scheduled_at', dayStart)
     .lte('scheduled_at', dayEnd)
     .in('status', ['scheduled', 'executed', 'sent'])
     .order('scheduled_at', { ascending: true })
-    .limit(50);
+    .limit(100);
 
-  if (executions) {
+  if (executions && (executions as any[]).length > 0) {
+    // Get step action_types to filter out hidden actions
+    const stepIds = [...new Set((executions as any[]).map((e: any) => e.step_id).filter(Boolean))];
+    let stepActionMap = new Map<string, string>();
+    if (stepIds.length > 0) {
+      const { data: steps } = await supabase
+        .from('sequence_steps' as any)
+        .select('id, action_type')
+        .in('id', stepIds);
+      if (steps) {
+        (steps as any[]).forEach((s: any) => stepActionMap.set(s.id, s.action_type));
+      }
+    }
+
+    // Filter out hidden actions
+    const visibleExecutions = (executions as any[]).filter((exec: any) => {
+      const actionType = stepActionMap.get(exec.step_id) || '';
+      return !HIDDEN_ACTIONS.includes(actionType);
+    });
+
     // Get enrollment details for names
-    const enrollmentIds = [...new Set((executions as any[]).map((e: any) => e.enrollment_id))];
+    const enrollmentIds = [...new Set(visibleExecutions.map((e: any) => e.enrollment_id))];
     
     let enrollmentMap = new Map<string, { name: string; headline: string; sequenceName: string }>();
     
@@ -79,8 +99,9 @@ async function fetchTodayScheduledMessages(): Promise<ScheduledMessage[]> {
       }
     }
 
-    (executions as any[]).forEach((exec: any) => {
+    visibleExecutions.forEach((exec: any) => {
       const enrollment = enrollmentMap.get(exec.enrollment_id);
+      const actionType = stepActionMap.get(exec.step_id) || '';
       messages.push({
         id: `seq-${exec.id}`,
         type: 'sequence',
@@ -92,6 +113,7 @@ async function fetchTodayScheduledMessages(): Promise<ScheduledMessage[]> {
         status: exec.status,
         sequenceName: enrollment?.sequenceName,
         stepOrder: exec.step_order,
+        actionType,
       });
     });
   }
