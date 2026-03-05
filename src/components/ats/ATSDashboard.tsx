@@ -14,10 +14,6 @@ import {
   Calendar, ExternalLink, Mail, Zap,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import illustFunnel from '@/assets/illust-funnel.png';
-import illustRocket from '@/assets/illust-rocket.png';
-import illustInbox from '@/assets/illust-inbox.png';
-import illustTrophy from '@/assets/illust-trophy.png';
 
 interface ATSDashboardProps {
   candidates: ATSCandidate[];
@@ -229,14 +225,7 @@ export function ATSDashboard({ candidates, stages }: ATSDashboardProps) {
   return (
     <div className="space-y-4">
       {/* ─── Hero KPI Strip with decorative illustration ─── */}
-      <div className="relative overflow-hidden">
-        {/* Decorative rocket illustration */}
-        <img
-          src={illustRocket}
-          alt=""
-          className="absolute -right-2 -top-2 w-32 h-32 sm:w-44 sm:h-44 opacity-[0.18] pointer-events-none select-none object-contain mix-blend-multiply dark:mix-blend-screen"
-          aria-hidden="true"
-        />
+      <div>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-0 relative z-10">
           {[
             { label: 'Candidats', value: kpis.total, icon: Users, accent: false },
@@ -314,14 +303,7 @@ export function ATSDashboard({ candidates, stages }: ATSDashboardProps) {
 
           {/* Pipeline funnel */}
           <Section title="Pipeline" icon={TrendingUp} className={cn("lg:border-r-0", urgentCandidates.length === 0 ? "" : "border-t-0")}>
-            <div className="p-4 relative">
-              {/* Decorative funnel illustration */}
-              <img
-                src={illustFunnel}
-                alt=""
-                className="absolute right-3 top-2 w-20 h-20 sm:w-24 sm:h-24 opacity-[0.2] pointer-events-none select-none object-contain mix-blend-multiply dark:mix-blend-screen"
-                aria-hidden="true"
-              />
+            <div className="p-4">
               {/* Visual pipeline bar */}
               <div className="flex h-8 mb-4 border border-foreground overflow-hidden relative z-10">
                 {funnelData.filter(d => d.count > 0).map((d, i) => {
@@ -478,7 +460,7 @@ export function ATSDashboard({ candidates, stages }: ATSDashboardProps) {
               </div>
             ) : scheduledMessages.length === 0 ? (
               <div className="p-6 flex flex-col items-center gap-2">
-                <img src={illustInbox} alt="" className="w-16 h-16 opacity-30 mix-blend-multiply dark:mix-blend-screen" aria-hidden="true" />
+                <Send className="w-6 h-6 text-muted-foreground/40" />
                 <p className="text-xs text-muted-foreground">Aucun envoi prévu aujourd'hui</p>
               </div>
             ) : (
@@ -567,7 +549,7 @@ export function ATSDashboard({ candidates, stages }: ATSDashboardProps) {
           <Section title="Meilleurs profils" icon={Star} className="border-t-0">
             {topScored.length === 0 ? (
               <div className="p-6 flex flex-col items-center gap-2">
-                <img src={illustTrophy} alt="" className="w-16 h-16 opacity-30 mix-blend-multiply dark:mix-blend-screen" aria-hidden="true" />
+                <Star className="w-6 h-6 text-muted-foreground/40" />
                 <p className="text-xs text-muted-foreground">Aucun score</p>
               </div>
             ) : (
