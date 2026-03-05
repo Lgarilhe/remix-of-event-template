@@ -1133,54 +1133,49 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
             <span className="relative z-10">Projet</span>
           </BrutalActionButton>
         </div>
+
+        {/* Mobile profile panel — INSIDE DialogContent to stay within Radix focus scope */}
+        {isSplitMode && mobileProfileOpen && (
+          <div className="fixed inset-x-0 bottom-0 h-[55dvh] z-[9999] bg-background border-t-2 border-foreground shadow-[0_-8px_30px_rgba(0,0,0,0.3)] flex flex-col animate-in slide-in-from-bottom duration-300">
+            <div className="px-4 py-3 border-b border-foreground/15 flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-2">
+                <User className="w-4 h-4" />
+                <span className="text-[11px] font-bold uppercase tracking-wider">Profil & Poste</span>
+              </div>
+              <button 
+                onClick={() => setMobileProfileOpen(false)}
+                className="h-7 w-7 flex items-center justify-center hover:bg-foreground/10"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto px-4 pt-3 pb-6 space-y-3">
+              <CollapsibleCard
+                title={enrichedProfile?.name || candidate.name}
+                subtitle={enrichedProfile?.headline || candidate.headline}
+                icon={<User className="w-3.5 h-3.5" />}
+                variant="dark"
+                defaultOpen={true}
+              >
+                <MobileProfileContent candidate={candidate} enrichedProfile={enrichedProfile} />
+              </CollapsibleCard>
+              {(jobDetails || candidate.jobTitle) && (
+                <CollapsibleCard
+                  title={jobDetails?.title || candidate.jobTitle || 'Poste'}
+                  subtitle={jobDetails?.client ? `${jobDetails.client}${jobDetails.location ? ` · ${jobDetails.location}` : ''}` : undefined}
+                  icon={<Target className="w-3.5 h-3.5" />}
+                  variant="accent"
+                  defaultOpen={true}
+                >
+                  <MobileJobContent jobDetails={jobDetails} candidate={candidate} />
+                </CollapsibleCard>
+              )}
+            </div>
+          </div>
+        )}
+
       </DialogContent>
     </Dialog>
-
-    {/* Mobile profile panel — rendered via portal to escape Radix Dialog focus trap */}
-    {isSplitMode && mobileProfileOpen && createPortal(
-      <div 
-        className="fixed inset-x-0 bottom-0 h-[55dvh] z-[9999] bg-background border-t-2 border-foreground shadow-[0_-8px_30px_rgba(0,0,0,0.3)] flex flex-col animate-in slide-in-from-bottom duration-300"
-        onPointerDown={(e) => e.stopPropagation()}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="px-4 py-3 border-b border-foreground/15 flex items-center justify-between shrink-0">
-          <div className="flex items-center gap-2">
-            <User className="w-4 h-4" />
-            <span className="text-[11px] font-bold uppercase tracking-wider">Profil & Poste</span>
-          </div>
-          <button 
-            onPointerDown={(e) => { e.stopPropagation(); setMobileProfileOpen(false); }}
-            onClick={(e) => { e.stopPropagation(); setMobileProfileOpen(false); }}
-            className="h-7 w-7 flex items-center justify-center hover:bg-foreground/10"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-        <div className="flex-1 overflow-y-auto px-4 pt-3 pb-6 space-y-3">
-          <CollapsibleCard
-            title={enrichedProfile?.name || candidate.name}
-            subtitle={enrichedProfile?.headline || candidate.headline}
-            icon={<User className="w-3.5 h-3.5" />}
-            variant="dark"
-            defaultOpen={true}
-          >
-            <MobileProfileContent candidate={candidate} enrichedProfile={enrichedProfile} />
-          </CollapsibleCard>
-          {(jobDetails || candidate.jobTitle) && (
-            <CollapsibleCard
-              title={jobDetails?.title || candidate.jobTitle || 'Poste'}
-              subtitle={jobDetails?.client ? `${jobDetails.client}${jobDetails.location ? ` · ${jobDetails.location}` : ''}` : undefined}
-              icon={<Target className="w-3.5 h-3.5" />}
-              variant="accent"
-              defaultOpen={true}
-            >
-              <MobileJobContent jobDetails={jobDetails} candidate={candidate} />
-            </CollapsibleCard>
-          )}
-        </div>
-      </div>,
-      document.body
-    )}
     </>
   );
 };
