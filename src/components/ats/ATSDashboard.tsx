@@ -234,7 +234,7 @@ export function ATSDashboard({ candidates, stages }: ATSDashboardProps) {
         <img
           src={illustRocket}
           alt=""
-          className="absolute -right-4 -top-4 w-28 h-28 sm:w-36 sm:h-36 opacity-[0.06] pointer-events-none select-none object-contain"
+          className="absolute -right-2 -top-2 w-32 h-32 sm:w-44 sm:h-44 opacity-[0.18] pointer-events-none select-none object-contain mix-blend-multiply dark:mix-blend-screen"
           aria-hidden="true"
         />
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-0 relative z-10">
@@ -319,7 +319,7 @@ export function ATSDashboard({ candidates, stages }: ATSDashboardProps) {
               <img
                 src={illustFunnel}
                 alt=""
-                className="absolute right-2 top-1 w-16 h-16 opacity-[0.07] pointer-events-none select-none object-contain"
+                className="absolute right-3 top-2 w-20 h-20 sm:w-24 sm:h-24 opacity-[0.2] pointer-events-none select-none object-contain mix-blend-multiply dark:mix-blend-screen"
                 aria-hidden="true"
               />
               {/* Visual pipeline bar */}
@@ -478,7 +478,7 @@ export function ATSDashboard({ candidates, stages }: ATSDashboardProps) {
               </div>
             ) : scheduledMessages.length === 0 ? (
               <div className="p-6 flex flex-col items-center gap-2">
-                <img src={illustInbox} alt="" className="w-14 h-14 opacity-15" aria-hidden="true" />
+                <img src={illustInbox} alt="" className="w-16 h-16 opacity-30 mix-blend-multiply dark:mix-blend-screen" aria-hidden="true" />
                 <p className="text-xs text-muted-foreground">Aucun envoi prévu aujourd'hui</p>
               </div>
             ) : (
@@ -567,7 +567,7 @@ export function ATSDashboard({ candidates, stages }: ATSDashboardProps) {
           <Section title="Meilleurs profils" icon={Star} className="border-t-0">
             {topScored.length === 0 ? (
               <div className="p-6 flex flex-col items-center gap-2">
-                <img src={illustTrophy} alt="" className="w-12 h-12 opacity-10" aria-hidden="true" />
+                <img src={illustTrophy} alt="" className="w-16 h-16 opacity-30 mix-blend-multiply dark:mix-blend-screen" aria-hidden="true" />
                 <p className="text-xs text-muted-foreground">Aucun score</p>
               </div>
             ) : (
