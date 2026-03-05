@@ -182,9 +182,12 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
           return updated;
         });
       }
-      // Proactive next topic
+      // Proactive next topic — only update if topic actually changed
       if (data.next_topic?.topic) {
-        setNextTopic(data.next_topic);
+        setNextTopic(prev => {
+          if (prev?.topic === data.next_topic.topic) return prev;
+          return data.next_topic;
+        });
       }
     } catch (err) {
       console.error('Coach analysis error:', err);
