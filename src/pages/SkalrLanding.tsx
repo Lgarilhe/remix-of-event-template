@@ -58,6 +58,7 @@ const AnimatedStat = ({ value, suffix = '' }: { value: string; suffix?: string }
 };
 
 const SkalrLanding = () => {
+  useRedirectIfAuthenticated();
   const navigate = useNavigate();
   const [openFaq, setOpenFaq] = useState<number | null>(null);
   const [showCalendly, setShowCalendly] = useState(false);
