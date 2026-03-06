@@ -118,7 +118,12 @@ const LinkedInHostedAuthCard = ({
   const { organization } = useOrganization();
   const Icon = config.icon;
 
-  // Load LinkedIn accounts when expanded
+  // Load LinkedIn accounts on mount
+  useEffect(() => {
+    loadAccounts();
+  }, []);
+
+  // Reload when expanded
   useEffect(() => {
     if (expanded) {
       loadAccounts();
