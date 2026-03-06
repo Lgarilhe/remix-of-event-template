@@ -8,11 +8,6 @@ import { useOrganizationIntegrations } from '@/hooks/useOrganizationIntegrations
 import { useOrganization } from '@/hooks/useOrganization';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import {
-  BookOpen,
-  CalendarDays,
-  Linkedin,
-  Table2,
-  Phone,
   Eye,
   EyeOff,
   Check,
@@ -21,10 +16,17 @@ import {
   ChevronUp,
   ExternalLink,
   RefreshCw,
+  Linkedin,
 } from 'lucide-react';
 import { WebhookManager } from '@/components/outreach/WebhookManager';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+
+import notionLogo from '@/assets/notion-logo.png';
+import calendlyLogo from '@/assets/calendly-logo.png';
+import linkedinLogo from '@/assets/linkedin-logo.png';
+import airtableLogo from '@/assets/airtable-logo.svg';
+import aircallLogo from '@/assets/aircall-logo.png';
 
 interface IntegrationField {
   key: string;
@@ -37,10 +39,10 @@ interface IntegrationConfig {
   id: string;
   name: string;
   description: string;
-  icon: React.ElementType;
+  logoSrc: string;
   connectedKey: string;
   fields: IntegrationField[];
-  hostedAuth?: boolean; // If true, use hosted auth flow instead of manual fields
+  hostedAuth?: boolean;
 }
 
 const INTEGRATIONS: IntegrationConfig[] = [
@@ -48,7 +50,7 @@ const INTEGRATIONS: IntegrationConfig[] = [
     id: 'notion',
     name: 'Notion',
     description: 'Synchronisation des postes, candidats et shortlists avec vos bases Notion.',
-    icon: BookOpen,
+    logoSrc: notionLogo,
     connectedKey: 'notion_connected',
     fields: [
       { key: 'notion_api_key', label: 'Clé API Notion', placeholder: 'ntn_...', secret: true },
@@ -61,7 +63,7 @@ const INTEGRATIONS: IntegrationConfig[] = [
     id: 'calendly',
     name: 'Calendly',
     description: 'Synchronisation automatique des rendez-vous de qualification.',
-    icon: CalendarDays,
+    logoSrc: calendlyLogo,
     connectedKey: 'calendly_connected',
     fields: [
       { key: 'calendly_api_key', label: 'Clé API Calendly', placeholder: 'eyJ...', secret: true },
@@ -71,7 +73,7 @@ const INTEGRATIONS: IntegrationConfig[] = [
     id: 'unipile',
     name: 'LinkedIn',
     description: 'Connectez votre compte LinkedIn pour la recherche de profils, l\'envoi de messages et InMails.',
-    icon: Linkedin,
+    logoSrc: linkedinLogo,
     connectedKey: 'unipile_connected',
     hostedAuth: true,
     fields: [],
@@ -80,7 +82,7 @@ const INTEGRATIONS: IntegrationConfig[] = [
     id: 'airtable',
     name: 'Airtable',
     description: 'Synchronisation des données avec vos bases Airtable (candidats, placements, KPIs).',
-    icon: Table2,
+    logoSrc: airtableLogo,
     connectedKey: 'airtable_connected',
     fields: [
       { key: 'airtable_api_key', label: 'Clé API Airtable', placeholder: 'pat...', secret: true },
@@ -92,7 +94,7 @@ const INTEGRATIONS: IntegrationConfig[] = [
     id: 'aircall',
     name: 'Aircall',
     description: 'Suivi des appels et correspondance automatique avec les candidats.',
-    icon: Phone,
+    logoSrc: aircallLogo,
     connectedKey: 'aircall_connected',
     fields: [
       { key: 'aircall_api_id', label: 'API ID Aircall', placeholder: 'xxx...' },
@@ -100,7 +102,6 @@ const INTEGRATIONS: IntegrationConfig[] = [
     ],
   },
 ];
-
 /* ──────────────────────────────────────────────
  *  LinkedIn Hosted Auth Card (white-label)
  * ────────────────────────────────────────────── */
@@ -116,8 +117,6 @@ const LinkedInHostedAuthCard = ({
   const [generating, setGenerating] = useState(false);
   const { accounts: linkedInAccounts, loading: loadingAccounts, reload: loadAccounts } = useLinkedInAccounts();
   const { organization } = useOrganization();
-  const Icon = config.icon;
-
   const handleConnectLinkedIn = async () => {
     setGenerating(true);
     try {
@@ -151,8 +150,8 @@ const LinkedInHostedAuthCard = ({
         <CardHeader className="py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-muted flex items-center justify-center rounded-lg">
-                <Icon className="w-5 h-5 text-foreground" />
+              <div className="w-10 h-10 bg-muted flex items-center justify-center rounded-lg overflow-hidden">
+                <img src={config.logoSrc} alt={config.name} className="w-6 h-6 object-contain" />
               </div>
               <div>
                 <CardTitle className="text-sm font-semibold">{config.name}</CardTitle>
@@ -287,7 +286,7 @@ const IntegrationCard = ({
   const [localValues, setLocalValues] = useState<Record<string, string>>({});
   const [showSecrets, setShowSecrets] = useState<Record<string, boolean>>({});
   const isConnected = !!values[config.connectedKey];
-  const Icon = config.icon;
+  
 
   useEffect(() => {
     const initial: Record<string, string> = {};
@@ -320,8 +319,8 @@ const IntegrationCard = ({
         <CardHeader className="py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-muted flex items-center justify-center rounded-lg">
-                <Icon className="w-5 h-5 text-foreground" />
+              <div className="w-10 h-10 bg-muted flex items-center justify-center rounded-lg overflow-hidden">
+                <img src={config.logoSrc} alt={config.name} className="w-6 h-6 object-contain" />
               </div>
               <div>
                 <CardTitle className="text-sm font-semibold">{config.name}</CardTitle>
