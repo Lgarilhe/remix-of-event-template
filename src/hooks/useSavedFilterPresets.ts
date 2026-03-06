@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { LinkedInFiltersState } from '@/components/outreach/types';
 import { toast } from 'sonner';
+import { useOrganization } from '@/hooks/useOrganization';
 
 export interface SavedFilterPreset {
   id: string;

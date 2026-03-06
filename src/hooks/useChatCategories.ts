@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { useOrganization } from '@/hooks/useOrganization';
 
 export type ChatCategory = 'interested' | 'not_interested' | 'to_recontact' | 'no_response';
 
