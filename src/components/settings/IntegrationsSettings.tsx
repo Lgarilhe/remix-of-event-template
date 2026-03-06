@@ -186,7 +186,12 @@ const LinkedInHostedAuthCard = ({
               </div>
             </div>
             <div className="flex items-center gap-2">
-              {linkedInAccounts.length > 0 ? (
+              {loadingAccounts && linkedInAccounts.length === 0 ? (
+                <Badge variant="secondary" className="text-[10px] px-2">
+                  <Loader2 className="w-3 h-3 animate-spin mr-1" />
+                  Vérification…
+                </Badge>
+              ) : linkedInAccounts.length > 0 ? (
                 <Badge
                   variant="default"
                   className="text-[10px] px-2 bg-green-600 text-white hover:bg-green-700"
