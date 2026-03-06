@@ -103,13 +103,11 @@ export default function Qualification() {
       if ((verdict === 'go' || verdict === 'no_go') && session?.candidate_profile_id && session?.job_id) {
         try {
           const notionStatus = verdict === 'go' ? 'Qualifié' : 'Rejeté';
-          await supabase.functions.invoke('update-candidate-stage', {
-            body: {
-              candidateId: session.candidate_profile_id,
-              jobId: session.job_id,
-              stage: verdict === 'go' ? 'Qualifié' : 'Rejeté',
-              status: notionStatus,
-            },
+          await invokeEdgeFunction('update-candidate-stage', {
+            candidateId: session.candidate_profile_id,
+            jobId: session.job_id,
+            stage: verdict === 'go' ? 'Qualifié' : 'Rejeté',
+            status: notionStatus,
           });
         } catch (e) {
           console.warn('Notion sync failed:', e);

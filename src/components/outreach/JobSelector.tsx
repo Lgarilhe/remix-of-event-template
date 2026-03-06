@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { Job } from '@/types/jobs';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -47,9 +47,7 @@ export const useJobs = () => {
   return useQuery({
     queryKey: ['notion-jobs-all'],
     queryFn: async () => {
-      const { data, error } = await supabase.functions.invoke('fetch-notion-jobs', {
-        body: { all: true },
-      });
+      const { data, error } = await invokeEdgeFunction<{ jobs?: Job[] }>('fetch-notion-jobs', { all: true });
       
       if (error) throw error;
       if (!data?.success) throw new Error('Failed to fetch jobs');
@@ -70,10 +68,7 @@ export const useRefreshJobs = () => {
   const refresh = useCallback(async () => {
     setIsRefreshing(true);
     try {
-      // Force refresh from Notion (bypass cache)
-      const { data, error } = await supabase.functions.invoke('fetch-notion-jobs', {
-        body: { all: true, refresh: true },
-      });
+      const { data, error } = await invokeEdgeFunction<{ jobs?: Job[] }>('fetch-notion-jobs', { all: true, refresh: true });
       
       if (error) throw error;
       if (!data?.success) throw new Error('Failed to refresh jobs');
@@ -187,9 +182,7 @@ export const JobSelector: React.FC<JobSelectorProps> = ({ selectedJob, onJobChan
 
     setAutoFillLoading(true);
     try {
-      const { data, error } = await supabase.functions.invoke('generate-search-filters', {
-        body: { job: selectedJob },
-      });
+      const { data, error } = await invokeEdgeFunction<{ filters?: any }>('generate-search-filters', { job: selectedJob });
 
       if (error) throw error;
       

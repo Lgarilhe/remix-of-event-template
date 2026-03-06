@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { supabase } from '@/integrations/supabase/client';
-import { getActiveOrganizationId } from '@/lib/orgContext';
+import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { LinkedInAccount } from '@/pages/Outreach';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -111,18 +110,13 @@ export const LinkedInAccountManager: React.FC<LinkedInAccountManagerProps> = ({
 
     setConnecting(true);
     try {
-      const orgId = await getActiveOrganizationId();
-      const response = await supabase.functions.invoke('unipile-accounts', {
-        body: {
-          action: 'connect_cookie',
-          access_token: liAtCookie.trim(),
-          user_agent: userAgent.trim() || undefined,
-          organization_id: orgId,
-        },
+      const response = await invokeEdgeFunction('unipile-accounts', {
+        action: 'connect_cookie',
+        access_token: liAtCookie.trim(),
+        user_agent: userAgent.trim() || undefined,
       });
 
       if (response.error) throw response.error;
-      
       const data = response.data;
       if (!data.success) {
         throw new Error(data.error);

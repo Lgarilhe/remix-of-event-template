@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { ATSCandidate } from '@/hooks/useATSData';
 import { Shield, ShieldAlert, ShieldCheck, ShieldX, Loader2, AlertTriangle, Clock, TrendingUp, GraduationCap, Shuffle } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -42,12 +42,10 @@ export const FraudDetectionTab: React.FC<Props> = ({ candidate }) => {
     setLoading(true);
     setError(null);
     try {
-      const { data, error: fnError } = await supabase.functions.invoke('detect-profile-fraud', {
-        body: {
-          profileData: candidate.linkedinProfileData,
-          candidateName: candidate.name,
-          headline: candidate.headline,
-        },
+      const { data, error: fnError } = await invokeEdgeFunction('detect-profile-fraud', {
+        profileData: candidate.linkedinProfileData,
+        candidateName: candidate.name,
+        headline: candidate.headline,
       });
       if (fnError) throw fnError;
       if (data?.error) throw new Error(data.error);
