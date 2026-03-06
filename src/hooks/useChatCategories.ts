@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { useOrganization } from '@/hooks/useOrganization';
 
 export type ChatCategory = 'interested' | 'not_interested' | 'to_recontact' | 'no_response';
 
@@ -21,6 +22,7 @@ export function useChatCategories() {
   const [categoriesMap, setCategoriesMap] = useState<Map<string, ChatCategory>>(new Map());
   const [loading, setLoading] = useState(false);
   const [categoryFilter, setCategoryFilter] = useState<ChatCategory | 'all'>('all');
+  const { organizationId } = useOrganization();
 
   const fetchCategories = useCallback(async () => {
     try {
@@ -74,6 +76,7 @@ export function useChatCategories() {
             account_id: accountId,
             category,
             created_by: user.user.id,
+            organization_id: organizationId,
             updated_at: new Date().toISOString(),
           }, { onConflict: 'chat_id,created_by' });
 
@@ -144,6 +147,7 @@ export function useChatCategories() {
           account_id: r.account_id,
           category: r.category,
           created_by: user.user!.id,
+          organization_id: organizationId,
           updated_at: new Date().toISOString(),
         }));
 

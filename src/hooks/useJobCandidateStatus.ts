@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { useOrganization } from '@/hooks/useOrganization';
 
 export type CandidateStatus = 'discovered' | 'dismissed' | 'messaged' | 'replied' | 'shortlisted' | 'scored';
 
@@ -25,7 +26,8 @@ export function useJobCandidateStatus(jobId: string | null) {
   const [statuses, setStatuses] = useState<Map<string, JobCandidateStatus>>(new Map());
   const [loading, setLoading] = useState(false);
   const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set());
-  const [treatedIds, setTreatedIds] = useState<Set<string>>(new Set()); // messaged, replied, shortlisted, dismissed
+  const [treatedIds, setTreatedIds] = useState<Set<string>>(new Set());
+  const { organizationId } = useOrganization();
 
   // Fetch all statuses for current job (including linkedin_profile_data for pool rehydration)
   const fetchStatuses = useCallback(async () => {
@@ -136,7 +138,8 @@ export function useJobCandidateStatus(jobId: string | null) {
           skip_reason: candidateData.skipReason || null,
           scoring_details: candidateData.scoringDetails || null,
           linkedin_profile_data: candidateData.linkedinProfileData || null,
-          created_by: user.id,
+           created_by: user.id,
+           organization_id: organizationId,
         }, {
           onConflict: 'job_id,candidate_id,created_by'
         });
@@ -212,6 +215,7 @@ export function useJobCandidateStatus(jobId: string | null) {
         scoring_details: c.scoringDetails || null,
         linkedin_profile_data: c.linkedinProfileData || null,
         created_by: user.id,
+        organization_id: organizationId,
       }));
 
       const { error } = await supabase
@@ -277,7 +281,8 @@ export function useJobCandidateStatus(jobId: string | null) {
           job_id: jobId,
           candidate_id: candidateId,
           status,
-          created_by: user.id,
+           created_by: user.id,
+           organization_id: organizationId,
           ...(existing ? {
             linkedin_profile_url: existing.linkedin_profile_url,
             candidate_name: existing.candidate_name,
@@ -392,7 +397,8 @@ export function useJobCandidateStatus(jobId: string | null) {
           recommendation: candidateData.recommendation,
           scoring_details: candidateData.scoringDetails || null,
           linkedin_profile_data: candidateData.linkedinProfileData || null,
-          created_by: user.id,
+           created_by: user.id,
+           organization_id: organizationId,
         }, {
           onConflict: 'job_id,candidate_id,created_by'
         });
@@ -458,7 +464,8 @@ export function useJobCandidateStatus(jobId: string | null) {
           recommendation: c.recommendation,
           scoring_details: c.scoringDetails || null,
           linkedin_profile_data: c.linkedinProfileData || null,
-          created_by: user.id,
+           created_by: user.id,
+           organization_id: organizationId,
         };
       });
 
@@ -544,6 +551,7 @@ export function useJobCandidateStatus(jobId: string | null) {
         linkedin_profile_data: p.linkedinProfileData || null,
         status: 'discovered',
         created_by: user.id,
+        organization_id: organizationId,
       }));
 
       const { error } = await supabase
