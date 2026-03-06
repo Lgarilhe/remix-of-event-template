@@ -4,8 +4,9 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
   Briefcase, Sliders, ChevronDown, X, Plus, Save, Loader2,
-  Mail, MessageSquare, Search, Eye, Gauge, Linkedin, Link2, Unlink,
+  Mail, MessageSquare, Search, Eye, Gauge, Link2, Unlink,
 } from 'lucide-react';
+import linkedinLogo from '@/assets/linkedin-logo.png';
 import { useJobAssignments } from '@/hooks/useJobAssignments';
 import { useMemberQuotas, DEFAULT_QUOTAS } from '@/hooks/useMemberQuotas';
 import { useMemberLinkedInAccounts } from '@/hooks/useMemberLinkedInAccounts';
@@ -140,7 +141,7 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
                     <div className="flex items-center gap-2 mt-0.5">
                       {linkedInMapping ? (
                         <span className="inline-flex items-center gap-1 text-[10px] text-muted-foreground">
-                          <Linkedin className="w-3 h-3" />
+                          <img src={linkedinLogo} alt="LinkedIn" className="w-3 h-3 object-contain" />
                           {linkedInMapping.linkedin_account_name || 'Connecté'}
                         </span>
                       ) : (
@@ -167,16 +168,14 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
                   {/* LinkedIn Account Linking */}
                   <div className="px-4 py-4">
                     <div className="flex items-center gap-2 mb-3">
-                      <Linkedin className="w-3.5 h-3.5 text-muted-foreground" />
+                      <img src={linkedinLogo} alt="LinkedIn" className="w-4 h-4 object-contain" />
                       <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Compte LinkedIn</span>
                     </div>
 
                     {linkedInMapping ? (
                       <div className="flex items-center justify-between p-2.5 bg-background border border-border">
                         <div className="flex items-center gap-2">
-                          <div className="w-6 h-6 bg-[hsl(217,91%,60%)] text-white flex items-center justify-center">
-                            <Linkedin className="w-3 h-3" />
-                          </div>
+                          <img src={linkedinLogo} alt="LinkedIn" className="w-6 h-6 object-contain" />
                           <div>
                             <p className="text-xs font-medium">{linkedInMapping.linkedin_account_name}</p>
                             <p className="text-[10px] text-muted-foreground">ID: {linkedInMapping.linkedin_account_id.slice(0, 12)}…</p>
@@ -200,7 +199,7 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
                             {getAvailableLinkedInAccounts(member.user_id).map(acc => (
                               <SelectItem key={acc.id} value={acc.id} className="text-xs">
                                 <span className="flex items-center gap-1.5">
-                                  <Linkedin className="w-3 h-3 text-[hsl(217,91%,60%)]" />
+                                  <img src={linkedinLogo} alt="LinkedIn" className="w-3 h-3 object-contain" />
                                   {(acc as any).name || (acc as any).identifier || acc.id}
                                   {(acc as any).status === 'OK' && (
                                     <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
