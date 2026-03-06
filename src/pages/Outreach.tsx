@@ -50,6 +50,10 @@ export default function Outreach() {
   const [rawAccounts, setRawAccounts] = useState<LinkedInAccount[]>([]);
   const [selectedAccount, setSelectedAccount] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  
+  const { isAdmin, isOwner } = useOrganization();
+  const { mappings, getUserLinkedAccountId } = useMemberLinkedInAccounts();
   
   const validTabs = tabs.map(t => t.value) as string[];
   const tabFromUrl = searchParams.get('tab');
@@ -65,7 +69,27 @@ export default function Outreach() {
   
   const [activeProject, setActiveProject] = useState<SourcingProject | null>(null);
 
-  const accounts = useMemo(() => rawAccounts.map(applySubscriptionOverrides), [rawAccounts]);
+  // Get current user ID
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (user) setCurrentUserId(user.id);
+    });
+  }, []);
+
+  const allAccounts = useMemo(() => rawAccounts.map(applySubscriptionOverrides), [rawAccounts]);
+
+  // Filter accounts based on role:
+  // Admin/Owner: see all accounts
+  // Member: only see their linked account
+  const accounts = useMemo(() => {
+    if (isAdmin || isOwner) return allAccounts;
+    if (!currentUserId) return allAccounts;
+    
+    const linkedAccountId = getUserLinkedAccountId(currentUserId);
+    if (!linkedAccountId) return allAccounts; // No mapping yet, show all (backward compat)
+    
+    return allAccounts.filter(a => a.id === linkedAccountId);
+  }, [allAccounts, isAdmin, isOwner, currentUserId, mappings, getUserLinkedAccountId]);
 
   const { count: initialUnreadCount, refresh: refreshUnreadCount } = useUnreadMessageCount(selectedAccount);
   const [unreadMessageCount, setUnreadMessageCount] = useState(0);
