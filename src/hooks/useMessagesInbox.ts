@@ -121,6 +121,7 @@ interface UseMessagesInboxOptions {
 }
 
 export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initialChatId, onChatChange }: UseMessagesInboxOptions) {
+  const { organizationId } = useOrganization();
   // Chat state
   const [chats, setChats] = useState<Chat[]>([]);
   const [filteredChats, setFilteredChats] = useState<Chat[]>([]);
