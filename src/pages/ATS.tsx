@@ -175,7 +175,7 @@ export default function ATS() {
             <Tabs value={activeView} onValueChange={(v) => setActiveView(v as any)}>
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
                 {/* Brutal tabs */}
-                <div className="flex gap-0">
+                <div className="flex gap-0 overflow-x-auto scrollbar-hide">
                   {viewTabs.map((tab, index) => {
                     const Icon = tab.icon;
                     const isActive = activeView === tab.value;

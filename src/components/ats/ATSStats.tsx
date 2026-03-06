@@ -58,7 +58,7 @@ export const ATSStats: React.FC<ATSStatsProps> = ({ candidates, stages }) => {
   };
 
   return (
-    <div className="flex flex-wrap gap-0 mb-4">
+    <div className="flex gap-0 mb-4 overflow-x-auto scrollbar-hide">
       {STAT_CONFIG.map((stat, index) => {
         const Icon = stat.icon;
         const value = values[stat.key];
