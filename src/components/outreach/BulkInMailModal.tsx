@@ -257,7 +257,7 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
       return {
         subject: data?.subject || `Opportunité ${selectedJob.title}`,
         message: data?.message || '',
-        personalizationPoints: data?.personalization_points || [],
+        personalizationPoints: (data as any)?.personalization_points || [],
         isEdited: false,
       };
     } catch (err) {
