@@ -707,19 +707,25 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
-  try {
-    if (!NOTION_API_KEY) {
-      throw new Error('NOTION_API_KEY is not configured');
-    }
-
-    // Parse pagination parameters from query string or body
-    const url = new URL(req.url);
+    // Parse request body
     let body: any = {};
     try {
       body = await req.json();
     } catch {
       // No body or invalid JSON, use defaults
     }
+
+    // Resolve per-org credentials if organization_id is provided
+    if (body?.organization_id) {
+      await resolveOrgCredentials(body.organization_id);
+    }
+
+    if (!NOTION_API_KEY) {
+      throw new Error('NOTION_API_KEY is not configured');
+    }
+
+    // Parse pagination parameters from query string or body
+    const url = new URL(req.url);
 
     // DEBUG MODE: help diagnose “job not visible” by searching in Notion directly
     // Usage: POST body { "debugTitle": "Responsable IT Corporate" }
