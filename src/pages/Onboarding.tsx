@@ -4,6 +4,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { useOrganization } from '@/hooks/useOrganization';
+import { InvitationBanner } from '@/components/InvitationBanner';
 import { Building2 } from 'lucide-react';
 
 const Onboarding = () => {
@@ -45,6 +46,8 @@ const Onboarding = () => {
   return (
     <div className="min-h-screen flex items-center justify-center bg-background px-4">
       <div className="w-full max-w-md space-y-8">
+        <InvitationBanner />
+
         <div className="text-center">
           <div className="mx-auto w-16 h-16 bg-primary/10 rounded-2xl flex items-center justify-center mb-6">
             <Building2 className="w-8 h-8 text-primary" />
@@ -53,7 +56,7 @@ const Onboarding = () => {
             Créer votre organisation
           </h1>
           <p className="mt-2 text-sm text-muted-foreground">
-            Pour commencer, donnez un nom à votre espace de travail.
+            Pour commencer, donnez un nom à votre espace de travail — ou acceptez une invitation ci-dessus.
           </p>
         </div>
 
