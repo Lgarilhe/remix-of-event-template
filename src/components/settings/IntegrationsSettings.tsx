@@ -271,6 +271,11 @@ const LinkedInHostedAuthCard = ({
               </Button>
             )}
           </div>
+
+          {/* Webhook management */}
+          {linkedInAccounts.length > 0 && (
+            <WebhookManager />
+          )}
         </CardContent>
       )}
     </Card>
