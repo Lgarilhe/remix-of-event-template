@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { getActiveOrganizationId } from '@/lib/orgContext';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -23,8 +24,9 @@ export function WebhookManager() {
   const fetchWebhooks = async () => {
     setLoading(true);
     try {
+      const orgId = await getActiveOrganizationId();
       const response = await supabase.functions.invoke('unipile-manage-webhooks', {
-        body: { action: 'list' },
+        body: { action: 'list', organization_id: orgId },
       });
 
       if (response.error) throw response.error;
@@ -52,8 +54,9 @@ export function WebhookManager() {
   const handleRegister = async () => {
     setRegistering(true);
     try {
+      const orgId = await getActiveOrganizationId();
       const response = await supabase.functions.invoke('unipile-manage-webhooks', {
-        body: { action: 'register' },
+        body: { action: 'register', organization_id: orgId },
       });
 
       if (response.error) throw response.error;
@@ -80,8 +83,9 @@ export function WebhookManager() {
   const handleDelete = async (webhookId: string) => {
     setDeletingId(webhookId);
     try {
+      const orgId = await getActiveOrganizationId();
       const response = await supabase.functions.invoke('unipile-manage-webhooks', {
-        body: { action: 'delete', webhook_id: webhookId },
+        body: { action: 'delete', webhook_id: webhookId, organization_id: orgId },
       });
 
       if (response.error) throw response.error;
