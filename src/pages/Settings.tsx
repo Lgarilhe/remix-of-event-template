@@ -13,6 +13,7 @@ import { useQuery } from '@tanstack/react-query';
 import { IntegrationsSettings } from '@/components/settings/IntegrationsSettings';
 import { InviteMemberForm } from '@/components/settings/InviteMemberForm';
 import { PendingInvitations } from '@/components/settings/PendingInvitations';
+import { TeamManagement } from '@/components/settings/TeamManagement';
 import { toast } from 'sonner';
 
 const roleIcons = {
