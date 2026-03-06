@@ -234,6 +234,14 @@ const Settings = () => {
                 )}
               </CardContent>
             </Card>
+
+            {isAdmin && (
+              <TeamManagement
+                members={members}
+                getDisplayName={getDisplayName}
+                isAdmin={isAdmin}
+              />
+            )}
           </TabsContent>
 
           {/* Integrations Tab */}
