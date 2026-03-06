@@ -113,36 +113,9 @@ const LinkedInHostedAuthCard = ({
 }) => {
   const [expanded, setExpanded] = useState(false);
   const [generating, setGenerating] = useState(false);
-  const [linkedInAccounts, setLinkedInAccounts] = useState<any[]>([]);
-  const [loadingAccounts, setLoadingAccounts] = useState(false);
+  const { accounts: linkedInAccounts, loading: loadingAccounts, reload: loadAccounts } = useLinkedInAccounts();
   const { organization } = useOrganization();
   const Icon = config.icon;
-
-  // Load LinkedIn accounts on mount
-  useEffect(() => {
-    loadAccounts();
-  }, []);
-
-  // Reload when expanded
-  useEffect(() => {
-    if (expanded) {
-      loadAccounts();
-    }
-  }, [expanded]);
-
-  const loadAccounts = async () => {
-    setLoadingAccounts(true);
-    try {
-      const { data } = await invokeEdgeFunction('unipile-accounts', { action: 'list' });
-      if (data?.success) {
-        setLinkedInAccounts((data as any).accounts || []);
-      }
-    } catch (e) {
-      console.error('Failed to load accounts:', e);
-    } finally {
-      setLoadingAccounts(false);
-    }
-  };
 
   const handleConnectLinkedIn = async () => {
     setGenerating(true);
