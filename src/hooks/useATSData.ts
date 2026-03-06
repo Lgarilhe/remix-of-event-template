@@ -1,6 +1,7 @@
 import { useMemo, useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { toast } from 'sonner';
 
 // Types
@@ -377,8 +378,8 @@ export function useATSData() {
       // 3. Propagate to Notion in background (fire-and-forget)
       const notionShortlistId = candidate.notionShortlistId;
       if (notionShortlistId) {
-        supabase.functions.invoke('update-candidate-stage', {
-          body: { shortlistId: notionShortlistId, newStage },
+        invokeEdgeFunction('update-candidate-stage', {
+          shortlistId: notionShortlistId, newStage,
         }).catch(err => {
           console.warn('[ATS] Notion propagation failed (non-blocking):', err);
         });
