@@ -26,7 +26,8 @@ export function useJobCandidateStatus(jobId: string | null) {
   const [statuses, setStatuses] = useState<Map<string, JobCandidateStatus>>(new Map());
   const [loading, setLoading] = useState(false);
   const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set());
-  const [treatedIds, setTreatedIds] = useState<Set<string>>(new Set()); // messaged, replied, shortlisted, dismissed
+  const [treatedIds, setTreatedIds] = useState<Set<string>>(new Set());
+  const { organizationId } = useOrganization();
 
   // Fetch all statuses for current job (including linkedin_profile_data for pool rehydration)
   const fetchStatuses = useCallback(async () => {
