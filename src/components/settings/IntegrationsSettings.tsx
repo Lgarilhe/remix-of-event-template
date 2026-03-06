@@ -117,8 +117,6 @@ const LinkedInHostedAuthCard = ({
   const [generating, setGenerating] = useState(false);
   const { accounts: linkedInAccounts, loading: loadingAccounts, reload: loadAccounts } = useLinkedInAccounts();
   const { organization } = useOrganization();
-  const Icon = config.icon;
-
   const handleConnectLinkedIn = async () => {
     setGenerating(true);
     try {
@@ -152,8 +150,8 @@ const LinkedInHostedAuthCard = ({
         <CardHeader className="py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-muted flex items-center justify-center rounded-lg">
-                <Icon className="w-5 h-5 text-foreground" />
+              <div className="w-10 h-10 bg-muted flex items-center justify-center rounded-lg overflow-hidden">
+                <img src={config.logoSrc} alt={config.name} className="w-6 h-6 object-contain" />
               </div>
               <div>
                 <CardTitle className="text-sm font-semibold">{config.name}</CardTitle>
@@ -288,7 +286,7 @@ const IntegrationCard = ({
   const [localValues, setLocalValues] = useState<Record<string, string>>({});
   const [showSecrets, setShowSecrets] = useState<Record<string, boolean>>({});
   const isConnected = !!values[config.connectedKey];
-  const Icon = config.icon;
+  
 
   useEffect(() => {
     const initial: Record<string, string> = {};
@@ -321,8 +319,8 @@ const IntegrationCard = ({
         <CardHeader className="py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-muted flex items-center justify-center rounded-lg">
-                <Icon className="w-5 h-5 text-foreground" />
+              <div className="w-10 h-10 bg-muted flex items-center justify-center rounded-lg overflow-hidden">
+                <img src={config.logoSrc} alt={config.name} className="w-6 h-6 object-contain" />
               </div>
               <div>
                 <CardTitle className="text-sm font-semibold">{config.name}</CardTitle>
