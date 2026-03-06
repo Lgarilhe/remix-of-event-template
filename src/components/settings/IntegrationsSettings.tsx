@@ -21,6 +21,7 @@ import {
   ExternalLink,
   RefreshCw,
 } from 'lucide-react';
+import { WebhookManager } from '@/components/outreach/WebhookManager';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
