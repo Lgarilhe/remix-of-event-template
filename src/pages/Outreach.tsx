@@ -129,7 +129,7 @@ export default function Outreach() {
       <main className="pt-20 pb-0 w-full max-w-full">
         <div className="max-w-[1600px] mx-auto w-full min-w-0 px-3 sm:px-6 lg:px-8">
           {/* Header — hidden on mobile when Messages tab is active */}
-          <div className={cn("mb-6 sm:mb-8", activeTab === 'messages' && "hidden md:block")}>
+          <div className="mb-6 sm:mb-8 hidden md:block">
             <div className="flex items-center justify-between">
               <div>
                 <div className="flex items-center gap-2.5 sm:gap-3 mb-1">
