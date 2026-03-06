@@ -181,8 +181,8 @@ export function useNurturingOpportunities(): UseNurturingOpportunitiesReturn {
       if (!response.data?.success) throw new Error(response.data?.error || 'Generation failed');
 
       return {
-        message: response.data.message,
-        subject: response.data.subject,
+        message: response.data.message as string,
+        subject: response.data.subject as string,
       };
     },
     onSuccess: () => {
