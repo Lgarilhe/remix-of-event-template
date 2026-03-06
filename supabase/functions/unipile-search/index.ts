@@ -192,6 +192,10 @@ Deno.serve(async (req) => {
         return await handleGetUserPosts(baseUrl, apiKey, account_id, params);
       }
 
+      case 'endorse_skill': {
+        return await handleEndorseSkill(baseUrl, apiKey, account_id, params);
+      }
+
       default:
         return new Response(
           JSON.stringify({ success: false, error: 'Action non reconnue' }),
