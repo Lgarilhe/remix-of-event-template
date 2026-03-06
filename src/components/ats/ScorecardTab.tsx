@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { ATSCandidate } from '@/hooks/useATSData';
 import { EnrichedProfile } from '@/hooks/useProfileEnrichment';
 import { Loader2, Sparkles, Star, RotateCcw, ChevronDown, ChevronUp, Pencil, Check, Plus, Trash2, AlertTriangle, MessageSquare, Copy, Mic } from 'lucide-react';
@@ -150,8 +151,8 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
         }
 
         try {
-          const { data: notionData } = await supabase.functions.invoke('fetch-notion-jobs', {
-            body: { jobId: candidate.jobId },
+          const { data: notionData } = await invokeEdgeFunction('fetch-notion-jobs', {
+            jobId: candidate.jobId,
           });
           if (notionData?.job) {
             jobContext.description = notionData.job.description || jobContext.description;
@@ -163,8 +164,8 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
 
       const stage = activeEval?.interviewStage || selectedStage || undefined;
 
-      const { data, error } = await supabase.functions.invoke('generate-scorecard', {
-        body: { candidateProfile, jobContext, scoringDetails: candidate.scoringDetails, interviewStage: stage },
+      const { data, error } = await invokeEdgeFunction('generate-scorecard', {
+        candidateProfile, jobContext, scoringDetails: candidate.scoringDetails, interviewStage: stage,
       });
 
       if (error) throw error;

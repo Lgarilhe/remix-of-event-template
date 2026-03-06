@@ -105,11 +105,9 @@ export const CandidatePipeline: React.FC<CandidatePipelineProps> = ({ data, stag
       onStageChange?.(activeId, targetStage.key);
 
       // Update in Notion
-      const response = await supabase.functions.invoke('update-candidate-stage', {
-        body: {
-          shortlistId: activeId,
-          newStage: targetStage.key,
-        },
+      const response = await invokeEdgeFunction('update-candidate-stage', {
+        shortlistId: activeId,
+        newStage: targetStage.key,
       });
 
       if (response.error || !response.data?.success) {
