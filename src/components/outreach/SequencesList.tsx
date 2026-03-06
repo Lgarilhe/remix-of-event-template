@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { BrutalLoader } from '@/components/ui/brutal-loader';
 import { supabase } from '@/integrations/supabase/client';
+import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
@@ -102,15 +103,15 @@ export const SequencesList: React.FC<SequencesListProps> = ({
   const handleForceReschedule = async () => {
     setForceRescheduling(true);
     try {
-      const { data, error } = await supabase.functions.invoke('process-sequences', {
-        body: { action: 'force_reschedule' },
+      const { data, error } = await invokeEdgeFunction('process-sequences', {
+        action: 'force_reschedule',
       });
       if (error) throw error;
       const count = data?.rescheduled || 0;
       if (count > 0) {
         toast.success(`${count} action(s) avancée(s) à maintenant — elles partent dans les prochaines minutes !`);
         // Trigger process immediately after reschedule
-        await supabase.functions.invoke('process-sequences', { body: { action: 'process', force: true } });
+        await invokeEdgeFunction('process-sequences', { action: 'process', force: true });
       } else {
         toast.info('Aucune action en attente à avancer pour aujourd\'hui');
       }
