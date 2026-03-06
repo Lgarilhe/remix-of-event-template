@@ -2,15 +2,16 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import type { Job } from '@/types/jobs';
 import { toast } from 'sonner';
+import { useOrganization } from './useOrganization';
 
 // Cache configuration
 const STALE_TIME = 5 * 60 * 1000; // 5 minutes
 const GC_TIME = 60 * 60 * 1000; // 1 hour
 const REFETCH_INTERVAL = 5 * 60 * 1000; // 5 minutes polling
 
-async function fetchJobs(refresh = false): Promise<Job[]> {
+async function fetchJobs(refresh = false, organizationId?: string | null): Promise<Job[]> {
   const { data, error } = await supabase.functions.invoke('fetch-notion-jobs', {
-    body: { all: true, refresh },
+    body: { all: true, refresh, organization_id: organizationId },
   });
 
   if (error) throw error;
@@ -20,9 +21,11 @@ async function fetchJobs(refresh = false): Promise<Job[]> {
 }
 
 export function useNotionJobs() {
+  const { organizationId } = useOrganization();
+
   return useQuery({
-    queryKey: ['notion-jobs'],
-    queryFn: () => fetchJobs(false),
+    queryKey: ['notion-jobs', organizationId],
+    queryFn: () => fetchJobs(false, organizationId),
     staleTime: STALE_TIME,
     gcTime: GC_TIME,
     refetchOnWindowFocus: false,
