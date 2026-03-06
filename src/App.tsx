@@ -5,6 +5,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { Routes, Route, useLocation, useNavigate } from "react-router-dom";
 import { SessionExpiredDialog } from "@/components/SessionExpiredDialog";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
+import { OrganizationGuard } from "@/components/OrganizationGuard";
 import { supabase } from "@/integrations/supabase/client";
 import Index from "./pages/Index";
 import Discover from "./pages/Discover";
@@ -21,6 +22,8 @@ import Dashboard from "./pages/Dashboard";
 import Qualification from "./pages/Qualification";
 import NotFound from "./pages/NotFound";
 import CandidatePortal from "./pages/CandidatePortal";
+import Onboarding from "./pages/Onboarding";
+import Settings from "./pages/Settings";
 
 const PUBLIC_ROUTES = ['/', '/auth', '/discover', '/event', '/portal'];
 
@@ -68,12 +71,14 @@ const AppContent = () => {
         <Route path="/my-events" element={<ProtectedRoute><MyEvents /></ProtectedRoute>} />
         <Route path="/create-event" element={<ProtectedRoute><CreateEvent /></ProtectedRoute>} />
         <Route path="/auth" element={<Auth />} />
+        <Route path="/onboarding" element={<ProtectedRoute><Onboarding /></ProtectedRoute>} />
         <Route path="/admin" element={<ProtectedRoute><Admin /></ProtectedRoute>} />
-        <Route path="/candidates" element={<ProtectedRoute><Candidates /></ProtectedRoute>} />
-        <Route path="/outreach" element={<ProtectedRoute><Outreach /></ProtectedRoute>} />
-        <Route path="/ats" element={<ProtectedRoute><ATS /></ProtectedRoute>} />
-        <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
-        <Route path="/qualification/:id" element={<ProtectedRoute><Qualification /></ProtectedRoute>} />
+        <Route path="/candidates" element={<ProtectedRoute><OrganizationGuard><Candidates /></OrganizationGuard></ProtectedRoute>} />
+        <Route path="/outreach" element={<ProtectedRoute><OrganizationGuard><Outreach /></OrganizationGuard></ProtectedRoute>} />
+        <Route path="/ats" element={<ProtectedRoute><OrganizationGuard><ATS /></OrganizationGuard></ProtectedRoute>} />
+        <Route path="/dashboard" element={<ProtectedRoute><OrganizationGuard><Dashboard /></OrganizationGuard></ProtectedRoute>} />
+        <Route path="/qualification/:id" element={<ProtectedRoute><OrganizationGuard><Qualification /></OrganizationGuard></ProtectedRoute>} />
+        <Route path="/settings" element={<ProtectedRoute><OrganizationGuard><Settings /></OrganizationGuard></ProtectedRoute>} />
         <Route path="/portal/:token" element={<CandidatePortal />} />
         <Route path="*" element={<NotFound />} />
       </Routes>

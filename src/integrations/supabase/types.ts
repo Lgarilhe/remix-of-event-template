@@ -727,6 +727,7 @@ export type Database = {
           duration_seconds: number | null
           id: string
           job_id: string
+          organization_id: string | null
           report: Json | null
           scorecard_id: string
           status: string | null
@@ -742,6 +743,7 @@ export type Database = {
           duration_seconds?: number | null
           id?: string
           job_id: string
+          organization_id?: string | null
           report?: Json | null
           scorecard_id: string
           status?: string | null
@@ -757,12 +759,21 @@ export type Database = {
           duration_seconds?: number | null
           id?: string
           job_id?: string
+          organization_id?: string | null
           report?: Json | null
           scorecard_id?: string
           status?: string | null
           transcript?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "call_coaching_sessions_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       candidate_evaluations: {
         Row: {
@@ -777,6 +788,7 @@ export type Database = {
           interview_stage: string | null
           job_id: string | null
           job_title: string | null
+          organization_id: string | null
           overall_score: number | null
           ratings: Json
           recommendation: string | null
@@ -795,6 +807,7 @@ export type Database = {
           interview_stage?: string | null
           job_id?: string | null
           job_title?: string | null
+          organization_id?: string | null
           overall_score?: number | null
           ratings?: Json
           recommendation?: string | null
@@ -813,13 +826,22 @@ export type Database = {
           interview_stage?: string | null
           job_id?: string | null
           job_title?: string | null
+          organization_id?: string | null
           overall_score?: number | null
           ratings?: Json
           recommendation?: string | null
           summary?: string | null
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "candidate_evaluations_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       candidate_notes: {
         Row: {
@@ -828,6 +850,7 @@ export type Database = {
           created_at: string
           created_by: string
           id: string
+          organization_id: string | null
           shortlist_id: string | null
           updated_at: string
         }
@@ -837,6 +860,7 @@ export type Database = {
           created_at?: string
           created_by: string
           id?: string
+          organization_id?: string | null
           shortlist_id?: string | null
           updated_at?: string
         }
@@ -846,10 +870,19 @@ export type Database = {
           created_at?: string
           created_by?: string
           id?: string
+          organization_id?: string | null
           shortlist_id?: string | null
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "candidate_notes_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       candidate_portal_tokens: {
         Row: {
@@ -869,6 +902,7 @@ export type Database = {
           job_id: string | null
           job_title: string | null
           next_steps: string | null
+          organization_id: string | null
           pipeline_stage: string | null
           recruiter_email: string | null
           recruiter_name: string | null
@@ -894,6 +928,7 @@ export type Database = {
           job_id?: string | null
           job_title?: string | null
           next_steps?: string | null
+          organization_id?: string | null
           pipeline_stage?: string | null
           recruiter_email?: string | null
           recruiter_name?: string | null
@@ -919,6 +954,7 @@ export type Database = {
           job_id?: string | null
           job_title?: string | null
           next_steps?: string | null
+          organization_id?: string | null
           pipeline_stage?: string | null
           recruiter_email?: string | null
           recruiter_name?: string | null
@@ -927,7 +963,15 @@ export type Database = {
           token?: string
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "candidate_portal_tokens_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       candidate_profiles: {
         Row: {
@@ -977,6 +1021,7 @@ export type Database = {
           id: string
           job_id: string | null
           job_title: string | null
+          organization_id: string | null
           shortlist_id: string | null
           title: string
           updated_at: string
@@ -992,6 +1037,7 @@ export type Database = {
           id?: string
           job_id?: string | null
           job_title?: string | null
+          organization_id?: string | null
           shortlist_id?: string | null
           title: string
           updated_at?: string
@@ -1007,11 +1053,20 @@ export type Database = {
           id?: string
           job_id?: string | null
           job_title?: string | null
+          organization_id?: string | null
           shortlist_id?: string | null
           title?: string
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "candidate_reminders_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       chat_categories: {
         Row: {
@@ -1021,6 +1076,7 @@ export type Database = {
           created_at: string
           created_by: string
           id: string
+          organization_id: string | null
           updated_at: string
         }
         Insert: {
@@ -1030,6 +1086,7 @@ export type Database = {
           created_at?: string
           created_by: string
           id?: string
+          organization_id?: string | null
           updated_at?: string
         }
         Update: {
@@ -1039,9 +1096,18 @@ export type Database = {
           created_at?: string
           created_by?: string
           id?: string
+          organization_id?: string | null
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "chat_categories_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       contact_submissions: {
         Row: {
@@ -1147,6 +1213,7 @@ export type Database = {
           id: string
           message: string
           network_distance: number | null
+          organization_id: string | null
           recipient_headline: string | null
           recipient_name: string | null
           recipient_profile_id: string
@@ -1165,6 +1232,7 @@ export type Database = {
           id?: string
           message: string
           network_distance?: number | null
+          organization_id?: string | null
           recipient_headline?: string | null
           recipient_name?: string | null
           recipient_profile_id: string
@@ -1183,6 +1251,7 @@ export type Database = {
           id?: string
           message?: string
           network_distance?: number | null
+          organization_id?: string | null
           recipient_headline?: string | null
           recipient_name?: string | null
           recipient_profile_id?: string
@@ -1193,7 +1262,15 @@ export type Database = {
           updated_at?: string
           user_timezone?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "inmail_queue_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       internal_config: {
         Row: {
@@ -1224,6 +1301,7 @@ export type Database = {
           notion_candidate_id: string | null
           notion_shortlist_id: string | null
           notion_synced_at: string | null
+          organization_id: string | null
           pipeline_stage: string | null
           project_id: string | null
           recommendation: string | null
@@ -1247,6 +1325,7 @@ export type Database = {
           notion_candidate_id?: string | null
           notion_shortlist_id?: string | null
           notion_synced_at?: string | null
+          organization_id?: string | null
           pipeline_stage?: string | null
           project_id?: string | null
           recommendation?: string | null
@@ -1270,6 +1349,7 @@ export type Database = {
           notion_candidate_id?: string | null
           notion_shortlist_id?: string | null
           notion_synced_at?: string | null
+          organization_id?: string | null
           pipeline_stage?: string | null
           project_id?: string | null
           recommendation?: string | null
@@ -1281,6 +1361,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "job_candidate_status_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "job_candidate_status_project_id_fkey"
             columns: ["project_id"]
@@ -1469,6 +1556,7 @@ export type Database = {
           job_title: string | null
           last_message_at: string | null
           linkedin_account_id: string | null
+          organization_id: string | null
           priority_score: number
           reviewed_at: string | null
           sent_at: string | null
@@ -1495,6 +1583,7 @@ export type Database = {
           job_title?: string | null
           last_message_at?: string | null
           linkedin_account_id?: string | null
+          organization_id?: string | null
           priority_score?: number
           reviewed_at?: string | null
           sent_at?: string | null
@@ -1521,6 +1610,7 @@ export type Database = {
           job_title?: string | null
           last_message_at?: string | null
           linkedin_account_id?: string | null
+          organization_id?: string | null
           priority_score?: number
           reviewed_at?: string | null
           sent_at?: string | null
@@ -1529,6 +1619,73 @@ export type Database = {
           suggested_message?: string | null
           suggested_subject?: string | null
           trigger_type?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "nurturing_opportunities_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      organization_members: {
+        Row: {
+          created_at: string
+          id: string
+          organization_id: string
+          role: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          organization_id: string
+          role?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          organization_id?: string
+          role?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "organization_members_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      organizations: {
+        Row: {
+          created_at: string
+          created_by: string
+          id: string
+          name: string
+          slug: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by: string
+          id?: string
+          name: string
+          slug: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          id?: string
+          name?: string
+          slug?: string
           updated_at?: string
         }
         Relationships: []
@@ -1541,6 +1698,7 @@ export type Database = {
           id: string
           is_active: boolean
           name: string
+          organization_id: string | null
           updated_at: string
         }
         Insert: {
@@ -1550,6 +1708,7 @@ export type Database = {
           id?: string
           is_active?: boolean
           name: string
+          organization_id?: string | null
           updated_at?: string
         }
         Update: {
@@ -1559,12 +1718,22 @@ export type Database = {
           id?: string
           is_active?: boolean
           name?: string
+          organization_id?: string | null
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "outreach_sequences_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       profiles: {
         Row: {
+          active_organization_id: string | null
           created_at: string
           display_name: string | null
           id: string
@@ -1572,6 +1741,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          active_organization_id?: string | null
           created_at?: string
           display_name?: string | null
           id?: string
@@ -1579,13 +1749,22 @@ export type Database = {
           user_id: string
         }
         Update: {
+          active_organization_id?: string | null
           created_at?: string
           display_name?: string | null
           id?: string
           updated_at?: string
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "profiles_active_organization_id_fkey"
+            columns: ["active_organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       qualification_sessions: {
         Row: {
@@ -1611,6 +1790,7 @@ export type Database = {
           notion_candidate_id: string | null
           notion_shortlist_id: string | null
           notion_synced_at: string | null
+          organization_id: string | null
           project_id: string | null
           scoring_summary: Json | null
           status: string
@@ -1643,6 +1823,7 @@ export type Database = {
           notion_candidate_id?: string | null
           notion_shortlist_id?: string | null
           notion_synced_at?: string | null
+          organization_id?: string | null
           project_id?: string | null
           scoring_summary?: Json | null
           status?: string
@@ -1675,6 +1856,7 @@ export type Database = {
           notion_candidate_id?: string | null
           notion_shortlist_id?: string | null
           notion_synced_at?: string | null
+          organization_id?: string | null
           project_id?: string | null
           scoring_summary?: Json | null
           status?: string
@@ -1685,6 +1867,13 @@ export type Database = {
           verdict_notes?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "qualification_sessions_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "qualification_sessions_project_id_fkey"
             columns: ["project_id"]
@@ -1705,6 +1894,7 @@ export type Database = {
           job_title: string | null
           last_used_at: string | null
           name: string
+          organization_id: string | null
           updated_at: string
           usage_count: number
         }
@@ -1718,6 +1908,7 @@ export type Database = {
           job_title?: string | null
           last_used_at?: string | null
           name: string
+          organization_id?: string | null
           updated_at?: string
           usage_count?: number
         }
@@ -1731,10 +1922,19 @@ export type Database = {
           job_title?: string | null
           last_used_at?: string | null
           name?: string
+          organization_id?: string | null
           updated_at?: string
           usage_count?: number
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "saved_filter_presets_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       search_history: {
         Row: {
@@ -1747,6 +1947,7 @@ export type Database = {
           job_id: string
           job_title: string | null
           messaged_count: number
+          organization_id: string | null
           project_id: string | null
           results_count: number
           search_api: string | null
@@ -1764,6 +1965,7 @@ export type Database = {
           job_id: string
           job_title?: string | null
           messaged_count?: number
+          organization_id?: string | null
           project_id?: string | null
           results_count?: number
           search_api?: string | null
@@ -1781,6 +1983,7 @@ export type Database = {
           job_id?: string
           job_title?: string | null
           messaged_count?: number
+          organization_id?: string | null
           project_id?: string | null
           results_count?: number
           search_api?: string | null
@@ -1789,6 +1992,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "search_history_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "search_history_project_id_fkey"
             columns: ["project_id"]
@@ -1855,6 +2065,7 @@ export type Database = {
           job_title: string | null
           last_check_at: string | null
           network_distance: string | null
+          organization_id: string | null
           profile_headline: string | null
           profile_id: string
           profile_name: string | null
@@ -1879,6 +2090,7 @@ export type Database = {
           job_title?: string | null
           last_check_at?: string | null
           network_distance?: string | null
+          organization_id?: string | null
           profile_headline?: string | null
           profile_id: string
           profile_name?: string | null
@@ -1903,6 +2115,7 @@ export type Database = {
           job_title?: string | null
           last_check_at?: string | null
           network_distance?: string | null
+          organization_id?: string | null
           profile_headline?: string | null
           profile_id?: string
           profile_name?: string | null
@@ -1916,6 +2129,13 @@ export type Database = {
           user_timezone?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "sequence_enrollments_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "sequence_enrollments_sequence_id_fkey"
             columns: ["sequence_id"]
@@ -1952,6 +2172,7 @@ export type Database = {
           final_message: string | null
           final_subject: string | null
           id: string
+          organization_id: string | null
           retry_count: number
           scheduled_at: string
           skip_reason: string | null
@@ -1968,6 +2189,7 @@ export type Database = {
           final_message?: string | null
           final_subject?: string | null
           id?: string
+          organization_id?: string | null
           retry_count?: number
           scheduled_at: string
           skip_reason?: string | null
@@ -1984,6 +2206,7 @@ export type Database = {
           final_message?: string | null
           final_subject?: string | null
           id?: string
+          organization_id?: string | null
           retry_count?: number
           scheduled_at?: string
           skip_reason?: string | null
@@ -1998,6 +2221,13 @@ export type Database = {
             columns: ["enrollment_id"]
             isOneToOne: false
             referencedRelation: "sequence_enrollments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sequence_step_executions_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
           {
@@ -2023,6 +2253,7 @@ export type Database = {
           if_true_goto_step: string | null
           message_template: string | null
           next_step_id: string | null
+          organization_id: string | null
           preferred_hour_end: number | null
           preferred_hour_start: number | null
           sequence_id: string
@@ -2046,6 +2277,7 @@ export type Database = {
           if_true_goto_step?: string | null
           message_template?: string | null
           next_step_id?: string | null
+          organization_id?: string | null
           preferred_hour_end?: number | null
           preferred_hour_start?: number | null
           sequence_id: string
@@ -2069,6 +2301,7 @@ export type Database = {
           if_true_goto_step?: string | null
           message_template?: string | null
           next_step_id?: string | null
+          organization_id?: string | null
           preferred_hour_end?: number | null
           preferred_hour_start?: number | null
           sequence_id?: string
@@ -2102,6 +2335,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "sequence_steps_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "sequence_steps_sequence_id_fkey"
             columns: ["sequence_id"]
             isOneToOne: false
@@ -2131,6 +2371,7 @@ export type Database = {
           last_search_at: string | null
           name: string
           notes: string | null
+          organization_id: string | null
           stats_dismissed: number
           stats_messaged: number
           stats_scored: number
@@ -2152,6 +2393,7 @@ export type Database = {
           last_search_at?: string | null
           name: string
           notes?: string | null
+          organization_id?: string | null
           stats_dismissed?: number
           stats_messaged?: number
           stats_scored?: number
@@ -2173,6 +2415,7 @@ export type Database = {
           last_search_at?: string | null
           name?: string
           notes?: string | null
+          organization_id?: string | null
           stats_dismissed?: number
           stats_messaged?: number
           stats_scored?: number
@@ -2181,7 +2424,15 @@ export type Database = {
           status?: string
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "sourcing_projects_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       user_roles: {
         Row: {
@@ -2217,6 +2468,11 @@ export type Database = {
         Args: { p_candidate_id: string; p_job_id: string }
         Returns: number
       }
+      get_org_role: {
+        Args: { _org_id: string; _user_id: string }
+        Returns: string
+      }
+      get_user_org_id: { Args: { _user_id: string }; Returns: string }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
@@ -2227,6 +2483,10 @@ export type Database = {
       invoke_process_sequences: {
         Args: { p_action: string }
         Returns: undefined
+      }
+      is_org_member: {
+        Args: { _org_id: string; _user_id: string }
+        Returns: boolean
       }
       release_sequence_lock: { Args: { p_run_id: string }; Returns: undefined }
     }

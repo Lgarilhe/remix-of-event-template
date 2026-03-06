@@ -2,6 +2,7 @@ import { useState, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { useOrganization } from '@/hooks/useOrganization';
 
 export interface SourcingProject {
   id: string;
@@ -52,6 +53,7 @@ export interface UpdateProjectInput {
 
 export const useSourcingProjects = () => {
   const queryClient = useQueryClient();
+  const { organizationId } = useOrganization();
 
   // Fetch all projects
   const { data: projects = [], isLoading, error, refetch } = useQuery({
@@ -83,6 +85,7 @@ export const useSourcingProjects = () => {
         .insert({
           ...input,
           created_by: user.id,
+          organization_id: organizationId,
           filters_snapshot: input.filters_snapshot || {},
         })
         .select()

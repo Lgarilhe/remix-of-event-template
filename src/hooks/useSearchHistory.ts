@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { LinkedInFiltersState } from '@/components/outreach/types';
 import { toast } from 'sonner';
+import { useOrganization } from '@/hooks/useOrganization';
 
 export interface SearchHistoryEntry {
   id: string;
@@ -23,6 +24,7 @@ export interface SearchHistoryEntry {
 
 export function useSearchHistory(jobId: string | null) {
   const queryClient = useQueryClient();
+  const { organizationId } = useOrganization();
 
   const { data: history = [], isLoading } = useQuery({
     queryKey: ['search-history', jobId],
@@ -74,6 +76,7 @@ export function useSearchHistory(jobId: string | null) {
       shortlisted_count: params.shortlistedCount,
       search_api: params.searchApi,
       project_id: params.projectId || null,
+      organization_id: organizationId,
     });
 
     if (error) {
