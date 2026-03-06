@@ -93,23 +93,62 @@ interface SearchParams {
   recent_search_id?: string;
 }
 
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.75.1';
+
+/**
+ * Resolve Unipile credentials: try org-specific first, then fall back to env vars.
+ */
+async function resolveUnipileCredentials(organizationId?: string): Promise<{ apiKey: string; dsn: string } | null> {
+  // Try org-specific credentials
+  if (organizationId) {
+    try {
+      const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+      const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+      const sb = createClient(supabaseUrl, serviceKey);
+      
+      const { data } = await sb
+        .from('organization_integrations')
+        .select('unipile_api_key, unipile_dsn, unipile_connected')
+        .eq('organization_id', organizationId)
+        .single();
+      
+      if (data?.unipile_connected && data?.unipile_api_key && data?.unipile_dsn) {
+        const rawDsn = data.unipile_dsn;
+        const dsn = rawDsn.startsWith('http') ? rawDsn.replace(/^https?:\/\//, '') : rawDsn;
+        console.log(`[unipile-search] Using org-specific credentials for org ${organizationId}`);
+        return { apiKey: data.unipile_api_key, dsn };
+      }
+    } catch (e) {
+      console.warn('[unipile-search] Failed to resolve org credentials, falling back to env vars:', e);
+    }
+  }
+  
+  // Fallback to global env vars
+  const apiKey = Deno.env.get('UNIPILE_API_KEY');
+  const dsn = Deno.env.get('UNIPILE_DSN');
+  if (apiKey && dsn) {
+    return { apiKey, dsn };
+  }
+  return null;
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const apiKey = Deno.env.get('UNIPILE_API_KEY');
-    const dsn = Deno.env.get('UNIPILE_DSN');
+    const { action, account_id, organization_id, ...params } = await req.json();
 
-    if (!apiKey || !dsn) {
+    const credentials = await resolveUnipileCredentials(organization_id);
+    if (!credentials) {
       return new Response(
         JSON.stringify({ success: false, error: 'Unipile not configured' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    const { action, account_id, ...params } = await req.json();
+    const { apiKey, dsn } = credentials;
 
     if (!account_id) {
       return new Response(

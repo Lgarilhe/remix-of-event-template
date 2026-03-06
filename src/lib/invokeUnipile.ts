@@ -4,13 +4,8 @@
  * Normalizes responses so callers always get `{ success, error?, ...rest }`
  * regardless of whether the edge function returned a 2xx or non-2xx status.
  * 
- * supabase.functions.invoke() behavior:
- * - 2xx → { data: body, error: null }
- * - non-2xx → { data: null, error: FunctionsHttpError }
- *   where error.context contains the original response (status, body, etc.)
- * 
- * This wrapper catches non-2xx and extracts the JSON body from the error context,
- * returning it as if it were a normal `data` response with `success: false`.
+ * Multi-tenant: automatically injects `organization_id` from the user's
+ * active profile so edge functions can resolve per-org Unipile credentials.
  */
 
 import { supabase } from '@/integrations/supabase/client';
@@ -27,8 +22,45 @@ interface InvokeOptions {
   body: Record<string, unknown>;
 }
 
+// Module-level cache for organization_id to avoid repeated DB lookups
+let cachedOrgId: string | null = null;
+let cachedUserId: string | null = null;
+
+async function getActiveOrganizationId(): Promise<string | null> {
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return null;
+
+    // Return cached value if same user
+    if (cachedUserId === user.id && cachedOrgId !== null) {
+      return cachedOrgId;
+    }
+
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('active_organization_id')
+      .eq('user_id', user.id)
+      .single();
+
+    cachedUserId = user.id;
+    cachedOrgId = profile?.active_organization_id || null;
+    return cachedOrgId;
+  } catch {
+    return null;
+  }
+}
+
+/** Clear the cached org ID (call on auth state change or org switch) */
+export function clearOrgIdCache() {
+  cachedOrgId = null;
+  cachedUserId = null;
+}
+
 /**
  * Call the unipile-search edge function with normalized error handling.
+ * 
+ * Automatically injects `organization_id` into the request body for
+ * multi-tenant credential resolution.
  * 
  * Always returns `{ data, error: null }` where `data` contains `success: boolean`.
  * Non-2xx HTTP responses are transparently converted to `{ success: false, error: "..." }`.
@@ -37,8 +69,17 @@ interface InvokeOptions {
 export async function invokeUnipile(
   options: InvokeOptions
 ): Promise<{ data: UnipileResponse; httpStatus?: number }> {
+  // Auto-inject organization_id if not already present
+  const body = { ...options.body };
+  if (!body.organization_id) {
+    const orgId = await getActiveOrganizationId();
+    if (orgId) {
+      body.organization_id = orgId;
+    }
+  }
+
   const { data, error } = await supabase.functions.invoke('unipile-search', {
-    body: options.body,
+    body,
   });
 
   // Happy path: 2xx response
@@ -47,18 +88,16 @@ export async function invokeUnipile(
   }
 
   // Non-2xx: extract the response body from the error context
-  // FunctionsHttpError has a `context` property with the raw Response
   try {
     const context = (error as any).context;
     if (context instanceof Response) {
       const httpStatus = context.status;
-      const body = await context.json();
+      const responseBody = await context.json();
       
-      // Return the body as-is — it already has { success: false, error: "..." }
       return {
         data: {
           success: false,
-          ...body,
+          ...responseBody,
         } as UnipileResponse,
         httpStatus,
       };

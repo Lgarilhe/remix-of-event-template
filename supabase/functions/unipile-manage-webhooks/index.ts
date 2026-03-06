@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.75.1';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -6,9 +7,6 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS, DELETE',
 };
 
-const UNIPILE_API_KEY = Deno.env.get('UNIPILE_API_KEY');
-const UNIPILE_DSN_RAW = Deno.env.get('UNIPILE_DSN') || '';
-const UNIPILE_DSN = UNIPILE_DSN_RAW.startsWith('http') ? UNIPILE_DSN_RAW : `https://${UNIPILE_DSN_RAW}`;
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL');
 const WEBHOOK_SECRET = Deno.env.get('UNIPILE_WEBHOOK_SECRET');
 
@@ -19,7 +17,7 @@ type WebhookSource = 'messaging' | 'users' | 'account_status';
 const SOURCE_MAP: Record<string, WebhookSource> = {
   messaging: 'messaging',
   users: 'users',
-  accounts: 'account_status', // Unipile uses 'account_status' not 'accounts'
+  accounts: 'account_status',
 };
 
 // Reverse map for display
@@ -36,21 +34,68 @@ interface WebhookConfig {
   headers?: Array<{ key: string; value: string }>;
 }
 
+/**
+ * Resolve Unipile credentials: try org-specific first, then fall back to env vars.
+ */
+async function resolveUnipileCredentials(organizationId?: string): Promise<{ apiKey: string; dsn: string } | null> {
+  if (organizationId) {
+    try {
+      const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+      const sb = createClient(SUPABASE_URL!, serviceKey);
+      
+      const { data } = await sb
+        .from('organization_integrations')
+        .select('unipile_api_key, unipile_dsn, unipile_connected')
+        .eq('organization_id', organizationId)
+        .single();
+      
+      if (data?.unipile_connected && data?.unipile_api_key && data?.unipile_dsn) {
+        const rawDsn = data.unipile_dsn;
+        const dsn = rawDsn.startsWith('http') ? rawDsn.replace(/^https?:\/\//, '') : rawDsn;
+        console.log(`[unipile-manage-webhooks] Using org-specific credentials for org ${organizationId}`);
+        return { apiKey: data.unipile_api_key, dsn: `https://${dsn}` };
+      }
+    } catch (e) {
+      console.warn('[unipile-manage-webhooks] Failed to resolve org credentials:', e);
+    }
+  }
+  
+  const apiKey = Deno.env.get('UNIPILE_API_KEY');
+  const rawDsn = Deno.env.get('UNIPILE_DSN') || '';
+  if (apiKey && rawDsn) {
+    const dsn = rawDsn.startsWith('http') ? rawDsn : `https://${rawDsn}`;
+    return { apiKey, dsn };
+  }
+  return null;
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
   }
 
   try {
-    // Read body only once (Deno Request body can be consumed a single time)
     const body = await req.json().catch(() => ({} as Record<string, unknown>));
     const action = (body as { action?: string }).action;
+    const organizationId = (body as { organization_id?: string }).organization_id;
+
+    const credentials = await resolveUnipileCredentials(organizationId);
+    if (!credentials) {
+      return new Response(JSON.stringify({
+        success: false,
+        error: 'Unipile not configured',
+      }), {
+        status: 200,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    const { apiKey, dsn: UNIPILE_DSN } = credentials;
 
     switch (action) {
       case 'list': {
-        // List all registered webhooks
         const response = await fetch(`${UNIPILE_DSN}/api/v1/webhooks`, {
-          headers: { 'X-API-KEY': UNIPILE_API_KEY! },
+          headers: { 'X-API-KEY': apiKey },
         });
 
         if (!response.ok) {
@@ -65,9 +110,8 @@ serve(async (req) => {
       }
 
       case 'register': {
-        // First, list existing webhooks to avoid duplicates
         const listResponse = await fetch(`${UNIPILE_DSN}/api/v1/webhooks`, {
-          headers: { 'X-API-KEY': UNIPILE_API_KEY! },
+          headers: { 'X-API-KEY': apiKey },
         });
 
         let existingApiSources: string[] = [];
@@ -77,23 +121,18 @@ serve(async (req) => {
           existingApiSources = existingWebhooks.map((w: { source: string }) => w.source);
         }
 
-        // Register only missing webhooks
         const webhookUrl = `${SUPABASE_URL}/functions/v1/unipile-webhook`;
-        // Internal names we want to register
         const allInternalSources = ['messaging', 'users', 'accounts'];
-        // Convert existing API sources back to internal names for comparison
         const existingInternalSources = existingApiSources.map(s => REVERSE_SOURCE_MAP[s as WebhookSource] || s);
         
         const results: Array<{ source: string; success: boolean; error?: string; id?: string; skipped?: boolean }> = [];
 
-        // Mark already existing as skipped
         for (const internalSource of allInternalSources) {
           if (existingInternalSources.includes(internalSource)) {
             results.push({ source: internalSource, success: true, skipped: true });
             continue;
           }
 
-          // Convert internal source name to API source name
           const apiSource = SOURCE_MAP[internalSource] || internalSource as WebhookSource;
 
           const config: WebhookConfig = {
@@ -108,7 +147,7 @@ serve(async (req) => {
             const response = await fetch(`${UNIPILE_DSN}/api/v1/webhooks`, {
               method: 'POST',
               headers: {
-                'X-API-KEY': UNIPILE_API_KEY!,
+                'X-API-KEY': apiKey,
                 'Content-Type': 'application/json',
               },
               body: JSON.stringify(config),
@@ -143,7 +182,6 @@ serve(async (req) => {
       }
 
       case 'delete': {
-        // Delete a webhook by ID
         const webhook_id = (body as { webhook_id?: string }).webhook_id;
         
         if (!webhook_id) {
@@ -152,7 +190,7 @@ serve(async (req) => {
 
         const response = await fetch(`${UNIPILE_DSN}/api/v1/webhooks/${webhook_id}`, {
           method: 'DELETE',
-          headers: { 'X-API-KEY': UNIPILE_API_KEY! },
+          headers: { 'X-API-KEY': apiKey },
         });
 
         if (!response.ok) {
