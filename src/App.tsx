@@ -94,7 +94,9 @@ const AppContent = () => {
 const App = () => {
   return (
     <TooltipProvider>
-      <AppContent />
+      <LinkedInAccountsProvider>
+        <AppContent />
+      </LinkedInAccountsProvider>
     </TooltipProvider>
   );
 };
