@@ -9,10 +9,10 @@ export interface NotionFieldSchema {
 export type NotionSchema = Record<string, NotionFieldSchema>;
 
 async function fetchSchema(): Promise<NotionSchema> {
-  const { data, error } = await invokeEdgeFunction('fetch-notion-schema');
+  const { data, error } = await invokeEdgeFunction<{ schema?: NotionSchema }>('fetch-notion-schema');
   if (error) throw error;
   if (!data?.success) throw new Error(data?.error || 'Failed to fetch schema');
-  return data.schema || {};
+  return data.schema || {} as NotionSchema;
 }
 
 export function useNotionSchema() {

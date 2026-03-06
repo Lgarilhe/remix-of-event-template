@@ -10,7 +10,7 @@ const GC_TIME = 60 * 60 * 1000; // 1 hour
 const REFETCH_INTERVAL = 5 * 60 * 1000; // 5 minutes polling
 
 async function fetchJobs(refresh = false, organizationId?: string | null): Promise<Job[]> {
-  const { data, error } = await invokeEdgeFunction('fetch-notion-jobs', {
+  const { data, error } = await invokeEdgeFunction<{ jobs?: Job[] }>('fetch-notion-jobs', {
     all: true, refresh, organization_id: organizationId,
   });
 
