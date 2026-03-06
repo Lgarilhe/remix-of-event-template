@@ -167,6 +167,14 @@ export const Navbar: React.FC = () => {
                 >
                   ATS
                 </Link>
+                <Link 
+                  to="/settings" 
+                  onClick={() => setIsMobileMenuOpen(false)}
+                  className="flex-1 flex items-center justify-center bg-background text-foreground text-[17px] font-medium uppercase border-b border-foreground tracking-[-0.34px] animate-fade-in"
+                  style={{ animationDelay: '0.4s', animationFillMode: 'both' }}
+                >
+                  SETTINGS
+                </Link>
                 <button 
                   onClick={async () => {
                     await supabase.auth.signOut();
