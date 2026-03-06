@@ -21,6 +21,7 @@ export const useSavedFilterPresets = () => {
   const [presets, setPresets] = useState<SavedFilterPreset[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const { organizationId } = useOrganization();
 
   const fetchPresets = useCallback(async () => {
     try {
@@ -78,6 +79,7 @@ export const useSavedFilterPresets = () => {
         .from('saved_filter_presets')
         .insert([{
           created_by: user.id,
+          organization_id: organizationId,
           name,
           description: description || null,
           filters: JSON.parse(JSON.stringify(filters)),
