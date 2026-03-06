@@ -330,23 +330,22 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
           || undefined;
 
         await invokeEdgeFunction('add-to-shortlist', {
-            name: profileData.name,
-            headline: profile.headline,
-            linkedinUrl,
-            currentRole: currentJob ? `${currentJob.role || ''}${currentJob.company ? ` chez ${currentJob.company}` : ''}`.trim() : undefined,
-            seniority: undefined, // Let the edge function compute from yearsOfExperience
-            domains: domains.length > 0 ? domains : undefined,
-            yearsOfExperience,
-            educationLevel,
-            jobId: job.id,
-            jobTitle: job.title,
-            clientName: job.client?.name,
-            clientId: job.client?.id,
-            entity: 'Konekt',
-            accompagnement,
-            etape: 'Contacté',
-            etat: 'En attente de réponse',
-          }
+          name: profileData.name,
+          headline: profile.headline,
+          linkedinUrl,
+          currentRole: currentJob ? `${currentJob.role || ''}${currentJob.company ? ` chez ${currentJob.company}` : ''}`.trim() : undefined,
+          seniority: undefined,
+          domains: domains.length > 0 ? domains : undefined,
+          yearsOfExperience,
+          educationLevel,
+          jobId: job.id,
+          jobTitle: job.title,
+          clientName: job.client?.name,
+          clientId: job.client?.id,
+          entity: 'Konekt',
+          accompagnement,
+          etape: 'Contacté',
+          etat: 'En attente de réponse',
         });
         console.log('Notion candidate + shortlist created/updated');
       } catch (notionErr) {
