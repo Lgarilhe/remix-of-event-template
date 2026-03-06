@@ -37,7 +37,7 @@ const FilterButton: React.FC<{
   <Popover>
     <PopoverTrigger asChild>
       <button className={cn(
-        "relative overflow-hidden h-[34px] px-4 flex items-center gap-2 border border-foreground text-foreground text-[11px] font-medium uppercase tracking-wider group",
+        "relative overflow-hidden h-[34px] px-4 flex items-center gap-2 border border-foreground text-foreground text-[11px] font-medium uppercase tracking-wider group shrink-0 whitespace-nowrap",
         count > 0 && "bg-brutal-accent"
       )}>
         <span className="relative z-10">{label}</span>
