@@ -155,36 +155,36 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
       const d = data as any;
 
       // Auto-dismiss signals the AI detected as resolved
-      if (data.resolved_signals?.length) {
+      if (d.resolved_signals?.length) {
         setDigDeeper(prev => {
-          const next = prev.filter(d => !data.resolved_signals.includes(d.signal));
+          const next = prev.filter((item: DigDeeperItem) => !d.resolved_signals.includes(item.signal));
           digDeeperRef.current = next;
           return next;
         });
       }
 
       // dig_deeper: append new items (deduplicated), keep existing until dismissed
-      if (data.dig_deeper?.length) {
+      if (d.dig_deeper?.length) {
         setDigDeeper(prev => {
-          const existingSignals = new Set(prev.map(d => d.signal));
-          const newItems = data.dig_deeper.filter((d: DigDeeperItem) => !existingSignals.has(d.signal));
+          const existingSignals = new Set(prev.map((item: DigDeeperItem) => item.signal));
+          const newItems = d.dig_deeper.filter((item: DigDeeperItem) => !existingSignals.has(item.signal));
           const next = [...prev, ...newItems];
           digDeeperRef.current = next;
           return next;
         });
-        alertsLogRef.current = [...data.dig_deeper, ...alertsLogRef.current];
+        alertsLogRef.current = [...d.dig_deeper, ...alertsLogRef.current];
       }
-      if (data.criteria_updates) {
+      if (d.criteria_updates) {
         setCriteriaStatus(prev => {
           const updated = { ...prev };
-          for (const [id, update] of Object.entries(data.criteria_updates as Record<string, CriterionUpdate>)) {
+          for (const [id, update] of Object.entries(d.criteria_updates as Record<string, CriterionUpdate>)) {
             if (update.covered) updated[id] = update;
           }
           return updated;
         });
       }
       // Proactive next topic — only update once intro phase is over
-      if (data.next_topic?.topic) {
+      if (d.next_topic?.topic) {
         // Unlock intro once transcript has enough content (>200 chars = conversation started)
         if (introLockedRef.current && params.fullTranscript.length > 200) {
           introLockedRef.current = false;
@@ -192,10 +192,10 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
         // Skip update while intro is locked
         if (!introLockedRef.current) {
           setNextTopic(prev => {
-            if (!prev) return data.next_topic;
+            if (!prev) return d.next_topic;
             const normalize = (s: string) => s.replace(/[^\w\s]/g, '').toLowerCase().trim().slice(0, 20);
-            if (normalize(prev.topic) === normalize(data.next_topic.topic)) return prev;
-            return data.next_topic;
+            if (normalize(prev.topic) === normalize(d.next_topic.topic)) return prev;
+            return d.next_topic;
           });
         }
       }
@@ -447,8 +447,8 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
 
       if (error) throw error;
       if (data) {
-        setReport(data);
-        onReportGenerated(data);
+        setReport(data as any);
+        onReportGenerated(data as any);
         toast.success('Compte-rendu généré');
       }
     } catch (err: any) {
