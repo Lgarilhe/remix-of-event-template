@@ -1589,6 +1589,44 @@ export type Database = {
         }
         Relationships: []
       }
+      member_linkedin_accounts: {
+        Row: {
+          id: string
+          linked_at: string
+          linked_by: string
+          linkedin_account_id: string
+          linkedin_account_name: string | null
+          organization_id: string
+          user_id: string
+        }
+        Insert: {
+          id?: string
+          linked_at?: string
+          linked_by: string
+          linkedin_account_id: string
+          linkedin_account_name?: string | null
+          organization_id: string
+          user_id: string
+        }
+        Update: {
+          id?: string
+          linked_at?: string
+          linked_by?: string
+          linkedin_account_id?: string
+          linkedin_account_name?: string | null
+          organization_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "member_linkedin_accounts_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       member_quotas: {
         Row: {
           created_at: string

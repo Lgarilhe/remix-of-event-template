@@ -1,16 +1,16 @@
 import React, { useState } from 'react';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Slider } from '@/components/ui/slider';
 import {
-  Briefcase, Sliders, ChevronDown, ChevronUp, X, Plus, Save, Loader2,
-  Mail, MessageSquare, Search, Eye, Gauge,
+  Briefcase, Sliders, ChevronDown, X, Plus, Save, Loader2,
+  Mail, MessageSquare, Search, Eye, Gauge, Linkedin, Link2, Unlink,
 } from 'lucide-react';
 import { useJobAssignments } from '@/hooks/useJobAssignments';
 import { useMemberQuotas, DEFAULT_QUOTAS } from '@/hooks/useMemberQuotas';
+import { useMemberLinkedInAccounts } from '@/hooks/useMemberLinkedInAccounts';
 import { useNotionJobs } from '@/hooks/useNotionJobs';
+import { useLinkedInAccounts } from '@/contexts/LinkedInAccountsContext';
 import { OrganizationMember } from '@/hooks/useOrganization';
 import { cn } from '@/lib/utils';
 
@@ -21,10 +21,10 @@ interface TeamManagementProps {
 }
 
 const QUOTA_FIELDS = [
-  { key: 'max_inmails_per_day' as const, label: 'InMails', icon: Mail, max: 200, color: 'bg-brutal-accent' },
-  { key: 'max_messages_per_day' as const, label: 'Messages', icon: MessageSquare, max: 500, color: 'bg-foreground' },
-  { key: 'max_searches_per_day' as const, label: 'Recherches', icon: Search, max: 500, color: 'bg-foreground' },
-  { key: 'max_profile_visits_per_day' as const, label: 'Visites profils', icon: Eye, max: 1000, color: 'bg-foreground' },
+  { key: 'max_inmails_per_day' as const, label: 'InMails', icon: Mail, max: 200 },
+  { key: 'max_messages_per_day' as const, label: 'Messages', icon: MessageSquare, max: 500 },
+  { key: 'max_searches_per_day' as const, label: 'Recherches', icon: Search, max: 500 },
+  { key: 'max_profile_visits_per_day' as const, label: 'Visites profils', icon: Eye, max: 1000 },
 ];
 
 export const TeamManagement: React.FC<TeamManagementProps> = ({
@@ -34,8 +34,11 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
 }) => {
   const [expandedMember, setExpandedMember] = useState<string | null>(null);
   const [selectedJobId, setSelectedJobId] = useState<string>('');
+  const [selectedLinkedInId, setSelectedLinkedInId] = useState<string>('');
   const { assignments, assign, unassign, isAssigning } = useJobAssignments();
   const { upsertQuota, isSaving, getQuotaForUser } = useMemberQuotas();
+  const { mappings, linkAccount, unlinkAccount, isLinking, getMappingForUser, getMappingForAccount } = useMemberLinkedInAccounts();
+  const { accounts: linkedInAccounts } = useLinkedInAccounts();
   const { data: jobs = [] } = useNotionJobs();
   const [editingQuotas, setEditingQuotas] = useState<Record<string, typeof DEFAULT_QUOTAS>>({});
 
@@ -52,6 +55,17 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
       jobTitle: job?.title || selectedJobId,
     });
     setSelectedJobId('');
+  };
+
+  const handleLinkLinkedIn = (member: OrganizationMember) => {
+    if (!selectedLinkedInId) return;
+    const account = linkedInAccounts.find(a => a.id === selectedLinkedInId);
+    linkAccount({
+      userId: member.user_id,
+      linkedinAccountId: selectedLinkedInId,
+      linkedinAccountName: account?.name || account?.identifier || selectedLinkedInId,
+    });
+    setSelectedLinkedInId('');
   };
 
   const startEditingQuotas = (userId: string) => {
@@ -78,6 +92,14 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
     });
   };
 
+  // Available LinkedIn accounts = those not already linked to another member
+  const getAvailableLinkedInAccounts = (currentUserId: string) => {
+    return linkedInAccounts.filter(acc => {
+      const mapping = getMappingForAccount(acc.id);
+      return !mapping || mapping.user_id === currentUserId;
+    });
+  };
+
   if (!isAdmin) return null;
 
   return (
@@ -86,7 +108,7 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
       <div className="bg-foreground text-background px-4 py-2.5 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Gauge className="w-4 h-4" />
-          <span className="text-xs font-medium uppercase tracking-wider">Assignations & Quotas</span>
+          <span className="text-xs font-medium uppercase tracking-wider">Gestion d'équipe</span>
         </div>
         <span className="text-[10px] uppercase tracking-wider opacity-70">{members.length} membre{members.length > 1 ? 's' : ''}</span>
       </div>
@@ -96,6 +118,7 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
           const isExpanded = expandedMember === member.user_id;
           const memberJobs = getMemberAssignments(member.user_id);
           const memberQuota = getQuotaForUser(member.user_id);
+          const linkedInMapping = getMappingForUser(member.user_id);
           const isEditingQ = !!editingQuotas[member.user_id];
 
           return (
@@ -114,15 +137,20 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
                   </div>
                   <div className="text-left min-w-0">
                     <p className="text-sm font-medium text-foreground truncate">{getDisplayName(member.user_id)}</p>
-                    <div className="flex items-center gap-1.5 mt-0.5">
-                      {memberJobs.length > 0 ? (
-                        <span className="text-[10px] text-muted-foreground uppercase tracking-wide">
-                          {memberJobs.length} poste{memberJobs.length > 1 ? 's' : ''}
+                    <div className="flex items-center gap-2 mt-0.5">
+                      {linkedInMapping ? (
+                        <span className="inline-flex items-center gap-1 text-[10px] text-muted-foreground">
+                          <Linkedin className="w-3 h-3" />
+                          {linkedInMapping.linkedin_account_name || 'Connecté'}
                         </span>
                       ) : (
-                        <span className="text-[10px] text-muted-foreground/60 uppercase tracking-wide italic">
-                          Aucun poste
-                        </span>
+                        <span className="text-[10px] text-muted-foreground/50 italic">Pas de LinkedIn</span>
+                      )}
+                      {memberJobs.length > 0 && (
+                        <>
+                          <span className="text-muted-foreground/30">·</span>
+                          <span className="text-[10px] text-muted-foreground">{memberJobs.length} poste{memberJobs.length > 1 ? 's' : ''}</span>
+                        </>
                       )}
                     </div>
                   </div>
@@ -136,7 +164,72 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
               {/* Expanded panel */}
               {isExpanded && (
                 <div className="bg-muted/30 border-t border-border">
-                  {/* Postes section */}
+                  {/* LinkedIn Account Linking */}
+                  <div className="px-4 py-4">
+                    <div className="flex items-center gap-2 mb-3">
+                      <Linkedin className="w-3.5 h-3.5 text-muted-foreground" />
+                      <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Compte LinkedIn</span>
+                    </div>
+
+                    {linkedInMapping ? (
+                      <div className="flex items-center justify-between p-2.5 bg-background border border-border">
+                        <div className="flex items-center gap-2">
+                          <div className="w-6 h-6 bg-[hsl(217,91%,60%)] text-white flex items-center justify-center">
+                            <Linkedin className="w-3 h-3" />
+                          </div>
+                          <div>
+                            <p className="text-xs font-medium">{linkedInMapping.linkedin_account_name}</p>
+                            <p className="text-[10px] text-muted-foreground">ID: {linkedInMapping.linkedin_account_id.slice(0, 12)}…</p>
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => unlinkAccount(linkedInMapping.id)}
+                          className="h-7 px-2 flex items-center gap-1 text-[10px] uppercase tracking-wide text-destructive hover:bg-destructive/10 border border-transparent hover:border-destructive transition-colors"
+                        >
+                          <Unlink className="w-3 h-3" />
+                          Dissocier
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <Select value={selectedLinkedInId} onValueChange={setSelectedLinkedInId}>
+                          <SelectTrigger className="h-8 text-xs flex-1 rounded-none border-foreground">
+                            <SelectValue placeholder="Associer un compte LinkedIn…" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {getAvailableLinkedInAccounts(member.user_id).map(acc => (
+                              <SelectItem key={acc.id} value={acc.id} className="text-xs">
+                                <span className="flex items-center gap-1.5">
+                                  <Linkedin className="w-3 h-3 text-[hsl(217,91%,60%)]" />
+                                  {(acc as any).name || (acc as any).identifier || acc.id}
+                                  {(acc as any).status === 'OK' && (
+                                    <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
+                                  )}
+                                </span>
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <button
+                          onClick={() => handleLinkLinkedIn(member)}
+                          disabled={!selectedLinkedInId || isLinking}
+                          className={cn(
+                            "h-8 px-3 flex items-center gap-1 text-xs font-medium uppercase tracking-wide border border-foreground transition-colors",
+                            selectedLinkedInId
+                              ? "bg-brutal-accent text-foreground hover:opacity-90"
+                              : "bg-muted text-muted-foreground cursor-not-allowed"
+                          )}
+                        >
+                          {isLinking ? <Loader2 className="w-3 h-3 animate-spin" /> : <Link2 className="w-3 h-3" />}
+                          Lier
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="border-t border-border" />
+
+                  {/* Job Assignments */}
                   <div className="px-4 py-4">
                     <div className="flex items-center gap-2 mb-3">
                       <Briefcase className="w-3.5 h-3.5 text-muted-foreground" />
@@ -146,15 +239,9 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
                     {memberJobs.length > 0 && (
                       <div className="flex flex-wrap gap-1.5 mb-3">
                         {memberJobs.map(a => (
-                          <span
-                            key={a.id}
-                            className="inline-flex items-center gap-1 px-2.5 py-1 bg-foreground text-background text-[11px] font-medium"
-                          >
+                          <span key={a.id} className="inline-flex items-center gap-1 px-2.5 py-1 bg-foreground text-background text-[11px] font-medium">
                             {a.job_title || a.job_id}
-                            <button
-                              onClick={() => unassign(a.id)}
-                              className="ml-0.5 opacity-60 hover:opacity-100 transition-opacity"
-                            >
+                            <button onClick={() => unassign(a.id)} className="ml-0.5 opacity-60 hover:opacity-100 transition-opacity">
                               <X className="w-3 h-3" />
                             </button>
                           </span>
@@ -193,10 +280,9 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
                     </div>
                   </div>
 
-                  {/* Divider */}
                   <div className="border-t border-border" />
 
-                  {/* Quotas section */}
+                  {/* Quotas */}
                   <div className="px-4 py-4">
                     <div className="flex items-center justify-between mb-4">
                       <div className="flex items-center gap-2">
@@ -246,7 +332,6 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
                                 <span className="text-[11px] font-bold tabular-nums">{value}</span>
                               )}
                             </div>
-                            {/* Progress bar */}
                             <div className="h-1 bg-border w-full">
                               <div
                                 className={cn(
