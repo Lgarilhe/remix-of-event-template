@@ -16,6 +16,9 @@ import { toast } from 'sonner';
 import { OutreachSearchProvider } from '@/contexts/OutreachSearchContext';
 import { SourcingProject } from '@/hooks/useSourcingProjects';
 import { useUnreadMessageCount } from '@/hooks/useUnreadMessageCount';
+import { useOrganization } from '@/hooks/useOrganization';
+import { useMemberLinkedInAccounts } from '@/hooks/useMemberLinkedInAccounts';
+import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
 
 export interface LinkedInAccountSubscriptions {
