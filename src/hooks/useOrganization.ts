@@ -274,7 +274,10 @@ export const useOrganizationMembers = (orgId: string | null) => {
   return {
     members,
     isLoading,
+    pendingInvitations,
     inviteMember: inviteMember.mutateAsync,
+    isInviting: inviteMember.isPending,
+    cancelInvitation: cancelInvitation.mutateAsync,
     updateRole: updateRole.mutateAsync,
     removeMember: removeMember.mutateAsync,
   };

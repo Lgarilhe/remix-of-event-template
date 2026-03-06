@@ -1,15 +1,19 @@
 import { useState } from 'react';
 import { useOrganization, useOrganizationMembers } from '@/hooks/useOrganization';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Building2, Users, Crown, Shield, User, Trash2, ArrowLeft, Plug } from 'lucide-react';
+import { Building2, Users, Crown, Shield, User, Trash2, ArrowLeft, Plug, Check, Loader2, Pencil } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useQuery } from '@tanstack/react-query';
 import { IntegrationsSettings } from '@/components/settings/IntegrationsSettings';
+import { InviteMemberForm } from '@/components/settings/InviteMemberForm';
+import { PendingInvitations } from '@/components/settings/PendingInvitations';
+import { toast } from 'sonner';
 
 const roleIcons = {
   owner: Crown,
@@ -26,7 +30,11 @@ const roleLabels = {
 const Settings = () => {
   const navigate = useNavigate();
   const { organization, organizationId, isOwner, isAdmin } = useOrganization();
-  const { members, isLoading, updateRole, removeMember } = useOrganizationMembers(organizationId);
+  const { members, isLoading, pendingInvitations, inviteMember, isInviting, cancelInvitation, updateRole, removeMember } = useOrganizationMembers(organizationId);
+
+  const [editingName, setEditingName] = useState(false);
+  const [newName, setNewName] = useState('');
+  const [savingName, setSavingName] = useState(false);
 
   const { data: memberProfiles = [] } = useQuery({
     queryKey: ['member-profiles', members.map(m => m.user_id)],
@@ -45,6 +53,24 @@ const Settings = () => {
   const getDisplayName = (userId: string) => {
     const profile = memberProfiles.find(p => p.user_id === userId);
     return profile?.display_name || userId.slice(0, 8) + '...';
+  };
+
+  const handleSaveName = async () => {
+    if (!organizationId || !newName.trim()) return;
+    setSavingName(true);
+    try {
+      const { error } = await supabase
+        .from('organizations')
+        .update({ name: newName.trim() })
+        .eq('id', organizationId);
+      if (error) throw error;
+      toast.success('Nom mis à jour');
+      setEditingName(false);
+    } catch {
+      toast.error('Erreur lors de la mise à jour');
+    } finally {
+      setSavingName(false);
+    }
   };
 
   return (
@@ -90,7 +116,38 @@ const Settings = () => {
               <CardContent className="space-y-3">
                 <div>
                   <label className="text-sm text-muted-foreground">Nom</label>
-                  <p className="text-foreground font-medium">{organization?.name}</p>
+                  {editingName ? (
+                    <div className="flex items-center gap-2 mt-1">
+                      <Input
+                        value={newName}
+                        onChange={e => setNewName(e.target.value)}
+                        className="h-9 text-sm max-w-xs"
+                        autoFocus
+                        onKeyDown={e => e.key === 'Enter' && handleSaveName()}
+                      />
+                      <Button size="sm" className="h-9 gap-1" onClick={handleSaveName} disabled={savingName || !newName.trim()}>
+                        {savingName ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+                        Sauver
+                      </Button>
+                      <Button size="sm" variant="ghost" className="h-9" onClick={() => setEditingName(false)}>
+                        Annuler
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <p className="text-foreground font-medium">{organization?.name}</p>
+                      {isOwner && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 text-muted-foreground"
+                          onClick={() => { setNewName(organization?.name || ''); setEditingName(true); }}
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                        </Button>
+                      )}
+                    </div>
+                  )}
                 </div>
                 <div>
                   <label className="text-sm text-muted-foreground">Identifiant</label>
@@ -161,10 +218,17 @@ const Settings = () => {
                   </div>
                 )}
 
+                <PendingInvitations
+                  invitations={pendingInvitations}
+                  onCancel={cancelInvitation}
+                  canManage={isAdmin}
+                />
+
                 {isAdmin && (
-                  <p className="text-xs text-muted-foreground mt-4 pt-4 border-t border-border">
-                    L'invitation de nouveaux membres par email sera disponible prochainement.
-                  </p>
+                  <InviteMemberForm
+                    onInvite={(email, role) => inviteMember({ email, role })}
+                    isLoading={isInviting}
+                  />
                 )}
               </CardContent>
             </Card>
