@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { useOrganization } from '@/hooks/useOrganization';
@@ -9,6 +10,7 @@ const Onboarding = () => {
   const [name, setName] = useState('');
   const [slug, setSlug] = useState('');
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { createOrganization, isCreating } = useOrganization();
 
   const generateSlug = (value: string) => {
@@ -31,7 +33,10 @@ const Onboarding = () => {
 
     try {
       await createOrganization({ name: name.trim(), slug: slug.trim() });
-      navigate('/outreach');
+      // Wait for the org query to be refetched before navigating
+      await queryClient.invalidateQueries({ queryKey: ['active-organization'] });
+      await queryClient.refetchQueries({ queryKey: ['active-organization'] });
+      navigate('/outreach', { replace: true });
     } catch {
       // Error handled in hook
     }
