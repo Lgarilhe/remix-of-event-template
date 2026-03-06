@@ -105,8 +105,8 @@ export const AddToPipelineModal: React.FC<AddToPipelineModalProps> = ({
       
       if (response.error) throw response.error;
       
-      if (response.data?.jobs) {
-        setJobs(response.data.jobs.map((job: any) => ({
+      if ((response.data as any)?.jobs) {
+        setJobs(((response.data as any).jobs).map((job: any) => ({
           id: job.id,
           title: job.title || 'Poste',
           client: job.client,
