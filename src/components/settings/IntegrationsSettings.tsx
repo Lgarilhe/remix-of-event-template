@@ -104,9 +104,6 @@ const INTEGRATIONS: IntegrationConfig[] = [
  * ────────────────────────────────────────────── */
 const LinkedInHostedAuthCard = ({
   config,
-  values,
-  onSave,
-  isSaving,
 }: {
   config: IntegrationConfig;
   values: Record<string, string | null>;
@@ -118,16 +115,14 @@ const LinkedInHostedAuthCard = ({
   const [linkedInAccounts, setLinkedInAccounts] = useState<any[]>([]);
   const [loadingAccounts, setLoadingAccounts] = useState(false);
   const { organization } = useOrganization();
-  const isConnected = !!values[config.connectedKey];
-  const hasCredentials = !!(values['unipile_api_key'] && values['unipile_dsn']);
   const Icon = config.icon;
 
-  // Load LinkedIn accounts when expanded and credentials exist
+  // Load LinkedIn accounts when expanded
   useEffect(() => {
-    if (expanded && hasCredentials) {
+    if (expanded) {
       loadAccounts();
     }
-  }, [expanded, hasCredentials]);
+  }, [expanded]);
 
   const loadAccounts = async () => {
     setLoadingAccounts(true);
@@ -144,11 +139,6 @@ const LinkedInHostedAuthCard = ({
   };
 
   const handleConnectLinkedIn = async () => {
-    if (!hasCredentials) {
-      toast.error('Veuillez d\'abord configurer les identifiants de connexion (DSN et clé API).');
-      return;
-    }
-
     setGenerating(true);
     try {
       const currentUrl = window.location.href;
@@ -160,7 +150,6 @@ const LinkedInHostedAuthCard = ({
       });
 
       if (data?.success && (data as any).url) {
-        // Redirect to Unipile hosted auth
         window.open((data as any).url, '_blank', 'noopener,noreferrer');
         toast.info('Une fenêtre de connexion LinkedIn s\'est ouverte. Revenez ici une fois la connexion effectuée.');
       } else {
@@ -200,7 +189,7 @@ const LinkedInHostedAuthCard = ({
                 </Badge>
               ) : (
                 <Badge variant="secondary" className="text-[10px] px-2">
-                  {hasCredentials ? 'Aucun compte' : 'Non configuré'}
+                  Non connecté
                 </Badge>
               )}
               {expanded ? (
@@ -249,48 +238,38 @@ const LinkedInHostedAuthCard = ({
                 </div>
               ))}
             </div>
-          ) : hasCredentials ? (
+          ) : (
             <p className="text-sm text-muted-foreground text-center py-2">
               Aucun compte LinkedIn connecté.
             </p>
-          ) : null}
-
-          {/* Connect button */}
-          {hasCredentials && (
-            <div className="flex gap-2">
-              <Button
-                onClick={handleConnectLinkedIn}
-                disabled={generating}
-                className="flex-1"
-                size="sm"
-              >
-                {generating ? (
-                  <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                ) : (
-                  <ExternalLink className="w-4 h-4 mr-2" />
-                )}
-                Connecter un compte LinkedIn
-              </Button>
-              {linkedInAccounts.length > 0 && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={loadAccounts}
-                  disabled={loadingAccounts}
-                >
-                  <RefreshCw className={cn('w-4 h-4', loadingAccounts && 'animate-spin')} />
-                </Button>
-              )}
-            </div>
           )}
 
-          {/* Admin: DSN/API key fields (collapsed by default) */}
-          <AdminCredentialsSection
-            config={config}
-            values={values}
-            onSave={onSave}
-            isSaving={isSaving}
-          />
+          {/* Connect button */}
+          <div className="flex gap-2">
+            <Button
+              onClick={handleConnectLinkedIn}
+              disabled={generating}
+              className="flex-1"
+              size="sm"
+            >
+              {generating ? (
+                <Loader2 className="w-4 h-4 animate-spin mr-2" />
+              ) : (
+                <ExternalLink className="w-4 h-4 mr-2" />
+              )}
+              Connecter un compte LinkedIn
+            </Button>
+            {linkedInAccounts.length > 0 && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={loadAccounts}
+                disabled={loadingAccounts}
+              >
+                <RefreshCw className={cn('w-4 h-4', loadingAccounts && 'animate-spin')} />
+              </Button>
+            )}
+          </div>
         </CardContent>
       )}
     </Card>
