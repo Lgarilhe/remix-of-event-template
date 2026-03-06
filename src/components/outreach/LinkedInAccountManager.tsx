@@ -171,7 +171,7 @@ export const LinkedInAccountManager: React.FC<LinkedInAccountManagerProps> = ({
 
       if (response.error) throw response.error;
       
-      const data = response.data;
+      const data = response.data as any;
       if (!data.success) {
         throw new Error(data.error);
       }
@@ -203,19 +203,15 @@ export const LinkedInAccountManager: React.FC<LinkedInAccountManagerProps> = ({
 
     setConnecting(true);
     try {
-      const orgId = await getActiveOrganizationId();
-      const response = await supabase.functions.invoke('unipile-accounts', {
-        body: {
-          action: 'solve_checkpoint',
-          account_id: checkpoint.account_id,
-          code: checkpointCode.trim(),
-          organization_id: orgId,
-        },
+      const response = await invokeEdgeFunction('unipile-accounts', {
+        action: 'solve_checkpoint',
+        account_id: checkpoint.account_id,
+        code: checkpointCode.trim(),
       });
 
       if (response.error) throw response.error;
       
-      const data = response.data;
+      const data = response.data as any;
       if (!data.success) {
         throw new Error(data.error);
       }
@@ -245,13 +241,9 @@ export const LinkedInAccountManager: React.FC<LinkedInAccountManagerProps> = ({
   const handleDisconnect = async (accountId: string) => {
     setDisconnecting(accountId);
     try {
-      const orgId = await getActiveOrganizationId();
-      const response = await supabase.functions.invoke('unipile-accounts', {
-        body: {
-          action: 'disconnect',
-          account_id: accountId,
-          organization_id: orgId,
-        },
+      const response = await invokeEdgeFunction('unipile-accounts', {
+        action: 'disconnect',
+        account_id: accountId,
       });
 
       if (response.error) throw response.error;
