@@ -175,7 +175,7 @@ export default function ATS() {
             <Tabs value={activeView} onValueChange={(v) => setActiveView(v as any)}>
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
                 {/* Brutal tabs */}
-                <div className="flex gap-0">
+                <div className="flex gap-0 overflow-x-auto scrollbar-hide">
                   {viewTabs.map((tab, index) => {
                     const Icon = tab.icon;
                     const isActive = activeView === tab.value;
@@ -184,7 +184,7 @@ export default function ATS() {
                         key={tab.value}
                         onClick={() => setActiveView(tab.value as any)}
                         className={cn(
-                          "relative overflow-hidden flex items-center gap-1.5 h-[34px] px-4 text-[11px] font-medium uppercase tracking-wider border border-foreground transition-colors duration-200 group",
+                          "relative overflow-hidden flex items-center gap-1.5 h-[34px] px-4 text-[11px] font-medium uppercase tracking-wider border border-foreground transition-colors duration-200 group shrink-0",
                           index > 0 && "border-l-0",
                           isActive ? "bg-brutal-accent text-foreground" : "bg-background text-foreground"
                         )}
