@@ -150,8 +150,8 @@ const LinkedInHostedAuthCard = ({
         <CardHeader className="py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-muted flex items-center justify-center rounded-lg overflow-hidden">
-                <img src={config.logoSrc} alt={config.name} className="w-6 h-6 object-contain" />
+              <div className="w-12 h-12 flex items-center justify-center rounded-lg overflow-hidden">
+                <img src={config.logoSrc} alt={config.name} className="w-10 h-10 object-contain" />
               </div>
               <div>
                 <CardTitle className="text-sm font-semibold">{config.name}</CardTitle>
@@ -319,8 +319,8 @@ const IntegrationCard = ({
         <CardHeader className="py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-muted flex items-center justify-center rounded-lg overflow-hidden">
-                <img src={config.logoSrc} alt={config.name} className="w-6 h-6 object-contain" />
+              <div className="w-12 h-12 flex items-center justify-center rounded-lg overflow-hidden">
+                <img src={config.logoSrc} alt={config.name} className="w-10 h-10 object-contain" />
               </div>
               <div>
                 <CardTitle className="text-sm font-semibold">{config.name}</CardTitle>
