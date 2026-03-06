@@ -53,6 +53,7 @@ export interface UpdateProjectInput {
 
 export const useSourcingProjects = () => {
   const queryClient = useQueryClient();
+  const { organizationId } = useOrganization();
 
   // Fetch all projects
   const { data: projects = [], isLoading, error, refetch } = useQuery({

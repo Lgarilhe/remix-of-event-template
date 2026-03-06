@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { LinkedInFiltersState } from '@/components/outreach/types';
 import { toast } from 'sonner';
+import { useOrganization } from '@/hooks/useOrganization';
 
 export interface SearchHistoryEntry {
   id: string;
