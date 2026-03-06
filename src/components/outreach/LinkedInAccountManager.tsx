@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { getActiveOrganizationId } from '@/lib/orgContext';
 import { LinkedInAccount } from '@/pages/Outreach';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -110,11 +111,13 @@ export const LinkedInAccountManager: React.FC<LinkedInAccountManagerProps> = ({
 
     setConnecting(true);
     try {
+      const orgId = await getActiveOrganizationId();
       const response = await supabase.functions.invoke('unipile-accounts', {
         body: {
           action: 'connect_cookie',
           access_token: liAtCookie.trim(),
           user_agent: userAgent.trim() || undefined,
+          organization_id: orgId,
         },
       });
 
@@ -165,11 +168,13 @@ export const LinkedInAccountManager: React.FC<LinkedInAccountManagerProps> = ({
 
     setConnecting(true);
     try {
+      const orgId = await getActiveOrganizationId();
       const response = await supabase.functions.invoke('unipile-accounts', {
         body: {
           action: 'connect_credentials',
           username: email.trim(),
           password,
+          organization_id: orgId,
         },
       });
 
@@ -207,11 +212,13 @@ export const LinkedInAccountManager: React.FC<LinkedInAccountManagerProps> = ({
 
     setConnecting(true);
     try {
+      const orgId = await getActiveOrganizationId();
       const response = await supabase.functions.invoke('unipile-accounts', {
         body: {
           action: 'solve_checkpoint',
           account_id: checkpoint.account_id,
           code: checkpointCode.trim(),
+          organization_id: orgId,
         },
       });
 
@@ -247,10 +254,12 @@ export const LinkedInAccountManager: React.FC<LinkedInAccountManagerProps> = ({
   const handleDisconnect = async (accountId: string) => {
     setDisconnecting(accountId);
     try {
+      const orgId = await getActiveOrganizationId();
       const response = await supabase.functions.invoke('unipile-accounts', {
         body: {
           action: 'disconnect',
           account_id: accountId,
+          organization_id: orgId,
         },
       });
 

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
+import { getActiveOrganizationId } from '@/lib/orgContext';
 import { Navbar } from '@/components/Navbar';
 import { SEOHead } from '@/components/SEOHead';
 import { LinkedInAccountManager, applySubscriptionOverrides } from '@/components/outreach/LinkedInAccountManager';
@@ -79,8 +80,9 @@ export default function Outreach() {
   // Fetch connected accounts
   const fetchAccounts = async () => {
     try {
+      const orgId = await getActiveOrganizationId();
       const response = await supabase.functions.invoke('unipile-accounts', {
-        body: { action: 'list' },
+        body: { action: 'list', organization_id: orgId },
       });
 
       if (response.error) throw response.error;
