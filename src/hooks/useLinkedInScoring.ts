@@ -617,14 +617,15 @@ export function useLinkedInScoring({
           allResults.push(...data.results);
         }
         // Capture batch stats from response
-        if (data?.stats) {
+        if ((data as any)?.stats) {
+          const stats = (data as any).stats;
           aggregatedStats = {
-            total: (aggregatedStats?.total || 0) + (data.stats.total || 0),
-            hardFiltered: (aggregatedStats?.hardFiltered || 0) + (data.stats.hardFiltered || 0),
-            llmSkipped: (aggregatedStats?.llmSkipped || 0) + (data.stats.llmSkipped || 0),
-            llmCalled: (aggregatedStats?.llmCalled || 0) + (data.stats.llmCalled || 0),
-            avgScore: data.stats.avgScore || 0,
-            totalTokens: (aggregatedStats?.totalTokens || 0) + (data.stats.totalTokens || 0),
+            total: (aggregatedStats?.total || 0) + (stats.total || 0),
+            hardFiltered: (aggregatedStats?.hardFiltered || 0) + (stats.hardFiltered || 0),
+            llmSkipped: (aggregatedStats?.llmSkipped || 0) + (stats.llmSkipped || 0),
+            llmCalled: (aggregatedStats?.llmCalled || 0) + (stats.llmCalled || 0),
+            avgScore: stats.avgScore || 0,
+            totalTokens: (aggregatedStats?.totalTokens || 0) + (stats.totalTokens || 0),
           };
         }
 

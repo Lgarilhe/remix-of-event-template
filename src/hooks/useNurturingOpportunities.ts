@@ -123,13 +123,11 @@ export function useNurturingOpportunities(): UseNurturingOpportunitiesReturn {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
-      const response = await supabase.functions.invoke('nurturing-analyzer', {
-        body: {
-          action: 'backfill_names',
-          account_id: accountId,
-          user_id: user.id,
-          limit,
-        },
+      const response = await invokeEdgeFunction('nurturing-analyzer', {
+        action: 'backfill_names',
+        account_id: accountId,
+        user_id: user.id,
+        limit,
       });
 
       if (response.error) throw response.error;
@@ -174,11 +172,9 @@ export function useNurturingOpportunities(): UseNurturingOpportunitiesReturn {
   // Generate message mutation
   const generateMessageMutation = useMutation({
     mutationFn: async (id: string) => {
-      const response = await supabase.functions.invoke('nurturing-analyzer', {
-        body: {
-          action: 'generate_message',
-          opportunity_id: id,
-        },
+      const response = await invokeEdgeFunction('nurturing-analyzer', {
+        action: 'generate_message',
+        opportunity_id: id,
       });
 
       if (response.error) throw response.error;
