@@ -107,23 +107,23 @@ export const ChatListItem: React.FC<ChatListItemProps> = ({
           )}
           
           {/* Category badge + Status info */}
-          <div className="flex items-center gap-1.5 mt-0.5 overflow-hidden">
+          <div className="flex items-center gap-1.5 mt-0.5 overflow-hidden min-w-0">
             {categoryInfo && (
               <span className={cn(
-                "inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[9px] font-medium border rounded-sm",
+                "inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[9px] font-medium border rounded-sm shrink-0",
                 categoryInfo.color
               )}>
                 {categoryInfo.emoji} {categoryInfo.label}
               </span>
             )}
             {statusInfo && (
-              <p className={cn("text-xs truncate flex items-center gap-1 shrink min-w-0", statusInfo.color)}>
+              <p className={cn("text-xs truncate flex items-center gap-1 min-w-0", statusInfo.color)}>
                 {statusInfo.icon}
-                <span>{statusInfo.text}</span>
+                <span className="truncate">{statusInfo.text}</span>
               </p>
             )}
             {(chat.timestamp || chat.last_message?.timestamp) && (
-              <span className="text-[10px] text-muted-foreground/60 whitespace-nowrap">
+              <span className="text-[10px] text-muted-foreground/60 whitespace-nowrap shrink-0">
                 · {formatChatTime(chat.timestamp || chat.last_message?.timestamp)}
               </span>
             )}
