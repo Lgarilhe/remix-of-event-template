@@ -191,7 +191,6 @@ export const SequenceAnalytics: React.FC<SequenceAnalyticsProps> = ({
     { name: 'VISITES', value: totals.profileVisits },
     { name: 'INVITATIONS', value: totals.invitesSent },
     { name: 'ACCEPTÉES', value: totals.invitesAccepted },
-    { name: 'MESSAGES', value: totals.messagesSent },
     { name: 'RÉPONSES', value: totals.repliesReceived },
   ], [totals]);
 
