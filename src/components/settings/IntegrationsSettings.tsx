@@ -72,10 +72,7 @@ const INTEGRATIONS: IntegrationConfig[] = [
     icon: Linkedin,
     connectedKey: 'unipile_connected',
     hostedAuth: true,
-    fields: [
-      { key: 'unipile_dsn', label: 'DSN Unipile', placeholder: 'https://api8.unipile.com:13822' },
-      { key: 'unipile_api_key', label: 'Clé API Unipile', placeholder: 'xxx...', secret: true },
-    ],
+    fields: [],
   },
   {
     id: 'airtable',
@@ -107,9 +104,6 @@ const INTEGRATIONS: IntegrationConfig[] = [
  * ────────────────────────────────────────────── */
 const LinkedInHostedAuthCard = ({
   config,
-  values,
-  onSave,
-  isSaving,
 }: {
   config: IntegrationConfig;
   values: Record<string, string | null>;
@@ -121,16 +115,14 @@ const LinkedInHostedAuthCard = ({
   const [linkedInAccounts, setLinkedInAccounts] = useState<any[]>([]);
   const [loadingAccounts, setLoadingAccounts] = useState(false);
   const { organization } = useOrganization();
-  const isConnected = !!values[config.connectedKey];
-  const hasCredentials = !!(values['unipile_api_key'] && values['unipile_dsn']);
   const Icon = config.icon;
 
-  // Load LinkedIn accounts when expanded and credentials exist
+  // Load LinkedIn accounts when expanded
   useEffect(() => {
-    if (expanded && hasCredentials) {
+    if (expanded) {
       loadAccounts();
     }
-  }, [expanded, hasCredentials]);
+  }, [expanded]);
 
   const loadAccounts = async () => {
     setLoadingAccounts(true);
@@ -147,11 +139,6 @@ const LinkedInHostedAuthCard = ({
   };
 
   const handleConnectLinkedIn = async () => {
-    if (!hasCredentials) {
-      toast.error('Veuillez d\'abord configurer les identifiants de connexion (DSN et clé API).');
-      return;
-    }
-
     setGenerating(true);
     try {
       const currentUrl = window.location.href;
@@ -163,7 +150,6 @@ const LinkedInHostedAuthCard = ({
       });
 
       if (data?.success && (data as any).url) {
-        // Redirect to Unipile hosted auth
         window.open((data as any).url, '_blank', 'noopener,noreferrer');
         toast.info('Une fenêtre de connexion LinkedIn s\'est ouverte. Revenez ici une fois la connexion effectuée.');
       } else {
@@ -203,7 +189,7 @@ const LinkedInHostedAuthCard = ({
                 </Badge>
               ) : (
                 <Badge variant="secondary" className="text-[10px] px-2">
-                  {hasCredentials ? 'Aucun compte' : 'Non configuré'}
+                  Non connecté
                 </Badge>
               )}
               {expanded ? (
@@ -252,154 +238,46 @@ const LinkedInHostedAuthCard = ({
                 </div>
               ))}
             </div>
-          ) : hasCredentials ? (
+          ) : (
             <p className="text-sm text-muted-foreground text-center py-2">
               Aucun compte LinkedIn connecté.
             </p>
-          ) : null}
-
-          {/* Connect button */}
-          {hasCredentials && (
-            <div className="flex gap-2">
-              <Button
-                onClick={handleConnectLinkedIn}
-                disabled={generating}
-                className="flex-1"
-                size="sm"
-              >
-                {generating ? (
-                  <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                ) : (
-                  <ExternalLink className="w-4 h-4 mr-2" />
-                )}
-                Connecter un compte LinkedIn
-              </Button>
-              {linkedInAccounts.length > 0 && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={loadAccounts}
-                  disabled={loadingAccounts}
-                >
-                  <RefreshCw className={cn('w-4 h-4', loadingAccounts && 'animate-spin')} />
-                </Button>
-              )}
-            </div>
           )}
 
-          {/* Admin: DSN/API key fields (collapsed by default) */}
-          <AdminCredentialsSection
-            config={config}
-            values={values}
-            onSave={onSave}
-            isSaving={isSaving}
-          />
+          {/* Connect button */}
+          <div className="flex gap-2">
+            <Button
+              onClick={handleConnectLinkedIn}
+              disabled={generating}
+              className="flex-1"
+              size="sm"
+            >
+              {generating ? (
+                <Loader2 className="w-4 h-4 animate-spin mr-2" />
+              ) : (
+                <ExternalLink className="w-4 h-4 mr-2" />
+              )}
+              Connecter un compte LinkedIn
+            </Button>
+            {linkedInAccounts.length > 0 && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={loadAccounts}
+                disabled={loadingAccounts}
+              >
+                <RefreshCw className={cn('w-4 h-4', loadingAccounts && 'animate-spin')} />
+              </Button>
+            )}
+          </div>
         </CardContent>
       )}
     </Card>
   );
 };
 
-/* ──────────────────────────────────────────────
- *  Admin credentials section for Unipile (collapsible)
- * ────────────────────────────────────────────── */
-const AdminCredentialsSection = ({
-  config,
-  values,
-  onSave,
-  isSaving,
-}: {
-  config: IntegrationConfig;
-  values: Record<string, string | null>;
-  onSave: (updates: Record<string, any>) => Promise<void>;
-  isSaving: boolean;
-}) => {
-  const [showAdmin, setShowAdmin] = useState(false);
-  const [localValues, setLocalValues] = useState<Record<string, string>>({});
-  const [showSecrets, setShowSecrets] = useState<Record<string, boolean>>({});
 
-  useEffect(() => {
-    const initial: Record<string, string> = {};
-    config.fields.forEach(f => {
-      initial[f.key] = values[f.key] || '';
-    });
-    setLocalValues(initial);
-  }, [values, config.fields]);
 
-  const hasChanges = config.fields.some(f => (localValues[f.key] || '') !== (values[f.key] || ''));
-
-  const handleSave = async () => {
-    const updates: Record<string, any> = {};
-    config.fields.forEach(f => {
-      updates[f.key] = localValues[f.key] || null;
-    });
-    const allFilled = config.fields.every(f => !!localValues[f.key]?.trim());
-    updates[config.connectedKey] = allFilled;
-    await onSave(updates);
-  };
-
-  return (
-    <div className="border-t border-foreground/5 pt-3">
-      <button
-        className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 transition-colors"
-        onClick={() => setShowAdmin(!showAdmin)}
-      >
-        {showAdmin ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-        Configuration avancée
-      </button>
-
-      {showAdmin && (
-        <div className="mt-3 space-y-3">
-          {config.fields.map(field => (
-            <div key={field.key} className="space-y-1.5">
-              <label className="text-xs font-medium text-foreground">{field.label}</label>
-              <div className="relative">
-                <Input
-                  type={field.secret && !showSecrets[field.key] ? 'password' : 'text'}
-                  placeholder={field.placeholder}
-                  value={localValues[field.key] || ''}
-                  onChange={(e) =>
-                    setLocalValues(prev => ({ ...prev, [field.key]: e.target.value }))
-                  }
-                  className="pr-10 text-sm border-foreground/15"
-                />
-                {field.secret && (
-                  <button
-                    type="button"
-                    className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                    onClick={() =>
-                      setShowSecrets(prev => ({ ...prev, [field.key]: !prev[field.key] }))
-                    }
-                  >
-                    {showSecrets[field.key] ? (
-                      <EyeOff className="w-4 h-4" />
-                    ) : (
-                      <Eye className="w-4 h-4" />
-                    )}
-                  </button>
-                )}
-              </div>
-            </div>
-          ))}
-
-          <Button
-            onClick={handleSave}
-            disabled={!hasChanges || isSaving}
-            className="w-full mt-2"
-            size="sm"
-          >
-            {isSaving ? (
-              <Loader2 className="w-4 h-4 animate-spin mr-2" />
-            ) : (
-              <Check className="w-4 h-4 mr-2" />
-            )}
-            Enregistrer
-          </Button>
-        </div>
-      )}
-    </div>
-  );
-};
 
 /* ──────────────────────────────────────────────
  *  Generic integration card (API key based)
