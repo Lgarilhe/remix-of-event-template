@@ -5,6 +5,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { Routes, Route, useLocation, useNavigate } from "react-router-dom";
 import { SessionExpiredDialog } from "@/components/SessionExpiredDialog";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
+import { OrganizationGuard } from "@/components/OrganizationGuard";
 import { supabase } from "@/integrations/supabase/client";
 import Index from "./pages/Index";
 import Discover from "./pages/Discover";
@@ -21,6 +22,7 @@ import Dashboard from "./pages/Dashboard";
 import Qualification from "./pages/Qualification";
 import NotFound from "./pages/NotFound";
 import CandidatePortal from "./pages/CandidatePortal";
+import Onboarding from "./pages/Onboarding";
 
 const PUBLIC_ROUTES = ['/', '/auth', '/discover', '/event', '/portal'];
 
