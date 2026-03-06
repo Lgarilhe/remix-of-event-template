@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Building2, Users, Crown, Shield, User, Trash2, ArrowLeft, Plug, Check, Loader2, Pencil } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useQuery } from '@tanstack/react-query';
 import { IntegrationsSettings } from '@/components/settings/IntegrationsSettings';
@@ -29,6 +29,7 @@ const roleLabels = {
 
 const Settings = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { organization, organizationId, isOwner, isAdmin } = useOrganization();
   const { members, isLoading, pendingInvitations, inviteMember, isInviting, cancelInvitation, updateRole, removeMember } = useOrganizationMembers(organizationId);
 
@@ -86,7 +87,7 @@ const Settings = () => {
 
         <h1 className="text-2xl font-semibold text-foreground mb-6">Paramètres</h1>
 
-        <Tabs defaultValue="general" className="space-y-6">
+        <Tabs defaultValue={searchParams.get('tab') === 'integrations' && isAdmin ? 'integrations' : 'general'} className="space-y-6">
           <TabsList className="w-full justify-start">
             <TabsTrigger value="general" className="gap-2">
               <Building2 className="w-4 h-4" />
