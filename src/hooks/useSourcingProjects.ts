@@ -85,6 +85,7 @@ export const useSourcingProjects = () => {
         .insert({
           ...input,
           created_by: user.id,
+          organization_id: organizationId,
           filters_snapshot: input.filters_snapshot || {},
         })
         .select()
