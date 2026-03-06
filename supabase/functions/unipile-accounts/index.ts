@@ -139,6 +139,52 @@ Deno.serve(async (req) => {
         );
       }
 
+      case 'hosted_auth_link': {
+        // Generate a hosted auth link for white-label LinkedIn connection
+        const { success_redirect_url, failure_redirect_url, notify_url, org_name } = params;
+
+        const hostedBody: Record<string, unknown> = {
+          type: 'create',
+          providers: ['LINKEDIN'],
+          api_url: `https://${dsn}`,
+          expiresOn: new Date(Date.now() + 30 * 60 * 1000).toISOString().replace(/(\.\d{3})\d*Z/, '$1Z'),
+          bypass_success_screen: false,
+          disabled_options: ['proxy', 'autoproxy', 'sync_limit', 'language'],
+        };
+
+        if (success_redirect_url) hostedBody.success_redirect_url = success_redirect_url;
+        if (failure_redirect_url) hostedBody.failure_redirect_url = failure_redirect_url;
+        if (notify_url) hostedBody.notify_url = notify_url;
+        if (org_name) hostedBody.name = org_name;
+
+        console.log('[hosted_auth_link] Generating link with body:', JSON.stringify(hostedBody));
+
+        const response = await fetch(`https://${dsn}/api/v1/hosted/accounts/link`, {
+          method: 'POST',
+          headers: {
+            'X-API-KEY': apiKey,
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+          },
+          body: JSON.stringify(hostedBody),
+        });
+
+        const data = await response.json();
+        console.log('[hosted_auth_link] Response:', response.status, JSON.stringify(data));
+
+        if (!response.ok) {
+          return new Response(
+            JSON.stringify({ success: false, error: data.message || 'Erreur de génération du lien' }),
+            { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
+        return new Response(
+          JSON.stringify({ success: true, url: data.url }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
       case 'connect_cookie': {
         // Connect LinkedIn account with cookie (li_at)
         const { access_token, user_agent } = params;
