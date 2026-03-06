@@ -1,5 +1,6 @@
 import React, { useCallback, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { LinkedInProfile } from '@/components/outreach/types';
 import { getYear, parseDate } from '@/components/outreach/dateUtils';
 import { Job } from '@/types/jobs';
@@ -142,8 +143,8 @@ async function generateCandidateEmbedding(profile: LinkedInProfile): Promise<voi
   if (text.trim().length < 20) return;
 
   try {
-    await supabase.functions.invoke('generate-embedding', {
-      body: { text, type: 'candidate', entityId: profile.id },
+    await invokeEdgeFunction('generate-embedding', {
+      text, type: 'candidate', entityId: profile.id,
     });
   } catch (e) {
     console.error('generate-embedding call failed:', e);
@@ -433,9 +434,8 @@ export function useLinkedInScoring({
     try {
       const profileData = buildProfileData(profile);
 
-      const { data, error } = await supabase.functions.invoke('score-profile-job', {
-        body: {
-          profile: profileData,
+      const { data, error } = await invokeEdgeFunction('score-profile-job', {
+        profile: profileData,
           job: {
             id: selectedJob.id,
             title: selectedJob.title,
