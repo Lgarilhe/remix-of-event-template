@@ -185,13 +185,60 @@ export const useOrganizationMembers = (orgId: string | null) => {
     mutationFn: async ({ email, role }: { email: string; role: string }) => {
       if (!orgId) throw new Error('No organization');
 
-      // Look up user by email via profiles or just invite
-      // For now, we need the user to exist - we'll handle invites later
-      throw new Error('L\'invitation par email sera disponible prochainement. L\'utilisateur doit d\'abord créer un compte.');
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+
+      const { error } = await supabase
+        .from('organization_invitations')
+        .insert({
+          organization_id: orgId,
+          email: email.toLowerCase(),
+          role,
+          invited_by: user.id,
+        });
+
+      if (error) {
+        if (error.code === '23505') throw new Error('Une invitation est déjà en cours pour cet email');
+        throw error;
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['org-invitations', orgId] });
+      toast.success('Invitation envoyée');
     },
     onError: (err: Error) => {
       toast.error(err.message);
     },
+  });
+
+  const cancelInvitation = useMutation({
+    mutationFn: async (invitationId: string) => {
+      const { error } = await supabase
+        .from('organization_invitations')
+        .delete()
+        .eq('id', invitationId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['org-invitations', orgId] });
+      toast.success('Invitation annulée');
+    },
+  });
+
+  const { data: pendingInvitations = [] } = useQuery({
+    queryKey: ['org-invitations', orgId],
+    queryFn: async () => {
+      if (!orgId) return [];
+      const { data, error } = await supabase
+        .from('organization_invitations')
+        .select('*')
+        .eq('organization_id', orgId)
+        .eq('status', 'pending')
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!orgId,
   });
 
   const updateRole = useMutation({
