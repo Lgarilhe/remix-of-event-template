@@ -8,12 +8,13 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 };
 
-const NOTION_API_KEY = Deno.env.get("NOTION_API_KEY");
+// Default credentials (env vars) — used as fallback when no org-specific credentials exist
+let NOTION_API_KEY = Deno.env.get("NOTION_API_KEY");
 const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-const POSTES_DATABASE_ID = Deno.env.get("NOTION_POSTES_DB_ID")!;
-const SHORTLIST_DATABASE_ID = Deno.env.get("NOTION_SHORTLIST_DB_ID")!;
+let POSTES_DATABASE_ID = Deno.env.get("NOTION_POSTES_DB_ID")!;
+let SHORTLIST_DATABASE_ID = Deno.env.get("NOTION_SHORTLIST_DB_ID")!;
 
 console.log('[fetch-notion-jobs] boot', {
   hasNotionKey: Boolean(NOTION_API_KEY),
@@ -21,6 +22,25 @@ console.log('[fetch-notion-jobs] boot', {
   hasSupabaseUrl: Boolean(SUPABASE_URL),
   hasServiceRole: Boolean(SUPABASE_SERVICE_ROLE_KEY),
 });
+
+// Resolve per-organization Notion credentials (falls back to env vars)
+async function resolveOrgCredentials(orgId: string | null) {
+  if (!orgId) return;
+  try {
+    const { data, error } = await supabase
+      .from('organization_integrations')
+      .select('notion_api_key, notion_postes_db_id, notion_shortlist_db_id, notion_connected')
+      .eq('organization_id', orgId)
+      .single();
+    if (error || !data || !data.notion_connected) return;
+    if (data.notion_api_key) NOTION_API_KEY = data.notion_api_key;
+    if (data.notion_postes_db_id) POSTES_DATABASE_ID = data.notion_postes_db_id;
+    if (data.notion_shortlist_db_id) SHORTLIST_DATABASE_ID = data.notion_shortlist_db_id;
+    console.log('[fetch-notion-jobs] Using org-specific Notion credentials for org:', orgId);
+  } catch (e) {
+    console.warn('[fetch-notion-jobs] Failed to load org credentials, using env vars:', e);
+  }
+}
 
 // Cache expiry for skills: 24 hours
 // Cache expiry for jobs list: 5 minutes (with stale-while-revalidate)
