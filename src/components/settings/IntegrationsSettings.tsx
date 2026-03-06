@@ -21,6 +21,7 @@ import {
   ExternalLink,
   RefreshCw,
 } from 'lucide-react';
+import { WebhookManager } from '@/components/outreach/WebhookManager';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
@@ -270,6 +271,11 @@ const LinkedInHostedAuthCard = ({
               </Button>
             )}
           </div>
+
+          {/* Webhook management */}
+          {linkedInAccounts.length > 0 && (
+            <WebhookManager />
+          )}
         </CardContent>
       )}
     </Card>
