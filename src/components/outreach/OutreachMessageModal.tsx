@@ -150,25 +150,24 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
       const candidateProviderId = profileAnyLocal.provider_id || profile.id;
 
       const { data, error } = await invokeEdgeFunction('generate-outreach-message', {
-          profile: profileData, 
-          job: {
-            title: job.title,
-            client: job.client,
-            skills: job.skills || [],
-            description: job.description,
-            location: job.location,
-            remote: job.remote,
-            accompagnement: job.accompagnement || [],
-          },
-          tone,
-          senderName: senderName.trim() || undefined,
-          accountId: selectedAccount || undefined,
-          profileId: candidateProviderId || undefined,
-          candidateHistory: candidateHistory || undefined,
-          customInstructions: customInstructions.trim() || undefined,
-          calendlyLink: calendlyLink || undefined,
-          candidateLinkedInUrl: profile.public_profile_url || profile.profile_url || (profile as any).linkedin_url || undefined,
-        }
+        profile: profileData, 
+        job: {
+          title: job.title,
+          client: job.client,
+          skills: job.skills || [],
+          description: job.description,
+          location: job.location,
+          remote: job.remote,
+          accompagnement: job.accompagnement || [],
+        },
+        tone,
+        senderName: senderName.trim() || undefined,
+        accountId: selectedAccount || undefined,
+        profileId: candidateProviderId || undefined,
+        candidateHistory: candidateHistory || undefined,
+        customInstructions: customInstructions.trim() || undefined,
+        calendlyLink: calendlyLink || undefined,
+        candidateLinkedInUrl: profile.public_profile_url || profile.profile_url || (profile as any).linkedin_url || undefined,
       });
 
       if (error) throw error;
