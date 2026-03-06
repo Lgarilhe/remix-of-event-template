@@ -66,7 +66,7 @@ export const ATSStats: React.FC<ATSStatsProps> = ({ candidates, stages }) => {
           <div
             key={stat.key}
             className={`
-              flex items-center gap-2 px-3 py-2 border border-foreground bg-background
+              flex items-center gap-2 px-3 py-2 border border-foreground bg-background shrink-0
               ${index > 0 ? '-ml-px' : ''}
               hover:bg-brutal-accent transition-colors duration-200 cursor-default
             `}
