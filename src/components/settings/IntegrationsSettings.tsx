@@ -72,10 +72,7 @@ const INTEGRATIONS: IntegrationConfig[] = [
     icon: Linkedin,
     connectedKey: 'unipile_connected',
     hostedAuth: true,
-    fields: [
-      { key: 'unipile_dsn', label: 'DSN Unipile', placeholder: 'https://api8.unipile.com:13822' },
-      { key: 'unipile_api_key', label: 'Clé API Unipile', placeholder: 'xxx...', secret: true },
-    ],
+    fields: [],
   },
   {
     id: 'airtable',
