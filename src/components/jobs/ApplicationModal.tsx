@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { X, Loader2, Send, CheckCircle } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
+import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { Job } from '@/types/jobs';
 import { toast } from '@/hooks/use-toast';
 
@@ -34,13 +34,11 @@ export const ApplicationModal: React.FC<ApplicationModalProps> = ({ job, isOpen,
     setIsSubmitting(true);
 
     try {
-      const { data, error } = await supabase.functions.invoke('submit-application', {
-        body: {
-          jobId: job.id,
-          jobTitle: job.title || 'Sans titre',
-          clientName: job.client?.name || 'Client inconnu',
-          ...formData
-        }
+      const { data, error } = await invokeEdgeFunction<{ success?: boolean }>('submit-application', {
+        jobId: job.id,
+        jobTitle: job.title || 'Sans titre',
+        clientName: job.client?.name || 'Client inconnu',
+        ...formData
       });
 
       if (error) throw error;

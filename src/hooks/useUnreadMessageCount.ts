@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { supabase } from '@/integrations/supabase/client';
-import { invokeUnipile } from '@/lib/invokeUnipile';
+import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 
 interface UnreadCountResult {
   count: number;
@@ -30,15 +29,12 @@ export const useUnreadMessageCount = (selectedAccountId: string | null): UnreadC
       const results = await Promise.all(
         folders.map(async (folder) => {
           try {
-            const response = await supabase.functions.invoke('unipile-search', {
-              body: {
-                action: 'get_chats',
-                account_id: selectedAccountId,
-                limit: 100,
-                folder,
-              },
+            const response = await invokeEdgeFunction<{ chats?: any[] }>('unipile-search', {
+              action: 'get_chats',
+              account_id: selectedAccountId,
+              limit: 100,
+              folder,
             });
-
             if (!response.data?.success || !response.data?.chats) {
               return 0;
             }

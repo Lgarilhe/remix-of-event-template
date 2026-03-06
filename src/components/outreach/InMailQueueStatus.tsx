@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import {
   Dialog,
   DialogContent,
@@ -61,8 +61,8 @@ export const InMailQueueStatus: React.FC = () => {
   const fetchQueueStatus = useCallback(async () => {
     setLoading(true);
     try {
-      const { data, error } = await supabase.functions.invoke('process-inmail-queue', {
-        body: { action: 'status' },
+      const { data, error } = await invokeEdgeFunction<{ stats?: QueueStats; items?: QueueItem[] }>('process-inmail-queue', {
+        action: 'status',
       });
 
       if (error) throw error;
@@ -102,8 +102,8 @@ export const InMailQueueStatus: React.FC = () => {
     }
 
     try {
-      const { data, error } = await supabase.functions.invoke('process-inmail-queue', {
-        body: { action: 'cancel', item_ids: pendingIds },
+      const { data, error } = await invokeEdgeFunction<{ cancelled?: number }>('process-inmail-queue', {
+        action: 'cancel', item_ids: pendingIds,
       });
 
       if (error) throw error;

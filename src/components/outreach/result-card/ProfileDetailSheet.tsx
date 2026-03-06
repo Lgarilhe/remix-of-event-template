@@ -29,6 +29,7 @@ import {
 } from 'lucide-react';
 import { invokeUnipile } from '@/lib/invokeUnipile';
 import { supabase } from '@/integrations/supabase/client';
+import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { toast } from 'sonner';
 
 interface ProfileDetailSheetProps {
@@ -291,9 +292,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
         pastPositions: pastJobs.map((p: any) => `${p.role || p.position} chez ${p.company}`),
         education: education.map((e: any) => `${e.degree || ''} - ${e.school}`),
       };
-      const { data, error } = await supabase.functions.invoke('analyze-linkedin-profile', {
-        body: { profile: profileSummary }
-      });
+      const { data, error } = await invokeEdgeFunction<{ analysis?: any }>('analyze-linkedin-profile', { profile: profileSummary });
       if (error) throw error;
       setAiAnalysis(data.analysis);
     } catch (error) {

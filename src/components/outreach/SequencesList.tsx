@@ -107,7 +107,7 @@ export const SequencesList: React.FC<SequencesListProps> = ({
         action: 'force_reschedule',
       });
       if (error) throw error;
-      const count = data?.rescheduled || 0;
+      const count = (data as any)?.rescheduled || 0;
       if (count > 0) {
         toast.success(`${count} action(s) avancée(s) à maintenant — elles partent dans les prochaines minutes !`);
         // Trigger process immediately after reschedule

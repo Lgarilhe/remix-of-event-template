@@ -149,26 +149,25 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
       const profileAnyLocal = profile as any;
       const candidateProviderId = profileAnyLocal.provider_id || profile.id;
 
-      const { data, error } = await invokeEdgeFunction('generate-outreach-message', {
-          profile: profileData, 
-          job: {
-            title: job.title,
-            client: job.client,
-            skills: job.skills || [],
-            description: job.description,
-            location: job.location,
-            remote: job.remote,
-            accompagnement: job.accompagnement || [],
-          },
-          tone,
-          senderName: senderName.trim() || undefined,
-          accountId: selectedAccount || undefined,
-          profileId: candidateProviderId || undefined,
-          candidateHistory: candidateHistory || undefined,
-          customInstructions: customInstructions.trim() || undefined,
-          calendlyLink: calendlyLink || undefined,
-          candidateLinkedInUrl: profile.public_profile_url || profile.profile_url || (profile as any).linkedin_url || undefined,
-        }
+      const { data, error } = await invokeEdgeFunction<{ subject?: string; message?: string; personalization_points?: string[] }>('generate-outreach-message', {
+        profile: profileData, 
+        job: {
+          title: job.title,
+          client: job.client,
+          skills: job.skills || [],
+          description: job.description,
+          location: job.location,
+          remote: job.remote,
+          accompagnement: job.accompagnement || [],
+        },
+        tone,
+        senderName: senderName.trim() || undefined,
+        accountId: selectedAccount || undefined,
+        profileId: candidateProviderId || undefined,
+        candidateHistory: candidateHistory || undefined,
+        customInstructions: customInstructions.trim() || undefined,
+        calendlyLink: calendlyLink || undefined,
+        candidateLinkedInUrl: profile.public_profile_url || profile.profile_url || (profile as any).linkedin_url || undefined,
       });
 
       if (error) throw error;
@@ -331,23 +330,22 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
           || undefined;
 
         await invokeEdgeFunction('add-to-shortlist', {
-            name: profileData.name,
-            headline: profile.headline,
-            linkedinUrl,
-            currentRole: currentJob ? `${currentJob.role || ''}${currentJob.company ? ` chez ${currentJob.company}` : ''}`.trim() : undefined,
-            seniority: undefined, // Let the edge function compute from yearsOfExperience
-            domains: domains.length > 0 ? domains : undefined,
-            yearsOfExperience,
-            educationLevel,
-            jobId: job.id,
-            jobTitle: job.title,
-            clientName: job.client?.name,
-            clientId: job.client?.id,
-            entity: 'Konekt',
-            accompagnement,
-            etape: 'Contacté',
-            etat: 'En attente de réponse',
-          }
+          name: profileData.name,
+          headline: profile.headline,
+          linkedinUrl,
+          currentRole: currentJob ? `${currentJob.role || ''}${currentJob.company ? ` chez ${currentJob.company}` : ''}`.trim() : undefined,
+          seniority: undefined,
+          domains: domains.length > 0 ? domains : undefined,
+          yearsOfExperience,
+          educationLevel,
+          jobId: job.id,
+          jobTitle: job.title,
+          clientName: job.client?.name,
+          clientId: job.client?.id,
+          entity: 'Konekt',
+          accompagnement,
+          etape: 'Contacté',
+          etat: 'En attente de réponse',
         });
         console.log('Notion candidate + shortlist created/updated');
       } catch (notionErr) {

@@ -1,5 +1,6 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { Mic, Square, FileText, Copy, CheckCircle2, Loader2, X, Search, CircleDot, AlertTriangle, User, ArrowRight } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -140,51 +141,50 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
   }) => {
     setIsAnalyzing(true);
     try {
-      const { data } = await supabase.functions.invoke('live-coach', {
-        body: {
-          session_id: params.sessionId,
-          full_transcript: params.fullTranscript,
-          latest_chunk: params.latestChunk,
-          criteria: params.criteria,
-          job_context: params.jobContext,
-          elapsed_seconds: params.elapsedSeconds,
-          pending_signals: params.pendingSignals,
-        },
+      const { data } = await invokeEdgeFunction('live-coach', {
+        session_id: params.sessionId,
+        full_transcript: params.fullTranscript,
+        latest_chunk: params.latestChunk,
+        criteria: params.criteria,
+        job_context: params.jobContext,
+        elapsed_seconds: params.elapsedSeconds,
+        pending_signals: params.pendingSignals,
       });
 
       if (!data) return;
+      const d = data as any;
 
       // Auto-dismiss signals the AI detected as resolved
-      if (data.resolved_signals?.length) {
+      if (d.resolved_signals?.length) {
         setDigDeeper(prev => {
-          const next = prev.filter(d => !data.resolved_signals.includes(d.signal));
+          const next = prev.filter((item: DigDeeperItem) => !d.resolved_signals.includes(item.signal));
           digDeeperRef.current = next;
           return next;
         });
       }
 
       // dig_deeper: append new items (deduplicated), keep existing until dismissed
-      if (data.dig_deeper?.length) {
+      if (d.dig_deeper?.length) {
         setDigDeeper(prev => {
-          const existingSignals = new Set(prev.map(d => d.signal));
-          const newItems = data.dig_deeper.filter((d: DigDeeperItem) => !existingSignals.has(d.signal));
+          const existingSignals = new Set(prev.map((item: DigDeeperItem) => item.signal));
+          const newItems = d.dig_deeper.filter((item: DigDeeperItem) => !existingSignals.has(item.signal));
           const next = [...prev, ...newItems];
           digDeeperRef.current = next;
           return next;
         });
-        alertsLogRef.current = [...data.dig_deeper, ...alertsLogRef.current];
+        alertsLogRef.current = [...d.dig_deeper, ...alertsLogRef.current];
       }
-      if (data.criteria_updates) {
+      if (d.criteria_updates) {
         setCriteriaStatus(prev => {
           const updated = { ...prev };
-          for (const [id, update] of Object.entries(data.criteria_updates as Record<string, CriterionUpdate>)) {
+          for (const [id, update] of Object.entries(d.criteria_updates as Record<string, CriterionUpdate>)) {
             if (update.covered) updated[id] = update;
           }
           return updated;
         });
       }
       // Proactive next topic — only update once intro phase is over
-      if (data.next_topic?.topic) {
+      if (d.next_topic?.topic) {
         // Unlock intro once transcript has enough content (>200 chars = conversation started)
         if (introLockedRef.current && params.fullTranscript.length > 200) {
           introLockedRef.current = false;
@@ -192,10 +192,10 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
         // Skip update while intro is locked
         if (!introLockedRef.current) {
           setNextTopic(prev => {
-            if (!prev) return data.next_topic;
+            if (!prev) return d.next_topic;
             const normalize = (s: string) => s.replace(/[^\w\s]/g, '').toLowerCase().trim().slice(0, 20);
-            if (normalize(prev.topic) === normalize(data.next_topic.topic)) return prev;
-            return data.next_topic;
+            if (normalize(prev.topic) === normalize(d.next_topic.topic)) return prev;
+            return d.next_topic;
           });
         }
       }
@@ -228,28 +228,26 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
 
       // Generate personalized intro as the first nextTopic (non-blocking)
       setLoadingIntro(true);
-      supabase.functions.invoke('live-coach', {
-        body: {
-          action: 'generate_intro',
-          candidate_name: candidateName,
-          candidate_headline: candidateHeadline || '',
-          candidate_profile_summary: candidateProfileSummary || '',
-          job_title: jobTitle,
-          job_context: jobContext,
-          criteria: criteria.map(c => c.label),
-        },
+      invokeEdgeFunction('live-coach', {
+        action: 'generate_intro',
+        candidate_name: candidateName,
+        candidate_headline: candidateHeadline || '',
+        candidate_profile_summary: candidateProfileSummary || '',
+        job_title: jobTitle,
+        job_context: jobContext,
+        criteria: criteria.map(c => c.label),
       }).then(({ data }) => {
-        if (data?.intro) {
+        if ((data as any)?.intro) {
           setNextTopic({
             topic: '👋 Introduction',
-            transition: data.intro,
+            transition: (data as any).intro,
             why: `Accroche personnalisée pour ${candidateName}`,
           });
         }
       }).catch(() => {}).finally(() => setLoadingIntro(false));
 
       // Get Deepgram key
-      const { data: keyData, error: keyError } = await supabase.functions.invoke('deepgram-temp-key');
+      const { data: keyData, error: keyError } = await invokeEdgeFunction<{ key?: string }>('deepgram-temp-key');
       if (keyError || !keyData?.key) throw new Error('Failed to get Deepgram key');
 
       callStartRef.current = Date.now();
@@ -436,23 +434,21 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
         ...(criteriaStatus[c.id] || {}),
       }));
 
-      const { data, error } = await supabase.functions.invoke('generate-call-report', {
-        body: {
-          session_id: sessionId,
-          full_transcript: fullTranscriptRef.current,
-          criteria_with_scores: criteriaWithScores,
-          job_context: jobContext,
-          candidate_name: candidateName,
-          job_title: jobTitle,
-          call_duration_seconds: Math.round((Date.now() - callStartRef.current) / 1000),
-          alerts_log: alertsLogRef.current,
-        },
+      const { data, error } = await invokeEdgeFunction('generate-call-report', {
+        session_id: sessionId,
+        full_transcript: fullTranscriptRef.current,
+        criteria_with_scores: criteriaWithScores,
+        job_context: jobContext,
+        candidate_name: candidateName,
+        job_title: jobTitle,
+        call_duration_seconds: Math.round((Date.now() - callStartRef.current) / 1000),
+        alerts_log: alertsLogRef.current,
       });
 
       if (error) throw error;
       if (data) {
-        setReport(data);
-        onReportGenerated(data);
+        setReport(data as any);
+        onReportGenerated(data as any);
         toast.success('Compte-rendu généré');
       }
     } catch (err: any) {

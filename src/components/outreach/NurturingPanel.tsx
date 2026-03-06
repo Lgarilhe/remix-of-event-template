@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useRef } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -202,9 +202,7 @@ export const NurturingPanel: React.FC<NurturingPanelProps> = ({
     setError(null);
 
     try {
-      const response = await supabase.functions.invoke('analyze-response', {
-        body: { context },
-      });
+      const response = await invokeEdgeFunction<{ analysis?: any }>('analyze-response', { context });
 
       if (response.error) throw response.error;
 

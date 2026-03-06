@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { supabase } from '@/integrations/supabase/client';
-import { getActiveOrganizationId } from '@/lib/orgContext';
+import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { Navbar } from '@/components/Navbar';
 import { SEOHead } from '@/components/SEOHead';
 import { LinkedInAccountManager, applySubscriptionOverrides } from '@/components/outreach/LinkedInAccountManager';
@@ -80,21 +79,21 @@ export default function Outreach() {
   // Fetch connected accounts
   const fetchAccounts = async () => {
     try {
-      const orgId = await getActiveOrganizationId();
-      const response = await supabase.functions.invoke('unipile-accounts', {
-        body: { action: 'list', organization_id: orgId },
+      const response = await invokeEdgeFunction<{ accounts?: LinkedInAccount[] }>('unipile-accounts', {
+        action: 'list',
       });
 
       if (response.error) throw response.error;
       if (!response.data?.success) throw new Error(response.data?.error);
 
-      setRawAccounts(response.data.accounts || []);
+      setRawAccounts((response.data as any).accounts || []);
       
-      const okAccount = response.data.accounts?.find((a: LinkedInAccount) => a.status === 'OK');
+      const accts = (response.data as any).accounts || [];
+      const okAccount = accts.find((a: LinkedInAccount) => a.status === 'OK');
       if (okAccount && !selectedAccount) {
         setSelectedAccount(okAccount.id);
-      } else if (response.data.accounts?.length > 0 && !selectedAccount) {
-        setSelectedAccount(response.data.accounts[0].id);
+      } else if (accts.length > 0 && !selectedAccount) {
+        setSelectedAccount(accts[0].id);
       }
     } catch (error) {
       console.error('Error fetching accounts:', error);

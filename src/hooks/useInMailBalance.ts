@@ -1,6 +1,5 @@
 import { useState, useCallback, useEffect } from 'react';
-import { supabase } from '@/integrations/supabase/client';
-import { getActiveOrganizationId } from '@/lib/orgContext';
+import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 
 export interface InMailBalance {
   premium: number | null;
@@ -32,9 +31,8 @@ export const useInMailBalance = (accountId: string | null): UseInMailBalanceRetu
     setError(null);
 
     try {
-      const orgId = await getActiveOrganizationId();
-      const { data, error: fnError } = await supabase.functions.invoke('unipile-accounts', {
-        body: { action: 'inmail_balance', account_id: accountId, organization_id: orgId },
+      const { data, error: fnError } = await invokeEdgeFunction<{ balance?: InMailBalance }>('unipile-accounts', {
+        action: 'inmail_balance', account_id: accountId,
       });
 
       if (fnError) throw fnError;

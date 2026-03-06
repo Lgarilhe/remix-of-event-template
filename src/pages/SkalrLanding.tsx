@@ -12,6 +12,7 @@ import { SEOHead } from '@/components/SEOHead';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { supabase } from '@/integrations/supabase/client';
+import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { useToast } from '@/hooks/use-toast';
 import heroVideo from '@/assets/hero-video.mp4';
 
@@ -65,13 +66,11 @@ const SkalrLanding = () => {
       if (error) throw error;
 
       try {
-        const notionResponse = await supabase.functions.invoke('notify-notion', {
-          body: {
-            name: contactForm.name.trim(),
-            email: contactForm.email.trim(),
-            company: contactForm.company.trim() || null,
-            message: contactForm.message.trim(),
-          },
+        const notionResponse = await invokeEdgeFunction('notify-notion', {
+          name: contactForm.name.trim(),
+          email: contactForm.email.trim(),
+          company: contactForm.company.trim() || null,
+          message: contactForm.message.trim(),
         });
         
         if (notionResponse.error) {

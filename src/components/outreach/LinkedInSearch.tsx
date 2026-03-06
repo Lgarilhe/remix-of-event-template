@@ -12,7 +12,7 @@ import { useAutoFillFilters } from '@/hooks/useAutoFillFilters';
 import { useSearchHistory } from '@/hooks/useSearchHistory';
 import { SourcingProject } from '@/hooks/useSourcingProjects';
 import { LinkedInProfile, INITIAL_FILTERS } from './types';
-import { supabase } from '@/integrations/supabase/client';
+import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { toast } from 'sonner';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
@@ -346,24 +346,22 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
     setRefineExpectedImpact(null);
     try {
       const currentSearchParams = buildSearchParams(search.filters, selectedAccount);
-      const { data, error } = await supabase.functions.invoke('refine-search-filters', {
-        body: {
-          currentFilters: currentSearchParams,
-          internalFilters: {
-            calculated_experience_min: search.filters.calculated_experience_min,
-            calculated_experience_max: search.filters.calculated_experience_max,
-            years_of_experience_min: search.filters.years_of_experience_min,
-            years_of_experience_max: search.filters.years_of_experience_max,
-            location_within_area: search.filters.location_within_area,
-            degree: search.filters.degree,
-            skills: search.filters.skills,
-          },
-          totalResults: search.total,
-          resultCount: search.results.length,
-          jobTitle: search.selectedJob.title,
-          jobLocation: search.selectedJob.location,
-          direction: refineDirection,
+      const { data, error } = await invokeEdgeFunction<{ adjustments?: any[]; summary?: string; expectedImpact?: any }>('refine-search-filters', {
+        currentFilters: currentSearchParams,
+        internalFilters: {
+          calculated_experience_min: search.filters.calculated_experience_min,
+          calculated_experience_max: search.filters.calculated_experience_max,
+          years_of_experience_min: search.filters.years_of_experience_min,
+          years_of_experience_max: search.filters.years_of_experience_max,
+          location_within_area: search.filters.location_within_area,
+          degree: search.filters.degree,
+          skills: search.filters.skills,
         },
+        totalResults: search.total,
+        resultCount: search.results.length,
+        jobTitle: search.selectedJob.title,
+        jobLocation: search.selectedJob.location,
+        direction: refineDirection,
       });
 
       if (error) throw error;

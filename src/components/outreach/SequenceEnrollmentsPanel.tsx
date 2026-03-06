@@ -359,7 +359,7 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
         return;
       }
       
-      const processResult = processRes.data;
+      const processResult = processRes.data as any;
       
       if (processResult?.success) {
         const { processed = 0, failed = 0, skipped = 0, quota_blocked = 0 } = processResult.results || {};
