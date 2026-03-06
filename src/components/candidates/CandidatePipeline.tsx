@@ -14,7 +14,7 @@ import { ShortlistEntry } from '@/pages/Candidates';
 import { DraggableCandidateCard } from './DraggableCandidateCard';
 import { DroppableColumn } from './DroppableColumn';
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
-import { supabase } from '@/integrations/supabase/client';
+import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { toast } from 'sonner';
 
 interface PipelineStage {

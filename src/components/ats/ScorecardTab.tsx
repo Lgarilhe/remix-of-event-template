@@ -154,10 +154,10 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
           const { data: notionData } = await invokeEdgeFunction('fetch-notion-jobs', {
             jobId: candidate.jobId,
           });
-          if (notionData?.job) {
-            jobContext.description = notionData.job.description || jobContext.description;
-            jobContext.requirements = notionData.job.criteria;
-            jobContext.skills = notionData.job.skills;
+          if ((notionData as any)?.job) {
+            jobContext.description = (notionData as any).job.description || jobContext.description;
+            jobContext.requirements = (notionData as any).job.criteria;
+            jobContext.skills = (notionData as any).job.skills;
           }
         } catch { /* Non-blocking */ }
       }
