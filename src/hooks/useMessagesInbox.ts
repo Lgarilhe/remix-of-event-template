@@ -2,6 +2,7 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { invokeUnipile } from '@/lib/invokeUnipile';
 import { toast } from 'sonner';
+import { useOrganization } from '@/hooks/useOrganization';
 import { useChatCategories } from './useChatCategories';
 import {
   getChatDisplayName,
@@ -524,6 +525,7 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
             candidate_headline: candidateHeadline || null,
             status: 'messaged',
             created_by: user.id,
+            organization_id: organizationId,
           }, {
             onConflict: 'job_id,candidate_id,created_by',
           });
@@ -785,6 +787,7 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
           profile_headline: getChatHeadline(selectedChat),
           profile_url: selectedChat.attendees?.[0]?.profile_url,
           created_by: user.user.id,
+          organization_id: organizationId,
           user_timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
           status: 'active',
           current_step_order: 0,
