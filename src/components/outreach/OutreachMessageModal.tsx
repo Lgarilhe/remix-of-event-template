@@ -149,7 +149,7 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
       const profileAnyLocal = profile as any;
       const candidateProviderId = profileAnyLocal.provider_id || profile.id;
 
-      const { data, error } = await invokeEdgeFunction('generate-outreach-message', {
+      const { data, error } = await invokeEdgeFunction<{ subject?: string; message?: string; personalization_points?: string[] }>('generate-outreach-message', {
         profile: profileData, 
         job: {
           title: job.title,
