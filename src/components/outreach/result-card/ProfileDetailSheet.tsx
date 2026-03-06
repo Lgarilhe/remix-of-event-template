@@ -29,6 +29,7 @@ import {
 } from 'lucide-react';
 import { invokeUnipile } from '@/lib/invokeUnipile';
 import { supabase } from '@/integrations/supabase/client';
+import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { toast } from 'sonner';
 
 interface ProfileDetailSheetProps {

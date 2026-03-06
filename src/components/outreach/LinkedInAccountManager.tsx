@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
+import { supabase } from '@/integrations/supabase/client';
 import { LinkedInAccount } from '@/pages/Outreach';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -117,7 +118,7 @@ export const LinkedInAccountManager: React.FC<LinkedInAccountManagerProps> = ({
       });
 
       if (response.error) throw response.error;
-      const data = response.data;
+      const data = response.data as any;
       if (!data.success) {
         throw new Error(data.error);
       }
@@ -162,14 +163,10 @@ export const LinkedInAccountManager: React.FC<LinkedInAccountManagerProps> = ({
 
     setConnecting(true);
     try {
-      const orgId = await getActiveOrganizationId();
-      const response = await supabase.functions.invoke('unipile-accounts', {
-        body: {
-          action: 'connect_credentials',
-          username: email.trim(),
-          password,
-          organization_id: orgId,
-        },
+      const response = await invokeEdgeFunction('unipile-accounts', {
+        action: 'connect_credentials',
+        username: email.trim(),
+        password,
       });
 
       if (response.error) throw response.error;

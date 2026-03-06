@@ -49,7 +49,7 @@ export const FraudDetectionTab: React.FC<Props> = ({ candidate }) => {
       });
       if (fnError) throw fnError;
       if (data?.error) throw new Error(data.error);
-      setResult(data);
+      setResult(data as any);
     } catch (e: any) {
       setError(e.message || 'Erreur lors de l\'analyse');
     } finally {

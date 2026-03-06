@@ -1,5 +1,6 @@
 import React, { useState, useCallback, useRef } from 'react';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
+import { supabase } from '@/integrations/supabase/client';
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
