@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { invokeUnipile } from '@/lib/invokeUnipile';
 import { toast } from 'sonner';
 import { useOrganization } from '@/hooks/useOrganization';
@@ -226,9 +227,7 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
   // Fetch available jobs from Notion
   const fetchAvailableJobs = useCallback(async () => {
     try {
-      const response = await supabase.functions.invoke('fetch-notion-jobs', {
-        body: { status: 'Publié' },
-      });
+      const response = await invokeEdgeFunction<{ jobs?: any[] }>('fetch-notion-jobs', { status: 'Publié' });
       
       if (response.error) throw response.error;
       
@@ -544,20 +543,18 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
           accompagnement = 'Succès';
         }
 
-        await supabase.functions.invoke('add-to-shortlist', {
-          body: {
-            name: candidateName,
-            headline: candidateHeadline,
-            linkedinUrl: profileUrl || undefined,
-            jobId: jobId || undefined,
-            jobTitle: jobTitle || undefined,
-            clientName: job?.client?.name || undefined,
-            clientId: (job?.client as any)?.id || undefined,
-            entity: 'Konekt',
-            accompagnement,
-            etape: 'Contacté',
-            etat: 'En attente de réponse',
-          },
+        await invokeEdgeFunction('add-to-shortlist', {
+          name: candidateName,
+          headline: candidateHeadline,
+          linkedinUrl: profileUrl || undefined,
+          jobId: jobId || undefined,
+          jobTitle: jobTitle || undefined,
+          clientName: job?.client?.name || undefined,
+          clientId: (job?.client as any)?.id || undefined,
+          entity: 'Konekt',
+          accompagnement,
+          etape: 'Contacté',
+          etat: 'En attente de réponse',
         });
         console.log('[Inbox] Notion sync done for', candidateName);
       }
@@ -681,53 +678,51 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
         enrichedJobData = availableJobs.find(j => j.id === jobInfo.job_id);
       }
       
-      const response = await supabase.functions.invoke('generate-reply-suggestions', {
-        body: {
-          context: {
-            recipientName,
-            recipientHeadline,
-            messages: messages.slice(-10).map(m => ({
-              text: getMessageText(m),
-              is_sender: m.is_sender,
-              timestamp: m.timestamp,
-            })),
-            jobContext: jobInfo ? {
-              title: jobInfo.job_title || 'Poste non spécifié',
-              company: enrichedJobData?.client?.name,
-            } : undefined,
-            jobData: enrichedJobData ? {
-              id: enrichedJobData.id,
-              title: enrichedJobData.title,
-              client: enrichedJobData.client,
-              skills: enrichedJobData.skills || [],
-              requirements: enrichedJobData.requirements,
-              description: enrichedJobData.description,
-              seniority: enrichedJobData.seniority,
-              location: enrichedJobData.location,
-              remote: enrichedJobData.remote,
-              xpMin: enrichedJobData.xpMin,
-              xpMax: enrichedJobData.xpMax,
-              salaryMin: enrichedJobData.salaryMin,
-              salaryMax: enrichedJobData.salaryMax,
-              tjmMin: enrichedJobData.tjmMin,
-              tjmMax: enrichedJobData.tjmMax,
-              contractType: enrichedJobData.contractType,
-              mustHave: enrichedJobData.mustHave,
-              shouldHave: enrichedJobData.shouldHave,
-              niceToHave: enrichedJobData.niceToHave,
-              transversalCriteria: enrichedJobData.transversalCriteria,
-            } : undefined,
-            // Pass all available jobs to constrain AI suggestions
-            availableJobs: availableJobs.map(j => ({
-              id: j.id,
-              title: j.title,
-              skills: j.skills || [],
-              client: j.client,
-            })),
-            calendlyLink: calendlyLink || undefined,
-            candidateProfileUrl: selectedChat.attendees?.[0]?.profile_url || undefined,
-            candidateName: getChatDisplayName(selectedChat) || undefined,
-          },
+      const response = await invokeEdgeFunction<{ suggestions?: any[] }>('generate-reply-suggestions', {
+        context: {
+          recipientName,
+          recipientHeadline,
+          messages: messages.slice(-10).map(m => ({
+            text: getMessageText(m),
+            is_sender: m.is_sender,
+            timestamp: m.timestamp,
+          })),
+          jobContext: jobInfo ? {
+            title: jobInfo.job_title || 'Poste non spécifié',
+            company: enrichedJobData?.client?.name,
+          } : undefined,
+          jobData: enrichedJobData ? {
+            id: enrichedJobData.id,
+            title: enrichedJobData.title,
+            client: enrichedJobData.client,
+            skills: enrichedJobData.skills || [],
+            requirements: enrichedJobData.requirements,
+            description: enrichedJobData.description,
+            seniority: enrichedJobData.seniority,
+            location: enrichedJobData.location,
+            remote: enrichedJobData.remote,
+            xpMin: enrichedJobData.xpMin,
+            xpMax: enrichedJobData.xpMax,
+            salaryMin: enrichedJobData.salaryMin,
+            salaryMax: enrichedJobData.salaryMax,
+            tjmMin: enrichedJobData.tjmMin,
+            tjmMax: enrichedJobData.tjmMax,
+            contractType: enrichedJobData.contractType,
+            mustHave: enrichedJobData.mustHave,
+            shouldHave: enrichedJobData.shouldHave,
+            niceToHave: enrichedJobData.niceToHave,
+            transversalCriteria: enrichedJobData.transversalCriteria,
+          } : undefined,
+          // Pass all available jobs to constrain AI suggestions
+          availableJobs: availableJobs.map(j => ({
+            id: j.id,
+            title: j.title,
+            skills: j.skills || [],
+            client: j.client,
+          })),
+          calendlyLink: calendlyLink || undefined,
+          candidateProfileUrl: selectedChat.attendees?.[0]?.profile_url || undefined,
+          candidateName: getChatDisplayName(selectedChat) || undefined,
         },
       });
 
