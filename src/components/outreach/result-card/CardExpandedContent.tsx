@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { LinkedInProfile } from '../types';
 import { JobMatchResult } from '../JobScoreDisplay';
 import { Job } from '@/types/jobs';
@@ -7,11 +7,13 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import {
-  Briefcase, GraduationCap, Zap,
-  MessageSquare, Newspaper, CalendarDays, Building2,
+  Briefcase, GraduationCap, Zap, ThumbsUp,
+  MessageSquare, Newspaper, CalendarDays, Building2, Loader2,
 } from 'lucide-react';
 import { CardMessageThread } from './CardMessageThread';
 import { ProfileData } from './types';
+import { invokeUnipile } from '@/lib/invokeUnipile';
+import { toast } from 'sonner';
 
 interface CardExpandedContentProps {
   profile: LinkedInProfile;
