@@ -60,6 +60,7 @@ interface AnalyticsRow {
 
 interface EnrollmentStats {
   total: number;
+  contacted: number;
   active: number;
   completed: number;
   replied: number;
@@ -128,6 +129,10 @@ export const SequenceAnalytics: React.FC<SequenceAnalyticsProps> = ({
         }
         const uniqueEnrollments = Array.from(byProfile.values());
 
+        // "Contacted" = candidates that actually received outreach (not just enrolled)
+        const contacted = uniqueEnrollments.filter(e =>
+          ['active', 'completed', 'replied'].includes(e.status)
+        );
         const replied = uniqueEnrollments.filter(e => e.status === 'replied' && e.replied_at);
         const responseTimes = replied
           .map(e => differenceInHours(new Date(e.replied_at!), new Date(e.created_at)))
@@ -135,6 +140,7 @@ export const SequenceAnalytics: React.FC<SequenceAnalyticsProps> = ({
 
         setEnrollmentStats({
           total: uniqueEnrollments.length,
+          contacted: contacted.length,
           active: uniqueEnrollments.filter(e => e.status === 'active').length,
           completed: uniqueEnrollments.filter(e => e.status === 'completed').length,
           replied: replied.length,
@@ -170,8 +176,9 @@ export const SequenceAnalytics: React.FC<SequenceAnalyticsProps> = ({
   }, [analytics]);
 
   const acceptRate = totals.invitesSent > 0 ? Math.round((totals.invitesAccepted / totals.invitesSent) * 100) : 0;
-  const replyRate = enrollmentStats && enrollmentStats.total > 0
-    ? Math.round((enrollmentStats.replied / enrollmentStats.total) * 100)
+  // Reply rate = replied / contacted (same logic as dashboard)
+  const replyRate = enrollmentStats && enrollmentStats.contacted > 0
+    ? Math.round((enrollmentStats.replied / enrollmentStats.contacted) * 100)
     : 0;
 
   const chartData = useMemo(() => {
