@@ -583,8 +583,8 @@ export function useLinkedInScoring({
           toast.info(`Scoring lot ${batchIndex}/${totalBatches}...`, { id: 'batch-scoring-progress', duration: 3000 });
         }
 
-        const { data, error } = await supabase.functions.invoke('score-profile-job', {
-          body: { profiles: batch, job: jobPayload, customScoringInstructions, accountId: accountId || undefined }
+        const { data, error } = await invokeEdgeFunction('score-profile-job', {
+          profiles: batch, job: jobPayload, customScoringInstructions, accountId: accountId || undefined,
         });
 
         if (error) {

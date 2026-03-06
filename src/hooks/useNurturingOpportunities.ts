@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 
 export interface NurturingOpportunity {
@@ -92,14 +93,12 @@ export function useNurturingOpportunities(): UseNurturingOpportunitiesReturn {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
-      const response = await supabase.functions.invoke('nurturing-analyzer', {
-        body: {
-          action: 'analyze',
-          account_id: accountId,
-          user_id: user.id,
-          conversations,
-          jobs,
-        },
+      const response = await invokeEdgeFunction('nurturing-analyzer', {
+        action: 'analyze',
+        account_id: accountId,
+        user_id: user.id,
+        conversations,
+        jobs,
       });
 
       if (response.error) throw response.error;
