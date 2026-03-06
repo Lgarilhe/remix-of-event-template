@@ -707,6 +707,7 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  try {
     // Parse request body
     let body: any = {};
     try {
