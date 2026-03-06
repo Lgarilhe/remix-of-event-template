@@ -16,6 +16,26 @@ import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { useToast } from '@/hooks/use-toast';
 import heroVideo from '@/assets/hero-video.mp4';
 
+// Redirect authenticated users away from landing page
+const useRedirectIfAuthenticated = () => {
+  const navigate = useNavigate();
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) {
+        navigate('/outreach', { replace: true });
+      }
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_IN' && session) {
+        navigate('/outreach', { replace: true });
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, [navigate]);
+};
+
 const CALENDLY_URL = 'https://calendly.com/demo/30min';
 
 // Animated counter component
@@ -38,6 +58,7 @@ const AnimatedStat = ({ value, suffix = '' }: { value: string; suffix?: string }
 };
 
 const SkalrLanding = () => {
+  useRedirectIfAuthenticated();
   const navigate = useNavigate();
   const [openFaq, setOpenFaq] = useState<number | null>(null);
   const [showCalendly, setShowCalendly] = useState(false);
