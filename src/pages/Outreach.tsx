@@ -1,16 +1,16 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { Navbar } from '@/components/Navbar';
 import { SEOHead } from '@/components/SEOHead';
-import { LinkedInAccountManager, applySubscriptionOverrides } from '@/components/outreach/LinkedInAccountManager';
+import { applySubscriptionOverrides } from '@/components/outreach/LinkedInAccountManager';
 import { LinkedInSearch } from '@/components/outreach/LinkedInSearch';
 import { SequencesList } from '@/components/outreach/SequencesList';
 import { MessagesInbox } from '@/components/outreach/MessagesInbox';
 import { NurturingDashboard } from '@/components/outreach/NurturingDashboard';
 import { InMailQueueStatus } from '@/components/outreach/InMailQueueStatus';
 import { ProjectsList } from '@/components/outreach/projects';
-import { Search, Users, Settings, GitBranch, MessageSquare, Sparkles, FolderOpen } from 'lucide-react';
+import { Search, Users, GitBranch, MessageSquare, Sparkles, FolderOpen, Settings } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { OutreachSearchProvider } from '@/contexts/OutreachSearchContext';
@@ -39,7 +39,6 @@ const tabs = [
   { value: 'messages', label: 'Messages', shortLabel: 'Msg', icon: MessageSquare },
   { value: 'sequences', label: 'Séquences', shortLabel: 'Séq.', icon: GitBranch },
   { value: 'nurturing', label: 'Nurturing', shortLabel: 'Nurt.', icon: Sparkles },
-  { value: 'accounts', label: 'Comptes', shortLabel: '', icon: Settings },
 ] as const;
 
 export default function Outreach() {
