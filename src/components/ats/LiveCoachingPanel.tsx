@@ -152,6 +152,7 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
       });
 
       if (!data) return;
+      const d = data as any;
 
       // Auto-dismiss signals the AI detected as resolved
       if (data.resolved_signals?.length) {
