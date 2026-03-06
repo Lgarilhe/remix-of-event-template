@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import type { Job } from '@/types/jobs';
 import { toast } from 'sonner';
 import { useOrganization } from './useOrganization';
@@ -10,8 +10,8 @@ const GC_TIME = 60 * 60 * 1000; // 1 hour
 const REFETCH_INTERVAL = 5 * 60 * 1000; // 5 minutes polling
 
 async function fetchJobs(refresh = false, organizationId?: string | null): Promise<Job[]> {
-  const { data, error } = await supabase.functions.invoke('fetch-notion-jobs', {
-    body: { all: true, refresh, organization_id: organizationId },
+  const { data, error } = await invokeEdgeFunction<{ jobs?: Job[] }>('fetch-notion-jobs', {
+    all: true, refresh, organization_id: organizationId,
   });
 
   if (error) throw error;
@@ -42,8 +42,8 @@ export function useUpdateNotionJob() {
 
   return useMutation({
     mutationFn: async ({ pageId, updates }: { pageId: string; updates: Record<string, any> }) => {
-      const { data, error } = await supabase.functions.invoke('update-notion-job', {
-        body: { pageId, updates },
+      const { data, error } = await invokeEdgeFunction('update-notion-job', {
+        pageId, updates,
       });
 
       if (error) throw error;

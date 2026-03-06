@@ -3,6 +3,7 @@ import { LinkedInProfile } from './types';
 import { getYear } from './dateUtils';
 import { Job } from '@/types/jobs';
 import { supabase } from '@/integrations/supabase/client';
+import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { invokeUnipile } from '@/lib/invokeUnipile';
 import {
   Dialog,
@@ -148,8 +149,7 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
       const profileAnyLocal = profile as any;
       const candidateProviderId = profileAnyLocal.provider_id || profile.id;
 
-      const { data, error } = await supabase.functions.invoke('generate-outreach-message', {
-        body: { 
+      const { data, error } = await invokeEdgeFunction('generate-outreach-message', {
           profile: profileData, 
           job: {
             title: job.title,
@@ -330,8 +330,7 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
           || (profile as any).linkedin_url
           || undefined;
 
-        await supabase.functions.invoke('add-to-shortlist', {
-          body: {
+        await invokeEdgeFunction('add-to-shortlist', {
             name: profileData.name,
             headline: profile.headline,
             linkedinUrl,

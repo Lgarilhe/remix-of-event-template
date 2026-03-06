@@ -14,7 +14,7 @@ import { ShortlistEntry } from '@/pages/Candidates';
 import { DraggableCandidateCard } from './DraggableCandidateCard';
 import { DroppableColumn } from './DroppableColumn';
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
-import { supabase } from '@/integrations/supabase/client';
+import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { toast } from 'sonner';
 
 interface PipelineStage {
@@ -105,11 +105,9 @@ export const CandidatePipeline: React.FC<CandidatePipelineProps> = ({ data, stag
       onStageChange?.(activeId, targetStage.key);
 
       // Update in Notion
-      const response = await supabase.functions.invoke('update-candidate-stage', {
-        body: {
-          shortlistId: activeId,
-          newStage: targetStage.key,
-        },
+      const response = await invokeEdgeFunction('update-candidate-stage', {
+        shortlistId: activeId,
+        newStage: targetStage.key,
       });
 
       if (response.error || !response.data?.success) {

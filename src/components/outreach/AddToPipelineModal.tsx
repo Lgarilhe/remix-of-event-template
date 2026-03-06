@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Input } from '@/components/ui/input';
@@ -98,14 +99,14 @@ export const AddToPipelineModal: React.FC<AddToPipelineModalProps> = ({
   const fetchJobs = async () => {
     setLoading(true);
     try {
-      const response = await supabase.functions.invoke('fetch-notion-jobs', {
-        body: { status: 'Publié' },
+      const response = await invokeEdgeFunction('fetch-notion-jobs', {
+        status: 'Publié',
       });
       
       if (response.error) throw response.error;
       
-      if (response.data?.jobs) {
-        setJobs(response.data.jobs.map((job: any) => ({
+      if ((response.data as any)?.jobs) {
+        setJobs(((response.data as any).jobs).map((job: any) => ({
           id: job.id,
           title: job.title || 'Poste',
           client: job.client,
@@ -145,19 +146,17 @@ export const AddToPipelineModal: React.FC<AddToPipelineModalProps> = ({
 
     setSubmitting(true);
     try {
-      const response = await supabase.functions.invoke('add-to-shortlist', {
-        body: {
-          name: candidate.name,
-          headline: candidate.headline,
-          linkedinUrl: candidate.linkedinUrl,
-          linkedinId: candidate.linkedinId,
-          jobId: selectedJob.id,
-          jobTitle: selectedJob.title,
-          clientName: selectedJob.client?.name,
-          clientId: selectedJob.client?.id,
-          entity: entity,
-          source: 'linkedin_inbox',
-        },
+      const response = await invokeEdgeFunction('add-to-shortlist', {
+        name: candidate.name,
+        headline: candidate.headline,
+        linkedinUrl: candidate.linkedinUrl,
+        linkedinId: candidate.linkedinId,
+        jobId: selectedJob.id,
+        jobTitle: selectedJob.title,
+        clientName: selectedJob.client?.name,
+        clientId: selectedJob.client?.id,
+        entity: entity,
+        source: 'linkedin_inbox',
       });
 
       if (response.error) throw response.error;

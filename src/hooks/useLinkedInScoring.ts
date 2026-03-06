@@ -1,5 +1,6 @@
 import React, { useCallback, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { LinkedInProfile } from '@/components/outreach/types';
 import { getYear, parseDate } from '@/components/outreach/dateUtils';
 import { Job } from '@/types/jobs';
@@ -142,8 +143,8 @@ async function generateCandidateEmbedding(profile: LinkedInProfile): Promise<voi
   if (text.trim().length < 20) return;
 
   try {
-    await supabase.functions.invoke('generate-embedding', {
-      body: { text, type: 'candidate', entityId: profile.id },
+    await invokeEdgeFunction('generate-embedding', {
+      text, type: 'candidate', entityId: profile.id,
     });
   } catch (e) {
     console.error('generate-embedding call failed:', e);
@@ -433,34 +434,32 @@ export function useLinkedInScoring({
     try {
       const profileData = buildProfileData(profile);
 
-      const { data, error } = await supabase.functions.invoke('score-profile-job', {
-        body: {
-          profile: profileData,
-          job: {
-            id: selectedJob.id,
-            title: selectedJob.title,
-            client: selectedJob.client,
-            skills: selectedJob.skills || [],
-            requirements: selectedJob.requirements,
-            description: selectedJob.description,
-            seniority: selectedJob.seniority,
-            location: selectedJob.location,
-            remote: selectedJob.remote,
-            xpMin: selectedJob.xpMin,
-            xpMax: selectedJob.xpMax,
-            salaryMin: selectedJob.salaryMin,
-            salaryMax: selectedJob.salaryMax,
-            tjmMin: selectedJob.tjm,
-            contractType: selectedJob.contractType,
-            mustHave: selectedJob.mustHave,
-            shouldHave: selectedJob.shouldHave,
-            niceToHave: selectedJob.niceToHave,
-            bodyContent: selectedJob.bodyContent,
-            transversalCriteria: selectedJob.transversalCriteria,
-          },
-          customScoringInstructions,
-          accountId: accountId || undefined,
-        }
+      const { data, error } = await invokeEdgeFunction('score-profile-job', {
+        profile: profileData,
+        job: {
+          id: selectedJob.id,
+          title: selectedJob.title,
+          client: selectedJob.client,
+          skills: selectedJob.skills || [],
+          requirements: selectedJob.requirements,
+          description: selectedJob.description,
+          seniority: selectedJob.seniority,
+          location: selectedJob.location,
+          remote: selectedJob.remote,
+          xpMin: selectedJob.xpMin,
+          xpMax: selectedJob.xpMax,
+          salaryMin: selectedJob.salaryMin,
+          salaryMax: selectedJob.salaryMax,
+          tjmMin: selectedJob.tjm,
+          contractType: selectedJob.contractType,
+          mustHave: selectedJob.mustHave,
+          shouldHave: selectedJob.shouldHave,
+          niceToHave: selectedJob.niceToHave,
+          bodyContent: selectedJob.bodyContent,
+          transversalCriteria: selectedJob.transversalCriteria,
+        },
+        customScoringInstructions,
+        accountId: accountId || undefined,
       });
 
       if (error) throw error;
@@ -584,8 +583,8 @@ export function useLinkedInScoring({
           toast.info(`Scoring lot ${batchIndex}/${totalBatches}...`, { id: 'batch-scoring-progress', duration: 3000 });
         }
 
-        const { data, error } = await supabase.functions.invoke('score-profile-job', {
-          body: { profiles: batch, job: jobPayload, customScoringInstructions, accountId: accountId || undefined }
+        const { data, error } = await invokeEdgeFunction('score-profile-job', {
+          profiles: batch, job: jobPayload, customScoringInstructions, accountId: accountId || undefined,
         });
 
         if (error) {
@@ -618,14 +617,15 @@ export function useLinkedInScoring({
           allResults.push(...data.results);
         }
         // Capture batch stats from response
-        if (data?.stats) {
+        if ((data as any)?.stats) {
+          const stats = (data as any).stats;
           aggregatedStats = {
-            total: (aggregatedStats?.total || 0) + (data.stats.total || 0),
-            hardFiltered: (aggregatedStats?.hardFiltered || 0) + (data.stats.hardFiltered || 0),
-            llmSkipped: (aggregatedStats?.llmSkipped || 0) + (data.stats.llmSkipped || 0),
-            llmCalled: (aggregatedStats?.llmCalled || 0) + (data.stats.llmCalled || 0),
-            avgScore: data.stats.avgScore || 0,
-            totalTokens: (aggregatedStats?.totalTokens || 0) + (data.stats.totalTokens || 0),
+            total: (aggregatedStats?.total || 0) + (stats.total || 0),
+            hardFiltered: (aggregatedStats?.hardFiltered || 0) + (stats.hardFiltered || 0),
+            llmSkipped: (aggregatedStats?.llmSkipped || 0) + (stats.llmSkipped || 0),
+            llmCalled: (aggregatedStats?.llmCalled || 0) + (stats.llmCalled || 0),
+            avgScore: stats.avgScore || 0,
+            totalTokens: (aggregatedStats?.totalTokens || 0) + (stats.totalTokens || 0),
           };
         }
 

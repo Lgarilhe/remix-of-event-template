@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 
 export interface NotionFieldSchema {
   type: 'select' | 'multi_select' | 'status';
@@ -9,10 +9,10 @@ export interface NotionFieldSchema {
 export type NotionSchema = Record<string, NotionFieldSchema>;
 
 async function fetchSchema(): Promise<NotionSchema> {
-  const { data, error } = await supabase.functions.invoke('fetch-notion-schema');
+  const { data, error } = await invokeEdgeFunction<{ schema?: NotionSchema }>('fetch-notion-schema');
   if (error) throw error;
   if (!data?.success) throw new Error(data?.error || 'Failed to fetch schema');
-  return data.schema || {};
+  return data.schema || {} as NotionSchema;
 }
 
 export function useNotionSchema() {

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { BrutalLoader } from '@/components/ui/brutal-loader';
 import { supabase } from '@/integrations/supabase/client';
+import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -350,7 +351,7 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
       toast.info('Traitement des séquences en cours...');
       
       // Call all sequence processing actions sequentially to avoid lock contention
-      const processRes = await supabase.functions.invoke('process-sequences', { body: { action: 'process' } });
+      const processRes = await invokeEdgeFunction('process-sequences', { action: 'process' });
       
       if (processRes.error) {
         console.error('[processSequencesNow] process error:', processRes.error);
@@ -375,8 +376,8 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
 
       // Run secondary checks (non-blocking)
       await Promise.allSettled([
-        supabase.functions.invoke('process-sequences', { body: { action: 'check_replies' } }),
-        supabase.functions.invoke('process-sequences', { body: { action: 'check_wait_events' } }),
+        invokeEdgeFunction('process-sequences', { action: 'check_replies' }),
+        invokeEdgeFunction('process-sequences', { action: 'check_wait_events' }),
       ]);
       
       await fetchEnrollments();

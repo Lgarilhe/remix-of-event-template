@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { toast } from 'sonner';
 import { useOrganization } from '@/hooks/useOrganization';
 
@@ -129,8 +130,8 @@ export function useChatCategories() {
       for (let i = 0; i < chats.length; i += batchSize) {
         const batch = chats.slice(i, i + batchSize);
         
-        const response = await supabase.functions.invoke('auto-categorize-chats', {
-          body: { chats: batch },
+        const response = await invokeEdgeFunction('auto-categorize-chats', {
+          chats: batch,
         });
 
         if (response.error || !response.data?.success) {

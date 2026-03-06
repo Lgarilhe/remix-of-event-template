@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 
 export interface NurturingOpportunity {
@@ -92,14 +93,12 @@ export function useNurturingOpportunities(): UseNurturingOpportunitiesReturn {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
-      const response = await supabase.functions.invoke('nurturing-analyzer', {
-        body: {
-          action: 'analyze',
-          account_id: accountId,
-          user_id: user.id,
-          conversations,
-          jobs,
-        },
+      const response = await invokeEdgeFunction('nurturing-analyzer', {
+        action: 'analyze',
+        account_id: accountId,
+        user_id: user.id,
+        conversations,
+        jobs,
       });
 
       if (response.error) throw response.error;
@@ -124,13 +123,11 @@ export function useNurturingOpportunities(): UseNurturingOpportunitiesReturn {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
-      const response = await supabase.functions.invoke('nurturing-analyzer', {
-        body: {
-          action: 'backfill_names',
-          account_id: accountId,
-          user_id: user.id,
-          limit,
-        },
+      const response = await invokeEdgeFunction('nurturing-analyzer', {
+        action: 'backfill_names',
+        account_id: accountId,
+        user_id: user.id,
+        limit,
       });
 
       if (response.error) throw response.error;
@@ -175,19 +172,17 @@ export function useNurturingOpportunities(): UseNurturingOpportunitiesReturn {
   // Generate message mutation
   const generateMessageMutation = useMutation({
     mutationFn: async (id: string) => {
-      const response = await supabase.functions.invoke('nurturing-analyzer', {
-        body: {
-          action: 'generate_message',
-          opportunity_id: id,
-        },
+      const response = await invokeEdgeFunction('nurturing-analyzer', {
+        action: 'generate_message',
+        opportunity_id: id,
       });
 
       if (response.error) throw response.error;
       if (!response.data?.success) throw new Error(response.data?.error || 'Generation failed');
 
       return {
-        message: response.data.message,
-        subject: response.data.subject,
+        message: response.data.message as string,
+        subject: response.data.subject as string,
       };
     },
     onSuccess: () => {
