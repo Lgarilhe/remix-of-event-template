@@ -1,9 +1,32 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
+
+let calendlyApiKey = Deno.env.get('CALENDLY_API_KEY');
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
+async function resolveOrgCredentials(orgId: string | null) {
+  if (!orgId) return;
+  try {
+    const { data } = await supabase
+      .from('organization_integrations')
+      .select('calendly_api_key, calendly_connected')
+      .eq('organization_id', orgId)
+      .single();
+    if (data?.calendly_connected && data.calendly_api_key) {
+      calendlyApiKey = data.calendly_api_key;
+      console.log('[setup-calendly-webhook] Using org-specific Calendly credentials');
+    }
+  } catch (e) {
+    console.warn('[setup-calendly-webhook] Failed to load org credentials:', e);
+  }
+}
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -11,7 +34,11 @@ serve(async (req) => {
   }
 
   try {
-    const calendlyApiKey = Deno.env.get('CALENDLY_API_KEY');
+    let body: any = {};
+    try { body = await req.json(); } catch {}
+
+    await resolveOrgCredentials(body?.organization_id || null);
+
     if (!calendlyApiKey) {
       throw new Error('CALENDLY_API_KEY not configured');
     }
@@ -19,7 +46,6 @@ serve(async (req) => {
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
     const webhookUrl = `${supabaseUrl}/functions/v1/calendly-webhook`;
 
-    // Step 1: Get current user to find organization
     const meRes = await fetch('https://api.calendly.com/users/me', {
       headers: { 'Authorization': `Bearer ${calendlyApiKey}` },
     });
@@ -36,7 +62,6 @@ serve(async (req) => {
       throw new Error('Could not find organization URI from Calendly');
     }
 
-    // Step 2: Check if webhook already exists
     const listRes = await fetch(
       `https://api.calendly.com/webhook_subscriptions?organization=${encodeURIComponent(organizationUri)}&scope=organization`,
       { headers: { 'Authorization': `Bearer ${calendlyApiKey}` } }
@@ -66,11 +91,9 @@ serve(async (req) => {
         }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
       }
 
-      // Cleanup stale subscriptions with the same callback to avoid duplicates
       for (const stale of sameCallback) {
         const staleId = stale.uri?.split('/').pop();
         if (!staleId) continue;
-
         await fetch(`https://api.calendly.com/webhook_subscriptions/${staleId}`, {
           method: 'DELETE',
           headers: { 'Authorization': `Bearer ${calendlyApiKey}` },
@@ -78,7 +101,6 @@ serve(async (req) => {
       }
     }
 
-    // Step 3: Create webhook subscription
     const createRes = await fetch('https://api.calendly.com/webhook_subscriptions', {
       method: 'POST',
       headers: {

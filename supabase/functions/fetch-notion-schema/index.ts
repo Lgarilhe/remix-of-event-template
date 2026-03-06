@@ -6,11 +6,28 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 };
 
-const NOTION_API_KEY = Deno.env.get("NOTION_API_KEY");
+let NOTION_API_KEY = Deno.env.get("NOTION_API_KEY");
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-const POSTES_DATABASE_ID = Deno.env.get("NOTION_POSTES_DB_ID")!;
+let POSTES_DATABASE_ID = Deno.env.get("NOTION_POSTES_DB_ID")!;
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
+async function resolveOrgCredentials(orgId: string | null) {
+  if (!orgId) return;
+  try {
+    const { data } = await supabase
+      .from('organization_integrations')
+      .select('notion_api_key, notion_postes_db_id, notion_connected')
+      .eq('organization_id', orgId)
+      .single();
+    if (!data?.notion_connected) return;
+    if (data.notion_api_key) NOTION_API_KEY = data.notion_api_key;
+    if (data.notion_postes_db_id) POSTES_DATABASE_ID = data.notion_postes_db_id;
+    console.log('[fetch-notion-schema] Using org-specific Notion credentials');
+  } catch (e) {
+    console.warn('[fetch-notion-schema] Failed to load org credentials:', e);
+  }
+}
 
 const CACHE_KEY = "notion:schema:postes:v1";
 const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
@@ -25,6 +42,16 @@ serve(async (req) => {
   }
 
   try {
+    // Resolve org credentials
+    let orgId: string | null = null;
+    try {
+      const body = await req.clone().json();
+      orgId = body?.organization_id || null;
+    } catch {}
+    const url = new URL(req.url);
+    if (!orgId) orgId = url.searchParams.get('organization_id');
+    await resolveOrgCredentials(orgId);
+
     if (!NOTION_API_KEY) throw new Error('NOTION_API_KEY not configured');
 
     // Check cache first

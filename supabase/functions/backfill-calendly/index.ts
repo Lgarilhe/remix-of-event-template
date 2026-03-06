@@ -8,8 +8,25 @@ const corsHeaders = {
 
 const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
 const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-const calendlyApiKey = Deno.env.get('CALENDLY_API_KEY')!;
+let calendlyApiKey = Deno.env.get('CALENDLY_API_KEY')!;
 const supabase = createClient(supabaseUrl, serviceRoleKey);
+
+async function resolveOrgCredentials(orgId: string | null) {
+  if (!orgId) return;
+  try {
+    const { data } = await supabase
+      .from('organization_integrations')
+      .select('calendly_api_key, calendly_connected')
+      .eq('organization_id', orgId)
+      .single();
+    if (data?.calendly_connected && data.calendly_api_key) {
+      calendlyApiKey = data.calendly_api_key;
+      console.log('[backfill-calendly] Using org-specific Calendly credentials');
+    }
+  } catch (e) {
+    console.warn('[backfill-calendly] Failed to load org credentials:', e);
+  }
+}
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -17,6 +34,13 @@ serve(async (req) => {
   }
 
   try {
+    // Resolve org credentials
+    let body: any = {};
+    try { body = await req.json(); } catch {}
+    await resolveOrgCredentials(body?.organization_id || null);
+
+    if (!calendlyApiKey) throw new Error('CALENDLY_API_KEY not configured');
+
     // Step 1: Get current user org
     const meRes = await fetch('https://api.calendly.com/users/me', {
       headers: { 'Authorization': `Bearer ${calendlyApiKey}` },

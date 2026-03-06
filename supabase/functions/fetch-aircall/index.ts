@@ -11,15 +11,37 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const AIRCALL_API_ID = Deno.env.get('AIRCALL_API_ID');
-    const AIRCALL_API_TOKEN = Deno.env.get('AIRCALL_API_TOKEN');
-    if (!AIRCALL_API_ID || !AIRCALL_API_TOKEN) {
-      throw new Error('Missing AIRCALL_API_ID or AIRCALL_API_TOKEN');
-    }
+    let AIRCALL_API_ID = Deno.env.get('AIRCALL_API_ID');
+    let AIRCALL_API_TOKEN = Deno.env.get('AIRCALL_API_TOKEN');
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
+
+    // Resolve org-specific Aircall credentials
+    let body: any = {};
+    try { body = await req.clone().json(); } catch {}
+    const orgId = body?.organization_id || null;
+    if (orgId) {
+      try {
+        const { data } = await supabase
+          .from('organization_integrations')
+          .select('aircall_api_id, aircall_api_token, aircall_connected')
+          .eq('organization_id', orgId)
+          .single();
+        if (data?.aircall_connected) {
+          if (data.aircall_api_id) AIRCALL_API_ID = data.aircall_api_id;
+          if (data.aircall_api_token) AIRCALL_API_TOKEN = data.aircall_api_token;
+          console.log('[fetch-aircall] Using org-specific Aircall credentials');
+        }
+      } catch (e) {
+        console.warn('[fetch-aircall] Failed to load org credentials:', e);
+      }
+    }
+
+    if (!AIRCALL_API_ID || !AIRCALL_API_TOKEN) {
+      throw new Error('Missing AIRCALL_API_ID or AIRCALL_API_TOKEN');
+    }
 
     const basicAuth = btoa(`${AIRCALL_API_ID}:${AIRCALL_API_TOKEN}`);
     const headers = { 'Authorization': `Basic ${basicAuth}`, 'Content-Type': 'application/json' };

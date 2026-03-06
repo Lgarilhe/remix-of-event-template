@@ -1,11 +1,32 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-const NOTION_API_KEY = Deno.env.get("NOTION_API_KEY");
+let NOTION_API_KEY = Deno.env.get("NOTION_API_KEY");
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
+async function resolveOrgCredentials(orgId: string | null) {
+  if (!orgId) return;
+  try {
+    const { data } = await supabase
+      .from('organization_integrations')
+      .select('notion_api_key, notion_connected')
+      .eq('organization_id', orgId)
+      .single();
+    if (data?.notion_connected && data.notion_api_key) {
+      NOTION_API_KEY = data.notion_api_key;
+      console.log('[update-candidate-stage] Using org-specific Notion credentials');
+    }
+  } catch (e) {
+    console.warn('[update-candidate-stage] Failed to load org credentials:', e);
+  }
+}
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -13,17 +34,18 @@ serve(async (req) => {
   }
 
   try {
+    const { shortlistId, newStage, organization_id } = await req.json();
+
+    await resolveOrgCredentials(organization_id || null);
+
     if (!NOTION_API_KEY) {
       throw new Error('NOTION_API_KEY is not configured');
     }
-
-    const { shortlistId, newStage } = await req.json();
 
     if (!shortlistId || !newStage) {
       throw new Error('Missing shortlistId or newStage');
     }
 
-    // Update the page in Notion
     const response = await fetch(`https://api.notion.com/v1/pages/${shortlistId}`, {
       method: 'PATCH',
       headers: {

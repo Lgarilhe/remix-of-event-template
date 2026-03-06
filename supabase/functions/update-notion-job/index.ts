@@ -1,15 +1,35 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 };
 
-const NOTION_API_KEY = Deno.env.get("NOTION_API_KEY");
+let NOTION_API_KEY = Deno.env.get("NOTION_API_KEY");
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
+async function resolveOrgCredentials(orgId: string | null) {
+  if (!orgId) return;
+  try {
+    const { data } = await supabase
+      .from('organization_integrations')
+      .select('notion_api_key, notion_connected')
+      .eq('organization_id', orgId)
+      .single();
+    if (data?.notion_connected && data.notion_api_key) {
+      NOTION_API_KEY = data.notion_api_key;
+      console.log('[update-notion-job] Using org-specific Notion credentials');
+    }
+  } catch (e) {
+    console.warn('[update-notion-job] Failed to load org credentials:', e);
+  }
+}
 
 /**
  * Maps app field names → Notion property names + types.
- * This is the single source of truth for the Postes database schema.
  */
 const FIELD_MAP: Record<string, { notionKey: string; type: string }> = {
   title:             { notionKey: '__title__', type: 'title' },
@@ -38,37 +58,27 @@ const FIELD_MAP: Record<string, { notionKey: string; type: string }> = {
   skillsSourcing:    { notionKey: 'Skills sourcing', type: 'rich_text' },
 };
 
-/**
- * Build a Notion property value payload from our field map.
- */
 function buildNotionProperty(type: string, value: any): any {
   switch (type) {
     case 'title':
       return { title: [{ text: { content: String(value ?? '') } }] };
-
     case 'rich_text':
       return { rich_text: [{ text: { content: String(value ?? '') } }] };
-
     case 'number':
       return { number: value === '' || value === null || value === undefined ? null : Number(value) };
-
     case 'select':
       if (!value || value === '—') return { select: null };
       return { select: { name: String(value) } };
-
     case 'multi_select':
       if (!value) return { multi_select: [] };
       const items = Array.isArray(value) ? value : String(value).split(',').map(s => s.trim()).filter(Boolean);
       return { multi_select: items.map((name: string) => ({ name })) };
-
     case 'status':
       if (!value) return { status: null };
       return { status: { name: String(value) } };
-
     case 'date':
       if (!value) return { date: null };
       return { date: { start: String(value) } };
-
     default:
       return { rich_text: [{ text: { content: String(value ?? '') } }] };
   }
@@ -80,11 +90,13 @@ serve(async (req) => {
   }
 
   try {
+    const { pageId, updates, organization_id } = await req.json();
+
+    await resolveOrgCredentials(organization_id || null);
+
     if (!NOTION_API_KEY) {
       throw new Error('NOTION_API_KEY is not configured');
     }
-
-    const { pageId, updates } = await req.json();
 
     if (!pageId || !updates || typeof updates !== 'object') {
       throw new Error('Missing pageId or updates');
@@ -92,7 +104,6 @@ serve(async (req) => {
 
     console.log(`[update-notion-job] Updating page ${pageId}`, Object.keys(updates));
 
-    // Build Notion properties payload
     const properties: Record<string, any> = {};
 
     for (const [field, value] of Object.entries(updates)) {
@@ -102,9 +113,7 @@ serve(async (req) => {
         continue;
       }
 
-      // Title property needs special handling — find the actual title property name
       if (mapping.notionKey === '__title__') {
-        // Fetch the page to discover the title property name
         const pageResp = await fetch(`https://api.notion.com/v1/pages/${pageId}`, {
           headers: {
             'Authorization': `Bearer ${NOTION_API_KEY}`,
@@ -132,7 +141,6 @@ serve(async (req) => {
       );
     }
 
-    // Update the Notion page
     const response = await fetch(`https://api.notion.com/v1/pages/${pageId}`, {
       method: 'PATCH',
       headers: {
@@ -151,19 +159,12 @@ serve(async (req) => {
 
     const result = await response.json();
 
-    // Invalidate the jobs cache so next fetch picks up changes
-    const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
-    const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    
-    if (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY) {
-      const { createClient } = await import("https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check");
-      const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-      await supabase
-        .from('notion_api_cache')
-        .delete()
-        .eq('cache_key', 'notion:jobs:v1');
-      console.log('[update-notion-job] Cache invalidated');
-    }
+    // Invalidate the jobs cache
+    await supabase
+      .from('notion_api_cache')
+      .delete()
+      .eq('cache_key', 'notion:jobs:v1');
+    console.log('[update-notion-job] Cache invalidated');
 
     return new Response(
       JSON.stringify({ success: true, pageId: result.id }),

@@ -8,7 +8,7 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 };
 
-const NOTION_API_KEY = Deno.env.get("NOTION_API_KEY");
+let NOTION_API_KEY = Deno.env.get("NOTION_API_KEY");
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
@@ -84,8 +84,26 @@ async function setCache(cacheKey: string, payload: unknown): Promise<void> {
     console.error('Cache write error:', e);
   }
 }
-const CANDIDATS_DATABASE_ID = Deno.env.get("NOTION_CANDIDATS_DB_ID")!;
-const SHORTLIST_DATABASE_ID = Deno.env.get("NOTION_SHORTLIST_DB_ID")!;
+let CANDIDATS_DATABASE_ID = Deno.env.get("NOTION_CANDIDATS_DB_ID")!;
+let SHORTLIST_DATABASE_ID = Deno.env.get("NOTION_SHORTLIST_DB_ID")!;
+
+async function resolveOrgNotionCredentials(orgId: string | null) {
+  if (!orgId) return;
+  try {
+    const { data } = await supabase
+      .from('organization_integrations')
+      .select('notion_api_key, notion_candidats_db_id, notion_shortlist_db_id, notion_connected')
+      .eq('organization_id', orgId)
+      .single();
+    if (!data?.notion_connected) return;
+    if (data.notion_api_key) NOTION_API_KEY = data.notion_api_key;
+    if (data.notion_candidats_db_id) CANDIDATS_DATABASE_ID = data.notion_candidats_db_id;
+    if (data.notion_shortlist_db_id) SHORTLIST_DATABASE_ID = data.notion_shortlist_db_id;
+    console.log('[fetch-notion-candidates] Using org-specific Notion credentials');
+  } catch (e) {
+    console.warn('[fetch-notion-candidates] Failed to load org credentials:', e);
+  }
+}
 
 interface NotionRichText {
   plain_text: string;
@@ -253,12 +271,21 @@ serve(async (req) => {
   }
 
   try {
+    // Resolve org credentials from body or query param
+    let orgId: string | null = null;
+    try {
+      const body = await req.clone().json();
+      orgId = body?.organization_id || null;
+    } catch {}
+    const url = new URL(req.url);
+    if (!orgId) orgId = url.searchParams.get('organization_id');
+    await resolveOrgNotionCredentials(orgId);
+
     if (!NOTION_API_KEY) {
       throw new Error('NOTION_API_KEY is not configured');
     }
 
-    const url = new URL(req.url);
-    const type = url.searchParams.get('type') || 'shortlist'; // 'candidates' or 'shortlist'
+    const type = url.searchParams.get('type') || 'shortlist';
     const forceRefresh = url.searchParams.get('refresh') === 'true';
 
     const cacheKey = type === 'candidates' ? 'notion:candidates:v1' : 'notion:shortlist:v1';
