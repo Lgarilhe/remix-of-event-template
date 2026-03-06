@@ -4,8 +4,9 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
   Briefcase, Sliders, ChevronDown, X, Plus, Save, Loader2,
-  Mail, MessageSquare, Search, Eye, Gauge, Linkedin, Link2, Unlink,
+  Mail, MessageSquare, Search, Eye, Gauge, Link2, Unlink,
 } from 'lucide-react';
+import linkedinLogo from '@/assets/linkedin-logo.png';
 import { useJobAssignments } from '@/hooks/useJobAssignments';
 import { useMemberQuotas, DEFAULT_QUOTAS } from '@/hooks/useMemberQuotas';
 import { useMemberLinkedInAccounts } from '@/hooks/useMemberLinkedInAccounts';
