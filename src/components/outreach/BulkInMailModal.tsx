@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import {
   Dialog,
   DialogContent,
@@ -160,8 +160,8 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
   // Fetch queue status
   const fetchQueueStatus = async () => {
     try {
-      const { data, error } = await supabase.functions.invoke('process-inmail-queue', {
-        body: { action: 'status' },
+      const { data, error } = await invokeEdgeFunction<{ stats?: any; items?: any[] }>('process-inmail-queue', {
+        action: 'status',
       });
 
       if (error) throw error;
@@ -236,22 +236,20 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
     try {
       const profileData = buildProfileData(recipient);
       
-      const { data, error } = await supabase.functions.invoke('generate-outreach-message', {
-        body: { 
-          profile: profileData, 
-          job: {
-            title: selectedJob.title,
-            client: selectedJob.client,
-            skills: selectedJob.skills || [],
-            description: selectedJob.description,
-            location: selectedJob.location,
-            remote: selectedJob.remote,
-            accompagnement: selectedJob.accompagnement || [],
-          },
-          tone,
-          senderName: senderName.trim() || undefined,
-          candidateLinkedInUrl: recipient.profile?.public_profile_url || recipient.profile?.profile_url || undefined,
-        }
+      const { data, error } = await invokeEdgeFunction<{ subject?: string; message?: string }>('generate-outreach-message', {
+        profile: profileData, 
+        job: {
+          title: selectedJob.title,
+          client: selectedJob.client,
+          skills: selectedJob.skills || [],
+          description: selectedJob.description,
+          location: selectedJob.location,
+          remote: selectedJob.remote,
+          accompagnement: selectedJob.accompagnement || [],
+        },
+        tone,
+        senderName: senderName.trim() || undefined,
+        candidateLinkedInUrl: recipient.profile?.public_profile_url || recipient.profile?.profile_url || undefined,
       });
 
       if (error) throw error;
@@ -394,12 +392,10 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
           };
         });
 
-      const { data, error } = await supabase.functions.invoke('process-inmail-queue', {
-        body: {
-          action: 'queue',
-          items,
-          user_timezone: userTimezone,
-        },
+      const { data, error } = await invokeEdgeFunction<{ queued?: number }>('process-inmail-queue', {
+        action: 'queue',
+        items,
+        user_timezone: userTimezone,
       });
 
       if (error) throw error;
@@ -432,8 +428,8 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
     }
 
     try {
-      const { data, error } = await supabase.functions.invoke('process-inmail-queue', {
-        body: { action: 'cancel', item_ids: pendingIds },
+      const { data, error } = await invokeEdgeFunction<{ cancelled?: number }>('process-inmail-queue', {
+        action: 'cancel', item_ids: pendingIds,
       });
 
       if (error) throw error;

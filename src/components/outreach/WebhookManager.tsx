@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { supabase } from '@/integrations/supabase/client';
-import { getActiveOrganizationId } from '@/lib/orgContext';
+import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -24,16 +23,15 @@ export function WebhookManager() {
   const fetchWebhooks = async () => {
     setLoading(true);
     try {
-      const orgId = await getActiveOrganizationId();
-      const response = await supabase.functions.invoke('unipile-manage-webhooks', {
-        body: { action: 'list', organization_id: orgId },
+      const response = await invokeEdgeFunction<{ webhooks?: any }>('unipile-manage-webhooks', {
+        action: 'list',
       });
 
       if (response.error) throw response.error;
       if (!response.data?.success) throw new Error(response.data?.error);
 
       // Normalize source names (Unipile API uses 'account_status' but we display 'accounts')
-      const webhooksRaw = response.data.webhooks?.items || response.data.webhooks || [];
+      const webhooksRaw = (response.data as any).webhooks?.items || (response.data as any).webhooks || [];
       const normalizedWebhooks = webhooksRaw.map((w: WebhookInfo) => ({
         ...w,
         source: w.source === 'account_status' ? 'accounts' : w.source,
@@ -54,14 +52,13 @@ export function WebhookManager() {
   const handleRegister = async () => {
     setRegistering(true);
     try {
-      const orgId = await getActiveOrganizationId();
-      const response = await supabase.functions.invoke('unipile-manage-webhooks', {
-        body: { action: 'register', organization_id: orgId },
+      const response = await invokeEdgeFunction<{ results?: any[] }>('unipile-manage-webhooks', {
+        action: 'register',
       });
 
       if (response.error) throw response.error;
       if (!response.data?.success) {
-        const failedSources = response.data?.results?.filter((r: { success: boolean }) => !r.success) || [];
+        const failedSources = (response.data as any)?.results?.filter((r: { success: boolean }) => !r.success) || [];
         if (failedSources.length > 0) {
           toast.warning(`Certains webhooks n'ont pas pu être enregistrés: ${failedSources.map((r: { source: string }) => r.source).join(', ')}`);
         } else {
@@ -83,9 +80,8 @@ export function WebhookManager() {
   const handleDelete = async (webhookId: string) => {
     setDeletingId(webhookId);
     try {
-      const orgId = await getActiveOrganizationId();
-      const response = await supabase.functions.invoke('unipile-manage-webhooks', {
-        body: { action: 'delete', webhook_id: webhookId, organization_id: orgId },
+      const response = await invokeEdgeFunction('unipile-manage-webhooks', {
+        action: 'delete', webhook_id: webhookId,
       });
 
       if (response.error) throw response.error;
