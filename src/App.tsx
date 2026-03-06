@@ -6,6 +6,7 @@ import { Routes, Route, useLocation, useNavigate } from "react-router-dom";
 import { SessionExpiredDialog } from "@/components/SessionExpiredDialog";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { OrganizationGuard } from "@/components/OrganizationGuard";
+import { LinkedInAccountsProvider } from "@/contexts/LinkedInAccountsContext";
 import { supabase } from "@/integrations/supabase/client";
 import Index from "./pages/Index";
 import Discover from "./pages/Discover";
@@ -93,7 +94,9 @@ const AppContent = () => {
 const App = () => {
   return (
     <TooltipProvider>
-      <AppContent />
+      <LinkedInAccountsProvider>
+        <AppContent />
+      </LinkedInAccountsProvider>
     </TooltipProvider>
   );
 };
