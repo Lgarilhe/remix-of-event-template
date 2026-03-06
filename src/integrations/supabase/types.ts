@@ -1631,6 +1631,86 @@ export type Database = {
           },
         ]
       }
+      organization_integrations: {
+        Row: {
+          aircall_api_id: string | null
+          aircall_api_token: string | null
+          aircall_connected: boolean
+          airtable_api_key: string | null
+          airtable_base_id: string | null
+          airtable_base_id_2: string | null
+          airtable_connected: boolean
+          calendly_api_key: string | null
+          calendly_connected: boolean
+          created_at: string
+          id: string
+          notion_api_key: string | null
+          notion_candidats_db_id: string | null
+          notion_connected: boolean
+          notion_postes_db_id: string | null
+          notion_shortlist_db_id: string | null
+          organization_id: string
+          unipile_api_key: string | null
+          unipile_connected: boolean
+          unipile_dsn: string | null
+          updated_at: string
+        }
+        Insert: {
+          aircall_api_id?: string | null
+          aircall_api_token?: string | null
+          aircall_connected?: boolean
+          airtable_api_key?: string | null
+          airtable_base_id?: string | null
+          airtable_base_id_2?: string | null
+          airtable_connected?: boolean
+          calendly_api_key?: string | null
+          calendly_connected?: boolean
+          created_at?: string
+          id?: string
+          notion_api_key?: string | null
+          notion_candidats_db_id?: string | null
+          notion_connected?: boolean
+          notion_postes_db_id?: string | null
+          notion_shortlist_db_id?: string | null
+          organization_id: string
+          unipile_api_key?: string | null
+          unipile_connected?: boolean
+          unipile_dsn?: string | null
+          updated_at?: string
+        }
+        Update: {
+          aircall_api_id?: string | null
+          aircall_api_token?: string | null
+          aircall_connected?: boolean
+          airtable_api_key?: string | null
+          airtable_base_id?: string | null
+          airtable_base_id_2?: string | null
+          airtable_connected?: boolean
+          calendly_api_key?: string | null
+          calendly_connected?: boolean
+          created_at?: string
+          id?: string
+          notion_api_key?: string | null
+          notion_candidats_db_id?: string | null
+          notion_connected?: boolean
+          notion_postes_db_id?: string | null
+          notion_shortlist_db_id?: string | null
+          organization_id?: string
+          unipile_api_key?: string | null
+          unipile_connected?: boolean
+          unipile_dsn?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "organization_integrations_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: true
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       organization_members: {
         Row: {
           created_at: string
@@ -2467,6 +2547,38 @@ export type Database = {
       cosine_similarity_match: {
         Args: { p_candidate_id: string; p_job_id: string }
         Returns: number
+      }
+      get_org_integration: {
+        Args: { p_org_id: string }
+        Returns: {
+          aircall_api_id: string | null
+          aircall_api_token: string | null
+          aircall_connected: boolean
+          airtable_api_key: string | null
+          airtable_base_id: string | null
+          airtable_base_id_2: string | null
+          airtable_connected: boolean
+          calendly_api_key: string | null
+          calendly_connected: boolean
+          created_at: string
+          id: string
+          notion_api_key: string | null
+          notion_candidats_db_id: string | null
+          notion_connected: boolean
+          notion_postes_db_id: string | null
+          notion_shortlist_db_id: string | null
+          organization_id: string
+          unipile_api_key: string | null
+          unipile_connected: boolean
+          unipile_dsn: string | null
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "organization_integrations"
+          isOneToOne: true
+          isSetofReturn: false
+        }
       }
       get_org_role: {
         Args: { _org_id: string; _user_id: string }
