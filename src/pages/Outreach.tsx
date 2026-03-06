@@ -128,8 +128,8 @@ export default function Outreach() {
 
       <main className="pt-20 pb-0 w-full max-w-full">
         <div className="max-w-[1600px] mx-auto w-full min-w-0 px-3 sm:px-6 lg:px-8">
-          {/* Header */}
-          <div className="mb-6 sm:mb-8">
+          {/* Header — hidden on mobile when Messages tab is active */}
+          <div className={cn("mb-6 sm:mb-8", activeTab === 'messages' && "hidden md:block")}>
             <div className="flex items-center justify-between">
               <div>
                 <div className="flex items-center gap-2.5 sm:gap-3 mb-1">
@@ -147,7 +147,7 @@ export default function Outreach() {
           </div>
 
           {/* Tabs — brutal style */}
-          <div className="mb-5 sm:mb-6 min-w-0">
+          <div className={cn("mb-3 md:mb-5 sm:mb-6 min-w-0", activeTab === 'messages' && "mb-2 md:mb-5")}>
             <div className="grid grid-cols-3 sm:flex gap-0 w-full min-w-0">
               {tabs.map((tab, index) => {
                 const Icon = tab.icon;

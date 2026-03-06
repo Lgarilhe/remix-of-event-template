@@ -91,7 +91,7 @@ const MessagesInboxInner: React.FC<
       )}
 
       {/* Desktop layout + mobile chat list */}
-      <div className="flex h-[calc(100dvh-200px)] md:h-[calc(100dvh-280px)] min-h-[350px] md:min-h-[500px] bg-background border border-foreground overflow-hidden relative">
+      <div className="flex h-[calc(100dvh-160px)] md:h-[calc(100dvh-280px)] min-h-[300px] md:min-h-[500px] bg-background border border-foreground overflow-hidden relative">
         {/* Chat List Sidebar */}
         <ChatListSidebar
           chats={inbox.chats}
