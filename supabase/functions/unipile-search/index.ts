@@ -192,6 +192,10 @@ Deno.serve(async (req) => {
         return await handleGetUserPosts(baseUrl, apiKey, account_id, params);
       }
 
+      case 'endorse_skill': {
+        return await handleEndorseSkill(baseUrl, apiKey, account_id, params);
+      }
+
       default:
         return new Response(
           JSON.stringify({ success: false, error: 'Action non reconnue' }),
@@ -1686,7 +1690,55 @@ function normalizeProfileData(raw: Record<string, unknown>): Record<string, unkn
       start: parseDateValue(proj.start),
       end: parseDateValue(proj.end),
     }));
+}
+
+/**
+ * Handle LinkedIn Skill Endorsement
+ * Uses POST /api/v1/linkedin/profile/endorse
+ */
+async function handleEndorseSkill(
+  baseUrl: string,
+  apiKey: string,
+  accountId: string,
+  params: Record<string, unknown>
+): Promise<Response> {
+  const { profile_id, skill_endorsement_id } = params;
+
+  if (!profile_id || !skill_endorsement_id) {
+    return new Response(
+      JSON.stringify({ success: false, error: 'profile_id et skill_endorsement_id requis' }),
+      { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
   }
+
+  const response = await fetch(`${baseUrl}/linkedin/profile/endorse`, {
+    method: 'POST',
+    headers: {
+      'X-API-KEY': apiKey,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      account_id: accountId,
+      profile_id: String(profile_id),
+      skill_endorsement_id: Number(skill_endorsement_id),
+    }),
+  });
+
+  const data = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    console.error('[endorse_skill] Error:', response.status, data);
+    return new Response(
+      JSON.stringify({ success: false, error: data?.message || data?.error || `Erreur ${response.status}` }),
+      { status: response.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  }
+
+  return new Response(
+    JSON.stringify({ success: true, ...data }),
+    { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+  );
+}
 
   // Ensure contact_info is preserved
   // provider_id → keep for reference

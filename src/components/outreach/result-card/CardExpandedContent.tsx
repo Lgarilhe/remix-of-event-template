@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { LinkedInProfile } from '../types';
 import { JobMatchResult } from '../JobScoreDisplay';
 import { Job } from '@/types/jobs';
@@ -7,11 +7,13 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import {
-  Briefcase, GraduationCap, Zap,
-  MessageSquare, Newspaper, CalendarDays, Building2,
+  Briefcase, GraduationCap, Zap, ThumbsUp,
+  MessageSquare, Newspaper, CalendarDays, Building2, Loader2,
 } from 'lucide-react';
 import { CardMessageThread } from './CardMessageThread';
 import { ProfileData } from './types';
+import { invokeUnipile } from '@/lib/invokeUnipile';
+import { toast } from 'sonner';
 
 interface CardExpandedContentProps {
   profile: LinkedInProfile;
@@ -187,19 +189,11 @@ export const CardExpandedContent: React.FC<CardExpandedContentProps> = ({
         {/* Skills Tab */}
         <TabsContent value="skills" className="mt-0 p-2 sm:p-4">
           {skills.length > 0 ? (
-            <div className="flex flex-wrap gap-1.5">
-              {skills.map((skill: any, index: number) => (
-                <span
-                  key={index}
-                  className="text-xs px-2.5 py-1.5 bg-background text-foreground border border-foreground/30 font-medium hover:border-foreground transition-colors"
-                >
-                  {skill.name || skill}
-                  {skill.endorsement_count && (
-                    <span className="ml-1.5 text-[10px] text-muted-foreground font-normal">+{skill.endorsement_count}</span>
-                  )}
-                </span>
-              ))}
-            </div>
+            <SkillsWithEndorse
+              skills={skills}
+              profileId={profile.id}
+              accountId={accountId}
+            />
           ) : (
             <EmptyState icon={Zap} text="Aucune compétence disponible" />
           )}
@@ -241,3 +235,84 @@ const EmptyState: React.FC<{ icon: React.FC<any>; text: string }> = ({ icon: Ico
     <p className="text-xs font-bold uppercase tracking-wider">{text}</p>
   </div>
 );
+
+/** Skills list with inline endorsement buttons */
+const SkillsWithEndorse: React.FC<{
+  skills: any[];
+  profileId: string;
+  accountId?: string;
+}> = ({ skills, profileId, accountId }) => {
+  const [endorsedIds, setEndorsedIds] = useState<Set<number>>(new Set());
+  const [loadingId, setLoadingId] = useState<number | null>(null);
+
+  const handleEndorse = async (skill: any) => {
+    if (!accountId || !skill.endorsement_id) return;
+    setLoadingId(skill.endorsement_id);
+    try {
+      const { data } = await invokeUnipile({
+        body: {
+          action: 'endorse_skill',
+          account_id: accountId,
+          profile_id: profileId,
+          skill_endorsement_id: skill.endorsement_id,
+        },
+      });
+      if (data.success) {
+        setEndorsedIds(prev => new Set(prev).add(skill.endorsement_id));
+        toast.success(`Compétence "${skill.name}" endorsée`);
+      } else {
+        toast.error(data.error || 'Erreur lors de l\'endorsement');
+      }
+    } catch {
+      toast.error('Erreur réseau');
+    } finally {
+      setLoadingId(null);
+    }
+  };
+
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {skills.map((skill: any, index: number) => {
+        const hasEndorsementId = !!skill.endorsement_id;
+        const isEndorsed = skill.endorsed || endorsedIds.has(skill.endorsement_id);
+        const isLoading = loadingId === skill.endorsement_id;
+
+        return (
+          <span
+            key={index}
+            className="text-xs px-2.5 py-1.5 bg-background text-foreground border border-foreground/30 font-medium hover:border-foreground transition-colors inline-flex items-center gap-1.5"
+          >
+            {skill.name || skill}
+            {skill.endorsement_count != null && (
+              <span className="text-[10px] text-muted-foreground font-normal">+{skill.endorsement_count}</span>
+            )}
+            {hasEndorsementId && accountId && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    onClick={() => !isEndorsed && !isLoading && handleEndorse(skill)}
+                    disabled={isEndorsed || isLoading}
+                    className={`ml-0.5 p-0.5 rounded transition-colors ${
+                      isEndorsed
+                        ? 'text-primary cursor-default'
+                        : 'text-muted-foreground hover:text-primary cursor-pointer'
+                    }`}
+                  >
+                    {isLoading ? (
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                    ) : (
+                      <ThumbsUp className={`w-3 h-3 ${isEndorsed ? 'fill-current' : ''}`} />
+                    )}
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="top">
+                  {isEndorsed ? 'Endorsé ✓' : 'Endorser cette compétence'}
+                </TooltipContent>
+              </Tooltip>
+            )}
+          </span>
+        );
+      })}
+    </div>
+  );
+};
