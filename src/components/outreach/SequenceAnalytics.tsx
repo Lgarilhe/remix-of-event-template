@@ -117,10 +117,10 @@ export const SequenceAnalytics: React.FC<SequenceAnalyticsProps> = ({
       const { data: analyticsData } = await query;
       setAnalytics(analyticsData || []);
 
-      // Fetch enrollment stats
+      // Fetch enrollment stats (per unique candidate)
       let enrollQuery = supabase
         .from('sequence_enrollments')
-        .select('status, created_at, replied_at');
+        .select('status, created_at, replied_at, profile_id');
 
       if (filterSeqId) {
         enrollQuery = enrollQuery.eq('sequence_id', filterSeqId);
@@ -129,18 +129,28 @@ export const SequenceAnalytics: React.FC<SequenceAnalyticsProps> = ({
       const { data: enrollData } = await enrollQuery;
 
       if (enrollData) {
-        const replied = enrollData.filter(e => e.status === 'replied' && e.replied_at);
+        // Deduplicate by profile_id — keep most recent enrollment per candidate
+        const byProfile = new Map<string, typeof enrollData[0]>();
+        for (const e of enrollData) {
+          const existing = byProfile.get(e.profile_id);
+          if (!existing || new Date(e.created_at) > new Date(existing.created_at)) {
+            byProfile.set(e.profile_id, e);
+          }
+        }
+        const uniqueEnrollments = Array.from(byProfile.values());
+
+        const replied = uniqueEnrollments.filter(e => e.status === 'replied' && e.replied_at);
         const responseTimes = replied
           .map(e => differenceInHours(new Date(e.replied_at!), new Date(e.created_at)))
-          .filter(h => h > 0 && h < 720); // Filter outliers (>30 days)
+          .filter(h => h > 0 && h < 720);
 
         setEnrollmentStats({
-          total: enrollData.length,
-          active: enrollData.filter(e => e.status === 'active').length,
-          completed: enrollData.filter(e => e.status === 'completed').length,
+          total: uniqueEnrollments.length,
+          active: uniqueEnrollments.filter(e => e.status === 'active').length,
+          completed: uniqueEnrollments.filter(e => e.status === 'completed').length,
           replied: replied.length,
-          paused: enrollData.filter(e => e.status === 'paused').length,
-          cancelled: enrollData.filter(e => e.status === 'cancelled').length,
+          paused: uniqueEnrollments.filter(e => e.status === 'paused').length,
+          cancelled: uniqueEnrollments.filter(e => e.status === 'cancelled').length,
           avgResponseTimeHours: responseTimes.length > 0
             ? Math.round(responseTimes.reduce((a, b) => a + b, 0) / responseTimes.length)
             : null,
@@ -172,7 +182,10 @@ export const SequenceAnalytics: React.FC<SequenceAnalyticsProps> = ({
   }, [analytics]);
 
   const acceptRate = totals.invitesSent > 0 ? Math.round((totals.invitesAccepted / totals.invitesSent) * 100) : 0;
-  const replyRate = totals.messagesSent > 0 ? Math.round((totals.repliesReceived / totals.messagesSent) * 100) : 0;
+  // Reply rate per unique candidate (not per message volume)
+  const replyRate = enrollmentStats && enrollmentStats.total > 0
+    ? Math.round((enrollmentStats.replied / enrollmentStats.total) * 100)
+    : 0;
 
   // Chart data
   const chartData = useMemo(() => {
