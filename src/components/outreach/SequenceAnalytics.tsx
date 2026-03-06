@@ -60,6 +60,7 @@ interface AnalyticsRow {
 
 interface EnrollmentStats {
   total: number;
+  contacted: number;
   active: number;
   completed: number;
   replied: number;
