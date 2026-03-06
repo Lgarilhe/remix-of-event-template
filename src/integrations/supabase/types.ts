@@ -775,6 +775,56 @@ export type Database = {
           },
         ]
       }
+      candidate_assignments: {
+        Row: {
+          assigned_by: string | null
+          assigned_to: string
+          assignment_method: string
+          candidate_id: string
+          candidate_name: string | null
+          created_at: string
+          id: string
+          job_id: string
+          organization_id: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          assigned_by?: string | null
+          assigned_to: string
+          assignment_method?: string
+          candidate_id: string
+          candidate_name?: string | null
+          created_at?: string
+          id?: string
+          job_id: string
+          organization_id: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          assigned_by?: string | null
+          assigned_to?: string
+          assignment_method?: string
+          candidate_id?: string
+          candidate_name?: string | null
+          created_at?: string
+          id?: string
+          job_id?: string
+          organization_id?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "candidate_assignments_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       candidate_evaluations: {
         Row: {
           ai_generated: boolean
@@ -1287,6 +1337,54 @@ export type Database = {
         }
         Relationships: []
       }
+      job_assignments: {
+        Row: {
+          assigned_by: string
+          created_at: string
+          id: string
+          job_id: string
+          job_title: string | null
+          member_id: string
+          organization_id: string
+          user_id: string
+        }
+        Insert: {
+          assigned_by: string
+          created_at?: string
+          id?: string
+          job_id: string
+          job_title?: string | null
+          member_id: string
+          organization_id: string
+          user_id: string
+        }
+        Update: {
+          assigned_by?: string
+          created_at?: string
+          id?: string
+          job_id?: string
+          job_title?: string | null
+          member_id?: string
+          organization_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "job_assignments_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "organization_members"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "job_assignments_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       job_candidate_status: {
         Row: {
           candidate_headline: string | null
@@ -1490,6 +1588,50 @@ export type Database = {
           scoring_result?: Json
         }
         Relationships: []
+      }
+      member_quotas: {
+        Row: {
+          created_at: string
+          id: string
+          max_inmails_per_day: number | null
+          max_messages_per_day: number | null
+          max_profile_visits_per_day: number | null
+          max_searches_per_day: number | null
+          organization_id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          max_inmails_per_day?: number | null
+          max_messages_per_day?: number | null
+          max_profile_visits_per_day?: number | null
+          max_searches_per_day?: number | null
+          organization_id: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          max_inmails_per_day?: number | null
+          max_messages_per_day?: number | null
+          max_profile_visits_per_day?: number | null
+          max_searches_per_day?: number | null
+          organization_id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "member_quotas_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       message_analysis_cache: {
         Row: {
@@ -2006,6 +2148,38 @@ export type Database = {
             columns: ["project_id"]
             isOneToOne: false
             referencedRelation: "sourcing_projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      round_robin_state: {
+        Row: {
+          id: string
+          job_id: string
+          last_assigned_at: string | null
+          last_assigned_user_id: string | null
+          organization_id: string
+        }
+        Insert: {
+          id?: string
+          job_id: string
+          last_assigned_at?: string | null
+          last_assigned_user_id?: string | null
+          organization_id: string
+        }
+        Update: {
+          id?: string
+          job_id?: string
+          last_assigned_at?: string | null
+          last_assigned_user_id?: string | null
+          organization_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "round_robin_state_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
         ]
