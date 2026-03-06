@@ -176,8 +176,9 @@ export const SequenceAnalytics: React.FC<SequenceAnalyticsProps> = ({
   }, [analytics]);
 
   const acceptRate = totals.invitesSent > 0 ? Math.round((totals.invitesAccepted / totals.invitesSent) * 100) : 0;
-  const replyRate = enrollmentStats && enrollmentStats.total > 0
-    ? Math.round((enrollmentStats.replied / enrollmentStats.total) * 100)
+  // Reply rate = replied / contacted (same logic as dashboard)
+  const replyRate = enrollmentStats && enrollmentStats.contacted > 0
+    ? Math.round((enrollmentStats.replied / enrollmentStats.contacted) * 100)
     : 0;
 
   const chartData = useMemo(() => {
