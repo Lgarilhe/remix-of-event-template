@@ -189,19 +189,11 @@ export const CardExpandedContent: React.FC<CardExpandedContentProps> = ({
         {/* Skills Tab */}
         <TabsContent value="skills" className="mt-0 p-2 sm:p-4">
           {skills.length > 0 ? (
-            <div className="flex flex-wrap gap-1.5">
-              {skills.map((skill: any, index: number) => (
-                <span
-                  key={index}
-                  className="text-xs px-2.5 py-1.5 bg-background text-foreground border border-foreground/30 font-medium hover:border-foreground transition-colors"
-                >
-                  {skill.name || skill}
-                  {skill.endorsement_count && (
-                    <span className="ml-1.5 text-[10px] text-muted-foreground font-normal">+{skill.endorsement_count}</span>
-                  )}
-                </span>
-              ))}
-            </div>
+            <SkillsWithEndorse
+              skills={skills}
+              profileId={profile.id}
+              accountId={accountId}
+            />
           ) : (
             <EmptyState icon={Zap} text="Aucune compétence disponible" />
           )}
