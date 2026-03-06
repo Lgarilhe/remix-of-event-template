@@ -23,6 +23,7 @@ import Qualification from "./pages/Qualification";
 import NotFound from "./pages/NotFound";
 import CandidatePortal from "./pages/CandidatePortal";
 import Onboarding from "./pages/Onboarding";
+import Settings from "./pages/Settings";
 
 const PUBLIC_ROUTES = ['/', '/auth', '/discover', '/event', '/portal'];
 
@@ -77,6 +78,7 @@ const AppContent = () => {
         <Route path="/ats" element={<ProtectedRoute><OrganizationGuard><ATS /></OrganizationGuard></ProtectedRoute>} />
         <Route path="/dashboard" element={<ProtectedRoute><OrganizationGuard><Dashboard /></OrganizationGuard></ProtectedRoute>} />
         <Route path="/qualification/:id" element={<ProtectedRoute><OrganizationGuard><Qualification /></OrganizationGuard></ProtectedRoute>} />
+        <Route path="/settings" element={<ProtectedRoute><OrganizationGuard><Settings /></OrganizationGuard></ProtectedRoute>} />
         <Route path="/portal/:token" element={<CandidatePortal />} />
         <Route path="*" element={<NotFound />} />
       </Routes>
