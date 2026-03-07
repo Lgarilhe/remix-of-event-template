@@ -112,7 +112,7 @@ export const MyLinkedInAccount = () => {
                 <div className="flex items-center gap-1.5">
                   <div className={cn(
                     'w-1.5 h-1.5 rounded-full',
-                    (myAccount as any).status === 'OK' ? 'bg-green-500' : 'bg-amber-500'
+                    (myAccount as any).status === 'OK' ? 'bg-primary' : 'bg-destructive'
                   )} />
                   <span className="text-xs text-muted-foreground">
                     {(myAccount as any).status === 'OK' ? 'Actif' : (myAccount as any).status}
@@ -152,7 +152,7 @@ export const MyLinkedInAccount = () => {
                       <img src={linkedinLogo} alt="LinkedIn" className="w-5 h-5 object-contain" />
                       <span className="text-sm">{(acc as any).name || (acc as any).identifier || acc.id}</span>
                       {(acc as any).status === 'OK' && (
-                        <Badge variant="secondary" className="text-[10px] bg-green-100 text-green-700">Actif</Badge>
+                        <Badge variant="secondary" className="text-[10px]">Actif</Badge>
                       )}
                     </div>
                     <Button size="sm" variant="outline" onClick={() => handleLinkAccount(acc.id)}>
