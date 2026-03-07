@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Building2, Users, Crown, Shield, User, Trash2, ArrowLeft, Plug, Check, Loader2, Pencil } from 'lucide-react';
+import { Building2, Users, Crown, Shield, User, Trash2, ArrowLeft, Plug, Check, Loader2, Pencil, UserCircle } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useQuery } from '@tanstack/react-query';
@@ -14,6 +14,7 @@ import { IntegrationsSettings } from '@/components/settings/IntegrationsSettings
 import { InviteMemberForm } from '@/components/settings/InviteMemberForm';
 import { PendingInvitations } from '@/components/settings/PendingInvitations';
 import { TeamManagement } from '@/components/settings/TeamManagement';
+import { MyLinkedInAccount } from '@/components/settings/MyLinkedInAccount';
 import { toast } from 'sonner';
 
 const roleIcons = {
@@ -88,11 +89,15 @@ const Settings = () => {
 
         <h1 className="text-2xl font-semibold text-foreground mb-6">Paramètres</h1>
 
-        <Tabs defaultValue={searchParams.get('tab') === 'integrations' && isAdmin ? 'integrations' : 'general'} className="space-y-6">
+        <Tabs defaultValue={searchParams.get('tab') === 'integrations' && isAdmin ? 'integrations' : searchParams.get('tab') === 'account' ? 'account' : 'general'} className="space-y-6">
           <TabsList className="w-full justify-start">
             <TabsTrigger value="general" className="gap-2">
               <Building2 className="w-4 h-4" />
               Général
+            </TabsTrigger>
+            <TabsTrigger value="account" className="gap-2">
+              <UserCircle className="w-4 h-4" />
+              Mon compte
             </TabsTrigger>
             <TabsTrigger value="team" className="gap-2">
               <Users className="w-4 h-4" />
@@ -157,6 +162,11 @@ const Settings = () => {
                 </div>
               </CardContent>
             </Card>
+          </TabsContent>
+
+          {/* Account Tab */}
+          <TabsContent value="account">
+            <MyLinkedInAccount />
           </TabsContent>
 
           {/* Team Tab */}
