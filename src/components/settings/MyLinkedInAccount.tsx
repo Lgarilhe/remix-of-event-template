@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -21,11 +21,11 @@ export const MyLinkedInAccount = () => {
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
   // Get current user id
-  useState(() => {
+  useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
       if (user) setCurrentUserId(user.id);
     });
-  });
+  }, []);
 
   const myMapping = currentUserId ? getMappingForUser(currentUserId) : null;
   const myAccount = myMapping
