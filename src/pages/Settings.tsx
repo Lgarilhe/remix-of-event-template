@@ -164,6 +164,11 @@ const Settings = () => {
             </Card>
           </TabsContent>
 
+          {/* Account Tab */}
+          <TabsContent value="account">
+            <MyLinkedInAccount />
+          </TabsContent>
+
           {/* Team Tab */}
           <TabsContent value="team">
             <Card>
