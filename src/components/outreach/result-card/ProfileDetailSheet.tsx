@@ -134,7 +134,6 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
     }
   }, [showSwipeHint]);
 
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isScoring, setIsScoring] = useState(false);
 
   const handleScore = async () => {
