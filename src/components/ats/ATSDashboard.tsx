@@ -3,6 +3,7 @@ import { ATSCandidate } from '@/hooks/useATSData';
 import { useTodayScheduledMessages, ScheduledMessage } from '@/hooks/useTodayScheduledMessages';
 import { useOutreachAcceptanceStats } from '@/hooks/useOutreachAcceptanceStats';
 import { useDailyInviteStats } from '@/hooks/useDailyInviteStats';
+import { useResponseRateStats } from '@/hooks/useResponseRateStats';
 import { useNavigate } from 'react-router-dom';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -91,7 +92,9 @@ export function ATSDashboard({ candidates, stages }: ATSDashboardProps) {
   const { data: scheduledMessages = [], isLoading: loadingMessages } = useTodayScheduledMessages();
   const { data: acceptanceStats, isLoading: loadingAcceptance } = useOutreachAcceptanceStats();
   const { data: dailyInvites = [], isLoading: loadingInvites } = useDailyInviteStats(30);
+  const { data: responseRates, isLoading: loadingResponseRates } = useResponseRateStats();
   const [expandedMessageId, setExpandedMessageId] = React.useState<string | null>(null);
+  const [responseView, setResponseView] = React.useState<'all' | 'sequences' | 'inmails'>('all');
 
   // ═══ KPIs ═══
   const kpis = useMemo(() => {
@@ -780,6 +783,92 @@ export function ATSDashboard({ candidates, stages }: ATSDashboardProps) {
             )}
           </>
         )}
+      </Section>
+
+      {/* ─── Response Rate Stats ─── */}
+      <Section
+        title="Taux de réponse"
+        icon={MessageCircle}
+        action={
+          <div className="flex items-center gap-0 border border-foreground">
+            {(['all', 'sequences', 'inmails'] as const).map(view => (
+              <button
+                key={view}
+                onClick={() => setResponseView(view)}
+                className={cn(
+                  "px-2.5 py-1 text-[9px] uppercase tracking-wider font-medium transition-colors",
+                  responseView === view
+                    ? "bg-foreground text-background"
+                    : "text-muted-foreground hover:text-foreground",
+                  view !== 'all' && "border-l border-foreground",
+                )}
+              >
+                {view === 'all' ? 'Tous' : view === 'sequences' ? 'Séquences' : 'InMails'}
+              </button>
+            ))}
+          </div>
+        }
+      >
+        {loadingResponseRates ? (
+          <div className="p-4 h-[80px] bg-muted animate-pulse" />
+        ) : !responseRates ? (
+          <div className="p-6 flex flex-col items-center gap-2">
+            <MessageCircle className="w-6 h-6 text-muted-foreground/40" />
+            <p className="text-xs text-muted-foreground">Aucune donnée</p>
+          </div>
+        ) : (() => {
+          const viewData = responseView === 'sequences' ? responseRates.sequences
+            : responseView === 'inmails' ? responseRates.inmails
+            : responseRates.combined;
+          const showBreakdown = responseView === 'all';
+          return (
+            <div className="p-4">
+              {/* Main KPIs */}
+              <div className="grid grid-cols-3 gap-0 border border-foreground">
+                {[
+                  { label: 'Contactés', value: viewData.sent },
+                  { label: 'Réponses', value: viewData.replied },
+                  { label: 'Taux', value: `${viewData.rate}%`, accent: viewData.rate >= 20 },
+                ].map((kpi, i) => (
+                  <div key={kpi.label} className={cn(
+                    "p-3 flex flex-col gap-0.5",
+                    i > 0 && "border-l border-foreground",
+                    (kpi as any).accent && "bg-brutal-accent/10",
+                  )}>
+                    <span className="text-[9px] uppercase tracking-wider text-muted-foreground font-medium">{kpi.label}</span>
+                    <span className="text-xl font-bold font-mono">{kpi.value}</span>
+                  </div>
+                ))}
+              </div>
+
+              {/* Breakdown when "Tous" is selected */}
+              {showBreakdown && (
+                <div className="grid grid-cols-2 gap-0 mt-3 border border-foreground">
+                  {[
+                    { label: 'Séquences', sent: responseRates.sequences.sent, replied: responseRates.sequences.replied, rate: responseRates.sequences.rate, icon: Zap },
+                    { label: 'InMails', sent: responseRates.inmails.sent, replied: responseRates.inmails.replied, rate: responseRates.inmails.rate, icon: Mail },
+                  ].map((channel, i) => {
+                    const Icon = channel.icon;
+                    return (
+                      <div key={channel.label} className={cn("p-3", i > 0 && "border-l border-foreground")}>
+                        <div className="flex items-center gap-1.5 mb-2">
+                          <Icon className="w-3 h-3 text-muted-foreground" />
+                          <span className="text-[9px] uppercase tracking-wider font-bold">{channel.label}</span>
+                        </div>
+                        <div className="flex items-baseline gap-2">
+                          <span className="text-lg font-bold font-mono">{channel.rate}%</span>
+                          <span className="text-[10px] text-muted-foreground font-mono">
+                            {channel.replied}/{channel.sent}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          );
+        })()}
       </Section>
 
       {/* ─── Daily Invitations Chart ─── */}
