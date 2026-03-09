@@ -1,64 +1,65 @@
 
 
-# Plan : Refonte du coaching live -- mode "checklist + signaux"
+# Bug : Messages de relance envoyés sans premier message
 
-## Concept
+## Diagnostic
 
-Remplacer le feed chronologique (liste d'alertes qui s'empilent) par deux sections stables :
+J'ai identifié le bug dans le moteur de séquences. Voici ce qui se passe :
 
-1. **Checklist des critères** : la liste complète des critères de la scorecard, chacun avec un statut (pas encore abordé / couvert / signal positif/négatif). L'IA coche automatiquement quand le sujet est traité. Le recruteur voit d'un coup d'oeil ce qu'il reste à couvrir.
-
-2. **Signaux à creuser** : uniquement les points que l'IA détecte comme méritant d'être approfondis (hésitation, contradiction, red flag, opportunité). Maximum 2-3 items visibles, remplacés à chaque cycle (pas d'accumulation). Si rien d'intéressant, la section reste vide -- pas de bruit.
+### Séquence "Prospection candidat" — structure du graph
 
 ```text
-┌─────────────────────────────────────────┐
-│ ✅ Leadership          ⬜ Salaire       │
-│ ✅ Expérience tech     ⬜ Disponibilité │
-│ ⚠️ Motivation (négatif) ⬜ Culture fit  │
-├─────────────────────────────────────────┤
-│ 🔍 CREUSER                              │
-│ "Il hésite sur sa date de dispo"        │
-│  → Demander : quand exactement ?        │
-│                                         │
-│ "Mentionne une contre-offre"            │
-│  → Creuser le montant et la timeline    │
-└─────────────────────────────────────────┘
+Step 0: profile_visit
+Step 1: check_connection
+  ├─ Connected → Step 2: message (1er msg)
+  │                 └→ Step 8: message (relance 1) → Step 9: message (relance 2)
+  └─ Not connected → Step 3: connection_request
+                       └→ Step 4: wait_connection
+                            ├─ Connexion acceptée → Step 6: message (1er msg post-connexion)
+                            │                         └→ Step 8: message (relance 1) → Step 9 (relance 2)
+                            └─ Timeout → Step 5: inmail (initial)
+                                           └→ Step 7: inmail (relance)
+                                                └→ ??? (PAS DE next_step_id)
 ```
 
-## Changements
+### Le bug
 
-### 1. Prompt backend (`supabase/functions/live-coach/index.ts`)
+Step 7 (InMail relance) a `next_step_id: null`. Quand cette étape est terminée, la fonction `scheduleNextStep` utilise le **fallback `step_order + 1`** (ligne 1030 de `process-sequences`), ce qui programme Step 8 (order 8 = message relance 1).
 
-Modifier le prompt système pour demander un output différent :
-- **`criteria_updates`** : inchangé (l'IA marque les critères couverts)
-- **`dig_deeper`** : remplace `alerts` + `suggestions`. Liste de 0 à 3 items avec `{ signal: string, question: string }`. L'IA ne retourne des items que quand il y a quelque chose de pertinent à creuser
-- Supprimer le champ `alerts` du JSON de sortie
-- Augmenter la consigne : "Si rien de nouveau ou intéressant à signaler, retourne dig_deeper vide. Ne génère PAS d'items juste pour en générer."
+Mais Step 8 est une relance du premier message direct (Step 2 ou 6), qui n'a **jamais été envoyé** dans le parcours InMail. Résultat : le candidat reçoit une "relance" sans avoir reçu le premier message.
 
-### 2. Frontend (`src/components/ats/LiveCoachingPanel.tsx`)
+### Cas avéré
 
-**State** :
-- Remplacer `coachFeed: CoachAlert[]` par `digDeeper: { signal: string; question: string }[]`
-- Conserver `criteriaStatus` inchangé
-- Conserver `alertsLogRef` pour le rapport final (stocker tous les dig_deeper historiques)
+**Virgile Boulanger** : a reçu InMail initial (step 5), InMail relance (step 7), puis un message direct "relance" (step 8) alors qu'aucun premier message direct n'avait été envoyé.
 
-**Intervalle** :
-- Passer `COACH_INTERVAL_MS` de 15s à 30s
-- Ne plus déclencher sur `speech_final`, uniquement sur `UtteranceEnd` + timer (réduire les appels)
+### Seul 1 candidat affecté pour l'instant, mais le bug est structurel.
 
-**UI** :
-- **Section haute** : grille de tous les critères (compacte, 2 colonnes). Chaque critère = badge avec icone (⬜ pas couvert, ✅ couvert positif, ⚠️ couvert négatif). Clickable pour voir le verbatim
-- **Section basse** : "À creuser" -- les 2-3 derniers `dig_deeper` items. Remplacés à chaque cycle, pas accumulés. Animation `animate-in` quand ça change. Si vide, afficher "RAS -- continuez l'entretien"
-- Supprimer le `ScrollArea` du coach feed (plus besoin de scroller, tout tient dans l'espace fixe)
+---
 
-### 3. Réponse du coach (`analyzeWithCoach`)
+## Correctif proposé
 
-Adapter le parsing :
-- `data.dig_deeper` remplace `data.alerts` + `data.suggestions`
-- Setter `setDigDeeper(data.dig_deeper || [])` (remplacement, pas accumulation)
-- Pousser dans `alertsLogRef` pour historique
+### 1. Corriger le graph : terminer la branche InMail
 
-## Fichiers modifiés
-1. `supabase/functions/live-coach/index.ts` -- nouveau prompt + nouveau format JSON
-2. `src/components/ats/LiveCoachingPanel.tsx` -- nouveau state, nouvelle UI, intervalle 30s
+Le step 7 (InMail relance) doit **compléter la séquence** au lieu de tomber dans le fallback. On doit soit :
+- Ajouter une vérification dans `scheduleNextStep` pour empêcher le fallback `step_order + 1` quand le step courant est un **branch target** (déjà pointé par un `timeout_branch_step_id`, `if_true_goto_step`, ou `if_false_goto_step`)
+- OU corriger la donnée : ne pas utiliser le fallback si le step courant fait partie d'une branche isolée
+
+### 2. Fix dans `scheduleNextStep` (approche structurelle)
+
+Avant de fallback sur `step_order + 1`, vérifier si le step courant est atteint via une branche (referenced by `timeout_branch_step_id`, `if_true/false_goto_step`). Si oui, **ne pas fallback** et compléter la séquence.
+
+Le code existant fait déjà partiellement cette vérification (lignes 1050-1058), mais il ne **bloque pas** le fallback — il se contente de logger.
+
+### 3. Guard supplémentaire : vérifier les précédents avant d'envoyer un message de relance
+
+Dans `handleProcess`, avant d'exécuter un step de type message avec `condition_type: if_connected`, vérifier que le candidat a bien au moins un message `sent` dans la même branche logique. Si non → skip avec raison "no_previous_message".
+
+### Fichiers modifiés
+
+1. **`supabase/functions/process-sequences/index.ts`** :
+   - `scheduleNextStep()` : transformer le log des lignes 1050-1058 en **return** effectif pour empêcher le fallback `step_order + 1` quand le step est un branch target
+   - `handleProcess()` : ajouter un guard avant les message/inmail pour vérifier qu'un message précédent a bien été envoyé quand le step fait partie d'une chaîne de relances
+
+2. **Migration SQL** (optionnelle) :
+   - Annuler le step 8 de Virgile Boulanger si pas encore traité
 
