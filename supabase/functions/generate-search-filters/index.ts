@@ -302,7 +302,7 @@ Retourne UNIQUEMENT un objet JSON avec:
 - location_hint: string
 - job_category: string - "tech", "business", "data", "product", "design", "other"
 - suggest_open_to_work: boolean - false sauf si explicitement demandé
-- suggest_spotlight: string - "ACTIVE_TALENT" par défaut, "" si profil pénurique (pour ne pas réduire le vivier). Valeurs valides: OPEN_TO_WORK, ACTIVE_TALENT, REDISCOVERED_CANDIDATES, INTERNAL_CANDIDATES, INTERESTED_IN_YOUR_COMPANY, HAVE_COMPANY_CONNECTIONS
+- suggest_spotlight: string - "" par défaut (ne jamais mettre ACTIVE_TALENT automatiquement). Valeurs valides: OPEN_TO_WORK, ACTIVE_TALENT, REDISCOVERED_CANDIDATES, INTERNAL_CANDIDATES, INTERESTED_IN_YOUR_COMPANY, HAVE_COMPANY_CONNECTIONS. Utiliser uniquement si demandé explicitement.
 - keyword_rationale: string - Explication de la structure layered choisie (1 phrase)
 - experience_rationale: string - Explication de la plage d'expérience (1 phrase)
 - search_rationale: string - Stratégie globale en 1 phrase (mentionner Role/Work/Context)
