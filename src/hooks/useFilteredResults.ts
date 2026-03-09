@@ -238,7 +238,7 @@ export function useFilteredResults({
     }
 
     return filtered;
-  }, [mergedResults, jobScores, sortByScore, selectedJob, showDismissed, autoHideTreated, treatedIds, dismissedIds, getStatus, statusFilter, scoredSortBy, statuses]);
+  }, [mergedResults, jobScores, sortByScore, selectedJob, showDismissed, autoHideTreated, treatedIds, dismissedIds, getStatus, statusFilter, scoredSortBy, statuses, preScores]);
 
   // Calculate selectable profiles (exclude "peu adapté")
   const selectableProfiles = useMemo(() => {
