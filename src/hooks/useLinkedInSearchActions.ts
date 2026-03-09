@@ -478,6 +478,11 @@ export function useLinkedInSearchActions(
       }
 
       for (let round = 0; round < MAX_FETCH_ROUNDS; round++) {
+        // Yield to the event loop between rounds to prevent browser freeze
+        if (round > 0) {
+          await new Promise(resolve => setTimeout(resolve, 0));
+        }
+
         const baseParams = buildSearchParams(currentFilters, selectedAccount);
         const params: Record<string, unknown> = {
           ...baseParams,
@@ -599,13 +604,29 @@ export function useLinkedInSearchActions(
         candidateStatus.batchDiscover(profilesToDiscover).catch(console.error);
       }
 
-      // Calculate pre-scores before setting results
-      const scoredBatch = selectedJob
-        ? allCollected.map(profile => ({
+      // Yield before pre-scoring to prevent freeze on large batches
+      await new Promise(resolve => setTimeout(resolve, 0));
+
+      // Calculate pre-scores in chunks to avoid blocking the main thread
+      let scoredBatch: LinkedInProfile[];
+      if (selectedJob && allCollected.length > 0) {
+        const CHUNK_SIZE = 10;
+        const scored: LinkedInProfile[] = [];
+        for (let i = 0; i < allCollected.length; i += CHUNK_SIZE) {
+          const chunk = allCollected.slice(i, i + CHUNK_SIZE);
+          scored.push(...chunk.map(profile => ({
             ...profile,
             _preScore: calculatePreScore(profile, selectedJob, selectedJob.skills || []),
-          }))
-        : allCollected;
+          })));
+          // Yield every chunk to keep UI responsive
+          if (i + CHUNK_SIZE < allCollected.length) {
+            await new Promise(resolve => setTimeout(resolve, 0));
+          }
+        }
+        scoredBatch = scored;
+      } else {
+        scoredBatch = allCollected;
+      }
 
       const noMoreResults = exhausted || reachedTotal;
 
