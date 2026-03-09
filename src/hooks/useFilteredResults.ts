@@ -106,35 +106,49 @@ export function useFilteredResults({
   // Deferred pre-scoring: calculate pre-scores in chunks to avoid freezing the main thread
   const [preScores, setPreScores] = useState<Map<string, any>>(new Map());
   const preScoreGenRef = useRef(0);
+  // Track which IDs have already been scored to avoid stale closure issues
+  const scoredIdsRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     if (!selectedJob || mergedResults.length === 0) {
       setPreScores(new Map());
+      scoredIdsRef.current = new Set();
       return;
     }
 
-    const gen = ++preScoreGenRef.current;
-    const jobSkills = selectedJob.skills || [];
-    const profilesToScore = mergedResults.filter(p => !(preScores.has(p.id)));
+    // Use ref to check already-scored IDs (avoids stale closure on preScores)
+    const profilesToScore = mergedResults.filter(p => !scoredIdsRef.current.has(p.id));
     
     if (profilesToScore.length === 0) return;
 
+    const gen = ++preScoreGenRef.current;
+    const jobSkills = selectedJob.skills || [];
+
     let cancelled = false;
-    const CHUNK_SIZE = 15;
+    const CHUNK_SIZE = 20;
 
     (async () => {
-      const newScores = new Map(preScores);
+      const batchScores = new Map<string, any>();
       for (let i = 0; i < profilesToScore.length; i += CHUNK_SIZE) {
         if (cancelled || gen !== preScoreGenRef.current) return;
         const chunk = profilesToScore.slice(i, i + CHUNK_SIZE);
         for (const p of chunk) {
-          newScores.set(p.id, calculatePreScore(p, selectedJob, jobSkills));
+          batchScores.set(p.id, calculatePreScore(p, selectedJob, jobSkills));
+          scoredIdsRef.current.add(p.id);
         }
         // Yield to main thread between chunks
-        await new Promise(r => setTimeout(r, 0));
+        if (i + CHUNK_SIZE < profilesToScore.length) {
+          await new Promise(r => setTimeout(r, 0));
+        }
       }
       if (!cancelled && gen === preScoreGenRef.current) {
-        setPreScores(newScores);
+        setPreScores(prev => {
+          const next = new Map(prev);
+          for (const [id, score] of batchScores) {
+            next.set(id, score);
+          }
+          return next;
+        });
       }
     })();
 
