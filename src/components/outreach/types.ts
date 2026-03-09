@@ -201,8 +201,8 @@ export const INITIAL_FILTERS: LinkedInFiltersState = {
   last_name: '',
   title_keywords: '',
   // Activity filters
-  activity_messages: null,
-  activity_messages_days: null,
+  activity_messages: 'without_message',
+  activity_messages_days: 90,
   activity_notes: null,
   activity_notes_days: null,
   tags: [],
