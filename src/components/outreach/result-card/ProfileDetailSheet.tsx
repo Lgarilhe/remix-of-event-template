@@ -48,6 +48,10 @@ interface ProfileDetailSheetProps {
   onMessageSent?: () => void;
   onSequenceEnroll?: () => void;
   onProfileTreated?: () => void;
+  onNavigatePrev?: () => void;
+  onNavigateNext?: () => void;
+  currentIndex?: number;
+  totalCount?: number;
 }
 
 export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
