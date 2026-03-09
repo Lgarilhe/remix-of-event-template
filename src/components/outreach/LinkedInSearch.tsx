@@ -199,37 +199,9 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
     return search.results.filter(p => search.candidateStatus.dismissedIds.has(p.id)).length;
   }, [search.results, search.candidateStatus.dismissedIds]);
 
-  // Hydrate jobScores from persisted candidate statuses (score, recommendation)
-  useEffect(() => {
-    if (!search.hasSearched || search.results.length === 0) return;
-    const { statuses } = search.candidateStatus;
-    if (statuses.size === 0) return;
+  // NOTE: jobScores hydration from candidateStatus.statuses is handled in useLinkedInSearch (seedJobScores effect).
+  // Do NOT duplicate it here — that causes redundant state updates and contributes to freeze on job selection.
 
-    const hydratedScores: Record<string, import('@/components/outreach/JobScoreDisplay').JobMatchResult> = {};
-    let count = 0;
-
-    for (const profile of search.results) {
-      if (search.jobScores[profile.id]) continue; // Already scored in this session
-      const persisted = statuses.get(profile.id);
-      if (persisted?.score != null && persisted.score > 0) {
-        hydratedScores[profile.id] = {
-          profile_name: persisted.candidate_name || profile.name || '',
-          match_score: persisted.score,
-          matching_skills: [],
-          missing_skills: [],
-          experience_match: 'incertain',
-          location_match: true,
-          summary: '',
-          recommendation: (persisted.recommendation as any) || 'maybe',
-        };
-        count++;
-      }
-    }
-
-    if (count > 0) {
-      search.setJobScores(prev => ({ ...prev, ...hydratedScores }));
-    }
-  }, [search.hasSearched, search.results, search.candidateStatus.statuses]);
 
   // Auto-save search history when job changes (captures the previous session)
   const prevJobIdRef = useRef<string | null>(null);

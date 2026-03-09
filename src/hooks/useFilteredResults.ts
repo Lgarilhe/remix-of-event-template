@@ -76,6 +76,9 @@ export function useFilteredResults({
   const { treatedIds, dismissedIds, getStatus, statuses } = candidateStatus;
 
   // Merge search results with pool profiles from DB
+  // Cap pool profiles to avoid freezing the main thread with large candidate pools
+  const MAX_POOL_PROFILES = 200;
+
   const mergedResults = useMemo(() => {
     if (!showPoolView || !statuses || statuses.size === 0) return results;
 
@@ -86,7 +89,10 @@ export function useFilteredResults({
     }
 
     // Add DB profiles not in current search (pool profiles) — with pre-score
+    // Cap to MAX_POOL_PROFILES to avoid blocking the main thread
+    let poolAdded = 0;
     for (const [candidateId, status] of statuses) {
+      if (poolAdded >= MAX_POOL_PROFILES) break;
       if (!byId.has(candidateId) && canRehydrate(status)) {
         const rehydrated = rehydrateProfile(status);
         // Calculate pre-score for rehydrated profiles
@@ -94,6 +100,7 @@ export function useFilteredResults({
           (rehydrated as any)._preScore = calculatePreScore(rehydrated, selectedJob, selectedJob.skills || []);
         }
         byId.set(candidateId, rehydrated);
+        poolAdded++;
       }
     }
 
