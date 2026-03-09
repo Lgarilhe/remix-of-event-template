@@ -145,16 +145,6 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
       setIsScoring(false);
     }
   };
-  const [aiAnalysis, setAiAnalysis] = useState<{
-    summary: string;
-    strengths: string[];
-    concerns: string[];
-    fit_score: number;
-    recommendation: string;
-  } | null>(null);
-
-  // Reset AI analysis when profile changes
-  useEffect(() => { setAiAnalysis(null); }, [profile?.id]);
 
   // Auto-enrich pool profiles that have no work_experience data
   const [enrichedProfile, setEnrichedProfile] = useState<LinkedInProfile | null>(null);
