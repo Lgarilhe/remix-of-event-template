@@ -451,7 +451,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
                     className="h-7 gap-1 text-[11px] rounded-none border border-foreground bg-brutal-accent text-foreground hover:bg-brutal-accent/80 px-2.5 uppercase tracking-wider font-semibold shrink-0"
                   >
                     <PenLine className="w-3 h-3" />
-                    Msg
+                    Message
                   </Button>
                 )}
 
