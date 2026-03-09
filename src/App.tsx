@@ -61,11 +61,6 @@ const AppContent = () => {
       <Sonner />
       <Routes>
         <Route path="/" element={<SkalrLanding />} />
-        <Route path="/discover" element={<Discover />} />
-        <Route path="/event/:id" element={<Index />} />
-        <Route path="/event/:id/edit" element={<ProtectedRoute><EditEvent /></ProtectedRoute>} />
-        <Route path="/my-events" element={<ProtectedRoute><MyEvents /></ProtectedRoute>} />
-        <Route path="/create-event" element={<ProtectedRoute><CreateEvent /></ProtectedRoute>} />
         <Route path="/auth" element={<Auth />} />
         <Route path="/onboarding" element={<ProtectedRoute><Onboarding /></ProtectedRoute>} />
         <Route path="/admin" element={<ProtectedRoute><Admin /></ProtectedRoute>} />
