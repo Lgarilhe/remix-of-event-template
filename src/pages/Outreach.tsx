@@ -176,7 +176,7 @@ export default function Outreach() {
 
           {/* Tabs — brutal style */}
           <div className={cn("mb-3 md:mb-5 sm:mb-6 min-w-0", activeTab === 'messages' && "mb-2 md:mb-5")}>
-            <div className="grid grid-cols-3 sm:flex gap-0 w-full min-w-0">
+            <div className="flex gap-0 w-full min-w-0 overflow-x-auto no-scrollbar">
               {tabs.map((tab, index) => {
                 const isActive = activeTab === tab.value;
                 return (
@@ -184,16 +184,15 @@ export default function Outreach() {
                     key={tab.value}
                     onClick={() => setActiveTab(tab.value)}
                     className={cn(
-                      "relative overflow-hidden flex items-center justify-center sm:justify-start gap-1 h-[34px] px-2 sm:px-4 text-[10px] sm:text-xs font-medium uppercase tracking-wider border border-foreground transition-colors duration-200 group min-w-0",
-                      index > 0 && "sm:border-l-0",
+                      "relative overflow-hidden flex items-center justify-center gap-1 h-[34px] px-2 sm:px-4 text-[10px] sm:text-xs font-medium uppercase tracking-wider border border-foreground transition-colors duration-200 group shrink-0",
+                      index > 0 && "border-l-0",
                       isActive
                         ? "bg-brutal-accent text-foreground"
                         : "bg-background text-foreground"
                     )}
                   >
                     <span className="text-sm shrink-0 relative z-10">{tab.emoji}</span>
-                    <span className="hidden sm:inline relative z-10 truncate">{tab.label}</span>
-                    <span className="sm:hidden relative z-10 truncate">{tab.shortLabel || tab.label}</span>
+                    <span className="relative z-10 whitespace-nowrap">{tab.label}</span>
                     {tab.value === 'messages' && unreadMessageCount > 0 && (
                       <span className="ml-0.5 px-1.5 py-0.5 text-[9px] sm:text-[10px] font-bold bg-red-600 text-white rounded-full min-w-[16px] text-center relative z-10">
                         {unreadMessageCount > 99 ? '99+' : unreadMessageCount}
