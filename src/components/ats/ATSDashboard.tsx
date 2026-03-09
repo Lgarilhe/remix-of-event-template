@@ -90,6 +90,7 @@ export function ATSDashboard({ candidates, stages }: ATSDashboardProps) {
   const navigate = useNavigate();
   const { data: scheduledMessages = [], isLoading: loadingMessages } = useTodayScheduledMessages();
   const { data: acceptanceStats, isLoading: loadingAcceptance } = useOutreachAcceptanceStats();
+  const { data: dailyInvites = [], isLoading: loadingInvites } = useDailyInviteStats(30);
   const [expandedMessageId, setExpandedMessageId] = React.useState<string | null>(null);
 
   // ═══ KPIs ═══
