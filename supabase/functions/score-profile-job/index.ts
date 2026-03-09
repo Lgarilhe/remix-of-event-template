@@ -119,41 +119,204 @@ const CACHE_TTL_MS = 48 * 60 * 60 * 1000; // 48h
 const MAX_LLM_RETRIES = 2;
 
 // ─── Skill Synonyms ─────────────────────────────────────────────────────────
+// Synchronized with src/hooks/linkedin/skillSynonyms.ts — keep both in sync.
+// Used for hard-filter pre-computation and implicit skill extraction.
+// NOTE: The definitive skill matching is done by the LLM (Claude), which
+// understands synonyms and context natively. This dictionary is a fast heuristic.
 
 const SKILL_SYNONYMS: Record<string, string[]> = {
-  kubernetes: ["k8s", "kube", "container orchestration"],
-  javascript: ["js", "ecmascript", "es6", "es2015"],
+  // Languages & Frameworks
+  javascript: ["js", "ecmascript", "es6", "es2015", "es2020"],
   typescript: ["ts"],
-  python: ["py", "python3"],
-  react: ["reactjs", "react.js"],
-  vue: ["vuejs", "vue.js"],
-  angular: ["angularjs", "angular.js"],
-  nodejs: ["node.js", "node js"],
-  postgres: ["postgresql", "psql"],
-  mongodb: ["mongo"],
-  redis: ["redis cache"],
-  elasticsearch: ["elastic search"],
-  docker: ["containers", "containerization"],
-  aws: ["amazon web services", "amazon aws"],
-  gcp: ["google cloud", "google cloud platform"],
-  azure: ["microsoft azure"],
-  "ci/cd": ["cicd", "continuous integration", "continuous deployment"],
-  "machine learning": ["ml", "deep learning"],
-  graphql: ["graph ql"],
-  "rest api": ["restful", "rest"],
-  agile: ["scrum", "kanban"],
-  mysql: ["mariadb"],
-  java: ["spring", "spring boot"],
-  golang: ["go lang"],
+  python: ["py", "python3", "pyspark"],
+  java: ["jvm", "spring", "spring boot", "j2ee", "jee", "hibernate"],
+  "c#": ["csharp", ".net", "dotnet", "asp.net"],
+  "c++": ["cpp", "c plus plus"],
+  go: ["golang"],
   rust: ["rustlang"],
-  terraform: ["iac", "infrastructure as code"],
-  kafka: ["event streaming", "apache kafka"],
+  ruby: ["rails", "ruby on rails", "ror"],
+  php: ["laravel", "symfony", "wordpress"],
+  swift: ["ios development", "swiftui"],
+  kotlin: ["android development", "jetpack compose"],
+  scala: ["akka", "play framework"],
+  vba: ["visual basic", "excel macro"],
+  abap: ["sap abap"],
+  // Frontend
+  react: ["reactjs", "react.js", "react native"],
+  vue: ["vuejs", "vue.js", "nuxt", "nuxtjs"],
+  angular: ["angularjs", "angular.js"],
+  "next.js": ["nextjs", "next"],
+  svelte: ["sveltekit"],
+  tailwind: ["tailwindcss"],
+  sass: ["scss", "less"],
+  figma: ["ui design", "sketch", "adobe xd"],
+  // Backend & API
+  node: ["nodejs", "node.js", "express", "fastify", "nestjs"],
+  api: ["rest api", "restful", "api rest"],
+  graphql: ["graph ql", "apollo graphql"],
+  grpc: ["protocol buffers", "protobuf"],
+  microservices: ["micro-services", "architecture microservices", "soa"],
+  // Databases
+  postgres: ["postgresql", "psql", "pg"],
+  mysql: ["mariadb"],
+  sql: ["sql server", "mssql", "tsql", "plsql", "pl/sql"],
+  mongodb: ["mongo", "mongoose"],
+  redis: ["redis cache", "redis cluster"],
+  elasticsearch: ["elastic", "elastic search", "opensearch"],
+  cassandra: ["apache cassandra", "scylladb"],
+  dynamodb: ["dynamo db", "aws dynamodb"],
+  oracle: ["oracle db", "oracle database"],
+  // Cloud
+  aws: ["amazon web services", "amazon aws"],
+  azure: ["microsoft azure", "azure cloud"],
+  gcp: ["google cloud", "google cloud platform"],
+  ec2: ["elastic compute", "amazon ec2"],
+  s3: ["amazon s3", "simple storage service"],
+  lambda: ["aws lambda", "serverless aws"],
+  eks: ["elastic kubernetes service", "aws eks"],
+  aks: ["azure kubernetes service"],
+  gke: ["google kubernetes engine"],
+  // Virtualisation
+  vmware: ["vsphere", "esxi", "vcenter", "vsan", "nsx", "vmware vsphere"],
+  "hyper-v": ["hyperv", "hyper v", "microsoft hyper-v"],
+  kvm: ["qemu", "libvirt"],
+  openstack: ["open stack"],
+  nutanix: ["nutanix ahv", "acropolis"],
+  virtualisation: ["virtualization", "hyperviseur", "hypervisor"],
+  // Containers & Orchestration
+  docker: ["containers", "containerization", "containerd", "containerisation"],
+  kubernetes: ["k8s", "kube", "container orchestration"],
+  helm: ["helm charts"],
+  istio: ["service mesh", "envoy proxy"],
+  openshift: ["red hat openshift", "ocp"],
+  // IaC & Config Management
+  terraform: ["iac", "infrastructure as code", "terragrunt", "opentofu"],
+  ansible: ["configuration management", "ansible playbook"],
+  puppet: ["puppet enterprise"],
+  chef: ["chef infra", "chef automate"],
+  packer: ["hashicorp packer"],
+  // CI/CD & DevOps
+  "ci/cd": ["cicd", "continuous integration", "continuous deployment", "continuous delivery"],
+  devops: ["dev ops", "sre", "site reliability", "platform engineering"],
+  jenkins: ["ci server", "jenkins pipeline"],
+  gitlab: ["gitlab ci", "gitlab ci/cd"],
+  "github actions": ["gh actions", "github workflows"],
+  argocd: ["argo cd", "gitops"],
+  // Networking
+  cisco: ["ios", "nexus", "catalyst", "cisco systems"],
+  juniper: ["junos", "juniper networks"],
+  arista: ["arista networks", "arista eos"],
+  networking: ["network", "réseau", "réseaux", "network engineer"],
+  bgp: ["border gateway protocol"],
+  "sd-wan": ["sdwan", "software defined wan"],
+  vpn: ["virtual private network", "ipsec", "openvpn", "wireguard"],
+  dns: ["bind", "domain name system", "powerdns"],
+  // Security
+  cybersecurity: ["cybersécurité", "infosec", "information security", "sécurité informatique"],
+  "palo alto": ["palo alto networks", "pan-os", "panorama"],
+  fortinet: ["fortigate", "fortios", "fortimanager"],
+  checkpoint: ["check point", "check point firewall"],
+  zscaler: ["zscaler zpa", "zscaler zia", "zero trust network"],
+  waf: ["web application firewall", "modsecurity"],
+  siem: ["security information", "splunk siem", "qradar", "sentinel"],
+  soc: ["security operations center", "centre opérationnel de sécurité"],
+  pentest: ["penetration testing", "test intrusion", "ethical hacking"],
+  rgpd: ["gdpr", "data protection", "protection des données"],
+  // Load Balancing
+  f5: ["big-ip", "f5 networks", "f5 big-ip", "ltm"],
+  haproxy: ["ha proxy"],
+  nginx: ["nginx plus", "reverse proxy"],
+  traefik: ["traefik proxy"],
+  "load balancing": ["load balancer", "répartition de charge"],
+  // Monitoring
+  nagios: ["nagios xi", "centreon"],
+  zabbix: ["zabbix monitoring"],
+  datadog: ["dd", "datadog agent"],
+  splunk: ["splunk enterprise"],
+  grafana: ["grafana dashboards"],
+  prometheus: ["prom", "promql"],
+  elk: ["elk stack", "logstash", "kibana", "elastic stack"],
+  dynatrace: ["dynatrace oneagent"],
+  // Storage & Backup
+  netapp: ["ontap", "netapp ontap"],
+  "dell emc": ["emc", "dell storage", "powerstore"],
+  ceph: ["ceph storage", "rados"],
+  san: ["storage area network", "fibre channel", "iscsi"],
+  nas: ["network attached storage", "nfs", "smb", "cifs"],
+  veeam: ["veeam backup"],
+  commvault: ["commvault backup"],
+  // OS
+  linux: ["unix", "rhel", "ubuntu", "debian", "centos", "rocky linux"],
+  "windows server": ["active directory", "ad", "gpo", "wsus", "sccm"],
+  shell: ["bash", "zsh", "scripting", "powershell", "script shell"],
+  // ITSM
+  servicenow: ["snow", "service-now"],
+  itil: ["itil v3", "itil v4", "gestion des services"],
+  jira: ["atlassian jira", "jira service management"],
+  // Data & BI
+  "data engineering": ["data pipeline", "etl", "elt", "data platform"],
+  spark: ["apache spark", "pyspark", "spark streaming"],
+  airflow: ["apache airflow", "dag", "orchestration données"],
+  dbt: ["data build tool"],
+  kafka: ["event streaming", "message queue", "apache kafka", "confluent"],
   rabbitmq: ["message broker", "amqp"],
-  fastify: ["fastify.js"],
-  nextjs: ["next.js", "next js"],
-  nuxtjs: ["nuxt.js", "nuxt"],
-  tailwind: ["tailwindcss", "tailwind css"],
-  devops: ["dev ops", "sre"],
+  snowflake: ["snowflake db", "snowflake data cloud"],
+  databricks: ["lakehouse", "delta lake"],
+  tableau: ["data visualization", "dataviz"],
+  "power bi": ["powerbi"],
+  looker: ["looker studio", "google data studio"],
+  // ML & AI
+  "machine learning": ["ml", "deep learning", "ai", "artificial intelligence"],
+  tensorflow: ["tf", "keras"],
+  pytorch: ["torch"],
+  nlp: ["natural language processing", "traitement du langage naturel"],
+  "data science": ["science des données", "data scientist"],
+  // Agile & PM
+  agile: ["scrum", "kanban", "safe", "lean agile"],
+  pmp: ["project management professional", "gestion de projet"],
+  "product management": ["product owner", "po", "gestion produit"],
+  // ERP & Business
+  sap: ["sap erp", "sap hana", "sap s/4hana", "sap fi/co", "sap mm"],
+  salesforce: ["sfdc", "salesforce crm", "salesforce lightning"],
+  hubspot: ["hubspot crm", "hubspot marketing"],
+  workday: ["workday hcm"],
+  // Marketing
+  seo: ["search engine optimization", "référencement naturel"],
+  sea: ["search engine advertising", "google ads", "adwords"],
+  "marketing automation": ["marketo", "pardot", "mailchimp", "brevo"],
+  crm: ["customer relationship management", "gestion relation client"],
+  // Finance
+  comptabilité: ["accounting", "comptable", "accountant"],
+  ifrs: ["normes ifrs", "international financial reporting"],
+  "contrôle de gestion": ["management control", "controlling"],
+  kyc: ["know your customer", "aml", "anti money laundering", "lcb-ft"],
+  // HR
+  sirh: ["hris", "human resource information system"],
+  paie: ["payroll", "gestion paie"],
+  recrutement: ["recruitment", "sourcing", "talent acquisition"],
+  // Supply Chain
+  "supply chain": ["chaîne d'approvisionnement", "supply chain management", "scm"],
+  wms: ["warehouse management system", "gestion d'entrepôt"],
+  lean: ["lean management", "lean manufacturing", "kaizen", "six sigma"],
+  // Engineering & BTP
+  autocad: ["auto cad", "autodesk autocad"],
+  bim: ["building information modeling", "maquette numérique"],
+  solidworks: ["solid works", "dassault solidworks"],
+  // Legal
+  compliance: ["conformité", "regulatory compliance"],
+  "propriété intellectuelle": ["intellectual property", "ip", "brevets", "patents"],
+  dpo: ["data protection officer", "délégué protection données"],
+  // Healthcare
+  hl7: ["health level 7", "hl7 fhir"],
+  fhir: ["fast healthcare interoperability"],
+  // Certifications
+  ccna: ["cisco certified network associate"],
+  ccnp: ["cisco certified network professional"],
+  "aws saa": ["aws solutions architect", "solutions architect associate"],
+  "az-104": ["azure administrator"],
+  vcp: ["vmware certified professional"],
+  cka: ["certified kubernetes administrator"],
+  cissp: ["certified information systems security"],
 };
 
 // Build a flat lookup: variant → canonical
@@ -379,17 +542,13 @@ async function applyHardFilters(profile: ProfileData, job: JobData): Promise<{ p
     }
   }
 
-  // 4. Must-have check via AI (LAST — costs tokens, only if other filters passed)
-  if (job.mustHave && job.mustHave.trim().length > 0) {
-    const mustHaveResult = await evaluateMustHaveWithAI(profile, job);
-    if (!mustHaveResult.passed) {
-      return mustHaveResult;
-    }
-  }
+  // 4. Must-have is now evaluated by the main LLM call (merged for efficiency)
+  // No separate AI call here — saves 1 API call per profile.
 
   return { passed: true };
 }
 
+// Legacy must-have AI function kept as fallback (unused in normal flow)
 async function evaluateMustHaveWithAI(
   profile: ProfileData,
   job: JobData,
@@ -485,7 +644,9 @@ Réponds UNIQUEMENT avec un JSON: {"passed": true/false, "reason": "explication 
   }
 }
 
-// ─── Layer 2: Weighted Criteria Scoring ──────────────────────────────────────
+// ─── Layer 2: Weighted Criteria Scoring (quantifiable dimensions only) ────────
+// Tech/skill matching is delegated to the LLM for universal accuracy.
+// This layer focuses on dimensions that can be computed deterministically.
 
 interface WeightedResult {
   score: number;
@@ -493,6 +654,7 @@ interface WeightedResult {
   confidenceScore: number;
   dataCompleteness: "full" | "partial" | "minimal";
   missingDataPoints: string[];
+  // Kept for context/heuristics — NOT the definitive matching
   matchedSkills: string[];
   missingSkills: string[];
   allJobSkills: string[];
@@ -507,7 +669,7 @@ function computeWeightedScore(profile: ProfileData, job: JobData): WeightedResul
   const implicitSkills = extractImplicitSkills(profile);
   const profileSkills = [...new Set([...explicitSkills, ...implicitSkills])];
 
-  // --- Combine job skills ---
+  // --- Combine job skills (for heuristic context, not definitive matching) ---
   const baseJobSkills = (job.skills || []).map((s) => s.toLowerCase());
   const shouldHaveSkills = job.shouldHave
     ? job.shouldHave
@@ -516,22 +678,9 @@ function computeWeightedScore(profile: ProfileData, job: JobData): WeightedResul
         .filter(Boolean)
     : [];
   const allJobSkills = [...new Set([...baseJobSkills, ...shouldHaveSkills])];
+  const { matched, missing } = computeSkillMatch(profileSkills, allJobSkills);
 
-  // --- Tech Stack (weight: 35%) ---
-  const { matched, missing, ratio } = computeSkillMatch(profileSkills, allJobSkills);
-
-  if (allJobSkills.length === 0) {
-    dimensions.tech_stack = { score: 50, weight: 35, details: "Pas de skills requis spécifiés" };
-    missingDataPoints.push("job_skills");
-  } else {
-    dimensions.tech_stack = {
-      score: Math.round(ratio * 100),
-      weight: 35,
-      details: `${matched.length}/${allJobSkills.length} skills matchés`,
-    };
-  }
-
-  // --- Seniority (weight: 25%) ---
+  // --- Seniority / XP (weight: 35%) ---
   if (profile.yearsOfExperience !== undefined && (job.xpMin || job.xpMax)) {
     const xpMin = job.xpMin || 0;
     const xpMax = job.xpMax || xpMin + 5;
@@ -547,88 +696,138 @@ function computeWeightedScore(profile: ProfileData, job: JobData): WeightedResul
     }
     dimensions.seniority = {
       score: Math.round(seniorityScore),
-      weight: 25,
+      weight: 35,
       details: `${xp}ans XP vs ${xpMin}-${xpMax}ans requis`,
     };
   } else {
-    dimensions.seniority = { score: 50, weight: 25, details: "Données XP incomplètes" };
+    dimensions.seniority = { score: 50, weight: 35, details: "Données XP incomplètes" };
     if (profile.yearsOfExperience === undefined) missingDataPoints.push("candidate_xp");
     if (!job.xpMin && !job.xpMax) missingDataPoints.push("job_xp_range");
   }
 
-  // --- Domain / Sector (weight: 15%) ---
-  let domainScore = 50;
-  if (job.client?.sector && profile.workExperience && profile.workExperience.length > 0) {
-    const sector = job.client.sector.toLowerCase();
-    const workText = profile.workExperience
-      .map((w) => `${w.company} ${w.role} ${w.description || ""}`)
-      .join(" ")
-      .toLowerCase();
-    const sectorKeywords = sector.split(/[\s/,]+/).filter((s) => s.length > 3);
-    const sectorHits = sectorKeywords.filter((k) => {
-      const regex = new RegExp(`\\b${escapeRegex(k)}\\b`, "i");
-      return regex.test(workText);
-    }).length;
-    domainScore = sectorKeywords.length > 0 ? Math.min(100, 40 + (sectorHits / sectorKeywords.length) * 60) : 50;
+  // --- Location (weight: 25%) ---
+  let locationScore = 50;
+  let locationDetails = "Non vérifiable";
+  if (job.remote && ["full", "full remote", "remote", "full_remote"].includes(job.remote.toLowerCase())) {
+    locationScore = 100;
+    locationDetails = "Full remote — compatible";
+  } else if (job.location && profile.location) {
+    const jobLoc = job.location.toLowerCase();
+    const profLoc = profile.location.toLowerCase();
+    const normalize = (s: string) => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+    const jn = normalize(jobLoc);
+    const pn = normalize(profLoc);
+
+    if (pn.includes(jn) || jn.includes(pn)) {
+      locationScore = 100;
+      locationDetails = `Match direct: ${profile.location}`;
+    } else {
+      // Same country / region check
+      const frenchCities = ["france", "paris", "lyon", "marseille", "toulouse", "nantes", "bordeaux", "lille", "strasbourg"];
+      const isFranceJob = frenchCities.some((c) => jn.includes(c));
+      const isFranceProfile = frenchCities.some((c) => pn.includes(c));
+      const foreignSignals = ["united states", "usa", "uk", "germany", "spain", "india", "canada", "australia", "brazil"];
+      const isAbroad = foreignSignals.some((s) => pn.includes(s));
+
+      if (isFranceJob && isFranceProfile) {
+        locationScore = 70;
+        locationDetails = `Même pays: ${profile.location} / ${job.location}`;
+      } else if (isFranceJob && isAbroad) {
+        locationScore = 10;
+        locationDetails = `Étranger: ${profile.location} vs ${job.location}`;
+      } else {
+        locationScore = 40;
+        locationDetails = `${profile.location} vs ${job.location}`;
+      }
+    }
   } else {
-    if (!job.client?.sector) missingDataPoints.push("job_sector");
+    if (!profile.location) missingDataPoints.push("candidate_location");
+    if (!job.location) missingDataPoints.push("job_location");
   }
-  dimensions.domain = {
-    score: Math.round(domainScore),
-    weight: 15,
-    details: job.client?.sector || "Secteur non spécifié",
+  dimensions.location = {
+    score: Math.round(locationScore),
+    weight: 25,
+    details: locationDetails,
   };
 
-  // --- Company Fit / Receptivity (weight: 15%) ---
-  let companyFitScore = 50;
-  const boosts: string[] = [];
+  // --- Receptivity (weight: 20%) ---
+  let receptivityScore = 50;
+  const signals: string[] = [];
 
   if (profile.openToWork) {
-    companyFitScore += 20;
-    boosts.push("Open to Work");
+    receptivityScore += 25;
+    signals.push("Open to Work");
   }
   if (profile.openProfile) {
-    companyFitScore += 10;
-    boosts.push("Open Profile");
+    receptivityScore += 10;
+    signals.push("Open Profile");
   }
   if (profile.networkDistance === 1) {
-    companyFitScore += 15;
-    boosts.push("1st degree");
+    receptivityScore += 15;
+    signals.push("1st degree");
   } else if (profile.networkDistance === 2) {
-    companyFitScore += 5;
-    boosts.push("2nd degree");
+    receptivityScore += 5;
+    signals.push("2nd degree");
   }
+  dimensions.receptivity = {
+    score: Math.max(0, Math.min(100, Math.round(receptivityScore))),
+    weight: 20,
+    details: signals.join(", ") || "Neutre",
+  };
 
+  // --- Tenure / Stability (weight: 15%) ---
+  let tenureScore = 50;
+  let tenureDetails = "Données insuffisantes";
   if (profile.averageTenureMonths !== null && profile.averageTenureMonths !== undefined) {
-    if (profile.averageTenureMonths < 12) {
-      companyFitScore -= 10;
-      boosts.push("Tenure courte <12m");
-    } else if (profile.averageTenureMonths > 24) {
-      companyFitScore += 5;
-      boosts.push("Tenure stable >24m");
+    if (profile.averageTenureMonths >= 30) {
+      tenureScore = 90;
+      tenureDetails = `Tenure stable: ~${Math.round(profile.averageTenureMonths)} mois`;
+    } else if (profile.averageTenureMonths >= 24) {
+      tenureScore = 80;
+      tenureDetails = `Bonne tenure: ~${Math.round(profile.averageTenureMonths)} mois`;
+    } else if (profile.averageTenureMonths >= 18) {
+      tenureScore = 60;
+      tenureDetails = `Tenure moyenne: ~${Math.round(profile.averageTenureMonths)} mois`;
+    } else if (profile.averageTenureMonths >= 12) {
+      tenureScore = 40;
+      tenureDetails = `Tenure courte: ~${Math.round(profile.averageTenureMonths)} mois`;
+    } else {
+      tenureScore = 15;
+      tenureDetails = `Tenure très courte: ~${Math.round(profile.averageTenureMonths)} mois`;
     }
   }
+  dimensions.tenure = {
+    score: Math.round(tenureScore),
+    weight: 15,
+    details: tenureDetails,
+  };
 
-  if (profile.headline) {
+  // --- Contract Fit (weight: 5%) ---
+  let contractFitScore = 70; // default: neutral-positive
+  let contractDetails = "Neutre";
+  if (profile.headline && job.contractType) {
     const headline = profile.headline.toLowerCase();
     const isFreelance = ["freelance", "indépendant", "auto-entrepreneur", "consultant indépendant"].some((f) =>
       headline.includes(f),
     );
-    const isCDI = job.contractType && ["cdi", "permanent"].includes(job.contractType.toLowerCase());
+    const isCDI = ["cdi", "permanent"].includes(job.contractType.toLowerCase());
+    const isFreelanceJob = ["freelance", "mission", "portage"].includes(job.contractType.toLowerCase());
     if (isFreelance && isCDI) {
-      companyFitScore -= 15;
-      boosts.push("Freelance vs CDI");
+      contractFitScore = 20;
+      contractDetails = "Freelance vs CDI";
+    } else if (isFreelance && isFreelanceJob) {
+      contractFitScore = 100;
+      contractDetails = "Freelance match";
+    } else if (!isFreelance && isCDI) {
+      contractFitScore = 80;
+      contractDetails = "Profil salarié / CDI";
     }
   }
-
-  dimensions.company_fit = {
-    score: Math.max(0, Math.min(100, Math.round(companyFitScore))),
-    weight: 15,
-    details: boosts.join(", ") || "Neutre",
+  dimensions.contract_fit = {
+    score: Math.round(contractFitScore),
+    weight: 5,
+    details: contractDetails,
   };
-
-  // --- Soft Skills placeholder (weight: 10% — filled by LLM later) ---
-  dimensions.soft_skills = { score: 50, weight: 10, details: "En attente LLM" };
 
   // Calculate weighted total
   let totalWeightedScore = 0;
@@ -640,7 +839,7 @@ function computeWeightedScore(profile: ProfileData, job: JobData): WeightedResul
   const score = totalWeight > 0 ? Math.round(totalWeightedScore / totalWeight) : 0;
 
   // Confidence
-  const maxDataPoints = 6;
+  const maxDataPoints = 5;
   const availableDataPoints = maxDataPoints - missingDataPoints.length;
   const confidenceScore = Math.round((availableDataPoints / maxDataPoints) * 100);
   const dataCompleteness: "full" | "partial" | "minimal" =
@@ -673,7 +872,24 @@ async function getSemanticScore(supabase: SupabaseClient, candidateId: string, j
   }
 }
 
-// ─── Layer 4: LLM (Claude) — soft skills + synthesis ─────────────────────────
+// ─── Layer 4: LLM (Claude) — COMPLETE assessment (tech + soft + must-have) ───
+// The LLM is the primary judge of technical fit, soft skills, and must-have
+// criteria. Unlike a static dictionary, Claude understands synonyms, related
+// skills, and context natively across ALL professions and industries.
+
+interface LLMResult {
+  overallScore: number;
+  techFitScore: number;
+  softSkillsScore: number;
+  matchedSkills: string[];
+  missingCriticalSkills: string[];
+  summary: string;
+  strengths: string[];
+  concerns: string[];
+  mustHavePassed: boolean;
+  mustHaveDetails: string | null;
+  tokensUsed: { input: number; output: number };
+}
 
 async function callLLM(
   profile: ProfileData,
@@ -686,67 +902,90 @@ async function callLLM(
     semanticScore: number | null;
   },
   customScoringInstructions?: string,
-): Promise<{
-  llmScore: number;
-  summary: string;
-  strengths: string[];
-  concerns: string[];
-  softSkillsScore: number;
-  tokensUsed: { input: number; output: number };
-}> {
+): Promise<LLMResult> {
   const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
   if (!ANTHROPIC_API_KEY) throw new Error("ANTHROPIC_API_KEY is not configured");
 
+  // Build comprehensive work experience text — include descriptions for accurate assessment
   const workExpText =
     (profile.workExperience || [])
       .map((w) => {
         let line = `- ${w.role} @ ${w.company}`;
         if (w.duration) line += ` (${w.duration})`;
-        if (w.description) line += ` — ${w.description.substring(0, 300)}`;
+        if (w.description) line += ` — ${w.description.substring(0, 500)}`;
+        if (w.skills && w.skills.length > 0) line += ` [Skills: ${w.skills.join(", ")}]`;
         return line;
       })
       .join("\n") ||
     (profile.pastPositions || [])
       .map((p) => `- ${p}`)
       .join("\n") ||
-    "N/A";
+    "Aucune expérience renseignée";
+
+  // Build education text
+  const educationText = (profile.education || []).map((e, i) => `  ${i + 1}. ${e}`).join("\n") || "Non renseignée";
 
   const prompt = sanitizeText(
-    `Tu évalues UNIQUEMENT les aspects QUALITATIFS de ce candidat. Les aspects techniques/quantitatifs sont déjà pré-calculés.
+    `Tu es un recruteur expert senior. Évalue la correspondance COMPLÈTE de ce candidat avec le poste.
 
-=== PRÉ-CALCULS (ne pas réévaluer) ===
-Score algo: ${preComputedData.weightedScore}/100
-Skills matchés: ${preComputedData.matchedSkills.join(", ") || "Aucun"}
-Skills manquants: ${preComputedData.missingSkills.join(", ") || "Aucun"}
+=== CONTEXTE ALGO (indicatif, tu peux corriger) ===
+Score quantitatif: ${preComputedData.weightedScore}/100
+Skills heuristiques matchés: ${preComputedData.matchedSkills.join(", ") || "Aucun (heuristique limitée)"}
+Skills heuristiques manquants: ${preComputedData.missingSkills.join(", ") || "Aucun"}
 Similarité sémantique: ${preComputedData.semanticScore !== null ? preComputedData.semanticScore + "/100" : "N/A"}
-Tech: ${preComputedData.dimensions.tech_stack?.score}/100 | Séniorité: ${preComputedData.dimensions.seniority?.score}/100 | Domaine: ${preComputedData.dimensions.domain?.score}/100 | Fit: ${preComputedData.dimensions.company_fit?.score}/100
+XP: ${preComputedData.dimensions.seniority?.details || "?"} | Location: ${preComputedData.dimensions.location?.details || "?"} | Réceptivité: ${preComputedData.dimensions.receptivity?.details || "?"}
 
 === POSTE ===
-${job.title} @ ${job.client?.name || "?"} (${job.client?.sector || "?"})
-${job.description ? "Description: " + job.description.substring(0, 400) : ""}
-${job.requirements ? "Exigences: " + job.requirements.substring(0, 300) : ""}
-${job.mustHave ? "Must-have: " + job.mustHave : ""}
+${job.title}${job.client?.name ? " @ " + job.client.name : ""}${job.client?.sector ? " (" + job.client.sector + ")" : ""}
+Skills requis: ${(job.skills || []).join(", ") || "Non spécifiés"}
+${job.description ? "Description: " + job.description.substring(0, 500) : ""}
+${job.requirements ? "Exigences: " + job.requirements.substring(0, 400) : ""}
+${job.mustHave ? "\n⚠️ CRITÈRES OBLIGATOIRES (must-have): " + job.mustHave : ""}
 ${job.shouldHave ? "Should-have: " + job.shouldHave : ""}
 ${job.niceToHave ? "Nice-to-have: " + job.niceToHave : ""}
-${job.transversalCriteria?.context ? "Contexte: " + job.transversalCriteria.context.substring(0, 200) : ""}
-${job.bodyContent ? "Détails poste: " + job.bodyContent.substring(0, 300) : ""}
+${job.seniority ? "Séniorité: " + job.seniority : ""}
+${job.contractType ? "Contrat: " + job.contractType : ""}
+${job.transversalCriteria?.context ? "Contexte client: " + job.transversalCriteria.context.substring(0, 300) : ""}
+${job.transversalCriteria?.must ? "Critères transversaux obligatoires: " + job.transversalCriteria.must : ""}
+${job.bodyContent ? "Détails: " + job.bodyContent.substring(0, 400) : ""}
 
 === CANDIDAT ===
 ${profile.name} — ${profile.headline || profile.currentRole || "?"}
-${profile.summary ? "About: " + profile.summary.substring(0, 300) : ""}
+${profile.location ? "📍 " + profile.location : ""}
+${profile.yearsOfExperience !== undefined ? "XP: " + profile.yearsOfExperience + " ans" : ""}
+Skills déclarés: ${(profile.skills || []).join(", ") || "Non renseignés"}
+${profile.summary ? "À propos: " + (profile.summary || "").substring(0, 400) : ""}
+
+Formation:
+${educationText}
+
 Expériences:
 ${workExpText}
 
-=== TA MISSION ===
-Évalue UNIQUEMENT:
-1. Soft skills perçus (communication, leadership, curiosité, adaptabilité)
-2. Cohérence du parcours (progression, spécialisation)
-3. Adéquation culturelle potentielle avec le contexte client
-4. Signaux positifs/négatifs dans le résumé/headline
-${customScoringInstructions ? "\nConsignes supplémentaires: " + customScoringInstructions.slice(0, 300) : ""}
+=== TA MISSION (COMPLÈTE) ===
+Évalue TOUTES ces dimensions :
 
-Réponds en JSON compact:
-{"softSkillsScore":N,"summary":"max 20 mots","strengths":["max 3"],"concerns":["max 3"]}`,
+1. **Adéquation technique** (0-100) : Le candidat maîtrise-t-il les compétences requises ?
+   → Sois intelligent sur les synonymes : VMware=vSphere, K8s=Kubernetes, "admin Linux" implique bash/shell.
+   → Considère les skills IMPLICITES dans les descriptions d'expérience, pas seulement les skills déclarés.
+   → Un "Chef de projet infrastructure" chez un hébergeur a probablement des compétences datacenter.
+   → Liste les skills effectivement matchés ET les skills critiques manquants.
+
+2. **Must-have** : Si des critères sont marqués must-have/obligatoires, le candidat les satisfait-il ?
+   → Si les critères listent plusieurs options avec "parmi", "ou", "dont", au moins UNE suffit.
+   → Sois intelligent sur les noms d'écoles, certifications, et synonymes techniques.
+
+3. **Soft skills** (0-100) : Communication, leadership, curiosité, adaptabilité.
+
+4. **Cohérence du parcours** : Progression logique, spécialisation pertinente, pertinence sectorielle.
+
+5. **Signaux d'alerte** : Job-hopping, surqualification, expertise complètement hors-sujet.
+
+6. **Score global** (0-100) : Ta note finale de correspondance candidat/poste.
+${customScoringInstructions ? "\nConsignes supplémentaires de l'utilisateur: " + customScoringInstructions.slice(0, 400) : ""}
+
+Réponds UNIQUEMENT en JSON compact :
+{"techFitScore":N,"softSkillsScore":N,"overallScore":N,"matchedSkills":["skill1"],"missingCriticalSkills":["skill2"],"summary":"max 25 mots","strengths":["max 4"],"concerns":["max 4"],"mustHavePassed":true,"mustHaveDetails":null}`,
   );
 
   let lastError: Error | null = null;
@@ -769,12 +1008,12 @@ Réponds en JSON compact:
       body: JSON.stringify({
         model: CLAUDE_MODEL,
         system:
-          "Tu es un expert recruteur. Tu évalues UNIQUEMENT les soft skills et la cohérence de parcours. Réponds en JSON compact, sans markdown.",
+          "Tu es un expert recruteur senior avec 15 ans d'expérience dans le matching candidat/poste. Tu évalues TOUTES les dimensions : technique, soft skills, cohérence de parcours. Tu comprends nativement les synonymes techniques (VMware=vSphere, K8s=Kubernetes, etc.) et les skills implicites dans les descriptions d'expérience. Réponds en JSON compact, sans markdown.",
         messages: [{ role: "user", content: prompt }],
-        max_tokens: 512,
-        temperature: 0.2,
+        max_tokens: 800,
+        temperature: 0.1,
       }),
-    }, 30000);
+    }, 45000); // Slightly longer timeout for richer analysis
 
     if (res.ok) {
       data = await res.json();
@@ -795,14 +1034,20 @@ Réponds en JSON compact:
   if (!data) throw lastError || new Error("LLM call failed after retries");
 
   const rawContent = data.content?.[0]?.text || "";
+  console.log(`[llm] ${profile.name}: ${rawContent.substring(0, 300)}`);
   const parsed = extractJsonRobust(rawContent);
 
   return {
-    llmScore: parsed.softSkillsScore ?? 50,
+    overallScore: parsed.overallScore ?? parsed.softSkillsScore ?? 50,
+    techFitScore: parsed.techFitScore ?? 50,
+    softSkillsScore: parsed.softSkillsScore ?? 50,
+    matchedSkills: parsed.matchedSkills || [],
+    missingCriticalSkills: parsed.missingCriticalSkills || [],
     summary: parsed.summary || "",
     strengths: parsed.strengths || [],
     concerns: parsed.concerns || [],
-    softSkillsScore: parsed.softSkillsScore ?? 50,
+    mustHavePassed: parsed.mustHavePassed !== false, // default true if not present
+    mustHaveDetails: parsed.mustHaveDetails || null,
     tokensUsed: {
       input: data.usage?.input_tokens || 0,
       output: data.usage?.output_tokens || 0,
@@ -811,22 +1056,28 @@ Réponds en JSON compact:
 }
 
 // ─── Score Combiner ──────────────────────────────────────────────────────────
+// LLM-First: The LLM now evaluates tech fit + soft skills + must-have,
+// so it gets 40% weight. The algo handles quantifiable dimensions (40%).
+// Semantic similarity provides a bonus signal (20%).
 
 function computeFinalScore(weightedScore: number, semanticScore: number | null, llmScore: number | null): number {
-  // Weights: algo 60%, semantic 20%, LLM 20%
-  let total = weightedScore * 0.6;
-  let totalWeight = 0.6;
-
-  if (semanticScore !== null) {
-    total += semanticScore * 0.2;
-    totalWeight += 0.2;
-  }
+  // New weights: algo 40%, LLM 40%, semantic 20%
   if (llmScore !== null) {
-    total += llmScore * 0.2;
-    totalWeight += 0.2;
+    let total = weightedScore * 0.4 + llmScore * 0.4;
+    let totalWeight = 0.8;
+    if (semanticScore !== null) {
+      total += semanticScore * 0.2;
+      totalWeight += 0.2;
+    }
+    return Math.round(total / totalWeight);
   }
-
-  return Math.round(total / totalWeight);
+  
+  // Fallback without LLM: algo 80%, semantic 20%
+  if (semanticScore !== null) {
+    return Math.round(weightedScore * 0.8 + semanticScore * 0.2);
+  }
+  
+  return weightedScore;
 }
 
 // ─── Cache ───────────────────────────────────────────────────────────────────
@@ -1099,44 +1350,76 @@ async function scoreProfile(
   // Layer 3: Semantic Similarity
   const semanticScore = await getSemanticScore(supabase, candidateId, job.id);
 
-  // Layer 4: LLM — only if score is in the "maybe" zone
-  let llmResult: Awaited<ReturnType<typeof callLLM>> | null = null;
+  // Layer 4: LLM — COMPLETE assessment for ALL profiles passing hard filter
+  // No more skipping: the LLM is the primary judge of technical fit.
+  let llmResult: LLMResult | null = null;
   let skippedLLM = false;
 
-  if (weighted.score < 25) {
-    skippedLLM = true;
-  } else if (weighted.score > 80 && semanticScore !== null && semanticScore > 70) {
-    skippedLLM = true;
-  } else {
-    try {
-      llmResult = await callLLM(
-        profile,
-        job,
-        {
-          weightedScore: weighted.score,
-          dimensions: weighted.dimensions,
-          matchedSkills: weighted.matchedSkills,
-          missingSkills: weighted.missingSkills,
-          semanticScore,
-        },
-        customScoringInstructions,
-      );
+  try {
+    llmResult = await callLLM(
+      profile,
+      job,
+      {
+        weightedScore: weighted.score,
+        dimensions: weighted.dimensions,
+        matchedSkills: weighted.matchedSkills,
+        missingSkills: weighted.missingSkills,
+        semanticScore,
+      },
+      customScoringInstructions,
+    );
 
-      weighted.dimensions.soft_skills = {
-        score: llmResult.softSkillsScore,
-        weight: 10,
-        details: "Évalué par LLM",
+    // If LLM says must-have not passed, treat as hard filter KO
+    if (job.mustHave && job.mustHave.trim().length > 0 && !llmResult.mustHavePassed) {
+      const koResult: ScoringResult = {
+        name: profile.name,
+        score: 0,
+        recommendation: "NO_MATCH",
+        summary: llmResult.mustHaveDetails || "Must-have non satisfait (évaluation IA)",
+        strengths: llmResult.strengths || [],
+        concerns: [llmResult.mustHaveDetails || "Must-have KO", ...(llmResult.concerns || [])],
+        missingSkills: llmResult.missingCriticalSkills || [],
+        hardFilterPassed: false,
+        hardFilterKO: llmResult.mustHaveDetails || "Must-have non satisfait",
+        weightedCriteriaScore: weighted.score,
+        semanticScore,
+        llmScore: llmResult.overallScore,
+        finalScore: 0,
+        confidenceScore: 100,
+        dimensions: weighted.dimensions,
+        dataCompleteness: weighted.dataCompleteness,
+        missingDataPoints: weighted.missingDataPoints,
+        skippedLLM: false,
+        processingTimeMs: Date.now() - startTime,
+        tokensUsed: llmResult.tokensUsed,
+        skipReason: llmResult.mustHaveDetails,
       };
-    } catch (err) {
-      console.error(`[llm] Error for ${profile.name}:`, err);
-      skippedLLM = true;
+      await setCachedScore(supabase, candidateId, job.id, koResult);
+      return koResult;
     }
+
+    // Inject LLM dimensions into weighted result for visibility
+    weighted.dimensions.tech_fit_llm = {
+      score: llmResult.techFitScore,
+      weight: 0, // Not counted in algo score — already in LLM score
+      details: "Évaluation technique IA",
+    };
+    weighted.dimensions.soft_skills_llm = {
+      score: llmResult.softSkillsScore,
+      weight: 0,
+      details: "Évaluation soft skills IA",
+    };
+  } catch (err) {
+    console.error(`[llm] Error for ${profile.name}:`, err);
+    skippedLLM = true;
+    // When LLM is unavailable, we still score with algo + semantic only
   }
 
-  const finalScore = computeFinalScore(weighted.score, semanticScore, llmResult?.llmScore ?? null);
+  const finalScore = computeFinalScore(weighted.score, semanticScore, llmResult?.overallScore ?? null);
 
   const recommendation = getRecommendation(finalScore);
 
+  // Build summary, strengths, concerns — prefer LLM output when available
   const summary =
     llmResult?.summary ||
     (finalScore >= 60
@@ -1146,13 +1429,14 @@ async function scoreProfile(
         : `Faible match (${weighted.score}/100)`);
 
   const strengths = llmResult?.strengths || [];
-  if (weighted.matchedSkills.length > 0) {
-    strengths.unshift(`${weighted.matchedSkills.length}/${weighted.allJobSkills.length} skills matchés`);
-  }
-
   const concerns = llmResult?.concerns || [];
-  if (weighted.missingSkills.length > 0) {
-    concerns.push(`Skills manquants: ${weighted.missingSkills.slice(0, 3).join(", ")}`);
+
+  // Use LLM's skill analysis when available, fallback to heuristic
+  const matchedSkills = llmResult?.matchedSkills?.length ? llmResult.matchedSkills : weighted.matchedSkills;
+  const missingSkills = llmResult?.missingCriticalSkills?.length ? llmResult.missingCriticalSkills : weighted.missingSkills;
+
+  if (skippedLLM) {
+    concerns.push("⚠️ Évaluation IA indisponible — score basé uniquement sur l'algorithme");
   }
 
   const result: ScoringResult = {
@@ -1162,25 +1446,25 @@ async function scoreProfile(
     summary,
     strengths: strengths.slice(0, 5),
     concerns: concerns.slice(0, 5),
-    missingSkills: weighted.missingSkills,
+    missingSkills,
     seniorityMatch: weighted.dimensions.seniority?.details,
-    locationMatch: weighted.dimensions.domain?.details,
+    locationMatch: weighted.dimensions.location?.details,
     experienceMatch: weighted.dimensions.seniority?.details,
-    tenureAnalysis: weighted.dimensions.company_fit?.details,
-    receptivityScore: weighted.dimensions.company_fit?.score ?? null,
+    tenureAnalysis: weighted.dimensions.tenure?.details,
+    receptivityScore: weighted.dimensions.receptivity?.score ?? null,
     internationalExperienceValidation: "none",
     locationCompatibility:
-      weighted.dimensions.domain?.score && weighted.dimensions.domain.score > 60 ? "compatible" : "partial",
+      weighted.dimensions.location?.score && weighted.dimensions.location.score > 60 ? "compatible" : "partial",
     candidatePreferencesConflict: null,
-    contractMismatch: null,
+    contractMismatch: weighted.dimensions.contract_fit?.details !== "Neutre" ? weighted.dimensions.contract_fit?.details || null : null,
     skipReason: finalScore < 40 ? summary : null,
-    matchedSkills: weighted.matchedSkills,
-    matchedSkillCount: weighted.matchedSkills.length,
+    matchedSkills,
+    matchedSkillCount: matchedSkills.length,
     totalRequiredSkills: weighted.allJobSkills.length,
     hardFilterPassed: true,
     weightedCriteriaScore: weighted.score,
     semanticScore,
-    llmScore: llmResult?.llmScore ?? null,
+    llmScore: llmResult?.overallScore ?? null,
     finalScore,
     confidenceScore: weighted.confidenceScore,
     dimensions: weighted.dimensions,

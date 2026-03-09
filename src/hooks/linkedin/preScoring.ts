@@ -91,6 +91,14 @@ function scoreSkills(
   const shouldHaveSkills = parseCriteriaToSkills(job.shouldHave);
   const niceToHaveSkills = parseCriteriaToSkills(job.niceToHave);
 
+  // If the job has NO skills criteria at all, return a neutral score
+  // to avoid penalizing candidates on poorly-configured jobs.
+  // The backend LLM will do the definitive skill assessment anyway.
+  if (jobSkills.length === 0 && mustHaveSkills.length === 0 && shouldHaveSkills.length === 0 && niceToHaveSkills.length === 0) {
+    flags.push('Aucun critère skill défini — score neutre');
+    return 20; // neutral: 20/40
+  }
+
   const mustHaveMatched = countMatches(profileSkills, mustHaveSkills);
   const shouldHaveMatched = countMatches(profileSkills, shouldHaveSkills);
   const niceToHaveMatched = countMatches(profileSkills, niceToHaveSkills);

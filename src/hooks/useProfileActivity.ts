@@ -206,7 +206,7 @@ export function useProfileActivity(profileId: string | null, profileUrl?: string
             .filter(p => p.length >= 8);
         }
 
-        console.log('[useProfileActivity] Aircall phone lookup:', { candidatePhones, profileUrl, profileName });
+        console.log('[useProfileActivity] Aircall phone lookup:', { phoneCount: candidatePhones?.length ?? 0, hasProfileUrl: !!profileUrl });
 
         if (candidatePhones.length && !cancelled) {
           // Match calls by normalized phone: matched_candidate_phone field

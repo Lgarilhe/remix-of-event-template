@@ -1,4 +1,4 @@
-﻿import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
+import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.75.1";
 
 // No wildcard CORS — this function is called by cron (service role) and frontend (authenticated users)
@@ -45,7 +45,7 @@ serve(async (req) => {
   const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
   const supabase = createClient(supabaseUrl, serviceRoleKey);
 
-  console.log(`[auth] Token length: ${token.length}, cronSecret length: ${cronSecret.length}, hasServiceRole: ${!!serviceRoleKey}, tokenPreview: ${token.slice(0, 10)}...`);
+  console.log(`[auth] Token length: ${token.length}, cronSecret length: ${cronSecret.length}, hasServiceRole: ${!!serviceRoleKey}`);
 
   let isAuthorized = false;
   let authMethod = 'none';
