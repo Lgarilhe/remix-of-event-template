@@ -496,18 +496,19 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
               </div>
 
               {/* Secondary actions — always visible, aligned right */}
-              <div className="flex items-center gap-1 shrink-0 border-l border-foreground/10 pl-1.5 ml-1">
-                {onArchive && (
-                  <Button variant="ghost" size="sm" onClick={onArchive} className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive rounded-none">
-                    <Archive className="w-3.5 h-3.5" />
-                  </Button>
-                )}
+              <div className="flex items-center gap-1.5 shrink-0 border-l border-foreground/10 pl-1.5 ml-1">
                 {profileUrl && (
-                  <Button variant="outline" size="sm" asChild className="h-7 gap-1 text-[11px] rounded-none border border-foreground px-2.5 uppercase tracking-wider font-semibold">
+                  <Button variant="outline" size="sm" asChild className="h-7 gap-1 text-[11px] rounded-none border border-foreground px-2 uppercase tracking-wider font-semibold shrink-0">
                     <a href={profileUrl} target="_blank" rel="noopener noreferrer">
                       <ExternalLink className="w-3 h-3" />
-                      Voir LinkedIn
+                      LinkedIn
                     </a>
+                  </Button>
+                )}
+                {onArchive && (
+                  <Button variant="outline" size="sm" onClick={onArchive} className="h-7 gap-1 text-[11px] rounded-none border-2 border-destructive text-destructive hover:bg-destructive hover:text-destructive-foreground px-2.5 uppercase tracking-wider font-semibold shrink-0">
+                    <Archive className="w-3.5 h-3.5" />
+                    Archiver
                   </Button>
                 )}
               </div>
