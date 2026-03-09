@@ -1,8 +1,10 @@
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { X, Clock, Mail } from 'lucide-react';
+import { X, Clock, Mail, Link, Check } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { fr } from 'date-fns/locale';
+import { useState } from 'react';
+import { toast } from 'sonner';
 
 interface Invitation {
   id: string;
@@ -11,6 +13,7 @@ interface Invitation {
   status: string;
   created_at: string;
   expires_at: string;
+  token?: string;
 }
 
 interface PendingInvitationsProps {
@@ -25,7 +28,17 @@ const roleLabels: Record<string, string> = {
 };
 
 export const PendingInvitations = ({ invitations, onCancel, canManage }: PendingInvitationsProps) => {
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+
   if (!invitations.length) return null;
+
+  const handleCopyLink = async (inv: Invitation) => {
+    const link = `${window.location.origin}/auth?invitation=${inv.token}`;
+    await navigator.clipboard.writeText(link);
+    setCopiedId(inv.id);
+    toast.success('Lien d\'invitation copié !');
+    setTimeout(() => setCopiedId(null), 2000);
+  };
 
   return (
     <div className="space-y-2 pt-4 border-t border-border">
@@ -46,8 +59,19 @@ export const PendingInvitations = ({ invitations, onCancel, canManage }: Pending
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5">
             <Badge variant="outline" className="text-[10px]">En attente</Badge>
+            {canManage && inv.token && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                onClick={() => handleCopyLink(inv)}
+                title="Copier le lien d'invitation"
+              >
+                {copiedId === inv.id ? <Check className="w-3.5 h-3.5 text-green-500" /> : <Link className="w-3.5 h-3.5" />}
+              </Button>
+            )}
             {canManage && (
               <Button
                 variant="ghost"
