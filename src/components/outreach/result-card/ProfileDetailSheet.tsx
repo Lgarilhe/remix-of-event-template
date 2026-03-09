@@ -76,6 +76,28 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
   totalCount,
 }) => {
   const [showMessageModal, setShowMessageModal] = useState(false);
+
+  // Swipe gesture for mobile navigation
+  const touchStartX = useRef<number | null>(null);
+  const touchStartY = useRef<number | null>(null);
+
+  const handleTouchStart = useCallback((e: React.TouchEvent) => {
+    touchStartX.current = e.touches[0].clientX;
+    touchStartY.current = e.touches[0].clientY;
+  }, []);
+
+  const handleTouchEnd = useCallback((e: React.TouchEvent) => {
+    if (touchStartX.current == null || touchStartY.current == null) return;
+    const dx = e.changedTouches[0].clientX - touchStartX.current;
+    const dy = e.changedTouches[0].clientY - touchStartY.current;
+    touchStartX.current = null;
+    touchStartY.current = null;
+    // Only trigger if horizontal swipe is dominant and > 80px
+    if (Math.abs(dx) > 80 && Math.abs(dx) > Math.abs(dy) * 1.5) {
+      if (dx > 0 && onNavigatePrev) onNavigatePrev();
+      if (dx < 0 && onNavigateNext) onNavigateNext();
+    }
+  }, [onNavigatePrev, onNavigateNext]);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isScoring, setIsScoring] = useState(false);
 
