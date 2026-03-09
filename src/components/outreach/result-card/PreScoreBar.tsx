@@ -112,10 +112,10 @@ export const PreScoreBar: React.FC<PreScoreBarProps> = ({ preScore, hasLLMScore 
 
   // Primary display
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex flex-wrap items-center gap-1.5 min-w-0">
       <Tooltip>
         <TooltipTrigger asChild>
-          <div className="flex items-center gap-1.5 cursor-help">
+          <div className="flex items-center gap-1.5 cursor-help shrink-0">
             <span className={`text-[9px] font-bold uppercase tracking-widest ${tierStyle.text}`}>
               {tierStyle.label}
             </span>
@@ -139,9 +139,9 @@ export const PreScoreBar: React.FC<PreScoreBarProps> = ({ preScore, hasLLMScore 
           <Badge
             key={i}
             variant="outline"
-            className={`text-[9px] px-1.5 py-0 h-4 font-medium rounded-none ${flagLevelClass[style.level]}`}
+            className={`text-[9px] px-1.5 py-0 h-4 font-medium rounded-none max-w-[140px] truncate ${flagLevelClass[style.level]}`}
           >
-            {style.icon} {f.length > 25 ? f.slice(0, 22) + '…' : f}
+            {style.icon} {f.length > 20 ? f.slice(0, 17) + '…' : f}
           </Badge>
         );
       })}
