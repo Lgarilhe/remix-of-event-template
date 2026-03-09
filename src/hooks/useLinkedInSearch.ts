@@ -131,7 +131,7 @@ export function useLinkedInSearch({
     total: null,
     hasSearched: false,
     selectedJob: null,
-    selectedProfiles: new Set(),
+    selectedProfiles: new Set<string>(),
     jobScores: {},
     scoringInProgress: false,
     sortByScore: false,
