@@ -3,6 +3,7 @@ import { ATSCandidate } from '@/hooks/useATSData';
 import { useTodayScheduledMessages, ScheduledMessage } from '@/hooks/useTodayScheduledMessages';
 import { useOutreachAcceptanceStats } from '@/hooks/useOutreachAcceptanceStats';
 import { useDailyInviteStats } from '@/hooks/useDailyInviteStats';
+import { useResponseRateStats } from '@/hooks/useResponseRateStats';
 import { useNavigate } from 'react-router-dom';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
