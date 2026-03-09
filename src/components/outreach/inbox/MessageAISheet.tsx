@@ -180,12 +180,20 @@ export const MessageAISheet: React.FC<MessageAISheetProps> = ({
           .maybeSingle();
 
         if (cached?.analysis && typeof cached.analysis === 'object') {
-          console.log('[MessageAISheet] Using cached analysis from', cached.updated_at);
-          setAnalysis(cached.analysis as unknown as AnalysisResult);
-          setFromCache(true);
-          setLoading(false);
-          isAnalyzingRef.current = false;
-          return;
+          const cacheAge = Date.now() - new Date(cached.updated_at).getTime();
+          const isStale = cacheAge > 24 * 60 * 60 * 1000; // 24h TTL
+          const cachedMsgCount = (cached.analysis as any)._messageCount;
+          const hasNewMessages = typeof cachedMsgCount === 'number' && cachedMsgCount !== context.messages.length;
+
+          if (!isStale && !hasNewMessages) {
+            console.log('[MessageAISheet] Using cached analysis from', cached.updated_at);
+            setAnalysis(cached.analysis as unknown as AnalysisResult);
+            setFromCache(true);
+            setLoading(false);
+            isAnalyzingRef.current = false;
+            return;
+          }
+          console.log('[MessageAISheet] Cache invalidated:', isStale ? 'TTL expired' : 'message count changed');
         }
       }
 
@@ -195,15 +203,16 @@ export const MessageAISheet: React.FC<MessageAISheetProps> = ({
       if (response.data?.success && response.data?.analysis) {
         setAnalysis(response.data.analysis);
 
-        // Store in cache for next time
+        // Store in cache for next time (include message count for invalidation)
         if (chatId && accountId) {
+          const analysisWithMeta = { ...response.data.analysis, _messageCount: context.messages.length };
           supabase
             .from('message_analysis_cache')
             .upsert({
               chat_id: chatId,
               account_id: accountId,
               recipient_name: context.recipientName,
-              analysis: response.data.analysis,
+              analysis: analysisWithMeta,
               updated_at: new Date().toISOString(),
             }, { onConflict: 'chat_id,account_id' })
             .then((res) => {

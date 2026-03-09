@@ -205,10 +205,17 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
   // Fetch sequence enrollments
   const fetchEnrollments = useCallback(async () => {
     try {
-      const { data, error } = await supabase
+      let query = supabase
         .from('sequence_enrollments')
         .select('profile_id, job_title, job_id, status, replied_at, current_step_order')
-        .order('created_at', { ascending: false });
+        .order('created_at', { ascending: false })
+        .limit(500);
+      
+      if (organizationId) {
+        query = query.eq('organization_id', organizationId);
+      }
+
+      const { data, error } = await query;
       
       if (error) throw error;
       
@@ -222,7 +229,7 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
     } catch (error) {
       console.error('Error fetching enrollments:', error);
     }
-  }, []);
+  }, [organizationId]);
 
   // Fetch available jobs from Notion
   const fetchAvailableJobs = useCallback(async () => {
@@ -833,6 +840,8 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
       return;
     }
 
+    let cancelled = false;
+
     (async () => {
       try {
         // Helper to fetch calendly_link from a project id
@@ -856,8 +865,10 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
             .limit(1)
             .maybeSingle();
 
+          if (cancelled) return;
           if (data?.project_id) {
             const link = await fetchCalendlyFromProject(data.project_id);
+            if (cancelled) return;
             if (link) { setCalendlyLink(link); return; }
           }
         }
@@ -874,6 +885,7 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
             .limit(1)
             .maybeSingle();
 
+          if (cancelled) return;
           if (enrollment?.job_id) {
             const { data: project } = await supabase
               .from('sourcing_projects')
@@ -882,6 +894,7 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
               .not('calendly_link', 'is', null)
               .limit(1)
               .maybeSingle();
+            if (cancelled) return;
             if (project?.calendly_link) { setCalendlyLink(project.calendly_link); return; }
           }
         }
@@ -896,11 +909,15 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
           .limit(1)
           .maybeSingle();
 
+        if (cancelled) return;
         setCalendlyLink(anyProject?.calendly_link || null);
       } catch {
+        if (cancelled) return;
         setCalendlyLink(null);
       }
     })();
+
+    return () => { cancelled = true; };
   }, [selectedChat?.id]);
 
   // Handle scheduling call

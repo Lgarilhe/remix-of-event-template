@@ -118,6 +118,11 @@ export function useChatCategories() {
 
   const autoTagChats = useCallback(async (chats: Array<{ id: string; account_id: string; name?: string; attendees?: any[]; last_message?: any; unread_count?: number; unread?: number }>) => {
     if (autoTagging || chats.length === 0) return;
+    
+    // Skip chats already categorized (manually or by previous auto-tag) to avoid overwriting user corrections
+    const untaggedChats = chats.filter(c => !categoriesMap.has(c.id));
+    if (untaggedChats.length === 0) return;
+
     setAutoTagging(true);
     try {
       const { data: user } = await supabase.auth.getUser();
@@ -127,8 +132,8 @@ export function useChatCategories() {
       const batchSize = 30;
       let totalTagged = 0;
 
-      for (let i = 0; i < chats.length; i += batchSize) {
-        const batch = chats.slice(i, i + batchSize);
+      for (let i = 0; i < untaggedChats.length; i += batchSize) {
+        const batch = untaggedChats.slice(i, i + batchSize);
         
         const response = await invokeEdgeFunction('auto-categorize-chats', {
           chats: batch,
