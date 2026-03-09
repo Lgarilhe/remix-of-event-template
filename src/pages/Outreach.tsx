@@ -103,6 +103,18 @@ export default function Outreach() {
     setActiveTab('search');
   }, []);
 
+  const handleChatChange = useCallback((chatId: string | null) => {
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev);
+      if (chatId) {
+        next.set('chatId', chatId);
+      } else {
+        next.delete('chatId');
+      }
+      return next;
+    }, { replace: true });
+  }, [setSearchParams]);
+
   // Fetch connected accounts
   const fetchAccounts = async () => {
     try {
@@ -197,83 +209,83 @@ export default function Outreach() {
             </div>
           </div>
 
-          {/* Tab panels */}
-          <div className={cn("mt-0 min-w-0", activeTab !== 'projects' && 'hidden')}>
-            <div className="bg-background border border-foreground p-3 sm:p-6 overflow-hidden">
-              <ProjectsList onResumeSearch={handleResumeSearch} />
-            </div>
-          </div>
-
-          <div className={cn("mt-0 min-w-0", activeTab !== 'search' && 'hidden')}>
-            {accounts.length === 0 ? (
-              <div className="bg-background border border-foreground p-12 text-center">
-                <div className="h-14 w-14 bg-foreground text-background flex items-center justify-center mx-auto mb-4">
-                  <Users className="w-7 h-7" />
-                </div>
-                <h2 className="text-lg font-semibold text-foreground mb-2 uppercase tracking-wide">
-                  Connectez votre compte LinkedIn
-                </h2>
-                <p className="text-muted-foreground text-sm mb-6 max-w-md mx-auto">
-                  Pour rechercher des candidats, connectez d'abord un compte LinkedIn Recruiter.
-                </p>
-                <button
-                  onClick={() => navigate('/settings?tab=integrations')}
-                  className="relative overflow-hidden h-[34px] px-6 bg-background text-foreground border border-foreground text-xs font-medium uppercase tracking-wider group"
-                >
-                  <span className="relative z-10 flex items-center gap-2"><Settings className="w-4 h-4" /> Aller dans les paramètres</span>
-                  <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out"></span>
-                </button>
+          {/* Tab panels — only mount the active tab to avoid heavy hooks running in background */}
+          {activeTab === 'projects' && (
+            <div className="mt-0 min-w-0">
+              <div className="bg-background border border-foreground p-3 sm:p-6 overflow-hidden">
+                <ProjectsList onResumeSearch={handleResumeSearch} />
               </div>
-            ) : (
-              <OutreachSearchProvider>
-                <LinkedInSearch
-                  accounts={accounts}
-                  selectedAccount={selectedAccount}
-                  onAccountChange={setSelectedAccount}
-                  activeProject={activeProject}
-                  onProjectChange={setActiveProject}
-                />
-              </OutreachSearchProvider>
-            )}
-          </div>
+            </div>
+          )}
 
-          <div className={cn("mt-0", activeTab !== 'messages' && 'hidden')}>
-            <MessagesInbox
-              accounts={accounts}
-              selectedAccount={selectedAccount}
-              onAccountChange={setSelectedAccount}
-              onUnreadCountChange={setUnreadMessageCount}
-              initialChatId={searchParams.get('chatId')}
-              onChatChange={useCallback((chatId: string | null) => {
-                setSearchParams(prev => {
-                  const next = new URLSearchParams(prev);
-                  if (chatId) {
-                    next.set('chatId', chatId);
-                  } else {
-                    next.delete('chatId');
-                  }
-                  return next;
-                }, { replace: true });
-              }, [setSearchParams])}
-            />
-          </div>
+          {activeTab === 'search' && (
+            <div className="mt-0 min-w-0">
+              {accounts.length === 0 ? (
+                <div className="bg-background border border-foreground p-12 text-center">
+                  <div className="h-14 w-14 bg-foreground text-background flex items-center justify-center mx-auto mb-4">
+                    <Users className="w-7 h-7" />
+                  </div>
+                  <h2 className="text-lg font-semibold text-foreground mb-2 uppercase tracking-wide">
+                    Connectez votre compte LinkedIn
+                  </h2>
+                  <p className="text-muted-foreground text-sm mb-6 max-w-md mx-auto">
+                    Pour rechercher des candidats, connectez d'abord un compte LinkedIn Recruiter.
+                  </p>
+                  <button
+                    onClick={() => navigate('/settings?tab=integrations')}
+                    className="relative overflow-hidden h-[34px] px-6 bg-background text-foreground border border-foreground text-xs font-medium uppercase tracking-wider group"
+                  >
+                    <span className="relative z-10 flex items-center gap-2"><Settings className="w-4 h-4" /> Aller dans les paramètres</span>
+                    <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out"></span>
+                  </button>
+                </div>
+              ) : (
+                <OutreachSearchProvider>
+                  <LinkedInSearch
+                    accounts={accounts}
+                    selectedAccount={selectedAccount}
+                    onAccountChange={setSelectedAccount}
+                    activeProject={activeProject}
+                    onProjectChange={setActiveProject}
+                  />
+                </OutreachSearchProvider>
+              )}
+            </div>
+          )}
 
-          <div className={cn("mt-0", activeTab !== 'sequences' && 'hidden')}>
-            <div className="bg-background border border-foreground p-3 sm:p-6">
-              <SequencesList
+          {activeTab === 'messages' && (
+            <div className="mt-0">
+              <MessagesInbox
                 accounts={accounts}
                 selectedAccount={selectedAccount}
-                isVisible={activeTab === 'sequences'}
+                onAccountChange={setSelectedAccount}
+                onUnreadCountChange={setUnreadMessageCount}
+                initialChatId={searchParams.get('chatId')}
+                onChatChange={handleChatChange}
               />
             </div>
-          </div>
+          )}
 
-          <div className={cn("mt-0", activeTab !== 'nurturing' && 'hidden')}>
-            <NurturingDashboard
-              accounts={accounts}
-              selectedAccount={selectedAccount}
-            />
-          </div>
+          {activeTab === 'sequences' && (
+            <div className="mt-0">
+              <div className="bg-background border border-foreground p-3 sm:p-6">
+                <SequencesList
+                  accounts={accounts}
+                  selectedAccount={selectedAccount}
+                  isVisible={true}
+                />
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'nurturing' && (
+            <div className="mt-0">
+              <NurturingDashboard
+                accounts={accounts}
+                selectedAccount={selectedAccount}
+              />
+            </div>
+          )}
 
         </div>
       </main>
