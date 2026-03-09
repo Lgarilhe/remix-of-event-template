@@ -272,7 +272,7 @@ PRÉCISION OBLIGATOIRE:
 LinkedIn Recruiter propose des "spotlights" qui filtrent les profils par signal comportemental.
 Valeurs VALIDES pour l'API Unipile:
 - OPEN_TO_WORK: Profils déclarés ouverts aux opportunités → utile mais réduit le vivier
-- ACTIVE_TALENT: Profils actifs sur LinkedIn récemment → RECOMMANDÉ PAR DÉFAUT
+- ACTIVE_TALENT: Profils actifs sur LinkedIn récemment → NE PAS utiliser par défaut (réduit trop le vivier)
 - REDISCOVERED_CANDIDATES: Candidats déjà identifiés/contactés → utile pour relance
 - INTERNAL_CANDIDATES: Candidats internes à l'entreprise → rarement pertinent en sourcing externe
 - INTERESTED_IN_YOUR_COMPANY: Profils ayant montré un intérêt pour l'entreprise → bon signal
