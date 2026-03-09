@@ -37,6 +37,7 @@ interface SearchState {
 
 type SearchAction =
   | { type: 'SET_FILTERS'; filters: LinkedInFiltersState }
+  | { type: 'UPDATE_FILTERS'; updater: (prev: LinkedInFiltersState) => LinkedInFiltersState }
   | { type: 'SET_RESULTS'; results: LinkedInProfile[] }
   | { type: 'SET_LOADING'; loading: boolean }
   | { type: 'SET_LOADING_MORE'; loading: boolean }
