@@ -201,4 +201,27 @@ All colors MUST be HSL.
   .scrollbar-hide::-webkit-scrollbar {
     display: none;
   }
+
+  /* Glassmorphism utilities */
+  .glass {
+    background: hsl(var(--background) / 0.7);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+  }
+
+  .glass-strong {
+    background: hsl(var(--background) / 0.55);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+  }
+
+  .glass-subtle {
+    background: hsl(var(--background) / 0.85);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+  }
+
+  .glass-border {
+    border: 1px solid hsl(var(--foreground) / 0.12);
+  }
 }
