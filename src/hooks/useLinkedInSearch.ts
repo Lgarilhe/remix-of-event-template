@@ -140,7 +140,13 @@ export function useLinkedInSearch({
   const filtersRef = useRef<LinkedInFiltersState>(INITIAL_FILTERS);
 
   // Backward-compatible wrappers for search state
-  const setFilters = useCallback((f: LinkedInFiltersState) => searchDispatch({ type: 'SET_FILTERS', filters: f }), []);
+  const setFilters = useCallback((fOrUpdater: LinkedInFiltersState | ((prev: LinkedInFiltersState) => LinkedInFiltersState)) => {
+    if (typeof fOrUpdater === 'function') {
+      searchDispatch({ type: 'UPDATE_FILTERS', updater: fOrUpdater });
+    } else {
+      searchDispatch({ type: 'SET_FILTERS', filters: fOrUpdater });
+    }
+  }, []);
   const setResults = useCallback((r: LinkedInProfile[]) => searchDispatch({ type: 'SET_RESULTS', results: r }), []);
   const setLoading = useCallback((v: boolean) => searchDispatch({ type: 'SET_LOADING', loading: v }), []);
   const setLoadingMore = useCallback((v: boolean) => searchDispatch({ type: 'SET_LOADING_MORE', loading: v }), []);
