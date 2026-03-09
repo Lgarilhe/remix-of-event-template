@@ -1,4 +1,4 @@
-import { useEffect, useState, lazy, Suspense } from "react";
+import React, { useEffect, useState, lazy, Suspense } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -30,26 +30,35 @@ const AppContent = () => {
   const [sessionExpired, setSessionExpired] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
+  const locationRef = React.useRef(location.pathname);
+  
+  // Keep ref in sync without re-subscribing the listener
+  useEffect(() => {
+    locationRef.current = location.pathname;
+  }, [location.pathname]);
 
+  // Single stable auth listener — never re-subscribes
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      console.log('[App] Auth event:', event);
+      console.log('[App] Auth event:', event, '| has session:', !!session);
       
-      if (event === 'SIGNED_OUT') {
+      if (event === 'SIGNED_OUT' || (event === 'TOKEN_REFRESHED' && !session)) {
+        const currentPath = locationRef.current;
         const isPublicRoute = PUBLIC_ROUTES.some(route => 
-          location.pathname === route || location.pathname.startsWith(route + '/')
+          currentPath === route || currentPath.startsWith(route + '/')
         );
         
-        if (!isPublicRoute && location.pathname !== '/auth') {
+        if (!isPublicRoute && currentPath !== '/auth') {
           setSessionExpired(true);
         }
-      } else if (event === 'SIGNED_IN') {
+      } else if (event === 'SIGNED_IN' || (event === 'TOKEN_REFRESHED' && session)) {
         setSessionExpired(false);
       }
     });
 
     return () => subscription.unsubscribe();
-  }, [location.pathname]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleSessionExpiredClose = (open: boolean) => {
     setSessionExpired(open);
