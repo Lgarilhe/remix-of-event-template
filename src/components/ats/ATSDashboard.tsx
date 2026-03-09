@@ -2,6 +2,7 @@ import React, { useMemo } from 'react';
 import { ATSCandidate } from '@/hooks/useATSData';
 import { useTodayScheduledMessages, ScheduledMessage } from '@/hooks/useTodayScheduledMessages';
 import { useOutreachAcceptanceStats } from '@/hooks/useOutreachAcceptanceStats';
+import { useDailyInviteStats } from '@/hooks/useDailyInviteStats';
 import { useNavigate } from 'react-router-dom';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -89,6 +90,7 @@ export function ATSDashboard({ candidates, stages }: ATSDashboardProps) {
   const navigate = useNavigate();
   const { data: scheduledMessages = [], isLoading: loadingMessages } = useTodayScheduledMessages();
   const { data: acceptanceStats, isLoading: loadingAcceptance } = useOutreachAcceptanceStats();
+  const { data: dailyInvites = [], isLoading: loadingInvites } = useDailyInviteStats(30);
   const [expandedMessageId, setExpandedMessageId] = React.useState<string | null>(null);
 
   // ═══ KPIs ═══
@@ -777,6 +779,63 @@ export function ATSDashboard({ candidates, stages }: ATSDashboardProps) {
               </div>
             )}
           </>
+        )}
+      </Section>
+
+      {/* ─── Daily Invitations Chart ─── */}
+      <Section title="Invitations réseau / jour" subtitle="Envoyées vs acceptées (30 jours)" icon={UserPlus}>
+        {loadingInvites ? (
+          <div className="p-4 h-[220px] bg-muted animate-pulse" />
+        ) : dailyInvites.every(d => d.invitesSent === 0 && d.invitesAccepted === 0) ? (
+          <div className="p-6 flex flex-col items-center gap-2">
+            <UserPlus className="w-6 h-6 text-muted-foreground/40" />
+            <p className="text-xs text-muted-foreground">Aucune invitation envoyée sur la période</p>
+          </div>
+        ) : (
+          <div className="p-4">
+            {/* Summary KPIs */}
+            <div className="grid grid-cols-3 gap-0 mb-4 border border-foreground">
+              {(() => {
+                const totalSent = dailyInvites.reduce((s, d) => s + d.invitesSent, 0);
+                const totalAccepted = dailyInvites.reduce((s, d) => s + d.invitesAccepted, 0);
+                const rate = totalSent > 0 ? Math.round((totalAccepted / totalSent) * 100) : 0;
+                return [
+                  { label: 'Envoyées', value: totalSent },
+                  { label: 'Acceptées', value: totalAccepted },
+                  { label: 'Taux', value: `${rate}%` },
+                ].map((kpi, i) => (
+                  <div key={kpi.label} className={cn("p-3 flex flex-col gap-0.5", i > 0 && "border-l border-foreground")}>
+                    <span className="text-[9px] uppercase tracking-wider text-muted-foreground font-medium">{kpi.label}</span>
+                    <span className="text-lg font-bold font-mono">{kpi.value}</span>
+                  </div>
+                ));
+              })()}
+            </div>
+            <div className="h-[200px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={dailyInvites} margin={{ left: -10, right: 8, top: 4, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                  <XAxis
+                    dataKey="label"
+                    tick={{ fontSize: 9, fill: 'hsl(var(--muted-foreground))' }}
+                    axisLine={false}
+                    tickLine={false}
+                    interval="preserveStartEnd"
+                  />
+                  <YAxis
+                    tick={{ fontSize: 9, fill: 'hsl(var(--muted-foreground))' }}
+                    axisLine={false}
+                    tickLine={false}
+                    width={28}
+                    allowDecimals={false}
+                  />
+                  <Tooltip content={<ChartTooltip />} />
+                  <Bar dataKey="invitesSent" name="Envoyées" fill="hsl(var(--foreground))" radius={[2, 2, 0, 0]} />
+                  <Bar dataKey="invitesAccepted" name="Acceptées" fill="hsl(var(--brutal-accent))" radius={[2, 2, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
         )}
       </Section>
 
