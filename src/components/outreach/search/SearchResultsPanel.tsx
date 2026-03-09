@@ -166,6 +166,22 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
     setDetailOpen(true);
   };
 
+  // Navigation helpers for profile detail sheet
+  const detailIndex = useMemo(() => {
+    if (!detailProfile) return -1;
+    return filteredResults.findIndex(r => r.id === detailProfile.id);
+  }, [detailProfile, filteredResults]);
+
+  const navigatePrev = useMemo(() => {
+    if (detailIndex <= 0) return undefined;
+    return () => setDetailProfile(filteredResults[detailIndex - 1]);
+  }, [detailIndex, filteredResults]);
+
+  const navigateNext = useMemo(() => {
+    if (detailIndex < 0 || detailIndex >= filteredResults.length - 1) return undefined;
+    return () => setDetailProfile(filteredResults[detailIndex + 1]);
+  }, [detailIndex, filteredResults]);
+
 
   // Airtable match - collect profile info for URL + fuzzy matching
   const profileMatchInputs = useMemo(() => 
