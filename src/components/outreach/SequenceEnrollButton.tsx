@@ -112,7 +112,7 @@ export const SequenceEnrollButton: React.FC<SequenceEnrollButtonProps> = ({
             <ChevronDown className="w-3 h-3 sm:w-3.5 sm:h-3.5 ml-0.5 sm:ml-1 shrink-0" />
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="bg-white w-64">
+        <DropdownMenuContent align="end" className="bg-white w-64 z-[9999]">
           {loading ? (
             <div className="flex items-center justify-center py-4">
               <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
