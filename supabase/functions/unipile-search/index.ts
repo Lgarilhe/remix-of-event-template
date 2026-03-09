@@ -9,15 +9,14 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 };
 
-interface SearchParams
-
 // Timeout wrapper for all external fetch calls (Unipile, Anthropic, Notion)
 function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timer));
 }
- {
+
+interface SearchParams {
   api?: 'classic' | 'recruiter' | 'sales_navigator';
   category?: 'people' | 'companies' | 'jobs' | 'posts';
   keywords?: string;
