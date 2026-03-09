@@ -178,7 +178,6 @@ export default function Outreach() {
           <div className={cn("mb-3 md:mb-5 sm:mb-6 min-w-0", activeTab === 'messages' && "mb-2 md:mb-5")}>
             <div className="grid grid-cols-3 sm:flex gap-0 w-full min-w-0">
               {tabs.map((tab, index) => {
-                const Icon = tab.icon;
                 const isActive = activeTab === tab.value;
                 return (
                   <button
@@ -192,7 +191,7 @@ export default function Outreach() {
                         : "bg-background text-foreground"
                     )}
                   >
-                    <Icon className="w-3.5 h-3.5 shrink-0 relative z-10" />
+                    <span className="text-sm shrink-0 relative z-10">{tab.emoji}</span>
                     <span className="hidden sm:inline relative z-10 truncate">{tab.label}</span>
                     <span className="sm:hidden relative z-10 truncate">{tab.shortLabel || tab.label}</span>
                     {tab.value === 'messages' && unreadMessageCount > 0 && (
