@@ -260,6 +260,7 @@ export function useFilteredResults({
     allSelectableSelected,
     poolCount,
     mergedResults,
+    preScores,
   };
 }
 
