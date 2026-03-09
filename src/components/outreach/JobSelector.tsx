@@ -6,59 +6,15 @@ import { Input } from '@/components/ui/input';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Loader2, Target, X, Wand2, Search, Sparkles, RefreshCw, ChevronDown, Check } from 'lucide-react';
 import { toast } from 'sonner';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useIsMobile } from '@/hooks/use-mobile';
+import { useNotionJobs } from '@/hooks/useNotionJobs';
 
-interface JobSelectorProps {
-  selectedJob: Job | null;
-  onJobChange: (job: Job | null) => void;
-  onAutoFillFilters?: (filters: GeneratedFilters) => void;
-}
-
-export interface GeneratedFilters {
-  keywords: string;
-  role: Array<{ keywords: string; priority: string; scope: string }>;
-  seniority: string[];
-  years_of_experience_min: number | null;
-  years_of_experience_max: number | null;
-  skills_keywords: string[];
-  industry_keywords: string[];
-  location_keywords: string[];
-  location_within_area: number | null;
-  company_keywords: Array<{ 
-    keywords: string; 
-    priority: 'CAN_HAVE' | 'MUST_HAVE' | 'DOESNT_HAVE'; 
-    scope: 'CURRENT' | 'PAST' | 'CURRENT_OR_PAST' | 'PAST_NOT_CURRENT';
-  }>;
-  school: Array<{ 
-    id: string; 
-    name: string; 
-    priority: 'CAN_HAVE' | 'MUST_HAVE' | 'DOESNT_HAVE';
-  }>;
-  spotlight: string;
-  open_to_work: boolean;
-}
-
-// Custom hook to fetch and cache jobs
-export const useJobs = () => {
-  return useQuery({
-    queryKey: ['notion-jobs-all'],
-    queryFn: async () => {
-      const { data, error } = await invokeEdgeFunction<{ jobs?: Job[] }>('fetch-notion-jobs', { all: true });
-      
-      if (error) throw error;
-      if (!data?.success) throw new Error('Failed to fetch jobs');
-      
-      return (data.jobs || []) as Job[];
-    },
-    staleTime: 5 * 60 * 1000, // Cache for 5 minutes
-    gcTime: 10 * 60 * 1000, // Keep in cache for 10 minutes
-    refetchOnWindowFocus: false,
-  });
-};
+// Re-export useNotionJobs as useJobs for backward compatibility
+export const useJobs = useNotionJobs;
 
 // Hook to force refresh jobs from Notion
 export const useRefreshJobs = () => {
