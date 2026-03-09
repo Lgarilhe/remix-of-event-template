@@ -77,7 +77,7 @@ export function useFilteredResults({
 
   // Merge search results with pool profiles from DB
   // Cap pool profiles to avoid freezing the main thread with large candidate pools
-  const MAX_POOL_PROFILES = 100;
+  const MAX_POOL_PROFILES = 50;
 
   const mergedResults = useMemo(() => {
     if (!showPoolView || !statuses || statuses.size === 0) return results;
