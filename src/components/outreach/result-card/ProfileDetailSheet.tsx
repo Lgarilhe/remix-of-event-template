@@ -503,10 +503,10 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
                   </Button>
                 )}
                 {profileUrl && (
-                  <Button variant="outline" size="sm" asChild className="h-7 gap-1 text-[11px] rounded-none border border-foreground px-2 uppercase tracking-wider font-semibold">
+                  <Button variant="outline" size="sm" asChild className="h-7 gap-1 text-[11px] rounded-none border border-foreground px-2.5 uppercase tracking-wider font-semibold">
                     <a href={profileUrl} target="_blank" rel="noopener noreferrer">
                       <ExternalLink className="w-3 h-3" />
-                      LI
+                      Voir LinkedIn
                     </a>
                   </Button>
                 )}
