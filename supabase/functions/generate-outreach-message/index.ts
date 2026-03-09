@@ -1,11 +1,19 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+﻿import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-interface ProfileData {
+interface ProfileData
+
+// Timeout wrapper for all external fetch calls (Unipile, Anthropic, Notion)
+function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timer));
+}
+ {
   name: string;
   headline?: string;
   currentRole?: string;
@@ -221,7 +229,7 @@ async function fetchRecentPosts(
     const url = `https://${UNIPILE_DSN}/api/v1/users/${encodeURIComponent(profileId)}/posts?account_id=${encodeURIComponent(accountId)}&limit=${maxPosts}`;
     console.log('[generate-outreach-message] Fetching posts:', url);
 
-    const response = await fetch(url, {
+    const response = await fetchWithTimeout(url, {
       headers: {
         'X-API-KEY': UNIPILE_API_KEY,
         'accept': 'application/json',
@@ -775,7 +783,7 @@ Réponds UNIQUEMENT en JSON valide:
 
     const callAnthropic = async (userPrompt: string, maxRetries = 3): Promise<{ ok: true; content: string } | { ok: false; response: Response }> => {
       for (let attempt = 0; attempt < maxRetries; attempt++) {
-        const response = await fetch("https://api.anthropic.com/v1/messages", {
+        const response = await fetchWithTimeout("https://api.anthropic.com/v1/messages", {
           method: "POST",
           headers: {
             "x-api-key": ANTHROPIC_API_KEY,

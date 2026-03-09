@@ -1,4 +1,4 @@
-import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
+﻿import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.75.1";
 
 const corsHeaders = {
@@ -7,7 +7,15 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 
-interface InMailQueueItem {
+interface InMailQueueItem
+
+// Timeout wrapper for all external fetch calls (Unipile, Anthropic, Notion)
+function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timer));
+}
+ {
   id: string;
   account_id: string;
   recipient_profile_id: string;
@@ -312,7 +320,7 @@ serve(async (req: Request) => {
             subject: !isFirstDegree ? item.subject : undefined,
           });
 
-          const response = await fetch(
+          const response = await fetchWithTimeout(
             `https://${unipileDsn}/api/v1/chats`,
             {
               method: "POST",
@@ -378,8 +386,9 @@ serve(async (req: Request) => {
       try {
         const user = await validateUser();
         userId = user.id;
-      } catch {
+      } catch (authErr) {
         // Allow unauthenticated status check - show recent items
+        console.warn('[process-inmail-queue] Status auth check failed (non-blocking):', authErr);
       }
 
       const query = supabase

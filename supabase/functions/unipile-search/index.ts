@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Unipile LinkedIn Search Edge Function
  * Supports: Classic, Sales Navigator, and Recruiter APIs
  * Based on Unipile API Reference: https://developer.unipile.com/docs/linkedin-search
@@ -9,7 +9,15 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 };
 
-interface SearchParams {
+interface SearchParams
+
+// Timeout wrapper for all external fetch calls (Unipile, Anthropic, Notion)
+function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timer));
+}
+ {
   api?: 'classic' | 'recruiter' | 'sales_navigator';
   category?: 'people' | 'companies' | 'jobs' | 'posts';
   keywords?: string;
@@ -857,7 +865,7 @@ async function handleSearch(
       await new Promise(r => setTimeout(r, RETRY_DELAYS[attempt]));
     }
 
-    response = await fetch(searchUrl, {
+    response = await fetchWithTimeout(searchUrl, {
       method: 'POST',
       headers: {
         'X-API-KEY': apiKey,
@@ -983,7 +991,7 @@ async function handleGetParameters(
   const url = `${baseUrl}/linkedin/search/parameters?${queryParams.toString()}`;
   console.log('Get parameters URL:', url);
 
-  const response = await fetch(url, {
+  const response = await fetchWithTimeout(url, {
     headers: {
       'X-API-KEY': apiKey,
       'Accept': 'application/json',
@@ -1042,7 +1050,7 @@ async function handleGetProfile(
     );
   }
 
-  const response = await fetch(`${baseUrl}/users/${profile_id}?account_id=${accountId}`, {
+  const response = await fetchWithTimeout(`${baseUrl}/users/${profile_id}?account_id=${accountId}`, {
     headers: {
       'X-API-KEY': apiKey,
       'Accept': 'application/json',
@@ -1095,7 +1103,7 @@ async function handleGetChats(
     const url = `${baseUrl}/chat_attendees/${encodeURIComponent(String(attendee_provider_id))}/chats?${queryParams.toString()}`;
     console.log('Get chats by attendee URL:', url);
     
-    const response = await fetch(url, {
+    const response = await fetchWithTimeout(url, {
       headers: { 'X-API-KEY': apiKey, 'Accept': 'application/json' },
     });
     
@@ -1154,7 +1162,7 @@ async function handleGetChats(
     console.log(`Fetching folder ${folderName}:`, url);
     
     try {
-      const response = await fetch(url, {
+      const response = await fetchWithTimeout(url, {
         headers: { 'X-API-KEY': apiKey, 'Accept': 'application/json' },
       });
       
@@ -1229,7 +1237,7 @@ async function handleGetChats(
   const fetchLastMessage = async (chatId: string): Promise<{ is_sender: boolean; text?: string; timestamp?: string } | null> => {
     try {
       const msgUrl = `${baseUrl}/chats/${encodeURIComponent(chatId)}/messages?limit=1`;
-      const msgResponse = await fetch(msgUrl, {
+      const msgResponse = await fetchWithTimeout(msgUrl, {
         headers: { 'X-API-KEY': apiKey, 'Accept': 'application/json' },
       });
       if (msgResponse.ok) {
@@ -1262,7 +1270,7 @@ async function handleGetChats(
       let needsAttendeeFetch = providedAttendees.length === 0 && attendeeProviderId && !attendeeCache.has(attendeeProviderId);
       if (needsAttendeeFetch) {
         promises.push(
-          fetch(`${baseUrl}/chat_attendees/${encodeURIComponent(attendeeProviderId!)}`, {
+          fetchWithTimeout(`${baseUrl}/chat_attendees/${encodeURIComponent(attendeeProviderId!)}`, {
             headers: { 'X-API-KEY': apiKey, 'Accept': 'application/json' },
           }).then(r => r.ok ? r.json() : null).catch(() => null)
         );
@@ -1349,7 +1357,7 @@ async function handleGetMessages(
   const url = `${baseUrl}/chats/${chat_id}/messages?${queryParams.toString()}`;
   console.log('Get messages URL:', url);
 
-  const response = await fetch(url, {
+  const response = await fetchWithTimeout(url, {
     headers: {
       'X-API-KEY': apiKey,
       'Accept': 'application/json',
@@ -1437,7 +1445,7 @@ async function handleSendMessage(
 
   console.log('Send message URL:', url, 'is_inmail:', is_inmail);
 
-  const response = await fetch(url, {
+  const response = await fetchWithTimeout(url, {
     method: 'POST',
     headers: {
       'X-API-KEY': apiKey,
@@ -1493,7 +1501,7 @@ async function handleMarkAsRead(
     const url = `${baseUrl}/chats/${chat_id}`;
     console.log('Mark as read URL:', url);
 
-    const response = await fetch(url, {
+    const response = await fetchWithTimeout(url, {
       method: 'PATCH',
       headers: {
         'X-API-KEY': apiKey,
@@ -1550,7 +1558,7 @@ async function handleGetUserPosts(
     const url = `${baseUrl}/users/${encodeURIComponent(identifier)}/posts?account_id=${accountId}&limit=${limit}`;
     console.log('Fetching user posts:', url);
 
-    const response = await fetch(url, {
+    const response = await fetchWithTimeout(url, {
       method: 'GET',
       headers: {
         'X-API-KEY': apiKey,
@@ -1711,7 +1719,7 @@ async function handleEndorseSkill(
     );
   }
 
-  const response = await fetch(`${baseUrl}/linkedin/profile/endorse`, {
+  const response = await fetchWithTimeout(`${baseUrl}/linkedin/profile/endorse`, {
     method: 'POST',
     headers: {
       'X-API-KEY': apiKey,

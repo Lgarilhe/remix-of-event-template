@@ -1,4 +1,4 @@
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.75.1';
+﻿import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.75.1';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -6,6 +6,14 @@ const corsHeaders = {
 };
 
 /**
+
+// Timeout wrapper for all external fetch calls (Unipile, Anthropic, Notion)
+function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timer));
+}
+
  * Resolve Unipile credentials: try org-specific first, then fall back to env vars.
  */
 async function resolveUnipileCredentials(organizationId?: string): Promise<{ apiKey: string; dsn: string } | null> {
@@ -62,7 +70,7 @@ Deno.serve(async (req) => {
     switch (action) {
       case 'list': {
         // List all connected accounts
-        const response = await fetch(`${baseUrl}/accounts`, {
+        const response = await fetchWithTimeout(`${baseUrl}/accounts`, {
           headers: {
             'X-API-KEY': apiKey,
             'Accept': 'application/json',
@@ -104,7 +112,7 @@ Deno.serve(async (req) => {
             try {
               const profileUrl = `${baseUrl}/users/me?account_id=${acc.id}`;
               console.log(`[accounts] Fetching profile picture from: ${profileUrl}`);
-              const profileRes = await fetch(profileUrl, {
+              const profileRes = await fetchWithTimeout(profileUrl, {
                 headers: { 'X-API-KEY': apiKey!, 'Accept': 'application/json' },
               });
               if (profileRes.ok) {
@@ -159,7 +167,7 @@ Deno.serve(async (req) => {
 
         console.log('[hosted_auth_link] Generating link with body:', JSON.stringify(hostedBody));
 
-        const response = await fetch(`https://${dsn}/api/v1/hosted/accounts/link`, {
+        const response = await fetchWithTimeout(`https://${dsn}/api/v1/hosted/accounts/link`, {
           method: 'POST',
           headers: {
             'X-API-KEY': apiKey,
@@ -198,7 +206,7 @@ Deno.serve(async (req) => {
 
         console.log('Connecting with cookie, length:', access_token.length);
 
-        const response = await fetch(`${baseUrl}/accounts`, {
+        const response = await fetchWithTimeout(`${baseUrl}/accounts`, {
           method: 'POST',
           headers: {
             'X-API-KEY': apiKey,
@@ -246,7 +254,7 @@ Deno.serve(async (req) => {
           );
         }
 
-        const response = await fetch(`${baseUrl}/accounts`, {
+        const response = await fetchWithTimeout(`${baseUrl}/accounts`, {
           method: 'POST',
           headers: {
             'X-API-KEY': apiKey,
@@ -286,7 +294,7 @@ Deno.serve(async (req) => {
           );
         }
 
-        const response = await fetch(`${baseUrl}/accounts/checkpoint`, {
+        const response = await fetchWithTimeout(`${baseUrl}/accounts/checkpoint`, {
           method: 'POST',
           headers: {
             'X-API-KEY': apiKey,
@@ -326,7 +334,7 @@ Deno.serve(async (req) => {
           );
         }
 
-        const response = await fetch(`${baseUrl}/accounts/${account_id}`, {
+        const response = await fetchWithTimeout(`${baseUrl}/accounts/${account_id}`, {
           method: 'DELETE',
           headers: {
             'X-API-KEY': apiKey,
@@ -365,7 +373,7 @@ Deno.serve(async (req) => {
           );
         }
 
-        const response = await fetch(`${baseUrl}/linkedin/inmail_balance?account_id=${account_id}`, {
+        const response = await fetchWithTimeout(`${baseUrl}/linkedin/inmail_balance?account_id=${account_id}`, {
           headers: {
             'X-API-KEY': apiKey,
             'Accept': 'application/json',
@@ -414,7 +422,7 @@ Deno.serve(async (req) => {
         }
 
         // Get full account details which may contain contract information
-        const accountResponse = await fetch(`${baseUrl}/accounts/${account_id}`, {
+        const accountResponse = await fetchWithTimeout(`${baseUrl}/accounts/${account_id}`, {
           headers: {
             'X-API-KEY': apiKey,
             'Accept': 'application/json',

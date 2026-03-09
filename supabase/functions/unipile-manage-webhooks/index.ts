@@ -1,4 +1,4 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+﻿import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.75.1';
 
 const corsHeaders = {
@@ -6,6 +6,14 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS, DELETE',
 };
+
+// Timeout wrapper for all external fetch calls (Unipile, Anthropic, Notion)
+function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timer));
+}
+
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL');
 const WEBHOOK_SECRET = Deno.env.get('UNIPILE_WEBHOOK_SECRET');
@@ -94,7 +102,7 @@ serve(async (req) => {
 
     switch (action) {
       case 'list': {
-        const response = await fetch(`${UNIPILE_DSN}/api/v1/webhooks`, {
+        const response = await fetchWithTimeout(`${UNIPILE_DSN}/api/v1/webhooks`, {
           headers: { 'X-API-KEY': apiKey },
         });
 
@@ -110,7 +118,7 @@ serve(async (req) => {
       }
 
       case 'register': {
-        const listResponse = await fetch(`${UNIPILE_DSN}/api/v1/webhooks`, {
+        const listResponse = await fetchWithTimeout(`${UNIPILE_DSN}/api/v1/webhooks`, {
           headers: { 'X-API-KEY': apiKey },
         });
 
@@ -144,7 +152,7 @@ serve(async (req) => {
           };
 
           try {
-            const response = await fetch(`${UNIPILE_DSN}/api/v1/webhooks`, {
+            const response = await fetchWithTimeout(`${UNIPILE_DSN}/api/v1/webhooks`, {
               method: 'POST',
               headers: {
                 'X-API-KEY': apiKey,
@@ -188,7 +196,7 @@ serve(async (req) => {
           throw new Error('webhook_id is required');
         }
 
-        const response = await fetch(`${UNIPILE_DSN}/api/v1/webhooks/${webhook_id}`, {
+        const response = await fetchWithTimeout(`${UNIPILE_DSN}/api/v1/webhooks/${webhook_id}`, {
           method: 'DELETE',
           headers: { 'X-API-KEY': apiKey },
         });

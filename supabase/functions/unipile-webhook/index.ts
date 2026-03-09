@@ -7,6 +7,15 @@ const corsHeaders = {
 };
 
 const WEBHOOK_SECRET = Deno.env.get('UNIPILE_WEBHOOK_SECRET');
+if (!WEBHOOK_SECRET) console.warn('[unipile-webhook] ⚠️ UNIPILE_WEBHOOK_SECRET not set — webhook auth is DISABLED, all requests will be accepted');
+
+// Timeout wrapper for all external fetch calls (Unipile, Anthropic, Notion)
+function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timer));
+}
+
 
 interface WebhookPayload {
   event: string;
@@ -303,7 +312,7 @@ async function handleNewMessage(supabase: SupabaseClient, payload: WebhookPayloa
     try {
       const UNIPILE_DSN = Deno.env.get('UNIPILE_DSN')!;
       const UNIPILE_API_KEY = Deno.env.get('UNIPILE_API_KEY')!;
-      const attRes = await fetch(`https://${UNIPILE_DSN}/api/v1/chats/${chatId}/attendees`, { headers: { 'X-API-KEY': UNIPILE_API_KEY } });
+      const attRes = await fetchWithTimeout(`https://${UNIPILE_DSN}/api/v1/chats/${chatId}/attendees`, { headers: { 'X-API-KEY': UNIPILE_API_KEY } });
       if (attRes.ok) {
         const attData = await attRes.json();
         const attendees = attData.items || attData || [];
@@ -454,7 +463,7 @@ async function handleNewMessage(supabase: SupabaseClient, payload: WebhookPayloa
       const UNIPILE_API_KEY = Deno.env.get('UNIPILE_API_KEY')!;
       
       // Resolve the sender's profile to get alternative IDs
-      const userRes = await fetch(`https://${UNIPILE_DSN}/api/v1/users/${senderId}`, {
+      const userRes = await fetchWithTimeout(`https://${UNIPILE_DSN}/api/v1/users/${senderId}`, {
         headers: { 'X-API-KEY': UNIPILE_API_KEY },
       });
       
@@ -509,7 +518,7 @@ async function handleNewMessage(supabase: SupabaseClient, payload: WebhookPayloa
     const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
     
     // Fire-and-forget: don't await to keep webhook fast
-    fetch(`${supabaseUrl}/functions/v1/auto-analyze-message`, {
+    fetchWithTimeout(`${supabaseUrl}/functions/v1/auto-analyze-message`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${supabaseAnonKey}`,
