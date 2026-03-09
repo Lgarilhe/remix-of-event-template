@@ -88,24 +88,58 @@ export function useFilteredResults({
       byId.set(r.id, r);
     }
 
-    // Add DB profiles not in current search (pool profiles) — with pre-score
+    // Add DB profiles not in current search (pool profiles) — WITHOUT pre-score (deferred)
     // Cap to MAX_POOL_PROFILES to avoid blocking the main thread
     let poolAdded = 0;
     for (const [candidateId, status] of statuses) {
       if (poolAdded >= MAX_POOL_PROFILES) break;
       if (!byId.has(candidateId) && canRehydrate(status)) {
         const rehydrated = rehydrateProfile(status);
-        // Calculate pre-score for rehydrated profiles
-        if (selectedJob) {
-          (rehydrated as any)._preScore = calculatePreScore(rehydrated, selectedJob, selectedJob.skills || []);
-        }
         byId.set(candidateId, rehydrated);
         poolAdded++;
       }
     }
 
     return Array.from(byId.values());
-  }, [results, statuses, showPoolView, selectedJob]);
+  }, [results, statuses, showPoolView]);
+
+  // Deferred pre-scoring: calculate pre-scores in chunks to avoid freezing the main thread
+  const [preScores, setPreScores] = useState<Map<string, any>>(new Map());
+  const preScoreGenRef = useRef(0);
+
+  useEffect(() => {
+    if (!selectedJob || mergedResults.length === 0) {
+      setPreScores(new Map());
+      return;
+    }
+
+    const gen = ++preScoreGenRef.current;
+    const jobSkills = selectedJob.skills || [];
+    const profilesToScore = mergedResults.filter(p => !(preScores.has(p.id)));
+    
+    if (profilesToScore.length === 0) return;
+
+    let cancelled = false;
+    const CHUNK_SIZE = 15;
+
+    (async () => {
+      const newScores = new Map(preScores);
+      for (let i = 0; i < profilesToScore.length; i += CHUNK_SIZE) {
+        if (cancelled || gen !== preScoreGenRef.current) return;
+        const chunk = profilesToScore.slice(i, i + CHUNK_SIZE);
+        for (const p of chunk) {
+          newScores.set(p.id, calculatePreScore(p, selectedJob, jobSkills));
+        }
+        // Yield to main thread between chunks
+        await new Promise(r => setTimeout(r, 0));
+      }
+      if (!cancelled && gen === preScoreGenRef.current) {
+        setPreScores(newScores);
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [mergedResults, selectedJob]);
 
   // Count pool-only profiles
   const poolCount = useMemo(() => {
