@@ -37,11 +37,11 @@ export interface LinkedInAccount {
 }
 
 const tabs = [
-  { value: 'projects', label: 'Projets', shortLabel: 'Projets', icon: FolderOpen },
-  { value: 'search', label: 'Recherche', shortLabel: 'Recherche', icon: Search },
-  { value: 'messages', label: 'Messages', shortLabel: 'Msg', icon: MessageSquare },
-  { value: 'sequences', label: 'Séquences', shortLabel: 'Séq.', icon: GitBranch },
-  { value: 'nurturing', label: 'Nurturing', shortLabel: 'Nurt.', icon: Sparkles },
+  { value: 'projects', label: 'Projets', shortLabel: 'Projets', emoji: '📂' },
+  { value: 'search', label: 'Recherche', shortLabel: 'Recherche', emoji: '🔍' },
+  { value: 'messages', label: 'Messages', shortLabel: 'Msg', emoji: '💬' },
+  { value: 'sequences', label: 'Séquences', shortLabel: 'Séq.', emoji: '🔗' },
+  { value: 'nurturing', label: 'Nurturing', shortLabel: 'Nurt.', emoji: '✨' },
 ] as const;
 
 export default function Outreach() {
