@@ -61,7 +61,9 @@ export function useJobCandidateStatus(jobId: string | null) {
     }));
   }, []);
 
-  // Fetch all statuses for current job (including linkedin_profile_data for pool rehydration)
+  // Fetch all statuses for current job
+  // Phase 1: fetch lightweight columns (no linkedin_profile_data) for fast initial load
+  // Phase 2: fetch linkedin_profile_data separately for pool rehydration (non-blocking)
   const fetchStatuses = useCallback(async () => {
     if (!jobId) {
       setStatusState(EMPTY_STATUS_STATE);
@@ -76,7 +78,8 @@ export function useJobCandidateStatus(jobId: string | null) {
         return;
       }
 
-      // Paginate to avoid Supabase's default 1000-row limit
+      // Phase 1: lightweight fetch (no linkedin_profile_data)
+      const LIGHT_COLUMNS = 'id,job_id,candidate_id,linkedin_profile_url,candidate_name,candidate_headline,status,score,recommendation,skip_reason,created_by,created_at,updated_at,scoring_details,tags,pipeline_stage,project_id,notion_candidate_id,notion_shortlist_id,notion_synced_at,organization_id';
       const allData: any[] = [];
       const PAGE_SIZE = 1000;
       let offset = 0;
@@ -85,7 +88,7 @@ export function useJobCandidateStatus(jobId: string | null) {
       while (hasMore) {
         const { data, error } = await supabase
           .from('job_candidate_status')
-          .select('*')
+          .select(LIGHT_COLUMNS)
           .eq('job_id', jobId)
           .eq('created_by', user.id)
           .range(offset, offset + PAGE_SIZE - 1);
@@ -110,12 +113,51 @@ export function useJobCandidateStatus(jobId: string | null) {
         if (s.status === 'dismissed') {
           dismissed.add(s.candidate_id);
         }
-        // All statuses mean the candidate has been treated
         treated.add(s.candidate_id);
       });
 
       // Single state update (1 re-render instead of 3)
       setStatusState({ statuses: statusMap, dismissedIds: dismissed, treatedIds: treated });
+
+      // Phase 2: fetch linkedin_profile_data for pool rehydration (non-blocking, max 50)
+      // Only fetch for candidates that have profile data (not null)
+      const candidateIds = allData
+        .filter(s => s.candidate_name || s.linkedin_profile_url)
+        .map(s => s.candidate_id)
+        .slice(0, 50);
+
+      if (candidateIds.length > 0) {
+        // Fire and forget — don't block the UI
+        (async () => {
+          try {
+            const { data: profileData } = await supabase
+              .from('job_candidate_status')
+              .select('candidate_id,linkedin_profile_data')
+              .eq('job_id', jobId)
+              .eq('created_by', user.id)
+              .in('candidate_id', candidateIds)
+              .not('linkedin_profile_data', 'is', null);
+
+            if (profileData && profileData.length > 0) {
+              setStatusState(prev => {
+                const next = new Map(prev.statuses);
+                for (const row of profileData) {
+                  const existing = next.get(row.candidate_id);
+                  if (existing) {
+                    next.set(row.candidate_id, {
+                      ...existing,
+                      linkedin_profile_data: row.linkedin_profile_data,
+                    });
+                  }
+                }
+                return { ...prev, statuses: next };
+              });
+            }
+          } catch (err) {
+            console.warn('Failed to fetch profile data for pool:', err);
+          }
+        })();
+      }
     } catch (error) {
       console.error('Error fetching candidate statuses:', error);
     } finally {
