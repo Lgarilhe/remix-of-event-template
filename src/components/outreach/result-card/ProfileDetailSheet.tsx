@@ -441,9 +441,9 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
             </div>
 
             {/* ─── ACTIONS BAR ─── */}
-            <div className="flex items-center justify-between gap-2 mt-3 sm:mt-4 pt-2.5 sm:pt-3 border-t border-foreground/20">
-              {/* Left — primary actions */}
-              <div className="flex items-center gap-1.5 flex-wrap min-w-0">
+            <div className="space-y-2 mt-3 sm:mt-4 pt-2.5 sm:pt-3 border-t border-foreground/20">
+              {/* Row 1 — primary actions */}
+              <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar" data-no-swipe>
                 {selectedJob && (
                   <Button
                     size="sm"
@@ -494,18 +494,18 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
                 )}
               </div>
 
-              {/* Right — secondary actions */}
-              <div className="flex items-center gap-1.5 shrink-0">
-                {profileUrl && (
-                  <Button variant="outline" size="sm" asChild className="h-7 gap-1 text-[11px] rounded-none border border-foreground px-2 uppercase tracking-wider font-semibold shrink-0">
+              {/* Row 2 — secondary actions */}
+              <div className="flex items-center justify-between gap-1.5">
+                {profileUrl ? (
+                  <Button variant="outline" size="sm" asChild className="h-7 gap-1 text-[11px] rounded-none border border-foreground px-2 uppercase tracking-wider font-semibold">
                     <a href={profileUrl} target="_blank" rel="noopener noreferrer">
                       <ExternalLink className="w-3 h-3" />
-                      LinkedIn
+                      Voir sur LinkedIn
                     </a>
                   </Button>
-                )}
+                ) : <span />}
                 {onArchive && (
-                  <Button variant="outline" size="sm" onClick={onArchive} className="h-7 gap-1 text-[11px] rounded-none border-2 border-destructive text-destructive hover:bg-destructive hover:text-destructive-foreground px-2.5 uppercase tracking-wider font-semibold shrink-0">
+                  <Button variant="outline" size="sm" onClick={onArchive} className="h-7 gap-1 text-[11px] rounded-none border-2 border-destructive text-destructive hover:bg-destructive hover:text-destructive-foreground px-2.5 uppercase tracking-wider font-semibold">
                     <Archive className="w-3.5 h-3.5" />
                     Archiver
                   </Button>
