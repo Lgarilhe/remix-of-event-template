@@ -59,8 +59,10 @@ export const useRefreshJobs = () => {
       if (error) throw error;
       if (!data?.success) throw new Error('Failed to refresh jobs');
       
-      // Update React Query cache with fresh data
+      // Update React Query cache with fresh data (both possible query keys)
       queryClient.setQueryData(['notion-jobs-all'], data.jobs || []);
+      const orgKeys = queryClient.getQueryCache().findAll({ queryKey: ['notion-jobs'] });
+      orgKeys.forEach(q => queryClient.setQueryData(q.queryKey, data.jobs || []));
       toast.success(`${data.jobs?.length || 0} postes synchronisés depuis Notion`);
     } catch (err) {
       console.error('Failed to refresh jobs:', err);
