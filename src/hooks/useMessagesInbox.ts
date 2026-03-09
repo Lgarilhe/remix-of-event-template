@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback, useRef, useEffect, useReducer } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { invokeUnipile } from '@/lib/invokeUnipile';
@@ -121,86 +121,302 @@ interface UseMessagesInboxOptions {
   onChatChange?: (chatId: string | null) => void;
 }
 
+// ── Reducer: Chat State ─────────────────────────────────
+interface ChatState {
+  chats: Chat[];
+  filteredChats: Chat[];
+  selectedChat: Chat | null;
+  messages: Message[];
+  loadingChats: boolean;
+  loadingMessages: boolean;
+  sending: boolean;
+  cursor: string | null;
+  hasMore: boolean;
+  chatCursors: Record<string, string | null>;
+  hasMoreChats: boolean;
+  loadingMoreChats: boolean;
+  loadingAllChats: boolean;
+}
+
+type ChatAction =
+  | { type: 'SET_CHATS'; chats: Chat[] }
+  | { type: 'UPDATE_CHATS'; updater: (prev: Chat[]) => Chat[] }
+  | { type: 'SET_FILTERED_CHATS'; chats: Chat[] }
+  | { type: 'SELECT_CHAT'; chat: Chat | null }
+  | { type: 'UPDATE_SELECTED_CHAT'; updater: (prev: Chat | null) => Chat | null }
+  | { type: 'SET_MESSAGES'; messages: Message[] }
+  | { type: 'UPDATE_MESSAGES'; updater: (prev: Message[]) => Message[] }
+  | { type: 'LOADING_CHATS'; loading: boolean }
+  | { type: 'LOADING_MESSAGES'; loading: boolean }
+  | { type: 'SENDING'; sending: boolean }
+  | { type: 'SET_CURSOR'; cursor: string | null; hasMore: boolean }
+  | { type: 'SET_CHAT_PAGINATION'; cursors: Record<string, string | null>; hasMore: boolean }
+  | { type: 'LOADING_MORE_CHATS'; loading: boolean }
+  | { type: 'LOADING_ALL_CHATS'; loading: boolean }
+  | { type: 'FETCH_CHATS_SUCCESS'; chats: Chat[]; cursors: Record<string, string | null>; hasMore: boolean }
+  | { type: 'MARK_CHAT_READ'; chatId: string };
+
+function chatReducer(state: ChatState, action: ChatAction): ChatState {
+  switch (action.type) {
+    case 'SET_CHATS': return { ...state, chats: action.chats };
+    case 'UPDATE_CHATS': return { ...state, chats: action.updater(state.chats) };
+    case 'SET_FILTERED_CHATS': return { ...state, filteredChats: action.chats };
+    case 'SELECT_CHAT': return { ...state, selectedChat: action.chat };
+    case 'UPDATE_SELECTED_CHAT': return { ...state, selectedChat: action.updater(state.selectedChat) };
+    case 'SET_MESSAGES': return { ...state, messages: action.messages };
+    case 'UPDATE_MESSAGES': return { ...state, messages: action.updater(state.messages) };
+    case 'LOADING_CHATS': return { ...state, loadingChats: action.loading };
+    case 'LOADING_MESSAGES': return { ...state, loadingMessages: action.loading };
+    case 'SENDING': return { ...state, sending: action.sending };
+    case 'SET_CURSOR': return { ...state, cursor: action.cursor, hasMore: action.hasMore };
+    case 'SET_CHAT_PAGINATION': return { ...state, chatCursors: action.cursors, hasMoreChats: action.hasMore };
+    case 'LOADING_MORE_CHATS': return { ...state, loadingMoreChats: action.loading };
+    case 'LOADING_ALL_CHATS': return { ...state, loadingAllChats: action.loading };
+    case 'FETCH_CHATS_SUCCESS': return {
+      ...state,
+      chats: action.chats,
+      filteredChats: action.chats,
+      chatCursors: action.cursors,
+      hasMoreChats: action.hasMore,
+      loadingChats: false,
+    };
+    case 'MARK_CHAT_READ': return {
+      ...state,
+      chats: state.chats.map(c => c.id === action.chatId ? { ...c, unread_count: 0, unread: 0 } : c),
+      selectedChat: state.selectedChat?.id === action.chatId
+        ? { ...state.selectedChat, unread_count: 0, unread: 0 }
+        : state.selectedChat,
+    };
+    default: return state;
+  }
+}
+
+// ── Reducer: UI State ───────────────────────────────────
+interface UIState {
+  searchQuery: string;
+  newMessage: string;
+  showUnreadOnly: boolean;
+  sourceFilter: 'all' | 'classic' | 'recruiter';
+  responseFilter: 'all' | 'waiting_candidate' | 'waiting_me';
+  showSequenceSelect: boolean;
+  showPipelineModal: boolean;
+  pipelinePreSelectedJobId: string | undefined;
+  selectedTone: 'formal' | 'casual' | 'direct' | 'empathetic';
+  calendlyLink: string | null;
+}
+
+type UIAction =
+  | { type: 'SET_SEARCH_QUERY'; value: string }
+  | { type: 'SET_NEW_MESSAGE'; value: string }
+  | { type: 'UPDATE_NEW_MESSAGE'; updater: (prev: string) => string }
+  | { type: 'SET_SHOW_UNREAD_ONLY'; value: boolean }
+  | { type: 'SET_SOURCE_FILTER'; value: 'all' | 'classic' | 'recruiter' }
+  | { type: 'SET_RESPONSE_FILTER'; value: 'all' | 'waiting_candidate' | 'waiting_me' }
+  | { type: 'SET_SHOW_SEQUENCE_SELECT'; value: boolean }
+  | { type: 'SET_SHOW_PIPELINE_MODAL'; value: boolean }
+  | { type: 'SET_PIPELINE_PRE_SELECTED_JOB_ID'; value: string | undefined }
+  | { type: 'SET_SELECTED_TONE'; value: 'formal' | 'casual' | 'direct' | 'empathetic' }
+  | { type: 'SET_CALENDLY_LINK'; value: string | null }
+  | { type: 'OPEN_PIPELINE_MODAL'; jobId?: string };
+
+function uiReducer(state: UIState, action: UIAction): UIState {
+  switch (action.type) {
+    case 'SET_SEARCH_QUERY': return { ...state, searchQuery: action.value };
+    case 'SET_NEW_MESSAGE': return { ...state, newMessage: action.value };
+    case 'UPDATE_NEW_MESSAGE': return { ...state, newMessage: action.updater(state.newMessage) };
+    case 'SET_SHOW_UNREAD_ONLY': return { ...state, showUnreadOnly: action.value };
+    case 'SET_SOURCE_FILTER': return { ...state, sourceFilter: action.value };
+    case 'SET_RESPONSE_FILTER': return { ...state, responseFilter: action.value };
+    case 'SET_SHOW_SEQUENCE_SELECT': return { ...state, showSequenceSelect: action.value };
+    case 'SET_SHOW_PIPELINE_MODAL': return { ...state, showPipelineModal: action.value };
+    case 'SET_PIPELINE_PRE_SELECTED_JOB_ID': return { ...state, pipelinePreSelectedJobId: action.value };
+    case 'SET_SELECTED_TONE': return { ...state, selectedTone: action.value };
+    case 'SET_CALENDLY_LINK': return { ...state, calendlyLink: action.value };
+    case 'OPEN_PIPELINE_MODAL': return { ...state, pipelinePreSelectedJobId: action.jobId, showPipelineModal: true };
+    default: return state;
+  }
+}
+
+// ── Reducer: Context / AI State ─────────────────────────
+type AnalysisData = {
+  intent: string;
+  intentConfidence: number;
+  sentiment: 'positive' | 'neutral' | 'negative';
+  engagement: 'high' | 'medium' | 'low';
+  summary: string;
+  qualificationQuestions?: string[];
+  detectedLanguage?: 'fr' | 'en' | 'other';
+  topJobMatch?: {
+    jobId: string;
+    jobTitle: string;
+    clientName?: string;
+    matchScore: number;
+    recommendation: 'go' | 'maybe' | 'skip';
+  };
+};
+
+interface ContextState {
+  enrollmentsMap: Map<string, SequenceEnrollmentInfo>;
+  availableJobs: JobData[];
+  sequences: Array<{ id: string; name: string; steps: any[] }>;
+  replySuggestions: Array<{ text: string; type: string }>;
+  loadingSuggestions: boolean;
+  suggestionsLoaded: boolean;
+  analysisData: AnalysisData | null;
+  loadingAnalysis: boolean;
+}
+
+type ContextAction =
+  | { type: 'SET_ENROLLMENTS_MAP'; map: Map<string, SequenceEnrollmentInfo> }
+  | { type: 'SET_AVAILABLE_JOBS'; jobs: JobData[] }
+  | { type: 'SET_SEQUENCES'; sequences: Array<{ id: string; name: string; steps: any[] }> }
+  | { type: 'SET_REPLY_SUGGESTIONS'; suggestions: Array<{ text: string; type: string }> }
+  | { type: 'SET_LOADING_SUGGESTIONS'; loading: boolean }
+  | { type: 'SET_SUGGESTIONS_LOADED'; loaded: boolean }
+  | { type: 'SET_ANALYSIS_DATA'; data: AnalysisData | null }
+  | { type: 'SET_LOADING_ANALYSIS'; loading: boolean }
+  | { type: 'RESET_SUGGESTIONS' };
+
+function contextReducer(state: ContextState, action: ContextAction): ContextState {
+  switch (action.type) {
+    case 'SET_ENROLLMENTS_MAP': return { ...state, enrollmentsMap: action.map };
+    case 'SET_AVAILABLE_JOBS': return { ...state, availableJobs: action.jobs };
+    case 'SET_SEQUENCES': return { ...state, sequences: action.sequences };
+    case 'SET_REPLY_SUGGESTIONS': return { ...state, replySuggestions: action.suggestions };
+    case 'SET_LOADING_SUGGESTIONS': return { ...state, loadingSuggestions: action.loading };
+    case 'SET_SUGGESTIONS_LOADED': return { ...state, suggestionsLoaded: action.loaded };
+    case 'SET_ANALYSIS_DATA': return { ...state, analysisData: action.data };
+    case 'SET_LOADING_ANALYSIS': return { ...state, loadingAnalysis: action.loading };
+    case 'RESET_SUGGESTIONS': return { ...state, replySuggestions: [], suggestionsLoaded: false };
+    default: return state;
+  }
+}
+
 export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initialChatId, onChatChange }: UseMessagesInboxOptions) {
   const { organizationId } = useOrganization();
-  // Chat state
-  const [chats, setChats] = useState<Chat[]>([]);
-  const [filteredChats, setFilteredChats] = useState<Chat[]>([]);
-  const [selectedChat, _setSelectedChat] = useState<Chat | null>(() => {
-    // Create a minimal placeholder chat so the UI renders immediately
-    if (initialChatId) {
-      return { id: initialChatId, account_id: '' } as Chat;
-    }
-    return null;
+
+  // ── Chat state (useReducer #1) ──
+  const [chatState, chatDispatch] = useReducer(chatReducer, {
+    chats: [],
+    filteredChats: [],
+    selectedChat: initialChatId ? { id: initialChatId, account_id: '' } as Chat : null,
+    messages: [],
+    loadingChats: false,
+    loadingMessages: false,
+    sending: false,
+    cursor: null,
+    hasMore: true,
+    chatCursors: {},
+    hasMoreChats: false,
+    loadingMoreChats: false,
+    loadingAllChats: false,
   });
+  const { chats, filteredChats, selectedChat, messages, loadingChats, loadingMessages, sending, cursor, hasMore, chatCursors, hasMoreChats, loadingMoreChats, loadingAllChats } = chatState;
+
   const pendingInitialChatId = useRef<string | null>(initialChatId || null);
-  
-  const setSelectedChat = useCallback((chat: Chat | null) => {
-    _setSelectedChat(chat);
-    onChatChange?.(chat?.id || null);
-  }, [onChatChange]);
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [loadingChats, setLoadingChats] = useState(false);
-  const [loadingMessages, setLoadingMessages] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [newMessage, setNewMessage] = useState('');
-  const [sending, setSending] = useState(false);
-  const [cursor, setCursor] = useState<string | null>(null);
-  const [hasMore, setHasMore] = useState(true);
-  const [chatCursors, setChatCursors] = useState<Record<string, string | null>>({});
-  const [hasMoreChats, setHasMoreChats] = useState(false);
-  const [loadingMoreChats, setLoadingMoreChats] = useState(false);
-  const [loadingAllChats, setLoadingAllChats] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
-  
-  // Filters
-  const [showUnreadOnly, setShowUnreadOnly] = useState(false);
-  const [sourceFilter, setSourceFilter] = useState<'all' | 'classic' | 'recruiter'>('all');
-  const [responseFilter, setResponseFilter] = useState<'all' | 'waiting_candidate' | 'waiting_me'>('all');
-  
-  // Context data
-  const [enrollmentsMap, setEnrollmentsMap] = useState<Map<string, SequenceEnrollmentInfo>>(new Map());
-  const [availableJobs, setAvailableJobs] = useState<JobData[]>([]);
-  const [sequences, setSequences] = useState<Array<{ id: string; name: string; steps: any[] }>>([]);
-  
+
+  // Backward-compatible setSelectedChat wrapper
+  const _setSelectedChat = useCallback((chatOrUpdater: Chat | null | ((prev: Chat | null) => Chat | null)) => {
+    if (typeof chatOrUpdater === 'function') {
+      chatDispatch({ type: 'UPDATE_SELECTED_CHAT', updater: chatOrUpdater });
+    } else {
+      chatDispatch({ type: 'SELECT_CHAT', chat: chatOrUpdater });
+    }
+  }, []);
+
+  const setSelectedChat = useCallback((chat: Chat | null) => {
+    chatDispatch({ type: 'SELECT_CHAT', chat });
+    onChatChange?.(chat?.id || null);
+  }, [onChatChange]);
+
+  // Backward-compatible set* wrappers for chat state
+  const setChats = useCallback((chatsOrUpdater: Chat[] | ((prev: Chat[]) => Chat[])) => {
+    if (typeof chatsOrUpdater === 'function') {
+      chatDispatch({ type: 'UPDATE_CHATS', updater: chatsOrUpdater });
+    } else {
+      chatDispatch({ type: 'SET_CHATS', chats: chatsOrUpdater });
+    }
+  }, []);
+  const setFilteredChats = useCallback((c: Chat[]) => chatDispatch({ type: 'SET_FILTERED_CHATS', chats: c }), []);
+  const setMessages = useCallback((msgsOrUpdater: Message[] | ((prev: Message[]) => Message[])) => {
+    if (typeof msgsOrUpdater === 'function') {
+      chatDispatch({ type: 'UPDATE_MESSAGES', updater: msgsOrUpdater });
+    } else {
+      chatDispatch({ type: 'SET_MESSAGES', messages: msgsOrUpdater });
+    }
+  }, []);
+  const setLoadingChats = useCallback((v: boolean) => chatDispatch({ type: 'LOADING_CHATS', loading: v }), []);
+  const setLoadingMessages = useCallback((v: boolean) => chatDispatch({ type: 'LOADING_MESSAGES', loading: v }), []);
+  const setSending = useCallback((v: boolean) => chatDispatch({ type: 'SENDING', sending: v }), []);
+  const setCursor = useCallback((c: string | null) => chatDispatch({ type: 'SET_CURSOR', cursor: c, hasMore: !!c }), []);
+  const setHasMore = useCallback((_v: boolean) => { /* handled by SET_CURSOR */ }, []);
+  const setChatCursors = useCallback((c: Record<string, string | null>) => {
+    chatDispatch({ type: 'SET_CHAT_PAGINATION', cursors: c, hasMore: Object.values(c).some(v => v !== null) });
+  }, []);
+  const setHasMoreChats = useCallback((_v: boolean) => { /* handled by SET_CHAT_PAGINATION */ }, []);
+  const setLoadingMoreChats = useCallback((v: boolean) => chatDispatch({ type: 'LOADING_MORE_CHATS', loading: v }), []);
+  const setLoadingAllChats = useCallback((v: boolean) => chatDispatch({ type: 'LOADING_ALL_CHATS', loading: v }), []);
+
+  // ── UI state (useReducer #2) ──
+  const [uiState, uiDispatch] = useReducer(uiReducer, {
+    searchQuery: '',
+    newMessage: '',
+    showUnreadOnly: false,
+    sourceFilter: 'all' as const,
+    responseFilter: 'all' as const,
+    showSequenceSelect: false,
+    showPipelineModal: false,
+    pipelinePreSelectedJobId: undefined,
+    selectedTone: 'casual' as const,
+    calendlyLink: null,
+  });
+  const { searchQuery, newMessage, showUnreadOnly, sourceFilter, responseFilter, showSequenceSelect, showPipelineModal, pipelinePreSelectedJobId, selectedTone, calendlyLink } = uiState;
+
+  // Backward-compatible set* wrappers for UI state
+  const setSearchQuery = useCallback((v: string) => uiDispatch({ type: 'SET_SEARCH_QUERY', value: v }), []);
+  const setNewMessage = useCallback((vOrUpdater: string | ((prev: string) => string)) => {
+    if (typeof vOrUpdater === 'function') {
+      uiDispatch({ type: 'UPDATE_NEW_MESSAGE', updater: vOrUpdater });
+    } else {
+      uiDispatch({ type: 'SET_NEW_MESSAGE', value: vOrUpdater });
+    }
+  }, []);
+  const setShowUnreadOnly = useCallback((v: boolean) => uiDispatch({ type: 'SET_SHOW_UNREAD_ONLY', value: v }), []);
+  const setSourceFilter = useCallback((v: 'all' | 'classic' | 'recruiter') => uiDispatch({ type: 'SET_SOURCE_FILTER', value: v }), []);
+  const setResponseFilter = useCallback((v: 'all' | 'waiting_candidate' | 'waiting_me') => uiDispatch({ type: 'SET_RESPONSE_FILTER', value: v }), []);
+  const setShowSequenceSelect = useCallback((v: boolean) => uiDispatch({ type: 'SET_SHOW_SEQUENCE_SELECT', value: v }), []);
+  const setShowPipelineModal = useCallback((v: boolean) => uiDispatch({ type: 'SET_SHOW_PIPELINE_MODAL', value: v }), []);
+  const setPipelinePreSelectedJobId = useCallback((v: string | undefined) => uiDispatch({ type: 'SET_PIPELINE_PRE_SELECTED_JOB_ID', value: v }), []);
+  const setSelectedTone = useCallback((v: 'formal' | 'casual' | 'direct' | 'empathetic') => uiDispatch({ type: 'SET_SELECTED_TONE', value: v }), []);
+  const setCalendlyLink = useCallback((v: string | null) => uiDispatch({ type: 'SET_CALENDLY_LINK', value: v }), []);
+
+  // ── Context / AI state (useReducer #3) ──
+  const [ctxState, ctxDispatch] = useReducer(contextReducer, {
+    enrollmentsMap: new Map(),
+    availableJobs: [],
+    sequences: [],
+    replySuggestions: [],
+    loadingSuggestions: false,
+    suggestionsLoaded: false,
+    analysisData: null,
+    loadingAnalysis: false,
+  });
+  const { enrollmentsMap, availableJobs, sequences, replySuggestions, loadingSuggestions, suggestionsLoaded, analysisData, loadingAnalysis } = ctxState;
+
+  // Backward-compatible set* wrappers for context state
+  const setEnrollmentsMap = useCallback((m: Map<string, SequenceEnrollmentInfo>) => ctxDispatch({ type: 'SET_ENROLLMENTS_MAP', map: m }), []);
+  const setAvailableJobs = useCallback((j: JobData[]) => ctxDispatch({ type: 'SET_AVAILABLE_JOBS', jobs: j }), []);
+  const setSequences = useCallback((s: Array<{ id: string; name: string; steps: any[] }>) => ctxDispatch({ type: 'SET_SEQUENCES', sequences: s }), []);
+  const setReplySuggestions = useCallback((s: Array<{ text: string; type: string }>) => ctxDispatch({ type: 'SET_REPLY_SUGGESTIONS', suggestions: s }), []);
+  const setLoadingSuggestions = useCallback((v: boolean) => ctxDispatch({ type: 'SET_LOADING_SUGGESTIONS', loading: v }), []);
+  const setSuggestionsLoaded = useCallback((v: boolean) => ctxDispatch({ type: 'SET_SUGGESTIONS_LOADED', loaded: v }), []);
+  const setAnalysisData = useCallback((d: AnalysisData | null) => ctxDispatch({ type: 'SET_ANALYSIS_DATA', data: d }), []);
+  const setLoadingAnalysis = useCallback((v: boolean) => ctxDispatch({ type: 'SET_LOADING_ANALYSIS', loading: v }), []);
+
   // Chat categories
   const chatCategories = useChatCategories();
-  
-  // Reply suggestions
-  const [replySuggestions, setReplySuggestions] = useState<Array<{ text: string; type: string }>>([]);
-  const [loadingSuggestions, setLoadingSuggestions] = useState(false);
-  const [suggestionsLoaded, setSuggestionsLoaded] = useState(false);
-  
-  // AI Tone preference
-  const [selectedTone, setSelectedTone] = useState<'formal' | 'casual' | 'direct' | 'empathetic'>('casual');
-  
-  // Analysis data from NurturingPanel
-  const [analysisData, setAnalysisData] = useState<{
-    intent: string;
-    intentConfidence: number;
-    sentiment: 'positive' | 'neutral' | 'negative';
-    engagement: 'high' | 'medium' | 'low';
-    summary: string;
-    qualificationQuestions?: string[];
-    detectedLanguage?: 'fr' | 'en' | 'other';
-    topJobMatch?: {
-      jobId: string;
-      jobTitle: string;
-      clientName?: string;
-      matchScore: number;
-      recommendation: 'go' | 'maybe' | 'skip';
-    };
-  } | null>(null);
-  const [loadingAnalysis, setLoadingAnalysis] = useState(false);
-  
-  // Modals
-  const [showSequenceSelect, setShowSequenceSelect] = useState(false);
-  const [showPipelineModal, setShowPipelineModal] = useState(false);
-  const [pipelinePreSelectedJobId, setPipelinePreSelectedJobId] = useState<string | undefined>();
-  
-  // Calendly link resolved from candidate's project
-  const [calendlyLink, setCalendlyLink] = useState<string | null>(null);
 
   // Fetch sequence enrollments
   const fetchEnrollments = useCallback(async () => {
@@ -965,12 +1181,8 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
   // Helper: mark a chat as read locally AND via the Unipile API
   // Plain function (not a hook) to avoid changing hook count
   const markChatAsReadLocally = (chatId: string) => {
-    setChats(prev => prev.map(c =>
-      c.id === chatId ? { ...c, unread_count: 0, unread: 0 } : c
-    ));
-    _setSelectedChat(prev =>
-      prev && prev.id === chatId ? { ...prev, unread_count: 0, unread: 0 } : prev
-    );
+    // Single dispatch updates both chats[] and selectedChat atomically (1 render instead of 2)
+    chatDispatch({ type: 'MARK_CHAT_READ', chatId });
 
     // Fire-and-forget: tell Unipile to mark the chat as read server-side
     invokeUnipile({
