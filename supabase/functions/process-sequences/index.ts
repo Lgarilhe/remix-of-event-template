@@ -1,4 +1,4 @@
-import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
+﻿import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.75.1";
 
 // No wildcard CORS — this function is called by cron (service role) and frontend (authenticated users)
@@ -14,6 +14,13 @@ const UNIPILE_DSN = `https://${UNIPILE_DSN_RAW}`;
 const ANTHROPIC_API_KEY = Deno.env.get('ANTHROPIC_API_KEY');
 const NOTION_API_KEY = Deno.env.get('NOTION_API_KEY');
 const WEEKLY_INVITE_LIMIT = 100;
+
+// Timeout wrapper for all external fetch calls (Unipile, Anthropic, Notion)
+function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timer));
+}
 
 // In-memory profile cache — cleared at the start of each request to avoid cross-invocation staleness
 const profileInfoCache = new Map<string, { network_distance?: string; provider_id?: string }>();
@@ -291,6 +298,19 @@ async function handleProcess(supabase: any, force = false) {
           console.log(`[process] ${enrollment.profile_name} → waiting_event (wait_connection)`);
           results.skipped++;
         } else if (executeResult.success) {
+          // Fix 1: Re-check enrollment status — a reply may have been detected during execution
+          const { data: freshEnrollment } = await supabase
+            .from('sequence_enrollments').select('status').eq('id', enrollment.id).single();
+          if (freshEnrollment?.status === 'replied' || freshEnrollment?.status === 'completed' || freshEnrollment?.status === 'paused') {
+            console.warn(`[process] ⛔ Enrollment ${enrollment.id} status changed to '${freshEnrollment.status}' during execution — cancelling step ${exec.id}`);
+            await supabase.from('sequence_step_executions').update({
+              status: 'cancelled', skip_reason: `Enrollment became ${freshEnrollment.status} during execution`,
+              executed_at: new Date().toISOString(),
+            }).eq('id', exec.id);
+            results.skipped++;
+            continue;
+          }
+
           await supabase.from('sequence_step_executions').update({ 
             status: 'sent', executed_at: new Date().toISOString(), final_subject: executeResult.subject || finalSubject, final_message: executeResult.message || finalMessage,
           }).eq('id', exec.id);
@@ -300,7 +320,7 @@ async function handleProcess(supabase: any, force = false) {
           if (!INVISIBLE_ACTIONS.has(step.action_type)) visibleActionsExecuted++;
           
           // Sync Notion stage (fire-and-forget, non-blocking)
-          syncNotionStageAfterAction(step.action_type, enrollment).catch(() => {});
+          syncNotionStageAfterAction(step.action_type, enrollment).catch(err => console.warn('[notion-sync] Fire-and-forget error:', err));
         } else {
           // Error handling: differentiate rate limits from other retryable errors
           const currentRetryCount = exec.retry_count || 0;
@@ -383,6 +403,13 @@ async function handleProcess(supabase: any, force = false) {
 
 // deno-lint-ignore no-explicit-any
 async function handleCheckReplies(supabase: any) {
+  // Fix 2: Global lock to prevent concurrent executions
+  const runId = `replies-${crypto.randomUUID().slice(0, 8)}`;
+  if (!await acquireLock(supabase, runId)) {
+    return new Response(JSON.stringify({ success: true, skipped_reason: 'lock_held' }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+  }
+
+  try {
   // Throttle: run at most every 4 hours — webhook handles real-time, this is fallback only
   const MIN_INTERVAL_MS = 4 * 60 * 60 * 1000;
   const { data: lastRun } = await supabase
@@ -476,10 +503,20 @@ async function handleCheckReplies(supabase: any) {
   }
   console.log(`[checkReplies] Done: ${repliesDetected} replies, ${skippedTooRecent} skipped (too recent)`);
   return new Response(JSON.stringify({ success: true, repliesDetected, skippedTooRecent }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+  } finally {
+    await releaseLock(supabase, runId);
+  }
 }
 
 // deno-lint-ignore no-explicit-any
 async function handleCheckTimeouts(supabase: any) {
+  // Fix 2: Global lock to prevent concurrent executions
+  const runId = `timeouts-${crypto.randomUUID().slice(0, 8)}`;
+  if (!await acquireLock(supabase, runId)) {
+    return new Response(JSON.stringify({ success: true, skipped_reason: 'lock_held' }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+  }
+
+  try {
   const { data: waitingExecutions } = await supabase.from('sequence_step_executions')
     .select(`*, enrollment:sequence_enrollments(*), step:sequence_steps(*)`).eq('status', 'waiting_event').not('step.timeout_days', 'is', null).limit(50);
 
@@ -495,10 +532,20 @@ async function handleCheckTimeouts(supabase: any) {
     }
   }
   return new Response(JSON.stringify({ success: true, checked: waitingExecutions?.length || 0, branched }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+  } finally {
+    await releaseLock(supabase, runId);
+  }
 }
 
 // deno-lint-ignore no-explicit-any
 async function handleCheckWaitEvents(supabase: any) {
+  // Fix 2: Global lock to prevent concurrent executions
+  const runId = `waitevents-${crypto.randomUUID().slice(0, 8)}`;
+  if (!await acquireLock(supabase, runId)) {
+    return new Response(JSON.stringify({ success: true, skipped_reason: 'lock_held' }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+  }
+
+  try {
   // Phase 1: Fast DB-only pass — immediately unblock candidates already marked as connected
   // This runs every time without throttle since it doesn't call Unipile
   const { data: dbConnected } = await supabase.from('sequence_step_executions')
@@ -579,6 +626,9 @@ async function handleCheckWaitEvents(supabase: any) {
     }
   }
   return new Response(JSON.stringify({ success: true, fastUnblocked, eventsTriggered }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+  } finally {
+    await releaseLock(supabase, runId);
+  }
 }
 
 // ============ UTILITIES ============
@@ -735,7 +785,7 @@ async function getProfileInfo(accountId: string, profileId: string, enrollmentPr
   }
 
   try {
-    const r = await fetch(`${UNIPILE_DSN}/api/v1/users/${profileId}?account_id=${accountId}`, { headers: { 'X-API-KEY': UNIPILE_API_KEY! } });
+    const r = await fetchWithTimeout(`${UNIPILE_DSN}/api/v1/users/${profileId}?account_id=${accountId}`, { headers: { 'X-API-KEY': UNIPILE_API_KEY! } });
     if (!r.ok) {
       console.warn(`[getProfileInfo] API returned ${r.status} for profileId=${profileId}`);
       return null;
@@ -769,7 +819,7 @@ async function getProfileInfo(accountId: string, profileId: string, enrollmentPr
 
       if (slug) {
         console.log(`[getProfileInfo] Recruiter ID detected, re-checking via slug: ${slug}`);
-        const slugRes = await fetch(`${UNIPILE_DSN}/api/v1/users/${encodeURIComponent(slug)}?account_id=${accountId}`, { headers: { 'X-API-KEY': UNIPILE_API_KEY! } });
+        const slugRes = await fetchWithTimeout(`${UNIPILE_DSN}/api/v1/users/${encodeURIComponent(slug)}?account_id=${accountId}`, { headers: { 'X-API-KEY': UNIPILE_API_KEY! } });
         if (slugRes.ok) {
           const slugData = await slugRes.json();
           const slugDistance = slugData.network_distance;
@@ -805,7 +855,7 @@ async function resolveProfileIdForChat(accountId: string, profileId: string, pro
     
     // If no slug from URL, fetch profile to get public_identifier
     if (!slug) {
-      const r = await fetch(`${UNIPILE_DSN}/api/v1/users/${profileId}?account_id=${accountId}`, { headers: { 'X-API-KEY': UNIPILE_API_KEY! } });
+      const r = await fetchWithTimeout(`${UNIPILE_DSN}/api/v1/users/${profileId}?account_id=${accountId}`, { headers: { 'X-API-KEY': UNIPILE_API_KEY! } });
       if (r.ok) {
         const data = await r.json();
         slug = data.public_identifier || data.public_id || null;
@@ -818,7 +868,7 @@ async function resolveProfileIdForChat(accountId: string, profileId: string, pro
     
     if (slug) {
       // Resolve slug to get the classic provider_id
-      const slugRes = await fetch(`${UNIPILE_DSN}/api/v1/users/${encodeURIComponent(slug)}?account_id=${accountId}`, { headers: { 'X-API-KEY': UNIPILE_API_KEY! } });
+      const slugRes = await fetchWithTimeout(`${UNIPILE_DSN}/api/v1/users/${encodeURIComponent(slug)}?account_id=${accountId}`, { headers: { 'X-API-KEY': UNIPILE_API_KEY! } });
       if (slugRes.ok) {
         const slugData = await slugRes.json();
         if (slugData.provider_id && !slugData.provider_id.startsWith('AE')) {
@@ -848,11 +898,11 @@ async function checkForReplyAfterDate(accountId: string, profileId: string, afte
     // Resolve recruiter IDs to a format the chat API understands
     const resolvedId = await resolveProfileIdForChat(accountId, profileId, profileUrl, enrollmentId, supabase);
     
-    const chatsRes = await fetch(`${UNIPILE_DSN}/api/v1/chat_attendees/${resolvedId}/chats?account_id=${accountId}`, { headers: { 'X-API-KEY': UNIPILE_API_KEY! } });
+    const chatsRes = await fetchWithTimeout(`${UNIPILE_DSN}/api/v1/chat_attendees/${resolvedId}/chats?account_id=${accountId}`, { headers: { 'X-API-KEY': UNIPILE_API_KEY! } });
     if (!chatsRes.ok) {
       // If resolved ID also fails and it was different from original, try original as fallback
       if (resolvedId !== profileId) {
-        const fallbackRes = await fetch(`${UNIPILE_DSN}/api/v1/chat_attendees/${profileId}/chats?account_id=${accountId}`, { headers: { 'X-API-KEY': UNIPILE_API_KEY! } });
+        const fallbackRes = await fetchWithTimeout(`${UNIPILE_DSN}/api/v1/chat_attendees/${profileId}/chats?account_id=${accountId}`, { headers: { 'X-API-KEY': UNIPILE_API_KEY! } });
         if (!fallbackRes.ok) return false;
         const fallbackChats = (await fallbackRes.json()).items || [];
         return await checkMessagesForReply(fallbackChats, enrollmentTime);
@@ -873,7 +923,7 @@ interface ChatAttendeeInfo {
 async function resolveAttendeeIds(chatId: string): Promise<ChatAttendeeInfo> {
   const result: ChatAttendeeInfo = { ownIds: new Set(['self']), otherIds: new Set(), resolved: false };
   try {
-    const attRes = await fetch(`${UNIPILE_DSN}/api/v1/chats/${chatId}/attendees`, { headers: { 'X-API-KEY': UNIPILE_API_KEY! } });
+    const attRes = await fetchWithTimeout(`${UNIPILE_DSN}/api/v1/chats/${chatId}/attendees`, { headers: { 'X-API-KEY': UNIPILE_API_KEY! } });
     if (!attRes.ok) {
       console.warn(`[checkReplies] Attendees endpoint failed for chat ${chatId}: ${attRes.status}`);
       return result;
@@ -923,7 +973,7 @@ async function checkMessagesForReply(chats: { id: string }[], afterTimestamp: nu
     // Resolve attendee identities for this chat
     const attendeeInfo = await resolveAttendeeIds(chat.id);
 
-    const msgRes = await fetch(`${UNIPILE_DSN}/api/v1/chats/${chat.id}/messages?limit=10`, { headers: { 'X-API-KEY': UNIPILE_API_KEY! } });
+    const msgRes = await fetchWithTimeout(`${UNIPILE_DSN}/api/v1/chats/${chat.id}/messages?limit=10`, { headers: { 'X-API-KEY': UNIPILE_API_KEY! } });
     if (!msgRes.ok) continue;
     const messages = (await msgRes.json()).items || [];
     // deno-lint-ignore no-explicit-any
@@ -974,7 +1024,7 @@ async function checkHasProspectReplied(accountId: string, profileId: string): Pr
 async function checkQuotaForAction(supabase: any, actionType: string, accountId: string): Promise<{ allowed: boolean; reason?: string }> {
   try {
     if (actionType === 'inmail' || actionType === 'smart_message') {
-      const r = await fetch(`${UNIPILE_DSN}/api/v1/linkedin/inmail_balance?account_id=${accountId}`, { headers: { 'X-API-KEY': UNIPILE_API_KEY! } });
+      const r = await fetchWithTimeout(`${UNIPILE_DSN}/api/v1/linkedin/inmail_balance?account_id=${accountId}`, { headers: { 'X-API-KEY': UNIPILE_API_KEY! } });
       if (!r.ok) return { allowed: true };
       const b = await r.json();
       const total = (b.recruiter || 0) + (b.premium || 0) + (b.sales_navigator || 0);
@@ -1134,6 +1184,14 @@ async function scheduleNextStep(supabase: any, enrollment: any, currentStepOrder
     } catch { break; }
   }
 
+  // Fix 4: Re-check enrollment status before inserting — prevent scheduling on replied/completed enrollments
+  const { data: freshEnrollmentStatus } = await supabase
+    .from('sequence_enrollments').select('status').eq('id', enrollment.id).single();
+  if (freshEnrollmentStatus && freshEnrollmentStatus.status !== 'active') {
+    console.log(`[scheduleNextStep] Enrollment ${enrollment.id} is '${freshEnrollmentStatus.status}', not scheduling next step`);
+    return;
+  }
+
   // Guard: prevent duplicate executions for the same enrollment+step (any non-terminal status)
   const { data: existing } = await supabase.from('sequence_step_executions').select('id, status').eq('enrollment_id', enrollment.id).eq('step_id', nextStep.id).in('status', ['scheduled', 'sending', 'waiting_event', 'quota_blocked']);
   if (existing && existing.length > 0) {
@@ -1162,7 +1220,7 @@ async function executeStepAction(actionType: string, enrollment: Record<string, 
         return { success: true };
       }
       case 'profile_visit': {
-        const r = await fetch(`${UNIPILE_DSN}/api/v1/users/${profileId}?account_id=${accountId}`, { headers: { 'X-API-KEY': UNIPILE_API_KEY! } });
+        const r = await fetchWithTimeout(`${UNIPILE_DSN}/api/v1/users/${profileId}?account_id=${accountId}`, { headers: { 'X-API-KEY': UNIPILE_API_KEY! } });
         if (r.ok) {
           await logAnalytics(supabase, enrollment.sequence_id as string, 'profile_visits');
           return { success: true };
@@ -1178,7 +1236,7 @@ async function executeStepAction(actionType: string, enrollment: Record<string, 
         const fd = new FormData();
         fd.append('account_id', accountId); fd.append('attendees_ids', profileId); fd.append('text', msg);
         if (needsInMail) { fd.append('linkedin[api]', 'recruiter'); fd.append('linkedin[inmail]', 'true'); if (subj) fd.append('subject', subj); }
-        const r = await fetch(`${UNIPILE_DSN}/api/v1/chats`, { method: 'POST', headers: { 'X-API-KEY': UNIPILE_API_KEY! }, body: fd });
+        const r = await fetchWithTimeout(`${UNIPILE_DSN}/api/v1/chats`, { method: 'POST', headers: { 'X-API-KEY': UNIPILE_API_KEY! }, body: fd });
         if (!r.ok) { const e = await r.text(); return { success: false, error: `Unipile ${r.status}: ${e}` }; }
         await r.json();
         await logAnalytics(supabase, enrollment.sequence_id as string, 'messages_sent');
@@ -1196,7 +1254,7 @@ async function executeStepAction(actionType: string, enrollment: Record<string, 
             const match = profileUrl.match(/linkedin\.com\/in\/([^/?]+)/);
             if (match) {
               console.log(`[connection_request] Trying slug resolution: ${match[1]}`);
-              const pr = await fetch(`${UNIPILE_DSN}/api/v1/users/${encodeURIComponent(match[1])}?account_id=${accountId}`, { headers: { 'X-API-KEY': UNIPILE_API_KEY! } });
+              const pr = await fetchWithTimeout(`${UNIPILE_DSN}/api/v1/users/${encodeURIComponent(match[1])}?account_id=${accountId}`, { headers: { 'X-API-KEY': UNIPILE_API_KEY! } });
               if (pr.ok) {
                 const pd = await pr.json();
                 if (pd.provider_id && (pd.provider_id.startsWith('ACo') || pd.provider_id.startsWith('ADo'))) {
@@ -1211,13 +1269,13 @@ async function executeStepAction(actionType: string, enrollment: Record<string, 
           // Strategy 2: Fetch recruiter profile to get public_identifier, then resolve
           if (!resolved) {
             console.log(`[connection_request] Trying recruiter profile resolution...`);
-            const recruiterRes = await fetch(`${UNIPILE_DSN}/api/v1/users/${profileId}?account_id=${accountId}`, { headers: { 'X-API-KEY': UNIPILE_API_KEY! } });
+            const recruiterRes = await fetchWithTimeout(`${UNIPILE_DSN}/api/v1/users/${profileId}?account_id=${accountId}`, { headers: { 'X-API-KEY': UNIPILE_API_KEY! } });
             if (recruiterRes.ok) {
               const recruiterProfile = await recruiterRes.json();
               const publicId = recruiterProfile.public_identifier || recruiterProfile.public_id;
               if (publicId) {
                 console.log(`[connection_request] Got public_identifier: ${publicId}, resolving classic ID...`);
-                const classicRes = await fetch(`${UNIPILE_DSN}/api/v1/users/${encodeURIComponent(publicId)}?account_id=${accountId}`, { headers: { 'X-API-KEY': UNIPILE_API_KEY! } });
+                const classicRes = await fetchWithTimeout(`${UNIPILE_DSN}/api/v1/users/${encodeURIComponent(publicId)}?account_id=${accountId}`, { headers: { 'X-API-KEY': UNIPILE_API_KEY! } });
                 if (classicRes.ok) {
                   const classicProfile = await classicRes.json();
                   if (classicProfile.provider_id && (classicProfile.provider_id.startsWith('ACo') || classicProfile.provider_id.startsWith('ADo'))) {
@@ -1249,7 +1307,7 @@ async function executeStepAction(actionType: string, enrollment: Record<string, 
             console.log(`[connection_request] Saved resolved_profile_id: ${providerId}`);
           }
         }
-        const r = await fetch(`${UNIPILE_DSN}/api/v1/users/invite`, { method: 'POST', headers: { 'X-API-KEY': UNIPILE_API_KEY!, 'Content-Type': 'application/json' }, body: JSON.stringify({ account_id: accountId, provider_id: providerId }) });
+        const r = await fetchWithTimeout(`${UNIPILE_DSN}/api/v1/users/invite`, { method: 'POST', headers: { 'X-API-KEY': UNIPILE_API_KEY!, 'Content-Type': 'application/json' }, body: JSON.stringify({ account_id: accountId, provider_id: providerId }) });
         if (!r.ok) { const e = await r.text(); return { success: false, error: `Invite ${r.status}: ${e}` }; }
         await logAnalytics(supabase, enrollment.sequence_id as string, 'invites_sent');
         await supabase.from('sequence_enrollments').update({ connection_status: 'pending_invite' }).eq('id', enrollment.id);
@@ -1285,7 +1343,7 @@ const ACTION_TO_NOTION_STAGE: Record<string, { etape: string; etat: string }> = 
 
 async function notionQuerySeq(databaseId: string, filter: Record<string, unknown>) {
   if (!NOTION_API_KEY) return null;
-  const response = await fetch(`https://api.notion.com/v1/databases/${databaseId}/query`, {
+  const response = await fetchWithTimeout(`https://api.notion.com/v1/databases/${databaseId}/query`, {
     method: 'POST',
     headers: { 'Authorization': `Bearer ${NOTION_API_KEY}`, 'Notion-Version': '2022-06-28', 'Content-Type': 'application/json' },
     body: JSON.stringify({ filter, page_size: 100 }),
@@ -1296,7 +1354,7 @@ async function notionQuerySeq(databaseId: string, filter: Record<string, unknown
 
 async function updateNotionPageSeq(pageId: string, properties: Record<string, unknown>) {
   if (!NOTION_API_KEY) return false;
-  const response = await fetch(`https://api.notion.com/v1/pages/${pageId}`, {
+  const response = await fetchWithTimeout(`https://api.notion.com/v1/pages/${pageId}`, {
     method: 'PATCH',
     headers: { 'Authorization': `Bearer ${NOTION_API_KEY}`, 'Notion-Version': '2022-06-28', 'Content-Type': 'application/json' },
     body: JSON.stringify({ properties }),
@@ -1324,7 +1382,7 @@ async function findShortlistsForCandidateSeq(candidateId: string): Promise<strin
 
 async function createNotionPageSeq(databaseId: string, properties: Record<string, unknown>): Promise<string | null> {
   if (!NOTION_API_KEY) return null;
-  const response = await fetch('https://api.notion.com/v1/pages', {
+  const response = await fetchWithTimeout('https://api.notion.com/v1/pages', {
     method: 'POST',
     headers: { 'Authorization': `Bearer ${NOTION_API_KEY}`, 'Notion-Version': '2022-06-28', 'Content-Type': 'application/json' },
     body: JSON.stringify({ parent: { database_id: databaseId }, properties }),
@@ -1486,7 +1544,7 @@ async function resolveNotionRelations(data: Record<string, string>, keys: string
     const titles: string[] = [];
     for (const id of ids.slice(0, 3)) {
       try {
-        const res = await fetch(`https://api.notion.com/v1/pages/${id}`, {
+        const res = await fetchWithTimeout(`https://api.notion.com/v1/pages/${id}`, {
           headers: { 'Authorization': `Bearer ${NOTION_API_KEY}`, 'Notion-Version': '2022-06-28' },
         });
         if (res.ok) {
@@ -1525,7 +1583,7 @@ async function fetchRecentPostsForSequence(
   if (!UNIPILE_DSN || !UNIPILE_API_KEY) return [];
   try {
     const url = `${UNIPILE_DSN}/api/v1/users/${encodeURIComponent(profileId)}/posts?account_id=${encodeURIComponent(accountId)}&limit=5`;
-    const response = await fetch(url, { headers: { 'X-API-KEY': UNIPILE_API_KEY, 'accept': 'application/json' } });
+    const response = await fetchWithTimeout(url, { headers: { 'X-API-KEY': UNIPILE_API_KEY, 'accept': 'application/json' } });
     if (!response.ok) return [];
     const data = await response.json();
     const items = data?.items || data?.data || (Array.isArray(data) ? data : []);
@@ -1587,7 +1645,7 @@ async function generatePersonalizedMessage(supabase: any, enrollment: Record<str
   if (!ANTHROPIC_API_KEY) return null;
   try {
     // Fetch profile and posts in parallel
-    const profilePromise = fetch(`${UNIPILE_DSN}/api/v1/users/${enrollment.profile_id}?account_id=${enrollment.account_id}`, { headers: { 'X-API-KEY': UNIPILE_API_KEY! } }).then(r => r.ok ? r.json() : null).catch(() => null);
+    const profilePromise = fetchWithTimeout(`${UNIPILE_DSN}/api/v1/users/${enrollment.profile_id}?account_id=${enrollment.account_id}`, { headers: { 'X-API-KEY': UNIPILE_API_KEY! } }).then(r => r.ok ? r.json() : null).catch(() => null);
     const postsPromise = fetchRecentPostsForSequence(enrollment.account_id as string, enrollment.profile_id as string);
     
     // Fetch Notion job context (full page + body content)
@@ -1632,8 +1690,8 @@ async function generatePersonalizedMessage(supabase: any, enrollment: Record<str
     if (enrollment.job_id && NOTION_API_KEY) {
       try {
         const [pageRes, blocksRes] = await Promise.all([
-          fetch(`https://api.notion.com/v1/pages/${enrollment.job_id}`, { headers: { 'Authorization': `Bearer ${NOTION_API_KEY}`, 'Notion-Version': '2022-06-28' } }),
-          fetch(`https://api.notion.com/v1/blocks/${enrollment.job_id}/children?page_size=50`, { headers: { 'Authorization': `Bearer ${NOTION_API_KEY}`, 'Notion-Version': '2022-06-28' } }),
+          fetchWithTimeout(`https://api.notion.com/v1/pages/${enrollment.job_id}`, { headers: { 'Authorization': `Bearer ${NOTION_API_KEY}`, 'Notion-Version': '2022-06-28' } }),
+          fetchWithTimeout(`https://api.notion.com/v1/blocks/${enrollment.job_id}/children?page_size=50`, { headers: { 'Authorization': `Bearer ${NOTION_API_KEY}`, 'Notion-Version': '2022-06-28' } }),
         ]);
         if (pageRes.ok) {
           const pageData = await pageRes.json();
@@ -2157,7 +2215,7 @@ RÈGLES D'UTILISATION:
 Réponds UNIQUEMENT en JSON valide: {"subject": "objet si InMail, sinon vide", "message": "le message complet"}`;
 
     const callAI = async (userPrompt: string) => {
-      const res = await fetch('https://api.anthropic.com/v1/messages', {
+      const res = await fetchWithTimeout('https://api.anthropic.com/v1/messages', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-api-key': ANTHROPIC_API_KEY!, 'anthropic-version': '2023-06-01', 'anthropic-beta': 'prompt-caching-2024-07-31' },
         body: JSON.stringify({ 
