@@ -279,16 +279,16 @@ Valeurs VALIDES pour l'API Unipile:
 - HAVE_COMPANY_CONNECTIONS: Profils avec des connexions dans l'entreprise → bon pour approche réseau
 
 STRATÉGIE RECOMMANDÉE:
-- suggest_spotlight: "ACTIVE_TALENT" par défaut (profils récemment actifs, bonne réceptivité)
+- suggest_spotlight: "" par défaut (ne PAS filtrer par spotlight, cela réduit trop le vivier)
 - suggest_open_to_work: false par défaut (trop restrictif, réduit le vivier de 80%+)
-- Pour les profils RARES/PÉNURIQUES: ne PAS activer open_to_work ni spotlight restrictif
+- N'utiliser un spotlight que si l'utilisateur le demande explicitement
 
 RÈGLES MÉTIER:
 1. Pour un profil RARE, réduire à 1-2 groupes AND (moins restrictif)
 2. Les critères MUST-HAVE techniques vont dans keywords, les soft-skills dans skills_to_search
 3. open_to_work = false par défaut (trop restrictif sinon)
 4. Toujours inclure des exclusions NOT pertinentes
-5. suggest_spotlight = "ACTIVE_TALENT" par défaut sauf profil pénurique
+5. suggest_spotlight = "" par défaut (JAMAIS ACTIVE_TALENT automatiquement)
 
 Retourne UNIQUEMENT un objet JSON avec:
 - keywords: string - Booléen LAYERED: "(catégorie1 OR alt1) AND (catégorie2 OR alt2) NOT (exclusion1 OR exclusion2)"
