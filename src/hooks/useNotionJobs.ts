@@ -4,10 +4,10 @@ import type { Job } from '@/types/jobs';
 import { toast } from 'sonner';
 import { useOrganization } from './useOrganization';
 
-// Cache configuration
-const STALE_TIME = 5 * 60 * 1000; // 5 minutes
+// Cache configuration — generous to avoid repeated cold-start edge function calls
+const STALE_TIME = 10 * 60 * 1000; // 10 minutes
 const GC_TIME = 60 * 60 * 1000; // 1 hour
-const REFETCH_INTERVAL = 5 * 60 * 1000; // 5 minutes polling
+const REFETCH_INTERVAL = 10 * 60 * 1000; // 10 minutes polling
 
 async function fetchJobs(refresh = false, organizationId?: string | null): Promise<Job[]> {
   const { data, error } = await invokeEdgeFunction<{ jobs?: Job[] }>('fetch-notion-jobs', {

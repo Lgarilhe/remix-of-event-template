@@ -6,11 +6,15 @@ import { Input } from '@/components/ui/input';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Loader2, Target, X, Wand2, Search, Sparkles, RefreshCw, ChevronDown, Check } from 'lucide-react';
 import { toast } from 'sonner';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useIsMobile } from '@/hooks/use-mobile';
+import { useNotionJobs } from '@/hooks/useNotionJobs';
+
+// Re-export useNotionJobs as useJobs for backward compatibility
+export const useJobs = useNotionJobs;
 
 interface JobSelectorProps {
   selectedJob: Job | null;
@@ -42,24 +46,6 @@ export interface GeneratedFilters {
   open_to_work: boolean;
 }
 
-// Custom hook to fetch and cache jobs
-export const useJobs = () => {
-  return useQuery({
-    queryKey: ['notion-jobs-all'],
-    queryFn: async () => {
-      const { data, error } = await invokeEdgeFunction<{ jobs?: Job[] }>('fetch-notion-jobs', { all: true });
-      
-      if (error) throw error;
-      if (!data?.success) throw new Error('Failed to fetch jobs');
-      
-      return (data.jobs || []) as Job[];
-    },
-    staleTime: 5 * 60 * 1000, // Cache for 5 minutes
-    gcTime: 10 * 60 * 1000, // Keep in cache for 10 minutes
-    refetchOnWindowFocus: false,
-  });
-};
-
 // Hook to force refresh jobs from Notion
 export const useRefreshJobs = () => {
   const queryClient = useQueryClient();
@@ -73,8 +59,10 @@ export const useRefreshJobs = () => {
       if (error) throw error;
       if (!data?.success) throw new Error('Failed to refresh jobs');
       
-      // Update React Query cache with fresh data
+      // Update React Query cache with fresh data (both possible query keys)
       queryClient.setQueryData(['notion-jobs-all'], data.jobs || []);
+      const orgKeys = queryClient.getQueryCache().findAll({ queryKey: ['notion-jobs'] });
+      orgKeys.forEach(q => queryClient.setQueryData(q.queryKey, data.jobs || []));
       toast.success(`${data.jobs?.length || 0} postes synchronisés depuis Notion`);
     } catch (err) {
       console.error('Failed to refresh jobs:', err);
