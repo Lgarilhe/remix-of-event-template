@@ -441,7 +441,9 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
             </div>
 
             {/* ─── ACTIONS BAR ─── */}
-            <div className="flex flex-wrap items-center gap-1.5 mt-3 sm:mt-4 pt-2.5 sm:pt-3 border-t border-foreground/20">
+            <div className="flex items-center justify-between gap-2 mt-3 sm:mt-4 pt-2.5 sm:pt-3 border-t border-foreground/20">
+              {/* Left — primary actions */}
+              <div className="flex items-center gap-1.5 flex-wrap min-w-0">
                 {selectedJob && (
                   <Button
                     size="sm"
@@ -490,7 +492,10 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
                     onAdded={onProfileTreated}
                   />
                 )}
+              </div>
 
+              {/* Right — secondary actions */}
+              <div className="flex items-center gap-1.5 shrink-0">
                 {profileUrl && (
                   <Button variant="outline" size="sm" asChild className="h-7 gap-1 text-[11px] rounded-none border border-foreground px-2 uppercase tracking-wider font-semibold shrink-0">
                     <a href={profileUrl} target="_blank" rel="noopener noreferrer">
@@ -499,13 +504,13 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
                     </a>
                   </Button>
                 )}
-
                 {onArchive && (
                   <Button variant="outline" size="sm" onClick={onArchive} className="h-7 gap-1 text-[11px] rounded-none border-2 border-destructive text-destructive hover:bg-destructive hover:text-destructive-foreground px-2.5 uppercase tracking-wider font-semibold shrink-0">
                     <Archive className="w-3.5 h-3.5" />
                     Archiver
                   </Button>
                 )}
+              </div>
             </div>
           </SheetHeader>
 
