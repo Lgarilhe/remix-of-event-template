@@ -25,7 +25,7 @@ import { AddToProjectButton } from '../projects/AddToProjectButton';
 import {
   Building2, MapPin, TrendingUp, ExternalLink, Bot, Loader2,
   Target, CheckCircle2, AlertTriangle, PenLine, Archive, Mail,
-  MessageSquare, FolderPlus,
+  MessageSquare, FolderPlus, ChevronLeft, ChevronRight,
 } from 'lucide-react';
 import { invokeUnipile } from '@/lib/invokeUnipile';
 import { supabase } from '@/integrations/supabase/client';
@@ -48,6 +48,10 @@ interface ProfileDetailSheetProps {
   onMessageSent?: () => void;
   onSequenceEnroll?: () => void;
   onProfileTreated?: () => void;
+  onNavigatePrev?: () => void;
+  onNavigateNext?: () => void;
+  currentIndex?: number;
+  totalCount?: number;
 }
 
 export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
@@ -66,6 +70,10 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
   onMessageSent,
   onSequenceEnroll,
   onProfileTreated,
+  onNavigatePrev,
+  onNavigateNext,
+  currentIndex,
+  totalCount,
 }) => {
   const [showMessageModal, setShowMessageModal] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -317,8 +325,37 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
     <>
       <Sheet open={open} onOpenChange={onOpenChange}>
         <SheetContent side="right" className="!w-full !max-w-[100vw] min-w-0 sm:!w-[95vw] sm:!max-w-[820px] p-0 flex flex-col overflow-x-auto overflow-y-hidden rounded-none border-l border-foreground">
-          {/* ─── ACCENT BAR ─── */}
+          {/* ─── NAV + ACCENT BAR ─── */}
           <div className="h-1.5 w-full bg-brutal-accent shrink-0" />
+          {(onNavigatePrev || onNavigateNext) && (
+            <div className="flex items-center justify-between px-3 sm:px-6 py-1.5 bg-muted/30 border-b border-foreground/10 shrink-0">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={onNavigatePrev}
+                disabled={!onNavigatePrev}
+                className="h-7 gap-1 text-[11px] rounded-none uppercase tracking-wider font-semibold px-2"
+              >
+                <ChevronLeft className="w-3.5 h-3.5" />
+                Préc.
+              </Button>
+              {currentIndex != null && totalCount != null && (
+                <span className="text-[10px] text-muted-foreground tabular-nums font-medium uppercase tracking-wider">
+                  {currentIndex + 1} / {totalCount}
+                </span>
+              )}
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={onNavigateNext}
+                disabled={!onNavigateNext}
+                className="h-7 gap-1 text-[11px] rounded-none uppercase tracking-wider font-semibold px-2"
+              >
+                Suiv.
+                <ChevronRight className="w-3.5 h-3.5" />
+              </Button>
+            </div>
+          )}
           {/* ─── HEADER ─── */}
           <SheetHeader className="px-3 sm:px-6 pt-4 sm:pt-5 pb-3 sm:pb-4 bg-background border-b border-foreground shrink-0">
             <div className="flex items-start gap-2.5 sm:gap-4">
