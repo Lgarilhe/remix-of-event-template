@@ -326,7 +326,7 @@ export const StepEditor: React.FC<StepEditorProps> = ({
               <SelectContent>
                 <SelectItem value="__auto__">Automatique (ordre)</SelectItem>
                 <SelectItem value="__end__">Fin de séquence</SelectItem>
-                {allSteps.filter(s => s.id !== step.id && s.id).map(s => {
+                {allSteps.filter(s => s.id !== step.id && s.id && s.order > step.order).map(s => {
                   const config = allStepTypes.find(a => a.value === s.actionType);
                   return (
                     <SelectItem key={s.id} value={s.id}>
@@ -409,6 +409,7 @@ export const StepEditor: React.FC<StepEditorProps> = ({
                     onChange={(e) => onUpdate({ messageTemplate: e.target.value })}
                     placeholder={step.actionType === 'connection_request' ? "Note courte (max 50 car.)" : "Bonjour {{firstName}}, ..."}
                     rows={step.actionType === 'connection_request' ? 2 : 3}
+                    maxLength={step.actionType === 'connection_request' ? 50 : undefined}
                     className={cn(
                       "mt-1 text-sm",
                       step.actionType === 'connection_request' && (step.messageTemplate?.length || 0) > 50 && "border-red-300 focus-visible:ring-red-300"

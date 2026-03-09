@@ -5,6 +5,12 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timeout));
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -12,6 +18,8 @@ serve(async (req) => {
 
   try {
     const DEEPGRAM_API_KEY = Deno.env.get("DEEPGRAM_API_KEY");
+    const DEEPGRAM_PROJECT_ID = Deno.env.get("DEEPGRAM_PROJECT_ID");
+
     if (!DEEPGRAM_API_KEY) {
       return new Response(
         JSON.stringify({ error: "DEEPGRAM_API_KEY not configured" }),
@@ -19,8 +27,40 @@ serve(async (req) => {
       );
     }
 
-    // MVP: return the API key directly (for WebSocket auth)
-    // In production, use Deepgram's temporary key API with PROJECT_ID
+    // If PROJECT_ID is set, use Deepgram's temporary key API (recommended)
+    if (DEEPGRAM_PROJECT_ID) {
+      const res = await fetchWithTimeout(
+        `https://api.deepgram.com/v1/projects/${DEEPGRAM_PROJECT_ID}/keys`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Token ${DEEPGRAM_API_KEY}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            comment: `temp-key-${Date.now()}`,
+            scopes: ['usage:write'],
+            time_to_live_in_seconds: 60,
+          }),
+        }
+      );
+
+      if (!res.ok) {
+        const errText = await res.text();
+        console.error(`[deepgram-temp-key] Deepgram API error [${res.status}]:`, errText);
+        throw new Error(`Failed to create temporary key: ${res.status}`);
+      }
+
+      const data = await res.json();
+      return new Response(
+        JSON.stringify({ key: data.key }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Fallback: return the API key directly (for WebSocket auth)
+    // WARNING: This exposes the master key — set DEEPGRAM_PROJECT_ID to use temp keys
+    console.warn('[deepgram-temp-key] DEEPGRAM_PROJECT_ID not set — returning master key (insecure)');
     return new Response(
       JSON.stringify({ key: DEEPGRAM_API_KEY }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }

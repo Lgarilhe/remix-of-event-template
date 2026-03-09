@@ -5,6 +5,12 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timeout));
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -64,7 +70,7 @@ Deno.serve(async (req) => {
 
     while (hasMore && page <= 20) { // max 20 pages = 1000 calls per sync
       const url = `https://api.aircall.io/v1/calls?per_page=50&order=asc&page=${page}${fromParam}`;
-      const res = await fetch(url, { headers });
+      const res = await fetchWithTimeout(url, { headers });
 
       if (!res.ok) {
         const body = await res.text();

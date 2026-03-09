@@ -11,6 +11,12 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
+function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timeout));
+}
+
 async function resolveOrgCredentials(orgId: string | null) {
   if (!orgId) return;
   try {
@@ -46,7 +52,7 @@ serve(async (req) => {
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
     const webhookUrl = `${supabaseUrl}/functions/v1/calendly-webhook`;
 
-    const meRes = await fetch('https://api.calendly.com/users/me', {
+    const meRes = await fetchWithTimeout('https://api.calendly.com/users/me', {
       headers: { 'Authorization': `Bearer ${calendlyApiKey}` },
     });
 
@@ -62,7 +68,7 @@ serve(async (req) => {
       throw new Error('Could not find organization URI from Calendly');
     }
 
-    const listRes = await fetch(
+    const listRes = await fetchWithTimeout(
       `https://api.calendly.com/webhook_subscriptions?organization=${encodeURIComponent(organizationUri)}&scope=organization`,
       { headers: { 'Authorization': `Bearer ${calendlyApiKey}` } }
     );
@@ -94,14 +100,14 @@ serve(async (req) => {
       for (const stale of sameCallback) {
         const staleId = stale.uri?.split('/').pop();
         if (!staleId) continue;
-        await fetch(`https://api.calendly.com/webhook_subscriptions/${staleId}`, {
+        await fetchWithTimeout(`https://api.calendly.com/webhook_subscriptions/${staleId}`, {
           method: 'DELETE',
           headers: { 'Authorization': `Bearer ${calendlyApiKey}` },
         });
       }
     }
 
-    const createRes = await fetch('https://api.calendly.com/webhook_subscriptions', {
+    const createRes = await fetchWithTimeout('https://api.calendly.com/webhook_subscriptions', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${calendlyApiKey}`,

@@ -43,20 +43,28 @@ Génère une intro de 3-4 phrases que le recruteur peut dire mot pour mot au dé
 
 Sois naturel, humain, pas corporate. Tutoie si le contexte s'y prête (tech/startup).`;
 
-      const introResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${LOVABLE_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "google/gemini-3-flash-preview",
-          max_tokens: 300,
-          messages: [
-            { role: "user", content: introPrompt },
-          ],
-        }),
-      });
+      const introController = new AbortController();
+      const introTimeout = setTimeout(() => introController.abort(), 15000);
+      let introResponse: Response;
+      try {
+        introResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${LOVABLE_API_KEY}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            model: "google/gemini-3-flash-preview",
+            max_tokens: 300,
+            messages: [
+              { role: "user", content: introPrompt },
+            ],
+          }),
+          signal: introController.signal,
+        });
+      } finally {
+        clearTimeout(introTimeout);
+      }
 
       if (!introResponse.ok) {
         const errText = await introResponse.text();
@@ -145,74 +153,82 @@ SECTION "next_topic" — PROACTIVITÉ :
 
 IMPORTANT : Sois CONCIS et RAPIDE.`;
 
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-3-flash-preview",
-        max_tokens: 512,
-        messages: [
-          { role: "system", content: systemPrompt },
-          {
-            role: "user",
-            content: `CALL EN COURS (${elapsed_seconds}s écoulées)\n\nTRANSCRIPTION RÉCENTE :\n${truncatedTranscript}\n\nDERNIER SEGMENT :\n${latest_chunk}`,
-          },
-        ],
-        tools: [
-          {
-            type: "function",
-            function: {
-              name: "coach_analysis",
-              description: "Return live coaching analysis for the ongoing interview",
-              parameters: {
-                type: "object",
-                properties: {
-                  resolved_signals: {
-                    type: "array",
-                    items: { type: "string" },
-                    description: "Signals from pending_signals that have been addressed"
-                  },
-                  dig_deeper: {
-                    type: "array",
-                    items: {
+    const coachController = new AbortController();
+    const coachTimeout = setTimeout(() => coachController.abort(), 15000);
+    let response: Response;
+    try {
+      response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${LOVABLE_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "google/gemini-3-flash-preview",
+          max_tokens: 512,
+          messages: [
+            { role: "system", content: systemPrompt },
+            {
+              role: "user",
+              content: `CALL EN COURS (${elapsed_seconds}s écoulées)\n\nTRANSCRIPTION RÉCENTE :\n${truncatedTranscript}\n\nDERNIER SEGMENT :\n${latest_chunk}`,
+            },
+          ],
+          tools: [
+            {
+              type: "function",
+              function: {
+                name: "coach_analysis",
+                description: "Return live coaching analysis for the ongoing interview",
+                parameters: {
+                  type: "object",
+                  properties: {
+                    resolved_signals: {
+                      type: "array",
+                      items: { type: "string" },
+                      description: "Signals from pending_signals that have been addressed"
+                    },
+                    dig_deeper: {
+                      type: "array",
+                      items: {
+                        type: "object",
+                        properties: {
+                          signal: { type: "string" },
+                          question: { type: "string" }
+                        },
+                        required: ["signal", "question"],
+                        additionalProperties: false
+                      },
+                      description: "0-3 items worth digging into"
+                    },
+                    criteria_updates: {
+                      type: "object",
+                      description: "Map of criterion ID to update object with covered, verbatim, auto_score, sentiment fields"
+                    },
+                    next_topic: {
                       type: "object",
                       properties: {
-                        signal: { type: "string" },
-                        question: { type: "string" }
+                        topic: { type: "string", description: "Next criterion or subject to cover" },
+                        transition: { type: "string", description: "Natural transition phrase the recruiter can use verbatim" },
+                        why: { type: "string", description: "Why this topic now (1 sentence)" }
                       },
-                      required: ["signal", "question"],
-                      additionalProperties: false
-                    },
-                    description: "0-3 items worth digging into"
+                      required: ["topic", "transition", "why"],
+                      additionalProperties: false,
+                      description: "Proactive suggestion for the next interview topic"
+                    }
                   },
-                  criteria_updates: {
-                    type: "object",
-                    description: "Map of criterion ID to update object with covered, verbatim, auto_score, sentiment fields"
-                  },
-                  next_topic: {
-                    type: "object",
-                    properties: {
-                      topic: { type: "string", description: "Next criterion or subject to cover" },
-                      transition: { type: "string", description: "Natural transition phrase the recruiter can use verbatim" },
-                      why: { type: "string", description: "Why this topic now (1 sentence)" }
-                    },
-                    required: ["topic", "transition", "why"],
-                    additionalProperties: false,
-                    description: "Proactive suggestion for the next interview topic"
-                  }
-                },
-                required: ["resolved_signals", "dig_deeper", "criteria_updates", "next_topic"],
-                additionalProperties: false
+                  required: ["resolved_signals", "dig_deeper", "criteria_updates", "next_topic"],
+                  additionalProperties: false
+                }
               }
             }
-          }
-        ],
-        tool_choice: { type: "function", function: { name: "coach_analysis" } },
-      }),
-    });
+          ],
+          tool_choice: { type: "function", function: { name: "coach_analysis" } },
+        }),
+        signal: coachController.signal,
+      });
+    } finally {
+      clearTimeout(coachTimeout);
+    }
 
     if (!response.ok) {
       const errText = await response.text();

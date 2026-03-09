@@ -56,55 +56,63 @@ Catégories d'anomalies à chercher :
 
 Réponds UNIQUEMENT avec un JSON structuré, pas de texte autour.`;
 
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: `Analyse ce profil :\n${profileSummary}` },
-        ],
-        tools: [
-          {
-            type: "function",
-            function: {
-              name: "report_anomalies",
-              description: "Report detected anomalies in a professional profile",
-              parameters: {
-                type: "object",
-                properties: {
-                  trust_score: {
-                    type: "number",
-                    description: "Score de confiance global de 0 à 100. 100 = aucun problème, 0 = fraude évidente"
-                  },
-                  anomalies: {
-                    type: "array",
-                    items: {
-                      type: "object",
-                      properties: {
-                        category: { type: "string", enum: ["TIMELINE", "INFLATION", "EDUCATION", "COHERENCE"] },
-                        severity: { type: "string", enum: ["low", "medium", "high"] },
-                        description: { type: "string", description: "Description courte de l'anomalie en français" },
-                        detail: { type: "string", description: "Explication détaillée" }
-                      },
-                      required: ["category", "severity", "description"],
-                      additionalProperties: false
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30000);
+    let response: Response;
+    try {
+      response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${LOVABLE_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "google/gemini-2.5-flash",
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: `Analyse ce profil :\n${profileSummary}` },
+          ],
+          tools: [
+            {
+              type: "function",
+              function: {
+                name: "report_anomalies",
+                description: "Report detected anomalies in a professional profile",
+                parameters: {
+                  type: "object",
+                  properties: {
+                    trust_score: {
+                      type: "number",
+                      description: "Score de confiance global de 0 à 100. 100 = aucun problème, 0 = fraude évidente"
+                    },
+                    anomalies: {
+                      type: "array",
+                      items: {
+                        type: "object",
+                        properties: {
+                          category: { type: "string", enum: ["TIMELINE", "INFLATION", "EDUCATION", "COHERENCE"] },
+                          severity: { type: "string", enum: ["low", "medium", "high"] },
+                          description: { type: "string", description: "Description courte de l'anomalie en français" },
+                          detail: { type: "string", description: "Explication détaillée" }
+                        },
+                        required: ["category", "severity", "description"],
+                        additionalProperties: false
+                      }
                     }
-                  }
-                },
-                required: ["trust_score", "anomalies"],
-                additionalProperties: false
+                  },
+                  required: ["trust_score", "anomalies"],
+                  additionalProperties: false
+                }
               }
             }
-          }
-        ],
-        tool_choice: { type: "function", function: { name: "report_anomalies" } },
-      }),
-    });
+          ],
+          tool_choice: { type: "function", function: { name: "report_anomalies" } },
+        }),
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timeout);
+    }
 
     if (!response.ok) {
       if (response.status === 429) {
@@ -119,10 +127,14 @@ Réponds UNIQUEMENT avec un JSON structuré, pas de texte autour.`;
     const toolCall = result.choices?.[0]?.message?.tool_calls?.[0];
     
     if (toolCall?.function?.arguments) {
-      const analysis = JSON.parse(toolCall.function.arguments);
-      return new Response(JSON.stringify(analysis), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      try {
+        const analysis = JSON.parse(toolCall.function.arguments);
+        return new Response(JSON.stringify(analysis), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      } catch (e) {
+        console.error("detect-profile-fraud JSON parse error:", e, "Raw:", toolCall.function.arguments?.slice(0, 200));
+      }
     }
 
     return new Response(JSON.stringify({ anomalies: [], trust_score: 100 }), {

@@ -12,12 +12,64 @@ export const escapeHTML = (text: string) => {
  */
 export const incomingToEditorHTML = (value: string) => {
   if (!value) return '';
-  // If already HTML, just ensure \n becomes <br> for display
+  // If already HTML, sanitize to strip dangerous tags then convert \n to <br>
   if (isProbablyHTML(value)) {
-    return value.replace(/\n/g, '<br>');
+    return sanitizeHTML(value).replace(/\n/g, '<br>');
   }
   // Plain text: escape and convert line breaks
   return escapeHTML(value).replace(/\n/g, '<br>');
+};
+
+/**
+ * Strip all HTML tags except the safe set used by the editor.
+ * This prevents stored XSS when loading HTML content from the database.
+ */
+const ALLOWED_TAGS = new Set(['strong', 'b', 'em', 'i', 'a', 'ul', 'ol', 'li', 'br', 'div', 'p', 'span']);
+const ALLOWED_ATTRS: Record<string, string[]> = { a: ['href'] };
+
+export const sanitizeHTML = (html: string): string => {
+  try {
+    const doc = new DOMParser().parseFromString(`<div id="root">${html}</div>`, 'text/html');
+    const root = doc.getElementById('root');
+    if (!root) return escapeHTML(html);
+
+    const cleanNode = (node: Node): void => {
+      const children = Array.from(node.childNodes);
+      for (const child of children) {
+        if (child.nodeType === Node.ELEMENT_NODE) {
+          const el = child as HTMLElement;
+          const tag = el.tagName.toLowerCase();
+          if (!ALLOWED_TAGS.has(tag)) {
+            // Replace disallowed tag with its text content
+            const text = doc.createTextNode(el.textContent || '');
+            node.replaceChild(text, child);
+          } else {
+            // Strip disallowed attributes
+            const allowedAttrs = ALLOWED_ATTRS[tag] || [];
+            for (const attr of Array.from(el.attributes)) {
+              if (!allowedAttrs.includes(attr.name)) {
+                el.removeAttribute(attr.name);
+              }
+            }
+            // Validate href to block javascript: URLs
+            if (tag === 'a') {
+              const href = el.getAttribute('href') || '';
+              if (!/^https?:\/\//i.test(href) && !href.startsWith('/') && !href.startsWith('#')) {
+                el.removeAttribute('href');
+              }
+            }
+            cleanNode(child);
+          }
+        }
+      }
+    };
+
+    cleanNode(root);
+    return root.innerHTML;
+  } catch {
+    // Fallback: strip all tags
+    return escapeHTML(html.replace(/<[^>]*>/g, ''));
+  }
 };
 
 /**

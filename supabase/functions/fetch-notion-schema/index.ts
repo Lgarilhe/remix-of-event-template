@@ -12,6 +12,29 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 let POSTES_DATABASE_ID = Deno.env.get("NOTION_POSTES_DB_ID")!;
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
+function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), timeoutMs);
+  return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(id));
+}
+
+async function fetchWithRetry(url: string, options: RequestInit = {}, maxRetries = 2): Promise<Response> {
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    const res = await fetchWithTimeout(url, options);
+    if (res.status === 429 && attempt < maxRetries) {
+      const retryAfter = parseInt(res.headers.get('Retry-After') || '1', 10);
+      await new Promise(r => setTimeout(r, (retryAfter * 1000) + Math.random() * 500));
+      continue;
+    }
+    if ((res.status === 502 || res.status === 503 || res.status === 504) && attempt < maxRetries) {
+      await new Promise(r => setTimeout(r, 300 * Math.pow(2, attempt)));
+      continue;
+    }
+    return res;
+  }
+  return fetchWithTimeout(url, options);
+}
+
 async function resolveOrgCredentials(orgId: string | null) {
   if (!orgId) return;
   try {
@@ -71,7 +94,7 @@ serve(async (req) => {
     }
 
     // Fetch database schema from Notion
-    const resp = await fetch(`https://api.notion.com/v1/databases/${POSTES_DATABASE_ID}`, {
+    const resp = await fetchWithRetry(`https://api.notion.com/v1/databases/${POSTES_DATABASE_ID}`, {
       headers: {
         'Authorization': `Bearer ${NOTION_API_KEY}`,
         'Notion-Version': '2022-06-28',
@@ -133,6 +156,21 @@ serve(async (req) => {
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : 'Unknown error';
     console.error('[fetch-notion-schema]', msg);
+
+    // Fallback: return stale cache if available
+    try {
+      const { data: stale } = await supabase
+        .from('notion_api_cache')
+        .select('payload')
+        .eq('cache_key', CACHE_KEY)
+        .maybeSingle();
+      if (stale?.payload) {
+        return new Response(JSON.stringify({ success: true, schema: stale.payload, stale: true, error: msg }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+    } catch { /* ignore */ }
+
     return new Response(JSON.stringify({ success: false, error: msg }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });

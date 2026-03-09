@@ -12,6 +12,13 @@ const UNIPILE_DSN = rawDsn.startsWith('http') ? rawDsn : `https://${rawDsn}`;
 const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
 const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timeout));
+}
+
 interface PendingInvitation {
   provider_id: string;
   created_at?: string;
@@ -36,7 +43,7 @@ async function resolveNetworkDistance(
   const headers = { 'X-API-KEY': UNIPILE_API_KEY! };
 
   // Step 1: Fetch profile info with the given ID
-  const res = await fetch(
+  const res = await fetchWithTimeout(
     `${UNIPILE_DSN}/api/v1/users/${profileId}?account_id=${accountId}`,
     { headers }
   );
@@ -72,7 +79,7 @@ async function resolveNetworkDistance(
     if (slug) {
       console.log(`[check-invitation] Recruiter ID detected, re-checking via slug: ${slug}`);
       try {
-        const slugRes = await fetch(
+        const slugRes = await fetchWithTimeout(
           `${UNIPILE_DSN}/api/v1/users/${slug}?account_id=${accountId}`,
           { headers }
         );
@@ -131,7 +138,7 @@ serve(async (req) => {
       // Get pending invitations for this account
       let pendingInvites: PendingInvitation[] = [];
       try {
-        const response = await fetch(
+        const response = await fetchWithTimeout(
           `${UNIPILE_DSN}/api/v1/users/invite/sent?account_id=${accountId}`,
           { headers: { 'X-API-KEY': UNIPILE_API_KEY! } }
         );

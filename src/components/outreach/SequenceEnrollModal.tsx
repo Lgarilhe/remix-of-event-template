@@ -71,12 +71,13 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
       
       for (const profile of profiles) {
         try {
-          // Check if already enrolled
+          // Check if already enrolled (only block if active/completed/replied)
           const { data: existing } = await supabase
             .from('sequence_enrollments')
-            .select('id')
+            .select('id, status')
             .eq('sequence_id', sequence.id)
             .eq('profile_id', profile.id)
+            .in('status', ['active', 'completed', 'replied'])
             .maybeSingle();
 
           if (existing) {

@@ -7,7 +7,30 @@ const corsHeaders = {
 };
 
 const NOTION_API_KEY = Deno.env.get("NOTION_API_KEY");
-const NOTION_DATABASE_ID = "8eeb02fc-1c6b-4bf3-9877-c8a2acc2e604"; // Leads Landing Page database
+const NOTION_DATABASE_ID = Deno.env.get("NOTION_LEADS_DB_ID") || "8eeb02fc-1c6b-4bf3-9877-c8a2acc2e604";
+
+function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), timeoutMs);
+  return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(id));
+}
+
+async function fetchWithRetry(url: string, options: RequestInit = {}, maxRetries = 2): Promise<Response> {
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    const res = await fetchWithTimeout(url, options);
+    if (res.status === 429 && attempt < maxRetries) {
+      const retryAfter = parseInt(res.headers.get('Retry-After') || '1', 10);
+      await new Promise(r => setTimeout(r, (retryAfter * 1000) + Math.random() * 500));
+      continue;
+    }
+    if ((res.status === 502 || res.status === 503 || res.status === 504) && attempt < maxRetries) {
+      await new Promise(r => setTimeout(r, 300 * Math.pow(2, attempt)));
+      continue;
+    }
+    return res;
+  }
+  return fetchWithTimeout(url, options);
+}
 
 interface ContactSubmission {
   name: string;
@@ -17,7 +40,7 @@ interface ContactSubmission {
 }
 
 async function createNotionPage(data: ContactSubmission) {
-  const response = await fetch("https://api.notion.com/v1/pages", {
+  const response = await fetchWithRetry("https://api.notion.com/v1/pages", {
     method: "POST",
     headers: {
       "Authorization": `Bearer ${NOTION_API_KEY}`,
@@ -78,6 +101,10 @@ const handler = async (req: Request): Promise<Response> => {
       throw new Error("NOTION_API_KEY is not configured");
     }
 
+    if (!NOTION_DATABASE_ID) {
+      throw new Error("NOTION_LEADS_DB_ID is not configured");
+    }
+
     const { name, email, company, message }: ContactSubmission = await req.json();
 
     if (!name || !email || !message) {
@@ -87,7 +114,7 @@ const handler = async (req: Request): Promise<Response> => {
       );
     }
 
-    console.log(`Creating Notion page for lead: ${name} (${email})`);
+    console.log(`Creating Notion page for lead: ${name}`);
     
     const notionPage = await createNotionPage({ name, email, company, message });
     

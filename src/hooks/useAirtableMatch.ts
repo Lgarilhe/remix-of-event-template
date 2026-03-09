@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { normalizeLinkedInUrl, extractLinkedInSlug } from '@/lib/linkedinUtils';
+import { normalizeName, normalizeCompany } from '@/lib/stringUtils';
 
 export interface AirtableMatchInfo {
   airtable_id: string;
@@ -18,6 +20,19 @@ export interface ProfileMatchInput {
 
 // Global cache to avoid re-fetching across component re-renders
 const matchCache = new Map<string, AirtableMatchInfo | null>();
+const MAX_CACHE_SIZE = 500;
+
+function evictCache(cache: Map<string, unknown>) {
+  if (cache.size > MAX_CACHE_SIZE) {
+    // Evict oldest entries (first inserted)
+    const excess = cache.size - MAX_CACHE_SIZE;
+    const keys = cache.keys();
+    for (let i = 0; i < excess; i++) {
+      const key = keys.next().value;
+      if (key !== undefined) cache.delete(key);
+    }
+  }
+}
 
 /**
  * Hook that batch-checks LinkedIn profiles against the local airtable_candidates table.
@@ -152,6 +167,7 @@ export function useAirtableMatch(profiles: ProfileMatchInput[]) {
         }
       }
 
+      evictCache(matchCache);
       setMatches(newMatches);
     } catch (err) {
       console.error('Error in useAirtableMatch:', err);
@@ -194,37 +210,8 @@ export function useAirtableMatch(profiles: ProfileMatchInput[]) {
   return { matches, loading, getMatch };
 }
 
-function normalizeLinkedInUrl(url: string): string {
-  return url.replace(/\/$/, '').toLowerCase();
-}
-
-function extractLinkedInSlug(url: string): string | null {
-  const match = url.match(/linkedin\.com\/in\/([^/?#]+)/i);
-  return match ? match[1].toLowerCase() : null;
-}
-
-/** Normalize a name for comparison: lowercase, remove accents, trim */
-function normalizeName(name: string): string {
-  return name
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
-    .replace(/[^a-z\s-]/g, '')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-/** Normalize a company name for comparison */
-function normalizeCompany(company: string): string {
-  return company
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
-    .replace(/\b(sas|sarl|sa|sasu|inc|ltd|llc|gmbh|group|groupe)\b/g, '')
-    .replace(/[^a-z0-9\s]/g, '')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
+// normalizeLinkedInUrl, extractLinkedInSlug, normalizeName, normalizeCompany
+// are now imported from @/lib/linkedinUtils and @/lib/stringUtils
 
 /** Extract company name from Airtable raw_data */
 function extractCompanyFromRawData(rawData: any): string | null {

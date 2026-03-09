@@ -11,6 +11,31 @@ let AIRTABLE_API_KEY = RAW_AIRTABLE_API_KEY?.trim();
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
+function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), timeoutMs);
+  return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(id));
+}
+
+async function fetchWithRetry(url: string, options: RequestInit = {}, maxRetries = 2): Promise<Response> {
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    const res = await fetchWithTimeout(url, options);
+    if (res.status === 429 && attempt < maxRetries) {
+      const retryAfter = parseInt(res.headers.get('Retry-After') || '1', 10);
+      await new Promise(r => setTimeout(r, (retryAfter * 1000) + Math.random() * 500));
+      continue;
+    }
+    if ((res.status === 502 || res.status === 503 || res.status === 504) && attempt < maxRetries) {
+      await new Promise(r => setTimeout(r, 300 * Math.pow(2, attempt)));
+      continue;
+    }
+    return res;
+  }
+  return fetchWithTimeout(url, options);
+}
+
+function sleep(ms: number) { return new Promise(r => setTimeout(r, ms)); }
 // Base configs
 const BASES: Record<string, { baseId: string | undefined; label: string }> = {
   konekt: { baseId: Deno.env.get("AIRTABLE_BASE_ID")?.trim(), label: 'Konekt' },
@@ -67,12 +92,18 @@ async function fetchAirtableTable(baseId: string, tableName: string, skipPages =
   let offset: string | undefined;
   let pageCount = 0;
 
+  let pagesRead = 0;
+  const MAX_PAGES = 200; // safety cap to prevent infinite loops
+
   do {
     const url = new URL(`https://api.airtable.com/v0/${baseId}/${encodeURIComponent(tableName)}`);
     url.searchParams.set("pageSize", "100");
     if (offset) url.searchParams.set("offset", offset);
 
-    const response = await fetch(url.toString(), {
+    // Pace requests: Airtable rate-limits at 5 req/sec
+    if (pagesRead > 0) await sleep(220);
+
+    const response = await fetchWithRetry(url.toString(), {
       headers: { Authorization: `Bearer ${AIRTABLE_API_KEY}` },
     });
 
@@ -94,8 +125,9 @@ async function fetchAirtableTable(baseId: string, tableName: string, skipPages =
     }
     
     pageCount++;
+    pagesRead++;
     offset = data.offset;
-  } while (offset);
+  } while (offset && pagesRead < MAX_PAGES);
 
   return records;
 }
@@ -397,7 +429,7 @@ serve(async (req) => {
       if (!baseId) throw new Error(`Base ${baseKey} not configured`);
       
       const url = `https://api.airtable.com/v0/meta/bases/${baseId}/tables`;
-      const response = await fetch(url, {
+      const response = await fetchWithRetry(url, {
         headers: { Authorization: `Bearer ${AIRTABLE_API_KEY}` },
       });
       if (!response.ok) {
@@ -422,8 +454,8 @@ serve(async (req) => {
         : null;
 
       const [metaResponse, tableResponse] = await Promise.all([
-        fetch(metaUrl, { headers: { Authorization: `Bearer ${AIRTABLE_API_KEY}` } }),
-        tableUrl ? fetch(tableUrl, { headers: { Authorization: `Bearer ${AIRTABLE_API_KEY}` } }) : Promise.resolve(null),
+        fetchWithRetry(metaUrl, { headers: { Authorization: `Bearer ${AIRTABLE_API_KEY}` } }),
+        tableUrl ? fetchWithRetry(tableUrl, { headers: { Authorization: `Bearer ${AIRTABLE_API_KEY}` } }) : Promise.resolve(null),
       ]);
 
       const [metaPayload, tablePayload] = await Promise.all([

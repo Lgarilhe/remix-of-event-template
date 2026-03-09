@@ -51,18 +51,22 @@ async function fetchChatMessages(
 
 async function callAiWithRetry(prompt: string, apiKey: string) {
   for (let attempt = 0; attempt < 3; attempt++) {
-    const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model: 'google/gemini-2.5-flash',
-        messages: [
-          {
-            role: 'system',
-            content: `Tu es un expert en recrutement. Tu analyses des conversations LinkedIn entre un recruteur (R) et un candidat (C).
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30000);
+    let response: Response;
+    try {
+      response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model: 'google/gemini-2.5-flash',
+          messages: [
+            {
+              role: 'system',
+              content: `Tu es un expert en recrutement. Tu analyses des conversations LinkedIn entre un recruteur (R) et un candidat (C).
 
 Tu dois classer chaque conversation dans UNE catégorie basée sur l'ENSEMBLE de la conversation, pas juste le dernier message :
 
@@ -81,13 +85,17 @@ RÈGLES IMPORTANTES :
 
 Réponds UNIQUEMENT avec un JSON array : [{"index": 0, "category": "..."}, ...]
 Pas de texte avant ou après.`,
-          },
-          { role: 'user', content: prompt },
-        ],
-        temperature: 0.1,
-        max_tokens: 4000,
-      }),
-    });
+            },
+            { role: 'user', content: prompt },
+          ],
+          temperature: 0.1,
+          max_tokens: 4000,
+        }),
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timeout);
+    }
 
     if (response.ok) return response;
 

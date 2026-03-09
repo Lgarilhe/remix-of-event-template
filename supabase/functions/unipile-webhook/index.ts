@@ -16,6 +16,12 @@ function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15
   return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timer));
 }
 
+// Sanitize IDs before interpolating into PostgREST filter strings (.or(), .like())
+// Prevents filter injection via special characters (commas, dots, parens)
+function sanitizeFilterId(id: string): string {
+  return id.replace(/[^a-zA-Z0-9_\-:]/g, '');
+}
+
 
 interface WebhookPayload {
   event: string;
@@ -49,8 +55,15 @@ serve(async (req) => {
   try {
     // Verify webhook authenticity
     const authHeader = req.headers.get('unipile-auth');
-    if (WEBHOOK_SECRET && authHeader !== WEBHOOK_SECRET) {
-      console.error('[unipile-webhook] Invalid auth header');
+    if (!WEBHOOK_SECRET) {
+      console.error('[unipile-webhook] ⚠️ UNIPILE_WEBHOOK_SECRET not set — rejecting request. Configure this secret!');
+      return new Response(JSON.stringify({ error: 'Webhook secret not configured' }), {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+    if (!authHeader || authHeader !== WEBHOOK_SECRET) {
+      console.error('[unipile-webhook] Invalid or missing auth header');
       return new Response(JSON.stringify({ error: 'Unauthorized' }), {
         status: 401,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -134,7 +147,7 @@ async function handleNewRelation(supabase: SupabaseClient, payload: WebhookPaylo
     .eq('account_id', account_id)
     .eq('status', 'active')
     .in('connection_status', ['pending_invite', 'unknown', 'not_connected'])
-    .or(`profile_id.eq.${profileId},resolved_profile_id.eq.${profileId},provider_id.eq.${profileId}`);
+    .or(`profile_id.eq.${sanitizeFilterId(profileId)},resolved_profile_id.eq.${sanitizeFilterId(profileId)},provider_id.eq.${sanitizeFilterId(profileId)}`);
 
   if (enrollError) {
     console.error('[unipile-webhook] Error fetching enrollments:', enrollError);
@@ -348,7 +361,7 @@ async function handleNewMessage(supabase: SupabaseClient, payload: WebhookPayloa
     .select('*')
     .eq('account_id', account_id)
     .eq('status', 'active')
-    .or(`profile_id.eq.${senderId},resolved_profile_id.eq.${senderId}`);
+    .or(`profile_id.eq.${sanitizeFilterId(senderId)},resolved_profile_id.eq.${sanitizeFilterId(senderId)}`);
 
   if (exactError) {
     console.error('[unipile-webhook] Error fetching enrollments (exact):', exactError);
@@ -364,7 +377,7 @@ async function handleNewMessage(supabase: SupabaseClient, payload: WebhookPayloa
       .select('*')
       .eq('account_id', account_id)
       .eq('status', 'active')
-      .like('profile_url', `%${senderId}%`);
+      .like('profile_url', `%${sanitizeFilterId(senderId)}%`);
 
     if (!urlError && urlMatch && urlMatch.length > 0) {
       enrollments = urlMatch as SequenceEnrollment[];

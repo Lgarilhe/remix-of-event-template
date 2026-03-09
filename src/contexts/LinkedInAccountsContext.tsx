@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -66,8 +66,14 @@ export const LinkedInAccountsProvider: React.FC<{ children: React.ReactNode }> =
     return () => subscription.unsubscribe();
   }, [reload]);
 
+  const contextValue = useMemo(() => ({
+    accounts,
+    loading: loading && !hasLoaded,
+    reload,
+  }), [accounts, loading, hasLoaded, reload]);
+
   return (
-    <LinkedInAccountsContext.Provider value={{ accounts, loading: loading && !hasLoaded, reload }}>
+    <LinkedInAccountsContext.Provider value={contextValue}>
       {children}
     </LinkedInAccountsContext.Provider>
   );

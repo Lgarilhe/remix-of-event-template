@@ -11,13 +11,83 @@ const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
 const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const supabase = createClient(supabaseUrl, serviceRoleKey);
 
+function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timeout));
+}
+
+async function verifyCalendlySignature(req: Request, body: string): Promise<boolean> {
+  const signingKey = Deno.env.get('CALENDLY_WEBHOOK_SIGNING_KEY');
+  if (!signingKey) {
+    console.warn('[calendly-webhook] ⚠️ CALENDLY_WEBHOOK_SIGNING_KEY not set — webhook signature verification DISABLED. Set this key in production!');
+    return true; // Allow in dev, but must be set in production
+  }
+
+  const signatureHeader = req.headers.get('Calendly-Webhook-Signature');
+  if (!signatureHeader) {
+    console.warn('[calendly-webhook] Missing Calendly-Webhook-Signature header');
+    return false;
+  }
+
+  // Parse header: t=<timestamp>,v1=<signature>
+  const parts: Record<string, string> = {};
+  for (const part of signatureHeader.split(',')) {
+    const [key, value] = part.split('=', 2);
+    if (key && value) parts[key.trim()] = value.trim();
+  }
+
+  const timestamp = parts['t'];
+  const signature = parts['v1'];
+  if (!timestamp || !signature) {
+    console.warn('[calendly-webhook] Invalid signature header format');
+    return false;
+  }
+
+  // Check timestamp tolerance (5 minutes)
+  const timestampMs = parseInt(timestamp, 10) * 1000;
+  if (Math.abs(Date.now() - timestampMs) > 5 * 60 * 1000) {
+    console.warn('[calendly-webhook] Signature timestamp too old');
+    return false;
+  }
+
+  // Compute expected signature: HMAC-SHA256(signing_key, timestamp + '.' + body)
+  const key = await crypto.subtle.importKey(
+    'raw',
+    new TextEncoder().encode(signingKey),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign']
+  );
+  const payload = `${timestamp}.${body}`;
+  const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(payload));
+  const expectedSignature = Array.from(new Uint8Array(sig)).map(b => b.toString(16).padStart(2, '0')).join('');
+
+  if (expectedSignature !== signature) {
+    console.warn('[calendly-webhook] Signature mismatch');
+    return false;
+  }
+
+  return true;
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
   }
 
   try {
-    const body = await req.json();
+    // Verify Calendly webhook signature
+    const rawBody = await req.text();
+    const isValid = await verifyCalendlySignature(req, rawBody);
+    if (!isValid) {
+      return new Response(JSON.stringify({ error: 'Invalid signature' }), {
+        status: 401,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    const body = JSON.parse(rawBody);
     console.log('[calendly-webhook] Received event:', body.event);
 
     // Handle webhook subscription verification
@@ -345,7 +415,7 @@ serve(async (req) => {
 
         // Try LinkedIn URL first
         if (isValidLinkedinUrl && candidateLinkedinUrl) {
-          const res = await fetch(`https://api.notion.com/v1/databases/${CANDIDATS_DATABASE_ID}/query`, {
+          const res = await fetchWithTimeout(`https://api.notion.com/v1/databases/${CANDIDATS_DATABASE_ID}/query`, {
             method: 'POST',
             headers: notionHeaders,
             body: JSON.stringify({
@@ -361,7 +431,7 @@ serve(async (req) => {
 
         // Fallback: try by name
         if (!notionCandidateId && candidateName) {
-          const res = await fetch(`https://api.notion.com/v1/databases/${CANDIDATS_DATABASE_ID}/query`, {
+          const res = await fetchWithTimeout(`https://api.notion.com/v1/databases/${CANDIDATS_DATABASE_ID}/query`, {
             method: 'POST',
             headers: notionHeaders,
             body: JSON.stringify({
@@ -377,7 +447,7 @@ serve(async (req) => {
 
         if (notionCandidateId) {
           // Update Candidat "Etat" → "Pré-qualif à planifier"
-          await fetch(`https://api.notion.com/v1/pages/${notionCandidateId}`, {
+          await fetchWithTimeout(`https://api.notion.com/v1/pages/${notionCandidateId}`, {
             method: 'PATCH',
             headers: notionHeaders,
             body: JSON.stringify({
@@ -393,7 +463,7 @@ serve(async (req) => {
             .eq('id', session.id);
 
           // Find and update all related shortlists "Etape" → "Pré-qualif"
-          const slRes = await fetch(`https://api.notion.com/v1/databases/${SHORTLIST_DATABASE_ID}/query`, {
+          const slRes = await fetchWithTimeout(`https://api.notion.com/v1/databases/${SHORTLIST_DATABASE_ID}/query`, {
             method: 'POST',
             headers: notionHeaders,
             body: JSON.stringify({
@@ -405,7 +475,7 @@ serve(async (req) => {
             const slData = await slRes.json();
             const shortlists = slData.results || [];
             for (const sl of shortlists) {
-              await fetch(`https://api.notion.com/v1/pages/${sl.id}`, {
+              await fetchWithTimeout(`https://api.notion.com/v1/pages/${sl.id}`, {
                 method: 'PATCH',
                 headers: notionHeaders,
                 body: JSON.stringify({

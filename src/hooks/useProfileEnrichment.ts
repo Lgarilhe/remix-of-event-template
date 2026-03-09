@@ -47,6 +47,24 @@ interface UseProfileEnrichmentResult {
 // Cache to avoid redundant API calls
 const profileCache = new Map<string, { data: EnrichedProfile; timestamp: number }>();
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+const MAX_PROFILE_CACHE = 200;
+
+function evictProfileCache() {
+  // First, remove expired entries
+  const now = Date.now();
+  for (const [key, val] of profileCache) {
+    if (now - val.timestamp > CACHE_TTL) profileCache.delete(key);
+  }
+  // Then, evict oldest if still over limit
+  if (profileCache.size > MAX_PROFILE_CACHE) {
+    const excess = profileCache.size - MAX_PROFILE_CACHE;
+    const keys = profileCache.keys();
+    for (let i = 0; i < excess; i++) {
+      const key = keys.next().value;
+      if (key !== undefined) profileCache.delete(key);
+    }
+  }
+}
 
 export function useProfileEnrichment(): UseProfileEnrichmentResult {
   const [enrichedProfile, setEnrichedProfile] = useState<EnrichedProfile | null>(null);
@@ -152,6 +170,7 @@ export function useProfileEnrichment(): UseProfileEnrichmentResult {
 
       // Cache the result
       profileCache.set(cacheKey, { data: enriched, timestamp: Date.now() });
+      evictProfileCache();
       setEnrichedProfile(enriched);
       return enriched;
     } catch (err) {

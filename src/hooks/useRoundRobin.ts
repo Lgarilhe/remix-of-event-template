@@ -15,12 +15,19 @@ export function useRoundRobin(jobId: string) {
     }
 
     // Get current round-robin state
-    const { data: state } = await supabase
+    const { data: state, error: stateError } = await supabase
       .from('round_robin_state')
       .select('*')
       .eq('organization_id', organizationId)
       .eq('job_id', jobId)
       .single();
+
+    // PGRST116 = no rows found, which is expected for first assignment
+    if (stateError && stateError.code !== 'PGRST116') {
+      console.error('Round-robin state fetch error:', stateError);
+      toast.error('Erreur lors de la récupération de l\'état round-robin');
+      return null;
+    }
 
     // Find next recruiter
     const assignedUserIds = assignments.map(a => a.user_id);
@@ -47,11 +54,12 @@ export function useRoundRobin(jobId: string) {
 
     if (assignError) {
       console.error('Round-robin assignment error:', assignError);
+      toast.error('Erreur lors de l\'assignation du candidat');
       return null;
     }
 
     // Update round-robin state
-    await supabase
+    const { error: stateUpdateError } = await supabase
       .from('round_robin_state')
       .upsert({
         organization_id: organizationId,
@@ -59,6 +67,11 @@ export function useRoundRobin(jobId: string) {
         last_assigned_user_id: nextUserId,
         last_assigned_at: new Date().toISOString(),
       }, { onConflict: 'organization_id,job_id' });
+
+    if (stateUpdateError) {
+      console.error('Round-robin state update error:', stateUpdateError);
+      // Non-blocking: assignment succeeded, state update is best-effort
+    }
 
     return nextUserId;
   }, [organizationId, jobId, assignments]);

@@ -16,6 +16,29 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 let POSTES_DATABASE_ID = Deno.env.get("NOTION_POSTES_DB_ID")!;
 let SHORTLIST_DATABASE_ID = Deno.env.get("NOTION_SHORTLIST_DB_ID")!;
 
+function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), timeoutMs);
+  return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(id));
+}
+
+async function fetchWithRetry(url: string, options: RequestInit = {}, maxRetries = 2): Promise<Response> {
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    const res = await fetchWithTimeout(url, options);
+    if (res.status === 429 && attempt < maxRetries) {
+      const retryAfter = parseInt(res.headers.get('Retry-After') || '1', 10);
+      await new Promise(r => setTimeout(r, (retryAfter * 1000) + Math.random() * 500));
+      continue;
+    }
+    if ((res.status === 502 || res.status === 503 || res.status === 504) && attempt < maxRetries) {
+      await new Promise(r => setTimeout(r, 300 * Math.pow(2, attempt)));
+      continue;
+    }
+    return res;
+  }
+  return fetchWithTimeout(url, options);
+}
+
 console.log('[fetch-notion-jobs] boot', {
   hasNotionKey: Boolean(NOTION_API_KEY),
   hasLovableKey: Boolean(LOVABLE_API_KEY),
@@ -133,7 +156,7 @@ Description: ${job.description}
   }
 
   try {
-    const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+    const response = await fetchWithTimeout('https://ai.gateway.lovable.dev/v1/chat/completions', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${LOVABLE_API_KEY}`,
@@ -165,7 +188,7 @@ Règles:
         ],
         temperature: 0.1,
       }),
-    });
+    }, 30000);
 
     if (!response.ok) {
       console.error('Lovable AI error:', response.status, await response.text());
@@ -267,7 +290,7 @@ async function fetchNotionDatabase(databaseId: string, filter?: any) {
     body.filter = filter;
   }
   
-  const response = await fetch(`https://api.notion.com/v1/databases/${databaseId}/query`, {
+  const response = await fetchWithRetry(`https://api.notion.com/v1/databases/${databaseId}/query`, {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${NOTION_API_KEY}`,
@@ -296,7 +319,7 @@ async function fetchNotionDatabaseAll(databaseId: string, filter?: any): Promise
     if (filter) body.filter = filter;
     if (startCursor) body.start_cursor = startCursor;
 
-    const response = await fetch(`https://api.notion.com/v1/databases/${databaseId}/query`, {
+    const response = await fetchWithRetry(`https://api.notion.com/v1/databases/${databaseId}/query`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${NOTION_API_KEY}`,
@@ -323,7 +346,7 @@ async function fetchNotionDatabaseAll(databaseId: string, filter?: any): Promise
 }
 
 async function getTitlePropertyName(databaseId: string): Promise<string> {
-  const response = await fetch(`https://api.notion.com/v1/databases/${databaseId}`, {
+  const response = await fetchWithRetry(`https://api.notion.com/v1/databases/${databaseId}`, {
     headers: {
       'Authorization': `Bearer ${NOTION_API_KEY}`,
       'Notion-Version': '2022-06-28',
@@ -349,7 +372,7 @@ async function fetchCompanyDetails(companyIds: string[]): Promise<Map<string, an
   
   for (const id of companyIds) {
     try {
-      const response = await fetch(`https://api.notion.com/v1/pages/${id}`, {
+      const response = await fetchWithRetry(`https://api.notion.com/v1/pages/${id}`, {
         headers: {
           'Authorization': `Bearer ${NOTION_API_KEY}`,
           'Notion-Version': '2022-06-28',
@@ -398,7 +421,7 @@ async function fetchPageBody(pageId: string): Promise<string> {
     url.searchParams.set('page_size', '100');
     if (startCursor) url.searchParams.set('start_cursor', startCursor);
 
-    const response = await fetch(url.toString(), {
+    const response = await fetchWithRetry(url.toString(), {
       headers: {
         'Authorization': `Bearer ${NOTION_API_KEY}`,
         'Notion-Version': '2022-06-28',
@@ -489,7 +512,7 @@ async function fetchTransversalCriteria(criteriaIds: string[]): Promise<Map<stri
   
   await Promise.all(uniqueIds.map(async (id) => {
     try {
-      const response = await fetch(`https://api.notion.com/v1/pages/${id}`, {
+      const response = await fetchWithRetry(`https://api.notion.com/v1/pages/${id}`, {
         headers: {
           'Authorization': `Bearer ${NOTION_API_KEY}`,
           'Notion-Version': '2022-06-28',
@@ -1007,14 +1030,28 @@ serve(async (req) => {
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     console.error('Error fetching Notion jobs:', errorMessage);
+
+    // Fallback: return stale cache if available to prevent blank screen
+    try {
+      const staleCache = await getJobsCache();
+      if (staleCache.payload) {
+        return new Response(
+          JSON.stringify({ ...staleCache.payload, cached: true, stale: true, error: errorMessage }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
+        );
+      }
+    } catch { /* ignore cache read failure */ }
+
     return new Response(
       JSON.stringify({ 
-        success: false, 
-        error: errorMessage 
+        success: true, 
+        jobs: [],
+        error: errorMessage,
+        _meta: { rateLimited: true }
       }),
       { 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 500 
+        status: 200 
       }
     );
   }

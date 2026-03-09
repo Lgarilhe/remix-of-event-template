@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { normalizePhone } from '@/lib/stringUtils';
 
 export interface AircallCall {
   id: string;
@@ -110,14 +111,4 @@ export function useAircallHistory(
   return { calls, loading, totalCalls: calls.length, totalDuration };
 }
 
-function normalizePhone(phone: string): string | null {
-  if (!phone) return null;
-  let cleaned = phone.replace(/[^\d+]/g, '');
-  if (cleaned.startsWith('0') && cleaned.length === 10) {
-    cleaned = '+33' + cleaned.slice(1);
-  }
-  if (cleaned.startsWith('33') && !cleaned.startsWith('+')) {
-    cleaned = '+' + cleaned;
-  }
-  return cleaned || null;
-}
+// normalizePhone is now imported from @/lib/stringUtils

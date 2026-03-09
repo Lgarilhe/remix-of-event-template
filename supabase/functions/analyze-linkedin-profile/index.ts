@@ -43,25 +43,33 @@ Règles:
 - fit_score: score de 0-100 basé sur l'attractivité du profil pour un recruteur tech
 - Sois factuel, pas de flatterie. Base-toi uniquement sur les données fournies.`;
 
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-3-flash-preview",
-        messages: [
-          { 
-            role: "system", 
-            content: "Tu es un expert en recrutement tech. Tu analyses des profils LinkedIn et fournis des insights structurés. Tu réponds TOUJOURS en JSON valide, sans markdown, sans code blocks." 
-          },
-          { role: "user", content: prompt }
-        ],
-        max_tokens: 400,
-        temperature: 0.3,
-      }),
-    });
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30000);
+    let response: Response;
+    try {
+      response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${LOVABLE_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "google/gemini-3-flash-preview",
+          messages: [
+            { 
+              role: "system", 
+              content: "Tu es un expert en recrutement tech. Tu analyses des profils LinkedIn et fournis des insights structurés. Tu réponds TOUJOURS en JSON valide, sans markdown, sans code blocks." 
+            },
+            { role: "user", content: prompt }
+          ],
+          max_tokens: 400,
+          temperature: 0.3,
+        }),
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timeout);
+    }
 
     if (!response.ok) {
       if (response.status === 429) {

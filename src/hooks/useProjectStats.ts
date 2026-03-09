@@ -22,45 +22,32 @@ export const useProjectStats = (projectId: string | null) => {
         return { total: 0, scored: 0, messaged: 0, shortlisted: 0, dismissed: 0, untreated: 0 };
       }
 
-      // Paginate to avoid 1000-row limit
-      const allData: any[] = [];
-      const PAGE_SIZE = 1000;
-      let offset = 0;
-      let hasMore = true;
+      const { data, error } = await supabase.rpc('get_project_stats', {
+        p_project_id: projectId,
+      });
 
-      while (hasMore) {
-        const { data, error } = await supabase
-          .from('job_candidate_status')
-          .select('status, score')
-          .eq('project_id', projectId)
-          .range(offset, offset + PAGE_SIZE - 1);
+      if (error) throw error;
 
-        if (error) throw error;
-        if (data && data.length > 0) {
-          allData.push(...data);
-          offset += PAGE_SIZE;
-          hasMore = data.length === PAGE_SIZE;
-        } else {
-          hasMore = false;
-        }
+      const row = data?.[0];
+      if (!row) {
+        return { total: 0, scored: 0, messaged: 0, shortlisted: 0, dismissed: 0, untreated: 0 };
       }
 
-      const candidates = allData;
-      
       return {
-        total: candidates.length,
-        scored: candidates.filter(c => c.score !== null).length,
-        messaged: candidates.filter(c => c.status === 'messaged').length,
-        shortlisted: candidates.filter(c => c.status === 'shortlisted').length,
-        dismissed: candidates.filter(c => c.status === 'dismissed').length,
-        untreated: candidates.filter(c => c.status === 'untreated').length,
+        total: Number(row.total) || 0,
+        scored: Number(row.scored) || 0,
+        messaged: Number(row.messaged) || 0,
+        shortlisted: Number(row.shortlisted) || 0,
+        dismissed: Number(row.dismissed) || 0,
+        untreated: Number(row.untreated) || 0,
       };
     },
     enabled: !!projectId,
-    staleTime: 30 * 1000, // 30 seconds - refresh frequently for accurate counts
-    gcTime: 5 * 60 * 1000, // 5 minutes cache
+    staleTime: 30 * 1000,
+    gcTime: 5 * 60 * 1000,
   });
 };
+
 
 /**
  * Hook to get stats for multiple projects at once (for list views).
@@ -74,76 +61,42 @@ export const useMultipleProjectStats = (projectIds: string[]) => {
         return {};
       }
 
-      // Paginate to avoid 1000-row limit
-      const allData: any[] = [];
-      const PAGE_SIZE = 1000;
-      let offset = 0;
-      let hasMore = true;
+      const { data, error } = await supabase.rpc('get_multiple_project_stats', {
+        p_project_ids: projectIds,
+      });
 
-      while (hasMore) {
-        const { data, error } = await supabase
-          .from('job_candidate_status')
-          .select('project_id, status, score')
-          .in('project_id', projectIds)
-          .range(offset, offset + PAGE_SIZE - 1);
+      if (error) throw error;
 
-        if (error) throw error;
-        if (data && data.length > 0) {
-          allData.push(...data);
-          offset += PAGE_SIZE;
-          hasMore = data.length === PAGE_SIZE;
-        } else {
-          hasMore = false;
-        }
-      }
-
-      const candidates = allData;
-      
-      // Group by project
       const statsByProject: Record<string, ProjectStats> = {};
-      
+
       // Initialize all projects with empty stats
       for (const projectId of projectIds) {
         statsByProject[projectId] = {
-          total: 0,
-          scored: 0,
-          messaged: 0,
-          shortlisted: 0,
-          dismissed: 0,
-          untreated: 0,
+          total: 0, scored: 0, messaged: 0, shortlisted: 0, dismissed: 0, untreated: 0,
         };
       }
-      
-      // Aggregate stats
-      for (const candidate of candidates) {
-        if (!candidate.project_id) continue;
-        
-        const stats = statsByProject[candidate.project_id];
-        if (!stats) continue;
-        
-        stats.total++;
-        if (candidate.score !== null) stats.scored++;
-        
-        switch (candidate.status) {
-          case 'messaged':
-            stats.messaged++;
-            break;
-          case 'shortlisted':
-            stats.shortlisted++;
-            break;
-          case 'dismissed':
-            stats.dismissed++;
-            break;
-          case 'untreated':
-            stats.untreated++;
-            break;
+
+      // Fill in from RPC results
+      if (data) {
+        for (const row of data) {
+          if (row.project_id && statsByProject[row.project_id]) {
+            statsByProject[row.project_id] = {
+              total: Number(row.total) || 0,
+              scored: Number(row.scored) || 0,
+              messaged: Number(row.messaged) || 0,
+              shortlisted: Number(row.shortlisted) || 0,
+              dismissed: Number(row.dismissed) || 0,
+              untreated: Number(row.untreated) || 0,
+            };
+          }
         }
       }
-      
+
       return statsByProject;
     },
     enabled: projectIds.length > 0,
-    staleTime: 30 * 1000, // 30 seconds
-    gcTime: 5 * 60 * 1000, // 5 minutes
+    staleTime: 30 * 1000,
+    gcTime: 5 * 60 * 1000,
   });
 };
+

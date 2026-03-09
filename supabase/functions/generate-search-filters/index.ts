@@ -5,6 +5,12 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timeout));
+}
+
 interface TransversalCriteria {
   must: string;
   should: string;
@@ -345,7 +351,7 @@ ${transversal.bodyContent ? `Contenu détaillé critères transverses:\n${transv
       
       for (let attempt = 1; attempt <= maxRetries; attempt++) {
         try {
-          const response = await fetch("https://api.anthropic.com/v1/messages", {
+          const response = await fetchWithTimeout("https://api.anthropic.com/v1/messages", {
             method: "POST",
              headers: {
               "x-api-key": ANTHROPIC_API_KEY,

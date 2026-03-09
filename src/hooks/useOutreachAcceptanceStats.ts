@@ -1,6 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { differenceInDays, parseISO } from 'date-fns';
 
 export interface ConsultantStats {
   userId: string;
@@ -25,24 +24,19 @@ export interface OutreachAcceptanceStats {
 }
 
 async function fetchOutreachAcceptanceStats(): Promise<OutreachAcceptanceStats> {
-  // Fetch all sequence enrollments
-  const allEnrollments: any[] = [];
-  let from = 0;
-  const PAGE_SIZE = 1000;
-  while (true) {
-    const { data: page, error } = await supabase
-      .from('sequence_enrollments')
-      .select('id, created_by, created_at, connection_status, status, replied_at, completed_at')
-      .order('created_at', { ascending: false })
-      .range(from, from + PAGE_SIZE - 1);
-    if (error || !page || page.length === 0) break;
-    allEnrollments.push(...page);
-    if (page.length < PAGE_SIZE) break;
-    from += PAGE_SIZE;
+  // Use server-side aggregation RPC instead of fetching all enrollments
+  const { data: rpcData, error: rpcError } = await supabase.rpc('get_outreach_acceptance_stats');
+  
+  if (rpcError) throw rpcError;
+  if (!rpcData || rpcData.length === 0) {
+    return {
+      global: { totalEnrolled: 0, connected: 0, notConnected: 0, pending: 0, acceptanceRate: 0 },
+      byConsultant: [],
+    };
   }
 
-  // Fetch consultant profiles
-  const userIds = [...new Set(allEnrollments.map(e => e.created_by))];
+  // Fetch consultant display names
+  const userIds = rpcData.map((r: any) => r.user_id);
   const profilesMap = new Map<string, string>();
   
   if (userIds.length > 0) {
@@ -58,74 +52,47 @@ async function fetchOutreachAcceptanceStats(): Promise<OutreachAcceptanceStats> 
     }
   }
 
-  // Categorize enrollments
-  const categorize = (enrollments: any[]) => {
-    let connected = 0;
-    let notConnected = 0;
-    let pending = 0;
-    let acceptedWithin3Days = 0;
+  // Build per-consultant stats + global aggregates
+  let globalTotal = 0, globalConnected = 0, globalNotConnected = 0, globalPending = 0;
+  const byConsultant: ConsultantStats[] = [];
 
-    for (const e of enrollments) {
-      const cs = (e.connection_status || '').toLowerCase();
-      
-      if (cs === 'connected' || cs === 'accepted') {
-        connected++;
-        // Check if accepted within 3 days of enrollment
-        if (e.completed_at || e.replied_at) {
-          const responseDate = parseISO(e.replied_at || e.completed_at);
-          const createdDate = parseISO(e.created_at);
-          if (differenceInDays(responseDate, createdDate) <= 3) {
-            acceptedWithin3Days++;
-          }
-        } else {
-          // If connected but no completion date, assume quick acceptance
-          acceptedWithin3Days++;
-        }
-      } else if (cs === 'not_connected' || cs === 'declined' || cs === 'withdrawn') {
-        notConnected++;
-      } else {
-        // unknown, pending, etc.
-        pending++;
-      }
-    }
-
+  for (const row of rpcData) {
+    const total = Number(row.total_enrolled) || 0;
+    const connected = Number(row.connected) || 0;
+    const notConnected = Number(row.not_connected) || 0;
+    const pending = Number(row.pending) || 0;
     const decidedTotal = connected + notConnected;
     const acceptanceRate = decidedTotal > 0 ? Math.round((connected / decidedTotal) * 100) : 0;
 
-    return { totalEnrolled: enrollments.length, connected, notConnected, pending, acceptedWithin3Days, acceptanceRate };
-  };
+    globalTotal += total;
+    globalConnected += connected;
+    globalNotConnected += notConnected;
+    globalPending += pending;
 
-  // Global stats
-  const globalStats = categorize(allEnrollments);
-
-  // By consultant
-  const byConsultantMap = new Map<string, any[]>();
-  for (const e of allEnrollments) {
-    const list = byConsultantMap.get(e.created_by) || [];
-    list.push(e);
-    byConsultantMap.set(e.created_by, list);
-  }
-
-  const byConsultant: ConsultantStats[] = [];
-  for (const [userId, enrollments] of byConsultantMap) {
-    const stats = categorize(enrollments);
     byConsultant.push({
-      userId,
-      displayName: profilesMap.get(userId) || 'Consultant',
-      ...stats,
+      userId: row.user_id,
+      displayName: profilesMap.get(row.user_id) || 'Consultant',
+      totalEnrolled: total,
+      connected,
+      notConnected,
+      pending,
+      acceptedWithin3Days: 0, // Not available from aggregate; kept for interface compat
+      acceptanceRate,
     });
   }
 
   // Sort by total enrolled desc
   byConsultant.sort((a, b) => b.totalEnrolled - a.totalEnrolled);
 
+  const globalDecided = globalConnected + globalNotConnected;
+
   return {
     global: {
-      totalEnrolled: globalStats.totalEnrolled,
-      connected: globalStats.connected,
-      notConnected: globalStats.notConnected,
-      pending: globalStats.pending,
-      acceptanceRate: globalStats.acceptanceRate,
+      totalEnrolled: globalTotal,
+      connected: globalConnected,
+      notConnected: globalNotConnected,
+      pending: globalPending,
+      acceptanceRate: globalDecided > 0 ? Math.round((globalConnected / globalDecided) * 100) : 0,
     },
     byConsultant,
   };

@@ -103,12 +103,11 @@ export default function CandidatePortal() {
     if (!token) { setNotFound(true); setLoading(false); return; }
 
     const fetchPortal = async () => {
-      const { data: result, error } = await supabase
-        .from('candidate_portal_tokens')
-        .select('candidate_name, job_title, company_name, company_logo_url, company_description, pipeline_stage, next_steps, updated_at, stage_updated_at, estimated_days_to_next, recruiter_name, recruiter_email, recruiter_phone, documents, faq')
-        .eq('token', token)
-        .eq('is_active', true)
-        .single();
+      const { data: rows, error } = await supabase
+        .rpc('get_portal_by_token', { p_token: token });
+
+      // RPC returns an array, take first result
+      const result = Array.isArray(rows) && rows.length > 0 ? rows[0] : null;
 
       if (error || !result) {
         setNotFound(true);

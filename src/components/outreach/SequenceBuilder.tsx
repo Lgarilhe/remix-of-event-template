@@ -90,7 +90,6 @@ const TRIGGERS = [
   { value: 'wait_connection', label: 'Attendre connexion', icon: Timer, color: 'bg-amber-100 text-amber-600', description: 'Pause jusqu\'à acceptation', waitEvent: 'connection_accepted', requiresPrevious: ['connection_request'], excludeIfPrevious: ['wait_connection'] },
   { value: 'wait_reply', label: 'Attendre réponse', icon: MessageSquare, color: 'bg-amber-100 text-amber-600', description: 'Pause jusqu\'à réponse', waitEvent: 'reply_received', requiresPrevious: ['inmail', 'message', 'smart_message'], excludeIfPrevious: [] },
   { value: 'wait_profile_visit', label: 'Attendre visite retour', icon: Eye, color: 'bg-amber-100 text-amber-600', description: 'Pause si visite profil', waitEvent: 'profile_visited', requiresPrevious: ['profile_visit'], excludeIfPrevious: [] },
-  { value: 'condition_branch', label: 'Branchement', icon: GitBranch, color: 'bg-rose-100 text-rose-600', description: 'Si/Sinon conditionnel', requiresPrevious: [], excludeIfPrevious: [] },
 ];
 
 const ALL_STEP_TYPES = [...ACTIONS, ...TRIGGERS];
@@ -355,6 +354,18 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = ({
 
   const handleSave = async () => {
     if (!sequence.name.trim() || sequence.steps.length === 0) return;
+    // Validate that message-requiring steps have content
+    const stepsNeedingMessage = sequence.steps.filter(s =>
+      needsMessage(s.actionType) && !s.useAiPersonalization && !s.messageTemplate?.trim()
+    );
+    if (stepsNeedingMessage.length > 0) {
+      const stepLabels = stepsNeedingMessage.map(s => {
+        const config = ALL_STEP_TYPES.find(a => a.value === s.actionType);
+        return `Étape ${s.order + 1} (${config?.label || s.actionType})`;
+      }).join(', ');
+      alert(`Les étapes suivantes n'ont pas de message : ${stepLabels}. Ajoutez un message ou activez la personnalisation IA.`);
+      return;
+    }
     setIsSaving(true);
     try {
       await onSave(sequence);
@@ -798,6 +809,7 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = ({
                                     onChange={(e) => updateStep(step.id, { messageTemplate: e.target.value })}
                                     placeholder={step.actionType === 'connection_request' ? "Note courte (max 50 car.)" : "Bonjour {{firstName}}, ..."}
                                     rows={step.actionType === 'connection_request' ? 2 : 3}
+                                    maxLength={step.actionType === 'connection_request' ? 50 : undefined}
                                     className={cn(
                                       "mt-1.5",
                                       step.actionType === 'connection_request' && (step.messageTemplate?.length || 0) > 50 && "border-red-300 focus-visible:ring-red-300"

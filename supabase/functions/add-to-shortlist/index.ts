@@ -13,6 +13,29 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
+function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), timeoutMs);
+  return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(id));
+}
+
+async function fetchWithRetry(url: string, options: RequestInit = {}, maxRetries = 2): Promise<Response> {
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    const res = await fetchWithTimeout(url, options);
+    if (res.status === 429 && attempt < maxRetries) {
+      const retryAfter = parseInt(res.headers.get('Retry-After') || '1', 10);
+      await new Promise(r => setTimeout(r, (retryAfter * 1000) + Math.random() * 500));
+      continue;
+    }
+    if ((res.status === 502 || res.status === 503 || res.status === 504) && attempt < maxRetries) {
+      await new Promise(r => setTimeout(r, 300 * Math.pow(2, attempt)));
+      continue;
+    }
+    return res;
+  }
+  return fetchWithTimeout(url, options);
+}
+
 async function resolveOrgCredentials(orgId: string | null) {
   if (!orgId) return;
   try {
@@ -64,7 +87,7 @@ interface AddToShortlistData {
 // ── Notion API helpers ──────────────────────────────────────────────
 
 async function notionQuery(databaseId: string, filter: Record<string, unknown>) {
-  const response = await fetch(`https://api.notion.com/v1/databases/${databaseId}/query`, {
+  const response = await fetchWithRetry(`https://api.notion.com/v1/databases/${databaseId}/query`, {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${NOTION_API_KEY}`,
@@ -87,7 +110,7 @@ async function createNotionPage(databaseId: string, properties: Record<string, u
   };
   if (children?.length) body.children = children;
 
-  const response = await fetch('https://api.notion.com/v1/pages', {
+  const response = await fetchWithRetry('https://api.notion.com/v1/pages', {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${NOTION_API_KEY}`,
@@ -105,7 +128,7 @@ async function createNotionPage(databaseId: string, properties: Record<string, u
 }
 
 async function updateNotionPage(pageId: string, properties: Record<string, unknown>) {
-  const response = await fetch(`https://api.notion.com/v1/pages/${pageId}`, {
+  const response = await fetchWithRetry(`https://api.notion.com/v1/pages/${pageId}`, {
     method: 'PATCH',
     headers: {
       'Authorization': `Bearer ${NOTION_API_KEY}`,

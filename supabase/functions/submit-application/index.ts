@@ -5,6 +5,12 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timeout));
+}
+
 const NOTION_API_KEY = Deno.env.get("NOTION_API_KEY");
 const CANDIDATS_DATABASE_ID = Deno.env.get("NOTION_CANDIDATS_DB_ID")!;
 const SHORTLIST_DATABASE_ID = Deno.env.get("NOTION_SHORTLIST_DB_ID")!;
@@ -22,7 +28,7 @@ interface ApplicationData {
 }
 
 async function createNotionPage(databaseId: string, properties: Record<string, unknown>) {
-  const response = await fetch('https://api.notion.com/v1/pages', {
+  const response = await fetchWithTimeout('https://api.notion.com/v1/pages', {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${NOTION_API_KEY}`,
@@ -56,10 +62,44 @@ serve(async (req) => {
 
     const data: ApplicationData = await req.json();
 
-    // Validate required fields
-    if (!data.name || !data.email) {
-      throw new Error('Name and email are required');
+    // ── Input Validation ──
+    if (!data.name || typeof data.name !== 'string' || data.name.trim().length < 2 || data.name.length > 100) {
+      return new Response(JSON.stringify({ success: false, error: 'Nom invalide (2-100 caractères requis)' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!data.email || typeof data.email !== 'string' || !emailRegex.test(data.email)) {
+      return new Response(JSON.stringify({ success: false, error: 'Email invalide' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // Validate optional URL fields
+    const urlRegex = /^https?:\/\/.+/i;
+    if (data.linkedin && !urlRegex.test(data.linkedin)) {
+      return new Response(JSON.stringify({ success: false, error: 'URL LinkedIn invalide' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+    if (data.cvUrl && !urlRegex.test(data.cvUrl)) {
+      return new Response(JSON.stringify({ success: false, error: 'URL CV invalide' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // Sanitize: trim strings, cap message length
+    data.name = data.name.trim().slice(0, 100);
+    data.email = data.email.trim().toLowerCase().slice(0, 255);
+    data.phone = (data.phone || '').trim().slice(0, 20);
+    data.linkedin = (data.linkedin || '').trim().slice(0, 500);
+    data.message = (data.message || '').trim().slice(0, 5000);
+    data.cvUrl = (data.cvUrl || '').trim().slice(0, 500);
 
     // Step 1: Create the candidate in Candidats database (without job relation first)
     const candidatProperties: Record<string, unknown> = {

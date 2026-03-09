@@ -159,13 +159,19 @@ export const InMailTextEditor: React.FC<InMailTextEditorProps> = ({
     insertHTML(safe);
   }, [insertHTML]);
 
-  // Insert link
+  // Insert link (with URL validation & XSS protection)
   const insertLink = useCallback(() => {
     const selection = window.getSelection();
     const selectedText = selection?.toString() || '';
     
-    const url = prompt('Entrez l\'URL du lien:', 'https://');
+    let url = prompt('Entrez l\'URL du lien:', 'https://');
     if (!url) return;
+
+    // Validate URL protocol to prevent javascript: XSS
+    url = url.trim();
+    if (!/^https?:\/\//i.test(url)) {
+      url = 'https://' + url;
+    }
 
     editorRef.current?.focus();
     
@@ -173,7 +179,9 @@ export const InMailTextEditor: React.FC<InMailTextEditorProps> = ({
       document.execCommand('createLink', false, url);
     } else {
       const linkText = prompt('Texte du lien:', 'Cliquez ici') || 'Cliquez ici';
-      document.execCommand('insertHTML', false, `<a href="${url}">${linkText}</a>`);
+      // Escape link text to prevent HTML injection
+      const safeLinkText = escapeHTML(linkText);
+      document.execCommand('insertHTML', false, `<a href="${encodeURI(url)}">${safeLinkText}</a>`);
     }
     handleInput();
   }, [handleInput]);

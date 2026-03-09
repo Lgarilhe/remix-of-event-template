@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { extractLinkedInSlug } from '@/lib/linkedinUtils';
 
 export interface NotionShortlistHistoryItem {
   id: string;
@@ -64,11 +65,20 @@ export interface CandidateHistoryData {
 
 // Global cache by key (linkedin url or airtable_id)
 const historyCache = new Map<string, CandidateHistoryData | null>();
+const MAX_HISTORY_CACHE = 200;
 
-function extractLinkedInSlug(url: string): string | null {
-  const match = url.match(/linkedin\.com\/in\/([^/?#]+)/i);
-  return match ? match[1].toLowerCase() : null;
+function evictHistoryCache() {
+  if (historyCache.size > MAX_HISTORY_CACHE) {
+    const excess = historyCache.size - MAX_HISTORY_CACHE;
+    const keys = historyCache.keys();
+    for (let i = 0; i < excess; i++) {
+      const key = keys.next().value;
+      if (key !== undefined) historyCache.delete(key);
+    }
+  }
 }
+
+// extractLinkedInSlug is now imported from @/lib/linkedinUtils
 
 function normalizeDate(value: string | null | undefined): string | null {
   if (!value) return null;
@@ -342,6 +352,7 @@ export function useCandidateHistory(
       };
 
       historyCache.set(cacheKey, result);
+      evictHistoryCache();
       setData(result);
       setLoadedKey(cacheKey);
     } catch (err) {

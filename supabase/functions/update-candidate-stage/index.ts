@@ -6,6 +6,12 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timeout));
+}
+
 let NOTION_API_KEY = Deno.env.get("NOTION_API_KEY");
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -46,7 +52,7 @@ serve(async (req) => {
       throw new Error('Missing shortlistId or newStage');
     }
 
-    const response = await fetch(`https://api.notion.com/v1/pages/${shortlistId}`, {
+    const response = await fetchWithTimeout(`https://api.notion.com/v1/pages/${shortlistId}`, {
       method: 'PATCH',
       headers: {
         'Authorization': `Bearer ${NOTION_API_KEY}`,

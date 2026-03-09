@@ -111,16 +111,19 @@ function computeEffectiveStage(pipelineStage: string | null, status: string): st
   return statusOrder > pipelineOrder ? statusDerivedStage : pipelineStage;
 }
 
+// Columns needed for ATS display (excluding heavy linkedin_profile_data JSON)
+const JCS_DISPLAY_COLUMNS = 'id, candidate_id, candidate_name, candidate_headline, linkedin_profile_url, status, pipeline_stage, score, recommendation, job_id, tags, updated_at, created_at, notion_shortlist_id, notion_candidate_id, scoring_details';
+
 // Fetch all candidates from local job_candidate_status table (primary source)
 async function fetchLocalCandidates(): Promise<ATSCandidate[]> {
-  // Fetch all records (no limit) to avoid truncation
+  // Fetch with selective columns (no linkedin_profile_data) — paginate to avoid 1000-row limit
   const allRecords: any[] = [];
   let from = 0;
   const PAGE_SIZE = 1000;
   while (true) {
     const { data: page, error: pageError } = await supabase
       .from('job_candidate_status')
-      .select('*')
+      .select(JCS_DISPLAY_COLUMNS)
       .order('updated_at', { ascending: false })
       .range(from, from + PAGE_SIZE - 1);
     if (pageError || !page || page.length === 0) break;
@@ -195,7 +198,7 @@ async function fetchSequenceEnrichment(): Promise<Map<string, { sequenceId: stri
 async function fetchSequenceOnlyCandidates(existingIds: Set<string>): Promise<ATSCandidate[]> {
   const { data: enrollments, error } = await supabase
     .from('sequence_enrollments')
-    .select('*, outreach_sequences (id, name)')
+    .select('id, sequence_id, profile_id, profile_name, profile_headline, profile_url, status, connection_status, job_id, job_title, replied_at, updated_at, created_at, outreach_sequences (id, name)')
     .order('created_at', { ascending: false });
 
   if (error || !enrollments) return [];
@@ -236,7 +239,7 @@ async function fetchSequenceOnlyCandidates(existingIds: Set<string>): Promise<AT
 async function fetchInMailOnlyCandidates(existingIds: Set<string>): Promise<ATSCandidate[]> {
   const { data: inmails, error } = await supabase
     .from('inmail_queue')
-    .select('*')
+    .select('id, recipient_profile_id, recipient_name, recipient_headline, status, sent_at, created_at')
     .order('created_at', { ascending: false });
 
   if (error || !inmails) return [];

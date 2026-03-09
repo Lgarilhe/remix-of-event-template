@@ -80,72 +80,80 @@ ${interviewStage ? `TYPE D'ENTRETIEN: ${interviewStage}` : ''}
 
 Génère la scorecard d'évaluation sur mesure.`;
 
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-3-flash-preview",
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt },
-        ],
-        tools: [
-          {
-            type: "function",
-            function: {
-              name: "generate_scorecard",
-              description: "Generate a custom evaluation scorecard with criteria",
-              parameters: {
-                type: "object",
-                properties: {
-                  criteria: {
-                    type: "array",
-                    items: {
-                      type: "object",
-                      properties: {
-                        id: { type: "string", description: "Unique identifier for the criterion" },
-                        label: { type: "string", description: "Short label for the criterion" },
-                        description: { type: "string", description: "Detailed description of what to evaluate" },
-                        category: { type: "string", enum: ["technical", "soft_skill", "culture_fit", "motivation"], description: "Category of the criterion" },
-                        weight: { type: "number", description: "Weight 1 to 3" },
-                        suggestedQuestions: {
-                          type: "array",
-                          items: { type: "string" },
-                          description: "2-3 specific interview questions to ask for this criterion"
-                        },
-                        ratingRubric: {
-                          type: "object",
-                          properties: {
-                            "1": { type: "string", description: "Description for rating 1 (very weak)" },
-                            "2": { type: "string", description: "Description for rating 2 (weak)" },
-                            "3": { type: "string", description: "Description for rating 3 (adequate)" },
-                            "4": { type: "string", description: "Description for rating 4 (strong)" },
-                            "5": { type: "string", description: "Description for rating 5 (exceptional)" },
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30000);
+    let response: Response;
+    try {
+      response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${LOVABLE_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "google/gemini-3-flash-preview",
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: userPrompt },
+          ],
+          tools: [
+            {
+              type: "function",
+              function: {
+                name: "generate_scorecard",
+                description: "Generate a custom evaluation scorecard with criteria",
+                parameters: {
+                  type: "object",
+                  properties: {
+                    criteria: {
+                      type: "array",
+                      items: {
+                        type: "object",
+                        properties: {
+                          id: { type: "string", description: "Unique identifier for the criterion" },
+                          label: { type: "string", description: "Short label for the criterion" },
+                          description: { type: "string", description: "Detailed description of what to evaluate" },
+                          category: { type: "string", enum: ["technical", "soft_skill", "culture_fit", "motivation"], description: "Category of the criterion" },
+                          weight: { type: "number", description: "Weight 1 to 3" },
+                          suggestedQuestions: {
+                            type: "array",
+                            items: { type: "string" },
+                            description: "2-3 specific interview questions to ask for this criterion"
                           },
-                          description: "Rating rubric with descriptions for each level 1-5"
+                          ratingRubric: {
+                            type: "object",
+                            properties: {
+                              "1": { type: "string", description: "Description for rating 1 (very weak)" },
+                              "2": { type: "string", description: "Description for rating 2 (weak)" },
+                              "3": { type: "string", description: "Description for rating 3 (adequate)" },
+                              "4": { type: "string", description: "Description for rating 4 (strong)" },
+                              "5": { type: "string", description: "Description for rating 5 (exceptional)" },
+                            },
+                            description: "Rating rubric with descriptions for each level 1-5"
+                          },
+                          redFlags: {
+                            type: "array",
+                            items: { type: "string" },
+                            description: "1-2 warning signs to watch for during the interview"
+                          },
                         },
-                        redFlags: {
-                          type: "array",
-                          items: { type: "string" },
-                          description: "1-2 warning signs to watch for during the interview"
-                        },
+                        required: ["id", "label", "description", "category", "weight", "suggestedQuestions", "ratingRubric", "redFlags"],
                       },
-                      required: ["id", "label", "description", "category", "weight", "suggestedQuestions", "ratingRubric", "redFlags"],
                     },
                   },
+                  required: ["criteria"],
+                  additionalProperties: false,
                 },
-                required: ["criteria"],
-                additionalProperties: false,
               },
             },
-          },
-        ],
-        tool_choice: { type: "function", function: { name: "generate_scorecard" } },
-      }),
-    });
+          ],
+          tool_choice: { type: "function", function: { name: "generate_scorecard" } },
+        }),
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timeout);
+    }
 
     if (!response.ok) {
       if (response.status === 429) {
@@ -170,7 +178,14 @@ Génère la scorecard d'évaluation sur mesure.`;
       throw new Error("No tool call response from AI");
     }
 
-    const parsed = JSON.parse(toolCall.function.arguments);
+    const parsed = (() => {
+      try {
+        return JSON.parse(toolCall.function.arguments);
+      } catch (e) {
+        console.error("generate-scorecard JSON parse error:", e, "Raw:", toolCall.function.arguments?.slice(0, 200));
+        throw new Error("Failed to parse AI scorecard response");
+      }
+    })();
 
     return new Response(JSON.stringify({ success: true, criteria: parsed.criteria }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },

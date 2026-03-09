@@ -163,6 +163,12 @@ export const VisualSequenceEditor: React.FC<VisualSequenceEditorProps> = ({
         if (s.ifFalseGotoStep === stepId) {
           updates.ifFalseGotoStep = undefined;
         }
+        if (s.nextStepId === stepId) {
+          updates.nextStepId = undefined;
+        }
+        if (s.timeoutBranchStepId === stepId) {
+          updates.timeoutBranchStepId = undefined;
+        }
         return { ...s, ...updates };
       });
     

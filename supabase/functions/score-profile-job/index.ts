@@ -247,6 +247,17 @@ function sanitizeText(text: string | undefined | null): string {
   return text.replace(/[\uD800-\uDFFF]/g, "").replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, "");
 }
 
+/** Fetch with AbortController timeout to prevent hanging workers */
+async function fetchWithTimeout(url: string, options: RequestInit, timeoutMs = 30000): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 function extractJsonRobust(raw: string): any {
   let content = raw
     .replace(/```json\s*/gi, "")
@@ -440,7 +451,7 @@ Réponds UNIQUEMENT avec un JSON: {"passed": true/false, "reason": "explication 
   );
 
   try {
-    const res = await fetch("https://api.anthropic.com/v1/messages", {
+    const res = await fetchWithTimeout("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: {
         "x-api-key": ANTHROPIC_API_KEY,
@@ -452,7 +463,7 @@ Réponds UNIQUEMENT avec un JSON: {"passed": true/false, "reason": "explication 
         max_tokens: 150,
         messages: [{ role: "user", content: prompt }],
       }),
-    });
+    }, 30000);
 
     if (!res.ok) {
       console.error(`[must-have-ai] Anthropic error ${res.status}`);
@@ -748,7 +759,7 @@ Réponds en JSON compact:
       console.log(`[llm] Retry ${attempt} for ${profile.name} after ${backoffMs}ms`);
     }
 
-    const res = await fetch("https://api.anthropic.com/v1/messages", {
+    const res = await fetchWithTimeout("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: {
         "content-type": "application/json",
@@ -763,7 +774,7 @@ Réponds en JSON compact:
         max_tokens: 512,
         temperature: 0.2,
       }),
-    });
+    }, 30000);
 
     if (res.ok) {
       data = await res.json();

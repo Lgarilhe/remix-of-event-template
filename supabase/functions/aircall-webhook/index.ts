@@ -19,6 +19,31 @@ Deno.serve(async (req) => {
   }
 
   try {
+    // Verify Aircall webhook token (configured in Aircall webhook settings)
+    const AIRCALL_WEBHOOK_TOKEN = Deno.env.get('AIRCALL_WEBHOOK_TOKEN');
+    if (!AIRCALL_WEBHOOK_TOKEN) {
+      console.error('[aircall-webhook] ⚠️ AIRCALL_WEBHOOK_TOKEN not set — rejecting request. Configure this secret!');
+      return new Response(JSON.stringify({ error: 'Webhook token not configured' }), {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+    {
+      const url = new URL(req.url);
+      const tokenParam = url.searchParams.get('token');
+      const authHeader = req.headers.get('authorization');
+      const headerToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
+      const providedToken = tokenParam || headerToken;
+
+      if (providedToken !== AIRCALL_WEBHOOK_TOKEN) {
+        console.warn('[aircall-webhook] Invalid or missing webhook token');
+        return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+          status: 401,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+    }
+
     const body = await req.json();
     const event = body.event;
     const callData = body.data;

@@ -10,10 +10,11 @@ import { OrganizationGuard } from "@/components/OrganizationGuard";
 import { LinkedInAccountsProvider } from "@/contexts/LinkedInAccountsContext";
 import { supabase } from "@/integrations/supabase/client";
 import Auth from "./pages/Auth";
-import SkalrLanding from "./pages/SkalrLanding";
+
 import NotFound from "./pages/NotFound";
 
 // Lazy-loaded pages
+const SkalrLanding = lazy(() => import("./pages/SkalrLanding"));
 const Admin = lazy(() => import("./pages/Admin"));
 const Candidates = lazy(() => import("./pages/Candidates"));
 const Outreach = lazy(() => import("./pages/Outreach"));

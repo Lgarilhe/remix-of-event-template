@@ -706,35 +706,43 @@ async function analyzeMessageIntent(
   apiKey: string
 ): Promise<{ intent: string; confidence: number }> {
   try {
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-flash-lite",
-        messages: [
-          {
-            role: "system",
-            content: "Tu es un expert en analyse de messages LinkedIn. Réponds uniquement en JSON."
-          },
-          {
-            role: "user",
-            content: `Analyse ce message et détermine l'intention:
-"${messageText}"
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30000);
+    let response: Response;
+    try {
+      response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "google/gemini-2.5-flash-lite",
+          messages: [
+            {
+              role: "system",
+              content: "Tu es un expert en analyse de messages LinkedIn. Réponds uniquement en JSON."
+            },
+            {
+              role: "user",
+              content: `Analyse ce message et détermine l'intention:
+"${messageText.slice(0, 500)}"
 
 Réponds en JSON:
 {
   "intent": "interested|not_interested|needs_info|wants_call|timing_issue|neutral",
   "confidence": 0-100
 }`
-          }
-        ],
-        max_tokens: 100,
-        temperature: 0.1,
-      }),
-    });
+            }
+          ],
+          max_tokens: 100,
+          temperature: 0.1,
+        }),
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timeout);
+    }
 
     if (!response.ok) {
       return { intent: 'neutral', confidence: 0 };
@@ -818,23 +826,31 @@ Réponds UNIQUEMENT en JSON:
 }`;
 
   try {
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "x-api-key": apiKey,
-        "anthropic-version": "2023-06-01",
-        "anthropic-beta": "prompt-caching-2024-07-31",
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "claude-sonnet-4-20250514",
-        max_tokens: 300,
-        system: [{ type: "text", text: "Tu es un recruteur tech senior. Tu écris des messages LinkedIn courts, directs, humains. JAMAIS de superlatifs, JAMAIS de tournures IA. Tu réponds TOUJOURS en JSON valide.", cache_control: { type: "ephemeral" } }],
-        messages: [
-          { role: "user", content: prompt }
-        ],
-      }),
-    });
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30000);
+    let response: Response;
+    try {
+      response = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "x-api-key": apiKey,
+          "anthropic-version": "2023-06-01",
+          "anthropic-beta": "prompt-caching-2024-07-31",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-20250514",
+          max_tokens: 300,
+          system: [{ type: "text", text: "Tu es un recruteur tech senior. Tu écris des messages LinkedIn courts, directs, humains. JAMAIS de superlatifs, JAMAIS de tournures IA. Tu réponds TOUJOURS en JSON valide.", cache_control: { type: "ephemeral" } }],
+          messages: [
+            { role: "user", content: prompt }
+          ],
+        }),
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timeout);
+    }
 
     if (!response.ok) {
       throw new Error("AI request failed");

@@ -30,23 +30,27 @@ serve(async (req) => {
       );
     }
 
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "x-api-key": ANTHROPIC_API_KEY,
-        "anthropic-version": "2023-06-01",
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "claude-sonnet-4-20250514",
-        max_tokens: 2048,
-        system: `Tu es un expert recrutement senior. Tu rédiges des comptes-rendus d'entretien factuels et actionnables.
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 60000);
+    let response: Response;
+    try {
+      response = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "x-api-key": ANTHROPIC_API_KEY,
+          "anthropic-version": "2023-06-01",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-20250514",
+          max_tokens: 2048,
+          system: `Tu es un expert recrutement senior. Tu rédiges des comptes-rendus d'entretien factuels et actionnables.
 Phrases courtes. Pas de jargon. Cite des verbatims entre guillemets.
 Pas de "en conclusion", pas de "en résumé".`,
-        messages: [
-          {
-            role: "user",
-            content: `CANDIDAT : ${candidate_name}
+          messages: [
+            {
+              role: "user",
+              content: `CANDIDAT : ${candidate_name}
 POSTE : ${job_title}
 DURÉE : ${Math.round((call_duration_seconds || 0) / 60)} minutes
 
@@ -71,10 +75,14 @@ Retourne UNIQUEMENT ce JSON :
   "recommendation_reason": "1 phrase",
   "follow_up_message": "Message candidat 4-5 lignes"
 }`,
-          },
-        ],
-      }),
-    });
+            },
+          ],
+        }),
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timeout);
+    }
 
     if (!response.ok) {
       const errText = await response.text();
@@ -85,7 +93,14 @@ Retourne UNIQUEMENT ce JSON :
     const claudeRes = await response.json();
     const text = claudeRes.content?.[0]?.text || "{}";
     const jsonMatch = text.match(/\{[\s\S]*\}/);
-    const report = jsonMatch ? JSON.parse(jsonMatch[0]) : null;
+    let report = null;
+    if (jsonMatch) {
+      try {
+        report = JSON.parse(jsonMatch[0]);
+      } catch (e) {
+        console.error("generate-call-report JSON parse error:", e, "Raw:", jsonMatch[0].slice(0, 200));
+      }
+    }
 
     // Save report to session
     if (session_id && report) {

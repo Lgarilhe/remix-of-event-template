@@ -21,6 +21,12 @@ function sleep(ms: number) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
+function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), timeoutMs);
+  return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(id));
+}
+
 // Per-invocation pacing to avoid bursts (Notion rate limits quickly on page fetches)
 let lastNotionCallAt = 0;
 async function pacedFetch(input: string, init: RequestInit): Promise<Response> {
@@ -32,7 +38,7 @@ async function pacedFetch(input: string, init: RequestInit): Promise<Response> {
 }
 
 async function fetchWithRetry(input: string, init: RequestInit, attempt = 0): Promise<Response> {
-  const res = await fetch(input, init);
+  const res = await fetchWithTimeout(input, init);
 
   // Notion rate limit
   if (res.status === 429 && attempt < 1) {

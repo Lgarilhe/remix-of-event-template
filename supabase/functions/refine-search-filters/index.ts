@@ -5,6 +5,12 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timeout));
+}
+
 interface RefineRequest {
   currentFilters: Record<string, unknown>;
   internalFilters?: Record<string, unknown>;
@@ -103,7 +109,7 @@ ${JSON.stringify(currentFilters, null, 2)}`;
 
     console.log(`[refine-search-filters] Direction: ${finalDirection}, Total: ${effectiveTotal}, Job: ${jobTitle}`);
 
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
+    const response = await fetchWithTimeout("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: {
         "x-api-key": ANTHROPIC_API_KEY,

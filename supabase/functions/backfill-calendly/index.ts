@@ -11,6 +11,12 @@ const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 let calendlyApiKey = Deno.env.get('CALENDLY_API_KEY')!;
 const supabase = createClient(supabaseUrl, serviceRoleKey);
 
+function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timeout));
+}
+
 async function resolveOrgCredentials(orgId: string | null) {
   if (!orgId) return;
   try {
@@ -42,7 +48,7 @@ serve(async (req) => {
     if (!calendlyApiKey) throw new Error('CALENDLY_API_KEY not configured');
 
     // Step 1: Get current user org
-    const meRes = await fetch('https://api.calendly.com/users/me', {
+    const meRes = await fetchWithTimeout('https://api.calendly.com/users/me', {
       headers: { 'Authorization': `Bearer ${calendlyApiKey}` },
     });
     const meData = await meRes.json();
@@ -62,7 +68,7 @@ serve(async (req) => {
       eventsUrl.searchParams.set('sort', 'start_time:desc');
       if (nextPageToken) eventsUrl.searchParams.set('page_token', nextPageToken);
 
-      const eventsRes = await fetch(eventsUrl.toString(), {
+      const eventsRes = await fetchWithTimeout(eventsUrl.toString(), {
         headers: { 'Authorization': `Bearer ${calendlyApiKey}` },
       });
 
@@ -103,7 +109,7 @@ serve(async (req) => {
       }
 
       // Fetch invitees for this event
-      const inviteesRes = await fetch(`${event.uri}/invitees`, {
+      const inviteesRes = await fetchWithTimeout(`${event.uri}/invitees`, {
         headers: { 'Authorization': `Bearer ${calendlyApiKey}` },
       });
       const inviteesData = await inviteesRes.json();

@@ -305,10 +305,34 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
 
       if (error) throw error;
 
+      // Re-schedule the next cancelled step so the backend picks it up
+      const enrollment = enrollments.find(e => e.id === enrollmentId);
+      if (enrollment) {
+        const cancelledExecs = (enrollment.executions || [])
+          .filter(e => e.status === 'cancelled')
+          .sort((a, b) => a.step_order - b.step_order);
+        
+        if (cancelledExecs.length > 0) {
+          const nextExec = cancelledExecs[0];
+          const scheduledAt = new Date();
+          scheduledAt.setMinutes(scheduledAt.getMinutes() + 1); // Schedule 1 min from now
+          
+          await supabase
+            .from('sequence_step_executions')
+            .update({ 
+              status: 'scheduled', 
+              skip_reason: null,
+              scheduled_at: scheduledAt.toISOString(),
+            })
+            .eq('id', nextExec.id);
+        }
+      }
+
       setEnrollments(prev => 
         prev.map(e => e.id === enrollmentId ? { ...e, status: 'active' } : e)
       );
       toast.success('Séquence reprise');
+      fetchEnrollments(); // Refresh to show updated executions
     } catch (error) {
       console.error('Error resuming enrollment:', error);
       toast.error('Erreur lors de la reprise');

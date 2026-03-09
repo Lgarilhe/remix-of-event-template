@@ -129,9 +129,10 @@ export const SequenceAnalytics: React.FC<SequenceAnalyticsProps> = ({
         }
         const uniqueEnrollments = Array.from(byProfile.values());
 
-        // "Contacted" = candidates that actually received outreach (not just enrolled)
+        // "Contacted" = candidates that clearly received outreach (completed or replied)
+        // Excludes 'active' since they may not have sent any message yet
         const contacted = uniqueEnrollments.filter(e =>
-          ['active', 'completed', 'replied'].includes(e.status)
+          ['completed', 'replied'].includes(e.status)
         );
         const replied = uniqueEnrollments.filter(e => e.status === 'replied' && e.replied_at);
         const responseTimes = replied

@@ -1,5 +1,7 @@
 import { useMemo } from 'react';
 import { useNotionCandidates } from './useNotionCandidates';
+import { normalizeLinkedInUrl, extractLinkedInSlug } from '@/lib/linkedinUtils';
+import { normalizeName } from '@/lib/stringUtils';
 
 export interface NotionMatchInfo {
   id: string;
@@ -12,24 +14,8 @@ interface NotionProfileInput {
   name?: string | null;
 }
 
-function normalizeLinkedInUrl(url: string): string {
-  return url.replace(/\/$/, '').toLowerCase();
-}
-
-function extractLinkedInSlug(url: string): string | null {
-  const match = url.match(/linkedin\.com\/in\/([^/?#]+)/i);
-  return match ? match[1].toLowerCase() : null;
-}
-
-function normalizeName(value?: string | null): string {
-  return (value || '')
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^a-z0-9\s]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
+// normalizeLinkedInUrl, extractLinkedInSlug, normalizeName
+// are now imported from @/lib/linkedinUtils and @/lib/stringUtils
 
 /**
  * Hook that checks LinkedIn profiles against Notion candidates
