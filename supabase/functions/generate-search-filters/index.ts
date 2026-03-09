@@ -272,23 +272,23 @@ PRÉCISION OBLIGATOIRE:
 LinkedIn Recruiter propose des "spotlights" qui filtrent les profils par signal comportemental.
 Valeurs VALIDES pour l'API Unipile:
 - OPEN_TO_WORK: Profils déclarés ouverts aux opportunités → utile mais réduit le vivier
-- ACTIVE_TALENT: Profils actifs sur LinkedIn récemment → RECOMMANDÉ PAR DÉFAUT
+- ACTIVE_TALENT: Profils actifs sur LinkedIn récemment → NE PAS utiliser par défaut (réduit trop le vivier)
 - REDISCOVERED_CANDIDATES: Candidats déjà identifiés/contactés → utile pour relance
 - INTERNAL_CANDIDATES: Candidats internes à l'entreprise → rarement pertinent en sourcing externe
 - INTERESTED_IN_YOUR_COMPANY: Profils ayant montré un intérêt pour l'entreprise → bon signal
 - HAVE_COMPANY_CONNECTIONS: Profils avec des connexions dans l'entreprise → bon pour approche réseau
 
 STRATÉGIE RECOMMANDÉE:
-- suggest_spotlight: "ACTIVE_TALENT" par défaut (profils récemment actifs, bonne réceptivité)
+- suggest_spotlight: "" par défaut (ne PAS filtrer par spotlight, cela réduit trop le vivier)
 - suggest_open_to_work: false par défaut (trop restrictif, réduit le vivier de 80%+)
-- Pour les profils RARES/PÉNURIQUES: ne PAS activer open_to_work ni spotlight restrictif
+- N'utiliser un spotlight que si l'utilisateur le demande explicitement
 
 RÈGLES MÉTIER:
 1. Pour un profil RARE, réduire à 1-2 groupes AND (moins restrictif)
 2. Les critères MUST-HAVE techniques vont dans keywords, les soft-skills dans skills_to_search
 3. open_to_work = false par défaut (trop restrictif sinon)
 4. Toujours inclure des exclusions NOT pertinentes
-5. suggest_spotlight = "ACTIVE_TALENT" par défaut sauf profil pénurique
+5. suggest_spotlight = "" par défaut (JAMAIS ACTIVE_TALENT automatiquement)
 
 Retourne UNIQUEMENT un objet JSON avec:
 - keywords: string - Booléen LAYERED: "(catégorie1 OR alt1) AND (catégorie2 OR alt2) NOT (exclusion1 OR exclusion2)"
@@ -302,7 +302,7 @@ Retourne UNIQUEMENT un objet JSON avec:
 - location_hint: string
 - job_category: string - "tech", "business", "data", "product", "design", "other"
 - suggest_open_to_work: boolean - false sauf si explicitement demandé
-- suggest_spotlight: string - "ACTIVE_TALENT" par défaut, "" si profil pénurique (pour ne pas réduire le vivier). Valeurs valides: OPEN_TO_WORK, ACTIVE_TALENT, REDISCOVERED_CANDIDATES, INTERNAL_CANDIDATES, INTERESTED_IN_YOUR_COMPANY, HAVE_COMPANY_CONNECTIONS
+- suggest_spotlight: string - "" par défaut (ne jamais mettre ACTIVE_TALENT automatiquement). Valeurs valides: OPEN_TO_WORK, ACTIVE_TALENT, REDISCOVERED_CANDIDATES, INTERNAL_CANDIDATES, INTERESTED_IN_YOUR_COMPANY, HAVE_COMPANY_CONNECTIONS. Utiliser uniquement si demandé explicitement.
 - keyword_rationale: string - Explication de la structure layered choisie (1 phrase)
 - experience_rationale: string - Explication de la plage d'expérience (1 phrase)
 - search_rationale: string - Stratégie globale en 1 phrase (mentionner Role/Work/Context)
