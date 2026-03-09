@@ -229,10 +229,10 @@ export function useFilteredResults({
         return scoreB - scoreA;
       });
     } else {
-      // Default sort by pre-score (descending)
+      // Default sort by pre-score (descending) — uses deferred preScores map
       filtered = [...filtered].sort((a, b) => {
-        const preA = (a as any)._preScore?.preScore ?? 50;
-        const preB = (b as any)._preScore?.preScore ?? 50;
+        const preA = preScores.get(a.id)?.preScore ?? (a as any)._preScore?.preScore ?? 50;
+        const preB = preScores.get(b.id)?.preScore ?? (b as any)._preScore?.preScore ?? 50;
         return preB - preA;
       });
     }
