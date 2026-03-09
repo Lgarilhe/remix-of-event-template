@@ -476,96 +476,86 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
             </div>
 
             {/* ─── ACTIONS BAR ─── */}
-            <div className="flex items-center gap-1.5 sm:gap-2 mt-3 sm:mt-4 pt-2.5 sm:pt-3 border-t border-foreground/20 flex-wrap">
-              {/* Primary actions */}
-              {selectedJob && (
-                <Button
-                  size="sm"
-                  onClick={() => setShowMessageModal(true)}
-                  className="h-7 sm:h-8 gap-1 sm:gap-1.5 text-[11px] sm:text-xs rounded-none border border-foreground bg-brutal-accent text-foreground hover:bg-brutal-accent/80 px-2 sm:px-3 uppercase tracking-wider font-semibold"
-                >
-                  <PenLine className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
-                  <span className="hidden sm:inline">Message</span>
-                  <span className="sm:hidden">Msg</span>
-                </Button>
-              )}
+            <div className="flex items-center gap-1.5 mt-3 sm:mt-4 pt-2.5 sm:pt-3 border-t border-foreground/20">
+              {/* Primary actions — horizontal scroll on mobile */}
+              <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar flex-1 min-w-0" data-no-swipe>
+                {selectedJob && (
+                  <Button
+                    size="sm"
+                    onClick={() => setShowMessageModal(true)}
+                    className="h-7 gap-1 text-[11px] rounded-none border border-foreground bg-brutal-accent text-foreground hover:bg-brutal-accent/80 px-2.5 uppercase tracking-wider font-semibold shrink-0"
+                  >
+                    <PenLine className="w-3 h-3" />
+                    Msg
+                  </Button>
+                )}
 
-              {selectedJob && onScoreProfile && !jobScore && (
+                {selectedJob && onScoreProfile && !jobScore && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleScore}
+                    disabled={isScoring}
+                    className="h-7 gap-1 text-[11px] rounded-none border border-foreground text-foreground hover:bg-brutal-accent/20 px-2.5 uppercase tracking-wider font-semibold shrink-0"
+                  >
+                    {isScoring ? <Loader2 className="w-3 h-3 animate-spin" /> : <Target className="w-3 h-3" />}
+                    {isScoring ? '…' : 'Scorer'}
+                  </Button>
+                )}
+
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={handleScore}
-                  disabled={isScoring}
-                  className="h-7 sm:h-8 gap-1 sm:gap-1.5 text-[11px] sm:text-xs rounded-none border border-foreground text-foreground hover:bg-brutal-accent/20 px-2 sm:px-3 uppercase tracking-wider font-semibold"
+                  onClick={handleAiAnalysis}
+                  disabled={isAnalyzing}
+                  className="h-7 gap-1 text-[11px] rounded-none border border-foreground text-foreground hover:bg-brutal-accent/20 px-2.5 uppercase tracking-wider font-semibold shrink-0"
                 >
-                  {isScoring ? <Loader2 className="w-3 h-3 sm:w-3.5 sm:h-3.5 animate-spin" /> : <Target className="w-3 h-3 sm:w-3.5 sm:h-3.5" />}
-                  {isScoring ? '...' : 'Scorer'}
+                  {isAnalyzing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Bot className="w-3 h-3" />}
+                  IA
                 </Button>
-              )}
 
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleAiAnalysis}
-                disabled={isAnalyzing}
-                className="h-7 sm:h-8 gap-1 sm:gap-1.5 text-[11px] sm:text-xs rounded-none border border-foreground text-foreground hover:bg-brutal-accent/20 px-2 sm:px-3 uppercase tracking-wider font-semibold"
-              >
-                {isAnalyzing ? <Loader2 className="w-3 h-3 sm:w-3.5 sm:h-3.5 animate-spin" /> : <Bot className="w-3 h-3 sm:w-3.5 sm:h-3.5" />}
-                <span className="hidden sm:inline">{aiAnalysis ? 'Masquer IA' : 'Analyse IA'}</span>
-                <span className="sm:hidden">{aiAnalysis ? 'IA ✕' : 'IA'}</span>
-              </Button>
+                {accountId && jobScore?.recommendation !== 'skip' && (
+                  <SequenceEnrollButton
+                    selectedProfiles={[profile]}
+                    accountId={accountId}
+                    selectedJob={selectedJob ? { id: selectedJob.id, title: selectedJob.title } : undefined}
+                    onSuccess={() => { onSequenceEnroll?.(); onProfileTreated?.(); }}
+                  />
+                )}
 
-              {/* Sequence enroll */}
-              {accountId && jobScore?.recommendation !== 'skip' && (
-                <SequenceEnrollButton
-                  selectedProfiles={[profile]}
-                  accountId={accountId}
-                  selectedJob={selectedJob ? { id: selectedJob.id, title: selectedJob.title } : undefined}
-                  onSuccess={() => { onSequenceEnroll?.(); onProfileTreated?.(); }}
-                />
-              )}
+                {selectedJob && (
+                  <AddToProjectButton
+                    candidateId={profile.id}
+                    candidateName={fullName}
+                    candidateHeadline={profile.headline}
+                    linkedinProfileUrl={profileUrl}
+                    score={jobScore?.match_score}
+                    recommendation={jobScore?.recommendation}
+                    skipReason={jobScore?.missing_skills?.join(', ')}
+                    jobId={selectedJob.id}
+                    activeProject={activeProject}
+                    compact
+                    onAdded={onProfileTreated}
+                  />
+                )}
+              </div>
 
-              {/* Add to project */}
-              {selectedJob && (
-                <AddToProjectButton
-                  candidateId={profile.id}
-                  candidateName={fullName}
-                  candidateHeadline={profile.headline}
-                  linkedinProfileUrl={profileUrl}
-                  score={jobScore?.match_score}
-                  recommendation={jobScore?.recommendation}
-                  skipReason={jobScore?.missing_skills?.join(', ')}
-                  jobId={selectedJob.id}
-                  activeProject={activeProject}
-                  compact
-                  onAdded={onProfileTreated}
-                />
-              )}
-
-              {/* Spacer */}
-              <div className="flex-1" />
-
-              {/* Secondary actions */}
-              {onArchive && (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button variant="ghost" size="sm" onClick={onArchive} className="h-7 sm:h-8 w-7 sm:w-8 p-0 text-muted-foreground hover:text-destructive rounded-none">
-                      <Archive className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent><p className="text-xs">Archiver</p></TooltipContent>
-                </Tooltip>
-              )}
-
-              {profileUrl && (
-                <Button variant="outline" size="sm" asChild className="h-7 sm:h-8 gap-1 sm:gap-1.5 text-[11px] sm:text-xs rounded-none border border-foreground px-2 sm:px-3 uppercase tracking-wider font-semibold">
-                  <a href={profileUrl} target="_blank" rel="noopener noreferrer">
-                    <ExternalLink className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
-                    <span className="hidden sm:inline">LinkedIn</span>
-                    <span className="sm:hidden">LI</span>
-                  </a>
-                </Button>
-              )}
+              {/* Secondary actions — always visible, aligned right */}
+              <div className="flex items-center gap-1 shrink-0 border-l border-foreground/10 pl-1.5 ml-1">
+                {onArchive && (
+                  <Button variant="ghost" size="sm" onClick={onArchive} className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive rounded-none">
+                    <Archive className="w-3.5 h-3.5" />
+                  </Button>
+                )}
+                {profileUrl && (
+                  <Button variant="outline" size="sm" asChild className="h-7 gap-1 text-[11px] rounded-none border border-foreground px-2 uppercase tracking-wider font-semibold">
+                    <a href={profileUrl} target="_blank" rel="noopener noreferrer">
+                      <ExternalLink className="w-3 h-3" />
+                      LI
+                    </a>
+                  </Button>
+                )}
+              </div>
             </div>
           </SheetHeader>
 
