@@ -57,6 +57,7 @@ type SearchAction =
 function searchReducer(state: SearchState, action: SearchAction): SearchState {
   switch (action.type) {
     case 'SET_FILTERS': return { ...state, filters: action.filters };
+    case 'UPDATE_FILTERS': return { ...state, filters: action.updater(state.filters) };
     case 'SET_RESULTS': return { ...state, results: action.results };
     case 'SET_LOADING': return { ...state, loading: action.loading };
     case 'SET_LOADING_MORE': return { ...state, loadingMore: action.loading };
