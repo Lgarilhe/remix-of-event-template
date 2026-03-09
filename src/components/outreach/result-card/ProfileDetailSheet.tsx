@@ -70,6 +70,10 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
   onMessageSent,
   onSequenceEnroll,
   onProfileTreated,
+  onNavigatePrev,
+  onNavigateNext,
+  currentIndex,
+  totalCount,
 }) => {
   const [showMessageModal, setShowMessageModal] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
