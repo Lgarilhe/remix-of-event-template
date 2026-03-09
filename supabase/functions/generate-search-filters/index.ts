@@ -549,7 +549,7 @@ ${transversal.bodyContent ? `Contenu détaillé critères transverses:\n${transv
 
     // === RÈGLE 5: Spotlight et Open to Work comme leviers d'ajustement ===
     const openToWork = parsed.suggest_open_to_work === true; // Default false (trop restrictif)
-    const spotlight = parsed.suggest_spotlight || 'ACTIVE_TALENT'; // Default ACTIVE_TALENT
+    const spotlight = parsed.suggest_spotlight || ''; // No default spotlight
 
     // === RÈGLE 6: Utiliser les valeurs de l'IA avec élargissement léger ===
     // L'IA retourne la plage EXACTE, on applique un léger élargissement côté code
