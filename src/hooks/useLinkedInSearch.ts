@@ -39,6 +39,7 @@ type SearchAction =
   | { type: 'SET_FILTERS'; filters: LinkedInFiltersState }
   | { type: 'UPDATE_FILTERS'; updater: (prev: LinkedInFiltersState) => LinkedInFiltersState }
   | { type: 'SET_RESULTS'; results: LinkedInProfile[] }
+  | { type: 'UPDATE_RESULTS'; updater: (prev: LinkedInProfile[]) => LinkedInProfile[] }
   | { type: 'SET_LOADING'; loading: boolean }
   | { type: 'SET_LOADING_MORE'; loading: boolean }
   | { type: 'SET_CURSOR'; cursor: string | null }
@@ -59,6 +60,7 @@ function searchReducer(state: SearchState, action: SearchAction): SearchState {
     case 'SET_FILTERS': return { ...state, filters: action.filters };
     case 'UPDATE_FILTERS': return { ...state, filters: action.updater(state.filters) };
     case 'SET_RESULTS': return { ...state, results: action.results };
+    case 'UPDATE_RESULTS': return { ...state, results: action.updater(state.results) };
     case 'SET_LOADING': return { ...state, loading: action.loading };
     case 'SET_LOADING_MORE': return { ...state, loadingMore: action.loading };
     case 'SET_CURSOR': return { ...state, cursor: action.cursor };
@@ -139,7 +141,7 @@ export function useLinkedInSearch({
   const { filters, results, loading, loadingMore, cursor, hasMoreResults, total, hasSearched, selectedJob, selectedProfiles, jobScores, scoringInProgress, sortByScore } = searchState;
   const filtersRef = useRef<LinkedInFiltersState>(INITIAL_FILTERS);
 
-  // Backward-compatible wrappers for search state
+  // Backward-compatible wrappers for search state (support both direct values and updater functions)
   const setFilters = useCallback((fOrUpdater: LinkedInFiltersState | ((prev: LinkedInFiltersState) => LinkedInFiltersState)) => {
     if (typeof fOrUpdater === 'function') {
       searchDispatch({ type: 'UPDATE_FILTERS', updater: fOrUpdater });
@@ -147,7 +149,13 @@ export function useLinkedInSearch({
       searchDispatch({ type: 'SET_FILTERS', filters: fOrUpdater });
     }
   }, []);
-  const setResults = useCallback((r: LinkedInProfile[]) => searchDispatch({ type: 'SET_RESULTS', results: r }), []);
+  const setResults = useCallback((rOrUpdater: LinkedInProfile[] | ((prev: LinkedInProfile[]) => LinkedInProfile[])) => {
+    if (typeof rOrUpdater === 'function') {
+      searchDispatch({ type: 'UPDATE_RESULTS', updater: rOrUpdater });
+    } else {
+      searchDispatch({ type: 'SET_RESULTS', results: rOrUpdater });
+    }
+  }, []);
   const setLoading = useCallback((v: boolean) => searchDispatch({ type: 'SET_LOADING', loading: v }), []);
   const setLoadingMore = useCallback((v: boolean) => searchDispatch({ type: 'SET_LOADING_MORE', loading: v }), []);
   const setCursor = useCallback((c: string | null) => searchDispatch({ type: 'SET_CURSOR', cursor: c }), []);

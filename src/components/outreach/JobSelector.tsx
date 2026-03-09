@@ -121,6 +121,9 @@ export const JobSelector: React.FC<JobSelectorProps> = ({ selectedJob, onJobChan
       document.removeEventListener('keydown', handleEscape);
     };
   }, [popoverOpen]);
+  // Ref to avoid re-triggering the hydration effect when onJobChange identity changes
+  const onJobChangeRef = useRef(onJobChange);
+  onJobChangeRef.current = onJobChange;
 
   // If the selected job comes from a stale cache (or from a project resume with a minimal job object),
   // hydrate it with the freshest version from the jobs list so ALL fields are present.
@@ -153,9 +156,9 @@ export const JobSelector: React.FC<JobSelectorProps> = ({ selectedJob, onJobChan
 
     if (needsHydration) {
       console.log('[JobSelector] Hydrating job with fresh data:', fresh.title);
-      onJobChange(fresh);
+      onJobChangeRef.current(fresh);
     }
-  }, [jobs, onJobChange, selectedJob]);
+  }, [jobs, selectedJob?.id]);
 
   // Filter jobs based on search query
   const filteredJobs = useMemo(() => {
