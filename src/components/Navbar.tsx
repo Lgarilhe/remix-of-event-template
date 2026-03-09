@@ -140,7 +140,7 @@ export const Navbar: React.FC = () => {
           </div>
           
           {/* Menu items */}
-          <div className="flex-1 flex flex-col bg-background">
+          <div className="flex-1 flex flex-col">
             {user ? (
               <>
                 <Link
