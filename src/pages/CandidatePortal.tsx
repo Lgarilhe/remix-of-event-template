@@ -103,8 +103,8 @@ export default function CandidatePortal() {
     if (!token) { setNotFound(true); setLoading(false); return; }
 
     const fetchPortal = async () => {
-      const { data: rows, error } = await supabase
-        .rpc('get_portal_by_token', { p_token: token });
+      const { data: rows, error } = await (supabase
+        .rpc as any)('get_portal_by_token', { p_token: token });
 
       // RPC returns an array, take first result
       const result = Array.isArray(rows) && rows.length > 0 ? rows[0] : null;

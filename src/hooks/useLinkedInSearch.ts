@@ -37,6 +37,7 @@ interface SearchState {
 
 type SearchAction =
   | { type: 'SET_FILTERS'; filters: LinkedInFiltersState }
+  | { type: 'UPDATE_FILTERS'; updater: (prev: LinkedInFiltersState) => LinkedInFiltersState }
   | { type: 'SET_RESULTS'; results: LinkedInProfile[] }
   | { type: 'SET_LOADING'; loading: boolean }
   | { type: 'SET_LOADING_MORE'; loading: boolean }
@@ -56,6 +57,7 @@ type SearchAction =
 function searchReducer(state: SearchState, action: SearchAction): SearchState {
   switch (action.type) {
     case 'SET_FILTERS': return { ...state, filters: action.filters };
+    case 'UPDATE_FILTERS': return { ...state, filters: action.updater(state.filters) };
     case 'SET_RESULTS': return { ...state, results: action.results };
     case 'SET_LOADING': return { ...state, loading: action.loading };
     case 'SET_LOADING_MORE': return { ...state, loadingMore: action.loading };
@@ -129,7 +131,7 @@ export function useLinkedInSearch({
     total: null,
     hasSearched: false,
     selectedJob: null,
-    selectedProfiles: new Set(),
+    selectedProfiles: new Set<string>(),
     jobScores: {},
     scoringInProgress: false,
     sortByScore: false,
@@ -138,7 +140,13 @@ export function useLinkedInSearch({
   const filtersRef = useRef<LinkedInFiltersState>(INITIAL_FILTERS);
 
   // Backward-compatible wrappers for search state
-  const setFilters = useCallback((f: LinkedInFiltersState) => searchDispatch({ type: 'SET_FILTERS', filters: f }), []);
+  const setFilters = useCallback((fOrUpdater: LinkedInFiltersState | ((prev: LinkedInFiltersState) => LinkedInFiltersState)) => {
+    if (typeof fOrUpdater === 'function') {
+      searchDispatch({ type: 'UPDATE_FILTERS', updater: fOrUpdater });
+    } else {
+      searchDispatch({ type: 'SET_FILTERS', filters: fOrUpdater });
+    }
+  }, []);
   const setResults = useCallback((r: LinkedInProfile[]) => searchDispatch({ type: 'SET_RESULTS', results: r }), []);
   const setLoading = useCallback((v: boolean) => searchDispatch({ type: 'SET_LOADING', loading: v }), []);
   const setLoadingMore = useCallback((v: boolean) => searchDispatch({ type: 'SET_LOADING_MORE', loading: v }), []);
