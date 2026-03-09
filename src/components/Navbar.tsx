@@ -128,7 +128,7 @@ export const Navbar: React.FC = () => {
 
       {/* Mobile Navigation - Full Screen */}
       {isMobileMenuOpen && (
-        <div className="md:hidden fixed inset-0 z-[3000] flex flex-col animate-in slide-in-from-top duration-300">
+        <div className="md:hidden fixed inset-0 z-[3000] flex flex-col animate-in slide-in-from-top duration-300 glass-strong">
           {/* Close header */}
           <div className="bg-foreground flex items-center justify-center py-16 animate-in fade-in duration-500">
             <button
