@@ -21,7 +21,7 @@ import CandidatePortal from "./pages/CandidatePortal";
 import Onboarding from "./pages/Onboarding";
 import Settings from "./pages/Settings";
 
-const PUBLIC_ROUTES = ['/', '/auth', '/discover', '/event', '/portal'];
+const PUBLIC_ROUTES = ['/', '/auth', '/portal'];
 
 const AppContent = () => {
   const [sessionExpired, setSessionExpired] = useState(false);
