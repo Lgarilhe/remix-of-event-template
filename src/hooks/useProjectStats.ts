@@ -22,7 +22,7 @@ export const useProjectStats = (projectId: string | null) => {
         return { total: 0, scored: 0, messaged: 0, shortlisted: 0, dismissed: 0, untreated: 0 };
       }
 
-      const { data, error } = await supabase.rpc('get_project_stats', {
+      const { data, error } = await (supabase.rpc as any)('get_project_stats', {
         p_project_id: projectId,
       });
 
