@@ -8,13 +8,8 @@ import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { OrganizationGuard } from "@/components/OrganizationGuard";
 import { LinkedInAccountsProvider } from "@/contexts/LinkedInAccountsContext";
 import { supabase } from "@/integrations/supabase/client";
-import Index from "./pages/Index";
-import Discover from "./pages/Discover";
 import Auth from "./pages/Auth";
 import Admin from "./pages/Admin";
-import MyEvents from "./pages/MyEvents";
-import CreateEvent from "./pages/CreateEvent";
-import EditEvent from "./pages/EditEvent";
 import SkalrLanding from "./pages/SkalrLanding";
 import Candidates from "./pages/Candidates";
 import Outreach from "./pages/Outreach";
@@ -26,7 +21,7 @@ import CandidatePortal from "./pages/CandidatePortal";
 import Onboarding from "./pages/Onboarding";
 import Settings from "./pages/Settings";
 
-const PUBLIC_ROUTES = ['/', '/auth', '/discover', '/event', '/portal'];
+const PUBLIC_ROUTES = ['/', '/auth', '/portal'];
 
 const AppContent = () => {
   const [sessionExpired, setSessionExpired] = useState(false);
@@ -66,11 +61,6 @@ const AppContent = () => {
       <Sonner />
       <Routes>
         <Route path="/" element={<SkalrLanding />} />
-        <Route path="/discover" element={<Discover />} />
-        <Route path="/event/:id" element={<Index />} />
-        <Route path="/event/:id/edit" element={<ProtectedRoute><EditEvent /></ProtectedRoute>} />
-        <Route path="/my-events" element={<ProtectedRoute><MyEvents /></ProtectedRoute>} />
-        <Route path="/create-event" element={<ProtectedRoute><CreateEvent /></ProtectedRoute>} />
         <Route path="/auth" element={<Auth />} />
         <Route path="/onboarding" element={<ProtectedRoute><Onboarding /></ProtectedRoute>} />
         <Route path="/admin" element={<ProtectedRoute><Admin /></ProtectedRoute>} />

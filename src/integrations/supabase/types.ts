@@ -1027,10 +1027,12 @@ export type Database = {
         Row: {
           candidate_id: string
           created_at: string
+          created_by: string | null
           embedding: string | null
           headline: string | null
           id: string
           name: string | null
+          organization_id: string | null
           skills: string[] | null
           summary: string | null
           updated_at: string
@@ -1038,10 +1040,12 @@ export type Database = {
         Insert: {
           candidate_id: string
           created_at?: string
+          created_by?: string | null
           embedding?: string | null
           headline?: string | null
           id?: string
           name?: string | null
+          organization_id?: string | null
           skills?: string[] | null
           summary?: string | null
           updated_at?: string
@@ -1049,15 +1053,25 @@ export type Database = {
         Update: {
           candidate_id?: string
           created_at?: string
+          created_by?: string | null
           embedding?: string | null
           headline?: string | null
           id?: string
           name?: string | null
+          organization_id?: string | null
           skills?: string[] | null
           summary?: string | null
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "candidate_profiles_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       candidate_reminders: {
         Row: {
@@ -1564,8 +1578,10 @@ export type Database = {
           candidate_id: string
           confidence: number
           created_at: string
+          created_by: string | null
           id: string
           job_id: string
+          organization_id: string | null
           score: number
           scoring_result: Json
         }
@@ -1573,8 +1589,10 @@ export type Database = {
           candidate_id: string
           confidence?: number
           created_at?: string
+          created_by?: string | null
           id?: string
           job_id: string
+          organization_id?: string | null
           score?: number
           scoring_result?: Json
         }
@@ -1582,12 +1600,22 @@ export type Database = {
           candidate_id?: string
           confidence?: number
           created_at?: string
+          created_by?: string | null
           id?: string
           job_id?: string
+          organization_id?: string | null
           score?: number
           scoring_result?: Json
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "match_scores_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       member_linkedin_accounts: {
         Row: {
