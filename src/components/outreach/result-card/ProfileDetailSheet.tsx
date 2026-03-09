@@ -80,14 +80,30 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
   // Swipe gesture for mobile navigation
   const touchStartX = useRef<number | null>(null);
   const touchStartY = useRef<number | null>(null);
+  const swipeBlocked = useRef(false);
+
+  // Check if touch started inside a horizontally scrollable element
+  const isInsideScrollable = (el: HTMLElement | null): boolean => {
+    while (el) {
+      if (el.scrollWidth > el.clientWidth + 2) return true;
+      if (el.dataset?.noSwipe) return true;
+      el = el.parentElement;
+    }
+    return false;
+  };
 
   const handleTouchStart = useCallback((e: React.TouchEvent) => {
     touchStartX.current = e.touches[0].clientX;
     touchStartY.current = e.touches[0].clientY;
+    swipeBlocked.current = isInsideScrollable(e.target as HTMLElement);
   }, []);
 
   const handleTouchEnd = useCallback((e: React.TouchEvent) => {
-    if (touchStartX.current == null || touchStartY.current == null) return;
+    if (touchStartX.current == null || touchStartY.current == null || swipeBlocked.current) {
+      touchStartX.current = null;
+      touchStartY.current = null;
+      return;
+    }
     const dx = e.changedTouches[0].clientX - touchStartX.current;
     const dy = e.changedTouches[0].clientY - touchStartY.current;
     touchStartX.current = null;
