@@ -286,13 +286,13 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
           {/* Status filter pills */}
           <div className="flex items-center gap-px bg-muted/40 p-px border border-border shrink-0">
             {([
-              { value: 'all' as const, icon: Users, count: Math.max(results.length, treatedCandidates.size) },
-              { value: 'untreated' as const, icon: Eye, count: statusCounts.untreated },
-              { value: 'scored' as const, icon: Target, count: statusCounts.scored },
-              { value: 'messaged' as const, icon: Mail, count: statusCounts.messaged },
-              { value: 'known' as const, icon: Database, count: statusCounts.known },
-              { value: 'dismissed' as const, icon: Archive, count: statusCounts.dismissed },
-            ]).map(({ value, icon: Icon, count }) => {
+              { value: 'all' as const, emoji: '👥', count: Math.max(results.length, treatedCandidates.size) },
+              { value: 'untreated' as const, emoji: '👁', count: statusCounts.untreated },
+              { value: 'scored' as const, emoji: '🎯', count: statusCounts.scored },
+              { value: 'messaged' as const, emoji: '✉️', count: statusCounts.messaged },
+              { value: 'known' as const, emoji: '📋', count: statusCounts.known },
+              { value: 'dismissed' as const, emoji: '📦', count: statusCounts.dismissed },
+            ]).map(({ value, emoji, count }) => {
               const isActive = statusFilter === value || 
                 (value === 'scored' && (statusFilter === 'scored_go' || statusFilter === 'scored_maybe' || statusFilter === 'scored_not_contacted'));
               return (
@@ -305,7 +305,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
                       : 'text-muted-foreground hover:text-foreground hover:bg-muted/60'
                   }`}
                 >
-                  <Icon className="w-3 h-3" />
+                  <span className="text-xs">{emoji}</span>
                   {count > 0 && <span className="font-medium">{count}</span>}
                 </button>
               );
