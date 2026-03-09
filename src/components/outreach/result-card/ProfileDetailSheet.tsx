@@ -98,6 +98,26 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
       if (dx < 0 && onNavigateNext) onNavigateNext();
     }
   }, [onNavigatePrev, onNavigateNext]);
+
+  // Swipe hint animation — show only once per session on first candidate
+  const [showSwipeHint, setShowSwipeHint] = useState(false);
+  const hasShownHint = useRef(false);
+
+  useEffect(() => {
+    if (open && currentIndex === 0 && !hasShownHint.current && (onNavigateNext || onNavigatePrev)) {
+      hasShownHint.current = true;
+      const timer = setTimeout(() => setShowSwipeHint(true), 800);
+      return () => clearTimeout(timer);
+    }
+  }, [open, currentIndex, onNavigateNext, onNavigatePrev]);
+
+  useEffect(() => {
+    if (showSwipeHint) {
+      const timer = setTimeout(() => setShowSwipeHint(false), 3500);
+      return () => clearTimeout(timer);
+    }
+  }, [showSwipeHint]);
+
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isScoring, setIsScoring] = useState(false);
 
@@ -376,6 +396,14 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
                 Suiv.
                 <ChevronRight className="w-3.5 h-3.5" />
               </Button>
+            </div>
+          )}
+          {/* ─── SWIPE HINT (mobile, first open only) ─── */}
+          {showSwipeHint && (
+            <div className="sm:hidden flex items-center justify-center gap-3 py-2 bg-foreground text-background text-[11px] font-medium uppercase tracking-wider animate-fade-in shrink-0">
+              <ChevronLeft className="w-4 h-4 animate-[pulse_1s_ease-in-out_infinite]" />
+              <span>Swipez pour naviguer</span>
+              <ChevronRight className="w-4 h-4 animate-[pulse_1s_ease-in-out_infinite]" />
             </div>
           )}
           {/* ─── HEADER ─── */}
