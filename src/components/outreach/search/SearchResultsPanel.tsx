@@ -701,6 +701,10 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
         onMessageSent={onMessageSent}
         onSequenceEnroll={onSequenceEnrollSuccess}
         onProfileTreated={detailProfile ? () => onProfileTreated(detailProfile.id) : undefined}
+        onNavigatePrev={navigatePrev}
+        onNavigateNext={navigateNext}
+        currentIndex={detailIndex >= 0 ? detailIndex : undefined}
+        totalCount={filteredResults.length}
       />
 
       {/* Bulk InMail Modal */}
