@@ -25,7 +25,7 @@ import { AddToProjectButton } from '../projects/AddToProjectButton';
 import {
   Building2, MapPin, TrendingUp, ExternalLink, Bot, Loader2,
   Target, CheckCircle2, AlertTriangle, PenLine, Archive, Mail,
-  MessageSquare, FolderPlus,
+  MessageSquare, FolderPlus, ChevronLeft, ChevronRight,
 } from 'lucide-react';
 import { invokeUnipile } from '@/lib/invokeUnipile';
 import { supabase } from '@/integrations/supabase/client';
