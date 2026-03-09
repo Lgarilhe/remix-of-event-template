@@ -22,19 +22,49 @@ export interface JobCandidateStatus {
   linkedin_profile_data?: any;
 }
 
+// Batched state to avoid 3 separate re-renders per fetchStatuses call
+interface StatusState {
+  statuses: Map<string, JobCandidateStatus>;
+  dismissedIds: Set<string>;
+  treatedIds: Set<string>;
+}
+
+const EMPTY_STATUS_STATE: StatusState = {
+  statuses: new Map(),
+  dismissedIds: new Set(),
+  treatedIds: new Set(),
+};
+
 export function useJobCandidateStatus(jobId: string | null) {
-  const [statuses, setStatuses] = useState<Map<string, JobCandidateStatus>>(new Map());
+  const [statusState, setStatusState] = useState<StatusState>(EMPTY_STATUS_STATE);
+  const { statuses, dismissedIds, treatedIds } = statusState;
   const [loading, setLoading] = useState(false);
-  const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set());
-  const [treatedIds, setTreatedIds] = useState<Set<string>>(new Set());
   const { organizationId } = useOrganization();
+
+  // Helper setters that update individual parts of the batched state
+  const setStatuses = useCallback((updater: Map<string, JobCandidateStatus> | ((prev: Map<string, JobCandidateStatus>) => Map<string, JobCandidateStatus>)) => {
+    setStatusState(prev => ({
+      ...prev,
+      statuses: typeof updater === 'function' ? updater(prev.statuses) : updater,
+    }));
+  }, []);
+  const setDismissedIds = useCallback((updater: Set<string> | ((prev: Set<string>) => Set<string>)) => {
+    setStatusState(prev => ({
+      ...prev,
+      dismissedIds: typeof updater === 'function' ? updater(prev.dismissedIds) : updater,
+    }));
+  }, []);
+  const setTreatedIds = useCallback((updater: Set<string> | ((prev: Set<string>) => Set<string>)) => {
+    setStatusState(prev => ({
+      ...prev,
+      treatedIds: typeof updater === 'function' ? updater(prev.treatedIds) : updater,
+    }));
+  }, []);
 
   // Fetch all statuses for current job (including linkedin_profile_data for pool rehydration)
   const fetchStatuses = useCallback(async () => {
     if (!jobId) {
-      setStatuses(new Map());
-      setDismissedIds(new Set());
-      setTreatedIds(new Set());
+      setStatusState(EMPTY_STATUS_STATE);
       return;
     }
 
@@ -42,9 +72,7 @@ export function useJobCandidateStatus(jobId: string | null) {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
-        setStatuses(new Map());
-        setDismissedIds(new Set());
-        setTreatedIds(new Set());
+        setStatusState(EMPTY_STATUS_STATE);
         return;
       }
 
@@ -86,9 +114,8 @@ export function useJobCandidateStatus(jobId: string | null) {
         treated.add(s.candidate_id);
       });
 
-      setStatuses(statusMap);
-      setDismissedIds(dismissed);
-      setTreatedIds(treated);
+      // Single state update (1 re-render instead of 3)
+      setStatusState({ statuses: statusMap, dismissedIds: dismissed, treatedIds: treated });
     } catch (error) {
       console.error('Error fetching candidate statuses:', error);
     } finally {

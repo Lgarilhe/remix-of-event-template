@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useCallback, useMemo } from 'react';
 import { useNotionCandidates } from './useNotionCandidates';
 import { normalizeLinkedInUrl, extractLinkedInSlug } from '@/lib/linkedinUtils';
 import { normalizeName } from '@/lib/stringUtils';
@@ -93,7 +93,7 @@ export function useNotionMatch(profiles: NotionProfileInput[]) {
     return result;
   }, [profiles, notionSlugMap, notionNameMap]);
 
-  const getMatch = (profile: NotionProfileInput | undefined): NotionMatchInfo | null => {
+  const getMatch = useCallback((profile: NotionProfileInput | undefined): NotionMatchInfo | null => {
     if (!profile) return null;
 
     if (profile.url) {
@@ -106,7 +106,7 @@ export function useNotionMatch(profiles: NotionProfileInput[]) {
     }
 
     return null;
-  };
+  }, [matches]);
 
   return { matches, getMatch, loading: !notionCandidates };
 }
