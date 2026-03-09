@@ -5,7 +5,7 @@
 import { LinkedInProfile } from '@/components/outreach/types';
 import { getYear, parseDate } from '@/components/outreach/dateUtils';
 import { Job } from '@/types/jobs';
-import { SKILL_SYNONYMS, skillsMatch } from './skillSynonyms';
+import { extractSkillsFromTextFast, skillsMatch } from './skillSynonyms';
 
 export interface PreScoreResult {
   preScore: number;            // 0-100
@@ -23,17 +23,6 @@ export interface PreScoreResult {
 
 // ─── Skills (40 pts) ────────────────────────────────────────────────
 
-function extractSkillsFromText(text: string): string[] {
-  const lower = text.toLowerCase();
-  const found: string[] = [];
-  for (const [canonical, synonyms] of Object.entries(SKILL_SYNONYMS)) {
-    if (lower.includes(canonical) || synonyms.some(s => lower.includes(s))) {
-      found.push(canonical);
-    }
-  }
-  return found;
-}
-
 function extractAllSkills(profile: LinkedInProfile): string[] {
   const skills = new Set<string>();
 
@@ -45,12 +34,12 @@ function extractAllSkills(profile: LinkedInProfile): string[] {
 
   // From headline
   if (profile.headline) {
-    extractSkillsFromText(profile.headline).forEach(s => skills.add(s));
+    extractSkillsFromTextFast(profile.headline).forEach(s => skills.add(s));
   }
 
   // From work experience titles + skills
   (profile.work_experience || []).forEach(w => {
-    if (w.role || w.position) extractSkillsFromText((w.role || w.position)!).forEach(s => skills.add(s));
+    if (w.role || w.position) extractSkillsFromTextFast((w.role || w.position)!).forEach(s => skills.add(s));
     if (w.skills) w.skills.forEach(s => {
       const name = typeof s === 'string' ? s : s.name;
       if (name) skills.add(name.toLowerCase());
@@ -60,16 +49,24 @@ function extractAllSkills(profile: LinkedInProfile): string[] {
   return Array.from(skills);
 }
 
+// Cache parsed criteria per job to avoid re-parsing on every profile
+const _criteriaCache = new WeakMap<Job, { mustHave: string[]; shouldHave: string[]; niceToHave: string[] }>();
+
+function getJobCriteria(job: Job): { mustHave: string[]; shouldHave: string[]; niceToHave: string[] } {
+  const cached = _criteriaCache.get(job);
+  if (cached) return cached;
+  const result = {
+    mustHave: parseCriteriaToSkills(job.mustHave),
+    shouldHave: parseCriteriaToSkills(job.shouldHave),
+    niceToHave: parseCriteriaToSkills(job.niceToHave),
+  };
+  _criteriaCache.set(job, result);
+  return result;
+}
+
 function parseCriteriaToSkills(criteria: string | undefined): string[] {
   if (!criteria) return [];
-  const found: string[] = [];
-  const lower = criteria.toLowerCase();
-  for (const [canonical, synonyms] of Object.entries(SKILL_SYNONYMS)) {
-    if (lower.includes(canonical) || synonyms.some(s => lower.includes(s))) {
-      found.push(canonical);
-    }
-  }
-  return found;
+  return extractSkillsFromTextFast(criteria);
 }
 
 function countMatches(profileSkills: string[], targetSkills: string[]): number {
@@ -87,13 +84,9 @@ function scoreSkills(
   jobSkills: string[],
   flags: string[],
 ): number {
-  const mustHaveSkills = parseCriteriaToSkills(job.mustHave);
-  const shouldHaveSkills = parseCriteriaToSkills(job.shouldHave);
-  const niceToHaveSkills = parseCriteriaToSkills(job.niceToHave);
+  const { mustHave: mustHaveSkills, shouldHave: shouldHaveSkills, niceToHave: niceToHaveSkills } = getJobCriteria(job);
 
   // If the job has NO skills criteria at all, return a neutral score
-  // to avoid penalizing candidates on poorly-configured jobs.
-  // The backend LLM will do the definitive skill assessment anyway.
   if (jobSkills.length === 0 && mustHaveSkills.length === 0 && shouldHaveSkills.length === 0 && niceToHaveSkills.length === 0) {
     flags.push('Aucun critère skill défini — score neutre');
     return 20; // neutral: 20/40

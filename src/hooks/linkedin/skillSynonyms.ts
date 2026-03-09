@@ -353,42 +353,79 @@ export const SKILL_SYNONYMS: Record<string, string[]> = {
   'oscp': ['offensive security certified professional'],
 };
 
-/** Check if two skill strings match (including synonyms). Uses word-boundary matching. */
+// ─── Pre-compiled reverse lookup (built once at module load) ────────
+
+/** Maps every synonym → canonical skill name. Built once, O(1) lookup. */
+const _reverseLookup = new Map<string, string>();
+/** All searchable terms sorted longest-first for text extraction. */
+let _allTermsSorted: string[] | null = null;
+
+function _buildReverseLookup() {
+  if (_reverseLookup.size > 0) return;
+  for (const [canonical, synonyms] of Object.entries(SKILL_SYNONYMS)) {
+    _reverseLookup.set(canonical, canonical);
+    for (const syn of synonyms) {
+      _reverseLookup.set(syn, canonical);
+    }
+  }
+}
+
+function _getAllTermsSorted(): string[] {
+  if (_allTermsSorted) return _allTermsSorted;
+  _buildReverseLookup();
+  _allTermsSorted = Array.from(_reverseLookup.keys()).sort((a, b) => b.length - a.length);
+  return _allTermsSorted;
+}
+
+// Initialize at module load time
+_buildReverseLookup();
+
+/**
+ * Fast text extraction: find all skill synonyms present in a text string.
+ * Returns canonical skill names. Uses pre-compiled lookup — much faster than
+ * iterating all SKILL_SYNONYMS entries.
+ */
+export function extractSkillsFromTextFast(text: string): string[] {
+  const lower = text.toLowerCase();
+  const found = new Set<string>();
+  const terms = _getAllTermsSorted();
+  
+  for (const term of terms) {
+    // Skip very short terms (< 2 chars) to avoid false positives
+    if (term.length < 2) continue;
+    if (lower.includes(term)) {
+      const canonical = _reverseLookup.get(term);
+      if (canonical) found.add(canonical);
+    }
+  }
+  return Array.from(found);
+}
+
+/**
+ * Fast canonical lookup: given a skill string, return its canonical form.
+ * O(1) if the exact string matches a known synonym.
+ */
+export function getCanonicalSkill(skill: string): string {
+  const lower = skill.toLowerCase().trim();
+  return _reverseLookup.get(lower) || lower;
+}
+
+/** Check if two skill strings match (including synonyms). Uses pre-compiled lookup. */
 export function skillsMatch(a: string, b: string): boolean {
   const la = a.toLowerCase().trim();
   const lb = b.toLowerCase().trim();
   if (la === lb) return true;
 
-  // For skills >= 3 chars, use word-boundary matching to avoid false positives
-  // (e.g. "go" matching "django")
-  if (la.length >= 3 && lb.length >= 3) {
-    const escRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const aRe = new RegExp(`\\b${escRe(la)}\\b`, 'i');
-    const bRe = new RegExp(`\\b${escRe(lb)}\\b`, 'i');
-    if (aRe.test(lb) || bRe.test(la)) return true;
-  } else {
-    // Short skills (< 3 chars): exact match only
-    if (la === lb) return true;
-  }
+  // Fast path: check if both resolve to the same canonical skill
+  const canonA = _reverseLookup.get(la);
+  const canonB = _reverseLookup.get(lb);
+  if (canonA && canonB && canonA === canonB) return true;
+  if (canonA && canonA === lb) return true;
+  if (canonB && canonB === la) return true;
 
-  // Check synonym groups
-  for (const [canonical, synonyms] of Object.entries(SKILL_SYNONYMS)) {
-    const all = [canonical, ...synonyms];
-    const aMatches = all.some(v => {
-      if (v.length >= 3 && la.length >= 3) {
-        const escRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        return new RegExp(`\\b${escRe(v)}\\b`, 'i').test(la) || new RegExp(`\\b${escRe(la)}\\b`, 'i').test(v);
-      }
-      return v === la;
-    });
-    const bMatches = all.some(v => {
-      if (v.length >= 3 && lb.length >= 3) {
-        const escRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        return new RegExp(`\\b${escRe(v)}\\b`, 'i').test(lb) || new RegExp(`\\b${escRe(lb)}\\b`, 'i').test(v);
-      }
-      return v === lb;
-    });
-    if (aMatches && bMatches) return true;
+  // For skills >= 3 chars, use substring matching as fallback
+  if (la.length >= 3 && lb.length >= 3) {
+    if (la.includes(lb) || lb.includes(la)) return true;
   }
 
   return false;
