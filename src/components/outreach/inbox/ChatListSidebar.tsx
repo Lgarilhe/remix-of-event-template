@@ -240,8 +240,17 @@ export const ChatListSidebar: React.FC<ChatListSidebarProps> = ({
       {/* Chat List */}
       <ScrollArea className="flex-1 min-h-0">
         {loadingChats ? (
-          <div className="p-3">
-            <BrutalLoader compact messages={['Chargement des messages…', 'Synchronisation inbox…', 'Récupération des conversations…']} />
+          <div className="p-2 space-y-1">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div key={i} className="flex items-center gap-3 p-3 animate-pulse" style={{ animationDelay: `${i * 80}ms` }}>
+                <div className="h-9 w-9 rounded-full bg-muted flex-shrink-0" />
+                <div className="flex-1 space-y-2">
+                  <div className="h-3.5 bg-muted rounded w-3/5" />
+                  <div className="h-2.5 bg-muted/60 rounded w-4/5" />
+                </div>
+                <div className="h-2.5 bg-muted/40 rounded w-8 flex-shrink-0" />
+              </div>
+            ))}
           </div>
         ) : filteredChats.length === 0 ? (
           <div className="p-8 text-center text-muted-foreground">

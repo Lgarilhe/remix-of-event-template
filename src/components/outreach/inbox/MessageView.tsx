@@ -252,8 +252,23 @@ export const MessageView: React.FC<MessageViewProps> = ({
       {/* Messages Area */}
       <div className="flex-1 min-h-0 overflow-y-auto overscroll-y-contain touch-pan-y p-4" ref={localContainerRef} style={{ WebkitOverflowScrolling: 'touch' }}>
         {loadingMessages && messages.length === 0 ? (
-          <div className="flex items-center justify-center h-full">
-            <Loader2 className="w-6 h-6 animate-spin text-foreground" />
+          <div className="flex flex-col justify-end h-full gap-3 pb-2">
+            {/* Skeleton chat bubbles */}
+            <div className="flex justify-start">
+              <div className="h-10 bg-muted rounded-2xl rounded-bl-sm w-2/5 animate-pulse" />
+            </div>
+            <div className="flex justify-end">
+              <div className="h-10 bg-primary/15 rounded-2xl rounded-br-sm w-1/3 animate-pulse" style={{ animationDelay: '100ms' }} />
+            </div>
+            <div className="flex justify-start">
+              <div className="h-16 bg-muted rounded-2xl rounded-bl-sm w-3/5 animate-pulse" style={{ animationDelay: '200ms' }} />
+            </div>
+            <div className="flex justify-end">
+              <div className="h-10 bg-primary/15 rounded-2xl rounded-br-sm w-2/5 animate-pulse" style={{ animationDelay: '300ms' }} />
+            </div>
+            <div className="flex justify-start">
+              <div className="h-10 bg-muted rounded-2xl rounded-bl-sm w-1/4 animate-pulse" style={{ animationDelay: '400ms' }} />
+            </div>
           </div>
         ) : messages.length === 0 ? (
           <div className="flex items-center justify-center h-full text-muted-foreground">
