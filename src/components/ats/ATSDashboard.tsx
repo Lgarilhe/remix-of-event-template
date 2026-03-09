@@ -92,7 +92,9 @@ export function ATSDashboard({ candidates, stages }: ATSDashboardProps) {
   const { data: scheduledMessages = [], isLoading: loadingMessages } = useTodayScheduledMessages();
   const { data: acceptanceStats, isLoading: loadingAcceptance } = useOutreachAcceptanceStats();
   const { data: dailyInvites = [], isLoading: loadingInvites } = useDailyInviteStats(30);
+  const { data: responseRates, isLoading: loadingResponseRates } = useResponseRateStats();
   const [expandedMessageId, setExpandedMessageId] = React.useState<string | null>(null);
+  const [responseView, setResponseView] = React.useState<'all' | 'sequences' | 'inmails'>('all');
 
   // ═══ KPIs ═══
   const kpis = useMemo(() => {
