@@ -25,7 +25,7 @@ export interface OutreachAcceptanceStats {
 
 async function fetchOutreachAcceptanceStats(): Promise<OutreachAcceptanceStats> {
   // Use server-side aggregation RPC instead of fetching all enrollments
-  const { data: rpcData, error: rpcError } = await supabase.rpc('get_outreach_acceptance_stats');
+  const { data: rpcData, error: rpcError } = await (supabase.rpc as any)('get_outreach_acceptance_stats');
   
   if (rpcError) throw rpcError;
   if (!rpcData || rpcData.length === 0) {

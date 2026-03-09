@@ -61,7 +61,7 @@ export const useMultipleProjectStats = (projectIds: string[]) => {
         return {};
       }
 
-      const { data, error } = await supabase.rpc('get_multiple_project_stats', {
+      const { data, error } = await (supabase.rpc as any)('get_multiple_project_stats', {
         p_project_ids: projectIds,
       });
 
