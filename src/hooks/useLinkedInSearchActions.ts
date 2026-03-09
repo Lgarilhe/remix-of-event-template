@@ -478,6 +478,11 @@ export function useLinkedInSearchActions(
       }
 
       for (let round = 0; round < MAX_FETCH_ROUNDS; round++) {
+        // Yield to the event loop between rounds to prevent browser freeze
+        if (round > 0) {
+          await new Promise(resolve => setTimeout(resolve, 0));
+        }
+
         const baseParams = buildSearchParams(currentFilters, selectedAccount);
         const params: Record<string, unknown> = {
           ...baseParams,
