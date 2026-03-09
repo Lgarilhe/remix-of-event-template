@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
@@ -76,6 +76,28 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
   totalCount,
 }) => {
   const [showMessageModal, setShowMessageModal] = useState(false);
+
+  // Swipe gesture for mobile navigation
+  const touchStartX = useRef<number | null>(null);
+  const touchStartY = useRef<number | null>(null);
+
+  const handleTouchStart = useCallback((e: React.TouchEvent) => {
+    touchStartX.current = e.touches[0].clientX;
+    touchStartY.current = e.touches[0].clientY;
+  }, []);
+
+  const handleTouchEnd = useCallback((e: React.TouchEvent) => {
+    if (touchStartX.current == null || touchStartY.current == null) return;
+    const dx = e.changedTouches[0].clientX - touchStartX.current;
+    const dy = e.changedTouches[0].clientY - touchStartY.current;
+    touchStartX.current = null;
+    touchStartY.current = null;
+    // Only trigger if horizontal swipe is dominant and > 80px
+    if (Math.abs(dx) > 80 && Math.abs(dx) > Math.abs(dy) * 1.5) {
+      if (dx > 0 && onNavigatePrev) onNavigatePrev();
+      if (dx < 0 && onNavigateNext) onNavigateNext();
+    }
+  }, [onNavigatePrev, onNavigateNext]);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isScoring, setIsScoring] = useState(false);
 
@@ -324,7 +346,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
   return (
     <>
       <Sheet open={open} onOpenChange={onOpenChange}>
-        <SheetContent side="right" className="!w-full !max-w-[100vw] min-w-0 sm:!w-[95vw] sm:!max-w-[820px] p-0 flex flex-col overflow-x-auto overflow-y-hidden rounded-none border-l border-foreground">
+        <SheetContent side="right" className="!w-full !max-w-[100vw] min-w-0 sm:!w-[95vw] sm:!max-w-[820px] p-0 flex flex-col overflow-x-auto overflow-y-hidden rounded-none border-l border-foreground" onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
           {/* ─── NAV + ACCENT BAR ─── */}
           <div className="h-1.5 w-full bg-brutal-accent shrink-0" />
           {(onNavigatePrev || onNavigateNext) && (
