@@ -16,6 +16,36 @@ import { useNotionJobs } from '@/hooks/useNotionJobs';
 // Re-export useNotionJobs as useJobs for backward compatibility
 export const useJobs = useNotionJobs;
 
+interface JobSelectorProps {
+  selectedJob: Job | null;
+  onJobChange: (job: Job | null) => void;
+  onAutoFillFilters?: (filters: GeneratedFilters) => void;
+}
+
+export interface GeneratedFilters {
+  keywords: string;
+  role: Array<{ keywords: string; priority: string; scope: string }>;
+  seniority: string[];
+  years_of_experience_min: number | null;
+  years_of_experience_max: number | null;
+  skills_keywords: string[];
+  industry_keywords: string[];
+  location_keywords: string[];
+  location_within_area: number | null;
+  company_keywords: Array<{ 
+    keywords: string; 
+    priority: 'CAN_HAVE' | 'MUST_HAVE' | 'DOESNT_HAVE'; 
+    scope: 'CURRENT' | 'PAST' | 'CURRENT_OR_PAST' | 'PAST_NOT_CURRENT';
+  }>;
+  school: Array<{ 
+    id: string; 
+    name: string; 
+    priority: 'CAN_HAVE' | 'MUST_HAVE' | 'DOESNT_HAVE';
+  }>;
+  spotlight: string;
+  open_to_work: boolean;
+}
+
 // Hook to force refresh jobs from Notion
 export const useRefreshJobs = () => {
   const queryClient = useQueryClient();
