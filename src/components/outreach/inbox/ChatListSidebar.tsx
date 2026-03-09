@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { BrutalLoader } from '@/components/ui/brutal-loader';
+
 import { Search, MessageSquare, RefreshCw, Tag, ChevronDown, ArrowUpRight, ArrowDownLeft } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Chat, SequenceEnrollmentInfo } from '@/hooks/useMessagesInbox';
