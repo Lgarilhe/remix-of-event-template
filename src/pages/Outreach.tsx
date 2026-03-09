@@ -10,7 +10,7 @@ import { MessagesInbox } from '@/components/outreach/MessagesInbox';
 import { NurturingDashboard } from '@/components/outreach/NurturingDashboard';
 import { InMailQueueStatus } from '@/components/outreach/InMailQueueStatus';
 import { ProjectsList } from '@/components/outreach/projects';
-import { Settings } from 'lucide-react';
+import { Search, Users, Settings } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { OutreachSearchProvider } from '@/contexts/OutreachSearchContext';
