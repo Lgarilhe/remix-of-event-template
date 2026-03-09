@@ -524,51 +524,6 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
                 </div>
               )}
 
-              {/* AI Analysis */}
-              {aiAnalysis && (
-                <div className="p-4 bg-background border border-foreground">
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center gap-2">
-                      <Bot className="w-4 h-4 text-foreground" />
-                      <span className="text-xs font-bold text-foreground uppercase tracking-wider">Analyse IA</span>
-                    </div>
-                    <span className={`text-sm font-bold px-2 py-0.5 border ${
-                      aiAnalysis.fit_score >= 70 ? 'border-foreground bg-brutal-accent/30 text-foreground' :
-                      aiAnalysis.fit_score >= 50 ? 'border-foreground bg-muted text-foreground' : 'border-foreground bg-destructive/10 text-destructive'
-                    }`}>
-                      {aiAnalysis.fit_score}/100
-                    </span>
-                  </div>
-                  <p className="text-sm text-foreground/80 leading-relaxed mb-4">{aiAnalysis.summary}</p>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-                    <div className="space-y-2">
-                      <p className="text-[10px] font-bold text-foreground uppercase tracking-widest flex items-center gap-1">
-                        <CheckCircle2 className="w-3 h-3" /> Points forts
-                      </p>
-                      {(aiAnalysis.strengths || []).map((s, i) => (
-                        <div key={i} className="flex items-start gap-2 text-xs text-foreground/70 bg-brutal-accent/10 px-2.5 py-1.5 border border-foreground/20">
-                          <span className="text-foreground mt-0.5 shrink-0">✓</span><span>{s}</span>
-                        </div>
-                      ))}
-                    </div>
-                    <div className="space-y-2">
-                      <p className="text-[10px] font-bold text-foreground uppercase tracking-widest flex items-center gap-1">
-                        <AlertTriangle className="w-3 h-3" /> À vérifier
-                      </p>
-                      {(aiAnalysis.concerns || []).map((c, i) => (
-                        <div key={i} className="flex items-start gap-2 text-xs text-foreground/70 bg-muted px-2.5 py-1.5 border border-foreground/20">
-                          <span className="text-foreground mt-0.5 shrink-0">!</span><span>{c}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                  {aiAnalysis.recommendation && (
-                    <div className="mt-3 pt-3 border-t border-foreground/20">
-                      <p className="text-xs text-foreground/70 italic">💡 {aiAnalysis.recommendation}</p>
-                    </div>
-                  )}
-                </div>
-              )}
 
               {/* Airtable History Panel — always show if we have data or are loading */}
               {(historyPanelLoading || hasHistory) && (
