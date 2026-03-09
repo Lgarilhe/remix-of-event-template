@@ -559,8 +559,9 @@ export function useLinkedInSearchActions(
       const totalLoaded = appendMode ? results.length + allCollected.length : allCollected.length;
       const reachedTotal = latestTotal !== null && totalLoaded >= latestTotal;
       
-      // Persist cursor for next "load more" call
+      // Persist cursor and total for next "load more" call
       setCursor(currentCursor);
+      if (latestTotal !== null) setTotal(latestTotal);
 
       if (exhausted || reachedTotal) {
         setHasMoreResults(false);
