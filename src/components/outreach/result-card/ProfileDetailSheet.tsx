@@ -398,6 +398,14 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
               </Button>
             </div>
           )}
+          {/* ─── SWIPE HINT (mobile, first open only) ─── */}
+          {showSwipeHint && (
+            <div className="sm:hidden flex items-center justify-center gap-3 py-2 bg-foreground text-background text-[11px] font-medium uppercase tracking-wider animate-fade-in shrink-0">
+              <ChevronLeft className="w-4 h-4 animate-[pulse_1s_ease-in-out_infinite]" />
+              <span>Swipez pour naviguer</span>
+              <ChevronRight className="w-4 h-4 animate-[pulse_1s_ease-in-out_infinite]" />
+            </div>
+          )}
           {/* ─── HEADER ─── */}
           <SheetHeader className="px-3 sm:px-6 pt-4 sm:pt-5 pb-3 sm:pb-4 bg-background border-b border-foreground shrink-0">
             <div className="flex items-start gap-2.5 sm:gap-4">
