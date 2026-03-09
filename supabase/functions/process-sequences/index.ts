@@ -230,6 +230,38 @@ async function handleProcess(supabase: any, force = false) {
           continue;
         }
 
+        // Guard: prevent follow-up messages from being sent if no prior message was sent in this enrollment
+        if (needsMessage(step.action_type) && step.step_order > 0) {
+          const { data: priorSent } = await supabase.from('sequence_step_executions')
+            .select('id')
+            .eq('enrollment_id', enrollment.id)
+            .eq('status', 'sent')
+            .limit(1);
+          
+          // Check if ANY prior message/inmail was sent (not just any step — specifically message-type steps)
+          const { data: priorMessageSent } = await supabase
+            .from('sequence_step_executions')
+            .select('id, step:sequence_steps!inner(action_type)')
+            .eq('enrollment_id', enrollment.id)
+            .eq('status', 'sent')
+            .in('step.action_type', ['message', 'inmail', 'smart_message'])
+            .limit(1);
+
+          if (!priorMessageSent || priorMessageSent.length === 0) {
+            console.warn(`[process] ⛔ GUARD: Skipping ${step.action_type} step ${step.step_order} for ${enrollment.profile_name} — no prior message was sent in this enrollment. Completing sequence.`);
+            await supabase.from('sequence_step_executions').update({ 
+              status: 'skipped', 
+              skip_reason: 'no_previous_message', 
+              executed_at: new Date().toISOString() 
+            }).eq('id', exec.id);
+            await supabase.from('sequence_enrollments').update({ status: 'completed', completed_at: new Date().toISOString() }).eq('id', enrollment.id);
+            // Cancel any remaining scheduled steps for this enrollment
+            await supabase.from('sequence_step_executions').update({ status: 'cancelled', skip_reason: 'no_previous_message' }).eq('enrollment_id', enrollment.id).eq('status', 'scheduled');
+            results.skipped++;
+            continue;
+          }
+        }
+
         const { data: lockResult, error: lockError } = await supabase
           .from('sequence_step_executions').update({ status: 'sending' }).eq('id', exec.id).eq('status', 'scheduled').select().single();
 
