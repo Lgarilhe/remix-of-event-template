@@ -468,16 +468,6 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
                   </Button>
                 )}
 
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleAiAnalysis}
-                  disabled={isAnalyzing}
-                  className="h-7 gap-1 text-[11px] rounded-none border border-foreground text-foreground hover:bg-brutal-accent/20 px-2.5 uppercase tracking-wider font-semibold shrink-0"
-                >
-                  {isAnalyzing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Bot className="w-3 h-3" />}
-                  IA
-                </Button>
 
                 {accountId && jobScore?.recommendation !== 'skip' && (
                   <SequenceEnrollButton
