@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect, useRef } from 'react';
 import { LinkedInFiltersState, LinkedInProfile } from '@/components/outreach/types';
 import { JobMatchResult } from '@/components/outreach/JobScoreDisplay';
 import { Job } from '@/types/jobs';
@@ -77,7 +77,7 @@ export function useFilteredResults({
 
   // Merge search results with pool profiles from DB
   // Cap pool profiles to avoid freezing the main thread with large candidate pools
-  const MAX_POOL_PROFILES = 100;
+  const MAX_POOL_PROFILES = 50;
 
   const mergedResults = useMemo(() => {
     if (!showPoolView || !statuses || statuses.size === 0) return results;
@@ -88,24 +88,58 @@ export function useFilteredResults({
       byId.set(r.id, r);
     }
 
-    // Add DB profiles not in current search (pool profiles) — with pre-score
+    // Add DB profiles not in current search (pool profiles) — WITHOUT pre-score (deferred)
     // Cap to MAX_POOL_PROFILES to avoid blocking the main thread
     let poolAdded = 0;
     for (const [candidateId, status] of statuses) {
       if (poolAdded >= MAX_POOL_PROFILES) break;
       if (!byId.has(candidateId) && canRehydrate(status)) {
         const rehydrated = rehydrateProfile(status);
-        // Calculate pre-score for rehydrated profiles
-        if (selectedJob) {
-          (rehydrated as any)._preScore = calculatePreScore(rehydrated, selectedJob, selectedJob.skills || []);
-        }
         byId.set(candidateId, rehydrated);
         poolAdded++;
       }
     }
 
     return Array.from(byId.values());
-  }, [results, statuses, showPoolView, selectedJob]);
+  }, [results, statuses, showPoolView]);
+
+  // Deferred pre-scoring: calculate pre-scores in chunks to avoid freezing the main thread
+  const [preScores, setPreScores] = useState<Map<string, any>>(new Map());
+  const preScoreGenRef = useRef(0);
+
+  useEffect(() => {
+    if (!selectedJob || mergedResults.length === 0) {
+      setPreScores(new Map());
+      return;
+    }
+
+    const gen = ++preScoreGenRef.current;
+    const jobSkills = selectedJob.skills || [];
+    const profilesToScore = mergedResults.filter(p => !(preScores.has(p.id)));
+    
+    if (profilesToScore.length === 0) return;
+
+    let cancelled = false;
+    const CHUNK_SIZE = 15;
+
+    (async () => {
+      const newScores = new Map(preScores);
+      for (let i = 0; i < profilesToScore.length; i += CHUNK_SIZE) {
+        if (cancelled || gen !== preScoreGenRef.current) return;
+        const chunk = profilesToScore.slice(i, i + CHUNK_SIZE);
+        for (const p of chunk) {
+          newScores.set(p.id, calculatePreScore(p, selectedJob, jobSkills));
+        }
+        // Yield to main thread between chunks
+        await new Promise(r => setTimeout(r, 0));
+      }
+      if (!cancelled && gen === preScoreGenRef.current) {
+        setPreScores(newScores);
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [mergedResults, selectedJob]);
 
   // Count pool-only profiles
   const poolCount = useMemo(() => {
@@ -195,16 +229,16 @@ export function useFilteredResults({
         return scoreB - scoreA;
       });
     } else {
-      // Default sort by pre-score (descending)
+      // Default sort by pre-score (descending) — uses deferred preScores map
       filtered = [...filtered].sort((a, b) => {
-        const preA = (a as any)._preScore?.preScore ?? 50;
-        const preB = (b as any)._preScore?.preScore ?? 50;
+        const preA = preScores.get(a.id)?.preScore ?? (a as any)._preScore?.preScore ?? 50;
+        const preB = preScores.get(b.id)?.preScore ?? (b as any)._preScore?.preScore ?? 50;
         return preB - preA;
       });
     }
 
     return filtered;
-  }, [mergedResults, jobScores, sortByScore, selectedJob, showDismissed, autoHideTreated, treatedIds, dismissedIds, getStatus, statusFilter, scoredSortBy, statuses]);
+  }, [mergedResults, jobScores, sortByScore, selectedJob, showDismissed, autoHideTreated, treatedIds, dismissedIds, getStatus, statusFilter, scoredSortBy, statuses, preScores]);
 
   // Calculate selectable profiles (exclude "peu adapté")
   const selectableProfiles = useMemo(() => {
@@ -226,6 +260,7 @@ export function useFilteredResults({
     allSelectableSelected,
     poolCount,
     mergedResults,
+    preScores,
   };
 }
 
