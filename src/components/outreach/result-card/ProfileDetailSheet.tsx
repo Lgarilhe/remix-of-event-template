@@ -441,9 +441,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
             </div>
 
             {/* ─── ACTIONS BAR ─── */}
-            <div className="flex items-center gap-1.5 mt-3 sm:mt-4 pt-2.5 sm:pt-3 border-t border-foreground/20">
-              {/* Primary actions — horizontal scroll on mobile */}
-              <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar flex-1 min-w-0" data-no-swipe>
+            <div className="flex flex-wrap items-center gap-1.5 mt-3 sm:mt-4 pt-2.5 sm:pt-3 border-t border-foreground/20">
                 {selectedJob && (
                   <Button
                     size="sm"
@@ -467,7 +465,6 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
                     {isScoring ? '…' : 'Scorer'}
                   </Button>
                 )}
-
 
                 {accountId && jobScore?.recommendation !== 'skip' && (
                   <SequenceEnrollButton
@@ -493,10 +490,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
                     onAdded={onProfileTreated}
                   />
                 )}
-              </div>
 
-              {/* Secondary actions — always visible, aligned right */}
-              <div className="flex items-center gap-1.5 shrink-0 border-l border-foreground/10 pl-1.5 ml-1">
                 {profileUrl && (
                   <Button variant="outline" size="sm" asChild className="h-7 gap-1 text-[11px] rounded-none border border-foreground px-2 uppercase tracking-wider font-semibold shrink-0">
                     <a href={profileUrl} target="_blank" rel="noopener noreferrer">
@@ -505,13 +499,13 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
                     </a>
                   </Button>
                 )}
+
                 {onArchive && (
                   <Button variant="outline" size="sm" onClick={onArchive} className="h-7 gap-1 text-[11px] rounded-none border-2 border-destructive text-destructive hover:bg-destructive hover:text-destructive-foreground px-2.5 uppercase tracking-wider font-semibold shrink-0">
                     <Archive className="w-3.5 h-3.5" />
                     Archiver
                   </Button>
                 )}
-              </div>
             </div>
           </SheetHeader>
 
