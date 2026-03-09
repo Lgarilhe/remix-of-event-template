@@ -333,30 +333,6 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
     otherCurrentJobs, pastJobs, connectionsCount, isLikelyToRespond, totalExperience,
   } = profileData;
 
-  const handleAiAnalysis = async () => {
-    if (aiAnalysis) { setAiAnalysis(null); return; }
-    setIsAnalyzing(true);
-    try {
-      const profileSummary = {
-        name: fullName,
-        headline: profile.headline,
-        currentRole,
-        currentCompany,
-        location: profile.location,
-        skills: skills.map((s: any) => s.name || s).slice(0, 10),
-        pastPositions: pastJobs.map((p: any) => `${p.role || p.position} chez ${p.company}`),
-        education: education.map((e: any) => `${e.degree || ''} - ${e.school}`),
-      };
-      const { data, error } = await invokeEdgeFunction<{ analysis?: any }>('analyze-linkedin-profile', { profile: profileSummary });
-      if (error) throw error;
-      setAiAnalysis(data.analysis);
-    } catch (error) {
-      console.error('AI analysis error:', error);
-      toast.error("Erreur lors de l'analyse IA");
-    } finally {
-      setIsAnalyzing(false);
-    }
-  };
 
   const shouldWaitForNotionHistory = Boolean(notionMatch) && notionShortlistsForCandidate.length === 0 && !historyData;
   const historyPanelLoading = historyLoading || (shouldWaitForNotionHistory && notionShortlistLoading);
