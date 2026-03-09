@@ -261,17 +261,7 @@ export default function Outreach() {
                 onAccountChange={setSelectedAccount}
                 onUnreadCountChange={setUnreadMessageCount}
                 initialChatId={searchParams.get('chatId')}
-                onChatChange={useCallback((chatId: string | null) => {
-                  setSearchParams(prev => {
-                    const next = new URLSearchParams(prev);
-                    if (chatId) {
-                      next.set('chatId', chatId);
-                    } else {
-                      next.delete('chatId');
-                    }
-                    return next;
-                  }, { replace: true });
-                }, [setSearchParams])}
+                onChatChange={handleChatChange}
               />
             </div>
           )}
