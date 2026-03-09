@@ -230,6 +230,38 @@ async function handleProcess(supabase: any, force = false) {
           continue;
         }
 
+        // Guard: prevent follow-up messages from being sent if no prior message was sent in this enrollment
+        if (needsMessage(step.action_type) && step.step_order > 0) {
+          const { data: priorSent } = await supabase.from('sequence_step_executions')
+            .select('id')
+            .eq('enrollment_id', enrollment.id)
+            .eq('status', 'sent')
+            .limit(1);
+          
+          // Check if ANY prior message/inmail was sent (not just any step — specifically message-type steps)
+          const { data: priorMessageSent } = await supabase
+            .from('sequence_step_executions')
+            .select('id, step:sequence_steps!inner(action_type)')
+            .eq('enrollment_id', enrollment.id)
+            .eq('status', 'sent')
+            .in('step.action_type', ['message', 'inmail', 'smart_message'])
+            .limit(1);
+
+          if (!priorMessageSent || priorMessageSent.length === 0) {
+            console.warn(`[process] ⛔ GUARD: Skipping ${step.action_type} step ${step.step_order} for ${enrollment.profile_name} — no prior message was sent in this enrollment. Completing sequence.`);
+            await supabase.from('sequence_step_executions').update({ 
+              status: 'skipped', 
+              skip_reason: 'no_previous_message', 
+              executed_at: new Date().toISOString() 
+            }).eq('id', exec.id);
+            await supabase.from('sequence_enrollments').update({ status: 'completed', completed_at: new Date().toISOString() }).eq('id', enrollment.id);
+            // Cancel any remaining scheduled steps for this enrollment
+            await supabase.from('sequence_step_executions').update({ status: 'cancelled', skip_reason: 'no_previous_message' }).eq('enrollment_id', enrollment.id).eq('status', 'scheduled');
+            results.skipped++;
+            continue;
+          }
+        }
+
         const { data: lockResult, error: lockError } = await supabase
           .from('sequence_step_executions').update({ status: 'sending' }).eq('id', exec.id).eq('status', 'scheduled').select().single();
 
@@ -1026,39 +1058,46 @@ async function scheduleNextStep(supabase: any, enrollment: any, currentStepOrder
       const { data } = await supabase.from('sequence_steps').select('*').eq('id', currentStep.next_step_id).maybeSingle();
       nextStep = data;
     } else {
-      // Safe fallback to step_order + 1 for linear sequences
-      const { data: candidateNext } = await supabase.from('sequence_steps').select('*').eq('sequence_id', enrollment.sequence_id).eq('step_order', currentStepOrder + 1).maybeSingle();
-      
-      if (candidateNext) {
-        // Guard: if the candidate next step has a branch-specific condition, verify compatibility
-        if (candidateNext.condition_type) {
-          const connStatus = enrollment.connection_status;
-          if (candidateNext.condition_type === 'if_connected' && connStatus !== 'connected') {
-            console.log(`[scheduleNextStep] Skipping step ${candidateNext.step_order} (if_connected) — enrollment connection_status is '${connStatus}'`);
-            await supabase.from('sequence_enrollments').update({ status: 'completed', completed_at: new Date().toISOString() }).eq('id', enrollment.id);
-            return;
-          }
-          if (candidateNext.condition_type === 'if_not_connected' && connStatus === 'connected') {
-            console.log(`[scheduleNextStep] Skipping step ${candidateNext.step_order} (if_not_connected) — enrollment is connected`);
-            await supabase.from('sequence_enrollments').update({ status: 'completed', completed_at: new Date().toISOString() }).eq('id', enrollment.id);
-            return;
-          }
+      // Before falling back to step_order + 1, check if the CURRENT step is a branch target
+      // (i.e., reached via timeout_branch_step_id, if_true_goto_step, or if_false_goto_step).
+      // If so, step_order + 1 is NOT a valid continuation — it belongs to a different branch.
+      let isBranchTarget = false;
+      if (currentStep?.id) {
+        const { data: referencingSteps } = await supabase.from('sequence_steps')
+          .select('id')
+          .eq('sequence_id', enrollment.sequence_id)
+          .or(`timeout_branch_step_id.eq.${currentStep.id},if_true_goto_step.eq.${currentStep.id},if_false_goto_step.eq.${currentStep.id},next_step_id.eq.${currentStep.id}`);
+        
+        if (referencingSteps && referencingSteps.length > 0) {
+          isBranchTarget = true;
+          console.log(`[scheduleNextStep] Step ${currentStepOrder} is a branch target (referenced by ${referencingSteps.length} step(s)). Blocking step_order+1 fallback → completing sequence.`);
         }
-        nextStep = candidateNext;
-      } else {
-        // No step_order+1 found. Check if we're on a branch target with no explicit continuation.
-        if (currentStep?.id) {
-          const { data: referencingSteps } = await supabase.from('sequence_steps')
-            .select('id')
-            .eq('sequence_id', enrollment.sequence_id)
-            .or(`timeout_branch_step_id.eq.${currentStep.id},if_true_goto_step.eq.${currentStep.id},if_false_goto_step.eq.${currentStep.id}`);
-          
-          if (referencingSteps && referencingSteps.length > 0) {
-            console.log(`[scheduleNextStep] Step ${currentStepOrder} is a branch target with no next_step_id and no step_order+1, completing sequence`);
-          }
-        }
-        // No next step found — sequence complete
       }
+
+      if (!isBranchTarget) {
+        // Safe fallback to step_order + 1 for truly linear sequences
+        const { data: candidateNext } = await supabase.from('sequence_steps').select('*').eq('sequence_id', enrollment.sequence_id).eq('step_order', currentStepOrder + 1).maybeSingle();
+        
+        if (candidateNext) {
+          // Guard: if the candidate next step has a branch-specific condition, verify compatibility
+          if (candidateNext.condition_type) {
+            const connStatus = enrollment.connection_status;
+            if (candidateNext.condition_type === 'if_connected' && connStatus !== 'connected') {
+              console.log(`[scheduleNextStep] Skipping step ${candidateNext.step_order} (if_connected) — enrollment connection_status is '${connStatus}'`);
+              await supabase.from('sequence_enrollments').update({ status: 'completed', completed_at: new Date().toISOString() }).eq('id', enrollment.id);
+              return;
+            }
+            if (candidateNext.condition_type === 'if_not_connected' && connStatus === 'connected') {
+              console.log(`[scheduleNextStep] Skipping step ${candidateNext.step_order} (if_not_connected) — enrollment is connected`);
+              await supabase.from('sequence_enrollments').update({ status: 'completed', completed_at: new Date().toISOString() }).eq('id', enrollment.id);
+              return;
+            }
+          }
+          nextStep = candidateNext;
+        }
+        // else: no step_order+1 found — sequence complete (falls through to !nextStep check below)
+      }
+      // If isBranchTarget and no next_step_id: sequence complete for this branch
     }
   }
 
