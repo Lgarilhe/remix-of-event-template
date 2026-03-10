@@ -283,8 +283,8 @@ GÉNÈRE UN MESSAGE ${messageType === "sms" ? "SMS (~" + maxChars + " caractère
   Cite QUAND (période déduite de l'historique), POUR QUELLE SOCIÉTÉ (l'ancienne société du CRM, crucial si changement de boîte), et un élément concret (candidat présenté par son nom, poste bossé ensemble, placement réussi).
   Ex si même boîte : "On avait bossé ensemble en 2023 chez [Société] quand on t'avait présenté [Candidat] pour le poste de [Titre]"
   Ex si changement de boîte : "On avait collaboré en 2022 quand tu étais chez [Ancienne Société], on t'avait présenté [Candidat] pour [Poste]. J'ai vu que t'étais passé chez [Nouvelle Société], félicitations !"
-- Si changement de boîte, mentionne-le naturellement après la recontextualisation
-- Si promotion, félicite naturellement
+- UNIQUEMENT si changement de boîte avéré (still_same_company=false), mentionne-le naturellement après la recontextualisation. Si la personne est TOUJOURS dans la même boîte au même poste, NE FÉLICITE PAS et ne mentionne aucun changement.
+- UNIQUEMENT si promotion avérée (titre différent dans la même boîte), félicite naturellement. Sinon ne dis rien.
 - CTA : mentionne que Konekt a pas mal évolué avec des nouveautés côté recrutement, RPO et accompagnement (growth, IA), et propose un court call pour en discuter. Intègre le CTA de manière fluide dans le message, pas comme une phrase séparée plaquée à la fin.
 - Signe "Konekt" uniquement pour les SMS
 
