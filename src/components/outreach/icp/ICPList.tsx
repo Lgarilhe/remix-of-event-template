@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Plus, Target, Pencil, Trash2, Building2, Users, Zap, MapPin, Briefcase, Code, ChevronDown, ChevronUp } from 'lucide-react';
+import { Plus, Target, Pencil, Trash2, Building2, Users, Zap, MapPin, Briefcase, Code, ChevronDown, ChevronUp, Search } from 'lucide-react';
 import { useICPs, ICP, ICPCriteria } from '@/hooks/useICPs';
 import { ICPFormModal } from './ICPFormModal';
 import { cn } from '@/lib/utils';
@@ -39,7 +39,7 @@ function CriteriaPreview({ criteria }: { criteria: ICPCriteria }) {
   );
 }
 
-function ICPCard({ icp, onEdit, onDelete }: { icp: ICP; onEdit: () => void; onDelete: () => void }) {
+function ICPCard({ icp, onEdit, onDelete, onSearch }: { icp: ICP; onEdit: () => void; onDelete: () => void; onSearch?: () => void }) {
   const [expanded, setExpanded] = useState(false);
   const typeInfo = TARGET_TYPE_LABELS[icp.target_type] || TARGET_TYPE_LABELS.both;
 
@@ -78,6 +78,11 @@ function ICPCard({ icp, onEdit, onDelete }: { icp: ICP; onEdit: () => void; onDe
           </div>
 
           <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+            {onSearch && (
+              <Button variant="ghost" size="sm" onClick={onSearch} className="h-7 w-7 p-0" title="Rechercher avec cet ICP">
+                <Search className="w-3.5 h-3.5" />
+              </Button>
+            )}
             <Button variant="ghost" size="sm" onClick={onEdit} className="h-7 w-7 p-0">
               <Pencil className="w-3.5 h-3.5" />
             </Button>
@@ -118,7 +123,7 @@ function ICPCard({ icp, onEdit, onDelete }: { icp: ICP; onEdit: () => void; onDe
   );
 }
 
-export function ICPList() {
+export function ICPList({ onSearchFromICP }: { onSearchFromICP?: (icp: ICP) => void } = {}) {
   const { icps, isLoading, createICP, updateICP, deleteICP } = useICPs();
   const [formOpen, setFormOpen] = useState(false);
   const [editingICP, setEditingICP] = useState<ICP | null>(null);
@@ -186,7 +191,7 @@ export function ICPList() {
       ) : (
         <div className="space-y-2">
           {icps.map(icp => (
-            <ICPCard key={icp.id} icp={icp} onEdit={() => handleEdit(icp)} onDelete={() => handleDelete(icp)} />
+            <ICPCard key={icp.id} icp={icp} onEdit={() => handleEdit(icp)} onDelete={() => handleDelete(icp)} onSearch={onSearchFromICP ? () => onSearchFromICP(icp) : undefined} />
           ))}
         </div>
       )}

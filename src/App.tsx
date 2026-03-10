@@ -23,6 +23,7 @@ const Qualification = lazy(() => import("./pages/Qualification"));
 const CandidatePortal = lazy(() => import("./pages/CandidatePortal"));
 const Onboarding = lazy(() => import("./pages/Onboarding"));
 const Settings = lazy(() => import("./pages/Settings"));
+const Prospection = lazy(() => import("./pages/Prospection"));
 
 const PUBLIC_ROUTES = ['/', '/auth', '/portal'];
 
@@ -83,6 +84,7 @@ const AppContent = () => {
           <Route path="/dashboard" element={<ProtectedRoute><OrganizationGuard><Dashboard /></OrganizationGuard></ProtectedRoute>} />
           <Route path="/qualification/:id" element={<ProtectedRoute><OrganizationGuard><Qualification /></OrganizationGuard></ProtectedRoute>} />
           <Route path="/settings" element={<ProtectedRoute><OrganizationGuard><Settings /></OrganizationGuard></ProtectedRoute>} />
+          <Route path="/prospection" element={<ProtectedRoute><OrganizationGuard><Prospection /></OrganizationGuard></ProtectedRoute>} />
           <Route path="/portal/:token" element={<CandidatePortal />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
