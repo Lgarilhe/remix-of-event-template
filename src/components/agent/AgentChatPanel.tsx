@@ -191,9 +191,18 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({ onClose }) => {
             </p>
           </div>
         ) : (
-          messages.map((msg) => (
-            <AgentMessageBubble key={msg.id} message={msg} />
-          ))
+          messages.map((msg, idx) => {
+            const isLastAssistant = msg.role === 'assistant' && 
+              !messages.slice(idx + 1).some(m => m.role === 'assistant');
+            return (
+              <AgentMessageBubble 
+                key={msg.id} 
+                message={msg} 
+                onQuickReply={handleQuickReply}
+                isLastAssistant={isLastAssistant}
+              />
+            );
+          })
         )}
 
         {/* Streaming indicator */}
