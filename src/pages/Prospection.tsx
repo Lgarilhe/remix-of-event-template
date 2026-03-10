@@ -11,6 +11,7 @@ import { cn } from '@/lib/utils';
 import { ICP } from '@/hooks/useICPs';
 
 const tabs = [
+  { value: 'vivier', label: 'Vivier', emoji: '📋' },
   { value: 'icp', label: 'ICP', emoji: '🎯' },
   { value: 'search', label: 'Recherche', emoji: '🔍' },
 ] as const;
