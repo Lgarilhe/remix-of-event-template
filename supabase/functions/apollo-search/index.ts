@@ -157,7 +157,7 @@ Deno.serve(async (req) => {
 
     console.log('[Apollo] Search payload:', JSON.stringify(searchPayload));
 
-    const apolloResponse = await fetch(`${APOLLO_BASE}/v1/mixed_people/search`, {
+    const apolloResponse = await fetch(`${APOLLO_BASE}/v1/mixed_people/api_search`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
