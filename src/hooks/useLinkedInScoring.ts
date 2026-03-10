@@ -785,9 +785,18 @@ export function useLinkedInScoring({
     }
   }, [selectedJob, selectedProfiles, results, allAvailableProfilesRef, autoHideTreatedRef, candidateStatus, setJobScores, setScoringInProgress, setSortByScore, setResults, setSelectedProfiles, customScoringInstructions, accountId]);
 
+  const clearBatchReport = useCallback(() => {
+    setBatchReport([]);
+    setBatchStats(null);
+    setBatchDurationMs(undefined);
+  }, []);
+
   return {
     scoreProfile,
     handleBatchScore,
     batchStats,
+    batchReport,
+    batchDurationMs,
+    clearBatchReport,
   };
 }
