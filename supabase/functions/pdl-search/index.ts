@@ -105,6 +105,41 @@ Deno.serve(async (req) => {
       conditions.push(`job_start_date>='${sixMonthsAgo.toISOString().split('T')[0]}'`);
     }
 
+    // Years of experience (inferred)
+    if (years_experience) {
+      const [minStr, maxStr] = years_experience.split('-');
+      const min = parseInt(minStr);
+      if (!isNaN(min)) conditions.push(`inferred_years_experience>=${min}`);
+      if (maxStr && maxStr !== '+') {
+        const max = parseInt(maxStr);
+        if (!isNaN(max)) conditions.push(`inferred_years_experience<=${max}`);
+      }
+    }
+
+    // Education school name
+    if (education_school) {
+      conditions.push(`education.school.name LIKE '%${education_school}%'`);
+    }
+
+    // Company founded year
+    if (job_company_founded) {
+      const year = job_company_founded.replace('>', '').replace('<', '').trim();
+      if (job_company_founded.startsWith('>')) {
+        conditions.push(`job_company_founded>=${year}`);
+      } else if (job_company_founded.startsWith('<')) {
+        conditions.push(`job_company_founded<=${year}`);
+      } else {
+        conditions.push(`job_company_founded=${year}`);
+      }
+    }
+
+    // Recently funded (within 12 months)
+    if (recently_funded) {
+      const oneYearAgo = new Date();
+      oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
+      conditions.push(`job_company_funding_details.last_funding_date>='${oneYearAgo.toISOString().split('T')[0]}'`);
+    }
+
     if (conditions.length === 0) {
       return new Response(JSON.stringify({ success: false, error: 'Au moins un critère de recherche est requis' }), {
         status: 400,
