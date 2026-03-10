@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { CheckCircle2, XCircle, AlertCircle, ChevronDown, ChevronUp, Ban, Target, ExternalLink, Brain, Filter, Zap, Coins, BarChart3 } from 'lucide-react';
+import { ChevronDown, ChevronUp, Ban, ExternalLink } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
@@ -64,23 +64,28 @@ export const BatchScoringReport: React.FC<BatchScoringReportProps> = ({
   if (entries.length === 0) return null;
 
   return (
-    <div className="border border-foreground bg-muted/20 mb-3 overflow-hidden">
-      {/* Header */}
+    <div className="border border-foreground bg-background mb-3">
+      {/* Header bar */}
+      <div className="h-0.5 bg-brutal-accent" />
       <button
         onClick={() => setExpanded(!expanded)}
-        className="w-full flex items-center justify-between px-3 py-2 hover:bg-muted/40 transition-colors"
+        className="w-full flex items-center justify-between px-3 py-2 hover:bg-muted/30 transition-colors"
       >
-        <div className="flex items-center gap-2 text-xs font-bold text-foreground">
-          <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-          <span>Compte rendu du scoring — {entries.length} profils{durationLabel && ` en ${durationLabel}`}</span>
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] font-bold text-foreground uppercase tracking-widest">
+            Compte rendu — {entries.length} profils{durationLabel && ` en ${durationLabel}`}
+          </span>
         </div>
         <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2 text-[10px]">
-            <span className="text-emerald-600 font-semibold">✅ {counts.go}</span>
-            <span className="text-amber-600 font-semibold">🤔 {counts.maybe}</span>
-            <span className="text-red-500 font-semibold">❌ {counts.skip}</span>
+          <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider">
+            <span className="text-foreground">✅ {counts.go}</span>
+            <span className="text-foreground/60">🤔 {counts.maybe}</span>
+            <span className="text-foreground/40">❌ {counts.skip}</span>
           </div>
-          {expanded ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
+          {expanded
+            ? <ChevronUp className="w-3.5 h-3.5 text-muted-foreground" />
+            : <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />
+          }
         </div>
       </button>
 
@@ -88,43 +93,28 @@ export const BatchScoringReport: React.FC<BatchScoringReportProps> = ({
         <>
           {/* Stats row */}
           {stats && (
-            <div className="grid grid-cols-2 sm:grid-cols-5 gap-y-1 gap-x-4 text-[10px] text-muted-foreground px-3 py-1.5 border-t border-border/50 bg-muted/30">
-              <div className="flex items-center gap-1">
-                <Filter className="w-3 h-3 text-red-400" />
-                <span>{stats.hardFiltered} éliminés par filtres</span>
-              </div>
-              <div className="flex items-center gap-1">
-                <Zap className="w-3 h-3 text-amber-400" />
-                <span>{stats.llmSkipped} sans IA</span>
-              </div>
-              <div className="flex items-center gap-1">
-                <Brain className="w-3 h-3 text-purple-400" />
-                <span>{stats.llmCalled} scorés par IA</span>
-              </div>
-              <div className="flex items-center gap-1">
-                <BarChart3 className="w-3 h-3" />
-                <span>Moy: <span className="font-semibold text-foreground">{stats.avgScore}/100</span></span>
-              </div>
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-y-1 gap-x-4 text-[10px] text-muted-foreground px-3 py-1.5 border-t border-border bg-muted/20 font-medium uppercase tracking-wider">
+              <span>🚫 {stats.hardFiltered} éliminés par filtres</span>
+              <span>⚡ {stats.llmSkipped} sans IA</span>
+              <span>🧠 {stats.llmCalled} scorés par IA</span>
+              <span>📊 Moy: <span className="font-bold text-foreground">{stats.avgScore}/100</span></span>
               {stats.totalTokens > 0 && (
-                <div className="flex items-center gap-1">
-                  <Coins className="w-3 h-3" />
-                  <span>{stats.totalTokens.toLocaleString()} tokens</span>
-                </div>
+                <span>🪙 {stats.totalTokens.toLocaleString()} tokens</span>
               )}
             </div>
           )}
 
           {/* Filter tabs */}
-          <div className="flex items-center gap-px px-3 py-1.5 border-t border-border/50">
+          <div className="flex items-center gap-px px-3 py-1.5 border-t border-border">
             {FILTER_TABS.map(tab => (
               <button
                 key={tab.value}
                 onClick={() => setFilter(tab.value)}
                 className={cn(
-                  "h-6 px-2 text-[10px] font-medium transition-colors",
+                  "h-6 px-2 text-[10px] font-bold uppercase tracking-wider transition-colors",
                   filter === tab.value
-                    ? 'bg-primary text-primary-foreground'
-                    : 'text-muted-foreground hover:text-foreground hover:bg-muted/60'
+                    ? 'bg-foreground text-background'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-muted/40'
                 )}
               >
                 {tab.emoji} {tab.label} {counts[tab.value] > 0 && `(${counts[tab.value]})`}
@@ -133,18 +123,23 @@ export const BatchScoringReport: React.FC<BatchScoringReportProps> = ({
           </div>
 
           {/* Entries list */}
-          <ScrollArea className="max-h-[300px] border-t border-border/50">
-            <div className="divide-y divide-border/30">
+          <ScrollArea className="max-h-[280px] border-t border-border">
+            <div className="divide-y divide-border/40">
               {filtered.map(entry => (
                 <ReportEntryRow key={entry.profileId} entry={entry} />
               ))}
             </div>
           </ScrollArea>
 
-          {/* Close button */}
+          {/* Close */}
           {onClose && (
-            <div className="flex justify-end px-3 py-1.5 border-t border-border/50">
-              <Button variant="ghost" size="sm" onClick={onClose} className="h-6 text-[10px]">
+            <div className="flex justify-end px-3 py-1.5 border-t border-border">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={onClose}
+                className="h-6 text-[10px] font-bold uppercase tracking-wider text-muted-foreground hover:text-foreground"
+              >
                 Fermer le rapport
               </Button>
             </div>
@@ -158,31 +153,29 @@ export const BatchScoringReport: React.FC<BatchScoringReportProps> = ({
 const ReportEntryRow: React.FC<{ entry: BatchReportEntry }> = ({ entry }) => {
   const [showDetails, setShowDetails] = useState(false);
 
-  const recConfig = {
-    go: { icon: CheckCircle2, label: 'Go', cls: 'text-emerald-600' },
-    maybe: { icon: AlertCircle, label: 'Maybe', cls: 'text-amber-600' },
-    skip: { icon: XCircle, label: 'Skip', cls: 'text-red-500' },
+  const recEmoji = {
+    go: '✅',
+    maybe: '🤔',
+    skip: '❌',
   }[entry.recommendation];
-
-  const Icon = recConfig.icon;
 
   return (
     <div className="px-3 py-1.5 hover:bg-muted/20 transition-colors">
       <div className="flex items-center gap-2 min-w-0">
-        {/* Recommendation icon */}
-        <Icon className={cn("w-3.5 h-3.5 shrink-0", recConfig.cls)} />
+        {/* Recommendation emoji */}
+        <span className="text-xs shrink-0">{recEmoji}</span>
 
         {/* Score */}
         <span className={cn(
-          "text-xs font-bold tabular-nums w-8 text-right shrink-0",
-          entry.score >= 70 ? 'text-emerald-600' :
-          entry.score >= 45 ? 'text-amber-600' : 'text-red-500'
+          "text-xs font-black tabular-nums w-7 text-right shrink-0",
+          entry.score >= 70 ? 'text-foreground' :
+          entry.score >= 45 ? 'text-foreground/60' : 'text-foreground/30'
         )}>
           {entry.score}
         </span>
 
         {/* Name */}
-        <span className="text-xs font-medium text-foreground truncate min-w-0">
+        <span className="text-xs font-bold text-foreground truncate min-w-0 uppercase tracking-wide">
           {entry.name}
         </span>
 
@@ -192,7 +185,7 @@ const ReportEntryRow: React.FC<{ entry: BatchReportEntry }> = ({ entry }) => {
             href={entry.profileUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-[#0077B5] hover:text-[#005885] shrink-0"
+            className="text-muted-foreground hover:text-foreground shrink-0 transition-colors"
             onClick={e => e.stopPropagation()}
           >
             <ExternalLink className="w-3 h-3" />
@@ -201,7 +194,7 @@ const ReportEntryRow: React.FC<{ entry: BatchReportEntry }> = ({ entry }) => {
 
         {/* Hard filter badge */}
         {entry.hardFilterPassed === false && (
-          <span className="inline-flex items-center gap-0.5 text-[9px] px-1.5 py-0.5 bg-red-50 text-red-600 border border-red-200 shrink-0">
+          <span className="inline-flex items-center gap-0.5 text-[9px] px-1.5 py-0.5 bg-muted text-foreground/60 border border-foreground/20 font-bold uppercase tracking-wider shrink-0">
             <Ban className="w-2.5 h-2.5" />
             Filtre KO
           </span>
@@ -209,7 +202,7 @@ const ReportEntryRow: React.FC<{ entry: BatchReportEntry }> = ({ entry }) => {
 
         {/* Dismissed badge */}
         {entry.dismissed && entry.hardFilterPassed !== false && (
-          <span className="text-[9px] px-1.5 py-0.5 bg-muted text-muted-foreground border border-border shrink-0">
+          <span className="text-[9px] px-1.5 py-0.5 bg-muted text-muted-foreground border border-foreground/10 font-bold uppercase tracking-wider shrink-0">
             Écarté
           </span>
         )}
@@ -220,7 +213,7 @@ const ReportEntryRow: React.FC<{ entry: BatchReportEntry }> = ({ entry }) => {
         {/* Details toggle */}
         <button
           onClick={() => setShowDetails(!showDetails)}
-          className="text-[9px] text-muted-foreground hover:text-foreground shrink-0"
+          className="text-[9px] text-muted-foreground hover:text-foreground font-bold uppercase tracking-wider shrink-0 transition-colors"
         >
           {showDetails ? 'Masquer' : 'Détails'}
         </button>
@@ -228,22 +221,24 @@ const ReportEntryRow: React.FC<{ entry: BatchReportEntry }> = ({ entry }) => {
 
       {/* Headline */}
       {entry.headline && (
-        <p className="text-[10px] text-muted-foreground truncate ml-[3.25rem]">
+        <p className="text-[10px] text-muted-foreground truncate ml-[3.25rem] mt-0.5">
           {entry.headline}
         </p>
       )}
 
       {/* Expanded details */}
       {showDetails && (
-        <div className="mt-1 ml-[3.25rem] text-[10px] text-muted-foreground space-y-0.5">
+        <div className="mt-1.5 ml-[3.25rem] text-[10px] text-muted-foreground space-y-1 border-l-2 border-foreground/10 pl-2">
           {entry.hardFilterKO && (
-            <p className="text-red-500">
-              <strong>Raison du filtre :</strong> {entry.hardFilterKO}
+            <p>
+              <span className="font-bold text-foreground/70 uppercase tracking-wider text-[9px]">Raison filtre :</span>{' '}
+              {entry.hardFilterKO}
             </p>
           )}
           {entry.summary && (
             <p>
-              <strong>Résumé :</strong> {entry.summary}
+              <span className="font-bold text-foreground/70 uppercase tracking-wider text-[9px]">Résumé :</span>{' '}
+              {entry.summary}
             </p>
           )}
         </div>
