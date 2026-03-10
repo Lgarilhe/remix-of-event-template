@@ -28,6 +28,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 interface SearchResultsPanelProps {
   // Results
   results: LinkedInProfile[];
+  mergedResults: LinkedInProfile[];
   filteredResults: LinkedInProfile[];
   loading: boolean;
   loadingMore: boolean;
@@ -106,6 +107,7 @@ const getProfileDisplayName = (p: Pick<LinkedInProfile, 'name' | 'first_name' | 
 
 export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
   results,
+  mergedResults,
   filteredResults,
   loading,
   loadingMore,
@@ -200,12 +202,14 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
   const { getMatch: getNotionMatch } = useNotionMatch(notionMatchInputs);
   // Pre-fetch Notion shortlist data so it's available in ProfileDetailSheet & LinkedInResultCard
   useNotionShortlist();
-  // Count by status for filter badges — computed from DB statuses (stable across filter changes)
+  // Count by status for filter badges — based on renderable profiles only
   const statusCounts = React.useMemo(() => {
     const counts = { scored: 0, scored_go: 0, scored_maybe: 0, scored_contacted: 0, scored_not_contacted: 0, messaged: 0, dismissed: 0, untreated: 0, known: 0 };
-    
-    // Count from DB statuses (source of truth, independent of current search filters)
-    for (const [candidateId, s] of treatedCandidates) {
+    const renderableIds = new Set(mergedResults.map((r) => r.id));
+
+    // Count only candidates we can actually render in the current view universe
+    for (const candidateId of renderableIds) {
+      const s = treatedCandidates.get(candidateId);
       if (!s || s.status === 'discovered') { counts.untreated++; continue; }
       if (s.status === 'scored') {
         counts.scored++;
@@ -227,8 +231,8 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
       else if (s.status === 'dismissed') counts.dismissed++;
     }
 
-    // Count "known" from visible results (needs profile data for Notion/Airtable matching)
-    for (const r of results) {
+    // Count "known" from renderable profiles
+    for (const r of mergedResults) {
       const profileUrl = getCanonicalProfileUrl(r);
       const notionMatch = getNotionMatch({
         url: profileUrl,
@@ -240,7 +244,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
     }
 
     return counts;
-  }, [results, treatedCandidates, jobScores, getAirtableMatch, getNotionMatch]);
+  }, [mergedResults, treatedCandidates, jobScores, getAirtableMatch, getNotionMatch]);
 
   // Apply "known" filter to filteredResults
   const displayResults = React.useMemo(() => {
@@ -302,7 +306,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
           {/* Status filter pills */}
           <div className="flex items-center gap-px bg-muted/40 p-px border border-border shrink-0">
             {([
-              { value: 'all' as const, emoji: '👥', count: Math.max(results.length, treatedCandidates.size) },
+              { value: 'all' as const, emoji: '👥', count: mergedResults.length },
               { value: 'untreated' as const, emoji: '👁', count: statusCounts.untreated },
               { value: 'scored' as const, emoji: '🎯', count: statusCounts.scored },
               { value: 'messaged' as const, emoji: '✉️', count: statusCounts.messaged },
@@ -455,7 +459,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
       <div className="flex-1 overflow-x-auto overflow-y-auto" ref={scrollAreaRef}>
         {loading && results.length === 0 ? (
           <BrutalLoader variant="search" rows={5} />
-        ) : results.length === 0 ? (
+        ) : displayResults.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-12 text-muted-foreground px-8">
             {hasSearched ? (
               <>
@@ -463,19 +467,16 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
                   <Search className="w-10 h-10" />
                 </div>
                 <p className="text-lg font-medium text-foreground/60 mb-2">
-                  Aucun profil trouvé
+                  {results.length === 0 ? 'Aucun profil trouvé' : 'Aucun profil dans ce filtre'}
                 </p>
                 <p className="text-sm text-center max-w-md mb-4">
-                  Essayez d'ajuster vos filtres pour élargir votre recherche
+                  {results.length === 0
+                    ? "Essayez d'ajuster vos filtres pour élargir votre recherche"
+                    : "Ce segment est vide pour le lot affiché. Essayez le filtre 'Tous' ou chargez le lot suivant."}
                 </p>
-                {selectedJob && (
-                  <Button
-                    onClick={() => onRefineSearch('expand')}
-                    disabled={refineLoading}
-                    className="gap-2 bg-foreground text-background hover:bg-foreground/90"
-                  >
-                    {refineLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Maximize2 className="w-4 h-4" />}
-                    Élargir les filtres avec l'IA
+                {results.length > 0 && statusFilter !== 'all' && (
+                  <Button variant="outline" size="sm" onClick={() => onSetStatusFilter('all')}>
+                    Voir tous les profils
                   </Button>
                 )}
               </>
