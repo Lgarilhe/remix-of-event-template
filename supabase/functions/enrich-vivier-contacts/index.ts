@@ -238,6 +238,7 @@ Deno.serve(async (req) => {
         if (count > maxCount) { maxCount = count; mainConsultant = author; }
       });
       const mainConsultantFirstName = mainConsultant ? (mainConsultant as string).split(" ")[0] : null;
+      const isSenderTheMainConsultant = mainConsultantFirstName?.toLowerCase() === senderFirstName.toLowerCase();
       const allConsultantsList = [...authorCounts.entries()].map(([name, count]) => `${name} (${count} notes)`).join(", ") || "aucun";
 
       const apolloProfile = `
