@@ -424,6 +424,8 @@ export function useLinkedInScoring({
   accountId,
 }: ScoringOptions) {
   const [batchStats, setBatchStats] = useState<BatchScoringStats | null>(null);
+  const [batchReport, setBatchReport] = useState<BatchReportEntry[]>([]);
+  const [batchDurationMs, setBatchDurationMs] = useState<number | undefined>(undefined);
 
   // Score a single profile
   const scoreProfile = useCallback(async (profile: LinkedInProfile) => {
