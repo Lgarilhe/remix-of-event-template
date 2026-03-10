@@ -10,8 +10,6 @@ import { ProspectProfile } from '@/pages/Prospection';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
-// Source types
-type SearchSource = 'pdl' | 'apollo' | 'both';
 
 // PDL canonical values
 const JOB_TITLE_ROLES = [
