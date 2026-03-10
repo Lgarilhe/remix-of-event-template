@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import linkedinLogo from '@/assets/linkedin-logo.png';
 import { supabase } from '@/integrations/supabase/client';
+import { CandidateCommentsTab } from './CandidateCommentsTab';
 import { ATSCandidate, ATS_STAGES } from '@/hooks/useATSData';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
@@ -54,6 +55,7 @@ const tabsConfig = [
   { key: 'evaluation', label: 'Évaluation', icon: ClipboardCheck },
   { key: 'fraud', label: 'Vérification', icon: Shield },
   { key: 'activity', label: 'Activité', icon: Activity },
+  { key: 'comments', label: 'Discussion', icon: MessageSquare },
   { key: 'notes', label: 'Notes', icon: StickyNote },
   { key: 'reminders', label: 'Rappels', icon: Bell },
 ] as const;
@@ -1009,6 +1011,15 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
                   </div>
                 )}
               </div>
+            )}
+
+            {/* ==================== COMMENTS TAB ==================== */}
+            {activeTab === 'comments' && (
+              <CandidateCommentsTab
+                candidateId={candidate.candidateId}
+                candidateName={candidate.name}
+                jobId={candidate.jobId}
+              />
             )}
 
             {/* ==================== NOTES TAB ==================== */}
