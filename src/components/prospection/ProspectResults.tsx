@@ -119,6 +119,7 @@ function ProspectCard({ prospect }: { prospect: ProspectProfile }) {
   const avatarCandidates = getProfilePicCandidates(prospect);
   const [avatarIndex, setAvatarIndex] = useState(0);
   const avatarUrl = avatarCandidates[avatarIndex];
+  const fallbackToNextAvatar = () => setAvatarIndex((prev) => (prev < avatarCandidates.length - 1 ? prev + 1 : prev));
 
   const copyEmail = (email: string) => {
     navigator.clipboard.writeText(email);
