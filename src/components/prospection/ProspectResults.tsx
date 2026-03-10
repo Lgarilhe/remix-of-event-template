@@ -44,20 +44,22 @@ function buildLocation(prospect: ProspectProfile) {
 
 function extractLinkedInUsername(url?: string | null) {
   if (!url) return null;
-  const match = url.match(/linkedin\.com\/in\/([^\/\?]+)/);
+  const match = url.match(/linkedin\.com\/(?:in|pub)\/([^\/\?]+)/i);
   return match?.[1] || null;
 }
 
 function getProfilePicCandidates(prospect: ProspectProfile): string[] {
   const candidates: string[] = [];
 
-  if (prospect.profile_pic_url) {
-    candidates.push(prospect.profile_pic_url);
-  }
+  if (prospect.profile_pic_url) candidates.push(prospect.profile_pic_url);
 
   const linkedinUsername = extractLinkedInUsername(prospect.linkedin_url);
   if (linkedinUsername) {
     candidates.push(`https://unavatar.io/linkedin/${linkedinUsername}`);
+  }
+
+  if (prospect.full_name) {
+    candidates.push(`https://ui-avatars.com/api/?name=${encodeURIComponent(prospect.full_name)}&background=E2E8F0&color=111827&size=128&bold=true`);
   }
 
   return [...new Set(candidates.filter(Boolean))];
@@ -79,6 +81,7 @@ function getCompanyLogoCandidates(companyName?: string, website?: string | null)
   if (companyName) {
     const slug = companyName.toLowerCase().replace(/[^a-z0-9]/g, '');
     if (slug) candidates.push(`https://unavatar.io/${slug}.com`);
+    candidates.push(`https://ui-avatars.com/api/?name=${encodeURIComponent(companyName)}&background=E2E8F0&color=111827&size=64&bold=true`);
   }
 
   return [...new Set(candidates.filter(Boolean))];
@@ -97,7 +100,7 @@ function CompanyLogo({ companyName, website }: { companyName?: string; website?:
       src={logos[logoIndex]}
       alt=""
       className="w-4 h-4 rounded border border-border/30 object-contain bg-background shrink-0"
-      onError={() => setLogoIndex((prev) => prev + 1)}
+      onError={() => setLogoIndex((prev) => (prev < logos.length - 1 ? prev + 1 : prev))}
       loading="lazy"
       referrerPolicy="no-referrer"
     />
