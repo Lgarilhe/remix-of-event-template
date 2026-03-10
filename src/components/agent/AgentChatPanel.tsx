@@ -91,7 +91,6 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({ onClose }) => {
     handleSend(text);
   }, [handleSend]);
 
-  const [showOptions, setShowOptions] = useState(true);
 
   // Extract options from last assistant message
   const lastAssistantOptions = useMemo(() => {
