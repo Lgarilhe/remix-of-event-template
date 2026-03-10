@@ -1,7 +1,8 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { Bot, Send, ArrowLeft, Plus, Loader2 } from 'lucide-react';
 import { useAgentChat, AgentConversation } from '@/hooks/useAgentChat';
-import { AgentMessageBubble } from './AgentMessageBubble';
+import { AgentMessageBubble, extractOptions } from './AgentMessageBubble';
+import { AgentOptionsSheet } from './AgentOptionsSheet';
 import { AgentConversationsList } from './AgentConversationsList';
 import { Job } from '@/types/jobs';
 import { useNotionJobs } from '@/hooks/useNotionJobs';
