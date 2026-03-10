@@ -238,43 +238,40 @@ Parcours récent: ${(apollo.employment_history || []).slice(0, 3).map((e: any) =
       const messageType = hasMobile ? "sms" : "linkedin";
       const maxChars = hasMobile ? 160 : 400;
 
-      const prompt = `Tu es un recruteur tech senior chez Konekt, un cabinet de recrutement tech.
+      const prompt = `Tu es un business developer senior chez Konekt, cabinet de recrutement tech basé à Paris. Tu reprends contact avec un ancien interlocuteur client.
 
-CONTACT CLIENT :
+RÈGLES ABSOLUES POUR LE MESSAGE :
+- ${tutoiement ? "TUTOIE obligatoirement" : "VOUVOIE obligatoirement"} cette personne
+- Écris comme un humain qui envoie un ${messageType === "sms" ? "SMS" : "message LinkedIn"} à quelqu'un qu'il connaît, PAS comme un robot ou un template marketing
+- ${messageType === "sms" ? "SMS = ~" + maxChars + " caractères MAX. Sois ultra concis." : "LinkedIn = ~" + maxChars + " caractères MAX."}
+- JAMAIS de formules corporate : "j'espère que tu vas bien", "je me permets de", "dans le cadre de", "n'hésite pas à"
+- JAMAIS mentionner "notre CRM", "notre base", "nos données"
+- Commence DIRECTEMENT par un élément concret et spécifique de l'historique ci-dessous (un placement réussi, un candidat qu'on avait présenté, un poste qu'on avait bossé ensemble)
+- Si la personne a changé de boîte (ancienne société vs actuelle Apollo), mentionne-le naturellement comme accroche ("j'ai vu que t'avais bougé chez X" ou "félicitations pour X")
+- L'objectif est de proposer un café/call pour faire le point, pas de vendre quoi que ce soit
+- Signe avec "— Konekt" uniquement pour les SMS
+
+CONTACT :
 - Nom : ${contact.full_name || "?"}
-- Ancien titre : ${contact.title || "?"}
+- Ancien poste CRM : ${contact.title || "?"}
 - Type : ${contact.contact_type || "?"}
-- Société dans notre CRM : ${contact.company_name || "?"}
+- Ancienne société : ${contact.company_name || "?"}
 - Ville : ${contact.city || "?"}
-${tutoiement ? "- TUTOIEMENT : oui, tutoie cette personne" : "- VOUVOIEMENT : vouvoie cette personne"}
 
-PROFIL APOLLO ACTUEL :
+PROFIL ACTUEL (Apollo) :
 ${apolloProfile}
 
-HISTORIQUE AVEC KONEKT :
-${shortlistContext || "Aucune shortlist"}
-${notesContext || "Aucune note"}
-${placementContext || "Aucun placement"}
+HISTORIQUE KONEKT (utilise ces éléments comme HOOK dans le message) :
+Shortlists/missions : ${shortlistContext || "Aucune shortlist trouvée"}
+Notes internes : ${notesContext || "Aucune note"}
+Placements réussis : ${placementContext || "Aucun placement"}
 
-INSTRUCTIONS :
-1. QUALIFIE : Ce contact est-il pertinent pour une reprise de relation commerciale ? (oui/non)
-   - Pertinent si : toujours en poste décisionnaire (RH, DRH, Head of, CTO, CEO, manager), dans une boîte qui recrute, historique positif
-   - Non pertinent si : a quitté son poste décisionnaire, plus dans le même secteur, relation difficile dans les notes
+QUALIFICATION :
+Pertinent = toujours en poste décisionnaire (RH, DRH, Talent, Head of, CTO, CEO, VP, manager recrutement) dans une boîte tech/qui recrute des profils tech + historique positif avec Konekt.
+Non pertinent = a quitté un rôle décisionnaire, freelance/indépendant, secteur non tech, relation négative dans les notes.
 
-2. GÉNÈRE UN MESSAGE ${messageType === "sms" ? "SMS (~" + maxChars + " caractères max)" : "LinkedIn (~" + maxChars + " caractères max)"} :
-   - ${tutoiement ? "Tutoie" : "Vouvoie"} la personne
-   - Mentionne un élément concret de l'historique (un placement réussi, un candidat présenté)
-   - Ton naturel, peer-to-peer, pas corporate
-   - Ne dis jamais "j'ai vu dans notre CRM" ou similaire
-   - Si le contact a changé de société, mentionne-le naturellement
-   - Objectif : reprendre contact et proposer un échange
-
-Réponds EXACTEMENT dans ce format JSON :
-{
-  "is_relevant": true/false,
-  "relevance_reason": "explication courte",
-  "message": "le message"
-}`;
+Réponds en JSON strict :
+{"is_relevant": true, "relevance_reason": "raison en 1 phrase", "message": "le message"}`;
 
       try {
         const aiResp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
