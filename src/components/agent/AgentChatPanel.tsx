@@ -44,8 +44,20 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({ onClose }) => {
       setSelectedJob(job || null);
       setShowList(false);
       setJobSentForConv(null);
+
+      // Agent takes initiative: auto-send first message with job context
+      if (job) {
+        setTimeout(async () => {
+          await sendMessage(
+            `Analyse cette fiche de poste et propose-moi un plan de recherche LinkedIn optimisé.`,
+            job,
+            id
+          );
+        }, 100);
+        setJobSentForConv(id);
+      }
     }
-  }, [createConversation]);
+  }, [createConversation, sendMessage]);
 
   const handleSelectConversation = useCallback((conv: AgentConversation) => {
     setConversationId(conv.id);

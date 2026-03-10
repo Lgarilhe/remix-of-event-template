@@ -81,8 +81,9 @@ export const useAgentChat = (conversationId: string | null) => {
   }, [conversationId]);
 
   // Send message with streaming
-  const sendMessage = useCallback(async (content: string, jobContext?: Job | null) => {
-    if (!conversationId || !content.trim() || sending) return;
+  const sendMessage = useCallback(async (content: string, jobContext?: Job | null, overrideConversationId?: string) => {
+    const convId = overrideConversationId || conversationId;
+    if (!convId || !content.trim() || sending) return;
 
     setSending(true);
     setStreamingContent('');
@@ -90,7 +91,7 @@ export const useAgentChat = (conversationId: string | null) => {
     // Optimistic user message
     const tempMsg: AgentMessage = {
       id: `temp-${Date.now()}`,
-      conversation_id: conversationId,
+      conversation_id: convId,
       role: 'user',
       content,
       metadata: {},
@@ -114,7 +115,7 @@ export const useAgentChat = (conversationId: string | null) => {
           'apikey': import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
         },
         body: JSON.stringify({
-          conversation_id: conversationId,
+          conversation_id: convId,
           message: content,
           job_context: jobContext || undefined,
         }),
@@ -171,7 +172,7 @@ export const useAgentChat = (conversationId: string | null) => {
 
         setMessages(prev => [...prev, {
           id: `assistant-${Date.now()}`,
-          conversation_id: conversationId,
+          conversation_id: convId,
           role: 'assistant',
           content: accumulated,
           metadata,
