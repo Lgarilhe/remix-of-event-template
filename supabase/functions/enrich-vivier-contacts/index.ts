@@ -252,7 +252,13 @@ Parcours récent: ${(apollo.employment_history || []).slice(0, 3).map((e: any) =
       const messageType = hasMobile ? "sms" : "linkedin";
       const maxChars = hasMobile ? 160 : 400;
 
-      const prompt = `Tu es un business developer senior chez Konekt, cabinet de recrutement tech basé à Paris. Tu analyses un ancien contact client pour décider si on doit reprendre contact.
+      const consultantContext = mainConsultantFirstName
+        ? (isSenderTheMainConsultant
+          ? `L'expéditeur (${senderFirstName}) est la personne qui a le plus interagi avec ce contact. Utilise "je" / "on" pour parler de la collaboration passée.`
+          : `Le consultant principal qui a interagi avec ce contact est ${mainConsultantFirstName}. L'expéditeur est ${senderFirstName}. Mentionne le collègue naturellement, ex: "mon collègue ${mainConsultantFirstName} avait bossé avec toi en 2023 chez [Société]..."`)
+        : `L'expéditeur est ${senderFirstName}. Pas de consultant identifié, utilise "on" pour parler de Konekt.`;
+
+      const prompt = `Tu es ${senderFirstName}, business developer chez Konekt, cabinet de recrutement tech basé à Paris. Tu analyses un ancien contact client pour décider si on doit reprendre contact.
 
 CONTACT DANS NOTRE CRM :
 - Nom : ${contact.full_name || "?"}
@@ -268,6 +274,9 @@ HISTORIQUE AVEC KONEKT :
 Shortlists/missions : ${shortlistContext || "Aucune shortlist trouvée"}
 Notes internes : ${notesContext || "Aucune note"}
 Placements réussis : ${placementContext || "Aucun placement"}
+
+ATTRIBUTION CONSULTANT :
+${consultantContext}
 
 ANALYSE EN 3 ÉTAPES :
 
@@ -289,17 +298,19 @@ ANALYSE EN 3 ÉTAPES :
 
 GÉNÈRE UN MESSAGE ${messageType === "sms" ? "SMS (MAXIMUM " + maxChars + " caractères, c'est un SMS donc sois ULTRA CONCIS)" : "LinkedIn (~" + maxChars + " caractères max)"} :
 - TUTOIE obligatoirement
+- Le message vient de ${senderFirstName}, PAS de "Konekt" en tant qu'entité. Écris à la première personne.
 - STYLE : direct, concis, naturel. Comme un vrai SMS/message entre pros qui se connaissent.
 - FORMULES INTERDITES (ne les utilise JAMAIS, même reformulées) : "je serais ravi", "j'espère que tu vas bien", "je me permets de", "dans le cadre de", "n'hésite pas à", "ravi de", "au plaisir de", "je serais enchanté", "ce serait un plaisir". Ces formules sonnent faux et IA.
 - JAMAIS mentionner "notre CRM", "notre base", "nos données"
 - JAMAIS utiliser de placeholders vagues comme "ton ancienne société", "ta précédente boîte", "ton ancien poste". Si tu ne connais pas le nom exact de la société, UTILISE le champ "Ancienne société" fourni dans le contexte CRM ci-dessus. Si ce champ est vide ou "?", alors ne mentionne pas la société et accroche sur autre chose.
-- RECONTEXTUALISE OBLIGATOIREMENT la collaboration passée :
-  Cite le NOM EXACT de la société (pas "ton ancienne société"), QUAND (période déduite de l'historique), et un élément concret (candidat par son nom, poste, placement).
-  Ex : "On avait bossé ensemble en 2023 chez Doctolib quand on t'avait présenté Mansour pour un poste de tech lead"
+- RECONTEXTUALISE OBLIGATOIREMENT la collaboration passée en respectant l'attribution consultant :
+  Si ${senderFirstName} est le consultant principal → utilise "je" : "Je t'avais présenté Mansour en 2023 quand tu étais chez Doctolib"
+  Si c'est un collègue → mentionne-le : "Mon collègue ${mainConsultantFirstName || "X"} avait bossé avec toi en 2023 chez Doctolib"
+  Cite toujours le NOM EXACT de la société, QUAND, et un élément concret.
 - UNIQUEMENT si changement de boîte avéré (still_same_company=false), mentionne-le naturellement. Si même boîte même poste, NE FÉLICITE PAS.
 - UNIQUEMENT si promotion avérée (titre différent dans la même boîte), félicite. Sinon rien.
-- CTA : mentionne que Konekt a pas mal évolué (recrutement, RPO, growth, IA) et propose un court call. Formule-le de manière directe genre "Konekt a bien bougé depuis, on fait des trucs nouveaux côté RPO et growth/IA. Ça te dit un call de 15 min ?"
-- Signe "Konekt" uniquement pour les SMS
+- CTA : mentionne que Konekt a pas mal évolué (recrutement, RPO, growth, IA) et propose un court call. Formule-le de manière directe.
+- Signe avec le prénom "${senderFirstName}" pour les SMS (pas "Konekt").
 - Pour les SMS : RESPECTE LA LIMITE DE ${maxChars} CARACTÈRES. Chaque mot compte. Va droit au but.
 
 Réponds en JSON strict :
