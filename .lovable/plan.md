@@ -1,81 +1,64 @@
 
 
-## Plan : Enrichissement contacts clients via Apollo + Génération messages via Claude Sonnet
+# Plan : Refonte du coaching live -- mode "checklist + signaux"
 
-### Données actuelles
-- **1171 contacts** au total
-- **776** ont une URL LinkedIn → enrichissement Apollo via `linkedin_url`
-- **395** sans URL LinkedIn mais ont `full_name` + `company_name` (via join companies) → enrichissement Apollo via `first_name` + `last_name` + `domain`
-- **731** ont un mobile → SMS possible
-- Champs utiles dans `raw_data` : `Prénom`, `Nom`, `Mobile`, `Ligne direct`, `URL linkedin`, `Tutoiement`, `Titre du poste`
+## Concept
 
-### Architecture
+Remplacer le feed chronologique (liste d'alertes qui s'empilent) par deux sections stables :
 
-#### 1. Table `vivier_enrichments`
-Stocke le résultat Apollo + verdict AI + message généré par contact.
+1. **Checklist des critères** : la liste complète des critères de la scorecard, chacun avec un statut (pas encore abordé / couvert / signal positif/négatif). L'IA coche automatiquement quand le sujet est traité. Le recruteur voit d'un coup d'oeil ce qu'il reste à couvrir.
 
-| Colonne | Description |
-|---|---|
-| `contact_airtable_id` (text, unique) | Lien vers airtable_contacts |
-| `linkedin_url` | URL LinkedIn (directe ou trouvée par Apollo) |
-| `match_type` | `'linkedin'` ou `'fuzzy'` |
-| `current_job_title` | Poste actuel Apollo |
-| `current_company` | Société actuelle |
-| `headline` | Headline |
-| `location` | Localisation |
-| `apollo_data` | JSONB complet Apollo |
-| `is_relevant` | Verdict AI |
-| `relevance_reason` | Explication |
-| `generated_message` | SMS ou message généré |
-| `message_type` | `'sms'` / `'linkedin'` |
-| `message_status` | `'draft'` / `'sent'` / `'skipped'` |
-| `enriched_at` | Timestamp |
-| `organization_id` | Multi-tenant |
-
-RLS org-based.
-
-#### 2. Edge function `enrich-vivier-contacts`
-
-**Enrichissement Apollo** (batch de 10 via `/api/v1/people/bulk_match`) :
-- Contacts avec LinkedIn URL → paramètre `linkedin_url`
-- Contacts sans LinkedIn URL → paramètres `first_name` + `last_name` + `domain` (domaine du site web de la société Airtable, ou nom société)
-- Apollo retourne le profil actuel : poste, société, localisation, email, téléphone, parcours
-
-**Qualification + Message via Claude Sonnet** (Anthropic, `ANTHROPIC_API_KEY` déjà configuré) :
-- Un appel par contact enrichi avec tout le contexte :
-  - Profil Apollo actuel (poste, société, parcours)
-  - Historique Airtable (shortlists avec noms de postes/candidats, notes, placements)
-  - Type de contact (Référent RH, Décisionnaire, etc.)
-  - Préférence tutoiement depuis `raw_data->>'Tutoiement'`
-  - Mobile dispo → SMS court (~160 chars) ; sinon → message LinkedIn
-- L'AI qualifie (pertinent ou non) et génère le message en un seul appel
-
-#### 3. UI dans VivierList
-
-- **Bouton "Enrichir & qualifier"** dans la barre de filtres
-- **Progress bar** : traitement par batch de 10, délai entre appels
-- **Colonnes enrichies** : poste actuel (vs ancien), badge Pertinent/Non pertinent
-- **Sheet contact enrichi** : profil actuel + SMS/message preview + bouton copier
-- **Filtres** : "Pertinents uniquement", "Avec message prêt", "Avec mobile"
-
-#### 4. Flux
+2. **Signaux à creuser** : uniquement les points que l'IA détecte comme méritant d'être approfondis (hésitation, contradiction, red flag, opportunité). Maximum 2-3 items visibles, remplacés à chaque cycle (pas d'accumulation). Si rien d'intéressant, la section reste vide -- pas de bruit.
 
 ```text
-Contacts avec LinkedIn → Apollo bulk_match(linkedin_url) → enrichi
-Contacts sans LinkedIn → Apollo bulk_match(first_name + last_name + domain) → enrichi
-Tous enrichis → Claude Sonnet (qualification + message)
-  → Liste avec badges pertinence + messages prêts
-  → Clic contact → Sheet avec profil actuel + SMS → Copier
+┌─────────────────────────────────────────┐
+│ ✅ Leadership          ⬜ Salaire       │
+│ ✅ Expérience tech     ⬜ Disponibilité │
+│ ⚠️ Motivation (négatif) ⬜ Culture fit  │
+├─────────────────────────────────────────┤
+│ 🔍 CREUSER                              │
+│ "Il hésite sur sa date de dispo"        │
+│  → Demander : quand exactement ?        │
+│                                         │
+│ "Mentionne une contre-offre"            │
+│  → Creuser le montant et la timeline    │
+└─────────────────────────────────────────┘
 ```
 
-### Fichiers à créer/modifier
-- **Migration** : table `vivier_enrichments` + RLS
-- **Edge function** : `supabase/functions/enrich-vivier-contacts/index.ts`
-- **Config** : `supabase/config.toml` (verify_jwt = false)
-- **Hook** : `src/hooks/useVivierEnrichment.ts` (batch, progression)
-- **UI** : `src/components/prospection/VivierList.tsx` (bouton, colonnes, sheet enrichi)
-- **Hook existant** : `src/hooks/useVivierCandidates.ts` (join enrichments)
+## Changements
 
-### Secrets
-Tout est déjà configuré : `APOLLO_API_KEY`, `ANTHROPIC_API_KEY`.
+### 1. Prompt backend (`supabase/functions/live-coach/index.ts`)
+
+Modifier le prompt système pour demander un output différent :
+- **`criteria_updates`** : inchangé (l'IA marque les critères couverts)
+- **`dig_deeper`** : remplace `alerts` + `suggestions`. Liste de 0 à 3 items avec `{ signal: string, question: string }`. L'IA ne retourne des items que quand il y a quelque chose de pertinent à creuser
+- Supprimer le champ `alerts` du JSON de sortie
+- Augmenter la consigne : "Si rien de nouveau ou intéressant à signaler, retourne dig_deeper vide. Ne génère PAS d'items juste pour en générer."
+
+### 2. Frontend (`src/components/ats/LiveCoachingPanel.tsx`)
+
+**State** :
+- Remplacer `coachFeed: CoachAlert[]` par `digDeeper: { signal: string; question: string }[]`
+- Conserver `criteriaStatus` inchangé
+- Conserver `alertsLogRef` pour le rapport final (stocker tous les dig_deeper historiques)
+
+**Intervalle** :
+- Passer `COACH_INTERVAL_MS` de 15s à 30s
+- Ne plus déclencher sur `speech_final`, uniquement sur `UtteranceEnd` + timer (réduire les appels)
+
+**UI** :
+- **Section haute** : grille de tous les critères (compacte, 2 colonnes). Chaque critère = badge avec icone (⬜ pas couvert, ✅ couvert positif, ⚠️ couvert négatif). Clickable pour voir le verbatim
+- **Section basse** : "À creuser" -- les 2-3 derniers `dig_deeper` items. Remplacés à chaque cycle, pas accumulés. Animation `animate-in` quand ça change. Si vide, afficher "RAS -- continuez l'entretien"
+- Supprimer le `ScrollArea` du coach feed (plus besoin de scroller, tout tient dans l'espace fixe)
+
+### 3. Réponse du coach (`analyzeWithCoach`)
+
+Adapter le parsing :
+- `data.dig_deeper` remplace `data.alerts` + `data.suggestions`
+- Setter `setDigDeeper(data.dig_deeper || [])` (remplacement, pas accumulation)
+- Pousser dans `alertsLogRef` pour historique
+
+## Fichiers modifiés
+1. `supabase/functions/live-coach/index.ts` -- nouveau prompt + nouveau format JSON
+2. `src/components/ats/LiveCoachingPanel.tsx` -- nouveau state, nouvelle UI, intervalle 30s
 

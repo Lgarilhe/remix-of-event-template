@@ -1,16 +1,19 @@
 import React, { useEffect, useState } from 'react';
 import { useVivierContacts, useVivierCompanies, VivierContact, VivierCompany } from '@/hooks/useVivierCandidates';
+import { useVivierEnrichment, VivierEnrichment } from '@/hooks/useVivierEnrichment';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Search, Mail, Building2, ChevronLeft, ChevronRight, Users, FileText, Calendar, Trophy, MapPin, Briefcase, ChevronDown, Phone } from 'lucide-react';
+import { Progress } from '@/components/ui/progress';
+import { Search, Mail, Building2, ChevronLeft, ChevronRight, Users, FileText, Trophy, MapPin, Briefcase, Sparkles, Copy, Check, ExternalLink, Phone } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { supabase } from '@/integrations/supabase/client';
+import { toast } from 'sonner';
 
 /* ─── Company Detail Sheet ─── */
 function CompanyDetailSheet({ company, open, onOpenChange }: { company: VivierCompany | null; open: boolean; onOpenChange: (v: boolean) => void }) {
@@ -28,10 +31,7 @@ function CompanyDetailSheet({ company, open, onOpenChange }: { company: VivierCo
         supabase.from('airtable_shortlists').select('airtable_id, status, date_added, job_airtable_id, candidate_airtable_id')
           .eq('company_airtable_id', company.company_airtable_id).order('date_added', { ascending: false }).limit(20),
       ]);
-
       setContacts(ctRes.data || []);
-
-      // Resolve job titles
       const jobIds = new Set<string>();
       const candIds = new Set<string>();
       (slRes.data || []).forEach((s: any) => { if (s.job_airtable_id) jobIds.add(s.job_airtable_id); if (s.candidate_airtable_id) candIds.add(s.candidate_airtable_id); });
@@ -65,8 +65,6 @@ function CompanyDetailSheet({ company, open, onOpenChange }: { company: VivierCo
         <div className="mt-4 space-y-4">
           {company.description && <p className="text-xs text-muted-foreground line-clamp-3">{company.description}</p>}
           {company.headcount && <Badge variant="outline" className="text-[10px]">{company.headcount} employés</Badge>}
-
-          {/* Stats */}
           <div className="grid grid-cols-4 gap-2">
             {[
               { label: 'Contacts', value: company.contact_count },
@@ -80,12 +78,10 @@ function CompanyDetailSheet({ company, open, onOpenChange }: { company: VivierCo
               </div>
             ))}
           </div>
-
           {loadingDetails ? (
             <div className="space-y-2"><Skeleton className="h-4 w-full" /><Skeleton className="h-4 w-3/4" /></div>
           ) : (
             <>
-              {/* Contacts */}
               {contacts.length > 0 && (
                 <div>
                   <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Contacts ({contacts.length})</h4>
@@ -108,8 +104,6 @@ function CompanyDetailSheet({ company, open, onOpenChange }: { company: VivierCo
                   </div>
                 </div>
               )}
-
-              {/* Shortlists */}
               {shortlists.length > 0 && (
                 <div>
                   <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Shortlists ({shortlists.length})</h4>
@@ -135,16 +129,20 @@ function CompanyDetailSheet({ company, open, onOpenChange }: { company: VivierCo
   );
 }
 
-/* ─── Contact Detail Sheet ─── */
-function ContactDetailSheet({ contact, open, onOpenChange }: { contact: VivierContact | null; open: boolean; onOpenChange: (v: boolean) => void }) {
+/* ─── Enriched Contact Detail Sheet ─── */
+function EnrichedContactSheet({ contact, enrichment, open, onOpenChange, onCopyMessage }: {
+  contact: VivierContact | null; enrichment: VivierEnrichment | null; open: boolean; onOpenChange: (v: boolean) => void;
+  onCopyMessage?: (id: string) => void;
+}) {
   const [shortlists, setShortlists] = useState<any[]>([]);
   const [notes, setNotes] = useState<any[]>([]);
   const [loadingDetails, setLoadingDetails] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     if (!contact || !open) return;
     setLoadingDetails(true);
-    const fetch = async () => {
+    const fetchDetails = async () => {
       const [slRes, notesRes] = await Promise.all([
         supabase.from('airtable_shortlists').select('airtable_id, status, date_added, job_airtable_id, candidate_airtable_id')
           .eq('contact_airtable_id', contact.airtable_id).order('date_added', { ascending: false }).limit(20),
@@ -163,8 +161,18 @@ function ContactDetailSheet({ contact, open, onOpenChange }: { contact: VivierCo
       setNotes(notesRes.data || []);
       setLoadingDetails(false);
     };
-    fetch();
+    fetchDetails();
   }, [contact, open]);
+
+  const handleCopy = () => {
+    if (enrichment?.generated_message) {
+      navigator.clipboard.writeText(enrichment.generated_message);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+      toast.success('Message copié !');
+      onCopyMessage?.(contact!.airtable_id);
+    }
+  };
 
   if (!contact) return null;
 
@@ -176,11 +184,73 @@ function ContactDetailSheet({ contact, open, onOpenChange }: { contact: VivierCo
           {contact.title && <p className="text-sm text-muted-foreground text-left">{contact.title}</p>}
         </SheetHeader>
         <div className="mt-4 space-y-4">
+          {/* Contact info */}
           <div className="space-y-1 text-sm">
             {contact.company_name && <div className="flex items-center gap-2 text-muted-foreground"><Building2 className="w-3.5 h-3.5" /> {contact.company_name}</div>}
             {contact.email && <div className="flex items-center gap-2 text-muted-foreground"><Mail className="w-3.5 h-3.5" /> {contact.email}</div>}
             {contact.city && <div className="flex items-center gap-2 text-muted-foreground"><MapPin className="w-3.5 h-3.5" /> {contact.city}</div>}
           </div>
+
+          {/* Enriched profile */}
+          {enrichment && enrichment.match_type !== 'not_found' && (
+            <div className="border border-primary/30 bg-primary/5 p-3 space-y-2">
+              <div className="flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-primary" />
+                <span className="text-xs font-semibold uppercase tracking-wider">Profil enrichi</span>
+                <Badge variant="outline" className="text-[9px]">{enrichment.match_type === 'linkedin' ? 'LinkedIn' : 'Fuzzy'}</Badge>
+              </div>
+              {enrichment.current_job_title && (
+                <div className="text-sm">
+                  <span className="font-medium">{enrichment.current_job_title}</span>
+                  {enrichment.current_company && <span className="text-muted-foreground"> @ {enrichment.current_company}</span>}
+                </div>
+              )}
+              {enrichment.headline && <p className="text-xs text-muted-foreground">{enrichment.headline}</p>}
+              {enrichment.location && <div className="text-xs text-muted-foreground flex items-center gap-1"><MapPin className="w-3 h-3" /> {enrichment.location}</div>}
+              {enrichment.linkedin_url && (
+                <a href={enrichment.linkedin_url} target="_blank" rel="noopener noreferrer" className="text-xs text-primary flex items-center gap-1 hover:underline">
+                  <ExternalLink className="w-3 h-3" /> LinkedIn
+                </a>
+              )}
+              {/* Relevance */}
+              {enrichment.is_relevant !== null && (
+                <div className="flex items-center gap-2">
+                  <Badge variant={enrichment.is_relevant ? 'default' : 'secondary'} className="text-[10px]">
+                    {enrichment.is_relevant ? '✓ Pertinent' : '✗ Non pertinent'}
+                  </Badge>
+                  {enrichment.relevance_reason && <span className="text-[10px] text-muted-foreground">{enrichment.relevance_reason}</span>}
+                </div>
+              )}
+            </div>
+          )}
+
+          {enrichment?.match_type === 'not_found' && (
+            <div className="border border-border p-3 text-xs text-muted-foreground">
+              Aucun profil trouvé sur Apollo pour ce contact.
+            </div>
+          )}
+
+          {/* Generated message */}
+          {enrichment?.generated_message && (
+            <div className="border border-border p-3 space-y-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    {enrichment.message_type === 'sms' ? '📱 SMS' : '💬 LinkedIn'}
+                  </span>
+                  {enrichment.message_status && (
+                    <Badge variant="outline" className="text-[9px]">{enrichment.message_status}</Badge>
+                  )}
+                </div>
+                <Button variant="outline" size="sm" onClick={handleCopy} className="h-7 text-[10px] gap-1">
+                  {copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                  {copied ? 'Copié' : 'Copier'}
+                </Button>
+              </div>
+              <p className="text-sm whitespace-pre-wrap bg-muted/50 p-2 rounded">{enrichment.generated_message}</p>
+              <div className="text-[10px] text-muted-foreground">{enrichment.generated_message.length} caractères</div>
+            </div>
+          )}
 
           {loadingDetails ? (
             <div className="space-y-2"><Skeleton className="h-4 w-full" /><Skeleton className="h-4 w-3/4" /></div>
@@ -251,7 +321,6 @@ function VivierFilterBar({ searchInput, setSearchInput, onSearch, filters, updat
           <SelectItem value="5">≥ 5 shortlists</SelectItem>
         </SelectContent>
       </Select>
-      <Button size="sm" onClick={onSearch} className="h-9 text-xs">Rechercher</Button>
     </div>
   );
 }
@@ -282,11 +351,9 @@ function CompaniesView() {
   return (
     <div className="space-y-4">
       <VivierFilterBar searchInput={searchInput} setSearchInput={setSearchInput} onSearch={() => updateFilters({ search: searchInput })} filters={filters} updateFilters={updateFilters} />
-
       {!loading && totalCount > 0 && (
         <div className="text-xs text-muted-foreground">{totalCount} société{totalCount > 1 ? 's' : ''} avec des interactions</div>
       )}
-
       {loading ? (
         <div className="space-y-2">{Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-16 w-full" />)}</div>
       ) : companies.length === 0 ? (
@@ -331,59 +398,136 @@ function CompaniesView() {
 /* ─── Contacts Tab ─── */
 function ContactsView() {
   const { contacts, totalCount, loading, filters, updateFilters, fetchContacts, page, goToPage, pageSize } = useVivierContacts();
+  const { enrichments, isEnriching, progress, fetchEnrichments, enrichContacts, updateMessageStatus } = useVivierEnrichment();
   const [searchInput, setSearchInput] = useState('');
   const [selectedContact, setSelectedContact] = useState<VivierContact | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [enrichFilter, setEnrichFilter] = useState<'all' | 'relevant' | 'with_message'>('all');
 
   useEffect(() => { fetchContacts(); }, []);
 
+  // Fetch enrichments when contacts load
+  useEffect(() => {
+    if (contacts.length > 0) {
+      fetchEnrichments(contacts.map(c => c.airtable_id));
+    }
+  }, [contacts]);
+
   const totalPages = Math.ceil(totalCount / pageSize);
+
+  const handleEnrichAll = () => {
+    const ids = contacts.map(c => c.airtable_id);
+    enrichContacts(ids);
+  };
+
+  const filteredContacts = contacts.filter(c => {
+    if (enrichFilter === 'all') return true;
+    const e = enrichments.get(c.airtable_id);
+    if (enrichFilter === 'relevant') return e?.is_relevant === true;
+    if (enrichFilter === 'with_message') return !!e?.generated_message;
+    return true;
+  });
+
+  const selectedEnrichment = selectedContact ? enrichments.get(selectedContact.airtable_id) || null : null;
 
   return (
     <div className="space-y-4">
       <VivierFilterBar searchInput={searchInput} setSearchInput={setSearchInput} onSearch={() => updateFilters({ search: searchInput })} filters={filters} updateFilters={updateFilters} />
 
+      {/* Enrichment controls */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <Button size="sm" onClick={handleEnrichAll} disabled={isEnriching || contacts.length === 0} className="h-8 text-xs gap-1.5">
+          <Sparkles className="w-3.5 h-3.5" />
+          {isEnriching ? 'Enrichissement…' : 'Enrichir & qualifier'}
+        </Button>
+        {enrichments.size > 0 && (
+          <Select value={enrichFilter} onValueChange={(v: any) => setEnrichFilter(v)}>
+            <SelectTrigger className="w-[160px] h-8 text-xs"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Tous les contacts</SelectItem>
+              <SelectItem value="relevant">Pertinents uniquement</SelectItem>
+              <SelectItem value="with_message">Avec message</SelectItem>
+            </SelectContent>
+          </Select>
+        )}
+        {enrichments.size > 0 && (
+          <span className="text-[10px] text-muted-foreground">
+            {[...enrichments.values()].filter(e => e.is_relevant).length} pertinents · {[...enrichments.values()].filter(e => e.generated_message).length} messages
+          </span>
+        )}
+      </div>
+
+      {/* Progress bar */}
+      {isEnriching && (
+        <div className="space-y-1">
+          <Progress value={(progress.done / Math.max(progress.total, 1)) * 100} className="h-2" />
+          <div className="text-[10px] text-muted-foreground">{progress.done} / {progress.total} contacts traités</div>
+        </div>
+      )}
+
       {!loading && totalCount > 0 && (
-        <div className="text-xs text-muted-foreground">{totalCount} contact{totalCount > 1 ? 's' : ''} avec des interactions</div>
+        <div className="text-xs text-muted-foreground">{filteredContacts.length} contact{filteredContacts.length > 1 ? 's' : ''} {enrichFilter !== 'all' ? `(filtrés sur ${totalCount})` : `avec des interactions`}</div>
       )}
 
       {loading ? (
         <div className="space-y-2">{Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-16 w-full" />)}</div>
-      ) : contacts.length === 0 ? (
+      ) : filteredContacts.length === 0 ? (
         <div className="text-center py-12 text-muted-foreground">
           <Users className="w-10 h-10 mx-auto mb-3 opacity-30" />
           <p className="text-sm font-medium">Aucun contact trouvé</p>
         </div>
       ) : (
         <div className="border border-border divide-y divide-border">
-          {contacts.map(c => (
-            <button key={c.airtable_id} onClick={() => { setSelectedContact(c); setSheetOpen(true); }}
-              className="w-full text-left px-3 py-2.5 hover:bg-accent/50 transition-colors flex items-center gap-3">
-              <div className="h-9 w-9 bg-foreground text-background flex items-center justify-center text-xs font-bold shrink-0 uppercase">
-                {(c.full_name || '??').split(' ').map(w => w[0]).join('').slice(0, 2)}
-              </div>
-              <div className="flex-1 min-w-0 space-y-0.5">
-                <div className="text-sm font-medium truncate">{c.full_name || 'Sans nom'}</div>
-                <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
-                  {c.company_name && <span className="flex items-center gap-1"><Building2 className="w-3 h-3" /> {c.company_name}</span>}
-                  {c.title && <span className="flex items-center gap-1 truncate max-w-[180px]"><Briefcase className="w-3 h-3" /> {c.title}</span>}
-                  {c.city && <span className="flex items-center gap-1"><MapPin className="w-3 h-3" /> {c.city}</span>}
+          {filteredContacts.map(c => {
+            const e = enrichments.get(c.airtable_id);
+            return (
+              <button key={c.airtable_id} onClick={() => { setSelectedContact(c); setSheetOpen(true); }}
+                className="w-full text-left px-3 py-2.5 hover:bg-accent/50 transition-colors flex items-center gap-3">
+                <div className="h-9 w-9 bg-foreground text-background flex items-center justify-center text-xs font-bold shrink-0 uppercase">
+                  {(c.full_name || '??').split(' ').map(w => w[0]).join('').slice(0, 2)}
                 </div>
-              </div>
-              <div className="flex items-center gap-1.5 shrink-0">
-                <Badge variant="secondary" className="text-[9px] gap-0.5 px-1.5"><FileText className="w-3 h-3" /> {c.shortlist_count}</Badge>
-                {c.note_count > 0 && <Badge variant="outline" className="text-[9px] gap-0.5 px-1.5">{c.note_count} notes</Badge>}
-                {c.placement_count > 0 && <Badge variant="secondary" className="text-[9px] gap-0.5 px-1.5"><Trophy className="w-3 h-3" /> {c.placement_count}</Badge>}
-              </div>
-              <div className="text-[10px] text-muted-foreground shrink-0 w-20 text-right">
-                {c.last_interaction_date ? format(new Date(c.last_interaction_date), 'dd MMM yyyy', { locale: fr }) : '—'}
-              </div>
-            </button>
-          ))}
+                <div className="flex-1 min-w-0 space-y-0.5">
+                  <div className="text-sm font-medium truncate">{c.full_name || 'Sans nom'}</div>
+                  <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+                    {/* Show enriched data if available */}
+                    {e?.current_company ? (
+                      <span className="flex items-center gap-1 text-primary"><Building2 className="w-3 h-3" /> {e.current_company}</span>
+                    ) : c.company_name ? (
+                      <span className="flex items-center gap-1"><Building2 className="w-3 h-3" /> {c.company_name}</span>
+                    ) : null}
+                    {e?.current_job_title ? (
+                      <span className="flex items-center gap-1 truncate max-w-[180px] text-primary"><Briefcase className="w-3 h-3" /> {e.current_job_title}</span>
+                    ) : c.title ? (
+                      <span className="flex items-center gap-1 truncate max-w-[180px]"><Briefcase className="w-3 h-3" /> {c.title}</span>
+                    ) : null}
+                    {c.city && <span className="flex items-center gap-1"><MapPin className="w-3 h-3" /> {c.city}</span>}
+                  </div>
+                </div>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  {/* Enrichment badges */}
+                  {e?.is_relevant === true && <Badge className="text-[9px] gap-0.5 px-1.5 bg-primary text-primary-foreground">Pertinent</Badge>}
+                  {e?.is_relevant === false && <Badge variant="secondary" className="text-[9px] gap-0.5 px-1.5">Non pertinent</Badge>}
+                  {e?.generated_message && <Badge variant="outline" className="text-[9px] gap-0.5 px-1.5">{e.message_type === 'sms' ? '📱' : '💬'} msg</Badge>}
+                  <Badge variant="secondary" className="text-[9px] gap-0.5 px-1.5"><FileText className="w-3 h-3" /> {c.shortlist_count}</Badge>
+                  {c.note_count > 0 && <Badge variant="outline" className="text-[9px] gap-0.5 px-1.5">{c.note_count} notes</Badge>}
+                  {c.placement_count > 0 && <Badge variant="secondary" className="text-[9px] gap-0.5 px-1.5"><Trophy className="w-3 h-3" /> {c.placement_count}</Badge>}
+                </div>
+                <div className="text-[10px] text-muted-foreground shrink-0 w-20 text-right">
+                  {c.last_interaction_date ? format(new Date(c.last_interaction_date), 'dd MMM yyyy', { locale: fr }) : '—'}
+                </div>
+              </button>
+            );
+          })}
         </div>
       )}
       <Pagination page={page} totalPages={totalPages} goToPage={goToPage} />
-      <ContactDetailSheet contact={selectedContact} open={sheetOpen} onOpenChange={setSheetOpen} />
+      <EnrichedContactSheet
+        contact={selectedContact}
+        enrichment={selectedEnrichment}
+        open={sheetOpen}
+        onOpenChange={setSheetOpen}
+        onCopyMessage={(id) => updateMessageStatus(id, 'sent')}
+      />
     </div>
   );
 }
@@ -399,7 +543,6 @@ export function VivierList() {
 
   return (
     <div className="space-y-3">
-      {/* Sub-tabs */}
       <div className="flex gap-0">
         {subTabs.map((tab, i) => {
           const isActive = activeSubTab === tab.value;
@@ -420,7 +563,6 @@ export function VivierList() {
           );
         })}
       </div>
-
       {activeSubTab === 'companies' ? <CompaniesView /> : <ContactsView />}
     </div>
   );
