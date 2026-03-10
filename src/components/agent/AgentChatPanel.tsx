@@ -65,16 +65,16 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({ onClose }) => {
     setJobSentForConv(conv.id); // Already initialized
   }, []);
 
-  const handleSend = useCallback(async () => {
-    if (!input.trim() || sending) return;
-    const text = input.trim();
+  const handleSend = useCallback(async (text?: string) => {
+    const msg = text || input.trim();
+    if (!msg || sending) return;
     setInput('');
 
     // Send job context only on first message of a conversation
     const jobCtx = conversationId !== jobSentForConv ? selectedJob : null;
     if (jobCtx) setJobSentForConv(conversationId);
 
-    await sendMessage(text, jobCtx);
+    await sendMessage(msg, jobCtx);
   }, [input, sending, sendMessage, selectedJob, conversationId, jobSentForConv]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
