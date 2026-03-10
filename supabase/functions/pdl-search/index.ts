@@ -35,77 +35,101 @@ Deno.serve(async (req) => {
       intent_hiring,
     } = body;
 
-    // Build PDL person search query
-    const query_parts: string[] = [];
+    // Build Elasticsearch bool query for PDL
+    const must: any[] = [];
 
     if (job_title) {
-      query_parts.push(`job_title='${job_title}'`);
-    }
-    if (company) {
-      query_parts.push(`job_company_name='${company}'`);
-    }
-    if (location) {
-      query_parts.push(`location_name='${location}'`);
-    }
-    if (industry) {
-      query_parts.push(`job_company_industry='${industry}'`);
-    }
-    if (company_size && company_size !== 'all') {
-      query_parts.push(`job_company_size='${company_size}'`);
-    }
-    if (skills && skills.length > 0) {
-      const skillsQuery = skills.map((s: string) => `'${s}'`).join(' OR ');
-      query_parts.push(`skills=(${skillsQuery})`);
+      // Support comma-separated titles
+      const titles = job_title.split(',').map((t: string) => t.trim()).filter(Boolean);
+      if (titles.length === 1) {
+        must.push({ term: { job_title: titles[0] } });
+      } else if (titles.length > 1) {
+        must.push({
+          bool: {
+            should: titles.map((t: string) => ({ term: { job_title: t } })),
+            minimum_should_match: 1,
+          },
+        });
+      }
     }
 
-    // Intent: recently changed jobs (within last 6 months)
+    if (company) {
+      must.push({ term: { job_company_name: company } });
+    }
+
+    if (location) {
+      const locations = location.split(',').map((l: string) => l.trim()).filter(Boolean);
+      if (locations.length === 1) {
+        must.push({ term: { location_name: locations[0] } });
+      } else if (locations.length > 1) {
+        must.push({
+          bool: {
+            should: locations.map((l: string) => ({ term: { location_name: l } })),
+            minimum_should_match: 1,
+          },
+        });
+      }
+    }
+
+    if (industry) {
+      must.push({ term: { job_company_industry: industry } });
+    }
+
+    if (company_size && company_size !== 'all') {
+      must.push({ term: { job_company_size: company_size } });
+    }
+
+    if (skills && Array.isArray(skills) && skills.length > 0) {
+      must.push({
+        bool: {
+          should: skills.map((s: string) => ({ term: { skills: s } })),
+          minimum_should_match: 1,
+        },
+      });
+    }
+
     if (intent_job_change) {
       const sixMonthsAgo = new Date();
       sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
-      query_parts.push(`job_start_date>='${sixMonthsAgo.toISOString().split('T')[0]}'`);
+      must.push({
+        range: {
+          job_start_date: { gte: sixMonthsAgo.toISOString().split('T')[0] },
+        },
+      });
     }
 
-    if (query_parts.length === 0) {
+    if (must.length === 0) {
       return new Response(JSON.stringify({ success: false, error: 'Au moins un critère de recherche est requis' }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
-    const esQuery = query_parts.join(' AND ');
-    console.log('[PDL] Search query:', esQuery);
+    const searchBody = {
+      query: {
+        bool: {
+          must,
+        },
+      },
+      size: 50,
+    };
 
-    // PDL Person Search API
+    console.log('[PDL] Search body:', JSON.stringify(searchBody));
+
     const pdlResponse = await fetch(`${PDL_BASE}/person/search`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'X-Api-Key': PDL_API_KEY,
       },
-      body: JSON.stringify({
-        query: {
-          bool: {
-            must: buildElasticQuery({
-              job_title,
-              company,
-              location,
-              industry,
-              company_size,
-              skills,
-              intent_job_change,
-            }),
-          },
-        },
-        size: 50,
-        dataset: 'all',
-      }),
+      body: JSON.stringify(searchBody),
     });
 
     if (!pdlResponse.ok) {
       const errText = await pdlResponse.text();
       console.error('[PDL] API error:', pdlResponse.status, errText);
-      return new Response(JSON.stringify({ success: false, error: `PDL API error: ${pdlResponse.status}` }), {
-        status: pdlResponse.status,
+      return new Response(JSON.stringify({ success: false, error: `PDL API error: ${pdlResponse.status}`, details: errText }), {
+        status: 200, // Return 200 to client with error details so frontend can display them
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
@@ -157,7 +181,7 @@ Deno.serve(async (req) => {
         intent_signals: {
           job_change: isRecentJobChange,
           recently_funded: isRecentlyFunded,
-          hiring: false, // Would need a separate company search
+          hiring: false,
         },
       };
     });
@@ -173,73 +197,3 @@ Deno.serve(async (req) => {
     });
   }
 });
-
-/**
- * Build Elasticsearch-style query for PDL Person Search API
- */
-function buildElasticQuery(params: {
-  job_title?: string;
-  company?: string;
-  location?: string;
-  industry?: string;
-  company_size?: string;
-  skills?: string[];
-  intent_job_change?: boolean;
-}): any[] {
-  const must: any[] = [];
-
-  if (params.job_title) {
-    must.push({
-      bool: {
-        should: params.job_title.split(',').map(t => ({
-          match: { job_title: t.trim() },
-        })),
-      },
-    });
-  }
-
-  if (params.company) {
-    must.push({ match: { job_company_name: params.company } });
-  }
-
-  if (params.location) {
-    must.push({
-      bool: {
-        should: params.location.split(',').map(l => ({
-          match: { location_name: l.trim() },
-        })),
-      },
-    });
-  }
-
-  if (params.industry) {
-    must.push({ match: { job_company_industry: params.industry } });
-  }
-
-  if (params.company_size && params.company_size !== 'all') {
-    must.push({ match: { job_company_size: params.company_size } });
-  }
-
-  if (params.skills && params.skills.length > 0) {
-    must.push({
-      bool: {
-        should: params.skills.map(s => ({
-          match: { skills: s },
-        })),
-        minimum_should_match: 1,
-      },
-    });
-  }
-
-  if (params.intent_job_change) {
-    const sixMonthsAgo = new Date();
-    sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
-    must.push({
-      range: {
-        job_start_date: { gte: sixMonthsAgo.toISOString().split('T')[0] },
-      },
-    });
-  }
-
-  return must;
-}
