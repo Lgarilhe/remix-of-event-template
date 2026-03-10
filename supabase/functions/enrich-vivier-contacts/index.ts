@@ -219,13 +219,26 @@ Deno.serve(async (req) => {
 
       const notesContext = contactNotes
         .slice(0, 5)
-        .map((n: any) => `- ${n.note_date || "?"}: ${n.title || ""} ${n.detail?.slice(0, 100) || ""}`)
+        .map((n: any) => `- ${n.note_date || "?"} (par ${n.author || "?"}): ${n.title || ""} ${n.detail?.slice(0, 100) || ""}`)
         .join("\n");
 
       const placementContext = contactPlacements
         .slice(0, 5)
         .map((p: any) => `- Placement: ${p.name || "?"} (${p.status || "?"}, ${p.start_date || "?"})`)
         .join("\n");
+
+      // Determine the main consultant who interacted with this contact
+      const authorCounts = new Map<string, number>();
+      contactNotes.forEach((n: any) => {
+        if (n.author) authorCounts.set(n.author, (authorCounts.get(n.author) || 0) + 1);
+      });
+      let mainConsultant: string | null = null;
+      let maxCount = 0;
+      authorCounts.forEach((count, author) => {
+        if (count > maxCount) { maxCount = count; mainConsultant = author; }
+      });
+      const mainConsultantFirstName = mainConsultant ? (mainConsultant as string).split(" ")[0] : null;
+      const isSenderTheMainConsultant = mainConsultantFirstName?.toLowerCase() === senderFirstName.toLowerCase();
 
       const apolloProfile = `
 Poste actuel: ${apollo.title || "?"}
