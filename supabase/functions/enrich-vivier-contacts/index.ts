@@ -238,22 +238,11 @@ Parcours récent: ${(apollo.employment_history || []).slice(0, 3).map((e: any) =
       const messageType = hasMobile ? "sms" : "linkedin";
       const maxChars = hasMobile ? 160 : 400;
 
-      const prompt = `Tu es un business developer senior chez Konekt, cabinet de recrutement tech basé à Paris. Tu reprends contact avec un ancien interlocuteur client.
+      const prompt = `Tu es un business developer senior chez Konekt, cabinet de recrutement tech basé à Paris. Tu analyses un ancien contact client pour décider si on doit reprendre contact.
 
-RÈGLES ABSOLUES POUR LE MESSAGE :
-- ${tutoiement ? "TUTOIE obligatoirement" : "VOUVOIE obligatoirement"} cette personne
-- Écris comme un humain qui envoie un ${messageType === "sms" ? "SMS" : "message LinkedIn"} à quelqu'un qu'il connaît, PAS comme un robot ou un template marketing
-- ${messageType === "sms" ? "SMS = ~" + maxChars + " caractères MAX. Sois ultra concis." : "LinkedIn = ~" + maxChars + " caractères MAX."}
-- JAMAIS de formules corporate : "j'espère que tu vas bien", "je me permets de", "dans le cadre de", "n'hésite pas à"
-- JAMAIS mentionner "notre CRM", "notre base", "nos données"
-- Commence DIRECTEMENT par un élément concret et spécifique de l'historique ci-dessous (un placement réussi, un candidat qu'on avait présenté, un poste qu'on avait bossé ensemble)
-- Si la personne a changé de boîte (ancienne société vs actuelle Apollo), mentionne-le naturellement comme accroche ("j'ai vu que t'avais bougé chez X" ou "félicitations pour X")
-- L'objectif est de proposer un café/call pour faire le point, pas de vendre quoi que ce soit
-- Signe avec "— Konekt" uniquement pour les SMS
-
-CONTACT :
+CONTACT DANS NOTRE CRM :
 - Nom : ${contact.full_name || "?"}
-- Ancien poste CRM : ${contact.title || "?"}
+- Ancien poste : ${contact.title || "?"}
 - Type : ${contact.contact_type || "?"}
 - Ancienne société : ${contact.company_name || "?"}
 - Ville : ${contact.city || "?"}
@@ -261,17 +250,50 @@ CONTACT :
 PROFIL ACTUEL (Apollo) :
 ${apolloProfile}
 
-HISTORIQUE KONEKT (utilise ces éléments comme HOOK dans le message) :
+HISTORIQUE AVEC KONEKT :
 Shortlists/missions : ${shortlistContext || "Aucune shortlist trouvée"}
 Notes internes : ${notesContext || "Aucune note"}
 Placements réussis : ${placementContext || "Aucun placement"}
 
-QUALIFICATION :
-Pertinent = toujours en poste décisionnaire (RH, DRH, Talent, Head of, CTO, CEO, VP, manager recrutement) dans une boîte tech/qui recrute des profils tech + historique positif avec Konekt.
-Non pertinent = a quitté un rôle décisionnaire, freelance/indépendant, secteur non tech, relation négative dans les notes.
+ANALYSE EN 3 ÉTAPES :
+
+1. CHANGEMENT DE POSTE : Compare l'ancien poste/société CRM avec le profil Apollo actuel.
+   - Toujours dans la même boîte ? Même poste ou promotion ?
+   - A changé de boîte ? Si oui, laquelle et quel poste ?
+   - A changé de secteur ? Toujours dans la tech ?
+
+2. PERTINENCE : Ce contact vaut-il une reprise de relation ?
+   - OUI si : poste décisionnaire (RH, DRH, Talent, Head of, CTO, CEO, VP, manager, fondateur) dans une boîte tech ou qui recrute des profils tech, même si a changé de boîte
+   - OUI si : a été promu (bon signal pour reprendre contact)
+   - NON si : devenu freelance/indépendant, quitté le monde tech, poste non décisionnaire (IC, développeur, consultant junior), relation négative dans les notes
+
+3. ÉVÉNEMENTS NOTABLES : Détecte tout changement important depuis nos dernières interactions :
+   - Promotion significative
+   - Changement de boîte (et si la nouvelle est plus grosse/plus petite/différent secteur)
+   - Levée de fonds de sa boîte actuelle (si visible dans Apollo)
+   - Passage de grand groupe à startup ou l'inverse
+
+GÉNÈRE UN MESSAGE ${messageType === "sms" ? "SMS (~" + maxChars + " caractères max)" : "LinkedIn (~" + maxChars + " caractères max)"} :
+- TUTOIE obligatoirement
+- Écris comme un humain qui envoie un ${messageType === "sms" ? "SMS" : "message LinkedIn"} à quelqu'un qu'il connaît
+- JAMAIS de formules corporate : "j'espère que tu vas bien", "je me permets de", "dans le cadre de", "n'hésite pas à"
+- JAMAIS mentionner "notre CRM", "notre base", "nos données"
+- Utilise l'analyse ci-dessus comme accroche :
+  - Si changement de boîte → mentionne-le naturellement ("j'ai vu que t'étais passé chez X, bravo !")
+  - Si même boîte → réfère à un élément concret de l'historique (un placement, une mission)
+  - Si promotion → félicite naturellement
+- Objectif : reprendre contact et proposer un café/call pour faire le point
+- Signe "— Konekt" uniquement pour les SMS
 
 Réponds en JSON strict :
-{"is_relevant": true, "relevance_reason": "raison en 1 phrase", "message": "le message"}`;
+{
+  "still_same_company": true/false,
+  "company_change_detail": "description courte du changement ou null",
+  "notable_events": ["événement 1", "événement 2"],
+  "is_relevant": true/false,
+  "relevance_reason": "explication en 1-2 phrases",
+  "message": "le message"
+}`;
 
       try {
         const aiResp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
