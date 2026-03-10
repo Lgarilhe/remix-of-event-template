@@ -128,7 +128,12 @@ export default function Prospection() {
             </div>
           </div>
 
-          {/* Tab content */}
+          {/* Vivier tab */}
+          <div className={cn("mt-0 min-w-0", activeTab !== 'vivier' && 'hidden')}>
+            <VivierList />
+          </div>
+
+          {/* ICP tab */}
           <div className={cn("mt-0 min-w-0", activeTab !== 'icp' && 'hidden')}>
             <ICPList onSearchFromICP={handleSearchFromICP} />
           </div>
