@@ -39,7 +39,7 @@ function CriteriaPreview({ criteria }: { criteria: ICPCriteria }) {
   );
 }
 
-function ICPCard({ icp, onEdit, onDelete }: { icp: ICP; onEdit: () => void; onDelete: () => void }) {
+function ICPCard({ icp, onEdit, onDelete, onSearch }: { icp: ICP; onEdit: () => void; onDelete: () => void; onSearch?: () => void }) {
   const [expanded, setExpanded] = useState(false);
   const typeInfo = TARGET_TYPE_LABELS[icp.target_type] || TARGET_TYPE_LABELS.both;
 
