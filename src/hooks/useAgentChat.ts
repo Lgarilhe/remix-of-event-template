@@ -213,6 +213,27 @@ export const useAgentChat = (conversationId: string | null) => {
     }
   }, [conversationId, sending]);
 
+  // Trigger search orchestration
+  const triggerSearch = useCallback(async (convId: string) => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+
+      const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/run-agent-search`;
+      fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+          'apikey': import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+        },
+        body: JSON.stringify({ conversation_id: convId }),
+      }).catch(err => console.error('[useAgentChat] Search trigger failed:', err));
+    } catch (err) {
+      console.error('[useAgentChat] triggerSearch error:', err);
+    }
+  }, []);
+
   // Create new conversation
   const createConversation = useCallback(async (job?: Job | null): Promise<string | null> => {
     const { data: { user } } = await supabase.auth.getUser();
