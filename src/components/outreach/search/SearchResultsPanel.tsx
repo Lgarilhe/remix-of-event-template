@@ -459,29 +459,28 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
       <div className="flex-1 overflow-x-auto overflow-y-auto" ref={scrollAreaRef}>
         {loading && results.length === 0 ? (
           <BrutalLoader variant="search" rows={5} />
-        ) : displayResults.length === 0 ? (
+        ) : results.length === 0 && !hasSearched ? (
           <div className="flex flex-col items-center justify-center py-12 text-muted-foreground px-8">
-            {hasSearched ? (
-              <>
-                <div className="w-20 h-20 bg-muted flex items-center justify-center mb-6">
-                  <Search className="w-10 h-10" />
-                </div>
-                <p className="text-lg font-medium text-foreground/60 mb-2">
-                  {results.length === 0 ? 'Aucun profil trouvé' : 'Aucun profil dans ce filtre'}
-                </p>
-                <p className="text-sm text-center max-w-md mb-4">
-                  {results.length === 0
-                    ? "Essayez d'ajuster vos filtres pour élargir votre recherche"
-                    : "Ce segment est vide pour le lot affiché. Essayez le filtre 'Tous' ou chargez le lot suivant."}
-                </p>
-                {results.length > 0 && statusFilter !== 'all' && (
-                  <Button variant="outline" size="sm" onClick={() => onSetStatusFilter('all')}>
-                    Voir tous les profils
-                  </Button>
-                )}
-              </>
-            ) : (
-              <SearchWelcomeMessage />
+            <SearchWelcomeMessage />
+          </div>
+        ) : results.length === 0 && hasSearched ? (
+          <div className="flex flex-col items-center justify-center py-12 text-muted-foreground px-8">
+            <div className="w-20 h-20 bg-muted flex items-center justify-center mb-6">
+              <Search className="w-10 h-10" />
+            </div>
+            <p className="text-lg font-medium text-foreground/60 mb-2">Aucun profil trouvé</p>
+            <p className="text-sm text-center max-w-md mb-4">
+              Essayez d'ajuster vos filtres pour élargir votre recherche
+            </p>
+            {selectedJob && (
+              <Button
+                onClick={() => onRefineSearch('expand')}
+                disabled={refineLoading}
+                className="gap-2 bg-foreground text-background hover:bg-foreground/90"
+              >
+                {refineLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Maximize2 className="w-4 h-4" />}
+                Élargir les filtres avec l'IA
+              </Button>
             )}
           </div>
         ) : (
@@ -565,6 +564,17 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
             )}
 
             {/* Profile cards */}
+            {displayResults.length === 0 && results.length > 0 && (
+              <div className="text-center py-8 text-muted-foreground">
+                <p className="text-sm font-medium mb-1">Aucun profil dans ce filtre</p>
+                <p className="text-xs mb-3">Ce segment est vide. Essayez un autre filtre ou chargez le lot suivant.</p>
+                {statusFilter !== 'all' && (
+                  <Button variant="outline" size="sm" onClick={() => onSetStatusFilter('all')}>
+                    👥 Voir tous les profils
+                  </Button>
+                )}
+              </div>
+            )}
             {displayResults.map((profile, index) => (
               <LinkedInResultCard
                 key={profile.id || `profile-${index}`}
