@@ -570,6 +570,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
       <div className="lg:col-span-8 xl:col-span-9 min-w-0 lg:min-h-0">
         <SearchResultsPanel
           results={search.results}
+          mergedResults={mergedResults}
           filteredResults={filteredAndSortedResults}
           loading={search.loading}
           loadingMore={search.loadingMore}
