@@ -130,9 +130,10 @@ function CompanyDetailSheet({ company, open, onOpenChange }: { company: VivierCo
 }
 
 /* ─── Enriched Contact Detail Sheet ─── */
-function EnrichedContactSheet({ contact, enrichment, open, onOpenChange, onCopyMessage }: {
+function EnrichedContactSheet({ contact, enrichment, open, onOpenChange, onCopyMessage, onEnrichSingle }: {
   contact: VivierContact | null; enrichment: VivierEnrichment | null; open: boolean; onOpenChange: (v: boolean) => void;
   onCopyMessage?: (id: string) => void;
+  onEnrichSingle?: (id: string) => void;
 }) {
   const [shortlists, setShortlists] = useState<any[]>([]);
   const [notes, setNotes] = useState<any[]>([]);
