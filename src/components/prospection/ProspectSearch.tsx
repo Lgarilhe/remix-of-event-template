@@ -565,7 +565,7 @@ export function ProspectSearch({ selectedICP, onSelectICP, onResults, searching,
         className="h-[34px] px-6 bg-foreground text-background hover:bg-foreground/90 text-xs font-medium uppercase tracking-wider gap-2"
       >
         {searching ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
-        {searching ? 'Recherche en cours...' : `Rechercher via ${source === 'both' ? 'PDL + Apollo' : source === 'pdl' ? 'PDL' : 'Apollo'}`}
+        {searching ? 'Recherche en cours...' : 'Lancer la recherche'}
       </Button>
     </div>
   );
