@@ -196,7 +196,7 @@ Deno.serve(async (req) => {
 
       const raw = contact.raw_data || {};
       const hasMobile = !!(raw["Mobile"] || raw["Ligne direct"]);
-      const tutoiement = raw["Tutoiement"] === "Oui" || raw["Tutoiement"] === true;
+      const tutoiement = true; // Toujours tutoyer
 
       // Build context for AI
       const contactShortlists = (shortlistsRes.data || []).filter(
