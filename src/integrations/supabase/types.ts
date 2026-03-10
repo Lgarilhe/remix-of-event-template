@@ -825,6 +825,50 @@ export type Database = {
           },
         ]
       }
+      candidate_comments: {
+        Row: {
+          candidate_id: string
+          content: string
+          created_at: string
+          created_by: string
+          id: string
+          job_id: string | null
+          mentions: string[] | null
+          organization_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          candidate_id: string
+          content: string
+          created_at?: string
+          created_by: string
+          id?: string
+          job_id?: string | null
+          mentions?: string[] | null
+          organization_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          candidate_id?: string
+          content?: string
+          created_at?: string
+          created_by?: string
+          id?: string
+          job_id?: string | null
+          mentions?: string[] | null
+          organization_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "candidate_comments_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       candidate_evaluations: {
         Row: {
           ai_generated: boolean
@@ -1728,6 +1772,53 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      notifications: {
+        Row: {
+          body: string | null
+          created_at: string
+          id: string
+          link: string | null
+          metadata: Json | null
+          organization_id: string | null
+          read_at: string | null
+          title: string
+          type: string
+          user_id: string
+        }
+        Insert: {
+          body?: string | null
+          created_at?: string
+          id?: string
+          link?: string | null
+          metadata?: Json | null
+          organization_id?: string | null
+          read_at?: string | null
+          title: string
+          type?: string
+          user_id: string
+        }
+        Update: {
+          body?: string | null
+          created_at?: string
+          id?: string
+          link?: string | null
+          metadata?: Json | null
+          organization_id?: string | null
+          read_at?: string | null
+          title?: string
+          type?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notifications_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       notion_api_cache: {
         Row: {
