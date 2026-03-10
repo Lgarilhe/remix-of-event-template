@@ -1,94 +1,151 @@
 import React, { useEffect, useState } from 'react';
-import { useVivierCandidates, VivierCandidate } from '@/hooks/useVivierCandidates';
+import { useVivierContacts, VivierContact } from '@/hooks/useVivierCandidates';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Search, Phone, Mail, Linkedin, ChevronLeft, ChevronRight, Users, FileText, Calendar, Trophy, ExternalLink } from 'lucide-react';
+import { Search, Mail, Building2, ChevronLeft, ChevronRight, Users, FileText, Calendar, Trophy, MapPin, Briefcase } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import { useCandidateHistory } from '@/hooks/useCandidateHistory';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { supabase } from '@/integrations/supabase/client';
 
-function CandidateHistorySheet({ candidate, open, onOpenChange }: { candidate: VivierCandidate | null; open: boolean; onOpenChange: (v: boolean) => void }) {
-  const { data: history, loading } = useCandidateHistory({ airtableId: candidate?.airtable_id });
+interface ContactShortlist {
+  airtable_id: string;
+  status: string | null;
+  date_added: string | null;
+  job_title: string | null;
+  candidate_name: string | null;
+}
 
-  if (!candidate) return null;
+function ContactDetailSheet({ contact, open, onOpenChange }: { contact: VivierContact | null; open: boolean; onOpenChange: (v: boolean) => void }) {
+  const [shortlists, setShortlists] = useState<ContactShortlist[]>([]);
+  const [notes, setNotes] = useState<any[]>([]);
+  const [loadingDetails, setLoadingDetails] = useState(false);
+
+  useEffect(() => {
+    if (!contact || !open) return;
+    setLoadingDetails(true);
+
+    const fetchDetails = async () => {
+      // Fetch shortlists linked to this contact
+      const [slRes, notesRes] = await Promise.all([
+        supabase
+          .from('airtable_shortlists')
+          .select('airtable_id, status, date_added, job_airtable_id, candidate_airtable_id')
+          .eq('contact_airtable_id', contact.airtable_id)
+          .order('date_added', { ascending: false })
+          .limit(20),
+        supabase
+          .from('airtable_notes')
+          .select('airtable_id, title, detail, note_type, note_date, author')
+          .eq('contact_airtable_id', contact.airtable_id)
+          .order('note_date', { ascending: false })
+          .limit(15),
+      ]);
+
+      // Resolve job titles and candidate names
+      const jobIds = new Set<string>();
+      const candIds = new Set<string>();
+      (slRes.data || []).forEach(s => {
+        if (s.job_airtable_id) jobIds.add(s.job_airtable_id);
+        if (s.candidate_airtable_id) candIds.add(s.candidate_airtable_id);
+      });
+
+      const [jobsRes, candsRes] = await Promise.all([
+        jobIds.size > 0
+          ? supabase.from('airtable_jobs').select('airtable_id, title').in('airtable_id', [...jobIds])
+          : Promise.resolve({ data: [] as any[] }),
+        candIds.size > 0
+          ? supabase.from('airtable_candidates').select('airtable_id, full_name').in('airtable_id', [...candIds])
+          : Promise.resolve({ data: [] as any[] }),
+      ]);
+
+      const jobMap = new Map((jobsRes.data || []).map((j: any) => [j.airtable_id, j.title]));
+      const candMap = new Map((candsRes.data || []).map((c: any) => [c.airtable_id, c.full_name]));
+
+      setShortlists((slRes.data || []).map(s => ({
+        airtable_id: s.airtable_id,
+        status: s.status,
+        date_added: s.date_added,
+        job_title: s.job_airtable_id ? jobMap.get(s.job_airtable_id) || null : null,
+        candidate_name: s.candidate_airtable_id ? candMap.get(s.candidate_airtable_id) || null : null,
+      })));
+      setNotes(notesRes.data || []);
+      setLoadingDetails(false);
+    };
+
+    fetchDetails();
+  }, [contact, open]);
+
+  if (!contact) return null;
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent className="w-full sm:max-w-lg overflow-y-auto">
         <SheetHeader>
-          <SheetTitle className="text-left">{candidate.full_name || 'Sans nom'}</SheetTitle>
+          <SheetTitle className="text-left">{contact.full_name || 'Sans nom'}</SheetTitle>
+          {contact.title && <p className="text-sm text-muted-foreground text-left">{contact.title}</p>}
         </SheetHeader>
         <div className="mt-4 space-y-4">
-          {/* Contact info */}
+          {/* Info */}
           <div className="space-y-1 text-sm">
-            {candidate.email && (
+            {contact.company_name && (
               <div className="flex items-center gap-2 text-muted-foreground">
-                <Mail className="w-3.5 h-3.5" /> {candidate.email}
+                <Building2 className="w-3.5 h-3.5" /> {contact.company_name}
               </div>
             )}
-            {candidate.phone && (
+            {contact.email && (
               <div className="flex items-center gap-2 text-muted-foreground">
-                <Phone className="w-3.5 h-3.5" /> {candidate.phone}
+                <Mail className="w-3.5 h-3.5" /> {contact.email}
               </div>
             )}
-            {candidate.linkedin_url && (
-              <a href={candidate.linkedin_url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-primary hover:underline">
-                <Linkedin className="w-3.5 h-3.5" /> Profil LinkedIn <ExternalLink className="w-3 h-3" />
-              </a>
+            {contact.city && (
+              <div className="flex items-center gap-2 text-muted-foreground">
+                <MapPin className="w-3.5 h-3.5" /> {contact.city}
+              </div>
+            )}
+            {contact.contact_type && (
+              <Badge variant="outline" className="text-[10px]">{contact.contact_type}</Badge>
             )}
           </div>
 
-          {candidate.skills?.length ? (
-            <div className="flex flex-wrap gap-1">
-              {candidate.skills.slice(0, 15).map(s => (
-                <Badge key={s} variant="secondary" className="text-[10px]">{s}</Badge>
-              ))}
-            </div>
-          ) : null}
+          {/* Stats summary */}
+          <div className="grid grid-cols-4 gap-2">
+            {[
+              { label: 'Shortlists', value: contact.shortlist_count, icon: FileText },
+              { label: 'Notes', value: contact.note_count, icon: FileText },
+              { label: 'RDV', value: contact.appointment_count, icon: Calendar },
+              { label: 'Placements', value: contact.placement_count, icon: Trophy },
+            ].map(s => (
+              <div key={s.label} className="border border-border p-2 text-center">
+                <div className="text-lg font-bold">{s.value}</div>
+                <div className="text-[10px] text-muted-foreground">{s.label}</div>
+              </div>
+            ))}
+          </div>
 
-          {loading ? (
+          {loadingDetails ? (
             <div className="space-y-2">
               <Skeleton className="h-4 w-full" />
               <Skeleton className="h-4 w-3/4" />
-              <Skeleton className="h-4 w-1/2" />
             </div>
-          ) : history ? (
+          ) : (
             <>
               {/* Shortlists */}
-              {history.shortlists.length > 0 && (
+              {shortlists.length > 0 && (
                 <div>
-                  <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Shortlists ({history.shortlists.length})</h4>
+                  <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Shortlists</h4>
                   <div className="space-y-2">
-                    {history.shortlists.map(s => (
+                    {shortlists.map(s => (
                       <div key={s.airtable_id} className="border border-border p-2 text-xs space-y-0.5">
-                        <div className="font-medium">{s.job_title || 'Poste inconnu'} — {s.company_name || '?'}</div>
+                        <div className="font-medium">{s.job_title || 'Poste inconnu'}</div>
                         <div className="text-muted-foreground flex items-center gap-2">
-                          {s.date_added && <span>{s.date_added}</span>}
+                          {s.candidate_name && <span>{s.candidate_name}</span>}
+                          {s.date_added && <span>· {s.date_added}</span>}
                           {s.status && <Badge variant="outline" className="text-[9px]">{s.status}</Badge>}
-                          {s.consultant && <span className="italic">par {s.consultant}</span>}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Placements */}
-              {history.placements.length > 0 && (
-                <div>
-                  <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Placements ({history.placements.length})</h4>
-                  <div className="space-y-2">
-                    {history.placements.map(p => (
-                      <div key={p.airtable_id} className="border border-border p-2 text-xs space-y-0.5">
-                        <div className="font-medium">{p.name || 'Placement'} — {p.company_name || '?'}</div>
-                        <div className="text-muted-foreground">
-                          {p.start_date && <span>{p.start_date}</span>}
-                          {p.status && <> · {p.status}</>}
                         </div>
                       </div>
                     ))}
@@ -97,33 +154,16 @@ function CandidateHistorySheet({ candidate, open, onOpenChange }: { candidate: V
               )}
 
               {/* Notes */}
-              {history.notes.length > 0 && (
+              {notes.length > 0 && (
                 <div>
-                  <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Notes ({history.notes.length})</h4>
+                  <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Notes</h4>
                   <div className="space-y-2">
-                    {history.notes.slice(0, 5).map(n => (
+                    {notes.map((n: any) => (
                       <div key={n.airtable_id} className="border border-border p-2 text-xs space-y-0.5">
                         <div className="font-medium">{n.title || 'Note'}</div>
                         {n.detail && <div className="text-muted-foreground line-clamp-2">{n.detail}</div>}
                         <div className="text-muted-foreground">
-                          {n.note_date} {n.consultant && <span className="italic">— {n.consultant}</span>}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Appointments */}
-              {history.appointments.length > 0 && (
-                <div>
-                  <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Rendez-vous ({history.appointments.length})</h4>
-                  <div className="space-y-2">
-                    {history.appointments.slice(0, 5).map(a => (
-                      <div key={a.airtable_id} className="border border-border p-2 text-xs space-y-0.5">
-                        <div className="font-medium">{a.title || 'RDV'}</div>
-                        <div className="text-muted-foreground">
-                          {a.appointment_date} {a.appointment_type && <> · {a.appointment_type}</>}
+                          {n.note_date} {n.author && <span className="italic">— {n.author}</span>}
                         </div>
                       </div>
                     ))}
@@ -131,8 +171,6 @@ function CandidateHistorySheet({ candidate, open, onOpenChange }: { candidate: V
                 </div>
               )}
             </>
-          ) : (
-            <p className="text-sm text-muted-foreground">Aucun historique trouvé.</p>
           )}
         </div>
       </SheetContent>
@@ -142,23 +180,23 @@ function CandidateHistorySheet({ candidate, open, onOpenChange }: { candidate: V
 
 export function VivierList() {
   const {
-    candidates,
+    contacts,
     totalCount,
     loading,
     filters,
     updateFilters,
-    fetchCandidates,
+    fetchContacts,
     page,
     goToPage,
     pageSize,
-  } = useVivierCandidates();
+  } = useVivierContacts();
 
   const [searchInput, setSearchInput] = useState('');
-  const [selectedCandidate, setSelectedCandidate] = useState<VivierCandidate | null>(null);
+  const [selectedContact, setSelectedContact] = useState<VivierContact | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
 
   useEffect(() => {
-    fetchCandidates();
+    fetchContacts();
   }, []);
 
   const handleSearch = () => {
@@ -175,7 +213,7 @@ export function VivierList() {
           <div className="relative">
             <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
             <Input
-              placeholder="Rechercher par nom, email, téléphone…"
+              placeholder="Rechercher par nom, email, entreprise…"
               value={searchInput}
               onChange={e => setSearchInput(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && handleSearch()}
@@ -218,7 +256,7 @@ export function VivierList() {
       {/* Stats bar */}
       {!loading && totalCount > 0 && (
         <div className="text-xs text-muted-foreground">
-          {totalCount} candidat{totalCount > 1 ? 's' : ''} avec des interactions significatives
+          {totalCount} contact{totalCount > 1 ? 's' : ''} client{totalCount > 1 ? 's' : ''} avec des interactions significatives
         </div>
       )}
 
@@ -229,18 +267,18 @@ export function VivierList() {
             <Skeleton key={i} className="h-16 w-full" />
           ))}
         </div>
-      ) : candidates.length === 0 ? (
+      ) : contacts.length === 0 ? (
         <div className="text-center py-12 text-muted-foreground">
           <Users className="w-10 h-10 mx-auto mb-3 opacity-30" />
-          <p className="text-sm font-medium">Aucun candidat trouvé</p>
+          <p className="text-sm font-medium">Aucun contact trouvé</p>
           <p className="text-xs mt-1">Ajustez vos filtres ou lancez une recherche</p>
         </div>
       ) : (
         <div className="border border-border divide-y divide-border">
-          {candidates.map(c => (
+          {contacts.map(c => (
             <button
               key={c.airtable_id}
-              onClick={() => { setSelectedCandidate(c); setSheetOpen(true); }}
+              onClick={() => { setSelectedContact(c); setSheetOpen(true); }}
               className="w-full text-left px-3 py-2.5 hover:bg-accent/50 transition-colors flex items-center gap-3"
             >
               {/* Avatar */}
@@ -251,20 +289,20 @@ export function VivierList() {
               {/* Info */}
               <div className="flex-1 min-w-0 space-y-0.5">
                 <div className="text-sm font-medium truncate">{c.full_name || 'Sans nom'}</div>
-                <div className="flex items-center gap-3 text-[10px] text-muted-foreground">
-                  {c.phone && (
+                <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+                  {c.company_name && (
                     <span className="flex items-center gap-1">
-                      <Phone className="w-3 h-3" /> {c.phone}
+                      <Building2 className="w-3 h-3" /> {c.company_name}
                     </span>
                   )}
-                  {c.email && (
+                  {c.title && (
                     <span className="flex items-center gap-1 truncate max-w-[180px]">
-                      <Mail className="w-3 h-3" /> {c.email}
+                      <Briefcase className="w-3 h-3" /> {c.title}
                     </span>
                   )}
-                  {c.linkedin_url && (
+                  {c.city && (
                     <span className="flex items-center gap-1">
-                      <Linkedin className="w-3 h-3" />
+                      <MapPin className="w-3 h-3" /> {c.city}
                     </span>
                   )}
                 </div>
@@ -286,7 +324,7 @@ export function VivierList() {
                   </Badge>
                 )}
                 {c.placement_count > 0 && (
-                  <Badge className="text-[9px] gap-0.5 px-1.5 bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
+                  <Badge variant="secondary" className="text-[9px] gap-0.5 px-1.5">
                     <Trophy className="w-3 h-3" /> {c.placement_count}
                   </Badge>
                 )}
@@ -328,9 +366,9 @@ export function VivierList() {
         </div>
       )}
 
-      {/* History sheet */}
-      <CandidateHistorySheet
-        candidate={selectedCandidate}
+      {/* Detail sheet */}
+      <ContactDetailSheet
+        contact={selectedContact}
         open={sheetOpen}
         onOpenChange={setSheetOpen}
       />
