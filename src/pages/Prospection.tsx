@@ -4,12 +4,14 @@ import { Navbar } from '@/components/Navbar';
 import { SEOHead } from '@/components/SEOHead';
 import { ICPList } from '@/components/outreach/icp';
 import { ProspectSearch } from '@/components/prospection/ProspectSearch';
+import { VivierList } from '@/components/prospection/VivierList';
 import { ProspectResults } from '@/components/prospection/ProspectResults';
 import { Crosshair } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ICP } from '@/hooks/useICPs';
 
 const tabs = [
+  { value: 'vivier', label: 'Vivier', emoji: '📋' },
   { value: 'icp', label: 'ICP', emoji: '🎯' },
   { value: 'search', label: 'Recherche', emoji: '🔍' },
 ] as const;
@@ -126,7 +128,12 @@ export default function Prospection() {
             </div>
           </div>
 
-          {/* Tab content */}
+          {/* Vivier tab */}
+          <div className={cn("mt-0 min-w-0", activeTab !== 'vivier' && 'hidden')}>
+            <VivierList />
+          </div>
+
+          {/* ICP tab */}
           <div className={cn("mt-0 min-w-0", activeTab !== 'icp' && 'hidden')}>
             <ICPList onSearchFromICP={handleSearchFromICP} />
           </div>
