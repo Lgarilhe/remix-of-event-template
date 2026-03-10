@@ -42,43 +42,64 @@ function buildLocation(prospect: ProspectProfile) {
   return titleCase(parts[0] as string);
 }
 
-function getProfilePicUrl(prospect: ProspectProfile): string | undefined {
-  if (prospect.profile_pic_url) return prospect.profile_pic_url;
-  if (prospect.linkedin_url) {
-    const match = prospect.linkedin_url.match(/linkedin\.com\/in\/([^\/\?]+)/);
-    if (match?.[1]) return `https://unavatar.io/linkedin/${match[1]}`;
-  }
-  return undefined;
+function extractLinkedInUsername(url?: string | null) {
+  if (!url) return null;
+  const match = url.match(/linkedin\.com\/in\/([^\/\?]+)/);
+  return match?.[1] || null;
 }
 
-function getCompanyLogoUrl(companyName?: string, website?: string | null) {
+function getProfilePicCandidates(prospect: ProspectProfile): string[] {
+  const candidates: string[] = [];
+
+  if (prospect.profile_pic_url) {
+    candidates.push(prospect.profile_pic_url);
+  }
+
+  const linkedinUsername = extractLinkedInUsername(prospect.linkedin_url);
+  if (linkedinUsername) {
+    candidates.push(`https://unavatar.io/linkedin/${linkedinUsername}`);
+  }
+
+  return [...new Set(candidates.filter(Boolean))];
+}
+
+function getCompanyLogoCandidates(companyName?: string, website?: string | null) {
+  const candidates: string[] = [];
+
   if (website) {
     try {
-      const domain = new URL(website.startsWith('http') ? website : `https://${website}`).hostname;
-      return `https://logo.clearbit.com/${domain}`;
-    } catch { /* fall through */ }
+      const domain = new URL(website.startsWith('http') ? website : `https://${website}`).hostname.replace(/^www\./, '');
+      candidates.push(`https://logo.clearbit.com/${domain}`);
+      candidates.push(`https://unavatar.io/${domain}`);
+    } catch {
+      // ignore malformed website
+    }
   }
+
   if (companyName) {
     const slug = companyName.toLowerCase().replace(/[^a-z0-9]/g, '');
-    return `https://logo.clearbit.com/${slug}.com`;
+    if (slug) candidates.push(`https://unavatar.io/${slug}.com`);
   }
-  return null;
+
+  return [...new Set(candidates.filter(Boolean))];
 }
 
 function CompanyLogo({ companyName, website }: { companyName?: string; website?: string | null }) {
-  const [failed, setFailed] = useState(false);
-  const logoUrl = getCompanyLogoUrl(companyName, website);
+  const [logoIndex, setLogoIndex] = useState(0);
+  const logos = getCompanyLogoCandidates(companyName, website);
 
-  if (!logoUrl || failed) {
+  if (logos.length === 0 || logoIndex >= logos.length) {
     return <Building2 className="w-3.5 h-3.5 text-primary shrink-0" />;
   }
 
   return (
     <img
-      src={logoUrl}
+      src={logos[logoIndex]}
       alt=""
-      className="w-4 h-4 rounded border border-border/30 object-contain bg-white shrink-0"
-      onError={() => setFailed(true)}
+      className="w-4 h-4 rounded border border-border/30 object-contain bg-background shrink-0"
+      onError={() => setLogoIndex((prev) => prev + 1)}
+      loading="lazy"
+      referrerPolicy="no-referrer"
     />
   );
 }
@@ -92,7 +113,9 @@ function ProspectCard({ prospect }: { prospect: ProspectProfile }) {
   const displayTitle = prospect.job_title ? titleCase(prospect.job_title) : null;
   const displayCompany = prospect.job_company_name ? titleCase(prospect.job_company_name) : null;
   const displayLocation = buildLocation(prospect);
-  const avatarUrl = getProfilePicUrl(prospect);
+  const avatarCandidates = getProfilePicCandidates(prospect);
+  const [avatarIndex, setAvatarIndex] = useState(0);
+  const avatarUrl = avatarCandidates[avatarIndex];
 
   const copyEmail = (email: string) => {
     navigator.clipboard.writeText(email);
@@ -113,7 +136,7 @@ function ProspectCard({ prospect }: { prospect: ProspectProfile }) {
           {/* Avatar - separate column on desktop */}
           <div className="relative shrink-0 hidden sm:block">
             <Avatar className="w-14 h-14 border-2 border-border shadow-md">
-              <AvatarImage src={avatarUrl} alt={displayName} className="object-cover" />
+              <AvatarImage src={avatarUrl} alt={displayName} className="object-cover" onError={() => setAvatarIndex((prev) => prev + 1)} />
               <AvatarFallback className="bg-gradient-to-br from-primary to-primary/80 text-primary-foreground text-lg font-medium">
                 {initials}
               </AvatarFallback>
@@ -129,7 +152,7 @@ function ProspectCard({ prospect }: { prospect: ProspectProfile }) {
                   {/* Avatar inline next to name on mobile */}
                   <div className="relative shrink-0 sm:hidden">
                     <Avatar className="w-8 h-8 border border-border shadow-sm">
-                      <AvatarImage src={avatarUrl} alt={displayName} className="object-cover" />
+                      <AvatarImage src={avatarUrl} alt={displayName} className="object-cover" onError={() => setAvatarIndex((prev) => prev + 1)} />
                       <AvatarFallback className="bg-gradient-to-br from-primary to-primary/80 text-primary-foreground text-xs font-medium">
                         {initials}
                       </AvatarFallback>
