@@ -216,6 +216,10 @@ export default function Outreach() {
             </div>
           </div>
 
+          <div className={cn("mt-0 min-w-0", activeTab !== 'icp' && 'hidden')}>
+            <ICPList />
+          </div>
+
           <div className={cn("mt-0 min-w-0", activeTab !== 'search' && 'hidden')}>
             {accounts.length === 0 ? (
               <div className="bg-background border border-foreground p-12 text-center">
