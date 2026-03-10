@@ -78,13 +78,13 @@ function ProspectCard({ prospect }: { prospect: ProspectProfile }) {
 
   return (
     <div className="border border-foreground/15 bg-background hover:border-foreground/30 transition-all group">
-      <div className="p-3">
-        <div className="flex items-start gap-3">
+      <div className="p-2.5 sm:p-4">
+        <div className="flex items-start gap-2 sm:gap-4">
           {/* Avatar */}
-          <div className="relative shrink-0">
-            <Avatar className="w-10 h-10 border-2 border-border shadow-sm">
+          <div className="relative shrink-0 hidden sm:block">
+            <Avatar className="w-14 h-14 border-2 border-border shadow-md">
               <AvatarImage src={prospect.profile_pic_url || undefined} alt={displayName} className="object-cover" />
-              <AvatarFallback className="bg-foreground text-background text-xs font-bold">
+              <AvatarFallback className="bg-gradient-to-br from-primary to-primary/80 text-primary-foreground text-lg font-medium">
                 {initials}
               </AvatarFallback>
             </Avatar>
@@ -95,8 +95,17 @@ function ProspectCard({ prospect }: { prospect: ProspectProfile }) {
             {/* Row 1: Name + badges */}
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <h3 className="text-sm font-bold text-foreground truncate">{displayName}</h3>
+                <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+                  {/* Mobile avatar inline */}
+                  <div className="relative shrink-0 sm:hidden">
+                    <Avatar className="w-8 h-8 border border-border shadow-sm">
+                      <AvatarImage src={prospect.profile_pic_url || undefined} alt={displayName} className="object-cover" />
+                      <AvatarFallback className="bg-gradient-to-br from-primary to-primary/80 text-primary-foreground text-xs font-medium">
+                        {initials}
+                      </AvatarFallback>
+                    </Avatar>
+                  </div>
+                  <h3 className="font-semibold text-foreground text-sm sm:text-base leading-tight break-words sm:truncate">{displayName}</h3>
                   {prospect.score !== undefined && (
                     <Badge variant="outline" className={cn(
                       "text-[10px] shrink-0 font-bold tabular-nums",
@@ -133,13 +142,10 @@ function ProspectCard({ prospect }: { prospect: ProspectProfile }) {
                     </Badge>
                   )}
                 </div>
-                {prospect.headline && (
-                  <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">{prospect.headline}</p>
-                )}
               </div>
 
               {/* Actions */}
-              <div className="flex items-center gap-1 shrink-0">
+              <div className="hidden sm:flex items-center gap-1 shrink-0">
                 {prospect.linkedin_url && (
                   <Tooltip>
                     <TooltipTrigger asChild>
@@ -155,36 +161,46 @@ function ProspectCard({ prospect }: { prospect: ProspectProfile }) {
               </div>
             </div>
 
+            {/* Headline */}
+            {prospect.headline && (
+              <p className="text-xs sm:text-sm text-muted-foreground line-clamp-2 mt-0.5 leading-snug break-words">{prospect.headline}</p>
+            )}
+
             {/* Row 2: Current position */}
-            <div className="flex items-center gap-2 mt-1.5">
-              {companyLogo && (
-                <img
-                  src={companyLogo} alt=""
-                  className="w-4 h-4 rounded border border-foreground/10 object-contain bg-white shrink-0"
-                  onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                />
+            <div className="flex flex-col sm:flex-row sm:flex-wrap items-start sm:items-center gap-x-2 sm:gap-x-4 gap-y-0.5 mt-1.5 text-[10px] sm:text-xs text-muted-foreground">
+              {displayCompany && (
+                <span className="flex items-center gap-1.5 font-medium text-foreground/80 min-w-0">
+                  {companyLogo ? (
+                    <img
+                      src={companyLogo} alt=""
+                      className="w-4 h-4 rounded border border-border/30 object-contain bg-white shrink-0"
+                      onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                    />
+                  ) : (
+                    <Building2 className="w-3.5 h-3.5 text-primary shrink-0" />
+                  )}
+                  <span className="min-w-0 break-words sm:truncate">{displayCompany}</span>
+                  {jobTenure && (
+                    <span className="text-muted-foreground/40 font-normal shrink-0">• depuis {jobTenure}</span>
+                  )}
+                </span>
               )}
-              <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-foreground">
-                {displayTitle && (
-                  <span className="font-medium flex items-center gap-1">
-                    <Briefcase className="w-3 h-3 text-muted-foreground" />
-                    {displayTitle}
-                  </span>
-                )}
-                {displayCompany && (
-                  <span className="text-muted-foreground">
-                    chez <span className="font-medium text-foreground">{displayCompany}</span>
-                  </span>
-                )}
-                {jobTenure && (
-                  <span className="text-muted-foreground/60 text-[10px]">depuis {jobTenure}</span>
-                )}
-              </div>
+              {displayTitle && (
+                <span className="flex items-center gap-1 min-w-0">
+                  <Briefcase className="w-3.5 h-3.5 shrink-0" />
+                  <span className="min-w-0 break-words sm:truncate">{displayTitle}</span>
+                </span>
+              )}
+              {displayLocation && (
+                <span className="flex items-center gap-1 min-w-0">
+                  <MapPin className="w-3.5 h-3.5 shrink-0" />
+                  <span className="min-w-0 break-words sm:truncate">{displayLocation}</span>
+                </span>
+              )}
             </div>
 
-            {/* Row 3: Location + company details */}
+            {/* Company details */}
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1 text-[11px] text-muted-foreground">
-              {displayLocation && (<span className="flex items-center gap-1"><MapPin className="w-3 h-3" />{displayLocation}</span>)}
               {prospect.job_company_industry && (<span className="flex items-center gap-1"><Building2 className="w-3 h-3" />{prospect.job_company_industry}</span>)}
               {prospect.job_company_size && (<span className="flex items-center gap-1"><Users className="w-3 h-3" />{prospect.job_company_size} emp.</span>)}
               {prospect.job_company_website && (
@@ -198,7 +214,7 @@ function ProspectCard({ prospect }: { prospect: ProspectProfile }) {
 
             {/* Skills */}
             {prospect.skills && prospect.skills.length > 0 && (
-              <div className="flex flex-wrap gap-1 mt-1.5">
+              <div className="flex flex-wrap gap-1 mt-2 overflow-hidden">
                 {prospect.skills.slice(0, 4).map((skill, i) => (
                   <Badge key={i} variant="outline" className="text-[9px] border-foreground/10 font-normal px-1.5 py-0 bg-muted/50">{skill}</Badge>
                 ))}
@@ -228,7 +244,7 @@ function ProspectCard({ prospect }: { prospect: ProspectProfile }) {
         {/* Expand toggle */}
         {((prospect.experience && prospect.experience.length > 0) || (prospect.education && prospect.education.length > 0)) && (
           <button onClick={() => setExpanded(!expanded)}
-            className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground transition-colors mt-2 ml-[52px]">
+            className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground transition-colors mt-2 ml-0 sm:ml-[72px]">
             {expanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
             {expanded ? 'Moins' : 'Détails'}
           </button>
@@ -236,7 +252,7 @@ function ProspectCard({ prospect }: { prospect: ProspectProfile }) {
       </div>
 
       {expanded && (
-        <div className="border-t border-foreground/10 px-3 py-2 ml-[52px] space-y-2">
+        <div className="border-t border-foreground/10 px-3 py-2 sm:ml-[72px] space-y-2">
           {prospect.experience && prospect.experience.length > 0 && (
             <div>
               <h4 className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1 flex items-center gap-1">
@@ -291,14 +307,25 @@ interface ProspectResultsProps {
 
 export function ProspectResults({ results, searching }: ProspectResultsProps) {
   return (
-    <div className="bg-background border border-foreground flex flex-col min-h-[420px] lg:h-[calc(100vh-180px)]">
-      {/* Header bar */}
-      <div className="flex items-center gap-2 px-3 py-2 border-b border-border shrink-0">
-        <Search className="w-3.5 h-3.5 text-muted-foreground" />
-        <span className="text-xs font-medium uppercase tracking-wider">Résultats</span>
+    <div className="bg-background border border-foreground flex w-full max-w-full min-w-0 flex-col min-h-[420px] lg:h-full overflow-y-hidden">
+      {/* HEADER: same as SearchResultsPanel */}
+      <div className="flex items-center gap-2 px-3 sm:px-4 py-2 border-b border-border shrink-0 min-w-0">
+        <Button
+          disabled={true}
+          size="sm"
+          className="bg-primary hover:bg-primary/90 shrink-0"
+        >
+          <Search className="w-3.5 h-3.5 mr-1.5" />
+          Résultats
+        </Button>
+
         {results.length > 0 && (
-          <Badge variant="outline" className="text-[10px] border-foreground/20 tabular-nums">{results.length}</Badge>
+          <span className="text-xs text-muted-foreground whitespace-nowrap">
+            <span className="font-semibold text-foreground">{results.length}</span>
+            <span className="text-muted-foreground/60"> prospect(s)</span>
+          </span>
         )}
+
         {searching && <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground ml-auto" />}
       </div>
 
