@@ -1,4 +1,5 @@
 // PDL (PeopleDataLabs) Person Search Edge Function
+// Uses the SQL-style query API: https://docs.peopledatalabs.com/docs/reference-person-search-api
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -23,18 +24,29 @@ Deno.serve(async (req) => {
 
     const body = await req.json();
     const {
-      job_title,
-      company,
-      location,
-      industry,
-      company_size,
-      skills,
-      intent_job_change,
+      // Free-text fields
+      job_title,           // LIKE search on job_title
+      job_title_role,      // Canonical enum: engineering, sales, marketing, etc.
+      job_title_levels,    // Canonical enum array: cxo, vp, director, manager, senior, entry, etc.
+      job_company_name,    // Company name
+      job_company_industry,// Canonical industry
+      job_company_size,    // Enum: 1-10, 11-50, 51-200, 201-500, 501-1000, 1001-5000, 5001-10000, 10001+
+      // Location
+      location_country,    // Canonical country name (lowercase)
+      location_region,     // Region/state
+      location_locality,   // City
+      // Skills & education
+      skills,              // Array of skill strings
+      // Intent signals
+      intent_job_change,   // boolean - filter by recent job start
+      // Pagination
+      size,                // max 100
     } = body;
 
-    // Build SQL WHERE clauses for PDL Person Search API
+    // Build SQL WHERE clauses
     const conditions: string[] = [];
 
+    // Job title - use LIKE for flexible matching
     if (job_title) {
       const titles = job_title.split(',').map((t: string) => t.trim()).filter(Boolean);
       if (titles.length === 1) {
@@ -45,33 +57,58 @@ Deno.serve(async (req) => {
       }
     }
 
-    if (company) {
-      conditions.push(`job_company_name LIKE '%${company}%'`);
+    // Job title role - canonical enum, exact match
+    if (job_title_role) {
+      conditions.push(`job_title_role='${job_title_role}'`);
     }
 
-    if (location) {
-      const locations = location.split(',').map((l: string) => l.trim()).filter(Boolean);
-      if (locations.length === 1) {
-        conditions.push(`location_name LIKE '%${locations[0]}%'`);
+    // Job title levels - canonical enum, exact match
+    if (job_title_levels && Array.isArray(job_title_levels) && job_title_levels.length > 0) {
+      if (job_title_levels.length === 1) {
+        conditions.push(`job_title_levels='${job_title_levels[0]}'`);
       } else {
-        const orParts = locations.map((l: string) => `location_name LIKE '%${l}%'`).join(' OR ');
+        const orParts = job_title_levels.map((l: string) => `job_title_levels='${l}'`).join(' OR ');
         conditions.push(`(${orParts})`);
       }
     }
 
-    if (industry) {
-      conditions.push(`job_company_industry LIKE '%${industry}%'`);
+    // Company name - LIKE for flexibility
+    if (job_company_name) {
+      conditions.push(`job_company_name LIKE '%${job_company_name}%'`);
     }
 
-    if (company_size && company_size !== 'all') {
-      conditions.push(`job_company_size='${company_size}'`);
+    // Industry - canonical value, exact match
+    if (job_company_industry) {
+      conditions.push(`job_company_industry='${job_company_industry}'`);
     }
 
+    // Company size - enum, exact match
+    if (job_company_size && job_company_size !== 'all') {
+      conditions.push(`job_company_size='${job_company_size}'`);
+    }
+
+    // Location country - canonical lowercase
+    if (location_country) {
+      conditions.push(`location_country='${location_country}'`);
+    }
+
+    // Location region - LIKE for flexibility
+    if (location_region) {
+      conditions.push(`location_region LIKE '%${location_region}%'`);
+    }
+
+    // Location locality (city) - LIKE for flexibility
+    if (location_locality) {
+      conditions.push(`location_locality LIKE '%${location_locality}%'`);
+    }
+
+    // Skills - array of strings, OR match
     if (skills && Array.isArray(skills) && skills.length > 0) {
       const skillParts = skills.map((s: string) => `skills='${s}'`).join(' OR ');
       conditions.push(`(${skillParts})`);
     }
 
+    // Intent: recent job change (started within last 6 months)
     if (intent_job_change) {
       const sixMonthsAgo = new Date();
       sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
@@ -90,11 +127,10 @@ Deno.serve(async (req) => {
 
     const searchBody = {
       sql: sqlQuery,
-      size: 50,
+      size: Math.min(size || 50, 100),
       dataset: 'all',
     };
 
-    // PDL Person Search API (POST with JSON body)
     const pdlResponse = await fetch(`${PDL_BASE}/person/search`, {
       method: 'POST',
       headers: {
@@ -119,7 +155,7 @@ Deno.serve(async (req) => {
             });
           }
         } catch {
-          // fall through to generic error response
+          // fall through
         }
       }
 
@@ -150,6 +186,8 @@ Deno.serve(async (req) => {
         last_name: p.last_name,
         headline: p.headline,
         job_title: p.job_title,
+        job_title_role: p.job_title_role,
+        job_title_levels: p.job_title_levels,
         job_company_name: p.job_company_name,
         job_company_industry: p.job_company_industry,
         job_company_size: p.job_company_size,
@@ -158,6 +196,9 @@ Deno.serve(async (req) => {
         job_company_funding_stage: p.job_company_funding_details?.last_funding_round_type,
         job_start_date: p.job_start_date,
         location_name: p.location_name,
+        location_country: p.location_country,
+        location_region: p.location_region,
+        location_locality: p.location_locality,
         linkedin_url: p.linkedin_url,
         emails: (p.emails || []).map((e: any) => e.address).filter(Boolean),
         phone_numbers: (p.phone_numbers || []).map((ph: any) => ph.number).filter(Boolean),
