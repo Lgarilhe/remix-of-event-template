@@ -28,6 +28,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 interface SearchResultsPanelProps {
   // Results
   results: LinkedInProfile[];
+  mergedResults: LinkedInProfile[];
   filteredResults: LinkedInProfile[];
   loading: boolean;
   loadingMore: boolean;
