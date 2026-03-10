@@ -33,13 +33,13 @@ function buildLocation(prospect: ProspectProfile) {
   const parts = [
     prospect.location_name,
     ...(!prospect.location_name ? [
-      (prospect as any).location_locality,
-      (prospect as any).location_region,
-      (prospect as any).location_country,
+      prospect.location_locality,
+      prospect.location_region,
+      prospect.location_country,
     ] : []),
   ].filter(Boolean);
   if (parts.length === 0) return null;
-  return titleCase(parts[0]);
+  return titleCase(parts[0] as string);
 }
 
 function getCompanyLogoUrl(companyName?: string, website?: string | null) {
@@ -56,12 +56,29 @@ function getCompanyLogoUrl(companyName?: string, website?: string | null) {
   return null;
 }
 
+function CompanyLogo({ companyName, website }: { companyName?: string; website?: string | null }) {
+  const [failed, setFailed] = useState(false);
+  const logoUrl = getCompanyLogoUrl(companyName, website);
+
+  if (!logoUrl || failed) {
+    return <Building2 className="w-3.5 h-3.5 text-primary shrink-0" />;
+  }
+
+  return (
+    <img
+      src={logoUrl}
+      alt=""
+      className="w-4 h-4 rounded border border-border/30 object-contain bg-white shrink-0"
+      onError={() => setFailed(true)}
+    />
+  );
+}
+
 function ProspectCard({ prospect }: { prospect: ProspectProfile }) {
   const [expanded, setExpanded] = useState(false);
   const [copiedEmail, setCopiedEmail] = useState(false);
   const signals = prospect.intent_signals;
   const initials = getInitials(prospect.full_name);
-  const companyLogo = getCompanyLogoUrl(prospect.job_company_name, prospect.job_company_website);
   const displayName = titleCase(prospect.full_name);
   const displayTitle = prospect.job_title ? titleCase(prospect.job_title) : null;
   const displayCompany = prospect.job_company_name ? titleCase(prospect.job_company_name) : null;
@@ -77,10 +94,13 @@ function ProspectCard({ prospect }: { prospect: ProspectProfile }) {
   const jobTenure = prospect.job_start_date ? formatDate(prospect.job_start_date) : null;
 
   return (
-    <div className="border border-foreground/15 bg-background hover:border-foreground/30 transition-all group">
+    <div
+      className="relative bg-background border border-foreground transition-all max-w-full group hover:shadow-md"
+      style={{ wordBreak: 'break-word' }}
+    >
       <div className="p-2.5 sm:p-4">
-        <div className="flex items-start gap-2 sm:gap-4">
-          {/* Avatar */}
+        <div className="relative flex items-start gap-2 sm:gap-4 min-w-0 w-full">
+          {/* Avatar - separate column on desktop */}
           <div className="relative shrink-0 hidden sm:block">
             <Avatar className="w-14 h-14 border-2 border-border shadow-md">
               <AvatarImage src={prospect.profile_pic_url || undefined} alt={displayName} className="object-cover" />
@@ -90,13 +110,13 @@ function ProspectCard({ prospect }: { prospect: ProspectProfile }) {
             </Avatar>
           </div>
 
-          {/* Main info */}
+          {/* Info */}
           <div className="flex-1 min-w-0">
-            {/* Row 1: Name + badges */}
+            {/* Row 1: Name + badges + actions */}
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
-                  {/* Mobile avatar inline */}
+                <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap min-w-0 max-w-full">
+                  {/* Avatar inline next to name on mobile */}
                   <div className="relative shrink-0 sm:hidden">
                     <Avatar className="w-8 h-8 border border-border shadow-sm">
                       <AvatarImage src={prospect.profile_pic_url || undefined} alt={displayName} className="object-cover" />
@@ -116,14 +136,14 @@ function ProspectCard({ prospect }: { prospect: ProspectProfile }) {
                       {prospect.score}%
                     </Badge>
                   )}
-                  {(prospect as any).source && (
+                  {prospect.source && (
                     <Badge className={cn(
                       "text-[9px] border gap-0.5 px-1.5 py-0",
-                      (prospect as any).source === 'apollo'
+                      prospect.source === 'apollo'
                         ? "bg-orange-500/10 text-orange-700 border-orange-500/30"
                         : "bg-purple-500/10 text-purple-700 border-purple-500/30"
                     )}>
-                      {(prospect as any).source === 'apollo' ? '🚀 Apollo' : '🔬 PDL'}
+                      {prospect.source === 'apollo' ? '🚀 Apollo' : '🔬 PDL'}
                     </Badge>
                   )}
                   {signals?.job_change && (
@@ -170,15 +190,7 @@ function ProspectCard({ prospect }: { prospect: ProspectProfile }) {
             <div className="flex flex-col sm:flex-row sm:flex-wrap items-start sm:items-center gap-x-2 sm:gap-x-4 gap-y-0.5 mt-1.5 text-[10px] sm:text-xs text-muted-foreground">
               {displayCompany && (
                 <span className="flex items-center gap-1.5 font-medium text-foreground/80 min-w-0">
-                  {companyLogo ? (
-                    <img
-                      src={companyLogo} alt=""
-                      className="w-4 h-4 rounded border border-border/30 object-contain bg-white shrink-0"
-                      onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                    />
-                  ) : (
-                    <Building2 className="w-3.5 h-3.5 text-primary shrink-0" />
-                  )}
+                  <CompanyLogo companyName={prospect.job_company_name} website={prospect.job_company_website} />
                   <span className="min-w-0 break-words sm:truncate">{displayCompany}</span>
                   {jobTenure && (
                     <span className="text-muted-foreground/40 font-normal shrink-0">• depuis {jobTenure}</span>
@@ -307,8 +319,8 @@ interface ProspectResultsProps {
 
 export function ProspectResults({ results, searching }: ProspectResultsProps) {
   return (
-    <div className="bg-background border border-foreground flex w-full max-w-full min-w-0 flex-col min-h-[420px] lg:h-full overflow-y-hidden">
-      {/* HEADER: same as SearchResultsPanel */}
+    <div className="bg-background border border-foreground flex w-full max-w-full min-w-0 flex-col lg:h-full overflow-hidden">
+      {/* HEADER */}
       <div className="flex items-center gap-2 px-3 sm:px-4 py-2 border-b border-border shrink-0 min-w-0">
         <Button
           disabled={true}

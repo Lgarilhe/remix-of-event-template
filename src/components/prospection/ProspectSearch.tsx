@@ -426,7 +426,7 @@ export function ProspectSearch({ selectedICP, onSelectICP, onResults, searching,
 
   // The actual filters panel content (reused in both desktop sidebar and mobile sheet)
   const filtersPanel = (
-    <div className="space-y-4 lg:sticky lg:top-24">
+    <div className="space-y-4">
       {/* Header */}
       <div className="bg-background border border-foreground p-3">
         <div className="flex items-center justify-between mb-3">
