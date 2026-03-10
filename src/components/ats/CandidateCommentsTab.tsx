@@ -116,8 +116,7 @@ export const CandidateCommentsTab: React.FC<CandidateCommentsTabProps> = ({
   };
 
   const filteredMembers = members.filter(m =>
-    m.display_name.toLowerCase().includes(mentionFilter) ||
-    m.email?.toLowerCase().includes(mentionFilter)
+    m.display_name.toLowerCase().includes(mentionFilter)
   );
 
   const insertMention = (member: MemberInfo) => {
