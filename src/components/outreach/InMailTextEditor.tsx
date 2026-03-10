@@ -85,13 +85,17 @@ export const InMailTextEditor: React.FC<InMailTextEditorProps> = ({
 
   // Sync external value changes to the editor
   useEffect(() => {
-    if (editorRef.current && !isInternalChange.current) {
-      if (editorRef.current.innerHTML !== displayHTML) {
-        editorRef.current.innerHTML = displayHTML;
+    if (editorRef.current) {
+      // Always sync when value is cleared (e.g. after sending)
+      const isCleared = !value && editorRef.current.innerHTML !== '';
+      if (isCleared || !isInternalChange.current) {
+        if (editorRef.current.innerHTML !== displayHTML) {
+          editorRef.current.innerHTML = displayHTML;
+        }
       }
     }
     isInternalChange.current = false;
-  }, [displayHTML]);
+  }, [displayHTML, value]);
 
   // Handle content changes
   const handleInput = useCallback(() => {
