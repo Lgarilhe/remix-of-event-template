@@ -47,6 +47,22 @@ export function useVivierEnrichment() {
   const enrichContacts = useCallback(async (contactIds: string[], forceReEnrich = false) => {
     if (contactIds.length === 0) return;
     setIsEnriching(true);
+
+    // Get sender name from current user profile
+    let senderName = "Laurent";
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('display_name')
+          .eq('user_id', user.id)
+          .single();
+        if (profile?.display_name) {
+          senderName = profile.display_name.split(' ')[0]; // First name only
+        }
+      }
+    } catch {} 
     setProgress({ done: 0, total: contactIds.length });
 
     // Filter out already enriched (unless force)
@@ -67,6 +83,7 @@ export function useVivierEnrichment() {
       try {
         const { data, error } = await invokeEdgeFunction('enrich-vivier-contacts', {
           contact_ids: batch,
+          sender_name: senderName,
         });
         if (error || !data?.success) {
           console.error('Enrichment batch error:', error || data?.error);
