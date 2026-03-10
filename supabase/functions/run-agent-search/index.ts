@@ -181,6 +181,17 @@ serve(async (req) => {
     while (allProfiles.length < maxProfiles && round < maxRounds) {
       round++;
       try {
+        // Build a unified keywords string combining all text-based filters.
+        // The Recruiter API rejects structured filters (location, company, role, skills)
+        // when they contain text names instead of resolved LinkedIn IDs.
+        // So we consolidate everything into the keywords field which supports boolean queries.
+        const keywordParts: string[] = [];
+        
+        // Primary keywords (job titles, skills boolean queries, etc.)
+        if (filters.keywords) keywordParts.push(filters.keywords);
+        
+        const combinedKeywords = keywordParts.join(" ").trim() || undefined;
+        
         const searchBody: any = {
           action: "search",
           account_id: accountId,
@@ -188,20 +199,10 @@ serve(async (req) => {
           api: "recruiter",
           category: "people",
           limit: 25,
-          keywords: filters.keywords || undefined,
-          role: filters.role || undefined,
-          seniority: filters.seniority || undefined,
-          location: filters.location_keywords || undefined,
+          keywords: combinedKeywords,
+          // Location: pass as simple string array — unipile-search will format for recruiter
+          location: filters.location_keywords?.length ? filters.location_keywords : undefined,
           location_within_area: filters.location_within_area || undefined,
-          company_keywords: filters.company_keywords?.length
-            ? filters.company_keywords.map((kw: string) => ({ keywords: kw, priority: "CAN_HAVE", scope: "CURRENT" }))
-            : undefined,
-          skills_keywords: filters.skills_keywords?.length
-            ? filters.skills_keywords.map((s: string) => ({ id: s, priority: "CAN_HAVE" }))
-            : undefined,
-          school: filters.school_names?.length
-            ? filters.school_names.map((s: string) => ({ id: s, priority: "CAN_HAVE" }))
-            : undefined,
           open_to_work: filters.open_to_work || undefined,
         };
         if (cursor) searchBody.cursor = cursor;
