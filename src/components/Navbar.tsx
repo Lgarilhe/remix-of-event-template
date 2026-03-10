@@ -106,6 +106,7 @@ export const Navbar: React.FC = () => {
               <span className="relative z-10">SETTINGS</span>
               <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out"></span>
             </Link>
+            <NotificationDropdown />
             <button 
               onClick={async () => {
                 await supabase.auth.signOut();
