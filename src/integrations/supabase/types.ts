@@ -3050,6 +3050,34 @@ export type Database = {
           total_count: number
         }[]
       }
+      get_vivier_contacts: {
+        Args: {
+          p_contact_type?: string
+          p_limit?: number
+          p_min_shortlists?: number
+          p_offset?: number
+          p_search?: string
+          p_source_base?: string
+        }
+        Returns: {
+          airtable_id: string
+          appointment_count: number
+          city: string
+          company_airtable_id: string
+          company_name: string
+          contact_type: string
+          email: string
+          full_name: string
+          last_interaction_date: string
+          note_count: number
+          placement_count: number
+          shortlist_count: number
+          source_base: string
+          status: string
+          title: string
+          total_count: number
+        }[]
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
