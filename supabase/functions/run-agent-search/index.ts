@@ -194,7 +194,7 @@ serve(async (req) => {
           location: filters.location_keywords || undefined,
           location_within_area: filters.location_within_area || undefined,
           company_keywords: filters.company_keywords?.length
-            ? filters.company_keywords.map((kw: string) => ({ keywords: kw, priority: "MUST_HAVE", scope: "CURRENT" }))
+            ? filters.company_keywords.map((kw: string) => ({ keywords: kw, priority: "CAN_HAVE", scope: "CURRENT" }))
             : undefined,
           skills_keywords: filters.skills_keywords?.length
             ? filters.skills_keywords.map((s: string) => ({ id: s, priority: "CAN_HAVE" }))
