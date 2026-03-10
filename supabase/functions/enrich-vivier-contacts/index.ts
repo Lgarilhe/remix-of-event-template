@@ -35,10 +35,11 @@ Deno.serve(async (req) => {
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    const { contact_ids, organization_id } = await req.json();
+    const { contact_ids, organization_id, sender_name } = await req.json();
     if (!contact_ids?.length || !organization_id) {
       throw new Error("contact_ids and organization_id required");
     }
+    const senderFirstName = sender_name || "Laurent";
 
     // 1. Fetch contacts with company info
     const { data: contacts, error: ctErr } = await supabase
