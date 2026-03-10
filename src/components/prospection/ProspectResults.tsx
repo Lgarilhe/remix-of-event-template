@@ -42,6 +42,15 @@ function buildLocation(prospect: ProspectProfile) {
   return titleCase(parts[0] as string);
 }
 
+function getProfilePicUrl(prospect: ProspectProfile): string | undefined {
+  if (prospect.profile_pic_url) return prospect.profile_pic_url;
+  if (prospect.linkedin_url) {
+    const match = prospect.linkedin_url.match(/linkedin\.com\/in\/([^\/\?]+)/);
+    if (match?.[1]) return `https://unavatar.io/linkedin/${match[1]}`;
+  }
+  return undefined;
+}
+
 function getCompanyLogoUrl(companyName?: string, website?: string | null) {
   if (website) {
     try {
