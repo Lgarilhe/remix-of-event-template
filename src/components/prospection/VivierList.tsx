@@ -192,6 +192,17 @@ function EnrichedContactSheet({ contact, enrichment, open, onOpenChange, onCopyM
             {contact.city && <div className="flex items-center gap-2 text-muted-foreground"><MapPin className="w-3.5 h-3.5" /> {contact.city}</div>}
           </div>
 
+          {/* Enrich / Re-enrich button */}
+          <Button
+            size="sm"
+            variant={enrichment ? 'outline' : 'default'}
+            onClick={() => onEnrichSingle?.(contact.airtable_id)}
+            className="w-full h-8 text-xs gap-1.5"
+          >
+            {enrichment ? <RefreshCw className="w-3.5 h-3.5" /> : <Sparkles className="w-3.5 h-3.5" />}
+            {enrichment ? 'Ré-enrichir & regénérer le message' : 'Enrichir & générer le message'}
+          </Button>
+
           {/* Enriched profile */}
           {enrichment && enrichment.match_type !== 'not_found' && (
             <div className="border border-primary/30 bg-primary/5 p-3 space-y-2">
