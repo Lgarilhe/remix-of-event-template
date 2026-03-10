@@ -52,7 +52,7 @@ export function useICPs() {
   });
 
   const createICP = useMutation({
-    mutationFn: async (icp: Omit<ICPInsert, 'created_by' | 'organization_id'>) => {
+    mutationFn: async (icp: Omit<ICPInsert, 'created_by' | 'organization_id' | 'is_active'>) => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Non authentifié');
 
