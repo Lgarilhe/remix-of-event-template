@@ -12,6 +12,10 @@ import { ProspectProfile } from '@/pages/Prospection';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
+function titleCase(str: string) {
+  return str.replace(/\b\w/g, c => c.toUpperCase());
+}
+
 function getInitials(name: string) {
   return name.split(' ').map(w => w[0]).filter(Boolean).slice(0, 2).join('').toUpperCase();
 }
@@ -20,8 +24,23 @@ function formatDate(dateStr?: string) {
   if (!dateStr) return null;
   try {
     const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return null;
     return d.toLocaleDateString('fr-FR', { month: 'short', year: 'numeric' });
   } catch { return null; }
+}
+
+function buildLocation(prospect: ProspectProfile) {
+  const parts = [
+    prospect.location_name,
+    // fallback: build from parts if location_name is missing
+    ...(!prospect.location_name ? [
+      (prospect as any).location_locality,
+      (prospect as any).location_region,
+      (prospect as any).location_country,
+    ] : []),
+  ].filter(Boolean);
+  if (parts.length === 0) return null;
+  return titleCase(parts[0]);
 }
 
 function getCompanyLogoUrl(companyName?: string, website?: string | null) {
