@@ -95,6 +95,12 @@ interface SearchResultsPanelProps {
   onRefineSearch: (direction: 'expand' | 'narrow') => void;
   refineLoading: boolean;
   
+  // Batch report
+  batchReport?: BatchReportEntry[];
+  batchStats?: BatchScoringStatsType | null;
+  batchDurationMs?: number;
+  onClearBatchReport?: () => void;
+  
   // Refs
   scrollAreaRef: React.RefObject<HTMLDivElement>;
   loadMoreTriggerRef: React.RefObject<HTMLDivElement>;
