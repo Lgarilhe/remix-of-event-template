@@ -163,6 +163,10 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
   onSequenceEnrollSuccess,
   onRefineSearch,
   refineLoading,
+  batchReport,
+  batchStats: batchStatsData,
+  batchDurationMs,
+  onClearBatchReport,
   scrollAreaRef,
   loadMoreTriggerRef,
 }) => {
