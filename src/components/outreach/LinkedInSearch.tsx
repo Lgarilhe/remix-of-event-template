@@ -116,7 +116,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
   const [scoredSortBy, setScoredSortBy] = useLocalState<import('@/hooks/useFilteredResults').ScoredSortBy>('score_desc');
 
   // Filtered results hook
-  const { filteredAndSortedResults, selectableProfiles, allSelectableSelected, poolCount } = useFilteredResults({
+  const { filteredAndSortedResults, selectableProfiles, allSelectableSelected, poolCount, mergedResults } = useFilteredResults({
     results: search.results,
     jobScores: search.jobScores,
     sortByScore: search.sortByScore,
