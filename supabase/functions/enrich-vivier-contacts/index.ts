@@ -278,11 +278,14 @@ GÉNÈRE UN MESSAGE ${messageType === "sms" ? "SMS (~" + maxChars + " caractère
 - Écris comme un humain qui envoie un ${messageType === "sms" ? "SMS" : "message LinkedIn"} à quelqu'un qu'il connaît
 - JAMAIS de formules corporate : "j'espère que tu vas bien", "je me permets de", "dans le cadre de", "n'hésite pas à"
 - JAMAIS mentionner "notre CRM", "notre base", "nos données"
-- Utilise l'analyse ci-dessus comme accroche :
+- RECONTEXTUALISE OBLIGATOIREMENT la collaboration passée :
+  - QUAND : cite la période approximative de la dernière interaction (ex: "en 2023", "il y a 2 ans", déduis-le des dates dans l'historique)
+  - AVEC QUI / SUR QUOI : mentionne un élément concret (un candidat présenté par son nom, un poste bossé ensemble, un placement réussi). Sois spécifique, pas vague.
+  - Ex: "On avait bossé ensemble en 2023 quand on t'avait présenté [Candidat] pour le poste de [Titre]"
+- Utilise l'analyse ci-dessus comme accroche SUPPLÉMENTAIRE :
   - Si changement de boîte → mentionne-le naturellement ("j'ai vu que t'étais passé chez X, bravo !")
-  - Si même boîte → réfère à un élément concret de l'historique (un placement, une mission)
   - Si promotion → félicite naturellement
-- Objectif : reprendre contact et proposer un café/call pour faire le point
+- CTA : propose un CALL (pas un café). Ex: "On se cale un call de 15 min ?" ou "Dispo pour un call cette semaine ?"
 - Signe "— Konekt" uniquement pour les SMS
 
 Réponds en JSON strict :
