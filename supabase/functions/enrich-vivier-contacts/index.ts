@@ -336,7 +336,7 @@ Réponds en JSON strict :
         }
 
         const aiData = await aiResp.json();
-        const aiContent = aiData.choices?.[0]?.message?.content || "";
+        const aiContent = aiData.content?.[0]?.text || "";
 
         // Parse JSON from AI response
         let parsed: any = {};
