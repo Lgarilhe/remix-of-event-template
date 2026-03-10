@@ -46,7 +46,7 @@ export const NotificationDropdown: React.FC = () => {
       </button>
 
       {open && (
-        <div className="absolute right-0 top-[38px] w-80 bg-background border border-foreground shadow-lg z-[2100] max-h-[400px] flex flex-col">
+        <div className="absolute right-0 md:right-0 left-0 md:left-auto top-[38px] w-screen md:w-80 max-w-[calc(100vw-16px)] bg-background border border-foreground shadow-lg z-[2100] max-h-[400px] flex flex-col">
           {/* Header */}
           <div className="flex items-center justify-between px-3 py-2 border-b border-foreground/20">
             <span className="text-[11px] font-bold uppercase tracking-wider text-foreground">
