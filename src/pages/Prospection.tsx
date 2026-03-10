@@ -12,7 +12,6 @@ import { ICP } from '@/hooks/useICPs';
 const tabs = [
   { value: 'icp', label: 'ICP', emoji: '🎯' },
   { value: 'search', label: 'Recherche', emoji: '🔍' },
-  { value: 'prospects', label: 'Prospects', emoji: '👥' },
 ] as const;
 
 export interface ProspectProfile {
@@ -57,7 +56,7 @@ export default function Prospection() {
   const [searchParams, setSearchParams] = useSearchParams();
   const validTabs = tabs.map(t => t.value) as string[];
   const tabFromUrl = searchParams.get('tab');
-  const activeTab = validTabs.includes(tabFromUrl || '') ? tabFromUrl! : 'icp';
+  const activeTab = validTabs.includes(tabFromUrl || '') ? tabFromUrl! : 'search';
 
   const setActiveTab = useCallback((tab: string) => {
     setSearchParams(prev => {
@@ -132,18 +131,25 @@ export default function Prospection() {
             <ICPList onSearchFromICP={handleSearchFromICP} />
           </div>
 
+          {/* Search tab: split layout — filters left, results right */}
           <div className={cn("mt-0 min-w-0", activeTab !== 'search' && 'hidden')}>
-            <ProspectSearch
-              selectedICP={selectedICP}
-              onSelectICP={setSelectedICP}
-              onResults={(r) => { setResults(r); setActiveTab('prospects'); }}
-              searching={searching}
-              onSearchingChange={setSearching}
-            />
-          </div>
+            <div className="flex flex-col lg:flex-row gap-4 lg:gap-5 w-full min-w-0">
+              {/* Left: filters panel (scrollable, sticky) */}
+              <div className="w-full lg:w-[380px] xl:w-[420px] shrink-0 lg:max-h-[calc(100vh-180px)] lg:overflow-y-auto lg:sticky lg:top-24 no-scrollbar">
+                <ProspectSearch
+                  selectedICP={selectedICP}
+                  onSelectICP={setSelectedICP}
+                  onResults={setResults}
+                  searching={searching}
+                  onSearchingChange={setSearching}
+                />
+              </div>
 
-          <div className={cn("mt-0 min-w-0", activeTab !== 'prospects' && 'hidden')}>
-            <ProspectResults results={results} />
+              {/* Right: results panel */}
+              <div className="flex-1 min-w-0">
+                <ProspectResults results={results} searching={searching} />
+              </div>
+            </div>
           </div>
         </div>
       </main>

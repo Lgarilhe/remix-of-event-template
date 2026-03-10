@@ -421,7 +421,7 @@ export function ProspectSearch({ selectedICP, onSelectICP, onResults, searching,
   };
 
   return (
-    <div className="bg-background border border-foreground p-3 sm:p-6">
+    <div className="bg-background border border-foreground p-3 space-y-4">
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
