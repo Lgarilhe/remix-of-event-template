@@ -1,5 +1,5 @@
 // Apollo.io People Search Edge Function
-// Uses the People Search API: https://apolloio.github.io/apollo-api-docs/
+// Docs: https://docs.apollo.io/reference/people-api-search
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -23,152 +23,136 @@ Deno.serve(async (req) => {
     }
 
     const body = await req.json();
-    const {
-      job_title,
-      job_title_role,
-      job_title_levels,
-      job_company_name,
-      job_company_industry,
-      job_company_size,
-      location_country,
-      location_region,
-      location_locality,
-      skills,
-      // Apollo-specific filters
-      intent_topics,
-      is_hiring,
-      technologies,
-      revenue_range,
-      funding_stage,
-      employee_growth,
-      // Pagination
-      size,
-      page,
-    } = body;
 
     // Build Apollo search payload
     const searchPayload: Record<string, any> = {
-      per_page: Math.min(size || 50, 100),
-      page: page || 1,
+      per_page: Math.min(body.size || 50, 100),
+      page: body.page || 1,
     };
 
-    // Person title
-    if (job_title) {
-      searchPayload.person_titles = job_title.split(',').map((t: string) => t.trim()).filter(Boolean);
+    // ── Person filters ──
+
+    // Job title
+    if (body.job_title) {
+      searchPayload.person_titles = body.job_title.split(',').map((t: string) => t.trim()).filter(Boolean);
     }
 
-    // Seniorities (map our levels to Apollo's seniority values)
-    if (job_title_levels && Array.isArray(job_title_levels) && job_title_levels.length > 0) {
+    // Keywords (full-profile search)
+    if (body.q_keywords) {
+      searchPayload.q_keywords = body.q_keywords;
+    }
+
+    // Seniority levels
+    if (body.job_title_levels?.length > 0) {
       const seniorityMap: Record<string, string> = {
-        'cxo': 'c_suite',
-        'vp': 'vp',
-        'director': 'director',
-        'manager': 'manager',
-        'senior': 'senior',
-        'entry': 'entry',
-        'owner': 'owner',
-        'partner': 'partner',
-        'training': 'intern',
+        'cxo': 'c_suite', 'vp': 'vp', 'head': 'head', 'director': 'director',
+        'manager': 'manager', 'senior': 'senior', 'entry': 'entry',
+        'owner': 'owner', 'founder': 'founder', 'partner': 'partner', 'training': 'intern',
       };
-      searchPayload.person_seniorities = job_title_levels
-        .map((l: string) => seniorityMap[l] || l)
-        .filter(Boolean);
+      searchPayload.person_seniorities = body.job_title_levels
+        .map((l: string) => seniorityMap[l] || l).filter(Boolean);
     }
 
     // Department (from job_title_role)
-    if (job_title_role) {
+    if (body.job_title_role) {
       const deptMap: Record<string, string> = {
-        'engineering': 'engineering',
-        'sales': 'sales',
-        'marketing': 'marketing',
-        'operations': 'operations',
-        'finance': 'finance',
-        'human_resources': 'human_resources',
-        'product': 'product_management',
-        'legal': 'legal',
-        'health': 'medical_health',
-        'education': 'education',
-        'research': 'data_science',
-        'creative': 'design',
+        'engineering': 'engineering', 'sales': 'sales', 'marketing': 'marketing',
+        'operations': 'operations', 'finance': 'finance', 'human_resources': 'human_resources',
+        'product': 'product_management', 'legal': 'legal', 'health': 'medical_health',
+        'education': 'education', 'research': 'data_science', 'creative': 'design',
       };
-      searchPayload.person_departments = [deptMap[job_title_role] || job_title_role];
+      searchPayload.person_departments = [deptMap[body.job_title_role] || body.job_title_role];
     }
 
+    // Person locations
+    if (body.person_locations) {
+      const locs = typeof body.person_locations === 'string'
+        ? body.person_locations.split(',').map((s: string) => s.trim()).filter(Boolean)
+        : body.person_locations;
+      if (locs.length > 0) searchPayload.person_locations = locs;
+    }
+    if (body.location_country) {
+      searchPayload.person_locations = [...(searchPayload.person_locations || []), body.location_country];
+    }
+
+    // Email status
+    if (body.email_status) {
+      searchPayload.contact_email_status = [body.email_status];
+    }
+
+    // ── Company filters ──
+
     // Company name
-    if (job_company_name) {
-      searchPayload.q_organization_name = job_company_name;
+    if (body.job_company_name) {
+      searchPayload.q_organization_name = body.job_company_name;
+    }
+
+    // Company domains
+    if (body.company_domains?.length > 0) {
+      searchPayload.q_organization_domains_list = body.company_domains;
     }
 
     // Industry
-    if (job_company_industry) {
-      searchPayload.organization_industry_tag_ids = [];
-      // Apollo uses industry keywords
-      searchPayload.q_organization_keyword_tags = [job_company_industry];
+    if (body.job_company_industry) {
+      searchPayload.q_organization_keyword_tags = [body.job_company_industry];
     }
 
-    // Company size (Apollo uses num_employees_ranges)
-    if (job_company_size && job_company_size !== 'all') {
+    // Company size
+    if (body.job_company_size && body.job_company_size !== 'all') {
       const sizeMap: Record<string, string> = {
-        '1-10': '1,10',
-        '11-50': '11,50',
-        '51-200': '51,200',
-        '201-500': '201,500',
-        '501-1000': '501,1000',
-        '1001-5000': '1001,5000',
-        '5001-10000': '5001,10000',
-        '10001+': '10001,1000000',
+        '1-10': '1,10', '11-50': '11,50', '51-200': '51,200', '201-500': '201,500',
+        '501-1000': '501,1000', '1001-5000': '1001,5000', '5001-10000': '5001,10000', '10001+': '10001,1000000',
       };
-      if (sizeMap[job_company_size]) {
-        searchPayload.organization_num_employees_ranges = [sizeMap[job_company_size]];
+      if (sizeMap[body.job_company_size]) {
+        searchPayload.organization_num_employees_ranges = [sizeMap[body.job_company_size]];
       }
     }
 
-    // Location
-    if (location_country || location_region || location_locality) {
-      const locations: string[] = [];
-      if (location_locality) locations.push(location_locality);
-      if (location_region) locations.push(location_region);
-      if (location_country) locations.push(location_country);
-      searchPayload.person_locations = locations;
+    // Organization HQ locations
+    if (body.organization_locations) {
+      const locs = typeof body.organization_locations === 'string'
+        ? body.organization_locations.split(',').map((s: string) => s.trim()).filter(Boolean)
+        : body.organization_locations;
+      if (locs.length > 0) searchPayload.organization_locations = locs;
     }
 
-    // Technologies (Apollo-specific)
-    if (technologies && Array.isArray(technologies) && technologies.length > 0) {
-      searchPayload.currently_using_any_of_technology_uids = technologies;
-    }
-
-    // Intent topics (Apollo-specific)
-    if (intent_topics && Array.isArray(intent_topics) && intent_topics.length > 0) {
-      searchPayload.q_person_intent_topics = intent_topics;
-    }
-
-    // Hiring intent (Apollo-specific)
-    if (is_hiring) {
-      searchPayload.organization_job_locations = [''];  // trick: any job posting = hiring
-      searchPayload.is_hiring = true;
+    // Technologies
+    if (body.technologies?.length > 0) {
+      searchPayload.currently_using_any_of_technology_uids = body.technologies.map(
+        (t: string) => t.toLowerCase().replace(/\s+/g, '_').replace(/\./g, '_')
+      );
     }
 
     // Revenue range
-    if (revenue_range) {
-      searchPayload.organization_revenue_ranges = [revenue_range];
+    if (body.revenue_range && body.revenue_range !== 'all') {
+      const [min, max] = body.revenue_range.split(',').map(Number);
+      if (min >= 0) searchPayload['revenue_range[min]'] = min;
+      if (max > 0) searchPayload['revenue_range[max]'] = max;
     }
 
     // Funding stage
-    if (funding_stage) {
-      const fundingMap: Record<string, string> = {
-        'seed': 'seed',
-        'series_a': 'series_a',
-        'series_b': 'series_b',
-        'series_c': 'series_c',
-        'series_d': 'series_d',
-        'ipo': 'ipo',
-      };
-      searchPayload.organization_latest_funding_stage_cd = [fundingMap[funding_stage] || funding_stage];
+    if (body.funding_stage && body.funding_stage !== 'all') {
+      searchPayload.organization_latest_funding_stage_cd = [body.funding_stage];
+    }
+
+    // Hiring intent - job postings
+    if (body.is_hiring) {
+      searchPayload['organization_num_jobs_range[min]'] = 1;
+    }
+
+    // Hiring job titles
+    if (body.hiring_job_titles?.length > 0) {
+      searchPayload.q_organization_job_titles = body.hiring_job_titles;
+    }
+
+    // Hiring locations
+    if (body.hiring_locations?.length > 0) {
+      searchPayload.organization_job_locations = body.hiring_locations;
     }
 
     // Employee growth
-    if (employee_growth) {
-      searchPayload.organization_employee_growth_rate_ranges = [employee_growth];
+    if (body.employee_growth) {
+      // Not directly in API — skip for now
     }
 
     console.log('[Apollo] Search payload:', JSON.stringify(searchPayload));
@@ -197,7 +181,6 @@ Deno.serve(async (req) => {
 
     const prospects = rawPeople.map((p: any) => {
       const org = p.organization || {};
-      
       return {
         id: p.id || crypto.randomUUID(),
         full_name: p.name || `${p.first_name || ''} ${p.last_name || ''}`.trim(),
@@ -241,12 +224,10 @@ Deno.serve(async (req) => {
       };
     });
 
-    return new Response(JSON.stringify({ 
-      success: true, 
-      prospects, 
+    return new Response(JSON.stringify({
+      success: true,
+      prospects,
       total: apolloData.pagination?.total_entries || prospects.length,
-      page: apolloData.pagination?.page || 1,
-      total_pages: apolloData.pagination?.total_pages || 1,
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
