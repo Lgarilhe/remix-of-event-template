@@ -115,7 +115,7 @@ export const useAgentChat = (conversationId: string | null) => {
           'apikey': import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
         },
         body: JSON.stringify({
-          conversation_id: conversationId,
+          conversation_id: convId,
           message: content,
           job_context: jobContext || undefined,
         }),
