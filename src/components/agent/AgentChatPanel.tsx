@@ -65,16 +65,16 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({ onClose }) => {
     setJobSentForConv(conv.id); // Already initialized
   }, []);
 
-  const handleSend = useCallback(async () => {
-    if (!input.trim() || sending) return;
-    const text = input.trim();
+  const handleSend = useCallback(async (text?: string) => {
+    const msg = text || input.trim();
+    if (!msg || sending) return;
     setInput('');
 
     // Send job context only on first message of a conversation
     const jobCtx = conversationId !== jobSentForConv ? selectedJob : null;
     if (jobCtx) setJobSentForConv(conversationId);
 
-    await sendMessage(text, jobCtx);
+    await sendMessage(msg, jobCtx);
   }, [input, sending, sendMessage, selectedJob, conversationId, jobSentForConv]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -83,6 +83,10 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({ onClose }) => {
       handleSend();
     }
   };
+
+  const handleQuickReply = useCallback((text: string) => {
+    handleSend(text);
+  }, [handleSend]);
 
   // Job selector for new conversation
   const activeJobs = (jobs || []).filter(j => !['Archivé', 'Fermé', 'Perdu'].includes(j.status));
@@ -187,9 +191,18 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({ onClose }) => {
             </p>
           </div>
         ) : (
-          messages.map((msg) => (
-            <AgentMessageBubble key={msg.id} message={msg} />
-          ))
+          messages.map((msg, idx) => {
+            const isLastAssistant = msg.role === 'assistant' && 
+              !messages.slice(idx + 1).some(m => m.role === 'assistant');
+            return (
+              <AgentMessageBubble 
+                key={msg.id} 
+                message={msg} 
+                onQuickReply={handleQuickReply}
+                isLastAssistant={isLastAssistant}
+              />
+            );
+          })
         )}
 
         {/* Streaming indicator */}
@@ -229,7 +242,7 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({ onClose }) => {
             }}
           />
           <button
-            onClick={handleSend}
+            onClick={() => handleSend()}
             disabled={!input.trim() || sending}
             className={cn(
               "h-[34px] w-[34px] flex items-center justify-center border border-foreground transition-colors shrink-0",
