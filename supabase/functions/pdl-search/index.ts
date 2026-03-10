@@ -107,6 +107,22 @@ Deno.serve(async (req) => {
     if (!pdlResponse.ok) {
       const errText = await pdlResponse.text();
       console.error('[PDL] API error:', pdlResponse.status, errText);
+
+      // PDL returns 404 + type=not_found when there are no matches
+      if (pdlResponse.status === 404) {
+        try {
+          const parsed = JSON.parse(errText);
+          if (parsed?.error?.type === 'not_found') {
+            return new Response(JSON.stringify({ success: true, prospects: [], total: 0 }), {
+              status: 200,
+              headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            });
+          }
+        } catch {
+          // fall through to generic error response
+        }
+      }
+
       return new Response(JSON.stringify({ success: false, error: `PDL API error: ${pdlResponse.status}`, details: errText }), {
         status: 200,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
