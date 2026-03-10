@@ -2192,6 +2192,53 @@ export type Database = {
           },
         ]
       }
+      prospection_icps: {
+        Row: {
+          created_at: string
+          created_by: string
+          criteria: Json
+          description: string | null
+          id: string
+          is_active: boolean
+          name: string
+          organization_id: string | null
+          target_type: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by: string
+          criteria?: Json
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          name: string
+          organization_id?: string | null
+          target_type?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          criteria?: Json
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          name?: string
+          organization_id?: string | null
+          target_type?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "prospection_icps_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       qualification_sessions: {
         Row: {
           calendly_event_id: string | null
@@ -2823,6 +2870,7 @@ export type Database = {
           created_by: string
           description: string | null
           filters_snapshot: Json
+          icp_id: string | null
           id: string
           job_id: string | null
           job_title: string | null
@@ -2845,6 +2893,7 @@ export type Database = {
           created_by: string
           description?: string | null
           filters_snapshot?: Json
+          icp_id?: string | null
           id?: string
           job_id?: string | null
           job_title?: string | null
@@ -2867,6 +2916,7 @@ export type Database = {
           created_by?: string
           description?: string | null
           filters_snapshot?: Json
+          icp_id?: string | null
           id?: string
           job_id?: string | null
           job_title?: string | null
@@ -2883,6 +2933,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "sourcing_projects_icp_id_fkey"
+            columns: ["icp_id"]
+            isOneToOne: false
+            referencedRelation: "prospection_icps"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "sourcing_projects_organization_id_fkey"
             columns: ["organization_id"]
