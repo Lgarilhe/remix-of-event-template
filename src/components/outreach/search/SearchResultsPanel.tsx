@@ -574,6 +574,16 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
               </div>
             )}
 
+            {/* Batch scoring report */}
+            {batchReport && batchReport.length > 0 && (
+              <BatchScoringReport
+                entries={batchReport}
+                stats={batchStatsData || null}
+                durationMs={batchDurationMs}
+                onClose={onClearBatchReport}
+              />
+            )}
+
             {/* Profile cards */}
             {displayResults.length === 0 && results.length > 0 && (
               <div className="text-center py-8 text-muted-foreground">
