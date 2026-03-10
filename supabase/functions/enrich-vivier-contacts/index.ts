@@ -273,20 +273,20 @@ ANALYSE EN 3 ÉTAPES :
    - Levée de fonds de sa boîte actuelle (si visible dans Apollo)
    - Passage de grand groupe à startup ou l'inverse
 
-GÉNÈRE UN MESSAGE ${messageType === "sms" ? "SMS (~" + maxChars + " caractères max)" : "LinkedIn (~" + maxChars + " caractères max)"} :
+GÉNÈRE UN MESSAGE ${messageType === "sms" ? "SMS (MAXIMUM " + maxChars + " caractères, c'est un SMS donc sois ULTRA CONCIS)" : "LinkedIn (~" + maxChars + " caractères max)"} :
 - TUTOIE obligatoirement
-- Écris comme un humain qui envoie un ${messageType === "sms" ? "SMS" : "message LinkedIn"} à quelqu'un qu'il connaît
-- STYLE : direct, concis, naturel. Pas familier mais pas corporate non plus. Comme un message qu'un BD écrirait vraiment sur son téléphone.
-- INTERDIT : tirets (—, –, -), listes à puces, emojis excessifs, formules IA reconnaissables ("j'espère que tu vas bien", "je me permets de", "dans le cadre de", "n'hésite pas à", "ravi de", "au plaisir de")
+- STYLE : direct, concis, naturel. Comme un vrai SMS/message entre pros qui se connaissent.
+- FORMULES INTERDITES (ne les utilise JAMAIS, même reformulées) : "je serais ravi", "j'espère que tu vas bien", "je me permets de", "dans le cadre de", "n'hésite pas à", "ravi de", "au plaisir de", "je serais enchanté", "ce serait un plaisir". Ces formules sonnent faux et IA.
 - JAMAIS mentionner "notre CRM", "notre base", "nos données"
+- JAMAIS utiliser de placeholders vagues comme "ton ancienne société", "ta précédente boîte", "ton ancien poste". Si tu ne connais pas le nom exact de la société, UTILISE le champ "Ancienne société" fourni dans le contexte CRM ci-dessus. Si ce champ est vide ou "?", alors ne mentionne pas la société et accroche sur autre chose.
 - RECONTEXTUALISE OBLIGATOIREMENT la collaboration passée :
-  Cite QUAND (période déduite de l'historique), POUR QUELLE SOCIÉTÉ (l'ancienne société du CRM, crucial si changement de boîte), et un élément concret (candidat présenté par son nom, poste bossé ensemble, placement réussi).
-  Ex si même boîte : "On avait bossé ensemble en 2023 chez [Société] quand on t'avait présenté [Candidat] pour le poste de [Titre]"
-  Ex si changement de boîte : "On avait collaboré en 2022 quand tu étais chez [Ancienne Société], on t'avait présenté [Candidat] pour [Poste]. J'ai vu que t'étais passé chez [Nouvelle Société], félicitations !"
-- UNIQUEMENT si changement de boîte avéré (still_same_company=false), mentionne-le naturellement après la recontextualisation. Si la personne est TOUJOURS dans la même boîte au même poste, NE FÉLICITE PAS et ne mentionne aucun changement.
-- UNIQUEMENT si promotion avérée (titre différent dans la même boîte), félicite naturellement. Sinon ne dis rien.
-- CTA : mentionne que Konekt a pas mal évolué avec des nouveautés côté recrutement, RPO et accompagnement (growth, IA), et propose un court call pour en discuter. Intègre le CTA de manière fluide dans le message, pas comme une phrase séparée plaquée à la fin.
+  Cite le NOM EXACT de la société (pas "ton ancienne société"), QUAND (période déduite de l'historique), et un élément concret (candidat par son nom, poste, placement).
+  Ex : "On avait bossé ensemble en 2023 chez Doctolib quand on t'avait présenté Mansour pour un poste de tech lead"
+- UNIQUEMENT si changement de boîte avéré (still_same_company=false), mentionne-le naturellement. Si même boîte même poste, NE FÉLICITE PAS.
+- UNIQUEMENT si promotion avérée (titre différent dans la même boîte), félicite. Sinon rien.
+- CTA : mentionne que Konekt a pas mal évolué (recrutement, RPO, growth, IA) et propose un court call. Formule-le de manière directe genre "Konekt a bien bougé depuis, on fait des trucs nouveaux côté RPO et growth/IA. Ça te dit un call de 15 min ?"
 - Signe "Konekt" uniquement pour les SMS
+- Pour les SMS : RESPECTE LA LIMITE DE ${maxChars} CARACTÈRES. Chaque mot compte. Va droit au but.
 
 Réponds en JSON strict :
 {
