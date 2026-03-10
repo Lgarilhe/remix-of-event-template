@@ -42,6 +42,15 @@ function buildLocation(prospect: ProspectProfile) {
   return titleCase(parts[0] as string);
 }
 
+function getProfilePicUrl(prospect: ProspectProfile): string | undefined {
+  if (prospect.profile_pic_url) return prospect.profile_pic_url;
+  if (prospect.linkedin_url) {
+    const match = prospect.linkedin_url.match(/linkedin\.com\/in\/([^\/\?]+)/);
+    if (match?.[1]) return `https://unavatar.io/linkedin/${match[1]}`;
+  }
+  return undefined;
+}
+
 function getCompanyLogoUrl(companyName?: string, website?: string | null) {
   if (website) {
     try {
@@ -83,6 +92,7 @@ function ProspectCard({ prospect }: { prospect: ProspectProfile }) {
   const displayTitle = prospect.job_title ? titleCase(prospect.job_title) : null;
   const displayCompany = prospect.job_company_name ? titleCase(prospect.job_company_name) : null;
   const displayLocation = buildLocation(prospect);
+  const avatarUrl = getProfilePicUrl(prospect);
 
   const copyEmail = (email: string) => {
     navigator.clipboard.writeText(email);
@@ -103,7 +113,7 @@ function ProspectCard({ prospect }: { prospect: ProspectProfile }) {
           {/* Avatar - separate column on desktop */}
           <div className="relative shrink-0 hidden sm:block">
             <Avatar className="w-14 h-14 border-2 border-border shadow-md">
-              <AvatarImage src={prospect.profile_pic_url || undefined} alt={displayName} className="object-cover" />
+              <AvatarImage src={avatarUrl} alt={displayName} className="object-cover" />
               <AvatarFallback className="bg-gradient-to-br from-primary to-primary/80 text-primary-foreground text-lg font-medium">
                 {initials}
               </AvatarFallback>
@@ -119,7 +129,7 @@ function ProspectCard({ prospect }: { prospect: ProspectProfile }) {
                   {/* Avatar inline next to name on mobile */}
                   <div className="relative shrink-0 sm:hidden">
                     <Avatar className="w-8 h-8 border border-border shadow-sm">
-                      <AvatarImage src={prospect.profile_pic_url || undefined} alt={displayName} className="object-cover" />
+                      <AvatarImage src={avatarUrl} alt={displayName} className="object-cover" />
                       <AvatarFallback className="bg-gradient-to-br from-primary to-primary/80 text-primary-foreground text-xs font-medium">
                         {initials}
                       </AvatarFallback>
