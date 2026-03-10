@@ -83,6 +83,7 @@ export function useVivierEnrichment() {
       try {
         const { data, error } = await invokeEdgeFunction('enrich-vivier-contacts', {
           contact_ids: batch,
+          sender_name: senderName,
         });
         if (error || !data?.success) {
           console.error('Enrichment batch error:', error || data?.error);
