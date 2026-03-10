@@ -56,8 +56,51 @@ export const useAgentChat = (conversationId: string | null) => {
     load();
   }, [conversationId]);
 
-  // No realtime subscription — messages are added client-side via streaming
-  // and loaded from DB when conversation is opened. This avoids duplicate issues.
+  // Realtime subscription ONLY when search is running (to get progress messages)
+  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    if (!conversationId || conversation?.status !== 'running') {
+      if (pollingRef.current) {
+        clearInterval(pollingRef.current);
+        pollingRef.current = null;
+      }
+      return;
+    }
+
+    // Poll for new messages every 3 seconds during search
+    const poll = async () => {
+      const { data } = await supabase
+        .from('agent_messages')
+        .select('*')
+        .eq('conversation_id', conversationId)
+        .order('created_at', { ascending: true });
+      if (data) {
+        const newMessages = data as unknown as AgentMessage[];
+        setMessages(prev => {
+          if (newMessages.length > prev.length) return newMessages;
+          return prev;
+        });
+      }
+      // Also check conversation status
+      const { data: convData } = await supabase
+        .from('agent_conversations')
+        .select('status, results_summary')
+        .eq('id', conversationId)
+        .single();
+      if (convData && convData.status !== 'running') {
+        setConversation(prev => prev ? { ...prev, ...convData as any } : null);
+      }
+    };
+
+    pollingRef.current = setInterval(poll, 3000);
+    return () => {
+      if (pollingRef.current) {
+        clearInterval(pollingRef.current);
+        pollingRef.current = null;
+      }
+    };
+  }, [conversationId, conversation?.status]);
 
   // Send message with streaming
   const sendMessage = useCallback(async (content: string, jobContext?: Job | null, overrideConversationId?: string) => {
@@ -143,9 +186,11 @@ export const useAgentChat = (conversationId: string | null) => {
         const actionMatch = accumulated.match(/\[AGENT_ACTION\]\s*([\s\S]*?)\s*\[\/AGENT_ACTION\]/);
         if (actionMatch) {
           try { metadata.agent_action = JSON.parse(actionMatch[1]); } catch {}
-          // Update conversation status
+          // Trigger search when agent says go
           if ((metadata.agent_action as any)?.action === 'start_search') {
             setConversation(prev => prev ? { ...prev, status: 'running' } : null);
+            // Fire and forget — trigger the search orchestration
+            triggerSearch(convId);
           }
         }
 
@@ -167,6 +212,27 @@ export const useAgentChat = (conversationId: string | null) => {
       abortRef.current = null;
     }
   }, [conversationId, sending]);
+
+  // Trigger search orchestration
+  const triggerSearch = useCallback(async (convId: string) => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+
+      const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/run-agent-search`;
+      fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+          'apikey': import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+        },
+        body: JSON.stringify({ conversation_id: convId }),
+      }).catch(err => console.error('[useAgentChat] Search trigger failed:', err));
+    } catch (err) {
+      console.error('[useAgentChat] triggerSearch error:', err);
+    }
+  }, []);
 
   // Create new conversation
   const createConversation = useCallback(async (job?: Job | null): Promise<string | null> => {
