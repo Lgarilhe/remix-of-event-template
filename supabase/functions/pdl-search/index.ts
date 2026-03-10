@@ -96,7 +96,7 @@ Deno.serve(async (req) => {
 
     // PDL Person Search uses GET with a body
     const pdlResponse = await fetch(`${PDL_BASE}/person/search`, {
-      method: 'GET',
+      method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'X-Api-Key': PDL_API_KEY,
