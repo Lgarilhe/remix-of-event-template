@@ -130,7 +130,7 @@ export function ProspectSearch({ selectedICP, onSelectICP, onResults, searching,
   const { icps, isLoading: icpsLoading } = useICPs();
 
   // Always search both sources
-  const source: SearchSource = 'both';
+  
   const [jobTitle, setJobTitle] = useState('');
   const [jobTitleRole, setJobTitleRole] = useState('');
   const [jobTitleLevels, setJobTitleLevels] = useState<string[]>([]);
