@@ -14,6 +14,98 @@ export type Database = {
   }
   public: {
     Tables: {
+      agent_conversations: {
+        Row: {
+          created_at: string
+          created_by: string
+          id: string
+          job_id: string | null
+          job_title: string | null
+          organization_id: string | null
+          project_id: string | null
+          results_summary: Json | null
+          search_config: Json | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by: string
+          id?: string
+          job_id?: string | null
+          job_title?: string | null
+          organization_id?: string | null
+          project_id?: string | null
+          results_summary?: Json | null
+          search_config?: Json | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          id?: string
+          job_id?: string | null
+          job_title?: string | null
+          organization_id?: string | null
+          project_id?: string | null
+          results_summary?: Json | null
+          search_config?: Json | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agent_conversations_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agent_conversations_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "sourcing_projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      agent_messages: {
+        Row: {
+          content: string
+          conversation_id: string
+          created_at: string
+          id: string
+          metadata: Json | null
+          role: string
+        }
+        Insert: {
+          content: string
+          conversation_id: string
+          created_at?: string
+          id?: string
+          metadata?: Json | null
+          role: string
+        }
+        Update: {
+          content?: string
+          conversation_id?: string
+          created_at?: string
+          id?: string
+          metadata?: Json | null
+          role?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agent_messages_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "agent_conversations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       aircall_calls: {
         Row: {
           aircall_id: number
