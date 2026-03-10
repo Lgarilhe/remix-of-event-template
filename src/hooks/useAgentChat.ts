@@ -186,9 +186,11 @@ export const useAgentChat = (conversationId: string | null) => {
         const actionMatch = accumulated.match(/\[AGENT_ACTION\]\s*([\s\S]*?)\s*\[\/AGENT_ACTION\]/);
         if (actionMatch) {
           try { metadata.agent_action = JSON.parse(actionMatch[1]); } catch {}
-          // Update conversation status
+          // Trigger search when agent says go
           if ((metadata.agent_action as any)?.action === 'start_search') {
             setConversation(prev => prev ? { ...prev, status: 'running' } : null);
+            // Fire and forget — trigger the search orchestration
+            triggerSearch(convId);
           }
         }
 
