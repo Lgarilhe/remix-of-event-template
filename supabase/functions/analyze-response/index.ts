@@ -411,8 +411,8 @@ Analyse cette conversation et retourne le JSON.`;
     }
 
     const data = await response.json();
-    // Anthropic response format: data.content[0].text
-    let content = data.content?.[0]?.text || "";
+    // OpenAI-compatible format: data.choices[0].message.content
+    let content = data.choices?.[0]?.message?.content || "";
     
     // Clean up potential markdown code blocks
     content = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
