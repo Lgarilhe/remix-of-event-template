@@ -283,7 +283,7 @@ Placements réussis via cette société :
 ${placementContext || "Aucun placement"}
 
 Consultant principal ayant le plus interagi : ${mainConsultantFirstName || "inconnu"} (${maxCount} interactions)
-Tous les consultants impliqués : ${[...authorCounts.entries()].map(([name, count]) => \`\${name} (\${count} notes)\`).join(", ") || "aucun"}
+Tous les consultants impliqués : ${allConsultantsList}
 
 ${consultantContext}
 
