@@ -752,6 +752,30 @@ export function useLinkedInScoring({
           aggregatedStats.total = mapped.length;
         }
         setBatchStats(aggregatedStats);
+        setBatchDurationMs(Date.now() - batchStartTime);
+
+        // Build detailed per-profile report
+        const reportEntries: BatchReportEntry[] = allResults.map((rawResult: any, index: number) => {
+          const profile = profilesToScore[index];
+          if (!profile) return null;
+          const result = mapScoringResult(rawResult);
+          const profileName = profile.name || `${profile.first_name || ''} ${profile.last_name || ''}`.trim();
+          const profileUrl = profile.public_profile_url || profile.profile_url;
+          return {
+            profileId: profile.id,
+            name: profileName || 'Inconnu',
+            headline: profile.headline,
+            profileUrl,
+            score: result.match_score,
+            recommendation: result.recommendation,
+            summary: result.summary || '',
+            hardFilterPassed: result.hardFilterPassed,
+            hardFilterKO: result.hardFilterKO,
+            skippedLLM: result.skippedLLM,
+            dismissed: result.recommendation === 'skip' || result.match_score === 0,
+          } as BatchReportEntry;
+        }).filter(Boolean) as BatchReportEntry[];
+        setBatchReport(reportEntries);
       }
     } catch (err) {
       console.error('Batch score error:', err);
