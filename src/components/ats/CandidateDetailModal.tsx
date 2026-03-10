@@ -54,6 +54,7 @@ const tabsConfig = [
   { key: 'evaluation', label: 'Évaluation', icon: ClipboardCheck },
   { key: 'fraud', label: 'Vérification', icon: Shield },
   { key: 'activity', label: 'Activité', icon: Activity },
+  { key: 'comments', label: 'Discussion', icon: MessageSquare },
   { key: 'notes', label: 'Notes', icon: StickyNote },
   { key: 'reminders', label: 'Rappels', icon: Bell },
 ] as const;
