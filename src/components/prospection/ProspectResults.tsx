@@ -134,6 +134,11 @@ function ProspectCard({ prospect }: { prospect: ProspectProfile }) {
                       <TrendingUp className="w-2.5 h-2.5" /> Levée
                     </Badge>
                   )}
+                  {signals?.hiring && (
+                    <Badge className="text-[9px] bg-amber-500/10 text-amber-700 border-amber-500/30 border gap-0.5 px-1.5 py-0">
+                      📢 Recrute
+                    </Badge>
+                  )}
                 </div>
 
                 {/* Headline */}
