@@ -38,29 +38,29 @@ Deno.serve(async (req) => {
     if (job_title) {
       const titles = job_title.split(',').map((t: string) => t.trim()).filter(Boolean);
       if (titles.length === 1) {
-        conditions.push(`job_title='${titles[0]}'`);
+        conditions.push(`job_title LIKE '%${titles[0]}%'`);
       } else {
-        const orParts = titles.map((t: string) => `job_title='${t}'`).join(' OR ');
+        const orParts = titles.map((t: string) => `job_title LIKE '%${t}%'`).join(' OR ');
         conditions.push(`(${orParts})`);
       }
     }
 
     if (company) {
-      conditions.push(`job_company_name='${company}'`);
+      conditions.push(`job_company_name LIKE '%${company}%'`);
     }
 
     if (location) {
       const locations = location.split(',').map((l: string) => l.trim()).filter(Boolean);
       if (locations.length === 1) {
-        conditions.push(`location_name='${locations[0]}'`);
+        conditions.push(`location_name LIKE '%${locations[0]}%'`);
       } else {
-        const orParts = locations.map((l: string) => `location_name='${l}'`).join(' OR ');
+        const orParts = locations.map((l: string) => `location_name LIKE '%${l}%'`).join(' OR ');
         conditions.push(`(${orParts})`);
       }
     }
 
     if (industry) {
-      conditions.push(`job_company_industry='${industry}'`);
+      conditions.push(`job_company_industry LIKE '%${industry}%'`);
     }
 
     if (company_size && company_size !== 'all') {
