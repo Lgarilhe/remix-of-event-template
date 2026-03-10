@@ -276,18 +276,17 @@ ANALYSE EN 3 ÉTAPES :
 GÉNÈRE UN MESSAGE ${messageType === "sms" ? "SMS (~" + maxChars + " caractères max)" : "LinkedIn (~" + maxChars + " caractères max)"} :
 - TUTOIE obligatoirement
 - Écris comme un humain qui envoie un ${messageType === "sms" ? "SMS" : "message LinkedIn"} à quelqu'un qu'il connaît
-- JAMAIS de formules corporate : "j'espère que tu vas bien", "je me permets de", "dans le cadre de", "n'hésite pas à"
+- STYLE : direct, concis, naturel. Pas familier mais pas corporate non plus. Comme un message qu'un BD écrirait vraiment sur son téléphone.
+- INTERDIT : tirets (—, –, -), listes à puces, emojis excessifs, formules IA reconnaissables ("j'espère que tu vas bien", "je me permets de", "dans le cadre de", "n'hésite pas à", "ravi de", "au plaisir de")
 - JAMAIS mentionner "notre CRM", "notre base", "nos données"
 - RECONTEXTUALISE OBLIGATOIREMENT la collaboration passée :
-  - QUAND : cite la période approximative de la dernière interaction (ex: "en 2023", "il y a 2 ans", déduis-le des dates dans l'historique)
-  - OÙ / POUR QUELLE SOCIÉTÉ : précise TOUJOURS le nom de la société pour laquelle on avait collaboré (= l'ancienne société du CRM). C'est CRUCIAL surtout si la personne a changé de boîte, car ça montre qu'on se souvient du contexte.
-  - AVEC QUI / SUR QUOI : mentionne un élément concret (un candidat présenté par son nom, un poste bossé ensemble, un placement réussi). Sois spécifique, pas vague.
-  - Ex si même boîte : "On avait bossé ensemble en 2023 chez [Société] quand on t'avait présenté [Candidat] pour le poste de [Titre]"
-  - Ex si changement de boîte : "On avait collaboré en 2022 quand tu étais chez [Ancienne Société], on t'avait présenté [Candidat] pour [Poste]. J'ai vu que t'étais passé chez [Nouvelle Société], félicitations !"
-- Si changement de boîte → mentionne-le naturellement APRÈS la recontextualisation ("j'ai vu que t'étais passé chez X, bravo !")
-- Si promotion → félicite naturellement
-- CTA : mentionne que Konekt a beaucoup évolué dernièrement, avec plein de nouveautés côté recrutement, RPO, et accompagnement (notamment sur les sujets growth et IA), et propose un court call pour en discuter. Ex: "Konekt a pas mal bougé depuis, on fait plein de trucs nouveaux côté recrutement, RPO et même growth/IA — ça vaut le coup qu'on se cale un call de 15 min pour t'en parler ?"
-- Signe "— Konekt" uniquement pour les SMS
+  Cite QUAND (période déduite de l'historique), POUR QUELLE SOCIÉTÉ (l'ancienne société du CRM, crucial si changement de boîte), et un élément concret (candidat présenté par son nom, poste bossé ensemble, placement réussi).
+  Ex si même boîte : "On avait bossé ensemble en 2023 chez [Société] quand on t'avait présenté [Candidat] pour le poste de [Titre]"
+  Ex si changement de boîte : "On avait collaboré en 2022 quand tu étais chez [Ancienne Société], on t'avait présenté [Candidat] pour [Poste]. J'ai vu que t'étais passé chez [Nouvelle Société], félicitations !"
+- Si changement de boîte, mentionne-le naturellement après la recontextualisation
+- Si promotion, félicite naturellement
+- CTA : mentionne que Konekt a pas mal évolué avec des nouveautés côté recrutement, RPO et accompagnement (growth, IA), et propose un court call pour en discuter. Intègre le CTA de manière fluide dans le message, pas comme une phrase séparée plaquée à la fin.
+- Signe "Konekt" uniquement pour les SMS
 
 Réponds en JSON strict :
 {
