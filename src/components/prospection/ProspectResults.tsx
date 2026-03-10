@@ -129,7 +129,7 @@ function ProspectCard({ prospect }: { prospect: ProspectProfile }) {
                   {/* Avatar inline next to name on mobile */}
                   <div className="relative shrink-0 sm:hidden">
                     <Avatar className="w-8 h-8 border border-border shadow-sm">
-                      <AvatarImage src={prospect.profile_pic_url || undefined} alt={displayName} className="object-cover" />
+                      <AvatarImage src={avatarUrl} alt={displayName} className="object-cover" />
                       <AvatarFallback className="bg-gradient-to-br from-primary to-primary/80 text-primary-foreground text-xs font-medium">
                         {initials}
                       </AvatarFallback>
