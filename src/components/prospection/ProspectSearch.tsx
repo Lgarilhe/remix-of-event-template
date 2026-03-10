@@ -280,39 +280,6 @@ export function ProspectSearch({ selectedICP, onSelectICP, onResults, searching,
         </div>
       </div>
 
-      {/* Source selector */}
-      <div className="mb-5">
-        <label className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-2 block">
-          Source de données
-        </label>
-        <div className="flex gap-0">
-          {([
-            { value: 'both', label: 'PDL + Apollo', emoji: '⚡' },
-            { value: 'pdl', label: 'PDL', emoji: '🔬' },
-            { value: 'apollo', label: 'Apollo', emoji: '🚀' },
-          ] as const).map((s, index) => (
-            <button
-              key={s.value}
-              onClick={() => setSource(s.value)}
-              className={cn(
-                "px-4 py-2 text-xs font-medium uppercase tracking-wider border border-foreground transition-colors",
-                index > 0 && "border-l-0",
-                source === s.value
-                  ? "bg-foreground text-background"
-                  : "bg-background text-foreground hover:bg-muted"
-              )}
-            >
-              <span className="mr-1.5">{s.emoji}</span>
-              {s.label}
-            </button>
-          ))}
-        </div>
-        <p className="text-[10px] text-muted-foreground mt-1.5">
-          {source === 'both' && 'Recherche combinée avec déduplication automatique par LinkedIn URL'}
-          {source === 'pdl' && 'PeopleDataLabs — enrichissement profond (skills, éducation, expérience)'}
-          {source === 'apollo' && 'Apollo.io — intent signals, technographies, hiring intent'}
-        </p>
-      </div>
 
       {/* ICP selector */}
       {icps.length > 0 && (
