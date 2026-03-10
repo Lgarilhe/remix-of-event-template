@@ -2970,6 +2970,77 @@ export type Database = {
         }
         Relationships: []
       }
+      vivier_enrichments: {
+        Row: {
+          apollo_data: Json | null
+          contact_airtable_id: string
+          created_at: string | null
+          current_company: string | null
+          current_job_title: string | null
+          enriched_at: string | null
+          generated_message: string | null
+          headline: string | null
+          id: string
+          is_relevant: boolean | null
+          linkedin_url: string | null
+          location: string | null
+          match_type: string | null
+          message_status: string | null
+          message_type: string | null
+          organization_id: string | null
+          relevance_reason: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          apollo_data?: Json | null
+          contact_airtable_id: string
+          created_at?: string | null
+          current_company?: string | null
+          current_job_title?: string | null
+          enriched_at?: string | null
+          generated_message?: string | null
+          headline?: string | null
+          id?: string
+          is_relevant?: boolean | null
+          linkedin_url?: string | null
+          location?: string | null
+          match_type?: string | null
+          message_status?: string | null
+          message_type?: string | null
+          organization_id?: string | null
+          relevance_reason?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          apollo_data?: Json | null
+          contact_airtable_id?: string
+          created_at?: string | null
+          current_company?: string | null
+          current_job_title?: string | null
+          enriched_at?: string | null
+          generated_message?: string | null
+          headline?: string | null
+          id?: string
+          is_relevant?: boolean | null
+          linkedin_url?: string | null
+          location?: string | null
+          match_type?: string | null
+          message_status?: string | null
+          message_type?: string | null
+          organization_id?: string | null
+          relevance_reason?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "vivier_enrichments_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
