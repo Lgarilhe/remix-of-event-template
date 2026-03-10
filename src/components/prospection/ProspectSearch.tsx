@@ -4,10 +4,12 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
-import { Search, Target, Loader2, Building2, MapPin, Briefcase, Code, Zap, Globe, Users, Cpu, TrendingUp, DollarSign, GraduationCap, Mail, Clock, Sparkles, Languages, Award, Heart, FileText, Hash, Landmark, BadgeDollarSign } from 'lucide-react';
+import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
+import { Search, Target, Loader2, Building2, MapPin, Briefcase, Code, Zap, Globe, Users, Cpu, TrendingUp, DollarSign, GraduationCap, Mail, Clock, Sparkles, Languages, Award, Heart, FileText, Hash, Landmark, BadgeDollarSign, SlidersHorizontal } from 'lucide-react';
 import { useICPs, ICP } from '@/hooks/useICPs';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { ProspectProfile } from '@/pages/Prospection';
+import { ProspectResults } from './ProspectResults';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
@@ -215,13 +217,15 @@ interface ProspectSearchProps {
   onResults: (results: ProspectProfile[]) => void;
   searching: boolean;
   onSearchingChange: (v: boolean) => void;
+  results: ProspectProfile[];
 }
 
 type FilterTab = 'prospect' | 'entreprise';
 
-export function ProspectSearch({ selectedICP, onSelectICP, onResults, searching, onSearchingChange }: ProspectSearchProps) {
+export function ProspectSearch({ selectedICP, onSelectICP, onResults, searching, onSearchingChange, results }: ProspectSearchProps) {
   const { icps } = useICPs();
   const [filterTab, setFilterTab] = useState<FilterTab>('prospect');
+  const [filtersOpen, setFiltersOpen] = useState(false);
 
   // ── PROSPECT FILTERS ──
   const [jobTitle, setJobTitle] = useState('');
@@ -420,35 +424,38 @@ export function ProspectSearch({ selectedICP, onSelectICP, onResults, searching,
     }
   };
 
-  return (
-    <div className="bg-background border border-foreground p-3 space-y-4">
+  // The actual filters panel content (reused in both desktop sidebar and mobile sheet)
+  const filtersPanel = (
+    <div className="space-y-4 lg:sticky lg:top-24">
       {/* Header */}
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-2">
-          <Search className="w-4 h-4" />
-          <h2 className="text-sm font-bold uppercase tracking-wider">Recherche de Prospects</h2>
+      <div className="bg-background border border-foreground p-3">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <Search className="w-4 h-4" />
+            <h2 className="text-sm font-bold uppercase tracking-wider">Prospection</h2>
+          </div>
+          <Badge variant="outline" className="text-[9px] border-foreground/20 font-normal">PDL + Apollo</Badge>
         </div>
-        <Badge variant="outline" className="text-[9px] border-foreground/20 font-normal">PDL + Apollo</Badge>
+
+        {/* ICP selector */}
+        {icps.length > 0 && (
+          <div className="mb-3">
+            <div className="flex items-center gap-2">
+              <Select value={selectedICP?.id || 'none'} onValueChange={(v) => onSelectICP(icps.find(i => i.id === v) || null)}>
+                <SelectTrigger className="h-8 border-foreground/20 flex-1"><SelectValue placeholder="Pré-remplir depuis un ICP..." /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">— Aucun —</SelectItem>
+                  {icps.map(icp => (<SelectItem key={icp.id} value={icp.id}>{icp.name}</SelectItem>))}
+                </SelectContent>
+              </Select>
+              {selectedICP && (<Badge variant="outline" className="text-[10px] border-foreground/20 gap-1 shrink-0"><Target className="w-3 h-3" /> {selectedICP.name}</Badge>)}
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* ICP selector */}
-      {icps.length > 0 && (
-        <div className="mb-4">
-          <div className="flex items-center gap-2">
-            <Select value={selectedICP?.id || 'none'} onValueChange={(v) => onSelectICP(icps.find(i => i.id === v) || null)}>
-              <SelectTrigger className="h-8 border-foreground/20 max-w-sm"><SelectValue placeholder="Pré-remplir depuis un ICP..." /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">— Aucun —</SelectItem>
-                {icps.map(icp => (<SelectItem key={icp.id} value={icp.id}>{icp.name}</SelectItem>))}
-              </SelectContent>
-            </Select>
-            {selectedICP && (<Badge variant="outline" className="text-[10px] border-foreground/20 gap-1 shrink-0"><Target className="w-3 h-3" /> {selectedICP.name}</Badge>)}
-          </div>
-        </div>
-      )}
-
       {/* Filter tabs */}
-      <div className="flex gap-0 mb-5">
+      <div className="flex gap-0">
         {([
           { value: 'prospect' as FilterTab, label: 'Prospect', emoji: '👤', count: pCount },
           { value: 'entreprise' as FilterTab, label: 'Entreprise', emoji: '🏢', count: eCount },
@@ -778,14 +785,48 @@ export function ProspectSearch({ selectedICP, onSelectICP, onResults, searching,
         </div>
       </div>
 
-      {/* Search button */}
-      <div className="mt-5 flex items-center gap-3">
-        <Button onClick={handleSearch} disabled={searching || !hasFilters}
-          className="h-[34px] px-6 bg-foreground text-background hover:bg-foreground/90 text-xs font-medium uppercase tracking-wider gap-2">
-          {searching ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
-          {searching ? 'Recherche en cours...' : 'Lancer la recherche'}
+      {/* Action buttons — same style as SearchFiltersPanel */}
+      <div className="flex gap-2">
+        <Button onClick={() => { handleSearch(); setFiltersOpen(false); }} disabled={searching || !hasFilters}
+          className="flex-1 bg-foreground text-background hover:bg-foreground/90">
+          {searching ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Search className="w-4 h-4 mr-2" />}
+          {searching ? 'Recherche...' : 'Rechercher'}
         </Button>
-        {(pCount + eCount) > 0 && (<span className="text-[10px] text-muted-foreground">{pCount + eCount} filtre(s) actif(s)</span>)}
+      </div>
+      {(pCount + eCount) > 0 && (<span className="text-[10px] text-muted-foreground">{pCount + eCount} filtre(s) actif(s)</span>)}
+    </div>
+  );
+
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 lg:gap-6 w-full max-w-full min-w-0 lg:h-[calc(100dvh-5rem)]">
+      {/* Mobile: Filters button + Sheet */}
+      <div className="lg:hidden">
+        <Sheet open={filtersOpen} onOpenChange={setFiltersOpen}>
+          <SheetTrigger asChild>
+            <Button variant="outline" className="w-full gap-2 border-primary text-primary overflow-hidden">
+              <SlidersHorizontal className="w-4 h-4 shrink-0" />
+              <span className="shrink-0">Filtres de recherche</span>
+              {(pCount + eCount) > 0 && (
+                <span className="text-xs bg-primary/10 px-2 py-0.5">
+                  {pCount + eCount} filtre(s)
+                </span>
+              )}
+            </Button>
+          </SheetTrigger>
+          <SheetContent side="left" className="w-[90vw] max-w-[400px] p-4 overflow-y-auto">
+            {filtersPanel}
+          </SheetContent>
+        </Sheet>
+      </div>
+
+      {/* Desktop: Filters sidebar */}
+      <div className="hidden lg:block lg:col-span-4 xl:col-span-3 overflow-y-auto">
+        {filtersPanel}
+      </div>
+
+      {/* Results panel */}
+      <div className="lg:col-span-8 xl:col-span-9 min-w-0 lg:min-h-0">
+        <ProspectResults results={results} searching={searching} />
       </div>
     </div>
   );

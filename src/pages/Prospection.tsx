@@ -83,7 +83,7 @@ export default function Prospection() {
       />
       <Navbar />
 
-      <main className="pt-20 pb-8 w-full max-w-full">
+      <main className="pt-20 pb-0 w-full max-w-full">
         <div className="max-w-[1600px] mx-auto w-full min-w-0 px-3 sm:px-6 lg:px-8">
           {/* Header */}
           <div className="mb-6 sm:mb-8 hidden md:block">
@@ -131,25 +131,16 @@ export default function Prospection() {
             <ICPList onSearchFromICP={handleSearchFromICP} />
           </div>
 
-          {/* Search tab: split layout — filters left, results right */}
+          {/* Search tab: 12-col grid like LinkedInSearch */}
           <div className={cn("mt-0 min-w-0", activeTab !== 'search' && 'hidden')}>
-            <div className="flex flex-col lg:flex-row gap-4 lg:gap-5 w-full min-w-0">
-              {/* Left: filters panel (scrollable, sticky) */}
-              <div className="w-full lg:w-[380px] xl:w-[420px] shrink-0 lg:max-h-[calc(100vh-180px)] lg:overflow-y-auto lg:sticky lg:top-24 no-scrollbar">
-                <ProspectSearch
-                  selectedICP={selectedICP}
-                  onSelectICP={setSelectedICP}
-                  onResults={setResults}
-                  searching={searching}
-                  onSearchingChange={setSearching}
-                />
-              </div>
-
-              {/* Right: results panel */}
-              <div className="flex-1 min-w-0">
-                <ProspectResults results={results} searching={searching} />
-              </div>
-            </div>
+            <ProspectSearch
+              selectedICP={selectedICP}
+              onSelectICP={setSelectedICP}
+              onResults={setResults}
+              searching={searching}
+              onSearchingChange={setSearching}
+              results={results}
+            />
           </div>
         </div>
       </main>
