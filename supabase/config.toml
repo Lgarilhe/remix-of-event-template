@@ -32,3 +32,6 @@ verify_jwt = false
 
 [functions.detect-profile-fraud]
 verify_jwt = false
+
+[functions.enrich-vivier-contacts]
+verify_jwt = false
