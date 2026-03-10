@@ -112,6 +112,17 @@ function ProspectCard({ prospect }: { prospect: ProspectProfile }) {
                       {prospect.score}%
                     </Badge>
                   )}
+                  {/* Source badge */}
+                  {(prospect as any).source && (
+                    <Badge className={cn(
+                      "text-[9px] border gap-0.5 px-1.5 py-0",
+                      (prospect as any).source === 'apollo'
+                        ? "bg-orange-500/10 text-orange-700 border-orange-500/30"
+                        : "bg-purple-500/10 text-purple-700 border-purple-500/30"
+                    )}>
+                      {(prospect as any).source === 'apollo' ? '🚀 Apollo' : '🔬 PDL'}
+                    </Badge>
+                  )}
                   {/* Intent signal badges inline */}
                   {signals?.job_change && (
                     <Badge className="text-[9px] bg-blue-500/10 text-blue-700 border-blue-500/30 border gap-0.5 px-1.5 py-0">
@@ -121,6 +132,11 @@ function ProspectCard({ prospect }: { prospect: ProspectProfile }) {
                   {signals?.recently_funded && (
                     <Badge className="text-[9px] bg-green-500/10 text-green-700 border-green-500/30 border gap-0.5 px-1.5 py-0">
                       <TrendingUp className="w-2.5 h-2.5" /> Levée
+                    </Badge>
+                  )}
+                  {signals?.hiring && (
+                    <Badge className="text-[9px] bg-amber-500/10 text-amber-700 border-amber-500/30 border gap-0.5 px-1.5 py-0">
+                      📢 Recrute
                     </Badge>
                   )}
                 </div>

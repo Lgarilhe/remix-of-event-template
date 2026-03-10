@@ -50,6 +50,7 @@ export interface ProspectProfile {
     hiring?: boolean;
   };
   score?: number;
+  source?: 'pdl' | 'apollo';
 }
 
 export default function Prospection() {

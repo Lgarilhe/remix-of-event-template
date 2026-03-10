@@ -3,12 +3,15 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Search, Target, Loader2, Building2, MapPin, Briefcase, Code, Zap, Globe, Users } from 'lucide-react';
+import { Search, Target, Loader2, Building2, MapPin, Briefcase, Code, Zap, Globe, Users, Cpu, TrendingUp, DollarSign } from 'lucide-react';
 import { useICPs, ICP } from '@/hooks/useICPs';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { ProspectProfile } from '@/pages/Prospection';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+
+// Source types
+type SearchSource = 'pdl' | 'apollo' | 'both';
 
 // PDL canonical values
 const JOB_TITLE_ROLES = [
@@ -81,7 +84,6 @@ const COUNTRIES = [
   { value: 'luxembourg', label: '🇱🇺 Luxembourg' },
 ];
 
-// PDL canonical industries (subset of most common)
 const INDUSTRIES = [
   { value: 'computer software', label: 'Software' },
   { value: 'information technology and services', label: 'IT & Services' },
@@ -109,6 +111,15 @@ const INDUSTRIES = [
   { value: 'venture capital & private equity', label: 'VC & Private Equity' },
 ];
 
+const FUNDING_STAGES = [
+  { value: 'seed', label: 'Seed' },
+  { value: 'series_a', label: 'Series A' },
+  { value: 'series_b', label: 'Series B' },
+  { value: 'series_c', label: 'Series C' },
+  { value: 'series_d', label: 'Series D+' },
+  { value: 'ipo', label: 'IPO' },
+];
+
 interface ProspectSearchProps {
   selectedICP: ICP | null;
   onSelectICP: (icp: ICP | null) => void;
@@ -120,7 +131,10 @@ interface ProspectSearchProps {
 export function ProspectSearch({ selectedICP, onSelectICP, onResults, searching, onSearchingChange }: ProspectSearchProps) {
   const { icps, isLoading: icpsLoading } = useICPs();
 
-  // Search fields mapped to PDL schema
+  // Source selector
+  const [source, setSource] = useState<SearchSource>('both');
+
+  // Common search fields
   const [jobTitle, setJobTitle] = useState('');
   const [jobTitleRole, setJobTitleRole] = useState('');
   const [jobTitleLevels, setJobTitleLevels] = useState<string[]>([]);
@@ -131,7 +145,15 @@ export function ProspectSearch({ selectedICP, onSelectICP, onResults, searching,
   const [locationRegion, setLocationRegion] = useState('');
   const [locationLocality, setLocationLocality] = useState('');
   const [skills, setSkills] = useState('');
+  
+  // Intent signals (common)
   const [intentJobChange, setIntentJobChange] = useState(false);
+  
+  // Apollo-specific filters
+  const [technologies, setTechnologies] = useState('');
+  const [isHiring, setIsHiring] = useState(false);
+  const [fundingStage, setFundingStage] = useState('');
+  const [employeeGrowth, setEmployeeGrowth] = useState(false);
 
   // Apply ICP criteria to search fields
   useEffect(() => {
@@ -151,33 +173,96 @@ export function ProspectSearch({ selectedICP, onSelectICP, onResults, searching,
     );
   };
 
-  const hasFilters = jobTitle || jobTitleRole || jobTitleLevels.length > 0 || jobCompanyName || jobCompanyIndustry || (jobCompanySize && jobCompanySize !== 'all') || locationCountry || locationRegion || locationLocality || skills;
+  const hasFilters = jobTitle || jobTitleRole || jobTitleLevels.length > 0 || jobCompanyName || jobCompanyIndustry || (jobCompanySize && jobCompanySize !== 'all') || locationCountry || locationRegion || locationLocality || skills || technologies;
+
+  const buildCommonPayload = () => {
+    const payload: Record<string, any> = {};
+    if (jobTitle) payload.job_title = jobTitle;
+    if (jobTitleRole) payload.job_title_role = jobTitleRole;
+    if (jobTitleLevels.length > 0) payload.job_title_levels = jobTitleLevels;
+    if (jobCompanyName) payload.job_company_name = jobCompanyName;
+    if (jobCompanyIndustry) payload.job_company_industry = jobCompanyIndustry;
+    if (jobCompanySize && jobCompanySize !== 'all') payload.job_company_size = jobCompanySize;
+    if (locationCountry) payload.location_country = locationCountry;
+    if (locationRegion) payload.location_region = locationRegion;
+    if (locationLocality) payload.location_locality = locationLocality;
+    if (skills) payload.skills = skills.split(',').map(s => s.trim()).filter(Boolean);
+    if (intentJobChange) payload.intent_job_change = true;
+    payload.size = 50;
+    return payload;
+  };
+
+  const buildApolloPayload = () => {
+    const payload = buildCommonPayload();
+    if (technologies) payload.technologies = technologies.split(',').map(s => s.trim()).filter(Boolean);
+    if (isHiring) payload.is_hiring = true;
+    if (fundingStage && fundingStage !== 'all') payload.funding_stage = fundingStage;
+    if (employeeGrowth) payload.employee_growth = '10,100'; // 10%+ growth
+    return payload;
+  };
 
   const handleSearch = async () => {
     onSearchingChange(true);
     try {
-      const payload: Record<string, any> = {};
-      if (jobTitle) payload.job_title = jobTitle;
-      if (jobTitleRole) payload.job_title_role = jobTitleRole;
-      if (jobTitleLevels.length > 0) payload.job_title_levels = jobTitleLevels;
-      if (jobCompanyName) payload.job_company_name = jobCompanyName;
-      if (jobCompanyIndustry) payload.job_company_industry = jobCompanyIndustry;
-      if (jobCompanySize && jobCompanySize !== 'all') payload.job_company_size = jobCompanySize;
-      if (locationCountry) payload.location_country = locationCountry;
-      if (locationRegion) payload.location_region = locationRegion;
-      if (locationLocality) payload.location_locality = locationLocality;
-      if (skills) payload.skills = skills.split(',').map(s => s.trim()).filter(Boolean);
-      if (intentJobChange) payload.intent_job_change = true;
-      payload.size = 50;
+      const allProspects: ProspectProfile[] = [];
+      const errors: string[] = [];
 
-      const { data, error } = await invokeEdgeFunction<{ prospects: ProspectProfile[] }>('pdl-search', payload);
+      const searchPDL = source === 'pdl' || source === 'both';
+      const searchApollo = source === 'apollo' || source === 'both';
 
-      if (error) throw error;
-      if (!data?.success) throw new Error(data?.error || 'Erreur recherche');
+      // Run searches in parallel
+      const promises: Promise<void>[] = [];
 
-      const prospects = (data as any).prospects || [];
-      onResults(prospects);
-      toast.success(`${prospects.length} prospect(s) trouvé(s)`);
+      if (searchPDL) {
+        promises.push(
+          invokeEdgeFunction<{ prospects: ProspectProfile[] }>('pdl-search', buildCommonPayload())
+            .then(({ data, error }) => {
+              if (error) { errors.push(`PDL: ${error.message}`); return; }
+              if (!data?.success) { errors.push(`PDL: ${data?.error || 'Erreur'}`); return; }
+              const prospects = (data as any).prospects || [];
+              prospects.forEach((p: any) => { p.source = 'pdl'; });
+              allProspects.push(...prospects);
+            })
+        );
+      }
+
+      if (searchApollo) {
+        promises.push(
+          invokeEdgeFunction<{ prospects: ProspectProfile[] }>('apollo-search', buildApolloPayload())
+            .then(({ data, error }) => {
+              if (error) { errors.push(`Apollo: ${error.message}`); return; }
+              if (!data?.success) { errors.push(`Apollo: ${data?.error || 'Erreur'}`); return; }
+              const prospects = (data as any).prospects || [];
+              prospects.forEach((p: any) => { p.source = 'apollo'; });
+              allProspects.push(...prospects);
+            })
+        );
+      }
+
+      await Promise.all(promises);
+
+      // Deduplicate by LinkedIn URL
+      const seen = new Set<string>();
+      const dedupedProspects = allProspects.filter(p => {
+        if (!p.linkedin_url) return true;
+        const key = p.linkedin_url.replace(/\/$/, '').toLowerCase();
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+
+      onResults(dedupedProspects);
+
+      if (errors.length > 0 && dedupedProspects.length > 0) {
+        toast.warning(`${dedupedProspects.length} prospect(s) trouvé(s) (${errors.join('; ')})`);
+      } else if (errors.length > 0) {
+        toast.error(errors.join('; '));
+      } else {
+        const sources = [];
+        if (searchPDL) sources.push('PDL');
+        if (searchApollo) sources.push('Apollo');
+        toast.success(`${dedupedProspects.length} prospect(s) trouvé(s) via ${sources.join(' + ')}`);
+      }
     } catch (err: any) {
       console.error('[ProspectSearch] Error:', err);
       toast.error(err.message || 'Erreur lors de la recherche');
@@ -186,6 +271,8 @@ export function ProspectSearch({ selectedICP, onSelectICP, onResults, searching,
     }
   };
 
+  const showApolloFilters = source === 'apollo' || source === 'both';
+
   return (
     <div className="bg-background border border-foreground p-3 sm:p-6">
       <div className="flex items-center justify-between mb-5">
@@ -193,6 +280,40 @@ export function ProspectSearch({ selectedICP, onSelectICP, onResults, searching,
           <Search className="w-4 h-4" />
           <h2 className="text-sm font-bold uppercase tracking-wider">Recherche de Prospects</h2>
         </div>
+      </div>
+
+      {/* Source selector */}
+      <div className="mb-5">
+        <label className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-2 block">
+          Source de données
+        </label>
+        <div className="flex gap-0">
+          {([
+            { value: 'both', label: 'PDL + Apollo', emoji: '⚡' },
+            { value: 'pdl', label: 'PDL', emoji: '🔬' },
+            { value: 'apollo', label: 'Apollo', emoji: '🚀' },
+          ] as const).map((s, index) => (
+            <button
+              key={s.value}
+              onClick={() => setSource(s.value)}
+              className={cn(
+                "px-4 py-2 text-xs font-medium uppercase tracking-wider border border-foreground transition-colors",
+                index > 0 && "border-l-0",
+                source === s.value
+                  ? "bg-foreground text-background"
+                  : "bg-background text-foreground hover:bg-muted"
+              )}
+            >
+              <span className="mr-1.5">{s.emoji}</span>
+              {s.label}
+            </button>
+          ))}
+        </div>
+        <p className="text-[10px] text-muted-foreground mt-1.5">
+          {source === 'both' && 'Recherche combinée avec déduplication automatique par LinkedIn URL'}
+          {source === 'pdl' && 'PeopleDataLabs — enrichissement profond (skills, éducation, expérience)'}
+          {source === 'apollo' && 'Apollo.io — intent signals, technographies, hiring intent'}
+        </p>
       </div>
 
       {/* ICP selector */}
@@ -228,9 +349,8 @@ export function ProspectSearch({ selectedICP, onSelectICP, onResults, searching,
         </div>
       )}
 
-      {/* Search filters grid */}
+      {/* Common search filters grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-5">
-        {/* Job Title (free text, LIKE) */}
         <div className="space-y-1.5">
           <label className="text-xs font-medium uppercase tracking-wider text-foreground flex items-center gap-1">
             <Briefcase className="w-3 h-3" /> Titre du poste
@@ -243,7 +363,6 @@ export function ProspectSearch({ selectedICP, onSelectICP, onResults, searching,
           />
         </div>
 
-        {/* Job Title Role (canonical enum) */}
         <div className="space-y-1.5">
           <label className="text-xs font-medium uppercase tracking-wider text-foreground flex items-center gap-1">
             <Users className="w-3 h-3" /> Fonction
@@ -261,7 +380,6 @@ export function ProspectSearch({ selectedICP, onSelectICP, onResults, searching,
           </Select>
         </div>
 
-        {/* Company name */}
         <div className="space-y-1.5">
           <label className="text-xs font-medium uppercase tracking-wider text-foreground flex items-center gap-1">
             <Building2 className="w-3 h-3" /> Entreprise
@@ -274,7 +392,6 @@ export function ProspectSearch({ selectedICP, onSelectICP, onResults, searching,
           />
         </div>
 
-        {/* Industry (canonical) */}
         <div className="space-y-1.5">
           <label className="text-xs font-medium uppercase tracking-wider text-foreground flex items-center gap-1">
             <Building2 className="w-3 h-3" /> Secteur
@@ -292,7 +409,6 @@ export function ProspectSearch({ selectedICP, onSelectICP, onResults, searching,
           </Select>
         </div>
 
-        {/* Company size (enum) */}
         <div className="space-y-1.5">
           <label className="text-xs font-medium uppercase tracking-wider text-foreground flex items-center gap-1">
             <Building2 className="w-3 h-3" /> Taille entreprise
@@ -310,7 +426,6 @@ export function ProspectSearch({ selectedICP, onSelectICP, onResults, searching,
           </Select>
         </div>
 
-        {/* Country (canonical) */}
         <div className="space-y-1.5">
           <label className="text-xs font-medium uppercase tracking-wider text-foreground flex items-center gap-1">
             <Globe className="w-3 h-3" /> Pays
@@ -328,7 +443,6 @@ export function ProspectSearch({ selectedICP, onSelectICP, onResults, searching,
           </Select>
         </div>
 
-        {/* Region / State */}
         <div className="space-y-1.5">
           <label className="text-xs font-medium uppercase tracking-wider text-foreground flex items-center gap-1">
             <MapPin className="w-3 h-3" /> Région / État
@@ -341,7 +455,6 @@ export function ProspectSearch({ selectedICP, onSelectICP, onResults, searching,
           />
         </div>
 
-        {/* City */}
         <div className="space-y-1.5">
           <label className="text-xs font-medium uppercase tracking-wider text-foreground flex items-center gap-1">
             <MapPin className="w-3 h-3" /> Ville
@@ -354,7 +467,6 @@ export function ProspectSearch({ selectedICP, onSelectICP, onResults, searching,
           />
         </div>
 
-        {/* Skills */}
         <div className="space-y-1.5">
           <label className="text-xs font-medium uppercase tracking-wider text-foreground flex items-center gap-1">
             <Code className="w-3 h-3" /> Compétences
@@ -365,11 +477,52 @@ export function ProspectSearch({ selectedICP, onSelectICP, onResults, searching,
             placeholder="react, python, aws..."
             className="h-8 text-sm border-foreground/20 focus:border-foreground"
           />
-          <p className="text-[10px] text-muted-foreground">Séparées par des virgules, en minuscules</p>
+          <p className="text-[10px] text-muted-foreground">Séparées par des virgules</p>
         </div>
       </div>
 
-      {/* Job Title Levels - toggle chips */}
+      {/* Apollo-specific filters */}
+      {showApolloFilters && (
+        <div className="mb-5 p-3 border border-dashed border-foreground/20 bg-muted/30">
+          <div className="flex items-center gap-1.5 mb-3">
+            <span className="text-sm">🚀</span>
+            <h3 className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Filtres Apollo exclusifs</h3>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium uppercase tracking-wider text-foreground flex items-center gap-1">
+                <Cpu className="w-3 h-3" /> Technologies
+              </label>
+              <Input
+                value={technologies}
+                onChange={e => setTechnologies(e.target.value)}
+                placeholder="React, Salesforce, HubSpot..."
+                className="h-8 text-sm border-foreground/20 focus:border-foreground"
+              />
+              <p className="text-[10px] text-muted-foreground">Technologies utilisées par l'entreprise</p>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium uppercase tracking-wider text-foreground flex items-center gap-1">
+                <DollarSign className="w-3 h-3" /> Stade de financement
+              </label>
+              <Select value={fundingStage || 'all'} onValueChange={v => setFundingStage(v === 'all' ? '' : v)}>
+                <SelectTrigger className="h-8 border-foreground/20">
+                  <SelectValue placeholder="Tous stades" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Tous stades</SelectItem>
+                  {FUNDING_STAGES.map(s => (
+                    <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Job Title Levels */}
       <div className="mb-5">
         <label className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-2 block flex items-center gap-1">
           <Briefcase className="w-3 h-3" /> Niveau hiérarchique
@@ -409,6 +562,34 @@ export function ProspectSearch({ selectedICP, onSelectICP, onResults, searching,
           >
             🔄 Changement de poste récent
           </button>
+          {showApolloFilters && (
+            <>
+              <button
+                onClick={() => setIsHiring(!isHiring)}
+                className={cn(
+                  "px-3 py-1.5 text-xs border transition-colors",
+                  isHiring
+                    ? "bg-foreground text-background border-foreground"
+                    : "bg-background text-foreground border-foreground/20 hover:border-foreground/50"
+                )}
+              >
+                📢 Entreprise recrute
+              </button>
+              <button
+                onClick={() => setEmployeeGrowth(!employeeGrowth)}
+                className={cn(
+                  "px-3 py-1.5 text-xs border transition-colors",
+                  employeeGrowth
+                    ? "bg-foreground text-background border-foreground"
+                    : "bg-background text-foreground border-foreground/20 hover:border-foreground/50"
+                )}
+              >
+                <span className="flex items-center gap-1">
+                  <TrendingUp className="w-3 h-3" /> Croissance rapide (+10%)
+                </span>
+              </button>
+            </>
+          )}
         </div>
       </div>
 
@@ -419,7 +600,7 @@ export function ProspectSearch({ selectedICP, onSelectICP, onResults, searching,
         className="h-[34px] px-6 bg-foreground text-background hover:bg-foreground/90 text-xs font-medium uppercase tracking-wider gap-2"
       >
         {searching ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
-        {searching ? 'Recherche en cours...' : 'Lancer la recherche'}
+        {searching ? 'Recherche en cours...' : `Rechercher via ${source === 'both' ? 'PDL + Apollo' : source === 'pdl' ? 'PDL' : 'Apollo'}`}
       </Button>
     </div>
   );
