@@ -3050,6 +3050,30 @@ export type Database = {
           total_count: number
         }[]
       }
+      get_vivier_companies: {
+        Args: {
+          p_limit?: number
+          p_min_shortlists?: number
+          p_offset?: number
+          p_search?: string
+          p_source_base?: string
+        }
+        Returns: {
+          appointment_count: number
+          city: string
+          company_airtable_id: string
+          company_name: string
+          contact_count: number
+          description: string
+          headcount: string
+          last_interaction_date: string
+          note_count: number
+          placement_count: number
+          shortlist_count: number
+          source_base: string
+          total_count: number
+        }[]
+      }
       get_vivier_contacts: {
         Args: {
           p_contact_type?: string
