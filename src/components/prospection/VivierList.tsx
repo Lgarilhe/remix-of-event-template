@@ -130,9 +130,10 @@ function CompanyDetailSheet({ company, open, onOpenChange }: { company: VivierCo
 }
 
 /* ─── Enriched Contact Detail Sheet ─── */
-function EnrichedContactSheet({ contact, enrichment, open, onOpenChange, onCopyMessage }: {
+function EnrichedContactSheet({ contact, enrichment, open, onOpenChange, onCopyMessage, onEnrichSingle }: {
   contact: VivierContact | null; enrichment: VivierEnrichment | null; open: boolean; onOpenChange: (v: boolean) => void;
   onCopyMessage?: (id: string) => void;
+  onEnrichSingle?: (id: string) => void;
 }) {
   const [shortlists, setShortlists] = useState<any[]>([]);
   const [notes, setNotes] = useState<any[]>([]);
@@ -190,6 +191,17 @@ function EnrichedContactSheet({ contact, enrichment, open, onOpenChange, onCopyM
             {contact.email && <div className="flex items-center gap-2 text-muted-foreground"><Mail className="w-3.5 h-3.5" /> {contact.email}</div>}
             {contact.city && <div className="flex items-center gap-2 text-muted-foreground"><MapPin className="w-3.5 h-3.5" /> {contact.city}</div>}
           </div>
+
+          {/* Enrich / Re-enrich button */}
+          <Button
+            size="sm"
+            variant={enrichment ? 'outline' : 'default'}
+            onClick={() => onEnrichSingle?.(contact.airtable_id)}
+            className="w-full h-8 text-xs gap-1.5"
+          >
+            {enrichment ? <RefreshCw className="w-3.5 h-3.5" /> : <Sparkles className="w-3.5 h-3.5" />}
+            {enrichment ? 'Ré-enrichir & regénérer le message' : 'Enrichir & générer le message'}
+          </Button>
 
           {/* Enriched profile */}
           {enrichment && enrichment.match_type !== 'not_found' && (
@@ -533,6 +545,7 @@ function ContactsView() {
         open={sheetOpen}
         onOpenChange={setSheetOpen}
         onCopyMessage={(id) => updateMessageStatus(id, 'sent')}
+        onEnrichSingle={(id) => enrichContacts([id], true)}
       />
     </div>
   );
