@@ -113,7 +113,7 @@ function ProspectCard({ prospect }: { prospect: ProspectProfile }) {
           {/* Avatar - separate column on desktop */}
           <div className="relative shrink-0 hidden sm:block">
             <Avatar className="w-14 h-14 border-2 border-border shadow-md">
-              <AvatarImage src={prospect.profile_pic_url || undefined} alt={displayName} className="object-cover" />
+              <AvatarImage src={avatarUrl} alt={displayName} className="object-cover" />
               <AvatarFallback className="bg-gradient-to-br from-primary to-primary/80 text-primary-foreground text-lg font-medium">
                 {initials}
               </AvatarFallback>
