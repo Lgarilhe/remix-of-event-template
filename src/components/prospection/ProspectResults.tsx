@@ -180,9 +180,9 @@ function ProspectCard({ prospect }: { prospect: ProspectProfile }) {
 
             {/* Row 3: Location + company details */}
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1.5 text-[11px] text-muted-foreground">
-              {prospect.location_name && (
+              {displayLocation && (
                 <span className="flex items-center gap-1">
-                  <MapPin className="w-3 h-3" />{prospect.location_name}
+                  <MapPin className="w-3 h-3" />{displayLocation}
                 </span>
               )}
               {prospect.job_company_industry && (
