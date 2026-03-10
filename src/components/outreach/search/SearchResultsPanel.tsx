@@ -459,7 +459,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
       <div className="flex-1 overflow-x-auto overflow-y-auto" ref={scrollAreaRef}>
         {loading && results.length === 0 ? (
           <BrutalLoader variant="search" rows={5} />
-        ) : results.length === 0 ? (
+        ) : displayResults.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-12 text-muted-foreground px-8">
             {hasSearched ? (
               <>
@@ -467,19 +467,16 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
                   <Search className="w-10 h-10" />
                 </div>
                 <p className="text-lg font-medium text-foreground/60 mb-2">
-                  Aucun profil trouvé
+                  {results.length === 0 ? 'Aucun profil trouvé' : 'Aucun profil dans ce filtre'}
                 </p>
                 <p className="text-sm text-center max-w-md mb-4">
-                  Essayez d'ajuster vos filtres pour élargir votre recherche
+                  {results.length === 0
+                    ? "Essayez d'ajuster vos filtres pour élargir votre recherche"
+                    : "Ce segment est vide pour le lot affiché. Essayez le filtre 'Tous' ou chargez le lot suivant."}
                 </p>
-                {selectedJob && (
-                  <Button
-                    onClick={() => onRefineSearch('expand')}
-                    disabled={refineLoading}
-                    className="gap-2 bg-foreground text-background hover:bg-foreground/90"
-                  >
-                    {refineLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Maximize2 className="w-4 h-4" />}
-                    Élargir les filtres avec l'IA
+                {results.length > 0 && statusFilter !== 'all' && (
+                  <Button variant="outline" size="sm" onClick={() => onSetStatusFilter('all')}>
+                    Voir tous les profils
                   </Button>
                 )}
               </>
