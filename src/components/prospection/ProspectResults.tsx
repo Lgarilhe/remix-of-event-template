@@ -92,6 +92,7 @@ function ProspectCard({ prospect }: { prospect: ProspectProfile }) {
   const displayTitle = prospect.job_title ? titleCase(prospect.job_title) : null;
   const displayCompany = prospect.job_company_name ? titleCase(prospect.job_company_name) : null;
   const displayLocation = buildLocation(prospect);
+  const avatarUrl = getProfilePicUrl(prospect);
 
   const copyEmail = (email: string) => {
     navigator.clipboard.writeText(email);
