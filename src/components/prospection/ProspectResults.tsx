@@ -98,7 +98,7 @@ function ProspectCard({ prospect }: { prospect: ProspectProfile }) {
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <h3 className="text-sm font-bold text-foreground truncate">{prospect.full_name}</h3>
+                  <h3 className="text-sm font-bold text-foreground truncate">{displayName}</h3>
                   {prospect.score !== undefined && (
                     <Badge
                       variant="outline"
