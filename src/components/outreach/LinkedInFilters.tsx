@@ -110,7 +110,7 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
   const [loadingParams, setLoadingParams] = useState<string | null>(null);
   const [parameterOptions, setParameterOptions] = useState<Record<string, ParameterOption[]>>({});
   const [searchInputs, setSearchInputs] = useState<Record<string, string>>({});
-  const debounceRef = useRef<Record<string, NodeJS.Timeout>>({});
+  const debounceRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const abortControllerRef = useRef<Record<string, AbortController>>({});
 
   // Role filter state
