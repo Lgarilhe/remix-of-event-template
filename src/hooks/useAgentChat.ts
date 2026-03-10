@@ -70,8 +70,21 @@ export const useAgentChat = (conversationId: string | null) => {
       }, (payload) => {
         const newMsg = payload.new as unknown as AgentMessage;
         setMessages(prev => {
-          // Avoid duplicates
+          // Skip if already exists by real id
           if (prev.some(m => m.id === newMsg.id)) return prev;
+          // Replace temp messages of same role that match content
+          const hasTempMatch = prev.some(m => 
+            m.id.startsWith('temp-') && m.role === 'user' && newMsg.role === 'user' && m.content === newMsg.content
+          ) || prev.some(m =>
+            m.id.startsWith('assistant-') && m.role === 'assistant' && newMsg.role === 'assistant'
+          );
+          if (hasTempMatch) {
+            return prev.map(m => {
+              if (m.id.startsWith('temp-') && m.role === 'user' && newMsg.role === 'user' && m.content === newMsg.content) return newMsg;
+              if (m.id.startsWith('assistant-') && m.role === 'assistant' && newMsg.role === 'assistant') return newMsg;
+              return m;
+            });
+          }
           return [...prev, newMsg];
         });
       })
