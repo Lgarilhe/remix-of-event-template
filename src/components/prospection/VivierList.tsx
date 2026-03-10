@@ -505,7 +505,7 @@ function ContactsView() {
                 </div>
                 <div className="flex items-center gap-1.5 shrink-0">
                   {/* Enrichment badges */}
-                  {e?.is_relevant === true && <Badge className="text-[9px] gap-0.5 px-1.5 bg-green-600">Pertinent</Badge>}
+                  {e?.is_relevant === true && <Badge className="text-[9px] gap-0.5 px-1.5 bg-primary text-primary-foreground">Pertinent</Badge>}
                   {e?.is_relevant === false && <Badge variant="secondary" className="text-[9px] gap-0.5 px-1.5">Non pertinent</Badge>}
                   {e?.generated_message && <Badge variant="outline" className="text-[9px] gap-0.5 px-1.5">{e.message_type === 'sms' ? '📱' : '💬'} msg</Badge>}
                   <Badge variant="secondary" className="text-[9px] gap-0.5 px-1.5"><FileText className="w-3 h-3" /> {c.shortlist_count}</Badge>
