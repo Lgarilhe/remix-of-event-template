@@ -47,11 +47,11 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({ onClose }) => {
 
       // Agent takes initiative: auto-send first message with job context
       if (job) {
-        // Small delay to let state settle
         setTimeout(async () => {
           await sendMessage(
             `Analyse cette fiche de poste et propose-moi un plan de recherche LinkedIn optimisé.`,
-            job
+            job,
+            id
           );
         }, 100);
         setJobSentForConv(id);

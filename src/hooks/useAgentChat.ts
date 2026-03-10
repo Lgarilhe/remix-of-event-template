@@ -172,7 +172,7 @@ export const useAgentChat = (conversationId: string | null) => {
 
         setMessages(prev => [...prev, {
           id: `assistant-${Date.now()}`,
-          conversation_id: conversationId,
+          conversation_id: convId,
           role: 'assistant',
           content: accumulated,
           metadata,
