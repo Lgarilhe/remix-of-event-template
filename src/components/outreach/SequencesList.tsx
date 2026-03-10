@@ -382,22 +382,23 @@ export const SequencesList: React.FC<SequencesListProps> = ({
       // 2. Pause or resume enrollments accordingly
       if (newActive) {
         // Reactivate paused enrollments
-        await supabase
+        const { data: pausedEnrollments } = await supabase
           .from('sequence_enrollments')
           .update({ status: 'active' })
           .eq('sequence_id', sequenceId)
-          .eq('status', 'paused');
+          .eq('status', 'paused')
+          .select('id');
 
-        // Reschedule any executions that were stuck while sequence was off
-        // Find scheduled/waiting_event executions and set their scheduled_at to now
-        const now = new Date().toISOString();
-        await supabase
-          .from('sequence_step_executions')
-          .update({ scheduled_at: now, status: 'scheduled' })
-          .in('status', ['scheduled', 'waiting_event', 'quota_blocked'])
-          .filter('enrollment_id', 'in', 
-            `(SELECT id FROM sequence_enrollments WHERE sequence_id = '${sequenceId}' AND status = 'active')`
-          );
+        // Reschedule stuck executions for these enrollments
+        if (pausedEnrollments && pausedEnrollments.length > 0) {
+          const enrollmentIds = pausedEnrollments.map(e => e.id);
+          const now = new Date().toISOString();
+          await supabase
+            .from('sequence_step_executions')
+            .update({ scheduled_at: now, status: 'scheduled' })
+            .in('status', ['scheduled', 'waiting_event', 'quota_blocked'])
+            .in('enrollment_id', enrollmentIds);
+        }
       } else {
         // Pause active enrollments
         await supabase
