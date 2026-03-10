@@ -306,7 +306,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
           {/* Status filter pills */}
           <div className="flex items-center gap-px bg-muted/40 p-px border border-border shrink-0">
             {([
-              { value: 'all' as const, emoji: '👥', count: Math.max(results.length, treatedCandidates.size) },
+              { value: 'all' as const, emoji: '👥', count: mergedResults.length },
               { value: 'untreated' as const, emoji: '👁', count: statusCounts.untreated },
               { value: 'scored' as const, emoji: '🎯', count: statusCounts.scored },
               { value: 'messaged' as const, emoji: '✉️', count: statusCounts.messaged },
