@@ -1,7 +1,8 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { Bot, Send, ArrowLeft, Plus, Loader2 } from 'lucide-react';
 import { useAgentChat, AgentConversation } from '@/hooks/useAgentChat';
-import { AgentMessageBubble } from './AgentMessageBubble';
+import { AgentMessageBubble, extractOptions } from './AgentMessageBubble';
+import { AgentOptionsSheet } from './AgentOptionsSheet';
 import { AgentConversationsList } from './AgentConversationsList';
 import { Job } from '@/types/jobs';
 import { useNotionJobs } from '@/hooks/useNotionJobs';
@@ -85,8 +86,23 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({ onClose }) => {
   };
 
   const handleQuickReply = useCallback((text: string) => {
+    setShowOptions(false);
     handleSend(text);
   }, [handleSend]);
+
+  const [showOptions, setShowOptions] = useState(true);
+
+  // Extract options from last assistant message
+  const lastAssistantOptions = useMemo(() => {
+    const lastAssistant = [...messages].reverse().find(m => m.role === 'assistant');
+    if (!lastAssistant) return [];
+    return extractOptions(lastAssistant.content);
+  }, [messages]);
+
+  // Show options sheet when new options arrive
+  useEffect(() => {
+    if (lastAssistantOptions.length > 0) setShowOptions(true);
+  }, [lastAssistantOptions]);
 
   // Job selector for new conversation
   const activeJobs = (jobs || []).filter(j => !['Archivé', 'Fermé', 'Perdu'].includes(j.status));
@@ -154,7 +170,7 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({ onClose }) => {
   }
 
   return (
-    <div className="flex flex-col h-full bg-background">
+    <div className="flex flex-col h-full bg-background relative">
       {/* Header */}
       <div className="flex items-center gap-2 px-3 py-2.5 border-b border-foreground shrink-0">
         <button onClick={() => setShowList(true)} className="hover:bg-muted p-1 transition-colors">
@@ -191,18 +207,9 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({ onClose }) => {
             </p>
           </div>
         ) : (
-          messages.map((msg, idx) => {
-            const isLastAssistant = msg.role === 'assistant' && 
-              !messages.slice(idx + 1).some(m => m.role === 'assistant');
-            return (
-              <AgentMessageBubble 
-                key={msg.id} 
-                message={msg} 
-                onQuickReply={handleQuickReply}
-                isLastAssistant={isLastAssistant}
-              />
-            );
-          })
+          messages.map((msg) => (
+            <AgentMessageBubble key={msg.id} message={msg} />
+          ))
         )}
 
         {/* Streaming indicator */}
@@ -223,8 +230,16 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({ onClose }) => {
         <div ref={messagesEndRef} />
       </div>
 
+      {/* Options sheet */}
+      <AgentOptionsSheet
+        options={lastAssistantOptions}
+        open={showOptions && !sending && lastAssistantOptions.length > 0}
+        onSelect={handleQuickReply}
+        onDismiss={() => setShowOptions(false)}
+      />
+
       {/* Input */}
-      <div className="shrink-0 border-t border-foreground p-2">
+      <div className="shrink-0 border-t border-foreground p-2 z-10">
         <div className="flex items-end gap-1.5">
           <textarea
             ref={inputRef}
