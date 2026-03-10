@@ -94,7 +94,7 @@ Deno.serve(async (req) => {
       dataset: 'all',
     };
 
-    // PDL Person Search uses GET with a body
+    // PDL Person Search API (POST with JSON body)
     const pdlResponse = await fetch(`${PDL_BASE}/person/search`, {
       method: 'POST',
       headers: {
