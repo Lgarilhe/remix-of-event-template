@@ -286,7 +286,7 @@ GÉNÈRE UN MESSAGE ${messageType === "sms" ? "SMS (~" + maxChars + " caractère
   - Ex si changement de boîte : "On avait collaboré en 2022 quand tu étais chez [Ancienne Société], on t'avait présenté [Candidat] pour [Poste]. J'ai vu que t'étais passé chez [Nouvelle Société], félicitations !"
 - Si changement de boîte → mentionne-le naturellement APRÈS la recontextualisation ("j'ai vu que t'étais passé chez X, bravo !")
 - Si promotion → félicite naturellement
-- CTA : propose un CALL (pas un café). Ex: "On se cale un call de 15 min ?" ou "Dispo pour un call cette semaine ?"
+- CTA : mentionne que Konekt a beaucoup évolué dernièrement, avec plein de nouveautés côté recrutement, RPO, et accompagnement (notamment sur les sujets growth et IA), et propose un court call pour en discuter. Ex: "Konekt a pas mal bougé depuis, on fait plein de trucs nouveaux côté recrutement, RPO et même growth/IA — ça vaut le coup qu'on se cale un call de 15 min pour t'en parler ?"
 - Signe "— Konekt" uniquement pour les SMS
 
 Réponds en JSON strict :
