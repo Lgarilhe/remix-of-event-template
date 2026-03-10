@@ -170,7 +170,7 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({ onClose }) => {
   }
 
   return (
-    <div className="flex flex-col h-full bg-background">
+    <div className="flex flex-col h-full bg-background relative">
       {/* Header */}
       <div className="flex items-center gap-2 px-3 py-2.5 border-b border-foreground shrink-0">
         <button onClick={() => setShowList(true)} className="hover:bg-muted p-1 transition-colors">
