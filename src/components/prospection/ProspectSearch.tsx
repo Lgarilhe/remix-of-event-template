@@ -269,7 +269,7 @@ export function ProspectSearch({ selectedICP, onSelectICP, onResults, searching,
     }
   };
 
-  const showApolloFilters = source === 'apollo' || source === 'both';
+  const showApolloFilters = true;
 
   return (
     <div className="bg-background border border-foreground p-3 sm:p-6">
