@@ -44,17 +44,17 @@ export function useVivierEnrichment() {
     }
   }, []);
 
-  const enrichContacts = useCallback(async (contactIds: string[]) => {
+  const enrichContacts = useCallback(async (contactIds: string[], forceReEnrich = false) => {
     if (contactIds.length === 0) return;
     setIsEnriching(true);
     setProgress({ done: 0, total: contactIds.length });
 
-    // Filter out already enriched
+    // Filter out already enriched (unless force)
     const existing = new Set([...enrichments.keys()]);
-    const toEnrich = contactIds.filter(id => !existing.has(id));
+    const toEnrich = forceReEnrich ? contactIds : contactIds.filter(id => !existing.has(id));
 
     if (toEnrich.length === 0) {
-      toast.info('Tous les contacts sont déjà enrichis');
+      toast.info('Tous les contacts sont déjà enrichis. Utilise "Ré-enrichir" pour forcer.');
       setIsEnriching(false);
       return;
     }

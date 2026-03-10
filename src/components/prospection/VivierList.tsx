@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Progress } from '@/components/ui/progress';
-import { Search, Mail, Building2, ChevronLeft, ChevronRight, Users, FileText, Trophy, MapPin, Briefcase, Sparkles, Copy, Check, ExternalLink, Phone } from 'lucide-react';
+import { Search, Mail, Building2, ChevronLeft, ChevronRight, Users, FileText, Trophy, MapPin, Briefcase, Sparkles, Copy, Check, ExternalLink, Phone, RefreshCw } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -415,9 +415,9 @@ function ContactsView() {
 
   const totalPages = Math.ceil(totalCount / pageSize);
 
-  const handleEnrichAll = () => {
+  const handleEnrichAll = (force = false) => {
     const ids = contacts.map(c => c.airtable_id);
-    enrichContacts(ids);
+    enrichContacts(ids, force);
   };
 
   const filteredContacts = contacts.filter(c => {
@@ -436,10 +436,16 @@ function ContactsView() {
 
       {/* Enrichment controls */}
       <div className="flex items-center gap-2 flex-wrap">
-        <Button size="sm" onClick={handleEnrichAll} disabled={isEnriching || contacts.length === 0} className="h-8 text-xs gap-1.5">
+        <Button size="sm" onClick={() => handleEnrichAll(false)} disabled={isEnriching || contacts.length === 0} className="h-8 text-xs gap-1.5">
           <Sparkles className="w-3.5 h-3.5" />
           {isEnriching ? 'Enrichissement…' : 'Enrichir & qualifier'}
         </Button>
+        {enrichments.size > 0 && (
+          <Button size="sm" variant="outline" onClick={() => handleEnrichAll(true)} disabled={isEnriching || contacts.length === 0} className="h-8 text-xs gap-1.5">
+            <RefreshCw className="w-3.5 h-3.5" />
+            Ré-enrichir
+          </Button>
+        )}
         {enrichments.size > 0 && (
           <Select value={enrichFilter} onValueChange={(v: any) => setEnrichFilter(v)}>
             <SelectTrigger className="w-[160px] h-8 text-xs"><SelectValue /></SelectTrigger>
