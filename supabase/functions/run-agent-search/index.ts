@@ -200,9 +200,11 @@ serve(async (req) => {
           category: "people",
           limit: 25,
           keywords: combinedKeywords,
-          // Location: pass as simple string array — unipile-search will format for recruiter
-          location: filters.location_keywords?.length ? filters.location_keywords : undefined,
-          location_within_area: filters.location_within_area || undefined,
+          // NOTE: We intentionally do NOT send location, company, role, skills as
+          // structured filters because the agent only has text names (e.g. "Paris")
+          // not resolved LinkedIn IDs. The Recruiter API rejects text names.
+          // Location and company context are handled by the keywords boolean query
+          // and the scoring engine will filter by relevance.
           open_to_work: filters.open_to_work || undefined,
         };
         if (cursor) searchBody.cursor = cursor;
