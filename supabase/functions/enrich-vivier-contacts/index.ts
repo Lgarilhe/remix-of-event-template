@@ -280,11 +280,12 @@ GÉNÈRE UN MESSAGE ${messageType === "sms" ? "SMS (~" + maxChars + " caractère
 - JAMAIS mentionner "notre CRM", "notre base", "nos données"
 - RECONTEXTUALISE OBLIGATOIREMENT la collaboration passée :
   - QUAND : cite la période approximative de la dernière interaction (ex: "en 2023", "il y a 2 ans", déduis-le des dates dans l'historique)
+  - OÙ / POUR QUELLE SOCIÉTÉ : précise TOUJOURS le nom de la société pour laquelle on avait collaboré (= l'ancienne société du CRM). C'est CRUCIAL surtout si la personne a changé de boîte, car ça montre qu'on se souvient du contexte.
   - AVEC QUI / SUR QUOI : mentionne un élément concret (un candidat présenté par son nom, un poste bossé ensemble, un placement réussi). Sois spécifique, pas vague.
-  - Ex: "On avait bossé ensemble en 2023 quand on t'avait présenté [Candidat] pour le poste de [Titre]"
-- Utilise l'analyse ci-dessus comme accroche SUPPLÉMENTAIRE :
-  - Si changement de boîte → mentionne-le naturellement ("j'ai vu que t'étais passé chez X, bravo !")
-  - Si promotion → félicite naturellement
+  - Ex si même boîte : "On avait bossé ensemble en 2023 chez [Société] quand on t'avait présenté [Candidat] pour le poste de [Titre]"
+  - Ex si changement de boîte : "On avait collaboré en 2022 quand tu étais chez [Ancienne Société], on t'avait présenté [Candidat] pour [Poste]. J'ai vu que t'étais passé chez [Nouvelle Société], félicitations !"
+- Si changement de boîte → mentionne-le naturellement APRÈS la recontextualisation ("j'ai vu que t'étais passé chez X, bravo !")
+- Si promotion → félicite naturellement
 - CTA : propose un CALL (pas un café). Ex: "On se cale un call de 15 min ?" ou "Dispo pour un call cette semaine ?"
 - Signe "— Konekt" uniquement pour les SMS
 
