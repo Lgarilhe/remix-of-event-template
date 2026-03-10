@@ -1,4 +1,4 @@
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+// PDL (PeopleDataLabs) Person Search Edge Function
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
