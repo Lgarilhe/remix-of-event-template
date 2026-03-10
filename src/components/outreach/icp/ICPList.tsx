@@ -78,6 +78,11 @@ function ICPCard({ icp, onEdit, onDelete }: { icp: ICP; onEdit: () => void; onDe
           </div>
 
           <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+            {onSearch && (
+              <Button variant="ghost" size="sm" onClick={onSearch} className="h-7 w-7 p-0" title="Rechercher avec cet ICP">
+                <Search className="w-3.5 h-3.5" />
+              </Button>
+            )}
             <Button variant="ghost" size="sm" onClick={onEdit} className="h-7 w-7 p-0">
               <Pencil className="w-3.5 h-3.5" />
             </Button>
