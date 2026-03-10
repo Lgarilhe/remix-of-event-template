@@ -545,6 +545,7 @@ function ContactsView() {
         open={sheetOpen}
         onOpenChange={setSheetOpen}
         onCopyMessage={(id) => updateMessageStatus(id, 'sent')}
+        onEnrichSingle={(id) => enrichContacts([id], true)}
       />
     </div>
   );
