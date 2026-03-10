@@ -56,8 +56,51 @@ export const useAgentChat = (conversationId: string | null) => {
     load();
   }, [conversationId]);
 
-  // No realtime subscription — messages are added client-side via streaming
-  // and loaded from DB when conversation is opened. This avoids duplicate issues.
+  // Realtime subscription ONLY when search is running (to get progress messages)
+  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    if (!conversationId || conversation?.status !== 'running') {
+      if (pollingRef.current) {
+        clearInterval(pollingRef.current);
+        pollingRef.current = null;
+      }
+      return;
+    }
+
+    // Poll for new messages every 3 seconds during search
+    const poll = async () => {
+      const { data } = await supabase
+        .from('agent_messages')
+        .select('*')
+        .eq('conversation_id', conversationId)
+        .order('created_at', { ascending: true });
+      if (data) {
+        const newMessages = data as unknown as AgentMessage[];
+        setMessages(prev => {
+          if (newMessages.length > prev.length) return newMessages;
+          return prev;
+        });
+      }
+      // Also check conversation status
+      const { data: convData } = await supabase
+        .from('agent_conversations')
+        .select('status, results_summary')
+        .eq('id', conversationId)
+        .single();
+      if (convData && convData.status !== 'running') {
+        setConversation(prev => prev ? { ...prev, ...convData as any } : null);
+      }
+    };
+
+    pollingRef.current = setInterval(poll, 3000);
+    return () => {
+      if (pollingRef.current) {
+        clearInterval(pollingRef.current);
+        pollingRef.current = null;
+      }
+    };
+  }, [conversationId, conversation?.status]);
 
   // Send message with streaming
   const sendMessage = useCallback(async (content: string, jobContext?: Job | null, overrideConversationId?: string) => {
