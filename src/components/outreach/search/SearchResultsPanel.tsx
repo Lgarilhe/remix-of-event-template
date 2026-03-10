@@ -202,12 +202,14 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
   const { getMatch: getNotionMatch } = useNotionMatch(notionMatchInputs);
   // Pre-fetch Notion shortlist data so it's available in ProfileDetailSheet & LinkedInResultCard
   useNotionShortlist();
-  // Count by status for filter badges — computed from DB statuses (stable across filter changes)
+  // Count by status for filter badges — based on renderable profiles only
   const statusCounts = React.useMemo(() => {
     const counts = { scored: 0, scored_go: 0, scored_maybe: 0, scored_contacted: 0, scored_not_contacted: 0, messaged: 0, dismissed: 0, untreated: 0, known: 0 };
-    
-    // Count from DB statuses (source of truth, independent of current search filters)
-    for (const [candidateId, s] of treatedCandidates) {
+    const renderableIds = new Set(mergedResults.map((r) => r.id));
+
+    // Count only candidates we can actually render in the current view universe
+    for (const candidateId of renderableIds) {
+      const s = treatedCandidates.get(candidateId);
       if (!s || s.status === 'discovered') { counts.untreated++; continue; }
       if (s.status === 'scored') {
         counts.scored++;
@@ -229,8 +231,8 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
       else if (s.status === 'dismissed') counts.dismissed++;
     }
 
-    // Count "known" from visible results (needs profile data for Notion/Airtable matching)
-    for (const r of results) {
+    // Count "known" from renderable profiles
+    for (const r of mergedResults) {
       const profileUrl = getCanonicalProfileUrl(r);
       const notionMatch = getNotionMatch({
         url: profileUrl,
@@ -242,7 +244,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
     }
 
     return counts;
-  }, [results, treatedCandidates, jobScores, getAirtableMatch, getNotionMatch]);
+  }, [mergedResults, treatedCandidates, jobScores, getAirtableMatch, getNotionMatch]);
 
   // Apply "known" filter to filteredResults
   const displayResults = React.useMemo(() => {
