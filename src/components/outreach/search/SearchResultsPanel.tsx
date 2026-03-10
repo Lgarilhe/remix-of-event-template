@@ -107,6 +107,7 @@ const getProfileDisplayName = (p: Pick<LinkedInProfile, 'name' | 'first_name' | 
 
 export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
   results,
+  mergedResults,
   filteredResults,
   loading,
   loadingMore,
