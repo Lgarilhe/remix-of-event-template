@@ -2973,6 +2973,7 @@ export type Database = {
       vivier_enrichments: {
         Row: {
           apollo_data: Json | null
+          company_change_detail: string | null
           contact_airtable_id: string
           created_at: string | null
           current_company: string | null
@@ -2987,12 +2988,15 @@ export type Database = {
           match_type: string | null
           message_status: string | null
           message_type: string | null
+          notable_events: Json | null
           organization_id: string | null
           relevance_reason: string | null
+          still_same_company: boolean | null
           updated_at: string | null
         }
         Insert: {
           apollo_data?: Json | null
+          company_change_detail?: string | null
           contact_airtable_id: string
           created_at?: string | null
           current_company?: string | null
@@ -3007,12 +3011,15 @@ export type Database = {
           match_type?: string | null
           message_status?: string | null
           message_type?: string | null
+          notable_events?: Json | null
           organization_id?: string | null
           relevance_reason?: string | null
+          still_same_company?: boolean | null
           updated_at?: string | null
         }
         Update: {
           apollo_data?: Json | null
+          company_change_detail?: string | null
           contact_airtable_id?: string
           created_at?: string | null
           current_company?: string | null
@@ -3027,8 +3034,10 @@ export type Database = {
           match_type?: string | null
           message_status?: string | null
           message_type?: string | null
+          notable_events?: Json | null
           organization_id?: string | null
           relevance_reason?: string | null
+          still_same_company?: boolean | null
           updated_at?: string | null
         }
         Relationships: [
