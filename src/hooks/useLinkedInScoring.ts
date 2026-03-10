@@ -5,6 +5,7 @@ import { LinkedInProfile } from '@/components/outreach/types';
 import { getYear, parseDate } from '@/components/outreach/dateUtils';
 import { Job } from '@/types/jobs';
 import { JobMatchResult, BatchScoringStats } from '@/components/outreach/JobScoreDisplay';
+import { BatchReportEntry } from '@/components/outreach/BatchScoringReport';
 import { toast } from 'sonner';
 
 // Fire-and-forget: generate embedding for a candidate after scoring
