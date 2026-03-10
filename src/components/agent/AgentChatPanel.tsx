@@ -18,6 +18,7 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({ onClose }) => {
   const [input, setInput] = useState('');
   const [selectedJob, setSelectedJob] = useState<Job | null>(null);
   const [jobSentForConv, setJobSentForConv] = useState<string | null>(null);
+  const [showOptions, setShowOptions] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
