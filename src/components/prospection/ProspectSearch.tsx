@@ -205,8 +205,8 @@ export function ProspectSearch({ selectedICP, onSelectICP, onResults, searching,
       const allProspects: ProspectProfile[] = [];
       const errors: string[] = [];
 
-      const searchPDL = source === 'pdl' || source === 'both';
-      const searchApollo = source === 'apollo' || source === 'both';
+      const searchPDL = true;
+      const searchApollo = true;
 
       // Run searches in parallel
       const promises: Promise<void>[] = [];
