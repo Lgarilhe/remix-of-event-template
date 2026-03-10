@@ -10,7 +10,8 @@ import { MessagesInbox } from '@/components/outreach/MessagesInbox';
 import { NurturingDashboard } from '@/components/outreach/NurturingDashboard';
 import { InMailQueueStatus } from '@/components/outreach/InMailQueueStatus';
 import { ProjectsList } from '@/components/outreach/projects';
-import { Search, Users, Settings } from 'lucide-react';
+import { AgentChatPanel } from '@/components/agent';
+import { Search, Users, Settings, Bot } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { OutreachSearchProvider } from '@/contexts/OutreachSearchContext';
@@ -38,6 +39,7 @@ export interface LinkedInAccount {
 
 const tabs = [
   { value: 'projects', label: 'Projets', shortLabel: 'Projets', emoji: '📂' },
+  { value: 'agent', label: 'Agent', shortLabel: 'Agent', emoji: '🤖' },
   { value: 'search', label: 'Recherche', shortLabel: 'Recherche', emoji: '🔍' },
   { value: 'messages', label: 'Messages', shortLabel: 'Msg', emoji: '💬' },
   { value: 'sequences', label: 'Séquences', shortLabel: 'Séq.', emoji: '🔗' },
@@ -211,6 +213,11 @@ export default function Outreach() {
           <div className={cn("mt-0 min-w-0", activeTab !== 'projects' && 'hidden')}>
             <div className="bg-background border border-foreground p-3 sm:p-6 overflow-hidden">
               <ProjectsList onResumeSearch={handleResumeSearch} />
+            </div>
+          </div>
+          <div className={cn("mt-0 min-w-0", activeTab !== 'agent' && 'hidden')}>
+            <div className="bg-background border border-foreground overflow-hidden" style={{ height: 'calc(100vh - 180px)' }}>
+              <AgentChatPanel />
             </div>
           </div>
 
