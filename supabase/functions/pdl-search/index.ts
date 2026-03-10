@@ -200,8 +200,8 @@ Deno.serve(async (req) => {
         location_region: p.location_region,
         location_locality: p.location_locality,
         linkedin_url: p.linkedin_url,
-        emails: (p.emails || []).map((e: any) => e.address).filter(Boolean),
-        phone_numbers: (p.phone_numbers || []).map((ph: any) => ph.number).filter(Boolean),
+        emails: (Array.isArray(p.emails) ? p.emails : []).map((e: any) => typeof e === 'string' ? e : e?.address).filter(Boolean),
+        phone_numbers: (Array.isArray(p.phone_numbers) ? p.phone_numbers : []).map((ph: any) => typeof ph === 'string' ? ph : ph?.number).filter(Boolean),
         skills: p.skills || [],
         experience: (p.experience || []).slice(0, 5).map((exp: any) => ({
           title: exp.title?.name,
