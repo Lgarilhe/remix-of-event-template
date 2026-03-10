@@ -585,17 +585,6 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
             )}
 
             {/* Profile cards */}
-            {displayResults.length === 0 && results.length > 0 && (
-              <div className="text-center py-8 text-muted-foreground">
-                <p className="text-sm font-medium mb-1">Aucun profil dans ce filtre</p>
-                <p className="text-xs mb-3">Ce segment est vide. Essayez un autre filtre ou chargez le lot suivant.</p>
-                {statusFilter !== 'all' && (
-                  <Button variant="outline" size="sm" onClick={() => onSetStatusFilter('all')}>
-                    👥 Voir tous les profils
-                  </Button>
-                )}
-              </div>
-            )}
             {displayResults.map((profile, index) => (
               <LinkedInResultCard
                 key={profile.id || `profile-${index}`}
