@@ -233,7 +233,7 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({ onClose }) => {
             }}
           />
           <button
-            onClick={handleSend}
+            onClick={() => handleSend()}
             disabled={!input.trim() || sending}
             className={cn(
               "h-[34px] w-[34px] flex items-center justify-center border border-foreground transition-colors shrink-0",
