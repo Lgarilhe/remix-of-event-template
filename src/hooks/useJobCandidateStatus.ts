@@ -119,12 +119,12 @@ export function useJobCandidateStatus(jobId: string | null) {
       // Single state update (1 re-render instead of 3)
       setStatusState({ statuses: statusMap, dismissedIds: dismissed, treatedIds: treated });
 
-      // Phase 2: fetch linkedin_profile_data for pool rehydration (non-blocking, max 50)
+      // Phase 2: fetch linkedin_profile_data for pool rehydration (non-blocking, max 500)
       // Only fetch for candidates that have profile data (not null)
       const candidateIds = allData
         .filter(s => s.candidate_name || s.linkedin_profile_url)
         .map(s => s.candidate_id)
-        .slice(0, 50);
+        .slice(0, 500);
 
       if (candidateIds.length > 0) {
         // Fire and forget — don't block the UI
