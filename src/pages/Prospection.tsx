@@ -4,6 +4,7 @@ import { Navbar } from '@/components/Navbar';
 import { SEOHead } from '@/components/SEOHead';
 import { ICPList } from '@/components/outreach/icp';
 import { ProspectSearch } from '@/components/prospection/ProspectSearch';
+import { VivierList } from '@/components/prospection/VivierList';
 import { ProspectResults } from '@/components/prospection/ProspectResults';
 import { Crosshair } from 'lucide-react';
 import { cn } from '@/lib/utils';
