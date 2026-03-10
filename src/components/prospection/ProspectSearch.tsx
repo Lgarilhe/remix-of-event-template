@@ -131,10 +131,8 @@ interface ProspectSearchProps {
 export function ProspectSearch({ selectedICP, onSelectICP, onResults, searching, onSearchingChange }: ProspectSearchProps) {
   const { icps, isLoading: icpsLoading } = useICPs();
 
-  // Source selector
-  const [source, setSource] = useState<SearchSource>('both');
-
-  // Common search fields
+  // Always search both sources
+  const source: SearchSource = 'both';
   const [jobTitle, setJobTitle] = useState('');
   const [jobTitleRole, setJobTitleRole] = useState('');
   const [jobTitleLevels, setJobTitleLevels] = useState<string[]>([]);
