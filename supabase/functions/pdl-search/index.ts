@@ -29,95 +29,74 @@ Deno.serve(async (req) => {
       industry,
       company_size,
       skills,
-      funding_stage,
       intent_job_change,
-      intent_funding,
-      intent_hiring,
     } = body;
 
-    // Build Elasticsearch bool query for PDL
-    const must: any[] = [];
+    // Build SQL WHERE clauses for PDL Person Search API
+    const conditions: string[] = [];
 
     if (job_title) {
-      // Support comma-separated titles
       const titles = job_title.split(',').map((t: string) => t.trim()).filter(Boolean);
       if (titles.length === 1) {
-        must.push({ term: { job_title: titles[0] } });
-      } else if (titles.length > 1) {
-        must.push({
-          bool: {
-            should: titles.map((t: string) => ({ term: { job_title: t } })),
-            minimum_should_match: 1,
-          },
-        });
+        conditions.push(`job_title='${titles[0]}'`);
+      } else {
+        const orParts = titles.map((t: string) => `job_title='${t}'`).join(' OR ');
+        conditions.push(`(${orParts})`);
       }
     }
 
     if (company) {
-      must.push({ term: { job_company_name: company } });
+      conditions.push(`job_company_name='${company}'`);
     }
 
     if (location) {
       const locations = location.split(',').map((l: string) => l.trim()).filter(Boolean);
       if (locations.length === 1) {
-        must.push({ term: { location_name: locations[0] } });
-      } else if (locations.length > 1) {
-        must.push({
-          bool: {
-            should: locations.map((l: string) => ({ term: { location_name: l } })),
-            minimum_should_match: 1,
-          },
-        });
+        conditions.push(`location_name='${locations[0]}'`);
+      } else {
+        const orParts = locations.map((l: string) => `location_name='${l}'`).join(' OR ');
+        conditions.push(`(${orParts})`);
       }
     }
 
     if (industry) {
-      must.push({ term: { job_company_industry: industry } });
+      conditions.push(`job_company_industry='${industry}'`);
     }
 
     if (company_size && company_size !== 'all') {
-      must.push({ term: { job_company_size: company_size } });
+      conditions.push(`job_company_size='${company_size}'`);
     }
 
     if (skills && Array.isArray(skills) && skills.length > 0) {
-      must.push({
-        bool: {
-          should: skills.map((s: string) => ({ term: { skills: s } })),
-          minimum_should_match: 1,
-        },
-      });
+      const skillParts = skills.map((s: string) => `skills='${s}'`).join(' OR ');
+      conditions.push(`(${skillParts})`);
     }
 
     if (intent_job_change) {
       const sixMonthsAgo = new Date();
       sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
-      must.push({
-        range: {
-          job_start_date: { gte: sixMonthsAgo.toISOString().split('T')[0] },
-        },
-      });
+      conditions.push(`job_start_date>='${sixMonthsAgo.toISOString().split('T')[0]}'`);
     }
 
-    if (must.length === 0) {
+    if (conditions.length === 0) {
       return new Response(JSON.stringify({ success: false, error: 'Au moins un critère de recherche est requis' }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
+    const sqlQuery = `SELECT * FROM person WHERE ${conditions.join(' AND ')}`;
+    console.log('[PDL] SQL query:', sqlQuery);
+
     const searchBody = {
-      query: {
-        bool: {
-          must,
-        },
-      },
+      sql: sqlQuery,
       size: 50,
+      dataset: 'all',
     };
 
-    console.log('[PDL] Search body:', JSON.stringify(searchBody));
-
+    // PDL Person Search uses GET with a body
     const pdlResponse = await fetch(`${PDL_BASE}/person/search`, {
-      method: 'POST',
+      method: 'GET',
       headers: {
         'Content-Type': 'application/json',
         'X-Api-Key': PDL_API_KEY,
@@ -129,7 +108,7 @@ Deno.serve(async (req) => {
       const errText = await pdlResponse.text();
       console.error('[PDL] API error:', pdlResponse.status, errText);
       return new Response(JSON.stringify({ success: false, error: `PDL API error: ${pdlResponse.status}`, details: errText }), {
-        status: 200, // Return 200 to client with error details so frontend can display them
+        status: 200,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
@@ -137,7 +116,6 @@ Deno.serve(async (req) => {
     const pdlData = await pdlResponse.json();
     const rawProfiles = pdlData.data || [];
 
-    // Map PDL profiles to our format + add intent signals
     const prospects = rawProfiles.map((p: any) => {
       const jobStartDate = p.job_start_date;
       const isRecentJobChange = jobStartDate
