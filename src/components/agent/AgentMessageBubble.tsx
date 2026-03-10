@@ -31,60 +31,60 @@ export const AgentMessageBubble: React.FC<AgentMessageBubbleProps> = ({ message,
   }
 
   return (
-    <div className={cn("flex gap-2", isUser ? "justify-end" : "justify-start")}>
+    <div className={cn("flex gap-1.5", isUser ? "justify-end" : "justify-start")}>
       {!isUser && (
-        <div className="h-5 w-5 bg-foreground text-background flex items-center justify-center shrink-0 mt-0.5">
-          <Bot className="w-2.5 h-2.5" />
+        <div className="h-4 w-4 bg-foreground text-background flex items-center justify-center shrink-0 mt-1 rounded-sm">
+          <Bot className="w-2 h-2" />
         </div>
       )}
 
       <div className={cn(
-        "max-w-[85%] text-xs leading-relaxed",
+        "max-w-[88%] text-[11px] leading-[1.5]",
         isUser
-          ? "bg-foreground text-background px-3 py-2"
-          : "bg-muted/30 border border-foreground/10 px-3 py-2"
+          ? "bg-foreground text-background px-2.5 py-1.5"
+          : "bg-muted/30 border border-foreground/10 px-2.5 py-1.5"
       )}>
         {cleanContent && (
-          <div className="prose prose-sm prose-neutral dark:prose-invert max-w-none [&_p]:my-1 [&_ul]:my-1 [&_li]:my-0.5 text-xs">
+          <div className="prose prose-xs prose-neutral dark:prose-invert max-w-none [&_p]:my-0.5 [&_ul]:my-0.5 [&_li]:my-0 [&_h1]:text-xs [&_h2]:text-[11px] [&_h3]:text-[11px] [&_h1]:my-1 [&_h2]:my-1 [&_h3]:my-0.5 [&_strong]:font-semibold text-[11px]">
             <ReactMarkdown>{cleanContent}</ReactMarkdown>
           </div>
         )}
 
         {/* Search plan card */}
         {searchPlan && (
-          <div className="mt-2 border border-foreground/20 bg-background p-2.5">
-            <div className="flex items-center gap-1.5 mb-1.5">
-              <CheckCircle2 className="w-3 h-3 text-green-600" />
-              <span className="text-[10px] font-bold uppercase tracking-wider">Plan de recherche</span>
+          <div className="mt-1.5 border border-foreground/20 bg-background p-2">
+            <div className="flex items-center gap-1 mb-1">
+              <CheckCircle2 className="w-2.5 h-2.5 text-green-600" />
+              <span className="text-[9px] font-bold uppercase tracking-wider">Plan de recherche</span>
             </div>
-            <p className="text-[10px] text-muted-foreground mb-2">
+            <p className="text-[9px] text-muted-foreground mb-1">
               {(searchPlan as any).summary || 'Plan généré'}
             </p>
-            <div className="space-y-1 text-[9px]">
+            <div className="space-y-0.5 text-[9px]">
               {(searchPlan as any).filters?.location_keywords && (
-                <div><span className="font-medium">📍</span> {((searchPlan as any).filters.location_keywords || []).join(', ')}</div>
+                <div>📍 {((searchPlan as any).filters.location_keywords || []).join(', ')}</div>
               )}
               {(searchPlan as any).filters?.calculated_experience_min != null && (
-                <div><span className="font-medium">📅</span> {(searchPlan as any).filters.calculated_experience_min}-{(searchPlan as any).filters.calculated_experience_max} ans</div>
+                <div>📅 {(searchPlan as any).filters.calculated_experience_min}-{(searchPlan as any).filters.calculated_experience_max} ans</div>
               )}
               {(searchPlan as any).stop_conditions?.target_go_profiles && (
-                <div><span className="font-medium">🎯</span> Objectif: {(searchPlan as any).stop_conditions.target_go_profiles} profils Go</div>
+                <div>🎯 {(searchPlan as any).stop_conditions.target_go_profiles} profils Go</div>
               )}
             </div>
-            <p className="text-[9px] text-muted-foreground mt-2 italic">
-              Répondez "go" pour lancer la recherche
+            <p className="text-[8px] text-muted-foreground mt-1 italic">
+              Répondez "go" pour lancer
             </p>
           </div>
         )}
 
         {isStreaming && (
-          <span className="inline-block w-1.5 h-3 bg-foreground/60 animate-pulse ml-0.5" />
+          <span className="inline-block w-1 h-2.5 bg-foreground/60 animate-pulse ml-0.5" />
         )}
       </div>
 
       {isUser && (
-        <div className="h-5 w-5 bg-muted border border-foreground/20 flex items-center justify-center shrink-0 mt-0.5">
-          <User className="w-2.5 h-2.5" />
+        <div className="h-4 w-4 bg-muted border border-foreground/20 flex items-center justify-center shrink-0 mt-1 rounded-sm">
+          <User className="w-2 h-2" />
         </div>
       )}
     </div>
