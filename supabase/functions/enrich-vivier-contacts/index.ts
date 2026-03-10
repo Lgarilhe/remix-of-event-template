@@ -258,60 +258,68 @@ Parcours récent: ${(apollo.employment_history || []).slice(0, 3).map((e: any) =
           : `Le consultant principal qui a interagi avec ce contact est ${mainConsultantFirstName}. L'expéditeur est ${senderFirstName}. Mentionne le collègue naturellement, ex: "mon collègue ${mainConsultantFirstName} avait bossé avec toi en 2023 chez [Société]..."`)
         : `L'expéditeur est ${senderFirstName}. Pas de consultant identifié, utilise "on" pour parler de Konekt.`;
 
-      const prompt = `Tu es ${senderFirstName}, business developer chez Konekt, cabinet de recrutement tech basé à Paris. Tu analyses un ancien contact client pour décider si on doit reprendre contact.
+      const prompt = `Tu es ${senderFirstName}, business developer chez Konekt, cabinet de recrutement tech à Paris. Tu reprends contact avec un ancien client.
 
-CONTACT DANS NOTRE CRM :
-- Nom : ${contact.full_name || "?"}
-- Ancien poste : ${contact.title || "?"}
-- Type : ${contact.contact_type || "?"}
-- Ancienne société : ${contact.company_name || "?"}
-- Ville : ${contact.city || "?"}
+CONTACT CRM :
+Nom : ${contact.full_name || "?"}
+Ancien poste : ${contact.title || "?"}
+Type : ${contact.contact_type || "?"}
+Ancienne société : ${contact.company_name || "?"}
+Ville : ${contact.city || "?"}
 
 PROFIL ACTUEL (Apollo) :
 ${apolloProfile}
 
-HISTORIQUE AVEC KONEKT :
-Shortlists/missions : ${shortlistContext || "Aucune shortlist trouvée"}
-Notes internes : ${notesContext || "Aucune note"}
-Placements réussis : ${placementContext || "Aucun placement"}
+HISTORIQUE DÉTAILLÉ AVEC KONEKT (EXPLOITE-LE À FOND) :
 
-ATTRIBUTION CONSULTANT :
+Shortlists/missions bossées ensemble :
+${shortlistContext || "Aucune shortlist trouvée"}
+
+Notes internes (avec le nom du consultant auteur) :
+${notesContext || "Aucune note"}
+
+Placements réussis via cette société :
+${placementContext || "Aucun placement"}
+
+Consultant principal ayant le plus interagi : ${mainConsultantFirstName || "inconnu"} (${maxCount} interactions)
+Tous les consultants impliqués : ${[...authorCounts.entries()].map(([name, count]) => \`\${name} (\${count} notes)\`).join(", ") || "aucun"}
+
 ${consultantContext}
 
-ANALYSE EN 3 ÉTAPES :
+ANALYSE :
 
-1. CHANGEMENT DE POSTE : Compare l'ancien poste/société CRM avec le profil Apollo actuel.
-   - Toujours dans la même boîte ? Même poste ou promotion ?
-   - A changé de boîte ? Si oui, laquelle et quel poste ?
-   - A changé de secteur ? Toujours dans la tech ?
+1. CHANGEMENT DE POSTE : Compare ancien poste/société CRM vs profil Apollo actuel.
 
-2. PERTINENCE : Ce contact vaut-il une reprise de relation ?
-   - OUI si : poste décisionnaire (RH, DRH, Talent, Head of, CTO, CEO, VP, manager, fondateur) dans une boîte tech ou qui recrute des profils tech, même si a changé de boîte
-   - OUI si : a été promu (bon signal pour reprendre contact)
-   - NON si : devenu freelance/indépendant, quitté le monde tech, poste non décisionnaire (IC, développeur, consultant junior), relation négative dans les notes
+2. PERTINENCE : OUI si poste décisionnaire (RH, DRH, Talent, Head of, CTO, CEO, VP, manager, fondateur) dans boîte tech. NON si freelance, quitté la tech, poste non décisionnaire.
 
-3. ÉVÉNEMENTS NOTABLES : Détecte tout changement important depuis nos dernières interactions :
-   - Promotion significative
-   - Changement de boîte (et si la nouvelle est plus grosse/plus petite/différent secteur)
-   - Levée de fonds de sa boîte actuelle (si visible dans Apollo)
-   - Passage de grand groupe à startup ou l'inverse
+3. ÉVÉNEMENTS NOTABLES : Changement de boîte, promotion, levée de fonds.
 
-GÉNÈRE UN MESSAGE ${messageType === "sms" ? "SMS (MAXIMUM " + maxChars + " caractères, c'est un SMS donc sois ULTRA CONCIS)" : "LinkedIn (~" + maxChars + " caractères max)"} :
-- TUTOIE obligatoirement
-- Le message vient de ${senderFirstName}, PAS de "Konekt" en tant qu'entité. Écris à la première personne.
-- STYLE : direct, concis, naturel. Comme un vrai SMS/message entre pros qui se connaissent.
-- FORMULES INTERDITES (ne les utilise JAMAIS, même reformulées) : "je serais ravi", "j'espère que tu vas bien", "je me permets de", "dans le cadre de", "n'hésite pas à", "ravi de", "au plaisir de", "je serais enchanté", "ce serait un plaisir". Ces formules sonnent faux et IA.
-- JAMAIS mentionner "notre CRM", "notre base", "nos données"
-- JAMAIS utiliser de placeholders vagues comme "ton ancienne société", "ta précédente boîte", "ton ancien poste". Si tu ne connais pas le nom exact de la société, UTILISE le champ "Ancienne société" fourni dans le contexte CRM ci-dessus. Si ce champ est vide ou "?", alors ne mentionne pas la société et accroche sur autre chose.
-- RECONTEXTUALISE OBLIGATOIREMENT la collaboration passée en respectant l'attribution consultant :
-  Si ${senderFirstName} est le consultant principal → utilise "je" : "Je t'avais présenté Mansour en 2023 quand tu étais chez Doctolib"
-  Si c'est un collègue → mentionne-le : "Mon collègue ${mainConsultantFirstName || "X"} avait bossé avec toi en 2023 chez Doctolib"
-  Cite toujours le NOM EXACT de la société, QUAND, et un élément concret.
-- UNIQUEMENT si changement de boîte avéré (still_same_company=false), mentionne-le naturellement. Si même boîte même poste, NE FÉLICITE PAS.
-- UNIQUEMENT si promotion avérée (titre différent dans la même boîte), félicite. Sinon rien.
-- CTA : mentionne que Konekt a pas mal évolué (recrutement, RPO, growth, IA) et propose un court call. Formule-le de manière directe.
-- Signe avec le prénom "${senderFirstName}" pour les SMS (pas "Konekt").
-- Pour les SMS : RESPECTE LA LIMITE DE ${maxChars} CARACTÈRES. Chaque mot compte. Va droit au but.
+GÉNÈRE UN MESSAGE ${messageType === "sms" ? "SMS (MAXIMUM " + maxChars + " caractères)" : "LinkedIn (~" + maxChars + " caractères max)"} :
+
+RÈGLES ABSOLUES :
+1. TUTOIE
+2. Le message vient de ${senderFirstName} à la première personne
+3. STYLE : direct, naturel, comme un vrai message entre pros. Zéro formule corporate ou IA ("je serais ravi", "n'hésite pas", "au plaisir", "je me permets", etc.)
+4. JAMAIS de placeholders vagues ("ton ancienne société", "ta précédente boîte"). Utilise les VRAIS NOMS.
+5. JAMAIS mentionner CRM/base/données
+
+CONTENU DU MESSAGE (dans cet ordre) :
+A) ACCROCHE PERSONNALISÉE : Pioche dans l'historique ci-dessus pour rappeler un moment CONCRET de la relation. Exemples de ce que tu DOIS faire :
+   ${isSenderTheMainConsultant
+     ? `- "Salut [Prénom], c'est ${senderFirstName} de Konekt. On avait bossé ensemble en [DATE] chez [SOCIÉTÉ], je t'avais présenté [NOM CANDIDAT] pour [TITRE POSTE]"`
+     : `- "Salut [Prénom], c'est ${senderFirstName} de Konekt. Mon collègue ${mainConsultantFirstName || "?"} avait bossé avec toi en [DATE] chez [SOCIÉTÉ] sur [POSTE/CANDIDAT]"`}
+   - Si un placement a été réussi, mentionne-le ! C'est le meilleur rappel ("on avait réussi à placer [Nom] chez vous")
+   - Si plusieurs shortlists, cite le poste le plus marquant
+   - Cite la PÉRIODE (déduis-la des dates dans l'historique)
+   - Cite la SOCIÉTÉ exacte (champ "Ancienne société" du CRM)
+
+B) CHANGEMENT DÉTECTÉ (seulement si avéré) : si changement de boîte ou promotion, mentionne-le naturellement. Si rien n'a changé, ne dis RIEN.
+
+C) CTA : Konekt a évolué (recrutement, RPO, growth, IA), propose un court call. Formulation directe, genre "Ça te dit un call de 15 min ?"
+
+D) SIGNATURE : "${senderFirstName}" pour les SMS
+
+${messageType === "sms" ? "CONTRAINTE SMS : " + maxChars + " caractères MAX. Sois ultra concis, chaque mot compte." : ""}
 
 Réponds en JSON strict :
 {
@@ -320,6 +328,7 @@ Réponds en JSON strict :
   "notable_events": ["événement 1", "événement 2"],
   "is_relevant": true/false,
   "relevance_reason": "explication en 1-2 phrases",
+  "main_consultant": "${mainConsultantFirstName || "inconnu"}",
   "message": "le message"
 }`;
 
