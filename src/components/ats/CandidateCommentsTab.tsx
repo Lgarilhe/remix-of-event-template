@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { useOrganization, OrganizationMember } from '@/hooks/useOrganization';
+import { useOrganization } from '@/hooks/useOrganization';
 import { Loader2, Send, Trash2, MessageCircle, AtSign } from 'lucide-react';
 import { Textarea } from '@/components/ui/textarea';
 import { formatDistanceToNow, parseISO } from 'date-fns';
@@ -19,7 +19,6 @@ interface Comment {
 interface MemberInfo {
   user_id: string;
   display_name: string;
-  email?: string;
 }
 
 interface CandidateCommentsTabProps {
@@ -44,33 +43,37 @@ export const CandidateCommentsTab: React.FC<CandidateCommentsTabProps> = ({
   const [cursorPos, setCursorPos] = useState(0);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const mentionListRef = useRef<HTMLDivElement>(null);
-  const { organization, members: orgMembers } = useOrganization();
+  const { organization, organizationId } = useOrganization();
 
-  // Fetch members with display names
+  // Fetch org members with display names
   useEffect(() => {
-    if (!orgMembers?.length) return;
-    const fetchNames = async () => {
+    if (!organizationId) return;
+    const fetchMembers = async () => {
+      const { data: orgMembers } = await supabase
+        .from('organization_members')
+        .select('user_id')
+        .eq('organization_id', organizationId);
+      
+      if (!orgMembers?.length) return;
+
       const userIds = orgMembers.map(m => m.user_id);
       const { data: profiles } = await supabase
         .from('profiles')
         .select('user_id, display_name')
         .in('user_id', userIds);
       
-      const { data: { user } } = await supabase.auth.getUser();
-      
       setMembers(
         orgMembers.map(m => {
           const profile = profiles?.find(p => p.user_id === m.user_id);
           return {
             user_id: m.user_id,
-            display_name: profile?.display_name || `Membre ${m.user_id.slice(0, 6)}`,
-            email: user?.id === m.user_id ? user?.email || undefined : undefined,
+            display_name: profile?.display_name || `Membre`,
           };
         })
       );
     };
-    fetchNames();
-  }, [orgMembers]);
+    fetchMembers();
+  }, [organizationId]);
 
   // Fetch comments
   const fetchComments = useCallback(async () => {
