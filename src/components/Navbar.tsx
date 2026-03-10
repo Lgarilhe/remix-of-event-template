@@ -204,14 +204,17 @@ export const Navbar: React.FC = () => {
         </div>
       )}
       
-      {/* Menu Button - Mobile Only */}
-      <button 
-        onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-        className="md:hidden relative overflow-hidden glass text-foreground h-[34px] px-3 border border-l-0 border-foreground flex items-center justify-center text-[11px] font-medium uppercase leading-none group"
-      >
-        <span className="relative z-10">MENU</span>
-        <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out"></span>
-      </button>
+      {/* Mobile: Notification + Menu */}
+      <div className="md:hidden flex items-center">
+        {user && <NotificationDropdown />}
+        <button 
+          onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+          className="relative overflow-hidden glass text-foreground h-[34px] px-3 border border-l-0 border-foreground flex items-center justify-center text-[11px] font-medium uppercase leading-none group"
+        >
+          <span className="relative z-10">MENU</span>
+          <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out"></span>
+        </button>
+      </div>
       </div>
     </nav>
     
