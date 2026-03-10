@@ -17,124 +17,109 @@ Deno.serve(async (req) => {
     const PDL_API_KEY = Deno.env.get('PDL_API_KEY');
     if (!PDL_API_KEY) {
       return new Response(JSON.stringify({ success: false, error: 'PDL_API_KEY not configured' }), {
-        status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
     const body = await req.json();
-    const {
-      job_title, job_title_role, job_title_levels,
-      job_company_name, job_company_industry, job_company_size,
-      location_country, location_region, location_locality,
-      skills, intent_job_change,
-      // New filters
-      years_experience, education_school, job_company_founded, recently_funded,
-      size,
-    } = body;
-
-    // Build SQL WHERE clauses
     const conditions: string[] = [];
 
-    // Job title - use LIKE for flexible matching
-    if (job_title) {
-      const titles = job_title.split(',').map((t: string) => t.trim()).filter(Boolean);
-      if (titles.length === 1) {
-        conditions.push(`job_title LIKE '%${titles[0]}%'`);
-      } else {
-        const orParts = titles.map((t: string) => `job_title LIKE '%${t}%'`).join(' OR ');
-        conditions.push(`(${orParts})`);
-      }
+    // ── Person / Job Title ──
+    if (body.job_title) {
+      const titles = body.job_title.split(',').map((t: string) => t.trim()).filter(Boolean);
+      if (titles.length === 1) conditions.push(`job_title LIKE '%${titles[0]}%'`);
+      else conditions.push(`(${titles.map((t: string) => `job_title LIKE '%${t}%'`).join(' OR ')})`);
+    }
+    if (body.job_title_role) conditions.push(`job_title_role='${body.job_title_role}'`);
+    if (body.job_title_sub_role) conditions.push(`job_title_sub_role='${body.job_title_sub_role}'`);
+    if (body.job_title_class) conditions.push(`job_title_class='${body.job_title_class}'`);
+    if (body.job_title_levels?.length > 0) {
+      if (body.job_title_levels.length === 1) conditions.push(`job_title_levels='${body.job_title_levels[0]}'`);
+      else conditions.push(`(${body.job_title_levels.map((l: string) => `job_title_levels='${l}'`).join(' OR ')})`);
     }
 
-    // Job title role - canonical enum, exact match
-    if (job_title_role) {
-      conditions.push(`job_title_role='${job_title_role}'`);
+    // ── Company ──
+    if (body.job_company_name) conditions.push(`job_company_name LIKE '%${body.job_company_name}%'`);
+    if (body.job_company_industry) conditions.push(`job_company_industry='${body.job_company_industry}'`);
+    if (body.job_company_size && body.job_company_size !== 'all') conditions.push(`job_company_size='${body.job_company_size}'`);
+    if (body.job_company_type) conditions.push(`job_company_type='${body.job_company_type}'`);
+    if (body.job_company_ticker) conditions.push(`job_company_ticker='${body.job_company_ticker.toLowerCase()}'`);
+    if (body.job_company_founded) {
+      const v = body.job_company_founded.trim();
+      if (v.startsWith('>')) conditions.push(`job_company_founded>=${v.slice(1).trim()}`);
+      else if (v.startsWith('<')) conditions.push(`job_company_founded<=${v.slice(1).trim()}`);
+      else conditions.push(`job_company_founded=${v}`);
+    }
+    if (body.job_company_inferred_revenue) conditions.push(`job_company_inferred_revenue='${body.job_company_inferred_revenue}'`);
+    if (body.job_company_total_funding_raised_min) conditions.push(`job_company_total_funding_raised>=${body.job_company_total_funding_raised_min}`);
+    if (body.job_company_total_funding_raised_max) conditions.push(`job_company_total_funding_raised<=${body.job_company_total_funding_raised_max}`);
+    if (body.job_company_12mo_employee_growth_rate) {
+      const v = body.job_company_12mo_employee_growth_rate.trim();
+      if (v.startsWith('>')) conditions.push(`job_company_12mo_employee_growth_rate>=${v.slice(1).trim()}`);
+      else if (v.startsWith('<')) conditions.push(`job_company_12mo_employee_growth_rate<=${v.slice(1).trim()}`);
+      else conditions.push(`job_company_12mo_employee_growth_rate>=${v}`);
     }
 
-    // Job title levels - canonical enum, exact match
-    if (job_title_levels && Array.isArray(job_title_levels) && job_title_levels.length > 0) {
-      if (job_title_levels.length === 1) {
-        conditions.push(`job_title_levels='${job_title_levels[0]}'`);
-      } else {
-        const orParts = job_title_levels.map((l: string) => `job_title_levels='${l}'`).join(' OR ');
-        conditions.push(`(${orParts})`);
-      }
+    // ── Company HQ Location ──
+    if (body.job_company_location_country) conditions.push(`job_company_location_country='${body.job_company_location_country}'`);
+    if (body.job_company_location_region) conditions.push(`job_company_location_region LIKE '%${body.job_company_location_region}%'`);
+    if (body.job_company_location_locality) conditions.push(`job_company_location_locality LIKE '%${body.job_company_location_locality}%'`);
+
+    // ── Person Location ──
+    if (body.location_country) conditions.push(`location_country='${body.location_country}'`);
+    if (body.location_continent) conditions.push(`location_continent='${body.location_continent}'`);
+    if (body.location_region) conditions.push(`location_region LIKE '%${body.location_region}%'`);
+    if (body.location_metro) conditions.push(`location_metro LIKE '%${body.location_metro}%'`);
+    if (body.location_locality) conditions.push(`location_locality LIKE '%${body.location_locality}%'`);
+
+    // ── Skills ──
+    if (body.skills?.length > 0) {
+      conditions.push(`(${body.skills.map((s: string) => `skills LIKE '%${s}%'`).join(' OR ')})`);
     }
 
-    // Company name - LIKE for flexibility
-    if (job_company_name) {
-      conditions.push(`job_company_name LIKE '%${job_company_name}%'`);
-    }
-
-    // Industry - canonical value, exact match
-    if (job_company_industry) {
-      conditions.push(`job_company_industry='${job_company_industry}'`);
-    }
-
-    // Company size - enum, exact match
-    if (job_company_size && job_company_size !== 'all') {
-      conditions.push(`job_company_size='${job_company_size}'`);
-    }
-
-    // Location country - canonical lowercase
-    if (location_country) {
-      conditions.push(`location_country='${location_country}'`);
-    }
-
-    // Location region - LIKE for flexibility
-    if (location_region) {
-      conditions.push(`location_region LIKE '%${location_region}%'`);
-    }
-
-    // Location locality (city) - LIKE for flexibility
-    if (location_locality) {
-      conditions.push(`location_locality LIKE '%${location_locality}%'`);
-    }
-
-    // Skills - array of strings, OR match
-    if (skills && Array.isArray(skills) && skills.length > 0) {
-      const skillParts = skills.map((s: string) => `skills='${s}'`).join(' OR ');
-      conditions.push(`(${skillParts})`);
-    }
-
-    // Intent: recent job change (started within last 6 months)
-    if (intent_job_change) {
-      const sixMonthsAgo = new Date();
-      sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
-      conditions.push(`job_start_date>='${sixMonthsAgo.toISOString().split('T')[0]}'`);
-    }
-
-    // Years of experience (inferred)
-    if (years_experience) {
-      const [minStr, maxStr] = years_experience.split('-');
+    // ── Experience ──
+    if (body.years_experience) {
+      const [minStr, maxStr] = body.years_experience.split('-');
       const min = parseInt(minStr);
       if (!isNaN(min)) conditions.push(`inferred_years_experience>=${min}`);
-      if (maxStr && maxStr !== '+') {
+      if (maxStr && !maxStr.includes('+')) {
         const max = parseInt(maxStr);
         if (!isNaN(max)) conditions.push(`inferred_years_experience<=${max}`);
       }
     }
+    if (body.inferred_salary) conditions.push(`inferred_salary='${body.inferred_salary}'`);
+    if (body.industry) conditions.push(`industry='${body.industry}'`);
 
-    // Education school name
-    if (education_school) {
-      conditions.push(`education.school.name LIKE '%${education_school}%'`);
+    // ── Education ──
+    if (body.education_school) conditions.push(`education.school.name LIKE '%${body.education_school}%'`);
+    if (body.education_degree) conditions.push(`education.degrees='${body.education_degree}'`);
+    if (body.education_major) conditions.push(`education.majors LIKE '%${body.education_major}%'`);
+
+    // ── Languages ──
+    if (body.languages) {
+      const langs = body.languages.split(',').map((l: string) => l.trim().toLowerCase()).filter(Boolean);
+      if (langs.length > 0) conditions.push(`(${langs.map((l: string) => `languages.name='${l}'`).join(' OR ')})`);
     }
 
-    // Company founded year
-    if (job_company_founded) {
-      const year = job_company_founded.replace('>', '').replace('<', '').trim();
-      if (job_company_founded.startsWith('>')) {
-        conditions.push(`job_company_founded>=${year}`);
-      } else if (job_company_founded.startsWith('<')) {
-        conditions.push(`job_company_founded<=${year}`);
-      } else {
-        conditions.push(`job_company_founded=${year}`);
-      }
+    // ── Certifications ──
+    if (body.certifications) conditions.push(`certifications.name LIKE '%${body.certifications}%'`);
+
+    // ── Interests ──
+    if (body.interests) {
+      const ints = body.interests.split(',').map((i: string) => i.trim().toLowerCase()).filter(Boolean);
+      if (ints.length > 0) conditions.push(`(${ints.map((i: string) => `interests='${i}'`).join(' OR ')})`);
     }
 
-    // Recently funded (within 12 months)
-    if (recently_funded) {
+    // ── Summary / Bio ──
+    if (body.summary) conditions.push(`summary LIKE '%${body.summary}%'`);
+
+    // ── Intent signals ──
+    if (body.intent_job_change) {
+      const sixMonthsAgo = new Date();
+      sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+      conditions.push(`job_start_date>='${sixMonthsAgo.toISOString().split('T')[0]}'`);
+    }
+    if (body.recently_funded) {
       const oneYearAgo = new Date();
       oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
       conditions.push(`job_company_funding_details.last_funding_date>='${oneYearAgo.toISOString().split('T')[0]}'`);
@@ -142,51 +127,36 @@ Deno.serve(async (req) => {
 
     if (conditions.length === 0) {
       return new Response(JSON.stringify({ success: false, error: 'Au moins un critère de recherche est requis' }), {
-        status: 400,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
     const sqlQuery = `SELECT * FROM person WHERE ${conditions.join(' AND ')}`;
     console.log('[PDL] SQL query:', sqlQuery);
 
-    const searchBody = {
-      sql: sqlQuery,
-      size: Math.min(size || 50, 100),
-      dataset: 'all',
-    };
+    const searchBody = { sql: sqlQuery, size: Math.min(body.size || 50, 100), dataset: 'all' };
 
     const pdlResponse = await fetch(`${PDL_BASE}/person/search`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Api-Key': PDL_API_KEY,
-      },
+      headers: { 'Content-Type': 'application/json', 'X-Api-Key': PDL_API_KEY },
       body: JSON.stringify(searchBody),
     });
 
     if (!pdlResponse.ok) {
       const errText = await pdlResponse.text();
       console.error('[PDL] API error:', pdlResponse.status, errText);
-
-      // PDL returns 404 + type=not_found when there are no matches
       if (pdlResponse.status === 404) {
         try {
           const parsed = JSON.parse(errText);
           if (parsed?.error?.type === 'not_found') {
             return new Response(JSON.stringify({ success: true, prospects: [], total: 0 }), {
-              status: 200,
-              headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+              status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
             });
           }
-        } catch {
-          // fall through
-        }
+        } catch { /* fall through */ }
       }
-
       return new Response(JSON.stringify({ success: false, error: `PDL API error: ${pdlResponse.status}`, details: errText }), {
-        status: 200,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
@@ -195,14 +165,9 @@ Deno.serve(async (req) => {
 
     const prospects = rawProfiles.map((p: any) => {
       const jobStartDate = p.job_start_date;
-      const isRecentJobChange = jobStartDate
-        ? new Date(jobStartDate) > new Date(Date.now() - 6 * 30 * 24 * 60 * 60 * 1000)
-        : false;
-
+      const isRecentJobChange = jobStartDate ? new Date(jobStartDate) > new Date(Date.now() - 6 * 30 * 24 * 60 * 60 * 1000) : false;
       const lastFundingDate = p.job_company_funding_details?.last_funding_date;
-      const isRecentlyFunded = lastFundingDate
-        ? new Date(lastFundingDate) > new Date(Date.now() - 12 * 30 * 24 * 60 * 60 * 1000)
-        : false;
+      const isRecentlyFunded = lastFundingDate ? new Date(lastFundingDate) > new Date(Date.now() - 12 * 30 * 24 * 60 * 60 * 1000) : false;
 
       return {
         id: p.id || crypto.randomUUID(),
@@ -255,8 +220,7 @@ Deno.serve(async (req) => {
   } catch (err) {
     console.error('[PDL] Error:', err);
     return new Response(JSON.stringify({ success: false, error: err.message }), {
-      status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   }
 });
