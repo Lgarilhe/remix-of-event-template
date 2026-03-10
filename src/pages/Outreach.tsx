@@ -38,6 +38,7 @@ export interface LinkedInAccount {
 
 const tabs = [
   { value: 'projects', label: 'Projets', shortLabel: 'Projets', emoji: '📂' },
+  { value: 'agent', label: 'Agent', shortLabel: 'Agent', emoji: '🤖' },
   { value: 'search', label: 'Recherche', shortLabel: 'Recherche', emoji: '🔍' },
   { value: 'messages', label: 'Messages', shortLabel: 'Msg', emoji: '💬' },
   { value: 'sequences', label: 'Séquences', shortLabel: 'Séq.', emoji: '🔗' },
