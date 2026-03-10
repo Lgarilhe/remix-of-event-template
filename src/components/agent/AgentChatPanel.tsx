@@ -73,7 +73,7 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({ onClose }) => {
   };
 
   // Job selector for new conversation
-  const activeJobs = (jobs || []).filter(j => j.status === 'En cours' || j.status === 'Nouveau' || j.status === 'Urgent');
+  const activeJobs = (jobs || []).filter(j => !['Archivé', 'Fermé', 'Perdu'].includes(j.status));
 
   if (showList) {
     return (
