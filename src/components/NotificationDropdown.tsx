@@ -39,11 +39,11 @@ export const NotificationDropdown: React.FC = () => {
       >
         <Bell className="w-3.5 h-3.5 relative z-10" />
         {unreadCount > 0 && (
-          <span className="absolute -top-0.5 -right-0.5 z-20 min-w-[16px] h-4 flex items-center justify-center px-1 text-[9px] font-bold bg-destructive text-destructive-foreground rounded-full">
+          <span className="absolute top-1 right-1 z-20 min-w-[14px] h-3.5 flex items-center justify-center px-0.5 text-[8px] font-bold bg-destructive text-destructive-foreground rounded-full">
             {unreadCount > 9 ? '9+' : unreadCount}
           </span>
         )}
-        <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out"></span>
+        <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out pointer-events-none"></span>
       </button>
 
       {open && (
