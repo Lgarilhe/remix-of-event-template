@@ -12,6 +12,10 @@ import { ProspectProfile } from '@/pages/Prospection';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
+function titleCase(str: string) {
+  return str.replace(/\b\w/g, c => c.toUpperCase());
+}
+
 function getInitials(name: string) {
   return name.split(' ').map(w => w[0]).filter(Boolean).slice(0, 2).join('').toUpperCase();
 }
@@ -20,8 +24,23 @@ function formatDate(dateStr?: string) {
   if (!dateStr) return null;
   try {
     const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return null;
     return d.toLocaleDateString('fr-FR', { month: 'short', year: 'numeric' });
   } catch { return null; }
+}
+
+function buildLocation(prospect: ProspectProfile) {
+  const parts = [
+    prospect.location_name,
+    // fallback: build from parts if location_name is missing
+    ...(!prospect.location_name ? [
+      (prospect as any).location_locality,
+      (prospect as any).location_region,
+      (prospect as any).location_country,
+    ] : []),
+  ].filter(Boolean);
+  if (parts.length === 0) return null;
+  return titleCase(parts[0]);
 }
 
 function getCompanyLogoUrl(companyName?: string, website?: string | null) {
@@ -45,6 +64,10 @@ function ProspectCard({ prospect }: { prospect: ProspectProfile }) {
   const hasSignals = signals?.job_change || signals?.recently_funded || signals?.hiring;
   const initials = getInitials(prospect.full_name);
   const companyLogo = getCompanyLogoUrl(prospect.job_company_name, prospect.job_company_website);
+  const displayName = titleCase(prospect.full_name);
+  const displayTitle = prospect.job_title ? titleCase(prospect.job_title) : null;
+  const displayCompany = prospect.job_company_name ? titleCase(prospect.job_company_name) : null;
+  const displayLocation = buildLocation(prospect);
 
   const copyEmail = (email: string) => {
     navigator.clipboard.writeText(email);
@@ -62,16 +85,11 @@ function ProspectCard({ prospect }: { prospect: ProspectProfile }) {
           {/* Avatar */}
           <div className="relative shrink-0">
             <Avatar className="w-12 h-12 sm:w-14 sm:h-14 border-2 border-border shadow-sm">
-              <AvatarImage src={prospect.profile_pic_url || undefined} alt={prospect.full_name} className="object-cover" />
+              <AvatarImage src={prospect.profile_pic_url || undefined} alt={displayName} className="object-cover" />
               <AvatarFallback className="bg-foreground text-background text-sm sm:text-base font-bold">
                 {initials}
               </AvatarFallback>
             </Avatar>
-            {prospect.score !== undefined && prospect.score >= 70 && (
-              <span className="absolute -top-1 -right-1 w-5 h-5 bg-green-500 border-2 border-background rounded-full flex items-center justify-center text-[9px] font-bold text-white">
-                ✓
-              </span>
-            )}
           </div>
 
           {/* Main info */}
@@ -80,7 +98,7 @@ function ProspectCard({ prospect }: { prospect: ProspectProfile }) {
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <h3 className="text-sm font-bold text-foreground truncate">{prospect.full_name}</h3>
+                  <h3 className="text-sm font-bold text-foreground truncate">{displayName}</h3>
                   {prospect.score !== undefined && (
                     <Badge
                       variant="outline"
@@ -141,15 +159,15 @@ function ProspectCard({ prospect }: { prospect: ProspectProfile }) {
                 />
               )}
               <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-foreground">
-                {prospect.job_title && (
+                {displayTitle && (
                   <span className="font-medium flex items-center gap-1">
                     <Briefcase className="w-3 h-3 text-muted-foreground" />
-                    {prospect.job_title}
+                    {displayTitle}
                   </span>
                 )}
-                {prospect.job_company_name && (
+                {displayCompany && (
                   <span className="text-muted-foreground">
-                    chez <span className="font-medium text-foreground">{prospect.job_company_name}</span>
+                    chez <span className="font-medium text-foreground">{displayCompany}</span>
                   </span>
                 )}
                 {jobTenure && (
@@ -162,9 +180,9 @@ function ProspectCard({ prospect }: { prospect: ProspectProfile }) {
 
             {/* Row 3: Location + company details */}
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1.5 text-[11px] text-muted-foreground">
-              {prospect.location_name && (
+              {displayLocation && (
                 <span className="flex items-center gap-1">
-                  <MapPin className="w-3 h-3" />{prospect.location_name}
+                  <MapPin className="w-3 h-3" />{displayLocation}
                 </span>
               )}
               {prospect.job_company_industry && (

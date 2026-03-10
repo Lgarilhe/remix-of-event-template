@@ -35,6 +35,9 @@ export interface ProspectProfile {
   job_company_linkedin_url?: string | null;
   job_start_date?: string;
   location_name?: string;
+  location_locality?: string;
+  location_region?: string;
+  location_country?: string;
   linkedin_url?: string;
   emails?: string[];
   phone_numbers?: string[];
