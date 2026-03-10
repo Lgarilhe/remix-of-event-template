@@ -86,8 +86,23 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({ onClose }) => {
   };
 
   const handleQuickReply = useCallback((text: string) => {
+    setShowOptions(false);
     handleSend(text);
   }, [handleSend]);
+
+  const [showOptions, setShowOptions] = useState(true);
+
+  // Extract options from last assistant message
+  const lastAssistantOptions = useMemo(() => {
+    const lastAssistant = [...messages].reverse().find(m => m.role === 'assistant');
+    if (!lastAssistant) return [];
+    return extractOptions(lastAssistant.content);
+  }, [messages]);
+
+  // Show options sheet when new options arrive
+  useEffect(() => {
+    if (lastAssistantOptions.length > 0) setShowOptions(true);
+  }, [lastAssistantOptions]);
 
   // Job selector for new conversation
   const activeJobs = (jobs || []).filter(j => !['Archivé', 'Fermé', 'Perdu'].includes(j.status));
