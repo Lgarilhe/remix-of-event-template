@@ -81,8 +81,9 @@ export const useAgentChat = (conversationId: string | null) => {
   }, [conversationId]);
 
   // Send message with streaming
-  const sendMessage = useCallback(async (content: string, jobContext?: Job | null) => {
-    if (!conversationId || !content.trim() || sending) return;
+  const sendMessage = useCallback(async (content: string, jobContext?: Job | null, overrideConversationId?: string) => {
+    const convId = overrideConversationId || conversationId;
+    if (!convId || !content.trim() || sending) return;
 
     setSending(true);
     setStreamingContent('');
