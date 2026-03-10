@@ -118,7 +118,7 @@ function ICPCard({ icp, onEdit, onDelete }: { icp: ICP; onEdit: () => void; onDe
   );
 }
 
-export function ICPList() {
+export function ICPList({ onSearchFromICP }: { onSearchFromICP?: (icp: ICP) => void } = {}) {
   const { icps, isLoading, createICP, updateICP, deleteICP } = useICPs();
   const [formOpen, setFormOpen] = useState(false);
   const [editingICP, setEditingICP] = useState<ICP | null>(null);
