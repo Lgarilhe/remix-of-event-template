@@ -84,6 +84,10 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({ onClose }) => {
     }
   };
 
+  const handleQuickReply = useCallback((text: string) => {
+    handleSend(text);
+  }, [handleSend]);
+
   // Job selector for new conversation
   const activeJobs = (jobs || []).filter(j => !['Archivé', 'Fermé', 'Perdu'].includes(j.status));
 
