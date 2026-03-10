@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Plus, Target, Pencil, Trash2, Building2, Users, Zap, MapPin, Briefcase, Code, ChevronDown, ChevronUp } from 'lucide-react';
+import { Plus, Target, Pencil, Trash2, Building2, Users, Zap, MapPin, Briefcase, Code, ChevronDown, ChevronUp, Search } from 'lucide-react';
 import { useICPs, ICP, ICPCriteria } from '@/hooks/useICPs';
 import { ICPFormModal } from './ICPFormModal';
 import { cn } from '@/lib/utils';
