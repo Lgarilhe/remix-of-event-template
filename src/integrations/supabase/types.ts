@@ -3020,6 +3020,36 @@ export type Database = {
         Returns: string
       }
       get_user_org_id: { Args: { _user_id: string }; Returns: string }
+      get_vivier_candidates: {
+        Args: {
+          p_has_appointments?: boolean
+          p_has_notes?: boolean
+          p_limit?: number
+          p_min_shortlists?: number
+          p_offset?: number
+          p_search?: string
+          p_skill?: string
+          p_source_base?: string
+        }
+        Returns: {
+          airtable_id: string
+          appointment_count: number
+          education_level: string
+          email: string
+          experience: string
+          full_name: string
+          last_interaction_date: string
+          linkedin_url: string
+          note_count: number
+          phone: string
+          placement_count: number
+          shortlist_count: number
+          skills: string[]
+          source_base: string
+          status: string
+          total_count: number
+        }[]
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
