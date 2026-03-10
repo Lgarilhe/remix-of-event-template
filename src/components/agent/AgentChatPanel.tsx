@@ -230,8 +230,16 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({ onClose }) => {
         <div ref={messagesEndRef} />
       </div>
 
+      {/* Options sheet */}
+      <AgentOptionsSheet
+        options={lastAssistantOptions}
+        open={showOptions && !sending && lastAssistantOptions.length > 0}
+        onSelect={handleQuickReply}
+        onDismiss={() => setShowOptions(false)}
+      />
+
       {/* Input */}
-      <div className="shrink-0 border-t border-foreground p-2">
+      <div className="shrink-0 border-t border-foreground p-2 z-10">
         <div className="flex items-end gap-1.5">
           <textarea
             ref={inputRef}
