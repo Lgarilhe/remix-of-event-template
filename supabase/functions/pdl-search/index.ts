@@ -24,23 +24,13 @@ Deno.serve(async (req) => {
 
     const body = await req.json();
     const {
-      // Free-text fields
-      job_title,           // LIKE search on job_title
-      job_title_role,      // Canonical enum: engineering, sales, marketing, etc.
-      job_title_levels,    // Canonical enum array: cxo, vp, director, manager, senior, entry, etc.
-      job_company_name,    // Company name
-      job_company_industry,// Canonical industry
-      job_company_size,    // Enum: 1-10, 11-50, 51-200, 201-500, 501-1000, 1001-5000, 5001-10000, 10001+
-      // Location
-      location_country,    // Canonical country name (lowercase)
-      location_region,     // Region/state
-      location_locality,   // City
-      // Skills & education
-      skills,              // Array of skill strings
-      // Intent signals
-      intent_job_change,   // boolean - filter by recent job start
-      // Pagination
-      size,                // max 100
+      job_title, job_title_role, job_title_levels,
+      job_company_name, job_company_industry, job_company_size,
+      location_country, location_region, location_locality,
+      skills, intent_job_change,
+      // New filters
+      years_experience, education_school, job_company_founded, recently_funded,
+      size,
     } = body;
 
     // Build SQL WHERE clauses
