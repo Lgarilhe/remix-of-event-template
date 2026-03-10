@@ -56,42 +56,8 @@ export const useAgentChat = (conversationId: string | null) => {
     load();
   }, [conversationId]);
 
-  // Realtime subscription for new messages
-  useEffect(() => {
-    if (!conversationId) return;
-
-    const channel = supabase
-      .channel(`agent-messages-${conversationId}`)
-      .on('postgres_changes', {
-        event: 'INSERT',
-        schema: 'public',
-        table: 'agent_messages',
-        filter: `conversation_id=eq.${conversationId}`,
-      }, (payload) => {
-        const newMsg = payload.new as unknown as AgentMessage;
-        setMessages(prev => {
-          // Skip if already exists by real id
-          if (prev.some(m => m.id === newMsg.id)) return prev;
-          // Replace temp messages of same role that match content
-          const hasTempMatch = prev.some(m => 
-            m.id.startsWith('temp-') && m.role === 'user' && newMsg.role === 'user' && m.content === newMsg.content
-          ) || prev.some(m =>
-            m.id.startsWith('assistant-') && m.role === 'assistant' && newMsg.role === 'assistant'
-          );
-          if (hasTempMatch) {
-            return prev.map(m => {
-              if (m.id.startsWith('temp-') && m.role === 'user' && newMsg.role === 'user' && m.content === newMsg.content) return newMsg;
-              if (m.id.startsWith('assistant-') && m.role === 'assistant' && newMsg.role === 'assistant') return newMsg;
-              return m;
-            });
-          }
-          return [...prev, newMsg];
-        });
-      })
-      .subscribe();
-
-    return () => { supabase.removeChannel(channel); };
-  }, [conversationId]);
+  // No realtime subscription — messages are added client-side via streaming
+  // and loaded from DB when conversation is opened. This avoids duplicate issues.
 
   // Send message with streaming
   const sendMessage = useCallback(async (content: string, jobContext?: Job | null, overrideConversationId?: string) => {
