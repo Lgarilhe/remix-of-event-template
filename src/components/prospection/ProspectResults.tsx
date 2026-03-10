@@ -64,6 +64,10 @@ function ProspectCard({ prospect }: { prospect: ProspectProfile }) {
   const hasSignals = signals?.job_change || signals?.recently_funded || signals?.hiring;
   const initials = getInitials(prospect.full_name);
   const companyLogo = getCompanyLogoUrl(prospect.job_company_name, prospect.job_company_website);
+  const displayName = titleCase(prospect.full_name);
+  const displayTitle = prospect.job_title ? titleCase(prospect.job_title) : null;
+  const displayCompany = prospect.job_company_name ? titleCase(prospect.job_company_name) : null;
+  const displayLocation = buildLocation(prospect);
 
   const copyEmail = (email: string) => {
     navigator.clipboard.writeText(email);
@@ -81,16 +85,11 @@ function ProspectCard({ prospect }: { prospect: ProspectProfile }) {
           {/* Avatar */}
           <div className="relative shrink-0">
             <Avatar className="w-12 h-12 sm:w-14 sm:h-14 border-2 border-border shadow-sm">
-              <AvatarImage src={prospect.profile_pic_url || undefined} alt={prospect.full_name} className="object-cover" />
+              <AvatarImage src={prospect.profile_pic_url || undefined} alt={displayName} className="object-cover" />
               <AvatarFallback className="bg-foreground text-background text-sm sm:text-base font-bold">
                 {initials}
               </AvatarFallback>
             </Avatar>
-            {prospect.score !== undefined && prospect.score >= 70 && (
-              <span className="absolute -top-1 -right-1 w-5 h-5 bg-green-500 border-2 border-background rounded-full flex items-center justify-center text-[9px] font-bold text-white">
-                ✓
-              </span>
-            )}
           </div>
 
           {/* Main info */}
