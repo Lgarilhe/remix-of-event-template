@@ -159,15 +159,15 @@ function ProspectCard({ prospect }: { prospect: ProspectProfile }) {
                 />
               )}
               <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-foreground">
-                {prospect.job_title && (
+                {displayTitle && (
                   <span className="font-medium flex items-center gap-1">
                     <Briefcase className="w-3 h-3 text-muted-foreground" />
-                    {prospect.job_title}
+                    {displayTitle}
                   </span>
                 )}
-                {prospect.job_company_name && (
+                {displayCompany && (
                   <span className="text-muted-foreground">
-                    chez <span className="font-medium text-foreground">{prospect.job_company_name}</span>
+                    chez <span className="font-medium text-foreground">{displayCompany}</span>
                   </span>
                 )}
                 {jobTenure && (
