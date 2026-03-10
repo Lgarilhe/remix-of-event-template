@@ -91,7 +91,7 @@ export const useAgentChat = (conversationId: string | null) => {
     // Optimistic user message
     const tempMsg: AgentMessage = {
       id: `temp-${Date.now()}`,
-      conversation_id: conversationId,
+      conversation_id: convId,
       role: 'user',
       content,
       metadata: {},
