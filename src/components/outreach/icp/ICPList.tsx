@@ -191,7 +191,7 @@ export function ICPList({ onSearchFromICP }: { onSearchFromICP?: (icp: ICP) => v
       ) : (
         <div className="space-y-2">
           {icps.map(icp => (
-            <ICPCard key={icp.id} icp={icp} onEdit={() => handleEdit(icp)} onDelete={() => handleDelete(icp)} />
+            <ICPCard key={icp.id} icp={icp} onEdit={() => handleEdit(icp)} onDelete={() => handleDelete(icp)} onSearch={onSearchFromICP ? () => onSearchFromICP(icp) : undefined} />
           ))}
         </div>
       )}

@@ -168,6 +168,14 @@ export const Navbar: React.FC = () => {
                 >
                   OUTREACH
                 </Link>
+                <Link
+                  to="/prospection" 
+                  onClick={() => setIsMobileMenuOpen(false)}
+                  className="flex-1 flex items-center justify-center bg-background text-foreground text-[17px] font-medium uppercase border-b border-foreground tracking-[-0.34px] animate-fade-in"
+                  style={{ animationDelay: '0.32s', animationFillMode: 'both' }}
+                >
+                  PROSPECTION
+                </Link>
                 <Link 
                   to="/ats" 
                   onClick={() => setIsMobileMenuOpen(false)}
