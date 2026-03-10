@@ -621,6 +621,10 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
           refineLoading={refineLoading}
           scrollAreaRef={scrollAreaRef}
           loadMoreTriggerRef={loadMoreTriggerRef}
+          batchReport={scoring.batchReport}
+          batchStats={scoring.batchStats}
+          batchDurationMs={scoring.batchDurationMs}
+          onClearBatchReport={scoring.clearBatchReport}
         />
       </div>
 
