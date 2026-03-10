@@ -349,31 +349,29 @@ ${jobMatchingPrompt}
 
 Analyse cette conversation et retourne le JSON.`;
 
-    console.log("[analyze-response] Calling Claude Sonnet 4.6 via Anthropic API...");
+    console.log("[analyze-response] Calling Lovable AI (gemini-2.5-flash)...");
 
-    const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
-    if (!ANTHROPIC_API_KEY) {
-      throw new Error("ANTHROPIC_API_KEY is not configured");
+    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+    if (!LOVABLE_API_KEY) {
+      throw new Error("LOVABLE_API_KEY is not configured");
     }
 
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 30000);
+    const timeout = setTimeout(() => controller.abort(), 55000);
     let response: Response;
     try {
-      response = await fetch("https://api.anthropic.com/v1/messages", {
+      response = await fetch("https://api.lovable.dev/v1/chat/completions", {
         method: "POST",
         headers: {
-          "x-api-key": ANTHROPIC_API_KEY,
-          "anthropic-version": "2023-06-01",
-          "anthropic-beta": "prompt-caching-2024-07-31",
+          "Authorization": `Bearer ${LOVABLE_API_KEY}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          model: "claude-sonnet-4-6",
+          model: "google/gemini-2.5-flash",
           max_tokens: 4096,
           temperature: 0.2,
-          system: [{ type: "text", text: systemPrompt, cache_control: { type: "ephemeral" } }],
           messages: [
+            { role: "system", content: systemPrompt },
             { role: "user", content: userPrompt }
           ],
         }),
@@ -413,8 +411,8 @@ Analyse cette conversation et retourne le JSON.`;
     }
 
     const data = await response.json();
-    // Anthropic response format: data.content[0].text
-    let content = data.content?.[0]?.text || "";
+    // OpenAI-compatible format: data.choices[0].message.content
+    let content = data.choices?.[0]?.message?.content || "";
     
     // Clean up potential markdown code blocks
     content = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
