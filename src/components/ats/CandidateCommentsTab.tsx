@@ -252,7 +252,7 @@ export const CandidateCommentsTab: React.FC<CandidateCommentsTabProps> = ({
             {showMentions && filteredMembers.length > 0 && (
               <div
                 ref={mentionListRef}
-                className="absolute bottom-full left-0 right-0 mb-1 bg-background border border-foreground shadow-md z-50 max-h-40 overflow-y-auto"
+                className="absolute top-full left-0 right-0 mt-1 bg-background border border-foreground/20 shadow-lg z-[100] max-h-40 overflow-y-auto rounded-sm"
               >
                 {filteredMembers.map((member, i) => (
                   <button
@@ -260,7 +260,7 @@ export const CandidateCommentsTab: React.FC<CandidateCommentsTabProps> = ({
                     onClick={() => insertMention(member)}
                     className={cn(
                       "w-full text-left px-3 py-2 text-sm flex items-center gap-2 transition-colors",
-                      i === mentionIndex ? "bg-brutal-accent/30 text-foreground" : "hover:bg-muted"
+                      i === mentionIndex ? "bg-accent text-accent-foreground" : "hover:bg-muted"
                     )}
                   >
                     <div className="h-6 w-6 bg-foreground text-background flex items-center justify-center text-[10px] font-bold uppercase shrink-0">
