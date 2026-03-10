@@ -35,15 +35,14 @@ export const NotificationDropdown: React.FC = () => {
     <div ref={ref} className="relative">
       <button
         onClick={() => setOpen(!open)}
-        className="relative overflow-hidden glass text-foreground h-[34px] w-[34px] flex items-center justify-center text-[11px] font-medium uppercase border-l-0 border border-foreground leading-none group"
+        className="relative overflow-hidden bg-background text-foreground h-[34px] w-[34px] flex items-center justify-center text-[11px] font-medium uppercase border-l-0 border border-foreground leading-none"
       >
-        <Bell className="w-3.5 h-3.5 relative z-10" />
+        <Bell className="w-3.5 h-3.5" />
         {unreadCount > 0 && (
           <span className="absolute top-1 right-1 z-20 min-w-[14px] h-3.5 flex items-center justify-center px-0.5 text-[8px] font-bold bg-destructive text-destructive-foreground rounded-full">
             {unreadCount > 9 ? '9+' : unreadCount}
           </span>
         )}
-        <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out pointer-events-none"></span>
       </button>
 
       {open && (
