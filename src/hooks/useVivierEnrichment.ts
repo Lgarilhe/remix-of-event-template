@@ -13,6 +13,9 @@ export interface VivierEnrichment {
   headline: string | null;
   location: string | null;
   apollo_data: any;
+  still_same_company: boolean | null;
+  company_change_detail: string | null;
+  notable_events: string[] | null;
   is_relevant: boolean | null;
   relevance_reason: string | null;
   generated_message: string | null;
