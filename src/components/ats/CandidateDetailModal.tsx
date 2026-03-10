@@ -1013,6 +1013,15 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
               </div>
             )}
 
+            {/* ==================== COMMENTS TAB ==================== */}
+            {activeTab === 'comments' && (
+              <CandidateCommentsTab
+                candidateId={candidate.candidateId}
+                candidateName={candidate.name}
+                jobId={candidate.jobId}
+              />
+            )}
+
             {/* ==================== NOTES TAB ==================== */}
             {activeTab === 'notes' && (
               <div className="space-y-4">
