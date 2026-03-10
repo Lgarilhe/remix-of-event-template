@@ -5,7 +5,8 @@ import { LinkedInResultCard } from '@/components/outreach/LinkedInResultCard';
 import { BulkInMailModal } from '@/components/outreach/BulkInMailModal';
 import { SequenceEnrollButton } from '@/components/outreach/SequenceEnrollButton';
 import { ProfileDetailSheet } from '@/components/outreach/result-card/ProfileDetailSheet';
-import { JobMatchResult } from '@/components/outreach/JobScoreDisplay';
+import { JobMatchResult, BatchScoringStats as BatchScoringStatsType } from '@/components/outreach/JobScoreDisplay';
+import { BatchScoringReport, BatchReportEntry } from '@/components/outreach/BatchScoringReport';
 import { JobCandidateStatus } from '@/hooks/useJobCandidateStatus';
 import { ScoredSortBy } from '@/hooks/useFilteredResults';
 import { Job } from '@/types/jobs';
@@ -94,6 +95,12 @@ interface SearchResultsPanelProps {
   onRefineSearch: (direction: 'expand' | 'narrow') => void;
   refineLoading: boolean;
   
+  // Batch report
+  batchReport?: BatchReportEntry[];
+  batchStats?: BatchScoringStatsType | null;
+  batchDurationMs?: number;
+  onClearBatchReport?: () => void;
+  
   // Refs
   scrollAreaRef: React.RefObject<HTMLDivElement>;
   loadMoreTriggerRef: React.RefObject<HTMLDivElement>;
@@ -156,6 +163,10 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
   onSequenceEnrollSuccess,
   onRefineSearch,
   refineLoading,
+  batchReport,
+  batchStats: batchStatsData,
+  batchDurationMs,
+  onClearBatchReport,
   scrollAreaRef,
   loadMoreTriggerRef,
 }) => {
@@ -561,6 +572,16 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
                   )}
                 </div>
               </div>
+            )}
+
+            {/* Batch scoring report */}
+            {batchReport && batchReport.length > 0 && (
+              <BatchScoringReport
+                entries={batchReport}
+                stats={batchStatsData || null}
+                durationMs={batchDurationMs}
+                onClose={onClearBatchReport}
+              />
             )}
 
             {/* Profile cards */}
