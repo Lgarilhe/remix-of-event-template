@@ -415,9 +415,9 @@ function ContactsView() {
 
   const totalPages = Math.ceil(totalCount / pageSize);
 
-  const handleEnrichAll = () => {
+  const handleEnrichAll = (force = false) => {
     const ids = contacts.map(c => c.airtable_id);
-    enrichContacts(ids);
+    enrichContacts(ids, force);
   };
 
   const filteredContacts = contacts.filter(c => {
