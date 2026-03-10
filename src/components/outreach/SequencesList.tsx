@@ -369,18 +369,49 @@ export const SequencesList: React.FC<SequencesListProps> = ({
 
   const handleToggleActive = async (sequenceId: string, isActive: boolean) => {
     try {
+      const newActive = !isActive;
+      
+      // 1. Update sequence is_active flag
       const { error } = await supabase
         .from('outreach_sequences')
-        .update({ is_active: !isActive })
+        .update({ is_active: newActive })
         .eq('id', sequenceId);
 
       if (error) throw error;
+
+      // 2. Pause or resume enrollments accordingly
+      if (newActive) {
+        // Reactivate paused enrollments
+        await supabase
+          .from('sequence_enrollments')
+          .update({ status: 'active' })
+          .eq('sequence_id', sequenceId)
+          .eq('status', 'paused');
+
+        // Reschedule any executions that were stuck while sequence was off
+        // Find scheduled/waiting_event executions and set their scheduled_at to now
+        const now = new Date().toISOString();
+        await supabase
+          .from('sequence_step_executions')
+          .update({ scheduled_at: now, status: 'scheduled' })
+          .in('status', ['scheduled', 'waiting_event', 'quota_blocked'])
+          .filter('enrollment_id', 'in', 
+            `(SELECT id FROM sequence_enrollments WHERE sequence_id = '${sequenceId}' AND status = 'active')`
+          );
+      } else {
+        // Pause active enrollments
+        await supabase
+          .from('sequence_enrollments')
+          .update({ status: 'paused' })
+          .eq('sequence_id', sequenceId)
+          .eq('status', 'active');
+      }
       
       setSequences(prev =>
-        prev.map(s => s.id === sequenceId ? { ...s, is_active: !isActive } : s)
+        prev.map(s => s.id === sequenceId ? { ...s, is_active: newActive } : s)
       );
       
-      toast.success(isActive ? 'Séquence désactivée' : 'Séquence activée');
+      toast.success(isActive ? 'Séquence désactivée — enrollments mis en pause' : 'Séquence réactivée — enrollments relancés');
     } catch (err) {
       console.error('Error toggling sequence:', err);
       toast.error('Erreur lors de la modification');
