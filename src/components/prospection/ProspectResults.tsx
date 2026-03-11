@@ -185,7 +185,7 @@ function ProspectCard({ prospect, index }: { prospect: ProspectProfile; index: n
                 {prospect.linkedin_url && (
                   <Tooltip>
                     <TooltipTrigger asChild>
-                      <Button variant="ghost" size="sm" className="h-7 w-7 p-0 rounded-lg" asChild>
+                      <Button variant="ghost" size="sm" className="h-7 w-7 p-0" asChild>
                         <a href={prospect.linkedin_url} target="_blank" rel="noopener noreferrer">
                           <ExternalLink className="w-3.5 h-3.5" />
                         </a>
