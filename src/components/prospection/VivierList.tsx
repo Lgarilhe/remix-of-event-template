@@ -507,7 +507,7 @@ function ContactsView() {
           <p className="text-sm font-medium">Aucun contact trouvé</p>
         </div>
       ) : (
-        <div className="rounded-xl border border-border/50 overflow-hidden divide-y divide-border/30">
+        <div className="border border-foreground overflow-hidden divide-y divide-border/30">
           {filteredContacts.map((c, i) => {
             const e = enrichments.get(c.airtable_id);
             return (
