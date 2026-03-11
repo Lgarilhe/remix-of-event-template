@@ -592,7 +592,7 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
       
       // Replace placeholder with full chat object (without triggering onChatChange)
       if (pendingInitialChatId.current) {
-        const match = fetchedChats.find((c: Chat) => c.id === pendingInitialChatId.current);
+        const match = mergedChats.find((c: Chat) => c.id === pendingInitialChatId.current || c._mergedChatIds?.includes(pendingInitialChatId.current!));
         if (match) {
           _setSelectedChat(match);
         }
