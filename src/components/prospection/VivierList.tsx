@@ -76,7 +76,7 @@ function CompanyDetailSheet({ company, open, onOpenChange }: { company: VivierCo
               { label: 'Placements', value: company.placement_count },
               { label: 'Notes', value: company.note_count },
             ].map(s => (
-              <div key={s.label} className="rounded-lg border border-border/40 p-2.5 text-center bg-muted/30">
+              <div key={s.label} className="border border-border p-2.5 text-center bg-muted/30">
                 <div className="text-lg font-bold">{s.value}</div>
                 <div className="text-[10px] text-muted-foreground">{s.label}</div>
               </div>
