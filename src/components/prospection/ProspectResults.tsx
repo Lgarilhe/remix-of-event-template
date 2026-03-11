@@ -135,7 +135,7 @@ function ProspectCard({ prospect, index }: { prospect: ProspectProfile; index: n
               </AvatarFallback>
             </Avatar>
             {prospect.score !== undefined && prospect.score >= 80 && (
-              <div className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-emerald-500 flex items-center justify-center border-2 border-background">
+              <div className="absolute -bottom-1 -right-1 w-5 h-5 bg-emerald-500 flex items-center justify-center border-2 border-background">
                 <Check className="w-2.5 h-2.5 text-white" />
               </div>
             )}
