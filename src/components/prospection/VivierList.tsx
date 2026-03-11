@@ -328,7 +328,7 @@ function VivierFilterBar({ searchInput, setSearchInput, onSearch, filters, updat
         </SelectContent>
       </Select>
       <Select value={String(filters.min_shortlists)} onValueChange={v => updateFilters({ min_shortlists: Number(v) })}>
-        <SelectTrigger className="w-[130px] h-9 text-xs rounded-lg border-border/60"><SelectValue /></SelectTrigger>
+        <SelectTrigger className="w-[130px] h-9 text-xs border-border/60"><SelectValue /></SelectTrigger>
         <SelectContent>
           <SelectItem value="1">≥ 1 shortlist</SelectItem>
           <SelectItem value="2">≥ 2 shortlists</SelectItem>
