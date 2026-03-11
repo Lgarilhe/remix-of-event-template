@@ -379,7 +379,7 @@ function CompaniesView() {
           <p className="text-sm font-medium">Aucune société trouvée</p>
         </div>
       ) : (
-        <div className="rounded-xl border border-border/50 overflow-hidden divide-y divide-border/30">
+         <div className="border border-foreground overflow-hidden divide-y divide-border/30">
           {companies.map((c, i) => (
             <motion.button
               key={c.company_airtable_id}
