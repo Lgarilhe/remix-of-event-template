@@ -354,6 +354,8 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
   const { chats, filteredChats, selectedChat, messages, loadingChats, loadingMessages, sending, cursor, hasMore, chatCursors, hasMoreChats, loadingMoreChats, loadingAllChats } = chatState;
 
   const pendingInitialChatId = useRef<string | null>(initialChatId || null);
+  const chatsRef = useRef<Chat[]>([]);
+  chatsRef.current = chats;
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
 
@@ -727,12 +729,13 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
   const fetchMessages = useCallback(async (chatId: string, loadMore = false) => {
     if (!selectedAccount) return;
 
+    // Resolve merged IDs from current chats state (avoid stale selectedChat closure)
+    const chat = chatsRef.current.find(c => c.id === chatId || c._mergedChatIds?.includes(chatId));
+    const mergedIds = chat?._mergedChatIds;
+    const chatIds = (mergedIds && mergedIds.length > 1) ? mergedIds : [chatId];
+
     setLoadingMessages(true);
     try {
-      // Check if this is a merged chat — if so, fetch messages from ALL underlying threads
-      const mergedIds = selectedChat?._mergedChatIds;
-      const chatIds = (mergedIds && mergedIds.length > 1) ? mergedIds : [chatId];
-      
       if (loadMore) {
         // For load-more, only paginate the primary chat
         const { data } = await invokeUnipile({
@@ -750,7 +753,7 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
         setCursor(data.cursor as string | null);
         setHasMore(!!data.cursor);
       } else {
-        // Fetch primary chat first for instant display, then backfill others
+        // Fetch primary chat first for instant display
         const primaryChatId = chatIds[0];
         const { data: primaryData } = await invokeUnipile({
           body: { action: 'get_messages', account_id: selectedAccount, chat_id: primaryChatId, limit: 50 },
@@ -812,7 +815,7 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
     } finally {
       setLoadingMessages(false);
     }
-  }, [selectedAccount, selectedChat]);
+  }, [selectedAccount]);
 
   // Fire-and-forget: update status to 'messaged' + sync Notion after sending from inbox
   const syncAfterInboxSend = useCallback(async (chat: Chat) => {
@@ -1408,6 +1411,10 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
   // Load messages on chat selection & mark as read
   useEffect(() => {
     if (selectedChat) {
+      // Clear previous messages immediately to avoid stale content bleed
+      setMessages([]);
+      setCursor(null);
+      setHasMore(false);
       fetchMessages(selectedChat.id);
       setReplySuggestions([]);
       setSuggestionsLoaded(false);
