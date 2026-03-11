@@ -83,7 +83,7 @@ function CompanyDetailSheet({ company, open, onOpenChange }: { company: VivierCo
             ))}
           </div>
           {loadingDetails ? (
-            <div className="space-y-2"><Skeleton className="h-4 w-full rounded-lg" /><Skeleton className="h-4 w-3/4 rounded-lg" /></div>
+             <div className="space-y-2"><Skeleton className="h-4 w-full" /><Skeleton className="h-4 w-3/4" /></div>
           ) : (
             <>
               {contacts.length > 0 && (
