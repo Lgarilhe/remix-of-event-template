@@ -354,6 +354,8 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
   const { chats, filteredChats, selectedChat, messages, loadingChats, loadingMessages, sending, cursor, hasMore, chatCursors, hasMoreChats, loadingMoreChats, loadingAllChats } = chatState;
 
   const pendingInitialChatId = useRef<string | null>(initialChatId || null);
+  const chatsRef = useRef<Chat[]>([]);
+  chatsRef.current = chats;
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
 
