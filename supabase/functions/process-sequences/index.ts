@@ -1293,10 +1293,65 @@ async function executeStepAction(actionType: string, enrollment: Record<string, 
         const isConnected = p?.network_distance === 'FIRST_DEGREE' || (enrollment as any).connection_status === 'connected';
         const needsInMail = !isConnected && (actionType === 'inmail' || actionType === 'smart_message');
         console.log(`[executeStepAction] ${(enrollment as any).profile_name} | actionType=${actionType} | network_distance=${p?.network_distance} | connection_status=${(enrollment as any).connection_status} | isConnected=${isConnected} | needsInMail=${needsInMail}`);
-        const fd = new FormData();
-        fd.append('account_id', accountId); fd.append('attendees_ids', profileId); fd.append('text', msg);
-        if (needsInMail) { fd.append('linkedin[api]', 'recruiter'); fd.append('linkedin[inmail]', 'true'); if (subj) fd.append('subject', subj); }
-        const r = await fetchWithTimeout(`${UNIPILE_DSN}/api/v1/chats`, { method: 'POST', headers: { 'X-API-KEY': UNIPILE_API_KEY! }, body: fd });
+        
+        // *** SINGLE THREAD LOGIC ***
+        // Try to find an existing chat with this candidate to avoid creating duplicate threads
+        let existingChatId: string | null = null;
+        try {
+          const resolvedId = (enrollment as any).resolved_profile_id || profileId;
+          const chatsRes = await fetchWithTimeout(
+            `${UNIPILE_DSN}/api/v1/chat_attendees/${resolvedId}/chats?account_id=${accountId}`,
+            { headers: { 'X-API-KEY': UNIPILE_API_KEY! } }
+          );
+          if (chatsRes.ok) {
+            const chatsData = await chatsRes.json();
+            const chats = chatsData.items || [];
+            if (chats.length > 0) {
+              // Use the most recent chat (first in the list)
+              existingChatId = chats[0].id;
+              console.log(`[executeStepAction] Found existing chat ${existingChatId} with ${(enrollment as any).profile_name} (${chats.length} total chats)`);
+            }
+          } else if (resolvedId !== profileId) {
+            // Fallback: try with original profileId
+            const fallbackRes = await fetchWithTimeout(
+              `${UNIPILE_DSN}/api/v1/chat_attendees/${profileId}/chats?account_id=${accountId}`,
+              { headers: { 'X-API-KEY': UNIPILE_API_KEY! } }
+            );
+            if (fallbackRes.ok) {
+              const fallbackData = await fallbackRes.json();
+              const fallbackChats = fallbackData.items || [];
+              if (fallbackChats.length > 0) {
+                existingChatId = fallbackChats[0].id;
+                console.log(`[executeStepAction] Found existing chat ${existingChatId} via fallback ID`);
+              }
+            }
+          }
+        } catch (chatLookupErr) {
+          console.warn(`[executeStepAction] Chat lookup failed (will create new):`, chatLookupErr);
+        }
+
+        let r: Response;
+        if (existingChatId) {
+          // Send to existing chat thread — NO duplicate!
+          const fd = new FormData();
+          fd.append('text', msg);
+          r = await fetchWithTimeout(`${UNIPILE_DSN}/api/v1/chats/${existingChatId}/messages`, { method: 'POST', headers: { 'X-API-KEY': UNIPILE_API_KEY! }, body: fd });
+          if (!r.ok) {
+            // Fallback: if sending to existing chat fails (e.g. InMail thread can't receive replies), create new
+            console.warn(`[executeStepAction] Send to existing chat ${existingChatId} failed (${r.status}), falling back to new chat`);
+            const fd2 = new FormData();
+            fd2.append('account_id', accountId); fd2.append('attendees_ids', profileId); fd2.append('text', msg);
+            if (needsInMail) { fd2.append('linkedin[api]', 'recruiter'); fd2.append('linkedin[inmail]', 'true'); if (subj) fd2.append('subject', subj); }
+            r = await fetchWithTimeout(`${UNIPILE_DSN}/api/v1/chats`, { method: 'POST', headers: { 'X-API-KEY': UNIPILE_API_KEY! }, body: fd2 });
+          }
+        } else {
+          // No existing chat — create new one (first contact)
+          console.log(`[executeStepAction] No existing chat found for ${(enrollment as any).profile_name}, creating new`);
+          const fd = new FormData();
+          fd.append('account_id', accountId); fd.append('attendees_ids', profileId); fd.append('text', msg);
+          if (needsInMail) { fd.append('linkedin[api]', 'recruiter'); fd.append('linkedin[inmail]', 'true'); if (subj) fd.append('subject', subj); }
+          r = await fetchWithTimeout(`${UNIPILE_DSN}/api/v1/chats`, { method: 'POST', headers: { 'X-API-KEY': UNIPILE_API_KEY! }, body: fd });
+        }
         if (!r.ok) { const e = await r.text(); return { success: false, error: `Unipile ${r.status}: ${e}` }; }
         await r.json();
         await logAnalytics(supabase, enrollment.sequence_id as string, 'messages_sent');
