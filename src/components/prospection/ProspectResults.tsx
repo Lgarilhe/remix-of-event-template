@@ -383,7 +383,7 @@ export function ProspectResults({ results, searching }: ProspectResultsProps) {
       <div className="flex-1 overflow-y-auto no-scrollbar p-3 space-y-2">
         {results.length === 0 && !searching && (
           <div className="text-center py-16 px-4">
-            <div className="w-16 h-16 rounded-2xl bg-muted/50 flex items-center justify-center mx-auto mb-4">
+            <div className="w-16 h-16 bg-muted/50 flex items-center justify-center mx-auto mb-4">
               <span className="text-3xl">👥</span>
             </div>
             <h3 className="text-sm font-semibold text-foreground mb-1">Aucun prospect</h3>
