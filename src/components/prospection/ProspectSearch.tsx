@@ -814,9 +814,9 @@ export function ProspectSearch({ selectedICP, onSelectICP, onResults, searching,
               <SlidersHorizontal className="w-4 h-4 shrink-0" />
               <span className="shrink-0">Filtres de recherche</span>
               {(pCount + eCount) > 0 && (
-                <Badge variant="secondary" className="text-[10px] rounded-full">
-                  {pCount + eCount}
-                </Badge>
+                 <Badge variant="secondary" className="text-[10px]">
+                   {pCount + eCount}
+                 </Badge>
               )}
             </Button>
           </SheetTrigger>
