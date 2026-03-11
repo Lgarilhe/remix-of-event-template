@@ -1881,13 +1881,12 @@ async function generatePersonalizedMessage(supabase: any, enrollment: Record<str
 - CTA non-engageant: demande d'avis, PAS de proposition de call/rdv
 - 200-400 caractères pour le corps`;
       } else {
-        msgType = 'INMAIL DE RELANCE (NOUVEL ANGLE)';
-        toneInstructions = `IMPORTANT: Chaque InMail crée un NOUVEAU FIL DE DISCUSSION sur LinkedIn. Le candidat n'a peut-être JAMAIS lu ton premier InMail.
-- Ce message doit être AUTONOME et compréhensible SANS avoir lu le précédent
-- NE DIS JAMAIS "dernière tentative", "je reviens", "suite à mon précédent message", "je ne veux pas insister"
-- Propose un ANGLE DIFFÉRENT du premier InMail: aspect technique, culture d'équipe, impact du poste, projet concret
-- Objet accrocheur et DIFFÉRENT du premier, < 40 caractères
-- Ton direct et naturel, comme un NOUVEAU premier contact mais avec un angle différent
+        msgType = 'INMAIL DE RELANCE';
+        toneInstructions = `C'est une RELANCE. Le candidat a déjà reçu un premier InMail.
+- Tu PEUX et DOIS faire référence au fait que tu as déjà contacté le candidat (ex: "Suite à mon précédent message", "Je reviens vers toi", "Je me permets de te relancer")
+- Propose un angle complémentaire ou renforce le pitch initial
+- Objet < 40 caractères, peut référencer le premier message
+- Ton un peu plus direct/familier que le premier InMail
 - 200-400 caractères pour le corps`;
       }
     } else {
