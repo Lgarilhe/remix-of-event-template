@@ -59,8 +59,8 @@ function CompanyDetailSheet({ company, open, onOpenChange }: { company: VivierCo
       <SheetContent className="w-full sm:max-w-lg overflow-y-auto">
         <SheetHeader>
           <SheetTitle className="text-left flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[hsl(var(--skalr-purple)/0.15)] to-[hsl(var(--skalr-pink)/0.15)] flex items-center justify-center">
-              <Building2 className="w-4 h-4 text-foreground" />
+             <div className="w-8 h-8 bg-foreground text-background flex items-center justify-center">
+               <Building2 className="w-4 h-4" />
             </div>
             {company.company_name || 'Société'}
           </SheetTitle>
@@ -68,7 +68,7 @@ function CompanyDetailSheet({ company, open, onOpenChange }: { company: VivierCo
         </SheetHeader>
         <div className="mt-4 space-y-4">
           {company.description && <p className="text-xs text-muted-foreground line-clamp-3">{company.description}</p>}
-          {company.headcount && <Badge variant="outline" className="text-[10px] rounded-full">{company.headcount} employés</Badge>}
+          {company.headcount && <Badge variant="outline" className="text-[10px]">{company.headcount} employés</Badge>}
           <div className="grid grid-cols-4 gap-2">
             {[
               { label: 'Contacts', value: company.contact_count },
@@ -76,14 +76,14 @@ function CompanyDetailSheet({ company, open, onOpenChange }: { company: VivierCo
               { label: 'Placements', value: company.placement_count },
               { label: 'Notes', value: company.note_count },
             ].map(s => (
-              <div key={s.label} className="rounded-lg border border-border/40 p-2.5 text-center bg-muted/30">
+              <div key={s.label} className="border border-border p-2.5 text-center bg-muted/30">
                 <div className="text-lg font-bold">{s.value}</div>
                 <div className="text-[10px] text-muted-foreground">{s.label}</div>
               </div>
             ))}
           </div>
           {loadingDetails ? (
-            <div className="space-y-2"><Skeleton className="h-4 w-full rounded-lg" /><Skeleton className="h-4 w-3/4 rounded-lg" /></div>
+             <div className="space-y-2"><Skeleton className="h-4 w-full" /><Skeleton className="h-4 w-3/4" /></div>
           ) : (
             <>
               {contacts.length > 0 && (
@@ -91,9 +91,9 @@ function CompanyDetailSheet({ company, open, onOpenChange }: { company: VivierCo
                   <h4 className="text-xs font-semibold text-muted-foreground mb-2">Contacts ({contacts.length})</h4>
                   <div className="space-y-1.5">
                     {contacts.map((ct: any) => (
-                      <div key={ct.airtable_id} className="rounded-lg border border-border/40 p-2.5 text-xs flex items-center gap-2.5 hover:bg-muted/30 transition-colors">
-                        <div className="h-7 w-7 rounded-full bg-gradient-to-br from-[hsl(var(--skalr-purple)/0.15)] to-[hsl(var(--skalr-pink)/0.15)] flex items-center justify-center text-[9px] font-bold shrink-0 uppercase text-foreground">
-                          {(ct.full_name || '??').split(' ').map((w: string) => w[0]).join('').slice(0, 2)}
+                       <div key={ct.airtable_id} className="border border-border/40 p-2.5 text-xs flex items-center gap-2.5 hover:bg-muted/30 transition-colors">
+                         <div className="h-7 w-7 bg-muted flex items-center justify-center text-[9px] font-bold shrink-0 uppercase text-foreground">
+                           {(ct.full_name || '??').split(' ').map((w: string) => w[0]).join('').slice(0, 2)}
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="font-medium truncate">{ct.full_name || 'Sans nom'}</div>
@@ -102,7 +102,7 @@ function CompanyDetailSheet({ company, open, onOpenChange }: { company: VivierCo
                             {ct.email && <span> · {ct.email}</span>}
                           </div>
                         </div>
-                        {ct.contact_type && <Badge variant="outline" className="text-[9px] shrink-0 rounded-full">{ct.contact_type}</Badge>}
+                        {ct.contact_type && <Badge variant="outline" className="text-[9px] shrink-0">{ct.contact_type}</Badge>}
                       </div>
                     ))}
                   </div>
@@ -113,12 +113,12 @@ function CompanyDetailSheet({ company, open, onOpenChange }: { company: VivierCo
                   <h4 className="text-xs font-semibold text-muted-foreground mb-2">Shortlists ({shortlists.length})</h4>
                   <div className="space-y-1.5">
                     {shortlists.map((s: any) => (
-                      <div key={s.airtable_id} className="rounded-lg border border-border/40 p-2.5 text-xs space-y-0.5">
+                       <div key={s.airtable_id} className="border border-border/40 p-2.5 text-xs space-y-0.5">
                         <div className="font-medium">{s.job_title || 'Poste inconnu'}</div>
                         <div className="text-muted-foreground flex items-center gap-2">
                           {s.candidate_name && <span>{s.candidate_name}</span>}
                           {s.date_added && <span>· {s.date_added}</span>}
-                          {s.status && <Badge variant="outline" className="text-[9px] rounded-full">{s.status}</Badge>}
+                          {s.status && <Badge variant="outline" className="text-[9px]">{s.status}</Badge>}
                         </div>
                       </div>
                     ))}
@@ -201,7 +201,7 @@ function EnrichedContactSheet({ contact, enrichment, open, onOpenChange, onCopyM
             size="sm"
             variant={enrichment ? 'outline' : 'default'}
             onClick={() => onEnrichSingle?.(contact.airtable_id)}
-            className="w-full h-9 text-xs gap-1.5 rounded-lg"
+            className="w-full h-9 text-xs gap-1.5"
           >
             {enrichment ? <RefreshCw className="w-3.5 h-3.5" /> : <Sparkles className="w-3.5 h-3.5" />}
             {enrichment ? 'Ré-enrichir & regénérer le message' : 'Enrichir & générer le message'}
@@ -209,11 +209,11 @@ function EnrichedContactSheet({ contact, enrichment, open, onOpenChange, onCopyM
 
           {/* Enriched profile */}
           {enrichment && enrichment.match_type !== 'not_found' && (
-            <div className="rounded-xl border border-[hsl(var(--skalr-purple)/0.2)] bg-[hsl(var(--skalr-purple)/0.04)] p-3.5 space-y-2">
+            <div className="border border-[hsl(var(--skalr-purple)/0.2)] bg-[hsl(var(--skalr-purple)/0.04)] p-3.5 space-y-2">
               <div className="flex items-center gap-2">
                 <Sparkles className="w-4 h-4 text-[hsl(var(--skalr-purple))]" />
                 <span className="text-xs font-semibold">Profil enrichi</span>
-                <Badge variant="outline" className="text-[9px] rounded-full">{enrichment.match_type === 'linkedin' ? 'LinkedIn' : 'Fuzzy'}</Badge>
+                <Badge variant="outline" className="text-[9px]">{enrichment.match_type === 'linkedin' ? 'LinkedIn' : 'Fuzzy'}</Badge>
               </div>
               {enrichment.current_job_title && (
                 <div className="text-sm">
@@ -230,7 +230,7 @@ function EnrichedContactSheet({ contact, enrichment, open, onOpenChange, onCopyM
               )}
               {enrichment.is_relevant !== null && (
                 <div className="flex items-center gap-2">
-                  <Badge variant={enrichment.is_relevant ? 'default' : 'secondary'} className="text-[10px] rounded-full">
+                  <Badge variant={enrichment.is_relevant ? 'default' : 'secondary'} className="text-[10px]">
                     {enrichment.is_relevant ? '✓ Pertinent' : '✗ Non pertinent'}
                   </Badge>
                   {enrichment.relevance_reason && <span className="text-[10px] text-muted-foreground">{enrichment.relevance_reason}</span>}
@@ -240,35 +240,35 @@ function EnrichedContactSheet({ contact, enrichment, open, onOpenChange, onCopyM
           )}
 
           {enrichment?.match_type === 'not_found' && (
-            <div className="rounded-xl border border-border/40 p-3 text-xs text-muted-foreground">
+            <div className="border border-border/40 p-3 text-xs text-muted-foreground">
               Aucun profil trouvé sur Apollo pour ce contact.
             </div>
           )}
 
           {/* Generated message */}
           {enrichment?.generated_message && (
-            <div className="rounded-xl border border-border/40 p-3.5 space-y-2">
+            <div className="border border-border/40 p-3.5 space-y-2">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <span className="text-xs font-semibold text-muted-foreground">
                     {enrichment.message_type === 'sms' ? '📱 SMS' : '💬 LinkedIn'}
                   </span>
                   {enrichment.message_status && (
-                    <Badge variant="outline" className="text-[9px] rounded-full">{enrichment.message_status}</Badge>
+                    <Badge variant="outline" className="text-[9px]">{enrichment.message_status}</Badge>
                   )}
                 </div>
-                <Button variant="outline" size="sm" onClick={handleCopy} className="h-7 text-[10px] gap-1 rounded-lg">
+                <Button variant="outline" size="sm" onClick={handleCopy} className="h-7 text-[10px] gap-1">
                   {copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
                   {copied ? 'Copié' : 'Copier'}
                 </Button>
               </div>
-              <p className="text-sm whitespace-pre-wrap bg-muted/30 p-3 rounded-lg">{enrichment.generated_message}</p>
+              <p className="text-sm whitespace-pre-wrap bg-muted/30 p-3">{enrichment.generated_message}</p>
               <div className="text-[10px] text-muted-foreground">{enrichment.generated_message.length} caractères</div>
             </div>
           )}
 
           {loadingDetails ? (
-            <div className="space-y-2"><Skeleton className="h-4 w-full rounded-lg" /><Skeleton className="h-4 w-3/4 rounded-lg" /></div>
+            <div className="space-y-2"><Skeleton className="h-4 w-full" /><Skeleton className="h-4 w-3/4" /></div>
           ) : (
             <>
               {shortlists.length > 0 && (
@@ -276,9 +276,9 @@ function EnrichedContactSheet({ contact, enrichment, open, onOpenChange, onCopyM
                   <h4 className="text-xs font-semibold text-muted-foreground mb-2">Shortlists</h4>
                   <div className="space-y-1.5">
                     {shortlists.map((s: any) => (
-                      <div key={s.airtable_id} className="rounded-lg border border-border/40 p-2.5 text-xs space-y-0.5">
+                      <div key={s.airtable_id} className="border border-border/40 p-2.5 text-xs space-y-0.5">
                         <div className="font-medium">{s.job_title || 'Poste inconnu'}</div>
-                        <div className="text-muted-foreground">{s.candidate_name} {s.date_added && `· ${s.date_added}`} {s.status && <Badge variant="outline" className="text-[9px] ml-1 rounded-full">{s.status}</Badge>}</div>
+                        <div className="text-muted-foreground">{s.candidate_name} {s.date_added && `· ${s.date_added}`} {s.status && <Badge variant="outline" className="text-[9px] ml-1">{s.status}</Badge>}</div>
                       </div>
                     ))}
                   </div>
@@ -289,7 +289,7 @@ function EnrichedContactSheet({ contact, enrichment, open, onOpenChange, onCopyM
                   <h4 className="text-xs font-semibold text-muted-foreground mb-2">Notes</h4>
                   <div className="space-y-1.5">
                     {notes.map((n: any) => (
-                      <div key={n.airtable_id} className="rounded-lg border border-border/40 p-2.5 text-xs space-y-0.5">
+                      <div key={n.airtable_id} className="border border-border/40 p-2.5 text-xs space-y-0.5">
                         <div className="font-medium">{n.title || 'Note'}</div>
                         {n.detail && <div className="text-muted-foreground line-clamp-2">{n.detail}</div>}
                         <div className="text-muted-foreground">{n.note_date} {n.author && <span className="italic">— {n.author}</span>}</div>
@@ -316,11 +316,11 @@ function VivierFilterBar({ searchInput, setSearchInput, onSearch, filters, updat
       <div className="flex-1 min-w-[200px]">
         <div className="relative">
           <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
-          <Input placeholder="Rechercher…" value={searchInput} onChange={e => setSearchInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && onSearch()} className="pl-9 h-9 text-xs rounded-lg border-border/60" />
+          <Input placeholder="Rechercher…" value={searchInput} onChange={e => setSearchInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && onSearch()} className="pl-9 h-9 text-xs border-border/60" />
         </div>
       </div>
       <Select value={filters.source_base || 'all'} onValueChange={v => updateFilters({ source_base: v === 'all' ? null : v })}>
-        <SelectTrigger className="w-[140px] h-9 text-xs rounded-lg border-border/60"><SelectValue placeholder="Base" /></SelectTrigger>
+        <SelectTrigger className="w-[140px] h-9 text-xs border-border/60"><SelectValue placeholder="Base" /></SelectTrigger>
         <SelectContent>
           <SelectItem value="all">Toutes les bases</SelectItem>
           <SelectItem value="konekt">Konekt</SelectItem>
@@ -328,7 +328,7 @@ function VivierFilterBar({ searchInput, setSearchInput, onSearch, filters, updat
         </SelectContent>
       </Select>
       <Select value={String(filters.min_shortlists)} onValueChange={v => updateFilters({ min_shortlists: Number(v) })}>
-        <SelectTrigger className="w-[130px] h-9 text-xs rounded-lg border-border/60"><SelectValue /></SelectTrigger>
+        <SelectTrigger className="w-[130px] h-9 text-xs border-border/60"><SelectValue /></SelectTrigger>
         <SelectContent>
           <SelectItem value="1">≥ 1 shortlist</SelectItem>
           <SelectItem value="2">≥ 2 shortlists</SelectItem>
@@ -345,9 +345,9 @@ function Pagination({ page, totalPages, goToPage }: { page: number; totalPages: 
   if (totalPages <= 1) return null;
   return (
     <div className="flex items-center justify-between">
-      <Button variant="outline" size="sm" disabled={page === 0} onClick={() => goToPage(page - 1)} className="text-xs rounded-lg"><ChevronLeft className="w-3 h-3 mr-1" /> Précédent</Button>
+      <Button variant="outline" size="sm" disabled={page === 0} onClick={() => goToPage(page - 1)} className="text-xs"><ChevronLeft className="w-3 h-3 mr-1" /> Précédent</Button>
       <span className="text-xs text-muted-foreground">Page {page + 1} / {totalPages}</span>
-      <Button variant="outline" size="sm" disabled={page >= totalPages - 1} onClick={() => goToPage(page + 1)} className="text-xs rounded-lg">Suivant <ChevronRight className="w-3 h-3 ml-1" /></Button>
+      <Button variant="outline" size="sm" disabled={page >= totalPages - 1} onClick={() => goToPage(page + 1)} className="text-xs">Suivant <ChevronRight className="w-3 h-3 ml-1" /></Button>
     </div>
   );
 }
@@ -370,16 +370,16 @@ function CompaniesView() {
         <div className="text-xs text-muted-foreground">{totalCount} société{totalCount > 1 ? 's' : ''} avec des interactions</div>
       )}
       {loading ? (
-        <div className="space-y-2">{Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-16 w-full rounded-xl" />)}</div>
+         <div className="space-y-2">{Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-16 w-full" />)}</div>
       ) : companies.length === 0 ? (
         <div className="text-center py-12 text-muted-foreground">
-          <div className="w-14 h-14 rounded-2xl bg-muted/50 flex items-center justify-center mx-auto mb-3">
+           <div className="w-14 h-14 bg-muted/50 flex items-center justify-center mx-auto mb-3">
             <Building2 className="w-6 h-6 opacity-40" />
           </div>
           <p className="text-sm font-medium">Aucune société trouvée</p>
         </div>
       ) : (
-        <div className="rounded-xl border border-border/50 overflow-hidden divide-y divide-border/30">
+         <div className="border border-foreground overflow-hidden divide-y divide-border/30">
           {companies.map((c, i) => (
             <motion.button
               key={c.company_airtable_id}
@@ -389,8 +389,8 @@ function CompaniesView() {
               onClick={() => { setSelectedCompany(c); setSheetOpen(true); }}
               className="w-full text-left px-4 py-3 hover:bg-muted/40 transition-all flex items-center gap-3"
             >
-              <div className="h-9 w-9 rounded-lg bg-gradient-to-br from-[hsl(var(--skalr-purple)/0.12)] to-[hsl(var(--skalr-pink)/0.08)] flex items-center justify-center text-xs font-bold shrink-0 uppercase text-foreground">
-                {(c.company_name || '??').slice(0, 2)}
+               <div className="h-9 w-9 bg-muted flex items-center justify-center text-xs font-bold shrink-0 uppercase text-foreground">
+                 {(c.company_name || '??').slice(0, 2)}
               </div>
               <div className="flex-1 min-w-0 space-y-0.5">
                 <div className="text-sm font-medium truncate">{c.company_name || 'Sans nom'}</div>
@@ -401,9 +401,9 @@ function CompaniesView() {
                 </div>
               </div>
               <div className="flex items-center gap-1.5 shrink-0">
-                <Badge variant="secondary" className="text-[9px] gap-0.5 px-1.5 rounded-full"><FileText className="w-3 h-3" /> {c.shortlist_count}</Badge>
-                {c.placement_count > 0 && <Badge variant="secondary" className="text-[9px] gap-0.5 px-1.5 rounded-full"><Trophy className="w-3 h-3" /> {c.placement_count}</Badge>}
-                {c.note_count > 0 && <Badge variant="outline" className="text-[9px] gap-0.5 px-1.5 rounded-full">{c.note_count} notes</Badge>}
+                 <Badge variant="secondary" className="text-[9px] gap-0.5 px-1.5"><FileText className="w-3 h-3" /> {c.shortlist_count}</Badge>
+                 {c.placement_count > 0 && <Badge variant="secondary" className="text-[9px] gap-0.5 px-1.5"><Trophy className="w-3 h-3" /> {c.placement_count}</Badge>}
+                 {c.note_count > 0 && <Badge variant="outline" className="text-[9px] gap-0.5 px-1.5">{c.note_count} notes</Badge>}
               </div>
               <div className="text-[10px] text-muted-foreground shrink-0 w-20 text-right">
                 {c.last_interaction_date ? format(new Date(c.last_interaction_date), 'dd MMM yyyy', { locale: fr }) : '—'}
@@ -458,19 +458,19 @@ function ContactsView() {
 
       {/* Enrichment controls */}
       <div className="flex items-center gap-2 flex-wrap">
-        <Button size="sm" onClick={() => handleEnrichAll(false)} disabled={isEnriching || contacts.length === 0} className="h-8 text-xs gap-1.5 rounded-lg bg-gradient-to-r from-[hsl(var(--skalr-purple))] to-[hsl(var(--skalr-pink))] text-white border-0 hover:opacity-90">
+        <Button size="sm" onClick={() => handleEnrichAll(false)} disabled={isEnriching || contacts.length === 0} className="h-8 text-xs gap-1.5 bg-foreground text-background border border-foreground hover:bg-foreground/90">
           <Sparkles className="w-3.5 h-3.5" />
           {isEnriching ? 'Enrichissement…' : 'Enrichir & qualifier'}
         </Button>
         {enrichments.size > 0 && (
-          <Button size="sm" variant="outline" onClick={() => handleEnrichAll(true)} disabled={isEnriching || contacts.length === 0} className="h-8 text-xs gap-1.5 rounded-lg">
+          <Button size="sm" variant="outline" onClick={() => handleEnrichAll(true)} disabled={isEnriching || contacts.length === 0} className="h-8 text-xs gap-1.5">
             <RefreshCw className="w-3.5 h-3.5" />
             Ré-enrichir
           </Button>
         )}
         {enrichments.size > 0 && (
           <Select value={enrichFilter} onValueChange={(v: any) => setEnrichFilter(v)}>
-            <SelectTrigger className="w-[160px] h-8 text-xs rounded-lg border-border/60"><SelectValue /></SelectTrigger>
+            <SelectTrigger className="w-[160px] h-8 text-xs border-border/60"><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Tous les contacts</SelectItem>
               <SelectItem value="relevant">Pertinents uniquement</SelectItem>
@@ -488,7 +488,7 @@ function ContactsView() {
       {/* Progress bar */}
       {isEnriching && (
         <div className="space-y-1">
-          <Progress value={(progress.done / Math.max(progress.total, 1)) * 100} className="h-2 rounded-full" />
+          <Progress value={(progress.done / Math.max(progress.total, 1)) * 100} className="h-2" />
           <div className="text-[10px] text-muted-foreground">{progress.done} / {progress.total} contacts traités</div>
         </div>
       )}
@@ -498,16 +498,16 @@ function ContactsView() {
       )}
 
       {loading ? (
-        <div className="space-y-2">{Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-16 w-full rounded-xl" />)}</div>
+        <div className="space-y-2">{Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-16 w-full" />)}</div>
       ) : filteredContacts.length === 0 ? (
         <div className="text-center py-12 text-muted-foreground">
-          <div className="w-14 h-14 rounded-2xl bg-muted/50 flex items-center justify-center mx-auto mb-3">
+          <div className="w-14 h-14 bg-muted/50 flex items-center justify-center mx-auto mb-3">
             <Users className="w-6 h-6 opacity-40" />
           </div>
           <p className="text-sm font-medium">Aucun contact trouvé</p>
         </div>
       ) : (
-        <div className="rounded-xl border border-border/50 overflow-hidden divide-y divide-border/30">
+        <div className="border border-foreground overflow-hidden divide-y divide-border/30">
           {filteredContacts.map((c, i) => {
             const e = enrichments.get(c.airtable_id);
             return (
@@ -519,8 +519,8 @@ function ContactsView() {
                 onClick={() => { setSelectedContact(c); setSheetOpen(true); }}
                 className="w-full text-left px-4 py-3 hover:bg-muted/40 transition-all flex items-center gap-3"
               >
-                <div className="h-9 w-9 rounded-full bg-gradient-to-br from-[hsl(var(--skalr-purple)/0.12)] to-[hsl(var(--skalr-pink)/0.08)] flex items-center justify-center text-xs font-bold shrink-0 uppercase text-foreground">
-                  {(c.full_name || '??').split(' ').map(w => w[0]).join('').slice(0, 2)}
+                 <div className="h-9 w-9 bg-muted flex items-center justify-center text-xs font-bold shrink-0 uppercase text-foreground">
+                   {(c.full_name || '??').split(' ').map(w => w[0]).join('').slice(0, 2)}
                 </div>
                 <div className="flex-1 min-w-0 space-y-0.5">
                   <div className="text-sm font-medium truncate">{c.full_name || 'Sans nom'}</div>
@@ -539,12 +539,12 @@ function ContactsView() {
                   </div>
                 </div>
                 <div className="flex items-center gap-1.5 shrink-0">
-                  {e?.is_relevant === true && <Badge className="text-[9px] gap-0.5 px-1.5 rounded-full bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">Pertinent</Badge>}
-                  {e?.is_relevant === false && <Badge variant="secondary" className="text-[9px] gap-0.5 px-1.5 rounded-full">Non pertinent</Badge>}
-                  {e?.generated_message && <Badge variant="outline" className="text-[9px] gap-0.5 px-1.5 rounded-full">{e.message_type === 'sms' ? '📱' : '💬'} msg</Badge>}
-                  <Badge variant="secondary" className="text-[9px] gap-0.5 px-1.5 rounded-full"><FileText className="w-3 h-3" /> {c.shortlist_count}</Badge>
-                  {c.note_count > 0 && <Badge variant="outline" className="text-[9px] gap-0.5 px-1.5 rounded-full">{c.note_count} notes</Badge>}
-                  {c.placement_count > 0 && <Badge variant="secondary" className="text-[9px] gap-0.5 px-1.5 rounded-full"><Trophy className="w-3 h-3" /> {c.placement_count}</Badge>}
+                   {e?.is_relevant === true && <Badge className="text-[9px] gap-0.5 px-1.5 bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">Pertinent</Badge>}
+                   {e?.is_relevant === false && <Badge variant="secondary" className="text-[9px] gap-0.5 px-1.5">Non pertinent</Badge>}
+                   {e?.generated_message && <Badge variant="outline" className="text-[9px] gap-0.5 px-1.5">{e.message_type === 'sms' ? '📱' : '💬'} msg</Badge>}
+                   <Badge variant="secondary" className="text-[9px] gap-0.5 px-1.5"><FileText className="w-3 h-3" /> {c.shortlist_count}</Badge>
+                   {c.note_count > 0 && <Badge variant="outline" className="text-[9px] gap-0.5 px-1.5">{c.note_count} notes</Badge>}
+                   {c.placement_count > 0 && <Badge variant="secondary" className="text-[9px] gap-0.5 px-1.5"><Trophy className="w-3 h-3" /> {c.placement_count}</Badge>}
                 </div>
                 <div className="text-[10px] text-muted-foreground shrink-0 w-20 text-right">
                   {c.last_interaction_date ? format(new Date(c.last_interaction_date), 'dd MMM yyyy', { locale: fr }) : '—'}
@@ -578,7 +578,7 @@ export function VivierList() {
 
   return (
     <div className="space-y-4">
-      <div className="inline-flex gap-1 p-1 rounded-lg bg-muted/50 border border-border/30">
+      <div className="flex gap-0 border border-foreground w-fit">
         {subTabs.map((tab) => {
           const isActive = activeSubTab === tab.value;
           const Icon = tab.icon;
@@ -586,12 +586,12 @@ export function VivierList() {
             <button
               key={tab.value}
               onClick={() => setActiveSubTab(tab.value)}
-              className={cn(
-                "flex items-center gap-1.5 h-8 px-3 text-xs font-semibold rounded-md transition-all duration-200",
-                isActive
-                  ? "bg-background text-foreground shadow-sm"
-                  : "text-muted-foreground hover:text-foreground"
-              )}
+               className={cn(
+                 "flex items-center gap-1.5 h-8 px-3 text-[10px] font-medium uppercase tracking-wider transition-all duration-200",
+                 isActive
+                   ? "bg-brutal-accent text-foreground"
+                   : "bg-background text-foreground hover:bg-muted"
+               )}
             >
               <Icon className="w-3.5 h-3.5" />
               {tab.label}

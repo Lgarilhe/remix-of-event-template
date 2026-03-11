@@ -194,9 +194,9 @@ function FilterSection({ label, icon, hint, children }: { label: string; icon?: 
 function ChipToggle({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
   return (
     <button onClick={onClick} className={cn(
-      "px-3 py-1.5 text-xs rounded-full border transition-all duration-200",
+      "px-3 py-1.5 text-xs border transition-all duration-200",
       active
-        ? "bg-foreground text-background border-foreground shadow-sm"
+        ? "bg-foreground text-background border-foreground"
         : "bg-background text-foreground/70 border-border hover:border-foreground/30 hover:bg-muted/50"
     )}>{label}</button>
   );
@@ -423,22 +423,22 @@ export function ProspectSearch({ selectedICP, onSelectICP, onResults, searching,
     }
   };
 
-  const inputClasses = "h-9 text-sm rounded-lg border-border/60 bg-background focus:border-foreground/40 focus:ring-1 focus:ring-foreground/10 transition-all";
-  const selectTriggerClasses = "h-9 rounded-lg border-border/60";
+  const inputClasses = "h-9 text-sm border-border/60 bg-background focus:border-foreground/40 focus:ring-1 focus:ring-foreground/10 transition-all";
+  const selectTriggerClasses = "h-9 border-border/60";
 
   // The actual filters panel content
   const filtersPanel = (
     <div className="space-y-5">
       {/* Header */}
-      <div className="rounded-xl bg-gradient-to-br from-[hsl(var(--skalr-purple)/0.08)] to-[hsl(var(--skalr-pink)/0.05)] border border-border/40 p-4">
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[hsl(var(--skalr-purple))] to-[hsl(var(--skalr-pink))] flex items-center justify-center">
-              <Search className="w-4 h-4 text-white" />
-            </div>
-            <h2 className="text-sm font-bold text-foreground">Prospection</h2>
-          </div>
-          <Badge variant="outline" className="text-[9px] border-border/40 font-normal rounded-full bg-background/80">PDL + Apollo</Badge>
+       <div className="border border-foreground bg-background p-4">
+         <div className="flex items-center justify-between mb-3">
+           <div className="flex items-center gap-2.5">
+             <div className="w-8 h-8 bg-foreground text-background flex items-center justify-center">
+               <Search className="w-4 h-4" />
+             </div>
+             <h2 className="text-sm font-bold text-foreground uppercase tracking-wider">Prospection</h2>
+           </div>
+           <Badge variant="outline" className="text-[9px] border-border/40 font-normal bg-background/80">PDL + Apollo</Badge>
         </div>
 
         {/* ICP selector */}
@@ -452,30 +452,30 @@ export function ProspectSearch({ selectedICP, onSelectICP, onResults, searching,
                   {icps.map(icp => (<SelectItem key={icp.id} value={icp.id}>{icp.name}</SelectItem>))}
                 </SelectContent>
               </Select>
-              {selectedICP && (<Badge variant="outline" className="text-[10px] border-border/40 gap-1 shrink-0 rounded-full"><Target className="w-3 h-3" /> {selectedICP.name}</Badge>)}
+              {selectedICP && (<Badge variant="outline" className="text-[10px] border-border/40 gap-1 shrink-0"><Target className="w-3 h-3" /> {selectedICP.name}</Badge>)}
             </div>
           </div>
         )}
       </div>
 
       {/* Filter tabs */}
-      <div className="inline-flex gap-1 p-1 rounded-lg bg-muted/50 border border-border/30">
+      <div className="inline-flex gap-0 border border-foreground">
         {([
           { value: 'prospect' as FilterTab, label: 'Prospect', emoji: '👤', count: pCount },
           { value: 'entreprise' as FilterTab, label: 'Entreprise', emoji: '🏢', count: eCount },
         ]).map((tab) => (
           <button key={tab.value} onClick={() => setFilterTab(tab.value)}
-            className={cn(
-              "flex items-center gap-1.5 h-8 px-3 text-xs font-semibold rounded-md transition-all duration-200",
-              filterTab === tab.value
-                ? "bg-background text-foreground shadow-sm"
-                : "text-muted-foreground hover:text-foreground"
-            )}>
+             className={cn(
+               "flex items-center gap-1.5 h-8 px-3 text-[10px] font-medium uppercase tracking-wider transition-all duration-200",
+               filterTab === tab.value
+                 ? "bg-brutal-accent text-foreground"
+                 : "bg-background text-foreground hover:bg-muted"
+             )}>
             <span>{tab.emoji}</span><span>{tab.label}</span>
             {tab.count > 0 && (
-              <span className={cn("text-[9px] px-1.5 py-0.5 rounded-full font-bold",
-                filterTab === tab.value ? "bg-foreground text-background" : "bg-muted-foreground/20 text-muted-foreground"
-              )}>{tab.count}</span>
+               <span className={cn("text-[9px] px-1.5 py-0.5 font-bold",
+                 filterTab === tab.value ? "bg-foreground text-background" : "bg-muted-foreground/20 text-muted-foreground"
+               )}>{tab.count}</span>
             )}
           </button>
         ))}
@@ -792,9 +792,9 @@ export function ProspectSearch({ selectedICP, onSelectICP, onResults, searching,
 
       {/* Action buttons */}
       <div className="flex gap-2 pt-2">
-        <Button onClick={() => { handleSearch(); setFiltersOpen(false); }} disabled={searching || !hasFilters}
-          className="flex-1 rounded-lg bg-gradient-to-r from-[hsl(var(--skalr-purple))] to-[hsl(var(--skalr-pink))] hover:opacity-90 text-white border-0 shadow-md transition-all">
-          {searching ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Search className="w-4 h-4 mr-2" />}
+         <Button onClick={() => { handleSearch(); setFiltersOpen(false); }} disabled={searching || !hasFilters}
+           className="flex-1 bg-foreground text-background hover:bg-foreground/90 border border-foreground transition-all">
+           {searching ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Search className="w-4 h-4 mr-2" />}
           {searching ? 'Recherche...' : 'Rechercher'}
         </Button>
       </div>
@@ -810,13 +810,13 @@ export function ProspectSearch({ selectedICP, onSelectICP, onResults, searching,
       <div className="lg:hidden">
         <Sheet open={filtersOpen} onOpenChange={setFiltersOpen}>
           <SheetTrigger asChild>
-            <Button variant="outline" className="w-full gap-2 rounded-xl border-border/60 overflow-hidden">
+            <Button variant="outline" className="w-full gap-2 border-foreground overflow-hidden">
               <SlidersHorizontal className="w-4 h-4 shrink-0" />
               <span className="shrink-0">Filtres de recherche</span>
               {(pCount + eCount) > 0 && (
-                <Badge variant="secondary" className="text-[10px] rounded-full">
-                  {pCount + eCount}
-                </Badge>
+                 <Badge variant="secondary" className="text-[10px]">
+                   {pCount + eCount}
+                 </Badge>
               )}
             </Button>
           </SheetTrigger>

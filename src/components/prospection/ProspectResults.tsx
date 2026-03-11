@@ -85,7 +85,7 @@ function CompanyLogo({ companyName, website }: { companyName?: string; website?:
     <img
       src={logos[logoIndex]}
       alt=""
-      className="w-4 h-4 rounded-sm border border-border/30 object-contain bg-background shrink-0"
+      className="w-4 h-4 border border-border/30 object-contain bg-background shrink-0"
       onError={() => setLogoIndex((prev) => (prev < logos.length - 1 ? prev + 1 : prev))}
       loading="lazy"
       referrerPolicy="no-referrer"
@@ -121,21 +121,21 @@ function ProspectCard({ prospect, index }: { prospect: ProspectProfile; index: n
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3, delay: Math.min(index * 0.04, 0.4) }}
-      className="group relative rounded-xl border border-border/60 bg-card hover:border-border hover:shadow-md transition-all duration-200"
+      className="group relative border border-foreground bg-card hover:bg-muted/30 transition-all duration-200"
       style={{ wordBreak: 'break-word' }}
     >
       <div className="p-3 sm:p-4">
         <div className="relative flex items-start gap-3 sm:gap-4 min-w-0 w-full">
           {/* Avatar */}
           <div className="relative shrink-0 hidden sm:block">
-            <Avatar className="w-12 h-12 border-2 border-border/40 shadow-sm ring-2 ring-background">
+            <Avatar className="w-12 h-12 border border-foreground">
               <AvatarImage src={avatarUrl} alt={displayName} className="object-cover" onError={fallbackToNextAvatar} />
-              <AvatarFallback className="bg-gradient-to-br from-[hsl(var(--skalr-purple)/0.15)] to-[hsl(var(--skalr-pink)/0.15)] text-foreground text-sm font-semibold">
+              <AvatarFallback className="bg-muted text-foreground text-sm font-semibold">
                 {initials}
               </AvatarFallback>
             </Avatar>
             {prospect.score !== undefined && prospect.score >= 80 && (
-              <div className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-emerald-500 flex items-center justify-center border-2 border-background">
+              <div className="absolute -bottom-1 -right-1 w-5 h-5 bg-emerald-500 flex items-center justify-center border-2 border-background">
                 <Check className="w-2.5 h-2.5 text-white" />
               </div>
             )}
@@ -149,17 +149,17 @@ function ProspectCard({ prospect, index }: { prospect: ProspectProfile; index: n
                 <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap min-w-0 max-w-full">
                   {/* Mobile avatar */}
                   <div className="relative shrink-0 sm:hidden">
-                    <Avatar className="w-8 h-8 border border-border/40 shadow-sm">
+                    <Avatar className="w-8 h-8 border border-foreground">
                       <AvatarImage src={avatarUrl} alt={displayName} className="object-cover" onError={fallbackToNextAvatar} />
-                      <AvatarFallback className="bg-gradient-to-br from-[hsl(var(--skalr-purple)/0.15)] to-[hsl(var(--skalr-pink)/0.15)] text-foreground text-xs font-medium">
+                      <AvatarFallback className="bg-muted text-foreground text-xs font-medium">
                         {initials}
                       </AvatarFallback>
                     </Avatar>
                   </div>
                   <h3 className="font-semibold text-foreground text-sm sm:text-[15px] leading-tight break-words sm:truncate">{displayName}</h3>
                   {prospect.score !== undefined && (
-                    <Badge variant="outline" className={cn(
-                      "text-[10px] shrink-0 font-bold tabular-nums rounded-full px-2",
+                     <Badge variant="outline" className={cn(
+                      "text-[10px] shrink-0 font-bold tabular-nums px-2",
                       prospect.score >= 80 ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/30" :
                       prospect.score >= 60 ? "bg-amber-500/10 text-amber-600 border-amber-500/30" :
                       "bg-muted text-muted-foreground border-border/50"
@@ -168,8 +168,8 @@ function ProspectCard({ prospect, index }: { prospect: ProspectProfile; index: n
                     </Badge>
                   )}
                   {prospect.source && (
-                    <Badge className={cn(
-                      "text-[9px] border gap-0.5 px-1.5 py-0 rounded-full",
+                     <Badge className={cn(
+                      "text-[9px] border gap-0.5 px-1.5 py-0",
                       prospect.source === 'apollo'
                         ? "bg-orange-500/10 text-orange-600 border-orange-500/30"
                         : "bg-violet-500/10 text-violet-600 border-violet-500/30"
@@ -185,7 +185,7 @@ function ProspectCard({ prospect, index }: { prospect: ProspectProfile; index: n
                 {prospect.linkedin_url && (
                   <Tooltip>
                     <TooltipTrigger asChild>
-                      <Button variant="ghost" size="sm" className="h-7 w-7 p-0 rounded-lg" asChild>
+                      <Button variant="ghost" size="sm" className="h-7 w-7 p-0" asChild>
                         <a href={prospect.linkedin_url} target="_blank" rel="noopener noreferrer">
                           <ExternalLink className="w-3.5 h-3.5" />
                         </a>
@@ -206,17 +206,17 @@ function ProspectCard({ prospect, index }: { prospect: ProspectProfile; index: n
             {(signals?.job_change || signals?.recently_funded || signals?.hiring) && (
               <div className="flex flex-wrap gap-1.5 mt-2">
                 {signals?.job_change && (
-                  <Badge className="text-[10px] bg-blue-500/10 text-blue-600 border-blue-500/20 border rounded-full gap-1 px-2 py-0.5">
+                  <Badge className="text-[10px] bg-blue-500/10 text-blue-600 border-blue-500/20 border gap-1 px-2 py-0.5">
                     <Zap className="w-2.5 h-2.5" /> Nouveau poste
                   </Badge>
                 )}
                 {signals?.recently_funded && (
-                  <Badge className="text-[10px] bg-emerald-500/10 text-emerald-600 border-emerald-500/20 border rounded-full gap-1 px-2 py-0.5">
+                  <Badge className="text-[10px] bg-emerald-500/10 text-emerald-600 border-emerald-500/20 border gap-1 px-2 py-0.5">
                     <TrendingUp className="w-2.5 h-2.5" /> Levée récente
                   </Badge>
                 )}
                 {signals?.hiring && (
-                  <Badge className="text-[10px] bg-amber-500/10 text-amber-600 border-amber-500/20 border rounded-full gap-1 px-2 py-0.5">
+                  <Badge className="text-[10px] bg-amber-500/10 text-amber-600 border-amber-500/20 border gap-1 px-2 py-0.5">
                     📢 Recrute
                   </Badge>
                 )}
@@ -265,10 +265,10 @@ function ProspectCard({ prospect, index }: { prospect: ProspectProfile; index: n
             {prospect.skills && prospect.skills.length > 0 && (
               <div className="flex flex-wrap gap-1 mt-2.5">
                 {prospect.skills.slice(0, 4).map((skill, i) => (
-                  <Badge key={i} variant="outline" className="text-[9px] border-border/50 font-normal px-2 py-0.5 rounded-full bg-muted/30">{skill}</Badge>
+                  <Badge key={i} variant="outline" className="text-[9px] border-border/50 font-normal px-2 py-0.5 bg-muted/30">{skill}</Badge>
                 ))}
                 {prospect.skills.length > 4 && (
-                  <Badge variant="outline" className="text-[9px] border-border/50 font-normal px-2 py-0.5 rounded-full">+{prospect.skills.length - 4}</Badge>
+                  <Badge variant="outline" className="text-[9px] border-border/50 font-normal px-2 py-0.5">+{prospect.skills.length - 4}</Badge>
                 )}
               </div>
             )}
@@ -304,7 +304,7 @@ function ProspectCard({ prospect, index }: { prospect: ProspectProfile; index: n
         <motion.div
           initial={{ opacity: 0, height: 0 }}
           animate={{ opacity: 1, height: 'auto' }}
-          className="border-t border-border/40 px-4 py-3 sm:ml-[60px] space-y-3"
+          className="border-t border-foreground/20 px-4 py-3 sm:ml-[60px] space-y-3"
         >
           {prospect.experience && prospect.experience.length > 0 && (
             <div>
@@ -314,7 +314,7 @@ function ProspectCard({ prospect, index }: { prospect: ProspectProfile; index: n
               <div className="space-y-1.5">
                 {prospect.experience.map((exp, i) => (
                   <div key={i} className="flex items-start gap-2">
-                    <div className="w-1.5 h-1.5 rounded-full bg-gradient-to-br from-[hsl(var(--skalr-purple))] to-[hsl(var(--skalr-pink))] mt-1.5 shrink-0" />
+                    <div className="w-1.5 h-1.5 bg-foreground mt-1.5 shrink-0" />
                     <div className="text-xs">
                       <span className="font-medium text-foreground">{exp.title}</span>
                       {exp.company && <span className="text-muted-foreground"> · {exp.company}</span>}
@@ -337,7 +337,7 @@ function ProspectCard({ prospect, index }: { prospect: ProspectProfile; index: n
               <div className="space-y-1.5">
                 {prospect.education.map((edu, i) => (
                   <div key={i} className="flex items-start gap-2">
-                    <div className="w-1.5 h-1.5 rounded-full bg-gradient-to-br from-[hsl(var(--skalr-blue))] to-[hsl(var(--skalr-cyan))] mt-1.5 shrink-0" />
+                    <div className="w-1.5 h-1.5 bg-foreground mt-1.5 shrink-0" />
                     <div className="text-xs">
                       <span className="font-medium text-foreground">{edu.school}</span>
                       {edu.degree && <span className="text-muted-foreground"> — {edu.degree}</span>}
@@ -360,15 +360,15 @@ interface ProspectResultsProps {
 
 export function ProspectResults({ results, searching }: ProspectResultsProps) {
   return (
-    <div className="rounded-xl border border-border/60 bg-card flex w-full max-w-full min-w-0 flex-col lg:h-full overflow-hidden">
+    <div className="border border-foreground bg-card flex w-full max-w-full min-w-0 flex-col lg:h-full overflow-hidden">
       {/* HEADER */}
-      <div className="flex items-center gap-3 px-4 py-3 border-b border-border/40 shrink-0 min-w-0 bg-muted/30">
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[hsl(var(--skalr-purple))] to-[hsl(var(--skalr-pink))] flex items-center justify-center">
-            <Search className="w-4 h-4 text-white" />
-          </div>
+       <div className="flex items-center gap-3 px-4 py-3 border-b border-foreground shrink-0 min-w-0">
+         <div className="flex items-center gap-2">
+           <div className="w-8 h-8 bg-foreground text-background flex items-center justify-center">
+             <Search className="w-4 h-4" />
+           </div>
           <div>
-            <h3 className="text-sm font-semibold text-foreground">Résultats</h3>
+            <h3 className="text-sm font-semibold text-foreground uppercase tracking-wider">Résultats</h3>
             {results.length > 0 && (
               <p className="text-[11px] text-muted-foreground">
                 <span className="font-semibold text-foreground">{results.length}</span> prospect{results.length > 1 ? 's' : ''}
@@ -383,10 +383,10 @@ export function ProspectResults({ results, searching }: ProspectResultsProps) {
       <div className="flex-1 overflow-y-auto no-scrollbar p-3 space-y-2">
         {results.length === 0 && !searching && (
           <div className="text-center py-16 px-4">
-            <div className="w-16 h-16 rounded-2xl bg-muted/50 flex items-center justify-center mx-auto mb-4">
+            <div className="w-16 h-16 bg-muted/50 flex items-center justify-center mx-auto mb-4">
               <span className="text-3xl">👥</span>
             </div>
-            <h3 className="text-sm font-semibold text-foreground mb-1">Aucun prospect</h3>
+            <h3 className="text-sm font-semibold text-foreground mb-1 uppercase tracking-wider">Aucun prospect</h3>
             <p className="text-xs text-muted-foreground max-w-xs mx-auto">
               Utilisez les filtres à gauche pour lancer une recherche PDL + Apollo
             </p>
@@ -394,9 +394,9 @@ export function ProspectResults({ results, searching }: ProspectResultsProps) {
         )}
 
         {searching && results.length === 0 && (
-          <div className="text-center py-16 px-4">
-            <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-[hsl(var(--skalr-purple)/0.1)] to-[hsl(var(--skalr-pink)/0.1)] flex items-center justify-center mx-auto mb-4">
-              <Loader2 className="w-7 h-7 animate-spin text-[hsl(var(--skalr-purple))]" />
+           <div className="text-center py-16 px-4">
+             <div className="w-16 h-16 bg-muted/50 flex items-center justify-center mx-auto mb-4">
+               <Loader2 className="w-7 h-7 animate-spin text-foreground" />
             </div>
             <h3 className="text-sm font-semibold text-foreground mb-1">Recherche en cours…</h3>
             <p className="text-xs text-muted-foreground">Interrogation de PDL & Apollo</p>
