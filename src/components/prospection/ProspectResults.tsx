@@ -394,9 +394,9 @@ export function ProspectResults({ results, searching }: ProspectResultsProps) {
         )}
 
         {searching && results.length === 0 && (
-          <div className="text-center py-16 px-4">
-            <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-[hsl(var(--skalr-purple)/0.1)] to-[hsl(var(--skalr-pink)/0.1)] flex items-center justify-center mx-auto mb-4">
-              <Loader2 className="w-7 h-7 animate-spin text-[hsl(var(--skalr-purple))]" />
+           <div className="text-center py-16 px-4">
+             <div className="w-16 h-16 bg-muted/50 flex items-center justify-center mx-auto mb-4">
+               <Loader2 className="w-7 h-7 animate-spin text-foreground" />
             </div>
             <h3 className="text-sm font-semibold text-foreground mb-1">Recherche en cours…</h3>
             <p className="text-xs text-muted-foreground">Interrogation de PDL & Apollo</p>
