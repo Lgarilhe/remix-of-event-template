@@ -1902,20 +1902,17 @@ async function generatePersonalizedMessage(supabase: any, enrollment: Record<str
 - NE DIS PAS "je reviens vers vous"
 - 200-400 caractères`;
       } else if (prevDirectMsgs.length === 1) {
-        msgType = 'RELANCE 1 (NOUVEL ANGLE)';
-        toneInstructions = `PREMIÈRE RELANCE. NE RÉPÈTE PAS le même pitch. Apporte un NOUVEL ANGLE:
-- Aspect technique différent, contexte d'équipe, avantage concret
-- Pas de culpabilisation
-- JAMAIS "suite à mon précédent message", "dernière tentative", "je ne veux pas insister", "la porte reste ouverte"
+        msgType = 'RELANCE 1';
+        toneInstructions = `PREMIÈRE RELANCE. Tu PEUX référencer ton précédent message.
+- Apporte un angle complémentaire ou renforce le pitch
+- Ton plus direct, familier
 - 200-350 caractères`;
       } else {
-        msgType = 'RELANCE 2 (NOUVEL ANGLE)';
-        toneInstructions = `DERNIÈRE RELANCE — MAIS JAMAIS DE TON "DERNIÈRE TENTATIVE".
-- Ce message doit être AUTONOME, comme un NOUVEAU premier contact avec un angle différent
-- ⛔ INTERDIT: "dernière tentative", "suite à mon précédent message", "je reviens vers vous", "je ne veux pas insister", "la porte reste ouverte"
-- ⛔ SUJET INTERDIT: "Suite à mon précédent message" — écris un sujet ORIGINAL et accrocheur lié au CONTENU
-- Propose un angle INÉDIT: impact business, stack technique, culture d'équipe, projet concret
-- 200-350 caractères, CTA non-engageant`;
+        msgType = 'RELANCE 2';
+        toneInstructions = `DEUXIÈME RELANCE. Tu PEUX référencer tes précédents messages.
+- Ton direct, un peu plus insistant mais jamais agressif
+- Propose un dernier angle ou un CTA concret (appel, café, etc.)
+- 200-350 caractères`;
       }
     }
 
