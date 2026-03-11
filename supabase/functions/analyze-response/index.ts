@@ -383,7 +383,7 @@ Analyse cette conversation et retourne le JSON.`;
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error("[analyze-response] Anthropic API error:", response.status, errorText);
+      console.error("[analyze-response] AI API error:", response.status, errorText);
       // Return fallback analysis instead of crashing
       return new Response(
         JSON.stringify({ 
