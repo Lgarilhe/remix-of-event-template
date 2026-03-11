@@ -627,18 +627,22 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
 
       const newChats = data.chats as Chat[] || [];
       
-      // Merge with existing chats, deduplicating by ID
+      // Merge with existing chats, deduplicating by ID, then re-merge by candidate
       setChats(prev => {
-        const existingIds = new Set(prev.map(c => c.id));
+        // Expand previously merged chats back to their originals for proper re-merge
+        const allExisting: Chat[] = [];
+        for (const c of prev) {
+          if (c._mergedChatIds && c._mergedChatIds.length > 1) {
+            // We only have the primary — keep it as-is since we don't have the originals anymore
+            allExisting.push({ ...c, _mergedChatIds: undefined });
+          } else {
+            allExisting.push(c);
+          }
+        }
+        const existingIds = new Set(allExisting.map(c => c.id));
         const uniqueNew = newChats.filter(c => !existingIds.has(c.id));
-        const merged = [...prev, ...uniqueNew];
-        // Sort by timestamp
-        merged.sort((a, b) => {
-          const timeA = new Date(a.timestamp || '').getTime();
-          const timeB = new Date(b.timestamp || '').getTime();
-          return timeB - timeA;
-        });
-        return merged;
+        const combined = [...allExisting, ...uniqueNew];
+        return mergeChatsByCandidate(combined);
       });
       
       // Update cursors
