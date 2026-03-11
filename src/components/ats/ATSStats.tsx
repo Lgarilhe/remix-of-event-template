@@ -18,9 +18,10 @@ const STAT_CONFIG: { key: string; label: string; icon: typeof Users; suffix?: st
 
 function isContacted(c: ATSCandidate): boolean {
   if (['messaged', 'replied', 'interested', 'not_interested'].includes(c.outreachStatus || '')) return true;
-  if (['Contacté', 'Répondu'].includes(c.stage)) return true;
-  if (c.sequenceStatus && ['active', 'completed', 'replied'].includes(c.sequenceStatus)) return true;
-  if (c.source === 'inmail' && c.stage !== 'Nouveau') return true;
+  if (['Contacté', 'Répondu', 'Pré-qualif', 'CV envoyé', 'ITW en cours', 'Offre', 'Gagné'].includes(c.stage)) return true;
+  // Only count sequence as contacted if a message was actually sent (completed/replied), not just enrolled (active)
+  if (c.sequenceStatus && ['completed', 'replied'].includes(c.sequenceStatus)) return true;
+  if (c.source === 'inmail' && !['Nouveau'].includes(c.stage)) return true;
   return false;
 }
 
