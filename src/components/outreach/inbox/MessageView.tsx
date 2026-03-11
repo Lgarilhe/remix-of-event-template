@@ -204,7 +204,7 @@ export const MessageView: React.FC<MessageViewProps> = ({
         </div>
 
         {/* AI Panel toggle */}
-        {hasCandidateMessage && messages.length > 0 && (
+        {messages.length > 0 && (
           <button
             className={cn(
               "relative overflow-hidden h-8 px-2 md:px-3 text-xs font-medium uppercase tracking-wider border group shrink-0",
