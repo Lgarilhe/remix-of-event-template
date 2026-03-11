@@ -320,7 +320,7 @@ function VivierFilterBar({ searchInput, setSearchInput, onSearch, filters, updat
         </div>
       </div>
       <Select value={filters.source_base || 'all'} onValueChange={v => updateFilters({ source_base: v === 'all' ? null : v })}>
-        <SelectTrigger className="w-[140px] h-9 text-xs rounded-lg border-border/60"><SelectValue placeholder="Base" /></SelectTrigger>
+        <SelectTrigger className="w-[140px] h-9 text-xs border-border/60"><SelectValue placeholder="Base" /></SelectTrigger>
         <SelectContent>
           <SelectItem value="all">Toutes les bases</SelectItem>
           <SelectItem value="konekt">Konekt</SelectItem>
