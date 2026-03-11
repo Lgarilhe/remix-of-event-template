@@ -17,6 +17,8 @@ serve(async (req) => {
     if (!N8N_INSTANCE_URL) throw new Error("N8N_INSTANCE_URL not configured");
 
     const baseUrl = N8N_INSTANCE_URL.replace(/\/+$/, '');
+    const SUPABASE_URL = Deno.env.get("SUPABASE_URL") || "https://vprofpsxzmtndzbrscrq.supabase.co";
+    const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY") || Deno.env.get("SUPABASE_PUBLISHABLE_KEY") || "";
 
     // Delete old Skalr workflows
     const listRes = await fetch(`${baseUrl}/api/v1/workflows?limit=100`, {
@@ -30,194 +32,216 @@ serve(async (req) => {
             method: 'DELETE',
             headers: { 'X-N8N-API-KEY': N8N_API_KEY },
           });
-          console.log(`[n8n] Deleted old: ${w.id}`);
         }
       }
     }
 
-    // Simple workflow using only Code nodes (universally compatible)
     const workflowPayload = {
-      name: "📨 Skalr – Message d'approche candidat",
+      name: "🔍 Skalr – Screening candidat complet",
       nodes: [
-        // 1. Webhook trigger
+        // 1. WEBHOOK TRIGGER
         {
           parameters: {
             httpMethod: "POST",
-            path: "skalr-outreach",
+            path: "skalr-screen",
             responseMode: "lastNode",
             options: {},
           },
-          id: "a1b2c3d4-0001-4000-8000-000000000001",
+          id: "a1000001-0001-4000-8000-000000000001",
           name: "Réception demande",
           type: "n8n-nodes-base.webhook",
           typeVersion: 2,
           position: [260, 340],
-          webhookId: "skalr-outreach-v2",
+          webhookId: "skalr-screen-v1",
         },
-        // 2. Code node that does everything
+
+        // 2. MAIN CODE NODE — calls Skalr screen-candidate API
         {
           parameters: {
             jsCode: `/*
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  📨 GÉNÉRATEUR DE MESSAGE D'APPROCHE
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  🔍 SCREENING CANDIDAT COMPLET
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-  Ce nœud génère un message personnalisé 
-  pour contacter un candidat.
+  Ce nœud appelle l'API Skalr pour :
+  1. 📋 Enrichir le profil LinkedIn (via Unipile)
+  2. 📄 Lire la fiche de poste Notion
+  3. 🎯 Scorer le candidat par rapport au poste
+  4. ✉️ Générer un message d'approche personnalisé
 
-  🎨 TONS DISPONIBLES :
-  - "professionnel" (par défaut)
-  - "décontracté" 
-  - "direct"
+  ── PARAMÈTRES À ENVOYER ──
 
-  ✏️ POUR PERSONNALISER LES MESSAGES :
-  Modifiez les templates ci-dessous !
-  Les variables disponibles sont :
-  - nom        → Nom du candidat
-  - poste      → Poste actuel du candidat  
-  - job        → Titre du poste proposé
-  - entreprise → Nom de l'entreprise cliente
-  - skills     → Compétences clés
-  - lieu       → Localisation du poste
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  En body JSON du webhook :
+  {
+    "linkedin_url": "https://linkedin.com/in/john-doe",
+    "job_url": "https://notion.so/.../page-id"
+  }
+
+  Optionnel :
+  - "account_id": ID du compte LinkedIn Unipile
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 */
 
 const body = $input.first().json.body || $input.first().json;
-const candidate = body.candidate || {};
-const jobData = body.job || {};
 
-// ── Extraction des variables ──
-const nom = candidate.name || 'Candidat';
-const poste = candidate.headline || candidate.currentRole || '';
-const skills = (candidate.skills || []).slice(0, 4).join(', ');
-const job = jobData.title || 'notre opportunité';
-const entreprise = jobData.company || '';
-const lieu = jobData.location || '';
-const ton = body.tone || 'professionnel';
+const linkedinUrl = body.linkedin_url;
+const jobUrl = body.job_url;
+const accountId = body.account_id || '';
 
-// ── Validation ──
-if (!candidate.name) {
+if (!linkedinUrl || !jobUrl) {
   return [{
     json: {
       success: false,
-      error: "Le nom du candidat est requis"
+      error: "Paramètres manquants. Envoyez : linkedin_url + job_url",
+      exemple: {
+        linkedin_url: "https://www.linkedin.com/in/john-doe",
+        job_url: "https://www.notion.so/workspace/Mon-Poste-abc123..."
+      }
     }
   }];
 }
 
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// 👔 TEMPLATE PROFESSIONNEL
-// Modifiez ce texte pour personnaliser !
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-const msgPro = \`Bonjour \${nom},
+// ── Appel à l'API Skalr ──
+const SUPABASE_URL = "${SUPABASE_URL}";
+const SUPABASE_ANON_KEY = "${SUPABASE_ANON_KEY}";
 
-Je me permets de vous contacter car votre parcours\${poste ? ' en tant que ' + poste : ''} a retenu mon attention.
+try {
+  const response = await fetch(SUPABASE_URL + '/functions/v1/screen-candidate', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
+      'apikey': SUPABASE_ANON_KEY,
+    },
+    body: JSON.stringify({
+      linkedin_url: linkedinUrl,
+      job_url: jobUrl,
+      account_id: accountId,
+    }),
+  });
 
-Nous accompagnons actuellement\${entreprise ? ' ' + entreprise + ' dans' : ''} le recrutement d'un(e) \${job}\${lieu ? ' à ' + lieu : ''}.
+  const data = await response.json();
 
-\${skills ? 'Vos compétences en ' + skills + ' correspondent particulièrement aux critères recherchés.' : 'Votre profil correspond aux critères recherchés.'}
-
-Seriez-vous disponible pour un bref échange afin d'en discuter ?
-
-Cordialement\`;
-
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// 💬 TEMPLATE DÉCONTRACTÉ
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-const msgCasual = \`Salut \${nom} 👋
-
-Je suis tombé sur ton profil\${poste ? ' de ' + poste : ''} et franchement, ça matche bien avec un poste de \${job}\${entreprise ? ' chez ' + entreprise : ''}.
-
-\${skills ? 'Tes compétences en ' + skills + ' sont exactement ce qu\\'on recherche.' : ''}
-
-Ça te dirait qu'on en discute autour d'un café ☕ ?
-
-À bientôt !\`;
-
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// ⚡ TEMPLATE DIRECT
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-const msgDirect = \`\${nom},
-
-Nous recrutons un(e) \${job}\${entreprise ? ' pour ' + entreprise : ''}\${lieu ? ' à ' + lieu : ''}.
-
-Votre expérience\${poste ? ' en tant que ' + poste : ''} correspond.
-\${skills ? 'Compétences alignées : ' + skills + '.' : ''}
-
-Disponible pour 15 min cette semaine ?\`;
-
-// ── Sélection du bon template ──
-let message;
-if (ton === 'décontracté' || ton === 'casual') {
-  message = msgCasual;
-} else if (ton === 'direct') {
-  message = msgDirect;
-} else {
-  message = msgPro;
-}
-
-return [{
-  json: {
-    success: true,
-    message: message,
-    ton: ton,
-    candidat: nom,
-    poste_proposé: job
+  if (!response.ok || !data.success) {
+    return [{
+      json: {
+        success: false,
+        error: data.error || 'Erreur lors du screening',
+        status: response.status,
+      }
+    }];
   }
-}];`,
+
+  // ── Formater les résultats ──
+  const scoring = data.scoring || {};
+  const message = data.message || {};
+  const candidate = data.candidate || {};
+
+  // Emoji recommendation
+  const recEmoji = scoring.recommendation === 'go' ? '✅' : scoring.recommendation === 'maybe' ? '🟡' : '❌';
+
+  return [{
+    json: {
+      success: true,
+
+      // ── Résumé rapide ──
+      résumé: recEmoji + ' ' + candidate.name + ' → ' + scoring.score + '/100 (' + scoring.recommendation + ')',
+
+      // ── Détails candidat ──
+      candidat: {
+        nom: candidate.name,
+        titre: candidate.headline,
+        localisation: candidate.location,
+        compétences: (candidate.skills || []).join(', '),
+        nb_expériences: candidate.experienceCount,
+        profil_linkedin: candidate.profileUrl,
+      },
+
+      // ── Scoring ──
+      scoring: {
+        score: scoring.score,
+        recommandation: scoring.recommendation,
+        analyse: scoring.summary,
+        points_forts: scoring.strengths || [],
+        risques: scoring.concerns || [],
+        compétences_manquantes: scoring.missing_skills || [],
+        match_expérience: scoring.experience_match,
+      },
+
+      // ── Message d'approche ──
+      message_approche: {
+        objet: message.subject,
+        message: message.body,
+        éléments_personnalisés: message.personalization_points || [],
+      },
+
+      // ── Meta ──
+      poste: data.job?.title,
+      temps_traitement_ms: data.processingTimeMs,
+    }
+  }];
+
+} catch (fetchError) {
+  return [{
+    json: {
+      success: false,
+      error: 'Erreur réseau : ' + fetchError.message,
+    }
+  }];
+}`,
           },
-          id: "a1b2c3d4-0001-4000-8000-000000000002",
-          name: "Générer le message",
+          id: "a1000001-0001-4000-8000-000000000002",
+          name: "Screening IA",
           type: "n8n-nodes-base.code",
           typeVersion: 2,
-          position: [520, 340],
+          position: [540, 340],
         },
 
         // ── STICKY NOTES ──
         {
           parameters: {
-            content: "## 📥 Comment ça marche ?\n\nCe workflow reçoit les infos d'un candidat et d'un poste, puis génère un **message d'approche personnalisé**.\n\n### Données envoyées par Skalr :\n- **candidate.name** — Nom du candidat\n- **candidate.headline** — Poste actuel\n- **candidate.skills** — Compétences\n- **job.title** — Poste proposé\n- **job.company** — Entreprise\n- **job.location** — Lieu\n- **tone** — Ton du message",
-            width: 380,
-            height: 340,
+            content: "## 🔍 Screening candidat complet\n\nCe workflow permet de **screener un candidat** en 1 clic :\n\n1. **Enrichissement** du profil LinkedIn\n2. **Lecture** de la fiche de poste Notion\n3. **Scoring IA** (0-100 + go/maybe/skip)\n4. **Message d'approche** personnalisé\n\n### Comment l'utiliser ?\n\nEnvoyez un POST au webhook avec :\n```json\n{\n  \"linkedin_url\": \"https://linkedin.com/in/...\",\n  \"job_url\": \"https://notion.so/...\"\n}\n```\n\n### Résultat\nVous recevez le scoring complet + un message prêt à envoyer.",
+            width: 400,
+            height: 420,
             color: 4,
           },
-          id: "a1b2c3d4-0001-4000-8000-000000000010",
-          name: "Note 1",
+          id: "a1000001-0001-4000-8000-000000000010",
+          name: "Note - Introduction",
           type: "n8n-nodes-base.stickyNote",
           typeVersion: 1,
-          position: [180, -40],
+          position: [180, -120],
         },
         {
           parameters: {
-            content: "## ✏️ Personnaliser les messages\n\nCliquez sur le nœud **\"Générer le message\"** pour modifier les templates.\n\nChaque template est clairement séparé :\n- 👔 **Professionnel** — Vouvoiement, formel\n- 💬 **Décontracté** — Tutoiement, émojis\n- ⚡ **Direct** — Court et factuel\n\n### 💡 Pour ajouter un nouveau ton :\n1. Copiez un des blocs template\n2. Donnez-lui un nom\n3. Ajoutez une condition dans la sélection\n\n**Pas besoin de coder !** Changez juste le texte.",
-            width: 380,
-            height: 380,
-            color: 1,
-          },
-          id: "a1b2c3d4-0001-4000-8000-000000000011",
-          name: "Note 2",
-          type: "n8n-nodes-base.stickyNote",
-          typeVersion: 1,
-          position: [460, -80],
-        },
-        {
-          parameters: {
-            content: "## 🧪 Tester le workflow\n\n1. Activez le workflow (toggle en haut)\n2. Envoyez un POST à l'URL du webhook avec :\n```json\n{\n  \"candidate\": {\n    \"name\": \"Marie Dupont\",\n    \"headline\": \"Dev Full-Stack\",\n    \"skills\": [\"React\", \"Node.js\"]\n  },\n  \"job\": {\n    \"title\": \"Lead Developer\",\n    \"company\": \"TechCorp\"\n  },\n  \"tone\": \"professionnel\"\n}\n```\n3. Vérifiez la réponse ✅",
-            width: 340,
-            height: 380,
+            content: "## 🧪 Exemple de test\n\nDans n8n, cliquez **\"Test workflow\"** puis envoyez :\n\n**URL** : le webhook URL affiché ci-dessus\n**Méthode** : POST\n**Body** :\n```json\n{\n  \"linkedin_url\": \"https://www.linkedin.com/in/marie-dupont\",\n  \"job_url\": \"ID-ou-URL-de-votre-page-Notion\"\n}\n```\n\n### 💡 Où trouver l'URL Notion ?\nOuvrez le poste dans Notion → bouton ··· → \"Copier le lien\"\n\n### 💡 account_id ?\nOptionnel. Si vous avez plusieurs comptes LinkedIn connectés, précisez lequel utiliser.",
+            width: 400,
+            height: 400,
             color: 6,
           },
-          id: "a1b2c3d4-0001-4000-8000-000000000012",
-          name: "Note 3",
+          id: "a1000001-0001-4000-8000-000000000011",
+          name: "Note - Test",
           type: "n8n-nodes-base.stickyNote",
           typeVersion: 1,
-          position: [860, -40],
+          position: [600, -120],
+        },
+        {
+          parameters: {
+            content: "## 🚀 Idées d'extension\n\nVous pouvez ajouter des nœuds après le screening :\n\n- 📧 **Email** → Envoyer le résultat par email\n- 💬 **Slack** → Poster dans un channel #recrutement\n- 📊 **Google Sheets** → Logger les résultats\n- 🔄 **IF** → Si score > 70, envoyer le message auto\n- 📝 **Notion** → Créer une entrée dans une base\n\nIl suffit de connecter un nouveau nœud à la sortie du \"Screening IA\" !",
+            width: 360,
+            height: 340,
+            color: 1,
+          },
+          id: "a1000001-0001-4000-8000-000000000012",
+          name: "Note - Extensions",
+          type: "n8n-nodes-base.stickyNote",
+          typeVersion: 1,
+          position: [1020, -120],
         },
       ],
 
       connections: {
         "Réception demande": {
-          main: [[{ node: "Générer le message", type: "main", index: 0 }]],
+          main: [[{ node: "Screening IA", type: "main", index: 0 }]],
         },
       },
 
@@ -241,7 +265,7 @@ return [{
       throw new Error(`n8n API [${response.status}]: ${JSON.stringify(data)}`);
     }
 
-    // Try to activate
+    // Activate
     const actRes = await fetch(`${baseUrl}/api/v1/workflows/${data.id}/activate`, {
       method: 'POST',
       headers: { 'X-N8N-API-KEY': N8N_API_KEY },
