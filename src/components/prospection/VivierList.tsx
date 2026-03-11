@@ -470,7 +470,7 @@ function ContactsView() {
         )}
         {enrichments.size > 0 && (
           <Select value={enrichFilter} onValueChange={(v: any) => setEnrichFilter(v)}>
-            <SelectTrigger className="w-[160px] h-8 text-xs rounded-lg border-border/60"><SelectValue /></SelectTrigger>
+            <SelectTrigger className="w-[160px] h-8 text-xs border-border/60"><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Tous les contacts</SelectItem>
               <SelectItem value="relevant">Pertinents uniquement</SelectItem>
