@@ -73,16 +73,32 @@ serve(async (req) => {
     // Build upsert payload with embedding as a pgvector-compatible string
     const embeddingStr = `[${embedding.join(',')}]`;
 
-    const { error: upsertError } = await supabase
-      .from(table)
-      .upsert(
-        { [idCol]: entityId, embedding: embeddingStr },
-        { onConflict: idCol }
-      );
+    // Retry upsert up to 2 times to handle transient 502s
+    let lastError: string | null = null;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const { error: upsertError } = await supabase
+        .from(table)
+        .upsert(
+          { [idCol]: entityId, embedding: embeddingStr },
+          { onConflict: idCol }
+        );
 
-    if (upsertError) {
-      console.error('Upsert error:', upsertError);
-      throw new Error(`DB upsert failed: ${upsertError.message}`);
+      if (!upsertError) {
+        lastError = null;
+        break;
+      }
+
+      const msg = typeof upsertError.message === 'string' && upsertError.message.includes('<!DOCTYPE')
+        ? `Supabase returned 502 (attempt ${attempt + 1}/3)`
+        : upsertError.message;
+      console.warn(`Upsert attempt ${attempt + 1} failed:`, msg);
+      lastError = msg;
+
+      if (attempt < 2) await new Promise(r => setTimeout(r, 1500 * (attempt + 1)));
+    }
+
+    if (lastError) {
+      throw new Error(`DB upsert failed after retries: ${lastError}`);
     }
 
     return new Response(
