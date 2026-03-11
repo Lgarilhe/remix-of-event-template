@@ -36,7 +36,7 @@ export function getStepMessageType(
     if (prevInMails.length === 0) {
       return { label: 'InMail initial (formel)', shortLabel: 'InMail initial', color: 'bg-blue-50 text-blue-700' };
     }
-    return { label: 'InMail relance (nouvel angle)', shortLabel: 'InMail relance', color: 'bg-blue-50 text-blue-700' };
+    return { label: 'InMail relance', shortLabel: 'InMail relance', color: 'bg-blue-50 text-blue-700' };
   }
 
   // message or smart_message
