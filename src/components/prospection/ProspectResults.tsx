@@ -121,7 +121,7 @@ function ProspectCard({ prospect, index }: { prospect: ProspectProfile; index: n
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3, delay: Math.min(index * 0.04, 0.4) }}
-      className="group relative rounded-xl border border-border/60 bg-card hover:border-border hover:shadow-md transition-all duration-200"
+      className="group relative border border-foreground bg-card hover:bg-muted/30 transition-all duration-200"
       style={{ wordBreak: 'break-word' }}
     >
       <div className="p-3 sm:p-4">
