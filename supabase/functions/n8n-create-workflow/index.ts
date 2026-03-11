@@ -35,7 +35,7 @@ serve(async (req) => {
     // ── CREATE a polished, non-dev-friendly workflow ──
     const workflowPayload = {
       name: "📨 Skalr – Message d'approche candidat",
-      tags: [],
+      
       nodes: [
         // ── 1. WEBHOOK TRIGGER ──
         {
