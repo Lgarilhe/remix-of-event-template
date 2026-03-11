@@ -102,7 +102,7 @@ function CompanyDetailSheet({ company, open, onOpenChange }: { company: VivierCo
                             {ct.email && <span> · {ct.email}</span>}
                           </div>
                         </div>
-                        {ct.contact_type && <Badge variant="outline" className="text-[9px] shrink-0 rounded-full">{ct.contact_type}</Badge>}
+                        {ct.contact_type && <Badge variant="outline" className="text-[9px] shrink-0">{ct.contact_type}</Badge>}
                       </div>
                     ))}
                   </div>
