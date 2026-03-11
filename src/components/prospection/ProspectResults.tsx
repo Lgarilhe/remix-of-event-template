@@ -158,8 +158,8 @@ function ProspectCard({ prospect, index }: { prospect: ProspectProfile; index: n
                   </div>
                   <h3 className="font-semibold text-foreground text-sm sm:text-[15px] leading-tight break-words sm:truncate">{displayName}</h3>
                   {prospect.score !== undefined && (
-                    <Badge variant="outline" className={cn(
-                      "text-[10px] shrink-0 font-bold tabular-nums rounded-full px-2",
+                     <Badge variant="outline" className={cn(
+                      "text-[10px] shrink-0 font-bold tabular-nums px-2",
                       prospect.score >= 80 ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/30" :
                       prospect.score >= 60 ? "bg-amber-500/10 text-amber-600 border-amber-500/30" :
                       "bg-muted text-muted-foreground border-border/50"
