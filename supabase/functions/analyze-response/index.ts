@@ -360,7 +360,7 @@ Analyse cette conversation et retourne le JSON.`;
     const timeout = setTimeout(() => controller.abort(), 55000);
     let response: Response;
     try {
-      response = await fetch("https://api.lovable.dev/v1/chat/completions", {
+      response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
         method: "POST",
         headers: {
           "Authorization": `Bearer ${LOVABLE_API_KEY}`,
