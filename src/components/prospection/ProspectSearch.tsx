@@ -194,9 +194,9 @@ function FilterSection({ label, icon, hint, children }: { label: string; icon?: 
 function ChipToggle({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
   return (
     <button onClick={onClick} className={cn(
-      "px-3 py-1.5 text-xs rounded-full border transition-all duration-200",
+      "px-3 py-1.5 text-xs border transition-all duration-200",
       active
-        ? "bg-foreground text-background border-foreground shadow-sm"
+        ? "bg-foreground text-background border-foreground"
         : "bg-background text-foreground/70 border-border hover:border-foreground/30 hover:bg-muted/50"
     )}>{label}</button>
   );
