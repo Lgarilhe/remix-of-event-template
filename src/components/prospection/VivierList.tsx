@@ -257,7 +257,7 @@ function EnrichedContactSheet({ contact, enrichment, open, onOpenChange, onCopyM
                     <Badge variant="outline" className="text-[9px]">{enrichment.message_status}</Badge>
                   )}
                 </div>
-                <Button variant="outline" size="sm" onClick={handleCopy} className="h-7 text-[10px] gap-1 rounded-lg">
+                <Button variant="outline" size="sm" onClick={handleCopy} className="h-7 text-[10px] gap-1">
                   {copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
                   {copied ? 'Copié' : 'Copier'}
                 </Button>
