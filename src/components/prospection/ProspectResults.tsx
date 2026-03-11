@@ -360,7 +360,7 @@ interface ProspectResultsProps {
 
 export function ProspectResults({ results, searching }: ProspectResultsProps) {
   return (
-    <div className="rounded-xl border border-border/60 bg-card flex w-full max-w-full min-w-0 flex-col lg:h-full overflow-hidden">
+    <div className="border border-foreground bg-card flex w-full max-w-full min-w-0 flex-col lg:h-full overflow-hidden">
       {/* HEADER */}
       <div className="flex items-center gap-3 px-4 py-3 border-b border-border/40 shrink-0 min-w-0 bg-muted/30">
         <div className="flex items-center gap-2">
