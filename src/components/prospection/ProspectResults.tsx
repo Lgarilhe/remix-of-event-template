@@ -130,7 +130,7 @@ function ProspectCard({ prospect, index }: { prospect: ProspectProfile; index: n
           <div className="relative shrink-0 hidden sm:block">
             <Avatar className="w-12 h-12 border border-foreground">
               <AvatarImage src={avatarUrl} alt={displayName} className="object-cover" onError={fallbackToNextAvatar} />
-              <AvatarFallback className="bg-gradient-to-br from-[hsl(var(--skalr-purple)/0.15)] to-[hsl(var(--skalr-pink)/0.15)] text-foreground text-sm font-semibold">
+              <AvatarFallback className="bg-muted text-foreground text-sm font-semibold">
                 {initials}
               </AvatarFallback>
             </Avatar>
