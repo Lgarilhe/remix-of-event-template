@@ -337,7 +337,7 @@ function ProspectCard({ prospect, index }: { prospect: ProspectProfile; index: n
               <div className="space-y-1.5">
                 {prospect.education.map((edu, i) => (
                   <div key={i} className="flex items-start gap-2">
-                    <div className="w-1.5 h-1.5 rounded-full bg-gradient-to-br from-[hsl(var(--skalr-blue))] to-[hsl(var(--skalr-cyan))] mt-1.5 shrink-0" />
+                    <div className="w-1.5 h-1.5 bg-foreground mt-1.5 shrink-0" />
                     <div className="text-xs">
                       <span className="font-medium text-foreground">{edu.school}</span>
                       {edu.degree && <span className="text-muted-foreground"> — {edu.degree}</span>}
