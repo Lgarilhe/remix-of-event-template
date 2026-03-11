@@ -97,33 +97,32 @@ export default function Prospection() {
           </div>
 
           {/* Tabs */}
-          <motion.div
-            initial={{ opacity: 0, y: 6 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.3, delay: 0.1 }}
-            className="mb-4 md:mb-6"
-          >
-            <div className="inline-flex gap-1 p-1 rounded-xl bg-muted/60 backdrop-blur-sm border border-border/50">
-              {tabs.map((tab) => {
+          <div className="mb-3 md:mb-5">
+            <div className="flex gap-0 w-full min-w-0 overflow-x-auto no-scrollbar">
+              {tabs.map((tab, index) => {
                 const isActive = activeTab === tab.value;
                 return (
                   <button
                     key={tab.value}
                     onClick={() => setActiveTab(tab.value)}
                     className={cn(
-                      "relative flex items-center gap-1.5 h-9 px-4 text-xs font-semibold rounded-lg transition-all duration-200",
+                      "relative overflow-hidden flex items-center justify-center gap-1 h-[34px] px-2 sm:px-4 text-[10px] sm:text-xs font-medium uppercase tracking-wider border border-foreground transition-colors duration-200 group shrink-0",
+                      index > 0 && "border-l-0",
                       isActive
-                        ? "bg-background text-foreground shadow-sm"
-                        : "text-muted-foreground hover:text-foreground hover:bg-background/50"
+                        ? "bg-brutal-accent text-foreground"
+                        : "bg-background text-foreground"
                     )}
                   >
-                    <span className="text-sm">{tab.emoji}</span>
-                    <span className="whitespace-nowrap">{tab.label}</span>
+                    <span className="text-sm shrink-0 relative z-10">{tab.emoji}</span>
+                    <span className="relative z-10 whitespace-nowrap">{tab.label}</span>
+                    {!isActive && (
+                      <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out"></span>
+                    )}
                   </button>
                 );
               })}
             </div>
-          </motion.div>
+          </div>
 
           {/* Content */}
           <AnimatePresence mode="wait">
