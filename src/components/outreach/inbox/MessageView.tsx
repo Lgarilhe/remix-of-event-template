@@ -146,6 +146,11 @@ export const MessageView: React.FC<MessageViewProps> = ({
   const jobInfo = getChatJobInfo(selectedChat, enrollmentsMap);
   const hasCandidateMessage = messages.some(m => !m.is_sender);
 
+  // Find the full job data for the current conversation's job
+  const currentJobData = jobInfo?.job_id
+    ? availableJobs.find(j => j.id === jobInfo.job_id)
+    : undefined;
+
   const aiContext = {
     recipientName: displayName,
     recipientHeadline: headline,
@@ -155,6 +160,7 @@ export const MessageView: React.FC<MessageViewProps> = ({
       timestamp: m.timestamp,
     })),
     jobContext: jobInfo ? { title: jobInfo.job_title || 'Poste non spécifié' } : undefined,
+    currentJobData: currentJobData || undefined,
     profileData: {
       name: displayName,
       headline: headline,
