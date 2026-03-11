@@ -325,7 +325,11 @@ FORMAT DE SORTIE JSON:
   "summary": "Résumé en 1 phrase de la situation",
   "qualificationQuestions": ["Question stratégique à poser pour qualifier"],
   "replySuggestions": [
-    {"text": "...", "type": "quick|standard|detailed", "tone": "positive|negative", "intent_match": "..."}
+    {"text": "Réponse courte positive ~15 mots", "type": "quick", "tone": "positive", "intent_match": "Engagement rapide"},
+    {"text": "Réponse moyenne positive ~30 mots", "type": "standard", "tone": "positive", "intent_match": "Avancer la discussion"},
+    {"text": "Réponse détaillée positive ~50 mots avec question de qualification", "type": "detailed", "tone": "positive", "intent_match": "Qualification"},
+    {"text": "Clôture polie ~20 mots, garder le contact pour le futur", "type": "standard", "tone": "negative", "intent_match": "Clôture polie"},
+    {"text": "Désengagement ferme mais courtois ~15 mots", "type": "quick", "tone": "negative", "intent_match": "Fin de conversation"}
   ],
   "jobMatches": [
     {"jobId": "UUID EXACT", "jobTitle": "Titre exact", "clientName": "...", "matchScore": 0-100, "matchingSkills": [], "missingSkills": [], "recommendation": "go|maybe|skip", "summary": "Justification en 1 phrase"}
