@@ -206,7 +206,7 @@ function ProspectCard({ prospect, index }: { prospect: ProspectProfile; index: n
             {(signals?.job_change || signals?.recently_funded || signals?.hiring) && (
               <div className="flex flex-wrap gap-1.5 mt-2">
                 {signals?.job_change && (
-                  <Badge className="text-[10px] bg-blue-500/10 text-blue-600 border-blue-500/20 border rounded-full gap-1 px-2 py-0.5">
+                  <Badge className="text-[10px] bg-blue-500/10 text-blue-600 border-blue-500/20 border gap-1 px-2 py-0.5">
                     <Zap className="w-2.5 h-2.5" /> Nouveau poste
                   </Badge>
                 )}
