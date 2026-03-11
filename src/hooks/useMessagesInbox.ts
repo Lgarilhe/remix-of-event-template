@@ -733,35 +733,72 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
 
     setLoadingMessages(true);
     try {
-      const { data } = await invokeUnipile({
-        body: { 
-          action: 'get_messages', 
-          account_id: selectedAccount,
-          chat_id: chatId,
-          limit: 50,
-          cursor: loadMore ? cursorRef.current : undefined,
-        },
-      });
-
-      if (!data?.success) throw new Error(data?.error as string);
-
-      const newMessages = (data.messages as Message[]) || [];
+      // Check if this is a merged chat — if so, fetch messages from ALL underlying threads
+      const mergedIds = selectedChat?._mergedChatIds;
+      const chatIds = (mergedIds && mergedIds.length > 1) ? mergedIds : [chatId];
       
       if (loadMore) {
+        // For load-more, only paginate the primary chat
+        const { data } = await invokeUnipile({
+          body: { 
+            action: 'get_messages', 
+            account_id: selectedAccount,
+            chat_id: chatId,
+            limit: 50,
+            cursor: cursorRef.current,
+          },
+        });
+        if (!data?.success) throw new Error(data?.error as string);
+        const newMessages = (data.messages as Message[]) || [];
         setMessages(prev => [...newMessages, ...prev]);
+        setCursor(data.cursor as string | null);
+        setHasMore(!!data.cursor);
       } else {
-        setMessages(newMessages.reverse());
+        // Fetch from all merged threads in parallel
+        const allMessages: Message[] = [];
+        const results = await Promise.allSettled(
+          chatIds.map(cid =>
+            invokeUnipile({
+              body: { action: 'get_messages', account_id: selectedAccount, chat_id: cid, limit: 50 },
+            })
+          )
+        );
+        
+        let lastCursor: string | null = null;
+        for (const result of results) {
+          if (result.status === 'fulfilled' && result.value.data?.success) {
+            const msgs = (result.value.data.messages as Message[]) || [];
+            allMessages.push(...msgs);
+            if (!lastCursor && result.value.data.cursor) {
+              lastCursor = result.value.data.cursor as string;
+            }
+          }
+        }
+        
+        // Deduplicate by message ID, then sort chronologically
+        const seen = new Set<string>();
+        const unique = allMessages.filter(m => {
+          if (seen.has(m.id)) return false;
+          seen.add(m.id);
+          return true;
+        });
+        unique.sort((a, b) => {
+          const tA = new Date(a.timestamp || '').getTime() || 0;
+          const tB = new Date(b.timestamp || '').getTime() || 0;
+          return tA - tB;
+        });
+        
+        setMessages(unique);
+        setCursor(lastCursor);
+        setHasMore(!!lastCursor);
       }
-      
-      setCursor(data.cursor as string | null);
-      setHasMore(!!data.cursor);
     } catch (error) {
       console.error('Error fetching messages:', error);
       toast.error('Erreur lors du chargement des messages');
     } finally {
       setLoadingMessages(false);
     }
-  }, [selectedAccount]);
+  }, [selectedAccount, selectedChat]);
 
   // Fire-and-forget: update status to 'messaged' + sync Notion after sending from inbox
   const syncAfterInboxSend = useCallback(async (chat: Chat) => {
