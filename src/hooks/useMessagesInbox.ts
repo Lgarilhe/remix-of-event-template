@@ -1457,7 +1457,8 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
           // Merge fresh messages with existing (preserves backfilled secondary thread messages)
           const existingIds = new Set(freshMessages.map(m => m.id));
           // Keep messages from secondary threads that aren't in the primary poll
-          const secondaryMsgs = prev.filter(m => !existingIds.has(m.id));
+          // Filter out optimistic messages (numeric-only IDs from Date.now()) — they are now in the fresh data
+          const secondaryMsgs = prev.filter(m => !existingIds.has(m.id) && !/^\d+$/.test(m.id));
           if (secondaryMsgs.length === 0) {
             // No secondary messages — check if anything actually changed
             if (freshMessages.length === prev.length) {
