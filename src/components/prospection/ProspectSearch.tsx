@@ -423,8 +423,8 @@ export function ProspectSearch({ selectedICP, onSelectICP, onResults, searching,
     }
   };
 
-  const inputClasses = "h-9 text-sm rounded-lg border-border/60 bg-background focus:border-foreground/40 focus:ring-1 focus:ring-foreground/10 transition-all";
-  const selectTriggerClasses = "h-9 rounded-lg border-border/60";
+  const inputClasses = "h-9 text-sm border-border/60 bg-background focus:border-foreground/40 focus:ring-1 focus:ring-foreground/10 transition-all";
+  const selectTriggerClasses = "h-9 border-border/60";
 
   // The actual filters panel content
   const filtersPanel = (
