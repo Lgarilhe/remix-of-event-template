@@ -459,7 +459,7 @@ export function ProspectSearch({ selectedICP, onSelectICP, onResults, searching,
       </div>
 
       {/* Filter tabs */}
-      <div className="inline-flex gap-1 p-1 rounded-lg bg-muted/50 border border-border/30">
+      <div className="inline-flex gap-0 border border-foreground">
         {([
           { value: 'prospect' as FilterTab, label: 'Prospect', emoji: '👤', count: pCount },
           { value: 'entreprise' as FilterTab, label: 'Entreprise', emoji: '🏢', count: eCount },
