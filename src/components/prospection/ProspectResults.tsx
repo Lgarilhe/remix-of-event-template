@@ -265,7 +265,7 @@ function ProspectCard({ prospect, index }: { prospect: ProspectProfile; index: n
             {prospect.skills && prospect.skills.length > 0 && (
               <div className="flex flex-wrap gap-1 mt-2.5">
                 {prospect.skills.slice(0, 4).map((skill, i) => (
-                  <Badge key={i} variant="outline" className="text-[9px] border-border/50 font-normal px-2 py-0.5 rounded-full bg-muted/30">{skill}</Badge>
+                  <Badge key={i} variant="outline" className="text-[9px] border-border/50 font-normal px-2 py-0.5 bg-muted/30">{skill}</Badge>
                 ))}
                 {prospect.skills.length > 4 && (
                   <Badge variant="outline" className="text-[9px] border-border/50 font-normal px-2 py-0.5 rounded-full">+{prospect.skills.length - 4}</Badge>
