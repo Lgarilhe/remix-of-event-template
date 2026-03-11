@@ -386,7 +386,7 @@ export function ProspectResults({ results, searching }: ProspectResultsProps) {
             <div className="w-16 h-16 bg-muted/50 flex items-center justify-center mx-auto mb-4">
               <span className="text-3xl">👥</span>
             </div>
-            <h3 className="text-sm font-semibold text-foreground mb-1">Aucun prospect</h3>
+            <h3 className="text-sm font-semibold text-foreground mb-1 uppercase tracking-wider">Aucun prospect</h3>
             <p className="text-xs text-muted-foreground max-w-xs mx-auto">
               Utilisez les filtres à gauche pour lancer une recherche PDL + Apollo
             </p>
