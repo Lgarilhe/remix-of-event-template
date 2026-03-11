@@ -59,8 +59,8 @@ function CompanyDetailSheet({ company, open, onOpenChange }: { company: VivierCo
       <SheetContent className="w-full sm:max-w-lg overflow-y-auto">
         <SheetHeader>
           <SheetTitle className="text-left flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[hsl(var(--skalr-purple)/0.15)] to-[hsl(var(--skalr-pink)/0.15)] flex items-center justify-center">
-              <Building2 className="w-4 h-4 text-foreground" />
+             <div className="w-8 h-8 bg-foreground text-background flex items-center justify-center">
+               <Building2 className="w-4 h-4" />
             </div>
             {company.company_name || 'Société'}
           </SheetTitle>
