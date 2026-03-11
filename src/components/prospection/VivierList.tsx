@@ -306,36 +306,92 @@ function EnrichedContactSheet({ contact, enrichment, open, onOpenChange, onCopyM
   );
 }
 
+/* ─── Engagement Heat ─── */
+function EngagementBar({ shortlists, placements, notes, contacts }: { shortlists: number; placements: number; notes: number; contacts?: number }) {
+  const total = shortlists + placements * 3 + notes;
+  const level = total >= 20 ? 4 : total >= 10 ? 3 : total >= 5 ? 2 : total >= 1 ? 1 : 0;
+  const labels = ['—', 'Faible', 'Modéré', 'Actif', 'Très actif'];
+  const fills = [0, 25, 50, 75, 100];
+  return (
+    <div className="flex items-center gap-2 w-full">
+      <div className="flex-1 h-1 bg-border overflow-hidden">
+        <div
+          className={cn(
+            "h-full transition-all duration-500",
+            level >= 3 ? "bg-foreground" : level >= 2 ? "bg-muted-foreground" : "bg-border"
+          )}
+          style={{ width: `${fills[level]}%` }}
+        />
+      </div>
+      <span className="text-[9px] text-muted-foreground uppercase tracking-wider font-medium shrink-0">{labels[level]}</span>
+    </div>
+  );
+}
+
+/* ─── Relative time ─── */
+function relativeTime(dateStr: string | null) {
+  if (!dateStr) return null;
+  try {
+    const d = new Date(dateStr);
+    const now = new Date();
+    const diffMs = now.getTime() - d.getTime();
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+    if (diffDays === 0) return "Aujourd'hui";
+    if (diffDays === 1) return 'Hier';
+    if (diffDays < 7) return `il y a ${diffDays}j`;
+    if (diffDays < 30) return `il y a ${Math.floor(diffDays / 7)}sem`;
+    if (diffDays < 365) return `il y a ${Math.floor(diffDays / 30)}mois`;
+    return `il y a ${Math.floor(diffDays / 365)}an${Math.floor(diffDays / 365) > 1 ? 's' : ''}`;
+  } catch { return null; }
+}
+
+/* ─── Stat Pill ─── */
+function StatPill({ icon, value, label, highlight }: { icon: React.ReactNode; value: number; label: string; highlight?: boolean }) {
+  if (value === 0) return null;
+  return (
+    <div className={cn(
+      "flex items-center gap-1.5 px-2 py-1 border text-[10px] font-medium shrink-0",
+      highlight ? "border-foreground bg-foreground text-background" : "border-border bg-background text-foreground"
+    )}>
+      {icon}
+      <span className="font-bold tabular-nums">{value}</span>
+      <span className="hidden sm:inline text-muted-foreground">{label}</span>
+    </div>
+  );
+}
+
 /* ─── Shared filter bar ─── */
 function VivierFilterBar({ searchInput, setSearchInput, onSearch, filters, updateFilters }: {
   searchInput: string; setSearchInput: (v: string) => void; onSearch: () => void;
   filters: { source_base: string | null; min_shortlists: number }; updateFilters: (p: any) => void;
 }) {
   return (
-    <div className="flex flex-wrap gap-2 items-end">
-      <div className="flex-1 min-w-[200px]">
+    <div className="flex flex-col sm:flex-row gap-2">
+      <div className="flex-1 min-w-0">
         <div className="relative">
           <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
           <Input placeholder="Rechercher…" value={searchInput} onChange={e => setSearchInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && onSearch()} className="pl-9 h-9 text-xs border-border/60" />
         </div>
       </div>
-      <Select value={filters.source_base || 'all'} onValueChange={v => updateFilters({ source_base: v === 'all' ? null : v })}>
-        <SelectTrigger className="w-[140px] h-9 text-xs border-border/60"><SelectValue placeholder="Base" /></SelectTrigger>
-        <SelectContent>
-          <SelectItem value="all">Toutes les bases</SelectItem>
-          <SelectItem value="konekt">Konekt</SelectItem>
-          <SelectItem value="konekt_prospect">Konekt Prospect</SelectItem>
-        </SelectContent>
-      </Select>
-      <Select value={String(filters.min_shortlists)} onValueChange={v => updateFilters({ min_shortlists: Number(v) })}>
-        <SelectTrigger className="w-[130px] h-9 text-xs border-border/60"><SelectValue /></SelectTrigger>
-        <SelectContent>
-          <SelectItem value="1">≥ 1 shortlist</SelectItem>
-          <SelectItem value="2">≥ 2 shortlists</SelectItem>
-          <SelectItem value="3">≥ 3 shortlists</SelectItem>
-          <SelectItem value="5">≥ 5 shortlists</SelectItem>
-        </SelectContent>
-      </Select>
+      <div className="flex gap-2">
+        <Select value={filters.source_base || 'all'} onValueChange={v => updateFilters({ source_base: v === 'all' ? null : v })}>
+          <SelectTrigger className="w-[140px] h-9 text-xs border-border/60"><SelectValue placeholder="Base" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Toutes les bases</SelectItem>
+            <SelectItem value="konekt">Konekt</SelectItem>
+            <SelectItem value="konekt_prospect">Konekt Prospect</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select value={String(filters.min_shortlists)} onValueChange={v => updateFilters({ min_shortlists: Number(v) })}>
+          <SelectTrigger className="w-[130px] h-9 text-xs border-border/60"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="1">≥ 1 shortlist</SelectItem>
+            <SelectItem value="2">≥ 2 shortlists</SelectItem>
+            <SelectItem value="3">≥ 3 shortlists</SelectItem>
+            <SelectItem value="5">≥ 5 shortlists</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
     </div>
   );
 }
@@ -352,6 +408,158 @@ function Pagination({ page, totalPages, goToPage }: { page: number; totalPages: 
   );
 }
 
+/* ─── Company Card ─── */
+function CompanyCard({ company, index, onClick }: { company: VivierCompany; index: number; onClick: () => void }) {
+  const initials = (company.company_name || '??').slice(0, 2).toUpperCase();
+  const timeAgo = relativeTime(company.last_interaction_date);
+
+  return (
+    <motion.button
+      key={company.company_airtable_id}
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: Math.min(index * 0.025, 0.3), duration: 0.25 }}
+      onClick={onClick}
+      className="w-full text-left border border-foreground bg-card hover:bg-muted/30 transition-all duration-150 group"
+    >
+      {/* Top section */}
+      <div className="p-3 sm:p-4 space-y-2.5">
+        <div className="flex items-start gap-3">
+          {/* Avatar */}
+          <div className="h-10 w-10 sm:h-11 sm:w-11 bg-foreground text-background flex items-center justify-center text-xs sm:text-sm font-bold shrink-0 uppercase">
+            {initials}
+          </div>
+
+          {/* Name & meta */}
+          <div className="flex-1 min-w-0">
+            <div className="flex items-start justify-between gap-2">
+              <h3 className="text-sm sm:text-[15px] font-semibold text-foreground leading-tight break-words">
+                {company.company_name || 'Sans nom'}
+              </h3>
+              {timeAgo && (
+                <span className="text-[9px] text-muted-foreground shrink-0 uppercase tracking-wider mt-0.5">{timeAgo}</span>
+              )}
+            </div>
+            <div className="flex items-center gap-2.5 mt-1 text-[11px] text-muted-foreground">
+              {company.city && (
+                <span className="flex items-center gap-1"><MapPin className="w-3 h-3" /> {company.city}</span>
+              )}
+              {company.headcount && (
+                <span className="flex items-center gap-1"><Users className="w-3 h-3" /> {company.headcount}</span>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Stats row — scrollable on mobile */}
+        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar -mx-1 px-1">
+          <StatPill icon={<Users className="w-3 h-3" />} value={company.contact_count} label="contacts" />
+          <StatPill icon={<FileText className="w-3 h-3" />} value={company.shortlist_count} label="shortlists" highlight={company.shortlist_count >= 10} />
+          <StatPill icon={<Trophy className="w-3 h-3" />} value={company.placement_count} label="placements" highlight={company.placement_count > 0} />
+          {company.note_count > 0 && (
+            <div className="flex items-center gap-1 px-2 py-1 text-[10px] text-muted-foreground shrink-0">
+              📝 {company.note_count}
+            </div>
+          )}
+        </div>
+
+        {/* Engagement bar */}
+        <EngagementBar shortlists={company.shortlist_count} placements={company.placement_count} notes={company.note_count} contacts={company.contact_count} />
+      </div>
+    </motion.button>
+  );
+}
+
+/* ─── Contact Card ─── */
+function ContactCard({ contact, enrichment, index, onClick }: { contact: VivierContact; enrichment?: any; index: number; onClick: () => void }) {
+  const initials = (contact.full_name || '??').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
+  const timeAgo = relativeTime(contact.last_interaction_date);
+  const displayCompany = enrichment?.current_company || contact.company_name;
+  const displayTitle = enrichment?.current_job_title || contact.title;
+  const isEnriched = !!enrichment && enrichment.match_type !== 'not_found';
+
+  return (
+    <motion.button
+      key={contact.airtable_id}
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: Math.min(index * 0.025, 0.3), duration: 0.25 }}
+      onClick={onClick}
+      className="w-full text-left border border-foreground bg-card hover:bg-muted/30 transition-all duration-150 group"
+    >
+      <div className="p-3 sm:p-4 space-y-2.5">
+        <div className="flex items-start gap-3">
+          {/* Avatar with enrichment indicator */}
+          <div className="relative shrink-0">
+            <div className={cn(
+              "h-10 w-10 sm:h-11 sm:w-11 flex items-center justify-center text-xs sm:text-sm font-bold uppercase",
+              isEnriched ? "bg-foreground text-background" : "bg-muted text-foreground"
+            )}>
+              {initials}
+            </div>
+            {enrichment?.is_relevant === true && (
+              <div className="absolute -top-1 -right-1 w-4 h-4 bg-foreground text-background flex items-center justify-center text-[8px]">✓</div>
+            )}
+            {enrichment?.is_relevant === false && (
+              <div className="absolute -top-1 -right-1 w-4 h-4 bg-muted text-muted-foreground flex items-center justify-center text-[8px]">✗</div>
+            )}
+          </div>
+
+          {/* Info */}
+          <div className="flex-1 min-w-0">
+            <div className="flex items-start justify-between gap-2">
+              <h3 className="text-sm sm:text-[15px] font-semibold text-foreground leading-tight break-words">
+                {contact.full_name || 'Sans nom'}
+              </h3>
+              {timeAgo && (
+                <span className="text-[9px] text-muted-foreground shrink-0 uppercase tracking-wider mt-0.5">{timeAgo}</span>
+              )}
+            </div>
+
+            {/* Role & company */}
+            {(displayTitle || displayCompany) && (
+              <div className="mt-0.5 text-[11px] sm:text-xs text-muted-foreground leading-snug">
+                {displayTitle && <span className={cn("font-medium", isEnriched && "text-foreground")}>{displayTitle}</span>}
+                {displayTitle && displayCompany && <span className="mx-1">·</span>}
+                {displayCompany && <span className={cn(isEnriched && "text-foreground")}>{displayCompany}</span>}
+              </div>
+            )}
+
+            {/* Location + contact info */}
+            <div className="flex items-center gap-2.5 mt-1 text-[10px] text-muted-foreground">
+              {contact.city && (
+                <span className="flex items-center gap-1"><MapPin className="w-3 h-3" /> {contact.city}</span>
+              )}
+              {contact.email && (
+                <span className="flex items-center gap-1"><Mail className="w-3 h-3" /> <span className="truncate max-w-[120px]">{contact.email}</span></span>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Status badges + stats */}
+        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar -mx-1 px-1">
+          {enrichment?.generated_message && (
+            <div className="flex items-center gap-1 px-2 py-1 border border-foreground bg-foreground text-background text-[10px] font-medium shrink-0">
+              {enrichment.message_type === 'sms' ? '📱' : '💬'} Message prêt
+            </div>
+          )}
+          <StatPill icon={<FileText className="w-3 h-3" />} value={contact.shortlist_count} label="shortlists" highlight={contact.shortlist_count >= 5} />
+          <StatPill icon={<Trophy className="w-3 h-3" />} value={contact.placement_count} label="placements" highlight={contact.placement_count > 0} />
+          {contact.note_count > 0 && (
+            <div className="flex items-center gap-1 px-2 py-1 text-[10px] text-muted-foreground shrink-0">
+              📝 {contact.note_count}
+            </div>
+          )}
+        </div>
+
+        {/* Engagement */}
+        <EngagementBar shortlists={contact.shortlist_count} placements={contact.placement_count} notes={contact.note_count} />
+      </div>
+    </motion.button>
+  );
+}
+
 /* ─── Companies Tab ─── */
 function CompaniesView() {
   const { companies, totalCount, loading, filters, updateFilters, fetchCompanies, page, goToPage, pageSize } = useVivierCompanies();
@@ -364,54 +572,53 @@ function CompaniesView() {
   const totalPages = Math.ceil(totalCount / pageSize);
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       <VivierFilterBar searchInput={searchInput} setSearchInput={setSearchInput} onSearch={() => updateFilters({ search: searchInput })} filters={filters} updateFilters={updateFilters} />
+
       {!loading && totalCount > 0 && (
-        <div className="text-xs text-muted-foreground">{totalCount} société{totalCount > 1 ? 's' : ''} avec des interactions</div>
-      )}
-      {loading ? (
-         <div className="space-y-2">{Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-16 w-full" />)}</div>
-      ) : companies.length === 0 ? (
-        <div className="text-center py-12 text-muted-foreground">
-           <div className="w-14 h-14 bg-muted/50 flex items-center justify-center mx-auto mb-3">
-            <Building2 className="w-6 h-6 opacity-40" />
-          </div>
-          <p className="text-sm font-medium">Aucune société trouvée</p>
+        <div className="flex items-center justify-between">
+          <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">
+            {totalCount} société{totalCount > 1 ? 's' : ''}
+          </span>
         </div>
-      ) : (
-         <div className="border border-foreground overflow-hidden divide-y divide-border/30">
-          {companies.map((c, i) => (
-            <motion.button
-              key={c.company_airtable_id}
-              initial={{ opacity: 0, y: 6 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: Math.min(i * 0.03, 0.3) }}
-              onClick={() => { setSelectedCompany(c); setSheetOpen(true); }}
-              className="w-full text-left px-4 py-3 hover:bg-muted/40 transition-all flex items-center gap-3"
-            >
-               <div className="h-9 w-9 bg-muted flex items-center justify-center text-xs font-bold shrink-0 uppercase text-foreground">
-                 {(c.company_name || '??').slice(0, 2)}
-              </div>
-              <div className="flex-1 min-w-0 space-y-0.5">
-                <div className="text-sm font-medium truncate">{c.company_name || 'Sans nom'}</div>
-                <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
-                  {c.city && <span className="flex items-center gap-1"><MapPin className="w-3 h-3" /> {c.city}</span>}
-                  {c.headcount && <span>{c.headcount} emp.</span>}
-                  <span className="flex items-center gap-1"><Users className="w-3 h-3" /> {c.contact_count} contact{c.contact_count > 1 ? 's' : ''}</span>
+      )}
+
+      {loading ? (
+        <div className="space-y-2">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div key={i} className="border border-border p-4 space-y-2">
+              <div className="flex items-center gap-3">
+                <Skeleton className="h-11 w-11" />
+                <div className="flex-1 space-y-1.5">
+                  <Skeleton className="h-4 w-3/5" />
+                  <Skeleton className="h-3 w-2/5" />
                 </div>
               </div>
-              <div className="flex items-center gap-1.5 shrink-0">
-                 <Badge variant="secondary" className="text-[9px] gap-0.5 px-1.5"><FileText className="w-3 h-3" /> {c.shortlist_count}</Badge>
-                 {c.placement_count > 0 && <Badge variant="secondary" className="text-[9px] gap-0.5 px-1.5"><Trophy className="w-3 h-3" /> {c.placement_count}</Badge>}
-                 {c.note_count > 0 && <Badge variant="outline" className="text-[9px] gap-0.5 px-1.5">{c.note_count} notes</Badge>}
-              </div>
-              <div className="text-[10px] text-muted-foreground shrink-0 w-20 text-right">
-                {c.last_interaction_date ? format(new Date(c.last_interaction_date), 'dd MMM yyyy', { locale: fr }) : '—'}
-              </div>
-            </motion.button>
+              <Skeleton className="h-1 w-full" />
+            </div>
+          ))}
+        </div>
+      ) : companies.length === 0 ? (
+        <div className="border border-foreground p-12 text-center">
+          <div className="w-14 h-14 bg-foreground text-background flex items-center justify-center mx-auto mb-4">
+            <Building2 className="w-7 h-7" />
+          </div>
+          <h3 className="text-sm font-bold uppercase tracking-wider mb-1">Aucune société</h3>
+          <p className="text-xs text-muted-foreground">Ajustez vos filtres pour voir des résultats</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-2">
+          {companies.map((c, i) => (
+            <CompanyCard
+              key={c.company_airtable_id}
+              company={c}
+              index={i}
+              onClick={() => { setSelectedCompany(c); setSheetOpen(true); }}
+            />
           ))}
         </div>
       )}
+
       <Pagination page={page} totalPages={totalPages} goToPage={goToPage} />
       <CompanyDetailSheet company={selectedCompany} open={sheetOpen} onOpenChange={setSheetOpen} />
     </div>
@@ -452,108 +659,112 @@ function ContactsView() {
 
   const selectedEnrichment = selectedContact ? enrichments.get(selectedContact.airtable_id) || null : null;
 
+  const relevantCount = [...enrichments.values()].filter(e => e.is_relevant).length;
+  const messageCount = [...enrichments.values()].filter(e => e.generated_message).length;
+
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       <VivierFilterBar searchInput={searchInput} setSearchInput={setSearchInput} onSearch={() => updateFilters({ search: searchInput })} filters={filters} updateFilters={updateFilters} />
 
-      {/* Enrichment controls */}
-      <div className="flex items-center gap-2 flex-wrap">
-        <Button size="sm" onClick={() => handleEnrichAll(false)} disabled={isEnriching || contacts.length === 0} className="h-8 text-xs gap-1.5 bg-foreground text-background border border-foreground hover:bg-foreground/90">
-          <Sparkles className="w-3.5 h-3.5" />
-          {isEnriching ? 'Enrichissement…' : 'Enrichir & qualifier'}
-        </Button>
+      {/* Enrichment toolbar */}
+      <div className="flex items-center gap-0 overflow-x-auto no-scrollbar">
+        <button
+          onClick={() => handleEnrichAll(false)}
+          disabled={isEnriching || contacts.length === 0}
+          className="relative overflow-hidden h-8 px-3 flex items-center gap-1.5 border border-foreground bg-foreground text-background text-[10px] font-medium uppercase tracking-wider group disabled:opacity-30 shrink-0"
+        >
+          <Sparkles className="w-3 h-3 relative z-10" />
+          <span className="relative z-10">{isEnriching ? 'Enrichissement…' : 'Enrichir'}</span>
+        </button>
         {enrichments.size > 0 && (
-          <Button size="sm" variant="outline" onClick={() => handleEnrichAll(true)} disabled={isEnriching || contacts.length === 0} className="h-8 text-xs gap-1.5">
-            <RefreshCw className="w-3.5 h-3.5" />
-            Ré-enrichir
-          </Button>
+          <button
+            onClick={() => handleEnrichAll(true)}
+            disabled={isEnriching || contacts.length === 0}
+            className="relative overflow-hidden h-8 px-3 flex items-center gap-1.5 border border-foreground border-l-0 text-foreground text-[10px] font-medium uppercase tracking-wider group disabled:opacity-30 shrink-0"
+          >
+            <RefreshCw className="w-3 h-3 relative z-10" />
+            <span className="relative z-10 hidden sm:inline">Ré-enrichir</span>
+            <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
+          </button>
         )}
         {enrichments.size > 0 && (
-          <Select value={enrichFilter} onValueChange={(v: any) => setEnrichFilter(v)}>
-            <SelectTrigger className="w-[160px] h-8 text-xs border-border/60"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Tous les contacts</SelectItem>
-              <SelectItem value="relevant">Pertinents uniquement</SelectItem>
-              <SelectItem value="with_message">Avec message</SelectItem>
-            </SelectContent>
-          </Select>
-        )}
-        {enrichments.size > 0 && (
-          <span className="text-[10px] text-muted-foreground">
-            {[...enrichments.values()].filter(e => e.is_relevant).length} pertinents · {[...enrichments.values()].filter(e => e.generated_message).length} messages
-          </span>
+          <>
+            {(['all', 'relevant', 'with_message'] as const).map((f, idx) => {
+              const labels: Record<string, string> = { all: 'Tous', relevant: `✓ ${relevantCount}`, with_message: `💬 ${messageCount}` };
+              return (
+                <button
+                  key={f}
+                  onClick={() => setEnrichFilter(f)}
+                  className={cn(
+                    "h-8 px-3 text-[10px] font-medium uppercase tracking-wider border border-foreground shrink-0 transition-colors",
+                    idx === 0 ? "border-l-0 sm:ml-2 sm:border-l" : "border-l-0",
+                    enrichFilter === f ? "bg-brutal-accent text-foreground" : "bg-background text-foreground hover:bg-muted"
+                  )}
+                >
+                  {labels[f]}
+                </button>
+              );
+            })}
+          </>
         )}
       </div>
 
       {/* Progress bar */}
       {isEnriching && (
         <div className="space-y-1">
-          <Progress value={(progress.done / Math.max(progress.total, 1)) * 100} className="h-2" />
-          <div className="text-[10px] text-muted-foreground">{progress.done} / {progress.total} contacts traités</div>
+          <div className="h-1 bg-border overflow-hidden">
+            <div className="h-full bg-foreground transition-all duration-300" style={{ width: `${(progress.done / Math.max(progress.total, 1)) * 100}%` }} />
+          </div>
+          <div className="text-[9px] text-muted-foreground uppercase tracking-wider">{progress.done} / {progress.total} traités</div>
         </div>
       )}
 
       {!loading && totalCount > 0 && (
-        <div className="text-xs text-muted-foreground">{filteredContacts.length} contact{filteredContacts.length > 1 ? 's' : ''} {enrichFilter !== 'all' ? `(filtrés sur ${totalCount})` : `avec des interactions`}</div>
+        <div className="flex items-center justify-between">
+          <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">
+            {filteredContacts.length} contact{filteredContacts.length > 1 ? 's' : ''}
+            {enrichFilter !== 'all' && ` sur ${totalCount}`}
+          </span>
+        </div>
       )}
 
       {loading ? (
-        <div className="space-y-2">{Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-16 w-full" />)}</div>
+        <div className="space-y-2">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div key={i} className="border border-border p-4 space-y-2">
+              <div className="flex items-center gap-3">
+                <Skeleton className="h-11 w-11" />
+                <div className="flex-1 space-y-1.5">
+                  <Skeleton className="h-4 w-3/5" />
+                  <Skeleton className="h-3 w-full" />
+                </div>
+              </div>
+              <Skeleton className="h-1 w-full" />
+            </div>
+          ))}
+        </div>
       ) : filteredContacts.length === 0 ? (
-        <div className="text-center py-12 text-muted-foreground">
-          <div className="w-14 h-14 bg-muted/50 flex items-center justify-center mx-auto mb-3">
-            <Users className="w-6 h-6 opacity-40" />
+        <div className="border border-foreground p-12 text-center">
+          <div className="w-14 h-14 bg-foreground text-background flex items-center justify-center mx-auto mb-4">
+            <Users className="w-7 h-7" />
           </div>
-          <p className="text-sm font-medium">Aucun contact trouvé</p>
+          <h3 className="text-sm font-bold uppercase tracking-wider mb-1">Aucun contact</h3>
+          <p className="text-xs text-muted-foreground">Ajustez vos filtres pour voir des résultats</p>
         </div>
       ) : (
-        <div className="border border-foreground overflow-hidden divide-y divide-border/30">
-          {filteredContacts.map((c, i) => {
-            const e = enrichments.get(c.airtable_id);
-            return (
-              <motion.button
-                key={c.airtable_id}
-                initial={{ opacity: 0, y: 6 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: Math.min(i * 0.03, 0.3) }}
-                onClick={() => { setSelectedContact(c); setSheetOpen(true); }}
-                className="w-full text-left px-4 py-3 hover:bg-muted/40 transition-all flex items-center gap-3"
-              >
-                 <div className="h-9 w-9 bg-muted flex items-center justify-center text-xs font-bold shrink-0 uppercase text-foreground">
-                   {(c.full_name || '??').split(' ').map(w => w[0]).join('').slice(0, 2)}
-                </div>
-                <div className="flex-1 min-w-0 space-y-0.5">
-                  <div className="text-sm font-medium truncate">{c.full_name || 'Sans nom'}</div>
-                  <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
-                    {e?.current_company ? (
-                      <span className="flex items-center gap-1 text-[hsl(var(--skalr-purple))]"><Building2 className="w-3 h-3" /> {e.current_company}</span>
-                    ) : c.company_name ? (
-                      <span className="flex items-center gap-1"><Building2 className="w-3 h-3" /> {c.company_name}</span>
-                    ) : null}
-                    {e?.current_job_title ? (
-                      <span className="flex items-center gap-1 truncate max-w-[180px] text-[hsl(var(--skalr-purple))]"><Briefcase className="w-3 h-3" /> {e.current_job_title}</span>
-                    ) : c.title ? (
-                      <span className="flex items-center gap-1 truncate max-w-[180px]"><Briefcase className="w-3 h-3" /> {c.title}</span>
-                    ) : null}
-                    {c.city && <span className="flex items-center gap-1"><MapPin className="w-3 h-3" /> {c.city}</span>}
-                  </div>
-                </div>
-                <div className="flex items-center gap-1.5 shrink-0">
-                   {e?.is_relevant === true && <Badge className="text-[9px] gap-0.5 px-1.5 bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">Pertinent</Badge>}
-                   {e?.is_relevant === false && <Badge variant="secondary" className="text-[9px] gap-0.5 px-1.5">Non pertinent</Badge>}
-                   {e?.generated_message && <Badge variant="outline" className="text-[9px] gap-0.5 px-1.5">{e.message_type === 'sms' ? '📱' : '💬'} msg</Badge>}
-                   <Badge variant="secondary" className="text-[9px] gap-0.5 px-1.5"><FileText className="w-3 h-3" /> {c.shortlist_count}</Badge>
-                   {c.note_count > 0 && <Badge variant="outline" className="text-[9px] gap-0.5 px-1.5">{c.note_count} notes</Badge>}
-                   {c.placement_count > 0 && <Badge variant="secondary" className="text-[9px] gap-0.5 px-1.5"><Trophy className="w-3 h-3" /> {c.placement_count}</Badge>}
-                </div>
-                <div className="text-[10px] text-muted-foreground shrink-0 w-20 text-right">
-                  {c.last_interaction_date ? format(new Date(c.last_interaction_date), 'dd MMM yyyy', { locale: fr }) : '—'}
-                </div>
-              </motion.button>
-            );
-          })}
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-2">
+          {filteredContacts.map((c, i) => (
+            <ContactCard
+              key={c.airtable_id}
+              contact={c}
+              enrichment={enrichments.get(c.airtable_id)}
+              index={i}
+              onClick={() => { setSelectedContact(c); setSheetOpen(true); }}
+            />
+          ))}
         </div>
       )}
+
       <Pagination page={page} totalPages={totalPages} goToPage={goToPage} />
       <EnrichedContactSheet
         contact={selectedContact}
@@ -569,32 +780,35 @@ function ContactsView() {
 
 /* ─── Main VivierList with sub-tabs ─── */
 const subTabs = [
-  { value: 'companies', label: 'Sociétés', icon: Building2 },
-  { value: 'contacts', label: 'Contacts', icon: Users },
+  { value: 'companies', label: 'Sociétés', emoji: '🏢' },
+  { value: 'contacts', label: 'Contacts', emoji: '👤' },
 ] as const;
 
 export function VivierList() {
   const [activeSubTab, setActiveSubTab] = useState<'companies' | 'contacts'>('companies');
 
   return (
-    <div className="space-y-4">
-      <div className="flex gap-0 border border-foreground w-fit">
-        {subTabs.map((tab) => {
+    <div className="space-y-3">
+      <div className="flex gap-0 w-fit">
+        {subTabs.map((tab, index) => {
           const isActive = activeSubTab === tab.value;
-          const Icon = tab.icon;
           return (
             <button
               key={tab.value}
               onClick={() => setActiveSubTab(tab.value)}
-               className={cn(
-                 "flex items-center gap-1.5 h-8 px-3 text-[10px] font-medium uppercase tracking-wider transition-all duration-200",
-                 isActive
-                   ? "bg-brutal-accent text-foreground"
-                   : "bg-background text-foreground hover:bg-muted"
-               )}
+              className={cn(
+                "relative overflow-hidden flex items-center gap-1.5 h-[34px] px-4 text-[10px] font-medium uppercase tracking-wider border border-foreground transition-colors duration-200 group shrink-0",
+                index > 0 && "border-l-0",
+                isActive
+                  ? "bg-brutal-accent text-foreground"
+                  : "bg-background text-foreground"
+              )}
             >
-              <Icon className="w-3.5 h-3.5" />
-              {tab.label}
+              <span className="text-sm relative z-10">{tab.emoji}</span>
+              <span className="relative z-10">{tab.label}</span>
+              {!isActive && (
+                <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
+              )}
             </button>
           );
         })}
