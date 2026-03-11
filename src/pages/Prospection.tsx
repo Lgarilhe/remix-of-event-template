@@ -89,24 +89,12 @@ export default function Prospection() {
       <main className="pt-20 pb-0 w-full max-w-full">
         <div className="max-w-[1600px] mx-auto w-full min-w-0 px-3 sm:px-6 lg:px-8">
           {/* Header */}
-          <motion.div
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.4, ease: 'easeOut' }}
-            className="mb-5 sm:mb-8 hidden md:block"
-          >
-            <div className="flex items-center gap-3 mb-1">
-              <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-[hsl(var(--skalr-purple))] to-[hsl(var(--skalr-pink))] flex items-center justify-center shadow-lg">
-                <Crosshair className="w-5 h-5 text-white" />
-              </div>
-              <div>
-                <h1 className="text-2xl font-bold text-foreground tracking-tight">Prospection</h1>
-                <p className="text-sm text-muted-foreground">
-                  Découverte, enrichissement & qualification de prospects
-                </p>
-              </div>
+          <div className="flex items-center gap-2 mb-4 hidden md:flex">
+            <div className="h-8 w-8 bg-foreground text-background flex items-center justify-center shrink-0">
+              <Crosshair className="w-4 h-4" />
             </div>
-          </motion.div>
+            <h1 className="text-xl sm:text-2xl font-bold text-foreground uppercase tracking-tight">Prospection</h1>
+          </div>
 
           {/* Tabs */}
           <motion.div
