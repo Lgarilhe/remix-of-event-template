@@ -304,7 +304,7 @@ function ProspectCard({ prospect, index }: { prospect: ProspectProfile; index: n
         <motion.div
           initial={{ opacity: 0, height: 0 }}
           animate={{ opacity: 1, height: 'auto' }}
-          className="border-t border-border/40 px-4 py-3 sm:ml-[60px] space-y-3"
+          className="border-t border-foreground/20 px-4 py-3 sm:ml-[60px] space-y-3"
         >
           {prospect.experience && prospect.experience.length > 0 && (
             <div>
