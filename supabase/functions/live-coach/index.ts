@@ -124,18 +124,14 @@ RÈGLES :
 - Extrais le verbatim le plus pertinent (1 phrase max du candidat)
 - auto_score : 5=parfait, 4=bon, 3=correct, 2=faible, 1=red flag
 
-SECTION "dig_deeper" — TRÈS IMPORTANT :
-- Retourne des items UNIQUEMENT quand tu détectes quelque chose de concret qui mérite d'être creusé :
-  • Hésitation ou réponse évasive du candidat
-  • Contradiction avec ce qui a été dit avant
-  • Red flag (gap inexpliqué, salaire hors range, contre-offre)
-  • Opportunité de creuser un point fort
-  • Information manquante critique
-- Maximum 3 items
-- Si rien d'intéressant ou de nouveau à signaler, retourne dig_deeper VIDE []
+SECTION "dig_deeper" — FORMAT BULLET-POINT ULTRA-CONCIS :
+- Retourne des items UNIQUEMENT quand tu détectes quelque chose de concret à creuser
+- SIGNAL = observation en 3-5 mots max (ex: "Hésite sur sa dispo", "Contre-offre mentionnée", "Gap 2022-2023")
+- QUESTION = bullet-point actionnable en 5-8 mots max, PAS une phrase complète (ex: "Demander date exacte", "Creuser montant et timeline", "Vérifier raison du gap")
+- Maximum 3 items, 0 si RAS
 - NE GÉNÈRE PAS d'items juste pour en générer
 - NE DUPLIQUE PAS un signal déjà en attente (pending_signals)
-- Chaque item = { "signal": "observation courte", "question": "question à poser" }
+- Chaque item = { "signal": "3-5 mots", "question": "bullet-point action 5-8 mots" }
 
 SECTION "resolved_signals" :
 - Liste des signaux (valeurs exactes du champ "signal") des pending_signals qui ont été traités dans la conversation
