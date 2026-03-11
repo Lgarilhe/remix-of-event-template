@@ -262,7 +262,7 @@ function EnrichedContactSheet({ contact, enrichment, open, onOpenChange, onCopyM
                   {copied ? 'Copié' : 'Copier'}
                 </Button>
               </div>
-              <p className="text-sm whitespace-pre-wrap bg-muted/30 p-3 rounded-lg">{enrichment.generated_message}</p>
+              <p className="text-sm whitespace-pre-wrap bg-muted/30 p-3">{enrichment.generated_message}</p>
               <div className="text-[10px] text-muted-foreground">{enrichment.generated_message.length} caractères</div>
             </div>
           )}
