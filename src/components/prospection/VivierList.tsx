@@ -247,7 +247,7 @@ function EnrichedContactSheet({ contact, enrichment, open, onOpenChange, onCopyM
 
           {/* Generated message */}
           {enrichment?.generated_message && (
-            <div className="rounded-xl border border-border/40 p-3.5 space-y-2">
+            <div className="border border-border/40 p-3.5 space-y-2">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <span className="text-xs font-semibold text-muted-foreground">
