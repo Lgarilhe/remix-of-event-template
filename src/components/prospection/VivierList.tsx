@@ -463,7 +463,7 @@ function ContactsView() {
           {isEnriching ? 'Enrichissement…' : 'Enrichir & qualifier'}
         </Button>
         {enrichments.size > 0 && (
-          <Button size="sm" variant="outline" onClick={() => handleEnrichAll(true)} disabled={isEnriching || contacts.length === 0} className="h-8 text-xs gap-1.5 rounded-lg">
+          <Button size="sm" variant="outline" onClick={() => handleEnrichAll(true)} disabled={isEnriching || contacts.length === 0} className="h-8 text-xs gap-1.5">
             <RefreshCw className="w-3.5 h-3.5" />
             Ré-enrichir
           </Button>
