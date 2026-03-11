@@ -519,8 +519,8 @@ function ContactsView() {
                 onClick={() => { setSelectedContact(c); setSheetOpen(true); }}
                 className="w-full text-left px-4 py-3 hover:bg-muted/40 transition-all flex items-center gap-3"
               >
-                <div className="h-9 w-9 rounded-full bg-gradient-to-br from-[hsl(var(--skalr-purple)/0.12)] to-[hsl(var(--skalr-pink)/0.08)] flex items-center justify-center text-xs font-bold shrink-0 uppercase text-foreground">
-                  {(c.full_name || '??').split(' ').map(w => w[0]).join('').slice(0, 2)}
+                 <div className="h-9 w-9 bg-muted flex items-center justify-center text-xs font-bold shrink-0 uppercase text-foreground">
+                   {(c.full_name || '??').split(' ').map(w => w[0]).join('').slice(0, 2)}
                 </div>
                 <div className="flex-1 min-w-0 space-y-0.5">
                   <div className="text-sm font-medium truncate">{c.full_name || 'Sans nom'}</div>
