@@ -670,7 +670,7 @@ function computeWeightedScore(profile: ProfileData, job: JobData): WeightedResul
   const profileSkills = [...new Set([...explicitSkills, ...implicitSkills])];
 
   // --- Combine job skills (for heuristic context, not definitive matching) ---
-  const baseJobSkills = (job.skills || []).map((s) => s.toLowerCase());
+  const baseJobSkills = (job.skills || []).filter((s) => typeof s === "string").map((s) => s.toLowerCase());
   const shouldHaveSkills = job.shouldHave
     ? job.shouldHave
         .split(/[,;]+/)
