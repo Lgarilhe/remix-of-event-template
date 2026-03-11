@@ -240,7 +240,7 @@ function EnrichedContactSheet({ contact, enrichment, open, onOpenChange, onCopyM
           )}
 
           {enrichment?.match_type === 'not_found' && (
-            <div className="rounded-xl border border-border/40 p-3 text-xs text-muted-foreground">
+            <div className="border border-border/40 p-3 text-xs text-muted-foreground">
               Aucun profil trouvé sur Apollo pour ce contact.
             </div>
           )}
