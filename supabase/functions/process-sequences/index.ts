@@ -1907,13 +1907,16 @@ async function generatePersonalizedMessage(supabase: any, enrollment: Record<str
         toneInstructions = `PREMIÈRE RELANCE. NE RÉPÈTE PAS le même pitch. Apporte un NOUVEL ANGLE:
 - Aspect technique différent, contexte d'équipe, avantage concret
 - Pas de culpabilisation
+- JAMAIS "suite à mon précédent message", "dernière tentative", "je ne veux pas insister", "la porte reste ouverte"
 - 200-350 caractères`;
       } else {
-        msgType = 'RELANCE 2 (MESSAGE DE CLÔTURE)';
-        toneInstructions = `DERNIÈRE RELANCE. Respectueux du silence.
-- NE PAS repitcher, juste rappeler le poste en quelques mots
-- Laisser la porte ouverte
-- 150-250 caractères max`;
+        msgType = 'RELANCE 2 (NOUVEL ANGLE)';
+        toneInstructions = `DERNIÈRE RELANCE — MAIS JAMAIS DE TON "DERNIÈRE TENTATIVE".
+- Ce message doit être AUTONOME, comme un NOUVEAU premier contact avec un angle différent
+- ⛔ INTERDIT: "dernière tentative", "suite à mon précédent message", "je reviens vers vous", "je ne veux pas insister", "la porte reste ouverte"
+- ⛔ SUJET INTERDIT: "Suite à mon précédent message" — écris un sujet ORIGINAL et accrocheur lié au CONTENU
+- Propose un angle INÉDIT: impact business, stack technique, culture d'équipe, projet concret
+- 200-350 caractères, CTA non-engageant`;
       }
     }
 
