@@ -57,6 +57,8 @@ export interface Chat {
     timestamp?: string;
     is_sender?: boolean;
   };
+  // Merged chat support: when multiple threads exist for the same candidate
+  _mergedChatIds?: string[];
 }
 
 export interface Message {
@@ -112,6 +114,44 @@ export interface JobData {
     niceToHave?: string;
     context?: string;
   };
+}
+
+// ── Merge chats by candidate ─────────────────────────────
+// Groups chats with the same attendee (same LinkedIn profile) into a single entry
+function mergeChatsByCandidate(chats: Chat[]): Chat[] {
+  const profileMap = new Map<string, Chat[]>();
+  const noProfileChats: Chat[] = [];
+
+  for (const chat of chats) {
+    const attendee = chat.attendees?.[0];
+    const profileId = attendee?.attendee_provider_id || attendee?.provider_id || null;
+    if (!profileId) { noProfileChats.push(chat); continue; }
+    if (!profileMap.has(profileId)) profileMap.set(profileId, []);
+    profileMap.get(profileId)!.push(chat);
+  }
+
+  const merged: Chat[] = [];
+  for (const [, group] of profileMap) {
+    if (group.length === 1) { merged.push(group[0]); continue; }
+    group.sort((a, b) => (new Date(b.timestamp || '').getTime() || 0) - (new Date(a.timestamp || '').getTime() || 0));
+    const primary = { ...group[0] };
+    primary._mergedChatIds = group.map(c => c.id);
+    primary.unread_count = group.reduce((sum, c) => sum + (c.unread_count ?? c.unread ?? 0), 0);
+    primary.unread = primary.unread_count;
+    const allFolders = new Set<string>();
+    for (const c of group) (c.folder || []).forEach(f => allFolders.add(f));
+    primary.folder = Array.from(allFolders);
+    const bestLastMsg = group.reduce((best, c) => {
+      if (!c.last_message?.timestamp) return best;
+      if (!best?.timestamp) return c.last_message;
+      return new Date(c.last_message.timestamp).getTime() > new Date(best.timestamp).getTime() ? c.last_message : best;
+    }, group[0].last_message);
+    primary.last_message = bestLastMsg;
+    merged.push(primary);
+  }
+  merged.push(...noProfileChats);
+  merged.sort((a, b) => (new Date(b.timestamp || '').getTime() || 0) - (new Date(a.timestamp || '').getTime() || 0));
+  return merged;
 }
 
 interface UseMessagesInboxOptions {
@@ -537,8 +577,9 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
       if (!data?.success) throw new Error(data?.error as string);
 
       const fetchedChats = data.chats as Chat[] || [];
-      setChats(fetchedChats);
-      setFilteredChats(fetchedChats);
+      const mergedChats = mergeChatsByCandidate(fetchedChats);
+      setChats(mergedChats);
+      setFilteredChats(mergedChats);
       
       // Store per-folder cursors for pagination
       if (data.cursors) {
@@ -551,7 +592,7 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
       
       // Replace placeholder with full chat object (without triggering onChatChange)
       if (pendingInitialChatId.current) {
-        const match = fetchedChats.find((c: Chat) => c.id === pendingInitialChatId.current);
+        const match = mergedChats.find((c: Chat) => c.id === pendingInitialChatId.current || c._mergedChatIds?.includes(pendingInitialChatId.current!));
         if (match) {
           _setSelectedChat(match);
         }
@@ -586,18 +627,22 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
 
       const newChats = data.chats as Chat[] || [];
       
-      // Merge with existing chats, deduplicating by ID
+      // Merge with existing chats, deduplicating by ID, then re-merge by candidate
       setChats(prev => {
-        const existingIds = new Set(prev.map(c => c.id));
+        // Expand previously merged chats back to their originals for proper re-merge
+        const allExisting: Chat[] = [];
+        for (const c of prev) {
+          if (c._mergedChatIds && c._mergedChatIds.length > 1) {
+            // We only have the primary — keep it as-is since we don't have the originals anymore
+            allExisting.push({ ...c, _mergedChatIds: undefined });
+          } else {
+            allExisting.push(c);
+          }
+        }
+        const existingIds = new Set(allExisting.map(c => c.id));
         const uniqueNew = newChats.filter(c => !existingIds.has(c.id));
-        const merged = [...prev, ...uniqueNew];
-        // Sort by timestamp
-        merged.sort((a, b) => {
-          const timeA = new Date(a.timestamp || '').getTime();
-          const timeB = new Date(b.timestamp || '').getTime();
-          return timeB - timeA;
-        });
-        return merged;
+        const combined = [...allExisting, ...uniqueNew];
+        return mergeChatsByCandidate(combined);
       });
       
       // Update cursors
@@ -654,15 +699,11 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
       // Single state update with all accumulated chats
       if (allNewChats.length > 0) {
         setChats(prev => {
-          const existingIds = new Set(prev.map(c => c.id));
+          const allExisting = prev.map(c => ({ ...c, _mergedChatIds: undefined }));
+          const existingIds = new Set(allExisting.map(c => c.id));
           const uniqueNew = allNewChats.filter(c => !existingIds.has(c.id));
-          const merged = [...prev, ...uniqueNew];
-          merged.sort((a, b) => {
-            const timeA = new Date(a.timestamp || '').getTime();
-            const timeB = new Date(b.timestamp || '').getTime();
-            return timeB - timeA;
-          });
-          return merged;
+          const combined = [...allExisting, ...uniqueNew];
+          return mergeChatsByCandidate(combined);
         });
       }
 
@@ -688,35 +729,72 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
 
     setLoadingMessages(true);
     try {
-      const { data } = await invokeUnipile({
-        body: { 
-          action: 'get_messages', 
-          account_id: selectedAccount,
-          chat_id: chatId,
-          limit: 50,
-          cursor: loadMore ? cursorRef.current : undefined,
-        },
-      });
-
-      if (!data?.success) throw new Error(data?.error as string);
-
-      const newMessages = (data.messages as Message[]) || [];
+      // Check if this is a merged chat — if so, fetch messages from ALL underlying threads
+      const mergedIds = selectedChat?._mergedChatIds;
+      const chatIds = (mergedIds && mergedIds.length > 1) ? mergedIds : [chatId];
       
       if (loadMore) {
+        // For load-more, only paginate the primary chat
+        const { data } = await invokeUnipile({
+          body: { 
+            action: 'get_messages', 
+            account_id: selectedAccount,
+            chat_id: chatId,
+            limit: 50,
+            cursor: cursorRef.current,
+          },
+        });
+        if (!data?.success) throw new Error(data?.error as string);
+        const newMessages = (data.messages as Message[]) || [];
         setMessages(prev => [...newMessages, ...prev]);
+        setCursor(data.cursor as string | null);
+        setHasMore(!!data.cursor);
       } else {
-        setMessages(newMessages.reverse());
+        // Fetch from all merged threads in parallel
+        const allMessages: Message[] = [];
+        const results = await Promise.allSettled(
+          chatIds.map(cid =>
+            invokeUnipile({
+              body: { action: 'get_messages', account_id: selectedAccount, chat_id: cid, limit: 50 },
+            })
+          )
+        );
+        
+        let lastCursor: string | null = null;
+        for (const result of results) {
+          if (result.status === 'fulfilled' && result.value.data?.success) {
+            const msgs = (result.value.data.messages as Message[]) || [];
+            allMessages.push(...msgs);
+            if (!lastCursor && result.value.data.cursor) {
+              lastCursor = result.value.data.cursor as string;
+            }
+          }
+        }
+        
+        // Deduplicate by message ID, then sort chronologically
+        const seen = new Set<string>();
+        const unique = allMessages.filter(m => {
+          if (seen.has(m.id)) return false;
+          seen.add(m.id);
+          return true;
+        });
+        unique.sort((a, b) => {
+          const tA = new Date(a.timestamp || '').getTime() || 0;
+          const tB = new Date(b.timestamp || '').getTime() || 0;
+          return tA - tB;
+        });
+        
+        setMessages(unique);
+        setCursor(lastCursor);
+        setHasMore(!!lastCursor);
       }
-      
-      setCursor(data.cursor as string | null);
-      setHasMore(!!data.cursor);
     } catch (error) {
       console.error('Error fetching messages:', error);
       toast.error('Erreur lors du chargement des messages');
     } finally {
       setLoadingMessages(false);
     }
-  }, [selectedAccount]);
+  }, [selectedAccount, selectedChat]);
 
   // Fire-and-forget: update status to 'messaged' + sync Notion after sending from inbox
   const syncAfterInboxSend = useCallback(async (chat: Chat) => {
@@ -1179,25 +1257,31 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
   }, [selectedChat, calendlyLink]);
 
   // Helper: mark a chat as read locally AND via the Unipile API
-  // Plain function (not a hook) to avoid changing hook count
+  // For merged chats, marks ALL underlying threads as read
   const markChatAsReadLocally = (chatId: string) => {
     // Single dispatch updates both chats[] and selectedChat atomically (1 render instead of 2)
     chatDispatch({ type: 'MARK_CHAT_READ', chatId });
 
-    // Fire-and-forget: tell Unipile to mark the chat as read server-side
-    invokeUnipile({
-      body: {
-        action: 'mark_as_read',
-        account_id: selectedAccount,
-        chat_id: chatId,
-      },
-    }).then(({ data }) => {
-      if (!data?.success) {
-        console.warn('Failed to mark chat as read via API:', data?.error);
-      }
-    }).catch(err => {
-      console.warn('Error marking chat as read:', err);
-    });
+    // Find merged chat IDs — mark all underlying threads as read
+    const chat = chats.find(c => c.id === chatId);
+    const chatIdsToMark = chat?._mergedChatIds || [chatId];
+
+    // Fire-and-forget: tell Unipile to mark each chat as read server-side
+    for (const cid of chatIdsToMark) {
+      invokeUnipile({
+        body: {
+          action: 'mark_as_read',
+          account_id: selectedAccount,
+          chat_id: cid,
+        },
+      }).then(({ data }) => {
+        if (!data?.success) {
+          console.warn('Failed to mark chat as read via API:', data?.error);
+        }
+      }).catch(err => {
+        console.warn('Error marking chat as read:', err);
+      });
+    }
   };
 
   // Filter chats effect
@@ -1276,28 +1360,23 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
 
         const freshChats = data.chats as Chat[] || [];
         setChats(prev => {
-          // Merge fresh first-page with any extra-loaded chats beyond the first page
+          // Expand merged chats for proper re-merge
+          const prevFlat = prev.map(c => ({ ...c, _mergedChatIds: undefined }));
           const freshIds = new Set(freshChats.map(c => c.id));
-          const extraChats = prev.filter(c => !freshIds.has(c.id));
+          const extraChats = prevFlat.filter(c => !freshIds.has(c.id));
           if (extraChats.length === 0) {
-            // No extra loaded chats — only update if something changed
-            if (prev.length !== freshChats.length) return freshChats;
-            const prevFirst = prev[0];
-            const freshFirst = freshChats[0];
-            if (prevFirst?.id !== freshFirst?.id || prevFirst?.timestamp !== freshFirst?.timestamp) return freshChats;
             const prevUnread = prev.reduce((a, c) => a + getUnreadCount(c), 0);
-            const freshUnread = freshChats.reduce((a, c) => a + getUnreadCount(c), 0);
-            if (prevUnread !== freshUnread) return freshChats;
-            return prev;
+            const freshMerged = mergeChatsByCandidate(freshChats);
+            const freshUnread = freshMerged.reduce((a, c) => a + getUnreadCount(c), 0);
+            if (prev.length === freshMerged.length && prevUnread === freshUnread) {
+              const prevFirst = prev[0];
+              const freshFirst = freshMerged[0];
+              if (prevFirst?.id === freshFirst?.id && prevFirst?.timestamp === freshFirst?.timestamp) return prev;
+            }
+            return freshMerged;
           }
-          // Merge: fresh first page + extra loaded chats, sorted by timestamp
-          const merged = [...freshChats, ...extraChats];
-          merged.sort((a, b) => {
-            const timeA = new Date(a.timestamp || '').getTime();
-            const timeB = new Date(b.timestamp || '').getTime();
-            return timeB - timeA;
-          });
-          return merged;
+          const combined = [...freshChats, ...extraChats];
+          return mergeChatsByCandidate(combined);
         });
       } catch {
         // Silently ignore polling errors
