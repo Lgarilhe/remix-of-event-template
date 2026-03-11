@@ -1445,16 +1445,36 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
         if (!active) return;
         if (!data?.success) return;
 
-        const freshMessages: Message[] = ((data.messages as Message[]) || []).reverse();
+        const freshMessages: Message[] = ((data.messages as Message[]) || []);
+        // Sort chronologically
+        freshMessages.sort((a, b) => {
+          const tA = new Date(a.timestamp || '').getTime() || 0;
+          const tB = new Date(b.timestamp || '').getTime() || 0;
+          return tA - tB;
+        });
         
         setMessages(prev => {
-          // Only update if there are genuinely new messages
-          if (freshMessages.length !== prev.length) return freshMessages;
-          // Check if last message ID differs
-          const lastFresh = freshMessages[freshMessages.length - 1];
-          const lastPrev = prev[prev.length - 1];
-          if (lastFresh?.id !== lastPrev?.id) return freshMessages;
-          return prev; // No change — keep reference stable
+          // Merge fresh messages with existing (preserves backfilled secondary thread messages)
+          const existingIds = new Set(freshMessages.map(m => m.id));
+          // Keep messages from secondary threads that aren't in the primary poll
+          const secondaryMsgs = prev.filter(m => !existingIds.has(m.id));
+          if (secondaryMsgs.length === 0) {
+            // No secondary messages — check if anything actually changed
+            if (freshMessages.length === prev.length) {
+              const lastFresh = freshMessages[freshMessages.length - 1];
+              const lastPrev = prev[prev.length - 1];
+              if (lastFresh?.id === lastPrev?.id) return prev; // No change
+            }
+            return freshMessages;
+          }
+          // Merge and re-sort
+          const combined = [...freshMessages, ...secondaryMsgs];
+          combined.sort((a, b) => {
+            const tA = new Date(a.timestamp || '').getTime() || 0;
+            const tB = new Date(b.timestamp || '').getTime() || 0;
+            return tA - tB;
+          });
+          return combined;
         });
       } catch {
         // Silently ignore polling errors
