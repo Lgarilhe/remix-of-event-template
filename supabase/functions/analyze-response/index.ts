@@ -294,9 +294,9 @@ RÈGLES D'ANALYSE:
 - Génère des tags pertinents pour la catégorisation
 - Identifie les questions de qualification stratégiques à poser
 
-RÈGLES DE SUGGESTIONS DE RÉPONSE:
-- 3 réponses positives/engageantes (quick ~15 mots, standard ~30 mots, detailed ~50 mots)
-- 2 réponses négatives (standard ~20 mots clôture polie, quick ~15 mots désengagement ferme)
+RÈGLES DE SUGGESTIONS DE RÉPONSE (TOUJOURS 5 suggestions):
+- 3 réponses POSITIVES/engageantes avec tone="positive" (quick ~15 mots, standard ~30 mots, detailed ~50 mots)
+- 2 réponses de CLÔTURE avec tone="negative" (standard ~20 mots clôture polie pour garder le contact, quick ~15 mots désengagement ferme mais courtois)
 - Adapte la langue à celle du candidat (FR ou EN)
 - Ton professionnel mais humain, jamais robotique
 
@@ -325,7 +325,11 @@ FORMAT DE SORTIE JSON:
   "summary": "Résumé en 1 phrase de la situation",
   "qualificationQuestions": ["Question stratégique à poser pour qualifier"],
   "replySuggestions": [
-    {"text": "...", "type": "quick|standard|detailed", "tone": "positive|negative", "intent_match": "..."}
+    {"text": "Réponse courte positive ~15 mots", "type": "quick", "tone": "positive", "intent_match": "Engagement rapide"},
+    {"text": "Réponse moyenne positive ~30 mots", "type": "standard", "tone": "positive", "intent_match": "Avancer la discussion"},
+    {"text": "Réponse détaillée positive ~50 mots avec question de qualification", "type": "detailed", "tone": "positive", "intent_match": "Qualification"},
+    {"text": "Clôture polie ~20 mots, garder le contact pour le futur", "type": "standard", "tone": "negative", "intent_match": "Clôture polie"},
+    {"text": "Désengagement ferme mais courtois ~15 mots", "type": "quick", "tone": "negative", "intent_match": "Fin de conversation"}
   ],
   "jobMatches": [
     {"jobId": "UUID EXACT", "jobTitle": "Titre exact", "clientName": "...", "matchScore": 0-100, "matchingSkills": [], "missingSkills": [], "recommendation": "go|maybe|skip", "summary": "Justification en 1 phrase"}
