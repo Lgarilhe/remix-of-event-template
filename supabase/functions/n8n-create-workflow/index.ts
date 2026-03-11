@@ -334,8 +334,6 @@ serve(async (req) => {
       ],
 
       // ── STICKY NOTES (documentation for non-devs) ──
-      pinData: {},
-
       connections: {
         "📥 Réception demande": {
           main: [[{ node: "✅ Vérifier les données", type: "main", index: 0 }]],
