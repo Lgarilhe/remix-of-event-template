@@ -254,7 +254,7 @@ function EnrichedContactSheet({ contact, enrichment, open, onOpenChange, onCopyM
                     {enrichment.message_type === 'sms' ? '📱 SMS' : '💬 LinkedIn'}
                   </span>
                   {enrichment.message_status && (
-                    <Badge variant="outline" className="text-[9px] rounded-full">{enrichment.message_status}</Badge>
+                    <Badge variant="outline" className="text-[9px]">{enrichment.message_status}</Badge>
                   )}
                 </div>
                 <Button variant="outline" size="sm" onClick={handleCopy} className="h-7 text-[10px] gap-1 rounded-lg">
