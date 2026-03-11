@@ -51,13 +51,21 @@ Labels: max 5 mots, clairs, en français. Pas de code technique.
 
 PLAN FINAL — Après toutes les réponses:
 Présente un résumé lisible du plan (pas le JSON brut), puis:
+
+IMPORTANT pour le champ "keywords":
+- Le keywords est le SEUL filtre structuré envoyé à LinkedIn. Tous les critères textuels doivent y figurer.
+- Inclure les titres de poste, compétences clés, et AUSSI la localisation.
+- Exemple: "(Data Engineer OR ML Engineer) AND (Paris OR Île-de-France)"
+- Ne PAS mettre trop de mots-clés (LinkedIn a des limites). Garder concis et efficace.
+- Les company_keywords, role, skills_keywords, school_names sont stockés pour le scoring mais NE SONT PAS envoyés comme filtres LinkedIn.
+
 [SEARCH_PLAN]
 {
   "summary": "Description courte",
   "filters": {
-    "keywords": "Boolean search string",
+    "keywords": "Boolean search string INCLUDING location e.g. (title1 OR title2) AND (Paris OR Lyon)",
     "role": [{"keywords": "...", "priority": "MUST_HAVE", "scope": "CURRENT"}],
-    "seniority": ["5", "6"],
+    "seniority": ["senior", "entry"],
     "calculated_experience_min": 3,
     "calculated_experience_max": 10,
     "location_keywords": ["Paris"],
