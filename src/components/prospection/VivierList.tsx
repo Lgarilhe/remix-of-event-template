@@ -278,7 +278,7 @@ function EnrichedContactSheet({ contact, enrichment, open, onOpenChange, onCopyM
                     {shortlists.map((s: any) => (
                       <div key={s.airtable_id} className="border border-border/40 p-2.5 text-xs space-y-0.5">
                         <div className="font-medium">{s.job_title || 'Poste inconnu'}</div>
-                        <div className="text-muted-foreground">{s.candidate_name} {s.date_added && `· ${s.date_added}`} {s.status && <Badge variant="outline" className="text-[9px] ml-1 rounded-full">{s.status}</Badge>}</div>
+                        <div className="text-muted-foreground">{s.candidate_name} {s.date_added && `· ${s.date_added}`} {s.status && <Badge variant="outline" className="text-[9px] ml-1">{s.status}</Badge>}</div>
                       </div>
                     ))}
                   </div>
