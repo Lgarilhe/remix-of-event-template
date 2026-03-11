@@ -268,7 +268,7 @@ function ProspectCard({ prospect, index }: { prospect: ProspectProfile; index: n
                   <Badge key={i} variant="outline" className="text-[9px] border-border/50 font-normal px-2 py-0.5 bg-muted/30">{skill}</Badge>
                 ))}
                 {prospect.skills.length > 4 && (
-                  <Badge variant="outline" className="text-[9px] border-border/50 font-normal px-2 py-0.5 rounded-full">+{prospect.skills.length - 4}</Badge>
+                  <Badge variant="outline" className="text-[9px] border-border/50 font-normal px-2 py-0.5">+{prospect.skills.length - 4}</Badge>
                 )}
               </div>
             )}
