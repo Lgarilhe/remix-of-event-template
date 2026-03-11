@@ -323,12 +323,12 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
             setInterimText('');
             setInterimSpeaker(null);
 
-            // Only trigger on UtteranceEnd or timer — removed speech_final trigger
-            // Timer-based trigger still here as fallback
+            // Trigger on timer OR when enough new text accumulated (>80 chars)
             const now = Date.now();
+            const pendingLen = pendingFinalTextRef.current.trim().length;
             if (
-              now - lastCoachCallRef.current > COACH_INTERVAL_MS &&
-              pendingFinalTextRef.current.trim()
+              pendingLen > 0 &&
+              (now - lastCoachCallRef.current > COACH_INTERVAL_MS || pendingLen > 80)
             ) {
               lastCoachCallRef.current = now;
               const chunkForCoach = pendingFinalTextRef.current.trim();
