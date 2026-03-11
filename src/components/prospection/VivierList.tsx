@@ -209,7 +209,7 @@ function EnrichedContactSheet({ contact, enrichment, open, onOpenChange, onCopyM
 
           {/* Enriched profile */}
           {enrichment && enrichment.match_type !== 'not_found' && (
-            <div className="rounded-xl border border-[hsl(var(--skalr-purple)/0.2)] bg-[hsl(var(--skalr-purple)/0.04)] p-3.5 space-y-2">
+            <div className="border border-[hsl(var(--skalr-purple)/0.2)] bg-[hsl(var(--skalr-purple)/0.04)] p-3.5 space-y-2">
               <div className="flex items-center gap-2">
                 <Sparkles className="w-4 h-4 text-[hsl(var(--skalr-purple))]" />
                 <span className="text-xs font-semibold">Profil enrichi</span>
