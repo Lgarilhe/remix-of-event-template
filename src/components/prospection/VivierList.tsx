@@ -268,7 +268,7 @@ function EnrichedContactSheet({ contact, enrichment, open, onOpenChange, onCopyM
           )}
 
           {loadingDetails ? (
-            <div className="space-y-2"><Skeleton className="h-4 w-full rounded-lg" /><Skeleton className="h-4 w-3/4 rounded-lg" /></div>
+            <div className="space-y-2"><Skeleton className="h-4 w-full" /><Skeleton className="h-4 w-3/4" /></div>
           ) : (
             <>
               {shortlists.length > 0 && (
