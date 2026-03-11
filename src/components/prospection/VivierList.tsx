@@ -401,9 +401,9 @@ function CompaniesView() {
                 </div>
               </div>
               <div className="flex items-center gap-1.5 shrink-0">
-                <Badge variant="secondary" className="text-[9px] gap-0.5 px-1.5 rounded-full"><FileText className="w-3 h-3" /> {c.shortlist_count}</Badge>
-                {c.placement_count > 0 && <Badge variant="secondary" className="text-[9px] gap-0.5 px-1.5 rounded-full"><Trophy className="w-3 h-3" /> {c.placement_count}</Badge>}
-                {c.note_count > 0 && <Badge variant="outline" className="text-[9px] gap-0.5 px-1.5 rounded-full">{c.note_count} notes</Badge>}
+                 <Badge variant="secondary" className="text-[9px] gap-0.5 px-1.5"><FileText className="w-3 h-3" /> {c.shortlist_count}</Badge>
+                 {c.placement_count > 0 && <Badge variant="secondary" className="text-[9px] gap-0.5 px-1.5"><Trophy className="w-3 h-3" /> {c.placement_count}</Badge>}
+                 {c.note_count > 0 && <Badge variant="outline" className="text-[9px] gap-0.5 px-1.5">{c.note_count} notes</Badge>}
               </div>
               <div className="text-[10px] text-muted-foreground shrink-0 w-20 text-right">
                 {c.last_interaction_date ? format(new Date(c.last_interaction_date), 'dd MMM yyyy', { locale: fr }) : '—'}
