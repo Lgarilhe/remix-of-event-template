@@ -519,8 +519,10 @@ export function useLinkedInSearchActions(
           currentFilters.calculated_experience_max
         );
 
-        // Apply client-side location filter (LinkedIn API doesn't always respect location filters)
-        const locationFiltered = currentFilters.location.length > 0
+        // Apply client-side location filter — skip when radius search is active
+        // (LinkedIn Recruiter already handles radius filtering server-side)
+        const hasRadiusSearch = currentFilters.location_within_area && currentFilters.location_within_area > 0;
+        const locationFiltered = currentFilters.location.length > 0 && !hasRadiusSearch
           ? filterByLocation(filteredBatch, currentFilters.location)
           : filteredBatch;
 
