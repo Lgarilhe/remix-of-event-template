@@ -699,15 +699,11 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
       // Single state update with all accumulated chats
       if (allNewChats.length > 0) {
         setChats(prev => {
-          const existingIds = new Set(prev.map(c => c.id));
+          const allExisting = prev.map(c => ({ ...c, _mergedChatIds: undefined }));
+          const existingIds = new Set(allExisting.map(c => c.id));
           const uniqueNew = allNewChats.filter(c => !existingIds.has(c.id));
-          const merged = [...prev, ...uniqueNew];
-          merged.sort((a, b) => {
-            const timeA = new Date(a.timestamp || '').getTime();
-            const timeB = new Date(b.timestamp || '').getTime();
-            return timeB - timeA;
-          });
-          return merged;
+          const combined = [...allExisting, ...uniqueNew];
+          return mergeChatsByCandidate(combined);
         });
       }
 
