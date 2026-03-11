@@ -36,7 +36,7 @@ export function getStepMessageType(
     if (prevInMails.length === 0) {
       return { label: 'InMail initial (formel)', shortLabel: 'InMail initial', color: 'bg-blue-50 text-blue-700' };
     }
-    return { label: 'InMail relance (nouvel angle)', shortLabel: 'InMail relance', color: 'bg-blue-50 text-blue-700' };
+    return { label: 'InMail relance', shortLabel: 'InMail relance', color: 'bg-blue-50 text-blue-700' };
   }
 
   // message or smart_message
@@ -49,9 +49,9 @@ export function getStepMessageType(
     return { label: 'Suite invitation (merci + pitch)', shortLabel: 'Post-connexion', color: 'bg-violet-50 text-violet-700' };
   }
   if (prevDirectMsgs.length === 1) {
-    return { label: 'Relance 1 (nouvel angle)', shortLabel: 'Relance 1', color: 'bg-amber-50 text-amber-700' };
+    return { label: 'Relance 1', shortLabel: 'Relance 1', color: 'bg-amber-50 text-amber-700' };
   }
-  return { label: 'Relance 2 (clôture)', shortLabel: 'Relance 2', color: 'bg-red-50 text-red-700' };
+  return { label: 'Relance 2', shortLabel: 'Relance 2', color: 'bg-red-50 text-red-700' };
 }
 
 /**
