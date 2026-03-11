@@ -181,16 +181,27 @@ serve(async (req) => {
     while (allProfiles.length < maxProfiles && round < maxRounds) {
       round++;
       try {
-        // Build a unified keywords string combining all text-based filters.
-        // The Recruiter API rejects structured filters (location, company, role, skills)
-        // when they contain text names instead of resolved LinkedIn IDs.
-        // So we consolidate everything into the keywords field which supports boolean queries.
+        // Build the keywords string using the same strategy as manual search.
+        // The agent's prompt now generates rich Boolean keywords with synonym rings,
+        // layered AND/OR, location, and NOT exclusions — exactly like generate-search-filters.
+        // The keywords field already includes location (e.g. "AND (Paris OR Île-de-France)")
+        // because structured filters (location, role) require LinkedIn numeric IDs
+        // which we don't have. Role titles are also folded into keywords for the API call.
         const keywordParts: string[] = [];
         
-        // Primary keywords (job titles, skills boolean queries, etc.)
+        // Primary keywords (technologies/skills boolean with synonym rings + location)
         if (filters.keywords) keywordParts.push(filters.keywords);
         
-        const combinedKeywords = keywordParts.join(" ").trim() || undefined;
+        // Fold role titles into keywords if present (since structured role filter needs IDs)
+        if (filters.role && Array.isArray(filters.role)) {
+          for (const r of filters.role) {
+            if (r.keywords) keywordParts.push(`(${r.keywords})`);
+          }
+        }
+        
+        const combinedKeywords = keywordParts.join(" AND ").trim() || undefined;
+        
+        console.log(`[run-agent-search] Round ${round} keywords: ${combinedKeywords?.slice(0, 200)}`);
         
         const searchBody: any = {
           action: "search",
@@ -200,11 +211,6 @@ serve(async (req) => {
           category: "people",
           limit: 25,
           keywords: combinedKeywords,
-          // NOTE: We intentionally do NOT send location, company, role, skills as
-          // structured filters because the agent only has text names (e.g. "Paris")
-          // not resolved LinkedIn IDs. The Recruiter API rejects text names.
-          // Location and company context are handled by the keywords boolean query
-          // and the scoring engine will filter by relevance.
           open_to_work: filters.open_to_work || undefined,
         };
         if (cursor) searchBody.cursor = cursor;
