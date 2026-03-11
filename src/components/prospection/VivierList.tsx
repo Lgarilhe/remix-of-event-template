@@ -201,7 +201,7 @@ function EnrichedContactSheet({ contact, enrichment, open, onOpenChange, onCopyM
             size="sm"
             variant={enrichment ? 'outline' : 'default'}
             onClick={() => onEnrichSingle?.(contact.airtable_id)}
-            className="w-full h-9 text-xs gap-1.5 rounded-lg"
+            className="w-full h-9 text-xs gap-1.5"
           >
             {enrichment ? <RefreshCw className="w-3.5 h-3.5" /> : <Sparkles className="w-3.5 h-3.5" />}
             {enrichment ? 'Ré-enrichir & regénérer le message' : 'Enrichir & générer le message'}
