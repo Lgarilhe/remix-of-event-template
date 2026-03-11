@@ -458,7 +458,7 @@ function ContactsView() {
 
       {/* Enrichment controls */}
       <div className="flex items-center gap-2 flex-wrap">
-        <Button size="sm" onClick={() => handleEnrichAll(false)} disabled={isEnriching || contacts.length === 0} className="h-8 text-xs gap-1.5 rounded-lg bg-gradient-to-r from-[hsl(var(--skalr-purple))] to-[hsl(var(--skalr-pink))] text-white border-0 hover:opacity-90">
+        <Button size="sm" onClick={() => handleEnrichAll(false)} disabled={isEnriching || contacts.length === 0} className="h-8 text-xs gap-1.5 bg-foreground text-background border border-foreground hover:bg-foreground/90">
           <Sparkles className="w-3.5 h-3.5" />
           {isEnriching ? 'Enrichissement…' : 'Enrichir & qualifier'}
         </Button>
