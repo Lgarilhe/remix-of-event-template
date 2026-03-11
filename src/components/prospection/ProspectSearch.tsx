@@ -473,9 +473,9 @@ export function ProspectSearch({ selectedICP, onSelectICP, onResults, searching,
              )}>
             <span>{tab.emoji}</span><span>{tab.label}</span>
             {tab.count > 0 && (
-              <span className={cn("text-[9px] px-1.5 py-0.5 rounded-full font-bold",
-                filterTab === tab.value ? "bg-foreground text-background" : "bg-muted-foreground/20 text-muted-foreground"
-              )}>{tab.count}</span>
+               <span className={cn("text-[9px] px-1.5 py-0.5 font-bold",
+                 filterTab === tab.value ? "bg-foreground text-background" : "bg-muted-foreground/20 text-muted-foreground"
+               )}>{tab.count}</span>
             )}
           </button>
         ))}
