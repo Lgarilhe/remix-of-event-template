@@ -49,9 +49,9 @@ export function getStepMessageType(
     return { label: 'Suite invitation (merci + pitch)', shortLabel: 'Post-connexion', color: 'bg-violet-50 text-violet-700' };
   }
   if (prevDirectMsgs.length === 1) {
-    return { label: 'Relance 1 (nouvel angle)', shortLabel: 'Relance 1', color: 'bg-amber-50 text-amber-700' };
+    return { label: 'Relance 1', shortLabel: 'Relance 1', color: 'bg-amber-50 text-amber-700' };
   }
-  return { label: 'Relance 2 (clôture)', shortLabel: 'Relance 2', color: 'bg-red-50 text-red-700' };
+  return { label: 'Relance 2', shortLabel: 'Relance 2', color: 'bg-red-50 text-red-700' };
 }
 
 /**
