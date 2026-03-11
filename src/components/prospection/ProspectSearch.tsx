@@ -452,7 +452,7 @@ export function ProspectSearch({ selectedICP, onSelectICP, onResults, searching,
                   {icps.map(icp => (<SelectItem key={icp.id} value={icp.id}>{icp.name}</SelectItem>))}
                 </SelectContent>
               </Select>
-              {selectedICP && (<Badge variant="outline" className="text-[10px] border-border/40 gap-1 shrink-0 rounded-full"><Target className="w-3 h-3" /> {selectedICP.name}</Badge>)}
+              {selectedICP && (<Badge variant="outline" className="text-[10px] border-border/40 gap-1 shrink-0"><Target className="w-3 h-3" /> {selectedICP.name}</Badge>)}
             </div>
           </div>
         )}
