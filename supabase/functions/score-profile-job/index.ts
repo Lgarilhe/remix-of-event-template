@@ -382,7 +382,7 @@ function extractImplicitSkills(profile: ProfileData): string[] {
   for (const exp of profile.workExperience ?? []) {
     if (exp.description) allText.push(exp.description);
     if (exp.role) allText.push(exp.role);
-    for (const s of exp.skills ?? []) implicit.add(s.toLowerCase());
+    for (const s of exp.skills ?? []) { if (typeof s === "string") implicit.add(s.toLowerCase()); }
   }
 
   const combined = allText.join(" ").toLowerCase();
