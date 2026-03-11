@@ -577,8 +577,9 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
       if (!data?.success) throw new Error(data?.error as string);
 
       const fetchedChats = data.chats as Chat[] || [];
-      setChats(fetchedChats);
-      setFilteredChats(fetchedChats);
+      const mergedChats = mergeChatsByCandidate(fetchedChats);
+      setChats(mergedChats);
+      setFilteredChats(mergedChats);
       
       // Store per-folder cursors for pagination
       if (data.cursors) {
