@@ -211,7 +211,7 @@ function ProspectCard({ prospect, index }: { prospect: ProspectProfile; index: n
                   </Badge>
                 )}
                 {signals?.recently_funded && (
-                  <Badge className="text-[10px] bg-emerald-500/10 text-emerald-600 border-emerald-500/20 border rounded-full gap-1 px-2 py-0.5">
+                  <Badge className="text-[10px] bg-emerald-500/10 text-emerald-600 border-emerald-500/20 border gap-1 px-2 py-0.5">
                     <TrendingUp className="w-2.5 h-2.5" /> Levée récente
                   </Badge>
                 )}
