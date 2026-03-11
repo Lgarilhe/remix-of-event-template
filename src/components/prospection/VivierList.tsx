@@ -370,7 +370,7 @@ function CompaniesView() {
         <div className="text-xs text-muted-foreground">{totalCount} société{totalCount > 1 ? 's' : ''} avec des interactions</div>
       )}
       {loading ? (
-        <div className="space-y-2">{Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-16 w-full rounded-xl" />)}</div>
+         <div className="space-y-2">{Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-16 w-full" />)}</div>
       ) : companies.length === 0 ? (
         <div className="text-center py-12 text-muted-foreground">
           <div className="w-14 h-14 rounded-2xl bg-muted/50 flex items-center justify-center mx-auto mb-3">
