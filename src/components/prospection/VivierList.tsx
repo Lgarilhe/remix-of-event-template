@@ -347,7 +347,7 @@ function Pagination({ page, totalPages, goToPage }: { page: number; totalPages: 
     <div className="flex items-center justify-between">
       <Button variant="outline" size="sm" disabled={page === 0} onClick={() => goToPage(page - 1)} className="text-xs"><ChevronLeft className="w-3 h-3 mr-1" /> Précédent</Button>
       <span className="text-xs text-muted-foreground">Page {page + 1} / {totalPages}</span>
-      <Button variant="outline" size="sm" disabled={page >= totalPages - 1} onClick={() => goToPage(page + 1)} className="text-xs rounded-lg">Suivant <ChevronRight className="w-3 h-3 ml-1" /></Button>
+      <Button variant="outline" size="sm" disabled={page >= totalPages - 1} onClick={() => goToPage(page + 1)} className="text-xs">Suivant <ChevronRight className="w-3 h-3 ml-1" /></Button>
     </div>
   );
 }
