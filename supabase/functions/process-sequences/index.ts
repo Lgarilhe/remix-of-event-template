@@ -238,34 +238,37 @@ async function handleProcess(supabase: any, force = false) {
         }
 
         // Guard: prevent follow-up messages from being sent if no prior message was sent in this enrollment
+        // BUT only if there ARE prior message-type steps that SHOULD have been sent (i.e., this is truly a follow-up)
         if (needsMessage(step.action_type) && step.step_order > 0) {
-          const { data: priorSent } = await supabase.from('sequence_step_executions')
-            .select('id')
-            .eq('enrollment_id', enrollment.id)
-            .eq('status', 'sent')
-            .limit(1);
-          
-          // Check if ANY prior message/inmail was sent (not just any step — specifically message-type steps)
-          const { data: priorMessageSent } = await supabase
+          // First: check if there are ANY earlier message-type steps in this enrollment's execution history
+          const { data: priorMessageSteps } = await supabase
             .from('sequence_step_executions')
-            .select('id, step:sequence_steps!inner(action_type)')
+            .select('id, status, step:sequence_steps!inner(action_type)')
             .eq('enrollment_id', enrollment.id)
-            .eq('status', 'sent')
-            .in('step.action_type', ['message', 'inmail', 'smart_message'])
-            .limit(1);
+            .lt('step_order', step.step_order)
+            .in('step.action_type', ['message', 'inmail', 'smart_message']);
 
-          if (!priorMessageSent || priorMessageSent.length === 0) {
-            console.warn(`[process] ⛔ GUARD: Skipping ${step.action_type} step ${step.step_order} for ${enrollment.profile_name} — no prior message was sent in this enrollment. Completing sequence.`);
-            await supabase.from('sequence_step_executions').update({ 
-              status: 'skipped', 
-              skip_reason: 'no_previous_message', 
-              executed_at: new Date().toISOString() 
-            }).eq('id', exec.id);
-            await supabase.from('sequence_enrollments').update({ status: 'completed', completed_at: new Date().toISOString() }).eq('id', enrollment.id);
-            // Cancel any remaining scheduled steps for this enrollment
-            await supabase.from('sequence_step_executions').update({ status: 'cancelled', skip_reason: 'no_previous_message' }).eq('enrollment_id', enrollment.id).eq('status', 'scheduled');
-            results.skipped++;
-            continue;
+          // If no prior message-type steps exist at all, this IS the first message → allow it
+          const hasPriorMessageSteps = priorMessageSteps && priorMessageSteps.length > 0;
+          
+          if (hasPriorMessageSteps) {
+            // There ARE prior message steps — check if at least one was actually sent
+            const anyPriorSent = priorMessageSteps.some((s: any) => s.status === 'sent');
+            
+            if (!anyPriorSent) {
+              console.warn(`[process] ⛔ GUARD: Skipping ${step.action_type} step ${step.step_order} for ${enrollment.profile_name} — ${priorMessageSteps.length} prior message step(s) exist but none were sent. Completing sequence.`);
+              await supabase.from('sequence_step_executions').update({ 
+                status: 'skipped', 
+                skip_reason: 'no_previous_message', 
+                executed_at: new Date().toISOString() 
+              }).eq('id', exec.id);
+              await supabase.from('sequence_enrollments').update({ status: 'completed', completed_at: new Date().toISOString() }).eq('id', enrollment.id);
+              await supabase.from('sequence_step_executions').update({ status: 'cancelled', skip_reason: 'no_previous_message' }).eq('enrollment_id', enrollment.id).eq('status', 'scheduled');
+              results.skipped++;
+              continue;
+            }
+          } else {
+            console.log(`[process] ✅ First message step for ${enrollment.profile_name} at step_order=${step.step_order} (no prior message steps) — allowing`);
           }
         }
 
