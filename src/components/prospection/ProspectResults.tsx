@@ -368,7 +368,7 @@ export function ProspectResults({ results, searching }: ProspectResultsProps) {
              <Search className="w-4 h-4" />
            </div>
           <div>
-            <h3 className="text-sm font-semibold text-foreground">Résultats</h3>
+            <h3 className="text-sm font-semibold text-foreground uppercase tracking-wider">Résultats</h3>
             {results.length > 0 && (
               <p className="text-[11px] text-muted-foreground">
                 <span className="font-semibold text-foreground">{results.length}</span> prospect{results.length > 1 ? 's' : ''}
