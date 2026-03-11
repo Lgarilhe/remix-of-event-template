@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { InMailTextEditor } from '../InMailTextEditor';
 import { ToneSelector, AITone } from './ToneSelector';
-import { MessageAISheet } from './MessageAISheet';
+import { InlineAIPanel } from './InlineAIPanel';
 import { ActivityEventCard } from './ActivityEventCard';
 import { useProfileActivity, ActivityEvent } from '@/hooks/useProfileActivity';
 import { 
@@ -86,7 +86,7 @@ export const MessageView: React.FC<MessageViewProps> = ({
   const [localTone, setLocalTone] = useState<AITone>(selectedTone);
   const currentTone = onToneChange ? selectedTone : localTone;
   const handleToneChange = onToneChange || setLocalTone;
-  const [aiSheetOpen, setAiSheetOpen] = useState(false);
+  const [aiPanelOpen, setAiPanelOpen] = useState(false);
   const localContainerRef = useRef<HTMLDivElement>(null);
 
   // Scroll to bottom when messages load or change
@@ -203,21 +203,28 @@ export const MessageView: React.FC<MessageViewProps> = ({
           <ToneSelector selectedTone={currentTone} onToneChange={handleToneChange} />
         </div>
 
-        {/* AI Sheet trigger */}
+        {/* AI Panel toggle */}
         {hasCandidateMessage && messages.length > 0 && (
           <button
-            className="relative overflow-hidden h-8 px-2 md:px-3 text-xs font-medium uppercase tracking-wider border border-foreground bg-foreground text-background group shrink-0"
-            onClick={() => setAiSheetOpen(true)}
+            className={cn(
+              "relative overflow-hidden h-8 px-2 md:px-3 text-xs font-medium uppercase tracking-wider border group shrink-0",
+              aiPanelOpen
+                ? "bg-brutal-accent text-foreground border-foreground"
+                : "bg-foreground text-background border-foreground"
+            )}
+            onClick={() => setAiPanelOpen(!aiPanelOpen)}
           >
             <span className="relative z-10 flex items-center gap-1">
               <Zap className="w-3.5 h-3.5" />
               <span className="hidden md:inline">IA</span>
             </span>
-            <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
+            {!aiPanelOpen && (
+              <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
+            )}
           </button>
         )}
 
-        {/* Calendly button - always visible */}
+        {/* Calendly button */}
         <button
           className={cn(
             "relative overflow-hidden h-8 px-2 md:px-3 text-xs font-medium uppercase tracking-wider border bg-background text-foreground group shrink-0 flex items-center",
@@ -253,7 +260,6 @@ export const MessageView: React.FC<MessageViewProps> = ({
       <div className="flex-1 min-h-0 overflow-y-auto overscroll-y-contain touch-pan-y p-4" ref={localContainerRef} style={{ WebkitOverflowScrolling: 'touch' }}>
         {loadingMessages && messages.length === 0 ? (
           <div className="flex flex-col justify-end h-full gap-3 pb-2">
-            {/* Skeleton chat bubbles */}
             <div className="flex justify-start">
               <div className="h-10 bg-muted rounded-2xl rounded-bl-sm w-2/5 animate-pulse" />
             </div>
@@ -327,6 +333,19 @@ export const MessageView: React.FC<MessageViewProps> = ({
         )}
       </div>
 
+      {/* Inline AI Panel — between messages and input */}
+      <InlineAIPanel
+        open={aiPanelOpen}
+        onClose={() => setAiPanelOpen(false)}
+        context={aiContext}
+        chatId={selectedChat.id}
+        accountId={selectedChat.account_id}
+        onSuggestionSelect={(text) => { onSuggestionClick(text); }}
+        onSuggestionSend={(text) => { onSuggestionSend(text); }}
+        onAddToPipeline={onAddToPipeline}
+        sending={sending}
+      />
+
       {/* Separator before input */}
       <div className="border-t border-foreground" />
 
@@ -362,23 +381,6 @@ export const MessageView: React.FC<MessageViewProps> = ({
           </button>
         </div>
       </div>
-
-      {/* AI Side Sheet */}
-      <MessageAISheet
-        open={aiSheetOpen}
-        onOpenChange={setAiSheetOpen}
-        context={aiContext}
-        chatId={selectedChat.id}
-        accountId={selectedChat.account_id}
-        profileUrl={selectedChat.attendees?.[0]?.profile_url}
-        onSuggestionSelect={(text) => { onSuggestionClick(text); }}
-        onSuggestionSend={(text) => { onSuggestionSend(text); }}
-        onJobSelect={onAddToPipeline}
-        onAddToPipeline={onAddToPipeline}
-        onEnrollInSequence={onEnrollInSequence}
-        onScheduleCall={onScheduleCall}
-        sending={sending}
-      />
     </div>
   );
 };
