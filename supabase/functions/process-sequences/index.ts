@@ -1676,7 +1676,12 @@ async function resolveNotionRelations(data: Record<string, string>, keys: string
         }
       } catch { /* ignore */ }
     }
-    if (titles.length > 0) data[key] = titles.join(', ');
+    if (titles.length > 0) {
+      data[key] = titles.join(', ');
+    } else {
+      // Resolution failed — clear the raw UUID so it doesn't leak into messages
+      delete data[key];
+    }
   }
 }
 
