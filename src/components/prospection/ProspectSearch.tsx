@@ -182,11 +182,11 @@ const EDUCATION_DEGREES = [
 function FilterSection({ label, icon, hint, children }: { label: string; icon?: React.ReactNode; hint?: string; children: React.ReactNode }) {
   return (
     <div className="space-y-1.5">
-      <label className="text-xs font-medium uppercase tracking-wider text-foreground flex items-center gap-1">
+      <label className="text-[11px] font-semibold text-foreground/70 flex items-center gap-1.5">
         {icon}{label}
       </label>
       {children}
-      {hint && <p className="text-[10px] text-muted-foreground">{hint}</p>}
+      {hint && <p className="text-[10px] text-muted-foreground/60">{hint}</p>}
     </div>
   );
 }
@@ -194,8 +194,10 @@ function FilterSection({ label, icon, hint, children }: { label: string; icon?: 
 function ChipToggle({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
   return (
     <button onClick={onClick} className={cn(
-      "px-3 py-1.5 text-xs border transition-colors",
-      active ? "bg-foreground text-background border-foreground" : "bg-background text-foreground border-foreground/20 hover:border-foreground/50"
+      "px-3 py-1.5 text-xs rounded-full border transition-all duration-200",
+      active
+        ? "bg-foreground text-background border-foreground shadow-sm"
+        : "bg-background text-foreground/70 border-border hover:border-foreground/30 hover:bg-muted/50"
     )}>{label}</button>
   );
 }
@@ -203,8 +205,8 @@ function ChipToggle({ label, active, onClick }: { label: string; active: boolean
 function FilterGroup({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div className="space-y-3">
-      <h4 className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground border-b border-foreground/10 pb-1">{title}</h4>
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">{children}</div>
+      <h4 className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/60 pb-1">{title}</h4>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">{children}</div>
     </div>
   );
 }
@@ -323,7 +325,6 @@ export function ProspectSearch({ selectedICP, onSelectICP, onResults, searching,
       const allProspects: ProspectProfile[] = [];
       const errors: string[] = [];
 
-      // PDL payload
       const pdl: Record<string, any> = { size: 50 };
       if (jobTitle) pdl.job_title = jobTitle;
       if (jobTitleRole) pdl.job_title_role = jobTitleRole;
@@ -362,7 +363,6 @@ export function ProspectSearch({ selectedICP, onSelectICP, onResults, searching,
       if (intentJobChange) pdl.intent_job_change = true;
       if (recentlyFunded) pdl.recently_funded = true;
 
-      // Apollo payload
       const apollo: Record<string, any> = { size: 50 };
       if (jobTitle) apollo.job_title = jobTitle;
       if (keywords) apollo.q_keywords = keywords;
@@ -403,7 +403,6 @@ export function ProspectSearch({ selectedICP, onSelectICP, onResults, searching,
           }),
       ]);
 
-      // Deduplicate
       const seen = new Set<string>();
       const deduped = allProspects.filter(p => {
         if (!p.linkedin_url) return true;
@@ -424,52 +423,58 @@ export function ProspectSearch({ selectedICP, onSelectICP, onResults, searching,
     }
   };
 
-  // The actual filters panel content (reused in both desktop sidebar and mobile sheet)
+  const inputClasses = "h-9 text-sm rounded-lg border-border/60 bg-background focus:border-foreground/40 focus:ring-1 focus:ring-foreground/10 transition-all";
+  const selectTriggerClasses = "h-9 rounded-lg border-border/60";
+
+  // The actual filters panel content
   const filtersPanel = (
-    <div className="space-y-4">
+    <div className="space-y-5">
       {/* Header */}
-      <div className="bg-background border border-foreground p-3">
+      <div className="rounded-xl bg-gradient-to-br from-[hsl(var(--skalr-purple)/0.08)] to-[hsl(var(--skalr-pink)/0.05)] border border-border/40 p-4">
         <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2">
-            <Search className="w-4 h-4" />
-            <h2 className="text-sm font-bold uppercase tracking-wider">Prospection</h2>
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[hsl(var(--skalr-purple))] to-[hsl(var(--skalr-pink))] flex items-center justify-center">
+              <Search className="w-4 h-4 text-white" />
+            </div>
+            <h2 className="text-sm font-bold text-foreground">Prospection</h2>
           </div>
-          <Badge variant="outline" className="text-[9px] border-foreground/20 font-normal">PDL + Apollo</Badge>
+          <Badge variant="outline" className="text-[9px] border-border/40 font-normal rounded-full bg-background/80">PDL + Apollo</Badge>
         </div>
 
         {/* ICP selector */}
         {icps.length > 0 && (
-          <div className="mb-3">
+          <div>
             <div className="flex items-center gap-2">
               <Select value={selectedICP?.id || 'none'} onValueChange={(v) => onSelectICP(icps.find(i => i.id === v) || null)}>
-                <SelectTrigger className="h-8 border-foreground/20 flex-1"><SelectValue placeholder="Pré-remplir depuis un ICP..." /></SelectTrigger>
+                <SelectTrigger className={cn(selectTriggerClasses, "flex-1")}><SelectValue placeholder="Pré-remplir depuis un ICP..." /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="none">— Aucun —</SelectItem>
                   {icps.map(icp => (<SelectItem key={icp.id} value={icp.id}>{icp.name}</SelectItem>))}
                 </SelectContent>
               </Select>
-              {selectedICP && (<Badge variant="outline" className="text-[10px] border-foreground/20 gap-1 shrink-0"><Target className="w-3 h-3" /> {selectedICP.name}</Badge>)}
+              {selectedICP && (<Badge variant="outline" className="text-[10px] border-border/40 gap-1 shrink-0 rounded-full"><Target className="w-3 h-3" /> {selectedICP.name}</Badge>)}
             </div>
           </div>
         )}
       </div>
 
       {/* Filter tabs */}
-      <div className="flex gap-0">
+      <div className="inline-flex gap-1 p-1 rounded-lg bg-muted/50 border border-border/30">
         {([
           { value: 'prospect' as FilterTab, label: 'Prospect', emoji: '👤', count: pCount },
           { value: 'entreprise' as FilterTab, label: 'Entreprise', emoji: '🏢', count: eCount },
-        ]).map((tab, index) => (
+        ]).map((tab) => (
           <button key={tab.value} onClick={() => setFilterTab(tab.value)}
             className={cn(
-              "flex items-center gap-1.5 h-[34px] px-4 text-xs font-medium uppercase tracking-wider border border-foreground transition-colors",
-              index > 0 && "border-l-0",
-              filterTab === tab.value ? "bg-foreground text-background" : "bg-background text-foreground hover:bg-muted"
+              "flex items-center gap-1.5 h-8 px-3 text-xs font-semibold rounded-md transition-all duration-200",
+              filterTab === tab.value
+                ? "bg-background text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground"
             )}>
             <span>{tab.emoji}</span><span>{tab.label}</span>
             {tab.count > 0 && (
-              <span className={cn("ml-1 text-[9px] px-1.5 py-0.5 rounded-full font-bold",
-                filterTab === tab.value ? "bg-background text-foreground" : "bg-foreground text-background"
+              <span className={cn("text-[9px] px-1.5 py-0.5 rounded-full font-bold",
+                filterTab === tab.value ? "bg-foreground text-background" : "bg-muted-foreground/20 text-muted-foreground"
               )}>{tab.count}</span>
             )}
           </button>
@@ -481,14 +486,14 @@ export function ProspectSearch({ selectedICP, onSelectICP, onResults, searching,
         <div className="space-y-6">
           <FilterGroup title="Poste & Fonction">
             <FilterSection label="Titre du poste" icon={<Briefcase className="w-3 h-3" />}>
-              <Input value={jobTitle} onChange={e => setJobTitle(e.target.value)} placeholder="CTO, Product Manager..." className="h-8 text-sm border-foreground/20 focus:border-foreground" />
+              <Input value={jobTitle} onChange={e => setJobTitle(e.target.value)} placeholder="CTO, Product Manager..." className={inputClasses} />
             </FilterSection>
             <FilterSection label="Mots-clés (profil entier)" icon={<Sparkles className="w-3 h-3" />} hint="Recherche texte libre dans tout le profil">
-              <Input value={keywords} onChange={e => setKeywords(e.target.value)} placeholder="blockchain, SaaS, growth..." className="h-8 text-sm border-foreground/20 focus:border-foreground" />
+              <Input value={keywords} onChange={e => setKeywords(e.target.value)} placeholder="blockchain, SaaS, growth..." className={inputClasses} />
             </FilterSection>
             <FilterSection label="Fonction (département)" icon={<Users className="w-3 h-3" />}>
               <Select value={jobTitleRole || 'all'} onValueChange={v => setJobTitleRole(v === 'all' ? '' : v)}>
-                <SelectTrigger className="h-8 border-foreground/20"><SelectValue placeholder="Toutes" /></SelectTrigger>
+                <SelectTrigger className={selectTriggerClasses}><SelectValue placeholder="Toutes" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Toutes fonctions</SelectItem>
                   {JOB_TITLE_ROLES.map(r => (<SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>))}
@@ -497,7 +502,7 @@ export function ProspectSearch({ selectedICP, onSelectICP, onResults, searching,
             </FilterSection>
             <FilterSection label="Sous-fonction" icon={<Users className="w-3 h-3" />} hint="PDL: sous-rôle spécifique">
               <Select value={jobTitleSubRole || 'all'} onValueChange={v => setJobTitleSubRole(v === 'all' ? '' : v)}>
-                <SelectTrigger className="h-8 border-foreground/20"><SelectValue placeholder="Toutes" /></SelectTrigger>
+                <SelectTrigger className={selectTriggerClasses}><SelectValue placeholder="Toutes" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Toutes sous-fonctions</SelectItem>
                   {JOB_TITLE_SUB_ROLES.map(r => (<SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>))}
@@ -506,7 +511,7 @@ export function ProspectSearch({ selectedICP, onSelectICP, onResults, searching,
             </FilterSection>
             <FilterSection label="Classe de poste" icon={<Briefcase className="w-3 h-3" />} hint="R&D, Sales, G&A, COGS">
               <Select value={jobTitleClass || 'all'} onValueChange={v => setJobTitleClass(v === 'all' ? '' : v)}>
-                <SelectTrigger className="h-8 border-foreground/20"><SelectValue placeholder="Toutes" /></SelectTrigger>
+                <SelectTrigger className={selectTriggerClasses}><SelectValue placeholder="Toutes" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Toutes classes</SelectItem>
                   {JOB_TITLE_CLASSES.map(c => (<SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>))}
@@ -515,7 +520,7 @@ export function ProspectSearch({ selectedICP, onSelectICP, onResults, searching,
             </FilterSection>
             <FilterSection label="Industrie du prospect" icon={<Building2 className="w-3 h-3" />} hint="Basée sur l'historique de carrière">
               <Select value={personIndustry || 'all'} onValueChange={v => setPersonIndustry(v === 'all' ? '' : v)}>
-                <SelectTrigger className="h-8 border-foreground/20"><SelectValue placeholder="Toutes" /></SelectTrigger>
+                <SelectTrigger className={selectTriggerClasses}><SelectValue placeholder="Toutes" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Toutes industries</SelectItem>
                   {INDUSTRIES.map(i => (<SelectItem key={i.value} value={i.value}>{i.label}</SelectItem>))}
@@ -526,15 +531,15 @@ export function ProspectSearch({ selectedICP, onSelectICP, onResults, searching,
 
           {/* Seniority chips */}
           <div>
-            <label className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-2 block flex items-center gap-1">
+            <label className="text-[11px] font-semibold text-foreground/70 mb-2 block flex items-center gap-1.5">
               <Briefcase className="w-3 h-3" /> Niveau hiérarchique
             </label>
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-1.5">
               {JOB_TITLE_LEVELS.map(level => (
                 <ChipToggle key={level.value} label={level.label} active={jobTitleLevels.includes(level.value)} onClick={() => toggleLevel(level.value)} />
               ))}
             </div>
-            <div className="flex items-center gap-2 mt-2">
+            <div className="flex items-center gap-2 mt-2.5">
               <Switch checked={includeSimilarTitles} onCheckedChange={setIncludeSimilarTitles} className="h-4 w-7" />
               <span className="text-[10px] text-muted-foreground">Inclure titres similaires</span>
             </div>
@@ -542,11 +547,11 @@ export function ProspectSearch({ selectedICP, onSelectICP, onResults, searching,
 
           <FilterGroup title="Localisation du prospect">
             <FilterSection label="Ville / Localité" icon={<MapPin className="w-3 h-3" />} hint="Paris, San Francisco...">
-              <Input value={personLocations} onChange={e => setPersonLocations(e.target.value)} placeholder="Paris, Lyon, London..." className="h-8 text-sm border-foreground/20 focus:border-foreground" />
+              <Input value={personLocations} onChange={e => setPersonLocations(e.target.value)} placeholder="Paris, Lyon, London..." className={inputClasses} />
             </FilterSection>
             <FilterSection label="Pays" icon={<Globe className="w-3 h-3" />}>
               <Select value={locationCountry || 'all'} onValueChange={v => setLocationCountry(v === 'all' ? '' : v)}>
-                <SelectTrigger className="h-8 border-foreground/20"><SelectValue placeholder="Tous pays" /></SelectTrigger>
+                <SelectTrigger className={selectTriggerClasses}><SelectValue placeholder="Tous pays" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Tous pays</SelectItem>
                   {COUNTRIES.map(c => (<SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>))}
@@ -555,7 +560,7 @@ export function ProspectSearch({ selectedICP, onSelectICP, onResults, searching,
             </FilterSection>
             <FilterSection label="Continent" icon={<Globe className="w-3 h-3" />}>
               <Select value={locationContinent || 'all'} onValueChange={v => setLocationContinent(v === 'all' ? '' : v)}>
-                <SelectTrigger className="h-8 border-foreground/20"><SelectValue placeholder="Tous" /></SelectTrigger>
+                <SelectTrigger className={selectTriggerClasses}><SelectValue placeholder="Tous" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Tous continents</SelectItem>
                   {CONTINENTS.map(c => (<SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>))}
@@ -563,20 +568,20 @@ export function ProspectSearch({ selectedICP, onSelectICP, onResults, searching,
               </Select>
             </FilterSection>
             <FilterSection label="Région / État" icon={<MapPin className="w-3 h-3" />}>
-              <Input value={locationRegion} onChange={e => setLocationRegion(e.target.value)} placeholder="Île-de-France, California..." className="h-8 text-sm border-foreground/20 focus:border-foreground" />
+              <Input value={locationRegion} onChange={e => setLocationRegion(e.target.value)} placeholder="Île-de-France, California..." className={inputClasses} />
             </FilterSection>
             <FilterSection label="Aire métro" icon={<MapPin className="w-3 h-3" />} hint="PDL: zone métropolitaine">
-              <Input value={locationMetro} onChange={e => setLocationMetro(e.target.value)} placeholder="san francisco, california..." className="h-8 text-sm border-foreground/20 focus:border-foreground" />
+              <Input value={locationMetro} onChange={e => setLocationMetro(e.target.value)} placeholder="san francisco, california..." className={inputClasses} />
             </FilterSection>
           </FilterGroup>
 
           <FilterGroup title="Compétences & Expérience">
             <FilterSection label="Compétences" icon={<Code className="w-3 h-3" />} hint="Séparées par des virgules">
-              <Input value={skills} onChange={e => setSkills(e.target.value)} placeholder="react, python, aws, figma..." className="h-8 text-sm border-foreground/20 focus:border-foreground" />
+              <Input value={skills} onChange={e => setSkills(e.target.value)} placeholder="react, python, aws, figma..." className={inputClasses} />
             </FilterSection>
             <FilterSection label="Années d'expérience" icon={<Clock className="w-3 h-3" />}>
               <Select value={yearsExperience || 'all'} onValueChange={v => setYearsExperience(v === 'all' ? '' : v)}>
-                <SelectTrigger className="h-8 border-foreground/20"><SelectValue placeholder="Toutes" /></SelectTrigger>
+                <SelectTrigger className={selectTriggerClasses}><SelectValue placeholder="Toutes" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Toutes</SelectItem>
                   {EXPERIENCE_RANGES.map(r => (<SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>))}
@@ -585,7 +590,7 @@ export function ProspectSearch({ selectedICP, onSelectICP, onResults, searching,
             </FilterSection>
             <FilterSection label="Salaire estimé (USD)" icon={<BadgeDollarSign className="w-3 h-3" />} hint="PDL: salaire inféré">
               <Select value={inferredSalary || 'all'} onValueChange={v => setInferredSalary(v === 'all' ? '' : v)}>
-                <SelectTrigger className="h-8 border-foreground/20"><SelectValue placeholder="Tous" /></SelectTrigger>
+                <SelectTrigger className={selectTriggerClasses}><SelectValue placeholder="Tous" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Tous salaires</SelectItem>
                   {SALARY_RANGES.map(r => (<SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>))}
@@ -593,23 +598,23 @@ export function ProspectSearch({ selectedICP, onSelectICP, onResults, searching,
               </Select>
             </FilterSection>
             <FilterSection label="Certifications" icon={<Award className="w-3 h-3" />} hint="Nom de certification">
-              <Input value={certifications} onChange={e => setCertifications(e.target.value)} placeholder="AWS, PMP, CFA..." className="h-8 text-sm border-foreground/20 focus:border-foreground" />
+              <Input value={certifications} onChange={e => setCertifications(e.target.value)} placeholder="AWS, PMP, CFA..." className={inputClasses} />
             </FilterSection>
             <FilterSection label="Centres d'intérêt" icon={<Heart className="w-3 h-3" />}>
-              <Input value={interests} onChange={e => setInterests(e.target.value)} placeholder="data, sustainability..." className="h-8 text-sm border-foreground/20 focus:border-foreground" />
+              <Input value={interests} onChange={e => setInterests(e.target.value)} placeholder="data, sustainability..." className={inputClasses} />
             </FilterSection>
             <FilterSection label="Bio / Summary" icon={<FileText className="w-3 h-3" />} hint="Recherche dans le résumé LinkedIn">
-              <Input value={summarySearch} onChange={e => setSummarySearch(e.target.value)} placeholder="growth hacker, serial entrepreneur..." className="h-8 text-sm border-foreground/20 focus:border-foreground" />
+              <Input value={summarySearch} onChange={e => setSummarySearch(e.target.value)} placeholder="growth hacker, serial entrepreneur..." className={inputClasses} />
             </FilterSection>
           </FilterGroup>
 
           <FilterGroup title="Formation">
             <FilterSection label="École / Université" icon={<GraduationCap className="w-3 h-3" />}>
-              <Input value={educationSchool} onChange={e => setEducationSchool(e.target.value)} placeholder="HEC, Stanford, Polytechnique..." className="h-8 text-sm border-foreground/20 focus:border-foreground" />
+              <Input value={educationSchool} onChange={e => setEducationSchool(e.target.value)} placeholder="HEC, Stanford, Polytechnique..." className={inputClasses} />
             </FilterSection>
             <FilterSection label="Diplôme" icon={<GraduationCap className="w-3 h-3" />}>
               <Select value={educationDegree || 'all'} onValueChange={v => setEducationDegree(v === 'all' ? '' : v)}>
-                <SelectTrigger className="h-8 border-foreground/20"><SelectValue placeholder="Tous" /></SelectTrigger>
+                <SelectTrigger className={selectTriggerClasses}><SelectValue placeholder="Tous" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Tous diplômes</SelectItem>
                   {EDUCATION_DEGREES.map(d => (<SelectItem key={d.value} value={d.value}>{d.label}</SelectItem>))}
@@ -617,14 +622,14 @@ export function ProspectSearch({ selectedICP, onSelectICP, onResults, searching,
               </Select>
             </FilterSection>
             <FilterSection label="Spécialité / Major" icon={<GraduationCap className="w-3 h-3" />} hint="computer science, finance...">
-              <Input value={educationMajor} onChange={e => setEducationMajor(e.target.value)} placeholder="computer science, marketing..." className="h-8 text-sm border-foreground/20 focus:border-foreground" />
+              <Input value={educationMajor} onChange={e => setEducationMajor(e.target.value)} placeholder="computer science, marketing..." className={inputClasses} />
             </FilterSection>
           </FilterGroup>
 
           <FilterGroup title="Contact & Langues">
             <FilterSection label="Statut email" icon={<Mail className="w-3 h-3" />}>
               <Select value={emailStatus || 'all'} onValueChange={v => setEmailStatus(v === 'all' ? '' : v)}>
-                <SelectTrigger className="h-8 border-foreground/20"><SelectValue placeholder="Tous" /></SelectTrigger>
+                <SelectTrigger className={selectTriggerClasses}><SelectValue placeholder="Tous" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Tous statuts</SelectItem>
                   {EMAIL_STATUSES.map(s => (<SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>))}
@@ -632,7 +637,7 @@ export function ProspectSearch({ selectedICP, onSelectICP, onResults, searching,
               </Select>
             </FilterSection>
             <FilterSection label="Langues parlées" icon={<Languages className="w-3 h-3" />} hint="PDL: english, french, german...">
-              <Input value={languagesFilter} onChange={e => setLanguagesFilter(e.target.value)} placeholder="french, english, spanish..." className="h-8 text-sm border-foreground/20 focus:border-foreground" />
+              <Input value={languagesFilter} onChange={e => setLanguagesFilter(e.target.value)} placeholder="french, english, spanish..." className={inputClasses} />
             </FilterSection>
           </FilterGroup>
         </div>
@@ -643,14 +648,14 @@ export function ProspectSearch({ selectedICP, onSelectICP, onResults, searching,
         <div className="space-y-6">
           <FilterGroup title="Identité de l'entreprise">
             <FilterSection label="Nom d'entreprise" icon={<Building2 className="w-3 h-3" />}>
-              <Input value={jobCompanyName} onChange={e => setJobCompanyName(e.target.value)} placeholder="Google, Doctolib..." className="h-8 text-sm border-foreground/20 focus:border-foreground" />
+              <Input value={jobCompanyName} onChange={e => setJobCompanyName(e.target.value)} placeholder="Google, Doctolib..." className={inputClasses} />
             </FilterSection>
             <FilterSection label="Domaines web" icon={<Globe className="w-3 h-3" />} hint="Séparés par des virgules, sans www.">
-              <Input value={companyDomains} onChange={e => setCompanyDomains(e.target.value)} placeholder="google.com, doctolib.fr..." className="h-8 text-sm border-foreground/20 focus:border-foreground" />
+              <Input value={companyDomains} onChange={e => setCompanyDomains(e.target.value)} placeholder="google.com, doctolib.fr..." className={inputClasses} />
             </FilterSection>
             <FilterSection label="Secteur d'activité" icon={<Building2 className="w-3 h-3" />}>
               <Select value={jobCompanyIndustry || 'all'} onValueChange={v => setJobCompanyIndustry(v === 'all' ? '' : v)}>
-                <SelectTrigger className="h-8 border-foreground/20"><SelectValue placeholder="Tous" /></SelectTrigger>
+                <SelectTrigger className={selectTriggerClasses}><SelectValue placeholder="Tous" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Tous secteurs</SelectItem>
                   {INDUSTRIES.map(i => (<SelectItem key={i.value} value={i.value}>{i.label}</SelectItem>))}
@@ -659,7 +664,7 @@ export function ProspectSearch({ selectedICP, onSelectICP, onResults, searching,
             </FilterSection>
             <FilterSection label="Type d'entreprise" icon={<Landmark className="w-3 h-3" />} hint="PDL: public, privée, associatif...">
               <Select value={companyType || 'all'} onValueChange={v => setCompanyType(v === 'all' ? '' : v)}>
-                <SelectTrigger className="h-8 border-foreground/20"><SelectValue placeholder="Tous" /></SelectTrigger>
+                <SelectTrigger className={selectTriggerClasses}><SelectValue placeholder="Tous" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Tous types</SelectItem>
                   {COMPANY_TYPES.map(t => (<SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>))}
@@ -667,14 +672,14 @@ export function ProspectSearch({ selectedICP, onSelectICP, onResults, searching,
               </Select>
             </FilterSection>
             <FilterSection label="Ticker boursier" icon={<Hash className="w-3 h-3" />} hint="PDL: AAPL, GOOG, MSFT...">
-              <Input value={companyTicker} onChange={e => setCompanyTicker(e.target.value)} placeholder="GOOG, AAPL..." className="h-8 text-sm border-foreground/20 focus:border-foreground" />
+              <Input value={companyTicker} onChange={e => setCompanyTicker(e.target.value)} placeholder="GOOG, AAPL..." className={inputClasses} />
             </FilterSection>
           </FilterGroup>
 
           <FilterGroup title="Taille & Effectifs">
             <FilterSection label="Taille (employés)" icon={<Users className="w-3 h-3" />}>
               <Select value={jobCompanySize || 'all'} onValueChange={v => setJobCompanySize(v === 'all' ? '' : v)}>
-                <SelectTrigger className="h-8 border-foreground/20"><SelectValue placeholder="Toutes" /></SelectTrigger>
+                <SelectTrigger className={selectTriggerClasses}><SelectValue placeholder="Toutes" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Toutes tailles</SelectItem>
                   {COMPANY_SIZES.map(s => (<SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>))}
@@ -682,17 +687,17 @@ export function ProspectSearch({ selectedICP, onSelectICP, onResults, searching,
               </Select>
             </FilterSection>
             <FilterSection label="Croissance effectifs (12 mois)" icon={<TrendingUp className="w-3 h-3" />} hint="PDL: ex. >0.1 pour +10%">
-              <Input value={employeeGrowthRate} onChange={e => setEmployeeGrowthRate(e.target.value)} placeholder=">0.1, >0.5..." className="h-8 text-sm border-foreground/20 focus:border-foreground" />
+              <Input value={employeeGrowthRate} onChange={e => setEmployeeGrowthRate(e.target.value)} placeholder=">0.1, >0.5..." className={inputClasses} />
             </FilterSection>
           </FilterGroup>
 
           <FilterGroup title="Localisation du siège">
             <FilterSection label="Siège social (texte)" icon={<MapPin className="w-3 h-3" />} hint="Apollo: ville, pays">
-              <Input value={orgLocations} onChange={e => setOrgLocations(e.target.value)} placeholder="Paris, San Francisco..." className="h-8 text-sm border-foreground/20 focus:border-foreground" />
+              <Input value={orgLocations} onChange={e => setOrgLocations(e.target.value)} placeholder="Paris, San Francisco..." className={inputClasses} />
             </FilterSection>
             <FilterSection label="Pays du siège" icon={<Globe className="w-3 h-3" />} hint="PDL: filtre exact">
               <Select value={orgCountry || 'all'} onValueChange={v => setOrgCountry(v === 'all' ? '' : v)}>
-                <SelectTrigger className="h-8 border-foreground/20"><SelectValue placeholder="Tous" /></SelectTrigger>
+                <SelectTrigger className={selectTriggerClasses}><SelectValue placeholder="Tous" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Tous pays</SelectItem>
                   {COUNTRIES.map(c => (<SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>))}
@@ -700,26 +705,26 @@ export function ProspectSearch({ selectedICP, onSelectICP, onResults, searching,
               </Select>
             </FilterSection>
             <FilterSection label="Région du siège" icon={<MapPin className="w-3 h-3" />}>
-              <Input value={orgRegion} onChange={e => setOrgRegion(e.target.value)} placeholder="Île-de-France, California..." className="h-8 text-sm border-foreground/20 focus:border-foreground" />
+              <Input value={orgRegion} onChange={e => setOrgRegion(e.target.value)} placeholder="Île-de-France, California..." className={inputClasses} />
             </FilterSection>
             <FilterSection label="Ville du siège" icon={<MapPin className="w-3 h-3" />}>
-              <Input value={orgLocality} onChange={e => setOrgLocality(e.target.value)} placeholder="Paris, London..." className="h-8 text-sm border-foreground/20 focus:border-foreground" />
+              <Input value={orgLocality} onChange={e => setOrgLocality(e.target.value)} placeholder="Paris, London..." className={inputClasses} />
             </FilterSection>
           </FilterGroup>
 
           <FilterGroup title="Technologie & Stack">
             <FilterSection label="Technologies utilisées" icon={<Cpu className="w-3 h-3" />} hint="Apollo: salesforce, react, hubspot...">
-              <Input value={technologies} onChange={e => setTechnologies(e.target.value)} placeholder="salesforce, react, hubspot..." className="h-8 text-sm border-foreground/20 focus:border-foreground" />
+              <Input value={technologies} onChange={e => setTechnologies(e.target.value)} placeholder="salesforce, react, hubspot..." className={inputClasses} />
             </FilterSection>
             <FilterSection label="Technologies exclues" icon={<Cpu className="w-3 h-3" />} hint="Apollo: exclure ces technos">
-              <Input value={techExclude} onChange={e => setTechExclude(e.target.value)} placeholder="wordpress, php..." className="h-8 text-sm border-foreground/20 focus:border-foreground" />
+              <Input value={techExclude} onChange={e => setTechExclude(e.target.value)} placeholder="wordpress, php..." className={inputClasses} />
             </FilterSection>
           </FilterGroup>
 
           <FilterGroup title="Finance & Funding">
             <FilterSection label="Stade de financement" icon={<DollarSign className="w-3 h-3" />}>
               <Select value={fundingStage || 'all'} onValueChange={v => setFundingStage(v === 'all' ? '' : v)}>
-                <SelectTrigger className="h-8 border-foreground/20"><SelectValue placeholder="Tous" /></SelectTrigger>
+                <SelectTrigger className={selectTriggerClasses}><SelectValue placeholder="Tous" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Tous stades</SelectItem>
                   {FUNDING_STAGES.map(s => (<SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>))}
@@ -727,14 +732,14 @@ export function ProspectSearch({ selectedICP, onSelectICP, onResults, searching,
               </Select>
             </FilterSection>
             <FilterSection label="Funding levé (min)" icon={<DollarSign className="w-3 h-3" />} hint="PDL: montant min en $">
-              <Input value={fundingRaisedMin} onChange={e => setFundingRaisedMin(e.target.value)} placeholder="1000000" className="h-8 text-sm border-foreground/20 focus:border-foreground" />
+              <Input value={fundingRaisedMin} onChange={e => setFundingRaisedMin(e.target.value)} placeholder="1000000" className={inputClasses} />
             </FilterSection>
             <FilterSection label="Funding levé (max)" icon={<DollarSign className="w-3 h-3" />}>
-              <Input value={fundingRaisedMax} onChange={e => setFundingRaisedMax(e.target.value)} placeholder="50000000" className="h-8 text-sm border-foreground/20 focus:border-foreground" />
+              <Input value={fundingRaisedMax} onChange={e => setFundingRaisedMax(e.target.value)} placeholder="50000000" className={inputClasses} />
             </FilterSection>
             <FilterSection label="Chiffre d'affaires (Apollo)" icon={<BadgeDollarSign className="w-3 h-3" />}>
               <Select value={revenueRange || 'all'} onValueChange={v => setRevenueRange(v === 'all' ? '' : v)}>
-                <SelectTrigger className="h-8 border-foreground/20"><SelectValue placeholder="Tous" /></SelectTrigger>
+                <SelectTrigger className={selectTriggerClasses}><SelectValue placeholder="Tous" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Tous revenus</SelectItem>
                   {REVENUE_RANGES.map(r => (<SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>))}
@@ -743,7 +748,7 @@ export function ProspectSearch({ selectedICP, onSelectICP, onResults, searching,
             </FilterSection>
             <FilterSection label="Revenu estimé (PDL)" icon={<BadgeDollarSign className="w-3 h-3" />} hint="PDL: inferred revenue">
               <Select value={inferredRevenue || 'all'} onValueChange={v => setInferredRevenue(v === 'all' ? '' : v)}>
-                <SelectTrigger className="h-8 border-foreground/20"><SelectValue placeholder="Tous" /></SelectTrigger>
+                <SelectTrigger className={selectTriggerClasses}><SelectValue placeholder="Tous" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Tous revenus</SelectItem>
                   {PDL_INFERRED_REVENUE.map(r => (<SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>))}
@@ -754,46 +759,48 @@ export function ProspectSearch({ selectedICP, onSelectICP, onResults, searching,
 
           <FilterGroup title="Historique & Fondation">
             <FilterSection label="Année de fondation" icon={<Clock className="w-3 h-3" />} hint="Ex: 2015, >2020, <2010">
-              <Input value={companyFounded} onChange={e => setCompanyFounded(e.target.value)} placeholder="2015, >2020..." className="h-8 text-sm border-foreground/20 focus:border-foreground" />
+              <Input value={companyFounded} onChange={e => setCompanyFounded(e.target.value)} placeholder="2015, >2020..." className={inputClasses} />
             </FilterSection>
           </FilterGroup>
 
           <FilterGroup title="Offres d'emploi actives (Apollo)">
             <FilterSection label="Postes ouverts (titres)" icon={<Briefcase className="w-3 h-3" />} hint="Titres dans les offres actives">
-              <Input value={hiringJobTitles} onChange={e => setHiringJobTitles(e.target.value)} placeholder="Backend Engineer, Sales..." className="h-8 text-sm border-foreground/20 focus:border-foreground" />
+              <Input value={hiringJobTitles} onChange={e => setHiringJobTitles(e.target.value)} placeholder="Backend Engineer, Sales..." className={inputClasses} />
             </FilterSection>
             <FilterSection label="Postes ouverts (lieux)" icon={<MapPin className="w-3 h-3" />}>
-              <Input value={hiringLocations} onChange={e => setHiringLocations(e.target.value)} placeholder="Paris, Remote, London..." className="h-8 text-sm border-foreground/20 focus:border-foreground" />
+              <Input value={hiringLocations} onChange={e => setHiringLocations(e.target.value)} placeholder="Paris, Remote, London..." className={inputClasses} />
             </FilterSection>
             <FilterSection label="Nombre min de postes ouverts" icon={<Hash className="w-3 h-3" />} hint="Apollo: min job postings">
-              <Input value={numJobPostingsMin} onChange={e => setNumJobPostingsMin(e.target.value)} placeholder="5, 10, 50..." className="h-8 text-sm border-foreground/20 focus:border-foreground" />
+              <Input value={numJobPostingsMin} onChange={e => setNumJobPostingsMin(e.target.value)} placeholder="5, 10, 50..." className={inputClasses} />
             </FilterSection>
           </FilterGroup>
         </div>
       )}
 
       {/* ═══ INTENT SIGNALS ═══ */}
-      <div className="mt-5 pt-4 border-t border-foreground/10">
-        <label className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-2 block flex items-center gap-1">
-          <Zap className="w-3 h-3" /> Signaux d'intention
+      <div className="pt-4 border-t border-border/30">
+        <label className="text-[11px] font-semibold text-foreground/70 mb-2.5 block flex items-center gap-1.5">
+          <Zap className="w-3 h-3 text-amber-500" /> Signaux d'intention
         </label>
-        <div className="flex flex-wrap gap-2">
-          <ChipToggle label="🔄 Changement de poste récent" active={intentJobChange} onClick={() => setIntentJobChange(!intentJobChange)} />
-          <ChipToggle label="📢 Entreprise recrute" active={isHiring} onClick={() => setIsHiring(!isHiring)} />
-          <ChipToggle label="📈 Croissance rapide (+10%)" active={employeeGrowth} onClick={() => setEmployeeGrowth(!employeeGrowth)} />
-          <ChipToggle label="💰 Levée de fonds récente" active={recentlyFunded} onClick={() => setRecentlyFunded(!recentlyFunded)} />
+        <div className="flex flex-wrap gap-1.5">
+          <ChipToggle label="🔄 Changement de poste" active={intentJobChange} onClick={() => setIntentJobChange(!intentJobChange)} />
+          <ChipToggle label="📢 Recrute" active={isHiring} onClick={() => setIsHiring(!isHiring)} />
+          <ChipToggle label="📈 Croissance +10%" active={employeeGrowth} onClick={() => setEmployeeGrowth(!employeeGrowth)} />
+          <ChipToggle label="💰 Levée de fonds" active={recentlyFunded} onClick={() => setRecentlyFunded(!recentlyFunded)} />
         </div>
       </div>
 
-      {/* Action buttons — same style as SearchFiltersPanel */}
-      <div className="flex gap-2">
+      {/* Action buttons */}
+      <div className="flex gap-2 pt-2">
         <Button onClick={() => { handleSearch(); setFiltersOpen(false); }} disabled={searching || !hasFilters}
-          className="flex-1 bg-foreground text-background hover:bg-foreground/90">
+          className="flex-1 rounded-lg bg-gradient-to-r from-[hsl(var(--skalr-purple))] to-[hsl(var(--skalr-pink))] hover:opacity-90 text-white border-0 shadow-md transition-all">
           {searching ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Search className="w-4 h-4 mr-2" />}
           {searching ? 'Recherche...' : 'Rechercher'}
         </Button>
       </div>
-      {(pCount + eCount) > 0 && (<span className="text-[10px] text-muted-foreground">{pCount + eCount} filtre(s) actif(s)</span>)}
+      {(pCount + eCount) > 0 && (
+        <span className="text-[10px] text-muted-foreground">{pCount + eCount} filtre(s) actif(s)</span>
+      )}
     </div>
   );
 
@@ -803,13 +810,13 @@ export function ProspectSearch({ selectedICP, onSelectICP, onResults, searching,
       <div className="lg:hidden">
         <Sheet open={filtersOpen} onOpenChange={setFiltersOpen}>
           <SheetTrigger asChild>
-            <Button variant="outline" className="w-full gap-2 border-primary text-primary overflow-hidden">
+            <Button variant="outline" className="w-full gap-2 rounded-xl border-border/60 overflow-hidden">
               <SlidersHorizontal className="w-4 h-4 shrink-0" />
               <span className="shrink-0">Filtres de recherche</span>
               {(pCount + eCount) > 0 && (
-                <span className="text-xs bg-primary/10 px-2 py-0.5">
-                  {pCount + eCount} filtre(s)
-                </span>
+                <Badge variant="secondary" className="text-[10px] rounded-full">
+                  {pCount + eCount}
+                </Badge>
               )}
             </Button>
           </SheetTrigger>
@@ -820,7 +827,7 @@ export function ProspectSearch({ selectedICP, onSelectICP, onResults, searching,
       </div>
 
       {/* Desktop: Filters sidebar */}
-      <div className="hidden lg:block lg:col-span-4 xl:col-span-3 overflow-y-auto">
+      <div className="hidden lg:block lg:col-span-4 xl:col-span-3 overflow-y-auto no-scrollbar pr-2">
         {filtersPanel}
       </div>
 

@@ -11,6 +11,7 @@ import {
 import { ProspectProfile } from '@/pages/Prospection';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import { motion } from 'framer-motion';
 
 function titleCase(str: string) {
   return str.replace(/\b\w/g, c => c.toUpperCase());
@@ -50,56 +51,41 @@ function extractLinkedInUsername(url?: string | null) {
 
 function getProfilePicCandidates(prospect: ProspectProfile): string[] {
   const candidates: string[] = [];
-
   if (prospect.profile_pic_url) candidates.push(prospect.profile_pic_url);
-
   const linkedinUsername = extractLinkedInUsername(prospect.linkedin_url);
-  if (linkedinUsername) {
-    candidates.push(`https://unavatar.io/linkedin/${linkedinUsername}`);
-  }
-
-  if (prospect.full_name) {
-    candidates.push(`https://ui-avatars.com/api/?name=${encodeURIComponent(prospect.full_name)}&background=E2E8F0&color=111827&size=128&bold=true`);
-  }
-
+  if (linkedinUsername) candidates.push(`https://unavatar.io/linkedin/${linkedinUsername}`);
+  if (prospect.full_name) candidates.push(`https://ui-avatars.com/api/?name=${encodeURIComponent(prospect.full_name)}&background=E2E8F0&color=111827&size=128&bold=true`);
   return [...new Set(candidates.filter(Boolean))];
 }
 
 function getCompanyLogoCandidates(companyName?: string, website?: string | null) {
   const candidates: string[] = [];
-
   if (website) {
     try {
       const domain = new URL(website.startsWith('http') ? website : `https://${website}`).hostname.replace(/^www\./, '');
       candidates.push(`https://logo.clearbit.com/${domain}`);
       candidates.push(`https://unavatar.io/${domain}`);
-    } catch {
-      // ignore malformed website
-    }
+    } catch {}
   }
-
   if (companyName) {
     const slug = companyName.toLowerCase().replace(/[^a-z0-9]/g, '');
     if (slug) candidates.push(`https://unavatar.io/${slug}.com`);
     candidates.push(`https://ui-avatars.com/api/?name=${encodeURIComponent(companyName)}&background=E2E8F0&color=111827&size=64&bold=true`);
   }
-
   return [...new Set(candidates.filter(Boolean))];
 }
 
 function CompanyLogo({ companyName, website }: { companyName?: string; website?: string | null }) {
   const [logoIndex, setLogoIndex] = useState(0);
   const logos = getCompanyLogoCandidates(companyName, website);
-
   if (logos.length === 0 || logoIndex >= logos.length) {
-    return <Building2 className="w-3.5 h-3.5 text-primary shrink-0" />;
+    return <Building2 className="w-3.5 h-3.5 text-muted-foreground shrink-0" />;
   }
-
   return (
     <img
       src={logos[logoIndex]}
       alt=""
-      className="w-4 h-4 rounded border border-border/30 object-contain bg-background shrink-0"
+      className="w-4 h-4 rounded-sm border border-border/30 object-contain bg-background shrink-0"
       onError={() => setLogoIndex((prev) => (prev < logos.length - 1 ? prev + 1 : prev))}
       loading="lazy"
       referrerPolicy="no-referrer"
@@ -107,7 +93,7 @@ function CompanyLogo({ companyName, website }: { companyName?: string; website?:
   );
 }
 
-function ProspectCard({ prospect }: { prospect: ProspectProfile }) {
+function ProspectCard({ prospect, index }: { prospect: ProspectProfile; index: number }) {
   const [expanded, setExpanded] = useState(false);
   const [copiedEmail, setCopiedEmail] = useState(false);
   const signals = prospect.intent_signals;
@@ -131,82 +117,75 @@ function ProspectCard({ prospect }: { prospect: ProspectProfile }) {
   const jobTenure = prospect.job_start_date ? formatDate(prospect.job_start_date) : null;
 
   return (
-    <div
-      className="relative bg-background border border-foreground transition-all max-w-full group hover:shadow-md"
+    <motion.div
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3, delay: Math.min(index * 0.04, 0.4) }}
+      className="group relative rounded-xl border border-border/60 bg-card hover:border-border hover:shadow-md transition-all duration-200"
       style={{ wordBreak: 'break-word' }}
     >
-      <div className="p-2.5 sm:p-4">
-        <div className="relative flex items-start gap-2 sm:gap-4 min-w-0 w-full">
-          {/* Avatar - separate column on desktop */}
+      <div className="p-3 sm:p-4">
+        <div className="relative flex items-start gap-3 sm:gap-4 min-w-0 w-full">
+          {/* Avatar */}
           <div className="relative shrink-0 hidden sm:block">
-            <Avatar className="w-14 h-14 border-2 border-border shadow-md">
+            <Avatar className="w-12 h-12 border-2 border-border/40 shadow-sm ring-2 ring-background">
               <AvatarImage src={avatarUrl} alt={displayName} className="object-cover" onError={fallbackToNextAvatar} />
-              <AvatarFallback className="bg-gradient-to-br from-primary to-primary/80 text-primary-foreground text-lg font-medium">
+              <AvatarFallback className="bg-gradient-to-br from-[hsl(var(--skalr-purple)/0.15)] to-[hsl(var(--skalr-pink)/0.15)] text-foreground text-sm font-semibold">
                 {initials}
               </AvatarFallback>
             </Avatar>
+            {prospect.score !== undefined && prospect.score >= 80 && (
+              <div className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-emerald-500 flex items-center justify-center border-2 border-background">
+                <Check className="w-2.5 h-2.5 text-white" />
+              </div>
+            )}
           </div>
 
           {/* Info */}
           <div className="flex-1 min-w-0">
-            {/* Row 1: Name + badges + actions */}
+            {/* Row 1: Name + badges */}
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap min-w-0 max-w-full">
-                  {/* Avatar inline next to name on mobile */}
+                  {/* Mobile avatar */}
                   <div className="relative shrink-0 sm:hidden">
-                    <Avatar className="w-8 h-8 border border-border shadow-sm">
+                    <Avatar className="w-8 h-8 border border-border/40 shadow-sm">
                       <AvatarImage src={avatarUrl} alt={displayName} className="object-cover" onError={fallbackToNextAvatar} />
-                      <AvatarFallback className="bg-gradient-to-br from-primary to-primary/80 text-primary-foreground text-xs font-medium">
+                      <AvatarFallback className="bg-gradient-to-br from-[hsl(var(--skalr-purple)/0.15)] to-[hsl(var(--skalr-pink)/0.15)] text-foreground text-xs font-medium">
                         {initials}
                       </AvatarFallback>
                     </Avatar>
                   </div>
-                  <h3 className="font-semibold text-foreground text-sm sm:text-base leading-tight break-words sm:truncate">{displayName}</h3>
+                  <h3 className="font-semibold text-foreground text-sm sm:text-[15px] leading-tight break-words sm:truncate">{displayName}</h3>
                   {prospect.score !== undefined && (
                     <Badge variant="outline" className={cn(
-                      "text-[10px] shrink-0 font-bold tabular-nums",
-                      prospect.score >= 80 ? "bg-green-500/10 text-green-700 border-green-500/30" :
-                      prospect.score >= 60 ? "bg-yellow-500/10 text-yellow-700 border-yellow-500/30" :
-                      "bg-muted border-foreground/15"
+                      "text-[10px] shrink-0 font-bold tabular-nums rounded-full px-2",
+                      prospect.score >= 80 ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/30" :
+                      prospect.score >= 60 ? "bg-amber-500/10 text-amber-600 border-amber-500/30" :
+                      "bg-muted text-muted-foreground border-border/50"
                     )}>
                       {prospect.score}%
                     </Badge>
                   )}
                   {prospect.source && (
                     <Badge className={cn(
-                      "text-[9px] border gap-0.5 px-1.5 py-0",
+                      "text-[9px] border gap-0.5 px-1.5 py-0 rounded-full",
                       prospect.source === 'apollo'
-                        ? "bg-orange-500/10 text-orange-700 border-orange-500/30"
-                        : "bg-purple-500/10 text-purple-700 border-purple-500/30"
+                        ? "bg-orange-500/10 text-orange-600 border-orange-500/30"
+                        : "bg-violet-500/10 text-violet-600 border-violet-500/30"
                     )}>
                       {prospect.source === 'apollo' ? '🚀 Apollo' : '🔬 PDL'}
-                    </Badge>
-                  )}
-                  {signals?.job_change && (
-                    <Badge className="text-[9px] bg-blue-500/10 text-blue-700 border-blue-500/30 border gap-0.5 px-1.5 py-0">
-                      <Zap className="w-2.5 h-2.5" /> Nouveau poste
-                    </Badge>
-                  )}
-                  {signals?.recently_funded && (
-                    <Badge className="text-[9px] bg-green-500/10 text-green-700 border-green-500/30 border gap-0.5 px-1.5 py-0">
-                      <TrendingUp className="w-2.5 h-2.5" /> Levée
-                    </Badge>
-                  )}
-                  {signals?.hiring && (
-                    <Badge className="text-[9px] bg-amber-500/10 text-amber-700 border-amber-500/30 border gap-0.5 px-1.5 py-0">
-                      📢 Recrute
                     </Badge>
                   )}
                 </div>
               </div>
 
               {/* Actions */}
-              <div className="hidden sm:flex items-center gap-1 shrink-0">
+              <div className="hidden sm:flex items-center gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
                 {prospect.linkedin_url && (
                   <Tooltip>
                     <TooltipTrigger asChild>
-                      <Button variant="ghost" size="sm" className="h-7 w-7 p-0" asChild>
+                      <Button variant="ghost" size="sm" className="h-7 w-7 p-0 rounded-lg" asChild>
                         <a href={prospect.linkedin_url} target="_blank" rel="noopener noreferrer">
                           <ExternalLink className="w-3.5 h-3.5" />
                         </a>
@@ -223,33 +202,54 @@ function ProspectCard({ prospect }: { prospect: ProspectProfile }) {
               <p className="text-xs sm:text-sm text-muted-foreground line-clamp-2 mt-0.5 leading-snug break-words">{prospect.headline}</p>
             )}
 
-            {/* Row 2: Current position */}
-            <div className="flex flex-col sm:flex-row sm:flex-wrap items-start sm:items-center gap-x-2 sm:gap-x-4 gap-y-0.5 mt-1.5 text-[10px] sm:text-xs text-muted-foreground">
+            {/* Intent signals */}
+            {(signals?.job_change || signals?.recently_funded || signals?.hiring) && (
+              <div className="flex flex-wrap gap-1.5 mt-2">
+                {signals?.job_change && (
+                  <Badge className="text-[10px] bg-blue-500/10 text-blue-600 border-blue-500/20 border rounded-full gap-1 px-2 py-0.5">
+                    <Zap className="w-2.5 h-2.5" /> Nouveau poste
+                  </Badge>
+                )}
+                {signals?.recently_funded && (
+                  <Badge className="text-[10px] bg-emerald-500/10 text-emerald-600 border-emerald-500/20 border rounded-full gap-1 px-2 py-0.5">
+                    <TrendingUp className="w-2.5 h-2.5" /> Levée récente
+                  </Badge>
+                )}
+                {signals?.hiring && (
+                  <Badge className="text-[10px] bg-amber-500/10 text-amber-600 border-amber-500/20 border rounded-full gap-1 px-2 py-0.5">
+                    📢 Recrute
+                  </Badge>
+                )}
+              </div>
+            )}
+
+            {/* Current position */}
+            <div className="flex flex-col sm:flex-row sm:flex-wrap items-start sm:items-center gap-x-3 sm:gap-x-4 gap-y-0.5 mt-2 text-[11px] sm:text-xs text-muted-foreground">
               {displayCompany && (
                 <span className="flex items-center gap-1.5 font-medium text-foreground/80 min-w-0">
                   <CompanyLogo companyName={prospect.job_company_name} website={prospect.job_company_website} />
                   <span className="min-w-0 break-words sm:truncate">{displayCompany}</span>
                   {jobTenure && (
-                    <span className="text-muted-foreground/40 font-normal shrink-0">• depuis {jobTenure}</span>
+                    <span className="text-muted-foreground/50 font-normal shrink-0">depuis {jobTenure}</span>
                   )}
                 </span>
               )}
               {displayTitle && (
                 <span className="flex items-center gap-1 min-w-0">
-                  <Briefcase className="w-3.5 h-3.5 shrink-0" />
+                  <Briefcase className="w-3.5 h-3.5 shrink-0 text-muted-foreground/60" />
                   <span className="min-w-0 break-words sm:truncate">{displayTitle}</span>
                 </span>
               )}
               {displayLocation && (
                 <span className="flex items-center gap-1 min-w-0">
-                  <MapPin className="w-3.5 h-3.5 shrink-0" />
+                  <MapPin className="w-3.5 h-3.5 shrink-0 text-muted-foreground/60" />
                   <span className="min-w-0 break-words sm:truncate">{displayLocation}</span>
                 </span>
               )}
             </div>
 
             {/* Company details */}
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1 text-[11px] text-muted-foreground">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1.5 text-[11px] text-muted-foreground">
               {prospect.job_company_industry && (<span className="flex items-center gap-1"><Building2 className="w-3 h-3" />{prospect.job_company_industry}</span>)}
               {prospect.job_company_size && (<span className="flex items-center gap-1"><Users className="w-3 h-3" />{prospect.job_company_size} emp.</span>)}
               {prospect.job_company_website && (
@@ -263,24 +263,24 @@ function ProspectCard({ prospect }: { prospect: ProspectProfile }) {
 
             {/* Skills */}
             {prospect.skills && prospect.skills.length > 0 && (
-              <div className="flex flex-wrap gap-1 mt-2 overflow-hidden">
+              <div className="flex flex-wrap gap-1 mt-2.5">
                 {prospect.skills.slice(0, 4).map((skill, i) => (
-                  <Badge key={i} variant="outline" className="text-[9px] border-foreground/10 font-normal px-1.5 py-0 bg-muted/50">{skill}</Badge>
+                  <Badge key={i} variant="outline" className="text-[9px] border-border/50 font-normal px-2 py-0.5 rounded-full bg-muted/30">{skill}</Badge>
                 ))}
                 {prospect.skills.length > 4 && (
-                  <Badge variant="outline" className="text-[9px] border-foreground/10 font-normal px-1.5 py-0">+{prospect.skills.length - 4}</Badge>
+                  <Badge variant="outline" className="text-[9px] border-border/50 font-normal px-2 py-0.5 rounded-full">+{prospect.skills.length - 4}</Badge>
                 )}
               </div>
             )}
 
             {/* Contact */}
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1.5 text-[11px]">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-2 text-[11px]">
               {prospect.emails?.[0] && (
                 <button onClick={() => copyEmail(prospect.emails![0])}
                   className="flex items-center gap-1 text-muted-foreground hover:text-foreground transition-colors group/email">
                   <Mail className="w-3 h-3" />
                   <span className="truncate max-w-[160px]">{prospect.emails[0]}</span>
-                  {copiedEmail ? <Check className="w-3 h-3 text-green-500" /> : <Copy className="w-2.5 h-2.5 opacity-0 group-hover/email:opacity-100 transition-opacity" />}
+                  {copiedEmail ? <Check className="w-3 h-3 text-emerald-500" /> : <Copy className="w-2.5 h-2.5 opacity-0 group-hover/email:opacity-100 transition-opacity" />}
                 </button>
               )}
               {prospect.phone_numbers?.[0] && (
@@ -293,24 +293,28 @@ function ProspectCard({ prospect }: { prospect: ProspectProfile }) {
         {/* Expand toggle */}
         {((prospect.experience && prospect.experience.length > 0) || (prospect.education && prospect.education.length > 0)) && (
           <button onClick={() => setExpanded(!expanded)}
-            className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground transition-colors mt-2 ml-0 sm:ml-[72px]">
+            className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground transition-colors mt-2.5 ml-0 sm:ml-[60px]">
             {expanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-            {expanded ? 'Moins' : 'Détails'}
+            {expanded ? 'Moins' : 'Voir détails'}
           </button>
         )}
       </div>
 
       {expanded && (
-        <div className="border-t border-foreground/10 px-3 py-2 sm:ml-[72px] space-y-2">
+        <motion.div
+          initial={{ opacity: 0, height: 0 }}
+          animate={{ opacity: 1, height: 'auto' }}
+          className="border-t border-border/40 px-4 py-3 sm:ml-[60px] space-y-3"
+        >
           {prospect.experience && prospect.experience.length > 0 && (
             <div>
-              <h4 className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1 flex items-center gap-1">
+              <h4 className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5 flex items-center gap-1">
                 <Briefcase className="w-3 h-3" /> Expérience
               </h4>
-              <div className="space-y-1">
+              <div className="space-y-1.5">
                 {prospect.experience.map((exp, i) => (
                   <div key={i} className="flex items-start gap-2">
-                    <div className="w-1 h-1 rounded-full bg-foreground/30 mt-1.5 shrink-0" />
+                    <div className="w-1.5 h-1.5 rounded-full bg-gradient-to-br from-[hsl(var(--skalr-purple))] to-[hsl(var(--skalr-pink))] mt-1.5 shrink-0" />
                     <div className="text-xs">
                       <span className="font-medium text-foreground">{exp.title}</span>
                       {exp.company && <span className="text-muted-foreground"> · {exp.company}</span>}
@@ -327,13 +331,13 @@ function ProspectCard({ prospect }: { prospect: ProspectProfile }) {
           )}
           {prospect.education && prospect.education.length > 0 && (
             <div>
-              <h4 className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1 flex items-center gap-1">
+              <h4 className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5 flex items-center gap-1">
                 <GraduationCap className="w-3 h-3" /> Formation
               </h4>
-              <div className="space-y-1">
+              <div className="space-y-1.5">
                 {prospect.education.map((edu, i) => (
                   <div key={i} className="flex items-start gap-2">
-                    <div className="w-1 h-1 rounded-full bg-foreground/30 mt-1.5 shrink-0" />
+                    <div className="w-1.5 h-1.5 rounded-full bg-gradient-to-br from-[hsl(var(--skalr-blue))] to-[hsl(var(--skalr-cyan))] mt-1.5 shrink-0" />
                     <div className="text-xs">
                       <span className="font-medium text-foreground">{edu.school}</span>
                       {edu.degree && <span className="text-muted-foreground"> — {edu.degree}</span>}
@@ -343,9 +347,9 @@ function ProspectCard({ prospect }: { prospect: ProspectProfile }) {
               </div>
             </div>
           )}
-        </div>
+        </motion.div>
       )}
-    </div>
+    </motion.div>
   );
 }
 
@@ -356,49 +360,51 @@ interface ProspectResultsProps {
 
 export function ProspectResults({ results, searching }: ProspectResultsProps) {
   return (
-    <div className="bg-background border border-foreground flex w-full max-w-full min-w-0 flex-col lg:h-full overflow-hidden">
+    <div className="rounded-xl border border-border/60 bg-card flex w-full max-w-full min-w-0 flex-col lg:h-full overflow-hidden">
       {/* HEADER */}
-      <div className="flex items-center gap-2 px-3 sm:px-4 py-2 border-b border-border shrink-0 min-w-0">
-        <Button
-          disabled={true}
-          size="sm"
-          className="bg-primary hover:bg-primary/90 shrink-0"
-        >
-          <Search className="w-3.5 h-3.5 mr-1.5" />
-          Résultats
-        </Button>
-
-        {results.length > 0 && (
-          <span className="text-xs text-muted-foreground whitespace-nowrap">
-            <span className="font-semibold text-foreground">{results.length}</span>
-            <span className="text-muted-foreground/60"> prospect(s)</span>
-          </span>
-        )}
-
-        {searching && <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground ml-auto" />}
+      <div className="flex items-center gap-3 px-4 py-3 border-b border-border/40 shrink-0 min-w-0 bg-muted/30">
+        <div className="flex items-center gap-2">
+          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[hsl(var(--skalr-purple))] to-[hsl(var(--skalr-pink))] flex items-center justify-center">
+            <Search className="w-4 h-4 text-white" />
+          </div>
+          <div>
+            <h3 className="text-sm font-semibold text-foreground">Résultats</h3>
+            {results.length > 0 && (
+              <p className="text-[11px] text-muted-foreground">
+                <span className="font-semibold text-foreground">{results.length}</span> prospect{results.length > 1 ? 's' : ''}
+              </p>
+            )}
+          </div>
+        </div>
+        {searching && <Loader2 className="w-4 h-4 animate-spin text-muted-foreground ml-auto" />}
       </div>
 
       {/* Results list */}
-      <div className="flex-1 overflow-y-auto no-scrollbar p-2 space-y-1.5">
+      <div className="flex-1 overflow-y-auto no-scrollbar p-3 space-y-2">
         {results.length === 0 && !searching && (
           <div className="text-center py-16 px-4">
-            <span className="text-4xl mb-3 block">👥</span>
+            <div className="w-16 h-16 rounded-2xl bg-muted/50 flex items-center justify-center mx-auto mb-4">
+              <span className="text-3xl">👥</span>
+            </div>
             <h3 className="text-sm font-semibold text-foreground mb-1">Aucun prospect</h3>
             <p className="text-xs text-muted-foreground max-w-xs mx-auto">
-              Configurez vos filtres à gauche et lancez une recherche pour découvrir des prospects qualifiés.
+              Utilisez les filtres à gauche pour lancer une recherche PDL + Apollo
             </p>
           </div>
         )}
 
         {searching && results.length === 0 && (
           <div className="text-center py-16 px-4">
-            <Loader2 className="w-8 h-8 animate-spin text-muted-foreground mx-auto mb-3" />
-            <p className="text-xs text-muted-foreground">Recherche en cours sur PDL & Apollo...</p>
+            <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-[hsl(var(--skalr-purple)/0.1)] to-[hsl(var(--skalr-pink)/0.1)] flex items-center justify-center mx-auto mb-4">
+              <Loader2 className="w-7 h-7 animate-spin text-[hsl(var(--skalr-purple))]" />
+            </div>
+            <h3 className="text-sm font-semibold text-foreground mb-1">Recherche en cours…</h3>
+            <p className="text-xs text-muted-foreground">Interrogation de PDL & Apollo</p>
           </div>
         )}
 
-        {results.map(prospect => (
-          <ProspectCard key={prospect.id} prospect={prospect} />
+        {results.map((prospect, i) => (
+          <ProspectCard key={prospect.id || i} prospect={prospect} index={i} />
         ))}
       </div>
     </div>

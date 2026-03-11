@@ -9,11 +9,12 @@ import { ProspectResults } from '@/components/prospection/ProspectResults';
 import { Crosshair } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ICP } from '@/hooks/useICPs';
+import { motion, AnimatePresence } from 'framer-motion';
 
 const tabs = [
+  { value: 'search', label: 'Recherche', emoji: '🔍' },
   { value: 'vivier', label: 'Vivier', emoji: '📋' },
   { value: 'icp', label: 'ICP', emoji: '🎯' },
-  { value: 'search', label: 'Recherche', emoji: '🔍' },
 ] as const;
 
 export interface ProspectProfile {
@@ -88,67 +89,105 @@ export default function Prospection() {
       <main className="pt-20 pb-0 w-full max-w-full">
         <div className="max-w-[1600px] mx-auto w-full min-w-0 px-3 sm:px-6 lg:px-8">
           {/* Header */}
-          <div className="mb-6 sm:mb-8 hidden md:block">
-            <div className="flex items-center gap-2.5 sm:gap-3 mb-1">
-              <div className="h-9 w-9 sm:h-10 sm:w-10 bg-foreground text-background flex items-center justify-center border border-foreground">
-                <Crosshair className="w-4 h-4 sm:w-5 sm:h-5" />
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4, ease: 'easeOut' }}
+            className="mb-5 sm:mb-8 hidden md:block"
+          >
+            <div className="flex items-center gap-3 mb-1">
+              <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-[hsl(var(--skalr-purple))] to-[hsl(var(--skalr-pink))] flex items-center justify-center shadow-lg">
+                <Crosshair className="w-5 h-5 text-white" />
               </div>
-              <h1 className="text-xl sm:text-2xl font-bold text-foreground tracking-tight uppercase">Prospection</h1>
+              <div>
+                <h1 className="text-2xl font-bold text-foreground tracking-tight">Prospection</h1>
+                <p className="text-sm text-muted-foreground">
+                  Découverte, enrichissement & qualification de prospects
+                </p>
+              </div>
             </div>
-            <p className="text-xs sm:text-sm text-muted-foreground hidden sm:block ml-[44px] sm:ml-[52px]">
-              Découverte, enrichissement & qualification de prospects
-            </p>
-          </div>
+          </motion.div>
 
           {/* Tabs */}
-          <div className="mb-3 md:mb-5">
-            <div className="flex gap-0 w-full min-w-0 overflow-x-auto no-scrollbar">
-              {tabs.map((tab, index) => {
+          <motion.div
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3, delay: 0.1 }}
+            className="mb-4 md:mb-6"
+          >
+            <div className="inline-flex gap-1 p-1 rounded-xl bg-muted/60 backdrop-blur-sm border border-border/50">
+              {tabs.map((tab) => {
                 const isActive = activeTab === tab.value;
                 return (
                   <button
                     key={tab.value}
                     onClick={() => setActiveTab(tab.value)}
                     className={cn(
-                      "relative overflow-hidden flex items-center justify-center gap-1 h-[34px] px-2 sm:px-4 text-[10px] sm:text-xs font-medium uppercase tracking-wider border border-foreground transition-colors duration-200 group shrink-0",
-                      index > 0 && "border-l-0",
+                      "relative flex items-center gap-1.5 h-9 px-4 text-xs font-semibold rounded-lg transition-all duration-200",
                       isActive
-                        ? "bg-brutal-accent text-foreground"
-                        : "bg-background text-foreground"
+                        ? "bg-background text-foreground shadow-sm"
+                        : "text-muted-foreground hover:text-foreground hover:bg-background/50"
                     )}
                   >
-                    <span className="text-sm shrink-0 relative z-10">{tab.emoji}</span>
-                    <span className="relative z-10 whitespace-nowrap">{tab.label}</span>
-                    {!isActive && (
-                      <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out"></span>
-                    )}
+                    <span className="text-sm">{tab.emoji}</span>
+                    <span className="whitespace-nowrap">{tab.label}</span>
                   </button>
                 );
               })}
             </div>
-          </div>
+          </motion.div>
 
-          {/* Vivier tab */}
-          <div className={cn("mt-0 min-w-0", activeTab !== 'vivier' && 'hidden')}>
-            <VivierList />
-          </div>
+          {/* Content */}
+          <AnimatePresence mode="wait">
+            {/* Vivier tab */}
+            {activeTab === 'vivier' && (
+              <motion.div
+                key="vivier"
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -8 }}
+                transition={{ duration: 0.25 }}
+                className="min-w-0"
+              >
+                <VivierList />
+              </motion.div>
+            )}
 
-          {/* ICP tab */}
-          <div className={cn("mt-0 min-w-0", activeTab !== 'icp' && 'hidden')}>
-            <ICPList onSearchFromICP={handleSearchFromICP} />
-          </div>
+            {/* ICP tab */}
+            {activeTab === 'icp' && (
+              <motion.div
+                key="icp"
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -8 }}
+                transition={{ duration: 0.25 }}
+                className="min-w-0"
+              >
+                <ICPList onSearchFromICP={handleSearchFromICP} />
+              </motion.div>
+            )}
 
-          {/* Search tab: 12-col grid like LinkedInSearch */}
-          <div className={cn("mt-0 min-w-0", activeTab !== 'search' && 'hidden')}>
-            <ProspectSearch
-              selectedICP={selectedICP}
-              onSelectICP={setSelectedICP}
-              onResults={setResults}
-              searching={searching}
-              onSearchingChange={setSearching}
-              results={results}
-            />
-          </div>
+            {/* Search tab */}
+            {activeTab === 'search' && (
+              <motion.div
+                key="search"
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -8 }}
+                transition={{ duration: 0.25 }}
+                className="min-w-0"
+              >
+                <ProspectSearch
+                  selectedICP={selectedICP}
+                  onSelectICP={setSelectedICP}
+                  onResults={setResults}
+                  searching={searching}
+                  onSearchingChange={setSearching}
+                  results={results}
+                />
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
       </main>
     </div>
