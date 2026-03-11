@@ -267,6 +267,63 @@ async function handleProcess(supabase: any, force = false) {
               results.skipped++;
               continue;
             }
+
+            // *** PRE-SEND REPLY CHECK ***
+            // Before sending a follow-up, check in real-time if the candidate has already replied
+            // This catches replies missed by webhook or not yet picked up by the 4h polling
+            try {
+              const lastSentDate = priorMessageSteps
+                .filter((s: any) => s.status === 'sent')
+                .reduce((latest: string | null, s: any) => {
+                  // We don't have executed_at here, use a safe window: 7 days ago
+                  return latest;
+                }, null);
+              
+              const replyCheckDate = new Date(Date.now() - 7 * 24 * 3600000).toISOString();
+              const hasReplied = await checkForReplyAfterDate(
+                enrollment.account_id, 
+                enrollment.resolved_profile_id || enrollment.profile_id, 
+                replyCheckDate, 
+                enrollment.profile_url, 
+                enrollment.id, 
+                supabase
+              );
+              
+              if (hasReplied) {
+                console.warn(`[process] ⛔ PRE-SEND REPLY CHECK: ${enrollment.profile_name} has replied! Stopping sequence.`);
+                await supabase.from('sequence_enrollments').update({ 
+                  status: 'replied', 
+                  replied_at: new Date().toISOString() 
+                }).eq('id', enrollment.id);
+                await supabase.from('sequence_step_executions').update({ 
+                  status: 'cancelled', 
+                  skip_reason: 'Reply detected (pre-send check)',
+                  executed_at: new Date().toISOString()
+                }).eq('enrollment_id', enrollment.id).in('status', ['scheduled', 'sending']);
+                await logAnalytics(supabase, enrollment.sequence_id, 'replies_received');
+                
+                // Update job_candidate_status
+                if (enrollment.profile_id) {
+                  const { data: jcsRows } = await supabase
+                    .from('job_candidate_status')
+                    .select('id')
+                    .eq('candidate_id', enrollment.profile_id)
+                    .in('status', ['contacted', 'shortlisted', 'scored', 'new']);
+                  if (jcsRows && jcsRows.length > 0) {
+                    await supabase
+                      .from('job_candidate_status')
+                      .update({ status: 'replied', updated_at: new Date().toISOString() })
+                      .in('id', jcsRows.map((r: { id: string }) => r.id));
+                  }
+                }
+                
+                results.skipped++;
+                continue;
+              }
+            } catch (replyCheckErr) {
+              console.warn(`[process] Pre-send reply check failed (non-blocking):`, replyCheckErr);
+              // Don't block sending if the check fails — better to send than to silently skip
+            }
           } else {
             console.log(`[process] ✅ First message step for ${enrollment.profile_name} at step_order=${step.step_order} (no prior message steps) — allowing`);
           }
