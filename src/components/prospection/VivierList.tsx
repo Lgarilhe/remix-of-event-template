@@ -213,7 +213,7 @@ function EnrichedContactSheet({ contact, enrichment, open, onOpenChange, onCopyM
               <div className="flex items-center gap-2">
                 <Sparkles className="w-4 h-4 text-[hsl(var(--skalr-purple))]" />
                 <span className="text-xs font-semibold">Profil enrichi</span>
-                <Badge variant="outline" className="text-[9px] rounded-full">{enrichment.match_type === 'linkedin' ? 'LinkedIn' : 'Fuzzy'}</Badge>
+                <Badge variant="outline" className="text-[9px]">{enrichment.match_type === 'linkedin' ? 'LinkedIn' : 'Fuzzy'}</Badge>
               </div>
               {enrichment.current_job_title && (
                 <div className="text-sm">
