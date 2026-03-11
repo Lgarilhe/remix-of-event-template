@@ -289,7 +289,7 @@ function EnrichedContactSheet({ contact, enrichment, open, onOpenChange, onCopyM
                   <h4 className="text-xs font-semibold text-muted-foreground mb-2">Notes</h4>
                   <div className="space-y-1.5">
                     {notes.map((n: any) => (
-                      <div key={n.airtable_id} className="rounded-lg border border-border/40 p-2.5 text-xs space-y-0.5">
+                      <div key={n.airtable_id} className="border border-border/40 p-2.5 text-xs space-y-0.5">
                         <div className="font-medium">{n.title || 'Note'}</div>
                         {n.detail && <div className="text-muted-foreground line-clamp-2">{n.detail}</div>}
                         <div className="text-muted-foreground">{n.note_date} {n.author && <span className="italic">— {n.author}</span>}</div>
