@@ -465,12 +465,12 @@ export function ProspectSearch({ selectedICP, onSelectICP, onResults, searching,
           { value: 'entreprise' as FilterTab, label: 'Entreprise', emoji: '🏢', count: eCount },
         ]).map((tab) => (
           <button key={tab.value} onClick={() => setFilterTab(tab.value)}
-            className={cn(
-              "flex items-center gap-1.5 h-8 px-3 text-xs font-semibold rounded-md transition-all duration-200",
-              filterTab === tab.value
-                ? "bg-background text-foreground shadow-sm"
-                : "text-muted-foreground hover:text-foreground"
-            )}>
+             className={cn(
+               "flex items-center gap-1.5 h-8 px-3 text-[10px] font-medium uppercase tracking-wider transition-all duration-200",
+               filterTab === tab.value
+                 ? "bg-brutal-accent text-foreground"
+                 : "bg-background text-foreground hover:bg-muted"
+             )}>
             <span>{tab.emoji}</span><span>{tab.label}</span>
             {tab.count > 0 && (
               <span className={cn("text-[9px] px-1.5 py-0.5 rounded-full font-bold",
