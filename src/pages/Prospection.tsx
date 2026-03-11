@@ -86,7 +86,7 @@ export default function Prospection() {
       />
       <Navbar />
 
-      <main className="pt-20 pb-0 w-full max-w-full">
+      <main className="pt-16 sm:pt-20 pb-8 w-full max-w-full">
         <div className="max-w-[1800px] mx-auto w-full min-w-0 px-3 sm:px-6 lg:px-8">
           {/* Header */}
           <div className="flex items-center gap-2 mb-4 hidden md:flex">
