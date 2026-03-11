@@ -230,7 +230,7 @@ function EnrichedContactSheet({ contact, enrichment, open, onOpenChange, onCopyM
               )}
               {enrichment.is_relevant !== null && (
                 <div className="flex items-center gap-2">
-                  <Badge variant={enrichment.is_relevant ? 'default' : 'secondary'} className="text-[10px] rounded-full">
+                  <Badge variant={enrichment.is_relevant ? 'default' : 'secondary'} className="text-[10px]">
                     {enrichment.is_relevant ? '✓ Pertinent' : '✗ Non pertinent'}
                   </Badge>
                   {enrichment.relevance_reason && <span className="text-[10px] text-muted-foreground">{enrichment.relevance_reason}</span>}
