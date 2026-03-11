@@ -362,11 +362,11 @@ export function ProspectResults({ results, searching }: ProspectResultsProps) {
   return (
     <div className="border border-foreground bg-card flex w-full max-w-full min-w-0 flex-col lg:h-full overflow-hidden">
       {/* HEADER */}
-      <div className="flex items-center gap-3 px-4 py-3 border-b border-border/40 shrink-0 min-w-0 bg-muted/30">
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[hsl(var(--skalr-purple))] to-[hsl(var(--skalr-pink))] flex items-center justify-center">
-            <Search className="w-4 h-4 text-white" />
-          </div>
+       <div className="flex items-center gap-3 px-4 py-3 border-b border-foreground shrink-0 min-w-0">
+         <div className="flex items-center gap-2">
+           <div className="w-8 h-8 bg-foreground text-background flex items-center justify-center">
+             <Search className="w-4 h-4" />
+           </div>
           <div>
             <h3 className="text-sm font-semibold text-foreground">Résultats</h3>
             {results.length > 0 && (
