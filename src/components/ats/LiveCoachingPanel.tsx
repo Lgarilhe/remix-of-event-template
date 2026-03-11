@@ -108,7 +108,7 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
 
   const speakerLabel = (speaker: number) => speaker === 0 ? 'Recruteur' : 'Candidat';
   const speakerColor = (speaker: number) => speaker === 0 ? 'text-blue-600' : 'text-emerald-600';
-  const COACH_INTERVAL_MS = 25000;
+  const COACH_INTERVAL_MS = 12000;
 
   // Auto-scroll transcript within its own ScrollArea only
   useEffect(() => {
@@ -323,12 +323,12 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
             setInterimText('');
             setInterimSpeaker(null);
 
-            // Only trigger on UtteranceEnd or timer — removed speech_final trigger
-            // Timer-based trigger still here as fallback
+            // Trigger on timer OR when enough new text accumulated (>80 chars)
             const now = Date.now();
+            const pendingLen = pendingFinalTextRef.current.trim().length;
             if (
-              now - lastCoachCallRef.current > COACH_INTERVAL_MS &&
-              pendingFinalTextRef.current.trim()
+              pendingLen > 0 &&
+              (now - lastCoachCallRef.current > COACH_INTERVAL_MS || pendingLen > 80)
             ) {
               lastCoachCallRef.current = now;
               const chunkForCoach = pendingFinalTextRef.current.trim();
@@ -599,18 +599,18 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
                 {isRecording ? "RAS — continuez l'entretien" : "Aucun signal détecté"}
               </p>
             ) : (
-              <div className="space-y-1.5">
+              <div className="space-y-1">
                 {digDeeper.map((item, i) => (
                   <div key={`${i}-${item.signal.slice(0, 20)}`}
-                    className="px-2 py-2 border border-amber-300 bg-amber-50 text-[10px] animate-in fade-in slide-in-from-top-1 duration-300 flex items-start gap-2">
-                    <div className="flex-1 min-w-0">
-                      <p className="font-medium text-amber-800">"{item.signal}"</p>
-                      <p className="text-amber-700 mt-0.5">→ {item.question}</p>
-                    </div>
+                    className="px-2 py-1.5 border border-amber-300 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-700 text-[10px] animate-in fade-in slide-in-from-top-1 duration-200 flex items-center gap-2">
+                    <span className="text-amber-600 dark:text-amber-400 shrink-0">•</span>
+                    <span className="font-medium text-amber-800 dark:text-amber-200 truncate">{item.signal}</span>
+                    <span className="text-amber-600 dark:text-amber-400 shrink-0">→</span>
+                    <span className="text-amber-700 dark:text-amber-300 flex-1 truncate">{item.question}</span>
                     <button
                       onClick={() => setDigDeeper(prev => { const next = prev.filter((_, idx) => idx !== i); digDeeperRef.current = next; return next; })}
-                      className="shrink-0 mt-0.5 text-amber-400 hover:text-amber-700 transition-colors"
-                      title="Question posée — retirer"
+                      className="shrink-0 text-amber-400 hover:text-amber-700 transition-colors"
+                      title="Retirer"
                     >
                       <X className="w-3 h-3" />
                     </button>
