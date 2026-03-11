@@ -792,9 +792,9 @@ export function ProspectSearch({ selectedICP, onSelectICP, onResults, searching,
 
       {/* Action buttons */}
       <div className="flex gap-2 pt-2">
-        <Button onClick={() => { handleSearch(); setFiltersOpen(false); }} disabled={searching || !hasFilters}
-          className="flex-1 rounded-lg bg-gradient-to-r from-[hsl(var(--skalr-purple))] to-[hsl(var(--skalr-pink))] hover:opacity-90 text-white border-0 shadow-md transition-all">
-          {searching ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Search className="w-4 h-4 mr-2" />}
+         <Button onClick={() => { handleSearch(); setFiltersOpen(false); }} disabled={searching || !hasFilters}
+           className="flex-1 bg-foreground text-background hover:bg-foreground/90 border border-foreground transition-all">
+           {searching ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Search className="w-4 h-4 mr-2" />}
           {searching ? 'Recherche...' : 'Rechercher'}
         </Button>
       </div>
