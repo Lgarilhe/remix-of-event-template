@@ -665,12 +665,12 @@ function computeWeightedScore(profile: ProfileData, job: JobData): WeightedResul
   const missingDataPoints: string[] = [];
 
   // --- Enrich profile skills with implicit skills from text ---
-  const explicitSkills = (profile.skills || []).map((s) => s.toLowerCase());
+  const explicitSkills = (profile.skills || []).filter((s) => typeof s === "string").map((s) => s.toLowerCase());
   const implicitSkills = extractImplicitSkills(profile);
   const profileSkills = [...new Set([...explicitSkills, ...implicitSkills])];
 
   // --- Combine job skills (for heuristic context, not definitive matching) ---
-  const baseJobSkills = (job.skills || []).map((s) => s.toLowerCase());
+  const baseJobSkills = (job.skills || []).filter((s) => typeof s === "string").map((s) => s.toLowerCase());
   const shouldHaveSkills = job.shouldHave
     ? job.shouldHave
         .split(/[,;]+/)
