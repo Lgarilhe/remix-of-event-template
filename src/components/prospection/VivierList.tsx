@@ -539,12 +539,12 @@ function ContactsView() {
                   </div>
                 </div>
                 <div className="flex items-center gap-1.5 shrink-0">
-                  {e?.is_relevant === true && <Badge className="text-[9px] gap-0.5 px-1.5 rounded-full bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">Pertinent</Badge>}
-                  {e?.is_relevant === false && <Badge variant="secondary" className="text-[9px] gap-0.5 px-1.5 rounded-full">Non pertinent</Badge>}
-                  {e?.generated_message && <Badge variant="outline" className="text-[9px] gap-0.5 px-1.5 rounded-full">{e.message_type === 'sms' ? '📱' : '💬'} msg</Badge>}
-                  <Badge variant="secondary" className="text-[9px] gap-0.5 px-1.5 rounded-full"><FileText className="w-3 h-3" /> {c.shortlist_count}</Badge>
-                  {c.note_count > 0 && <Badge variant="outline" className="text-[9px] gap-0.5 px-1.5 rounded-full">{c.note_count} notes</Badge>}
-                  {c.placement_count > 0 && <Badge variant="secondary" className="text-[9px] gap-0.5 px-1.5 rounded-full"><Trophy className="w-3 h-3" /> {c.placement_count}</Badge>}
+                   {e?.is_relevant === true && <Badge className="text-[9px] gap-0.5 px-1.5 bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">Pertinent</Badge>}
+                   {e?.is_relevant === false && <Badge variant="secondary" className="text-[9px] gap-0.5 px-1.5">Non pertinent</Badge>}
+                   {e?.generated_message && <Badge variant="outline" className="text-[9px] gap-0.5 px-1.5">{e.message_type === 'sms' ? '📱' : '💬'} msg</Badge>}
+                   <Badge variant="secondary" className="text-[9px] gap-0.5 px-1.5"><FileText className="w-3 h-3" /> {c.shortlist_count}</Badge>
+                   {c.note_count > 0 && <Badge variant="outline" className="text-[9px] gap-0.5 px-1.5">{c.note_count} notes</Badge>}
+                   {c.placement_count > 0 && <Badge variant="secondary" className="text-[9px] gap-0.5 px-1.5"><Trophy className="w-3 h-3" /> {c.placement_count}</Badge>}
                 </div>
                 <div className="text-[10px] text-muted-foreground shrink-0 w-20 text-right">
                   {c.last_interaction_date ? format(new Date(c.last_interaction_date), 'dd MMM yyyy', { locale: fr }) : '—'}
