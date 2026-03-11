@@ -2130,7 +2130,7 @@ ${jobContextBlock}
 TYPE DE MESSAGE: ${msgType}
 ${toneInstructions}
 
-${prevMsgContext ? `MESSAGES PRÉCÉDENTS ENVOYÉS (pour varier l'angle, NE PAS y faire référence dans le message car le candidat ne les a peut-être pas lus — chaque InMail est un thread séparé sur LinkedIn):\n${prevMsgContext}` : ''}
+${prevMsgContext ? `MESSAGES PRÉCÉDENTS ENVOYÉS (pour varier l'angle et t'en inspirer pour ta relance):\n${prevMsgContext}` : ''}
 
 === STRATÉGIE LINKEDIN 2025 – RÈGLES ABSOLUES ===
 
