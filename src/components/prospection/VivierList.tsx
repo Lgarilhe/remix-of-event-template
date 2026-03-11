@@ -578,7 +578,7 @@ export function VivierList() {
 
   return (
     <div className="space-y-4">
-      <div className="inline-flex gap-1 p-1 rounded-lg bg-muted/50 border border-border/30">
+      <div className="flex gap-0 border border-foreground w-fit">
         {subTabs.map((tab) => {
           const isActive = activeSubTab === tab.value;
           const Icon = tab.icon;
