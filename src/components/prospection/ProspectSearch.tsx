@@ -430,15 +430,15 @@ export function ProspectSearch({ selectedICP, onSelectICP, onResults, searching,
   const filtersPanel = (
     <div className="space-y-5">
       {/* Header */}
-      <div className="rounded-xl bg-gradient-to-br from-[hsl(var(--skalr-purple)/0.08)] to-[hsl(var(--skalr-pink)/0.05)] border border-border/40 p-4">
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[hsl(var(--skalr-purple))] to-[hsl(var(--skalr-pink))] flex items-center justify-center">
-              <Search className="w-4 h-4 text-white" />
-            </div>
-            <h2 className="text-sm font-bold text-foreground">Prospection</h2>
-          </div>
-          <Badge variant="outline" className="text-[9px] border-border/40 font-normal rounded-full bg-background/80">PDL + Apollo</Badge>
+       <div className="border border-foreground bg-background p-4">
+         <div className="flex items-center justify-between mb-3">
+           <div className="flex items-center gap-2.5">
+             <div className="w-8 h-8 bg-foreground text-background flex items-center justify-center">
+               <Search className="w-4 h-4" />
+             </div>
+             <h2 className="text-sm font-bold text-foreground uppercase tracking-wider">Prospection</h2>
+           </div>
+           <Badge variant="outline" className="text-[9px] border-border/40 font-normal bg-background/80">PDL + Apollo</Badge>
         </div>
 
         {/* ICP selector */}
