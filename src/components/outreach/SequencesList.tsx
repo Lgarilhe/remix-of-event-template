@@ -387,17 +387,29 @@ export const SequencesList: React.FC<SequencesListProps> = ({
           .update({ status: 'active' })
           .eq('sequence_id', sequenceId)
           .eq('status', 'paused')
-          .select('id');
+          .select('id, current_step_order');
 
-        // Reschedule stuck executions for these enrollments
+        // Only reschedule the NEXT pending step per enrollment (not all future steps)
         if (pausedEnrollments && pausedEnrollments.length > 0) {
-          const enrollmentIds = pausedEnrollments.map(e => e.id);
           const now = new Date().toISOString();
-          await supabase
-            .from('sequence_step_executions')
-            .update({ scheduled_at: now, status: 'scheduled' })
-            .in('status', ['scheduled', 'waiting_event', 'quota_blocked'])
-            .in('enrollment_id', enrollmentIds);
+          
+          for (const enrollment of pausedEnrollments) {
+            // Find the earliest stuck execution for this enrollment
+            const { data: nextExec } = await supabase
+              .from('sequence_step_executions' as any)
+              .select('id')
+              .eq('enrollment_id', enrollment.id)
+              .in('status', ['scheduled', 'waiting_event', 'quota_blocked'])
+              .order('step_order', { ascending: true })
+              .limit(1);
+
+            if (nextExec && (nextExec as any[]).length > 0) {
+              await supabase
+                .from('sequence_step_executions' as any)
+                .update({ scheduled_at: now, status: 'scheduled' })
+                .eq('id', (nextExec as any[])[0].id);
+            }
+          }
         }
       } else {
         // Pause active enrollments
