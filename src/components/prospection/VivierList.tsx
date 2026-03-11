@@ -113,7 +113,7 @@ function CompanyDetailSheet({ company, open, onOpenChange }: { company: VivierCo
                   <h4 className="text-xs font-semibold text-muted-foreground mb-2">Shortlists ({shortlists.length})</h4>
                   <div className="space-y-1.5">
                     {shortlists.map((s: any) => (
-                      <div key={s.airtable_id} className="rounded-lg border border-border/40 p-2.5 text-xs space-y-0.5">
+                       <div key={s.airtable_id} className="border border-border/40 p-2.5 text-xs space-y-0.5">
                         <div className="font-medium">{s.job_title || 'Poste inconnu'}</div>
                         <div className="text-muted-foreground flex items-center gap-2">
                           {s.candidate_name && <span>{s.candidate_name}</span>}
