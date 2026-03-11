@@ -750,43 +750,61 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
         setCursor(data.cursor as string | null);
         setHasMore(!!data.cursor);
       } else {
-        // Fetch from all merged threads in parallel
-        const allMessages: Message[] = [];
-        const results = await Promise.allSettled(
-          chatIds.map(cid =>
-            invokeUnipile({
-              body: { action: 'get_messages', account_id: selectedAccount, chat_id: cid, limit: 50 },
-            })
-          )
-        );
-        
-        let lastCursor: string | null = null;
-        for (const result of results) {
-          if (result.status === 'fulfilled' && result.value.data?.success) {
-            const msgs = (result.value.data.messages as Message[]) || [];
-            allMessages.push(...msgs);
-            if (!lastCursor && result.value.data.cursor) {
-              lastCursor = result.value.data.cursor as string;
-            }
-          }
-        }
-        
-        // Deduplicate by message ID, then sort chronologically
-        const seen = new Set<string>();
-        const unique = allMessages.filter(m => {
-          if (seen.has(m.id)) return false;
-          seen.add(m.id);
-          return true;
+        // Fetch primary chat first for instant display, then backfill others
+        const primaryChatId = chatIds[0];
+        const { data: primaryData } = await invokeUnipile({
+          body: { action: 'get_messages', account_id: selectedAccount, chat_id: primaryChatId, limit: 50 },
         });
-        unique.sort((a, b) => {
+        if (!primaryData?.success) throw new Error(primaryData?.error as string);
+        
+        const primaryMessages = (primaryData.messages as Message[]) || [];
+        const primaryCursor = primaryData.cursor as string | null;
+        
+        // Sort and display primary messages immediately
+        primaryMessages.sort((a, b) => {
           const tA = new Date(a.timestamp || '').getTime() || 0;
           const tB = new Date(b.timestamp || '').getTime() || 0;
           return tA - tB;
         });
+        setMessages(primaryMessages);
+        setCursor(primaryCursor);
+        setHasMore(!!primaryCursor);
+        setLoadingMessages(false);
         
-        setMessages(unique);
-        setCursor(lastCursor);
-        setHasMore(!!lastCursor);
+        // Backfill secondary threads in background (non-blocking)
+        const secondaryChatIds = chatIds.slice(1);
+        if (secondaryChatIds.length > 0) {
+          Promise.allSettled(
+            secondaryChatIds.map(cid =>
+              invokeUnipile({
+                body: { action: 'get_messages', account_id: selectedAccount, chat_id: cid, limit: 50 },
+              })
+            )
+          ).then(results => {
+            const extraMessages: Message[] = [];
+            for (const result of results) {
+              if (result.status === 'fulfilled' && result.value.data?.success) {
+                const msgs = (result.value.data.messages as Message[]) || [];
+                extraMessages.push(...msgs);
+              }
+            }
+            if (extraMessages.length > 0) {
+              setMessages(prev => {
+                const seen = new Set(prev.map(m => m.id));
+                const newMsgs = extraMessages.filter(m => !seen.has(m.id));
+                if (newMsgs.length === 0) return prev;
+                const combined = [...prev, ...newMsgs];
+                combined.sort((a, b) => {
+                  const tA = new Date(a.timestamp || '').getTime() || 0;
+                  const tB = new Date(b.timestamp || '').getTime() || 0;
+                  return tA - tB;
+                });
+                return combined;
+              });
+            }
+          });
+        }
+        return; // Skip the finally setLoadingMessages since we already set it
       }
     } catch (error) {
       console.error('Error fetching messages:', error);
