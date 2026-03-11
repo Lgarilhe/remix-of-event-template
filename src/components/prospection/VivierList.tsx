@@ -68,7 +68,7 @@ function CompanyDetailSheet({ company, open, onOpenChange }: { company: VivierCo
         </SheetHeader>
         <div className="mt-4 space-y-4">
           {company.description && <p className="text-xs text-muted-foreground line-clamp-3">{company.description}</p>}
-          {company.headcount && <Badge variant="outline" className="text-[10px] rounded-full">{company.headcount} employés</Badge>}
+          {company.headcount && <Badge variant="outline" className="text-[10px]">{company.headcount} employés</Badge>}
           <div className="grid grid-cols-4 gap-2">
             {[
               { label: 'Contacts', value: company.contact_count },
