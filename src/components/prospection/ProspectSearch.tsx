@@ -810,7 +810,7 @@ export function ProspectSearch({ selectedICP, onSelectICP, onResults, searching,
       <div className="lg:hidden">
         <Sheet open={filtersOpen} onOpenChange={setFiltersOpen}>
           <SheetTrigger asChild>
-            <Button variant="outline" className="w-full gap-2 rounded-xl border-border/60 overflow-hidden">
+            <Button variant="outline" className="w-full gap-2 border-foreground overflow-hidden">
               <SlidersHorizontal className="w-4 h-4 shrink-0" />
               <span className="shrink-0">Filtres de recherche</span>
               {(pCount + eCount) > 0 && (
