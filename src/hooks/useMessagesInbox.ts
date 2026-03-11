@@ -1408,6 +1408,10 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
   // Load messages on chat selection & mark as read
   useEffect(() => {
     if (selectedChat) {
+      // Clear previous messages immediately to avoid stale content bleed
+      setMessages([]);
+      setCursor(null);
+      setHasMore(false);
       fetchMessages(selectedChat.id);
       setReplySuggestions([]);
       setSuggestionsLoaded(false);
