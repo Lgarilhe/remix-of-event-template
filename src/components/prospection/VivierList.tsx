@@ -501,7 +501,7 @@ function ContactsView() {
         <div className="space-y-2">{Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-16 w-full" />)}</div>
       ) : filteredContacts.length === 0 ? (
         <div className="text-center py-12 text-muted-foreground">
-          <div className="w-14 h-14 rounded-2xl bg-muted/50 flex items-center justify-center mx-auto mb-3">
+          <div className="w-14 h-14 bg-muted/50 flex items-center justify-center mx-auto mb-3">
             <Users className="w-6 h-6 opacity-40" />
           </div>
           <p className="text-sm font-medium">Aucun contact trouvé</p>
