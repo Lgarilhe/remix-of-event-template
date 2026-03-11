@@ -1354,28 +1354,23 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
 
         const freshChats = data.chats as Chat[] || [];
         setChats(prev => {
-          // Merge fresh first-page with any extra-loaded chats beyond the first page
+          // Expand merged chats for proper re-merge
+          const prevFlat = prev.map(c => ({ ...c, _mergedChatIds: undefined }));
           const freshIds = new Set(freshChats.map(c => c.id));
-          const extraChats = prev.filter(c => !freshIds.has(c.id));
+          const extraChats = prevFlat.filter(c => !freshIds.has(c.id));
           if (extraChats.length === 0) {
-            // No extra loaded chats — only update if something changed
-            if (prev.length !== freshChats.length) return freshChats;
-            const prevFirst = prev[0];
-            const freshFirst = freshChats[0];
-            if (prevFirst?.id !== freshFirst?.id || prevFirst?.timestamp !== freshFirst?.timestamp) return freshChats;
             const prevUnread = prev.reduce((a, c) => a + getUnreadCount(c), 0);
-            const freshUnread = freshChats.reduce((a, c) => a + getUnreadCount(c), 0);
-            if (prevUnread !== freshUnread) return freshChats;
-            return prev;
+            const freshMerged = mergeChatsByCandidate(freshChats);
+            const freshUnread = freshMerged.reduce((a, c) => a + getUnreadCount(c), 0);
+            if (prev.length === freshMerged.length && prevUnread === freshUnread) {
+              const prevFirst = prev[0];
+              const freshFirst = freshMerged[0];
+              if (prevFirst?.id === freshFirst?.id && prevFirst?.timestamp === freshFirst?.timestamp) return prev;
+            }
+            return freshMerged;
           }
-          // Merge: fresh first page + extra loaded chats, sorted by timestamp
-          const merged = [...freshChats, ...extraChats];
-          merged.sort((a, b) => {
-            const timeA = new Date(a.timestamp || '').getTime();
-            const timeB = new Date(b.timestamp || '').getTime();
-            return timeB - timeA;
-          });
-          return merged;
+          const combined = [...freshChats, ...extraChats];
+          return mergeChatsByCandidate(combined);
         });
       } catch {
         // Silently ignore polling errors
