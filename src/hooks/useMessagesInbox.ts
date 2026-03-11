@@ -116,6 +116,44 @@ export interface JobData {
   };
 }
 
+// ── Merge chats by candidate ─────────────────────────────
+// Groups chats with the same attendee (same LinkedIn profile) into a single entry
+function mergeChatsByCandidate(chats: Chat[]): Chat[] {
+  const profileMap = new Map<string, Chat[]>();
+  const noProfileChats: Chat[] = [];
+
+  for (const chat of chats) {
+    const attendee = chat.attendees?.[0];
+    const profileId = attendee?.attendee_provider_id || attendee?.provider_id || null;
+    if (!profileId) { noProfileChats.push(chat); continue; }
+    if (!profileMap.has(profileId)) profileMap.set(profileId, []);
+    profileMap.get(profileId)!.push(chat);
+  }
+
+  const merged: Chat[] = [];
+  for (const [, group] of profileMap) {
+    if (group.length === 1) { merged.push(group[0]); continue; }
+    group.sort((a, b) => (new Date(b.timestamp || '').getTime() || 0) - (new Date(a.timestamp || '').getTime() || 0));
+    const primary = { ...group[0] };
+    primary._mergedChatIds = group.map(c => c.id);
+    primary.unread_count = group.reduce((sum, c) => sum + (c.unread_count ?? c.unread ?? 0), 0);
+    primary.unread = primary.unread_count;
+    const allFolders = new Set<string>();
+    for (const c of group) (c.folder || []).forEach(f => allFolders.add(f));
+    primary.folder = Array.from(allFolders);
+    const bestLastMsg = group.reduce((best, c) => {
+      if (!c.last_message?.timestamp) return best;
+      if (!best?.timestamp) return c.last_message;
+      return new Date(c.last_message.timestamp).getTime() > new Date(best.timestamp).getTime() ? c.last_message : best;
+    }, group[0].last_message);
+    primary.last_message = bestLastMsg;
+    merged.push(primary);
+  }
+  merged.push(...noProfileChats);
+  merged.sort((a, b) => (new Date(b.timestamp || '').getTime() || 0) - (new Date(a.timestamp || '').getTime() || 0));
+  return merged;
+}
+
 interface UseMessagesInboxOptions {
   selectedAccount: string | null;
   onUnreadCountChange?: (count: number) => void;
