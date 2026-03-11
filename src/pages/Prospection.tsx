@@ -9,7 +9,7 @@ import { ProspectResults } from '@/components/prospection/ProspectResults';
 import { Crosshair } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ICP } from '@/hooks/useICPs';
-import { motion, AnimatePresence } from 'framer-motion';
+
 
 const tabs = [
   { value: 'search', label: 'Recherche', emoji: '🔍' },
