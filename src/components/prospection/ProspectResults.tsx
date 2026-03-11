@@ -149,7 +149,7 @@ function ProspectCard({ prospect, index }: { prospect: ProspectProfile; index: n
                 <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap min-w-0 max-w-full">
                   {/* Mobile avatar */}
                   <div className="relative shrink-0 sm:hidden">
-                    <Avatar className="w-8 h-8 border border-border/40 shadow-sm">
+                    <Avatar className="w-8 h-8 border border-foreground">
                       <AvatarImage src={avatarUrl} alt={displayName} className="object-cover" onError={fallbackToNextAvatar} />
                       <AvatarFallback className="bg-gradient-to-br from-[hsl(var(--skalr-purple)/0.15)] to-[hsl(var(--skalr-pink)/0.15)] text-foreground text-xs font-medium">
                         {initials}
