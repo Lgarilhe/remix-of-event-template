@@ -1872,12 +1872,14 @@ async function generatePersonalizedMessage(supabase: any, enrollment: Record<str
 - CTA non-engageant: demande d'avis, PAS de proposition de call/rdv
 - 200-400 caractères pour le corps`;
       } else {
-        msgType = 'INMAIL RELANCE (DERNIÈRE TENTATIVE)';
-        toneInstructions = `TON DE CLÔTURE FORMEL. DERNIÈRE tentative par InMail.
-- Objet court type "Suite à mon précédent message"
-- NE PAS répéter le pitch, juste rappeler le poste
-- Laisser la porte ouverte
-- 200-300 caractères`;
+        msgType = 'INMAIL DE RELANCE (NOUVEL ANGLE)';
+        toneInstructions = `IMPORTANT: Chaque InMail crée un NOUVEAU FIL DE DISCUSSION sur LinkedIn. Le candidat n'a peut-être JAMAIS lu ton premier InMail.
+- Ce message doit être AUTONOME et compréhensible SANS avoir lu le précédent
+- NE DIS JAMAIS "dernière tentative", "je reviens", "suite à mon précédent message", "je ne veux pas insister"
+- Propose un ANGLE DIFFÉRENT du premier InMail: aspect technique, culture d'équipe, impact du poste, projet concret
+- Objet accrocheur et DIFFÉRENT du premier, < 40 caractères
+- Ton direct et naturel, comme un NOUVEAU premier contact mais avec un angle différent
+- 200-400 caractères pour le corps`;
       }
     } else {
       if (!hadMsg && !hadInvite) {
