@@ -91,9 +91,9 @@ function CompanyDetailSheet({ company, open, onOpenChange }: { company: VivierCo
                   <h4 className="text-xs font-semibold text-muted-foreground mb-2">Contacts ({contacts.length})</h4>
                   <div className="space-y-1.5">
                     {contacts.map((ct: any) => (
-                      <div key={ct.airtable_id} className="rounded-lg border border-border/40 p-2.5 text-xs flex items-center gap-2.5 hover:bg-muted/30 transition-colors">
-                        <div className="h-7 w-7 rounded-full bg-gradient-to-br from-[hsl(var(--skalr-purple)/0.15)] to-[hsl(var(--skalr-pink)/0.15)] flex items-center justify-center text-[9px] font-bold shrink-0 uppercase text-foreground">
-                          {(ct.full_name || '??').split(' ').map((w: string) => w[0]).join('').slice(0, 2)}
+                       <div key={ct.airtable_id} className="border border-border/40 p-2.5 text-xs flex items-center gap-2.5 hover:bg-muted/30 transition-colors">
+                         <div className="h-7 w-7 bg-muted flex items-center justify-center text-[9px] font-bold shrink-0 uppercase text-foreground">
+                           {(ct.full_name || '??').split(' ').map((w: string) => w[0]).join('').slice(0, 2)}
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="font-medium truncate">{ct.full_name || 'Sans nom'}</div>
