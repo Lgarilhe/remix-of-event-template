@@ -168,8 +168,8 @@ function ProspectCard({ prospect, index }: { prospect: ProspectProfile; index: n
                     </Badge>
                   )}
                   {prospect.source && (
-                    <Badge className={cn(
-                      "text-[9px] border gap-0.5 px-1.5 py-0 rounded-full",
+                     <Badge className={cn(
+                      "text-[9px] border gap-0.5 px-1.5 py-0",
                       prospect.source === 'apollo'
                         ? "bg-orange-500/10 text-orange-600 border-orange-500/30"
                         : "bg-violet-500/10 text-violet-600 border-violet-500/30"
