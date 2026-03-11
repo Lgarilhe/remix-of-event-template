@@ -1257,25 +1257,31 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
   }, [selectedChat, calendlyLink]);
 
   // Helper: mark a chat as read locally AND via the Unipile API
-  // Plain function (not a hook) to avoid changing hook count
+  // For merged chats, marks ALL underlying threads as read
   const markChatAsReadLocally = (chatId: string) => {
     // Single dispatch updates both chats[] and selectedChat atomically (1 render instead of 2)
     chatDispatch({ type: 'MARK_CHAT_READ', chatId });
 
-    // Fire-and-forget: tell Unipile to mark the chat as read server-side
-    invokeUnipile({
-      body: {
-        action: 'mark_as_read',
-        account_id: selectedAccount,
-        chat_id: chatId,
-      },
-    }).then(({ data }) => {
-      if (!data?.success) {
-        console.warn('Failed to mark chat as read via API:', data?.error);
-      }
-    }).catch(err => {
-      console.warn('Error marking chat as read:', err);
-    });
+    // Find merged chat IDs — mark all underlying threads as read
+    const chat = chats.find(c => c.id === chatId);
+    const chatIdsToMark = chat?._mergedChatIds || [chatId];
+
+    // Fire-and-forget: tell Unipile to mark each chat as read server-side
+    for (const cid of chatIdsToMark) {
+      invokeUnipile({
+        body: {
+          action: 'mark_as_read',
+          account_id: selectedAccount,
+          chat_id: cid,
+        },
+      }).then(({ data }) => {
+        if (!data?.success) {
+          console.warn('Failed to mark chat as read via API:', data?.error);
+        }
+      }).catch(err => {
+        console.warn('Error marking chat as read:', err);
+      });
+    }
   };
 
   // Filter chats effect
