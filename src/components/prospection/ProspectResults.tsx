@@ -314,7 +314,7 @@ function ProspectCard({ prospect, index }: { prospect: ProspectProfile; index: n
               <div className="space-y-1.5">
                 {prospect.experience.map((exp, i) => (
                   <div key={i} className="flex items-start gap-2">
-                    <div className="w-1.5 h-1.5 rounded-full bg-gradient-to-br from-[hsl(var(--skalr-purple))] to-[hsl(var(--skalr-pink))] mt-1.5 shrink-0" />
+                    <div className="w-1.5 h-1.5 bg-foreground mt-1.5 shrink-0" />
                     <div className="text-xs">
                       <span className="font-medium text-foreground">{exp.title}</span>
                       {exp.company && <span className="text-muted-foreground"> · {exp.company}</span>}
