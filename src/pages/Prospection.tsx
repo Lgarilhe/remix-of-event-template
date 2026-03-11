@@ -125,56 +125,22 @@ export default function Prospection() {
           </div>
 
           {/* Content */}
-          <AnimatePresence mode="wait">
-            {/* Vivier tab */}
-            {activeTab === 'vivier' && (
-              <motion.div
-                key="vivier"
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -8 }}
-                transition={{ duration: 0.25 }}
-                className="min-w-0"
-              >
-                <VivierList />
-              </motion.div>
-            )}
-
-            {/* ICP tab */}
-            {activeTab === 'icp' && (
-              <motion.div
-                key="icp"
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -8 }}
-                transition={{ duration: 0.25 }}
-                className="min-w-0"
-              >
-                <ICPList onSearchFromICP={handleSearchFromICP} />
-              </motion.div>
-            )}
-
-            {/* Search tab */}
-            {activeTab === 'search' && (
-              <motion.div
-                key="search"
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -8 }}
-                transition={{ duration: 0.25 }}
-                className="min-w-0"
-              >
-                <ProspectSearch
-                  selectedICP={selectedICP}
-                  onSelectICP={setSelectedICP}
-                  onResults={setResults}
-                  searching={searching}
-                  onSearchingChange={setSearching}
-                  results={results}
-                />
-              </motion.div>
-            )}
-          </AnimatePresence>
+          <div className={cn("mt-0 min-w-0", activeTab !== 'vivier' && 'hidden')}>
+            <VivierList />
+          </div>
+          <div className={cn("mt-0 min-w-0", activeTab !== 'icp' && 'hidden')}>
+            <ICPList onSearchFromICP={handleSearchFromICP} />
+          </div>
+          <div className={cn("mt-0 min-w-0", activeTab !== 'search' && 'hidden')}>
+            <ProspectSearch
+              selectedICP={selectedICP}
+              onSelectICP={setSelectedICP}
+              onResults={setResults}
+              searching={searching}
+              onSearchingChange={setSearching}
+              results={results}
+            />
+          </div>
         </div>
       </main>
     </div>
