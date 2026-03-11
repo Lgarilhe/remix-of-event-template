@@ -1622,6 +1622,15 @@ function detectSequenceViolations(isRPO: boolean, message: string, subject?: str
   if (/\bRecruteur\b/i.test(message)) v.push('signature "Recruteur" interdite — utiliser le prénom');
   // CTA: no call/rdv/dispo
   if (/\b(dispo(nible)?|call|rdv|rendez.vous|échange téléphonique|en discuter de vive voix)\b/i.test(text)) v.push('CTA engageant interdit (call/rdv/dispo)');
+  // InMail relance: NEVER reference previous messages (each InMail is a separate thread on LinkedIn)
+  if (/suite\s+[àa]\s+mon\s+pr[ée]c[ée]dent/i.test(text)) v.push('"suite à mon précédent message" interdit — chaque InMail est un thread séparé');
+  if (/derni[èe]re\s+tentative/i.test(text)) v.push('"dernière tentative" interdit — ton agressif');
+  if (/je\s+ne\s+veux\s+pas\s+(insister|m'incruster|être\s+lourd)/i.test(text)) v.push('"je ne veux pas insister" interdit — culpabilisant');
+  if (/je\s+reviens\s+vers/i.test(text)) v.push('"je reviens vers" interdit — réfère au message précédent');
+  if (/comme\s+je\s+(te|vous)\s+(l'|le\s+)?disais/i.test(text)) v.push('"comme je disais" interdit — réfère au message précédent');
+  if (/suite\s+[àa]\s+notre/i.test(text)) v.push('"suite à notre" interdit — réfère au message précédent');
+  if (/mon\s+dernier\s+message/i.test(text)) v.push('"mon dernier message" interdit');
+  if (/la\s+porte\s+(reste|est)\s+ouverte/i.test(text)) v.push('"la porte reste ouverte" interdit — cliché de clôture');
   if (isRPO) {
     if (/\bje\s+recrute\b/i.test(text)) v.push('RPO: "je recrute"');
     if (/\bj['']accompagne\b/i.test(text)) v.push('RPO: "j\'accompagne"');
@@ -1898,13 +1907,16 @@ async function generatePersonalizedMessage(supabase: any, enrollment: Record<str
         toneInstructions = `PREMIÈRE RELANCE. NE RÉPÈTE PAS le même pitch. Apporte un NOUVEL ANGLE:
 - Aspect technique différent, contexte d'équipe, avantage concret
 - Pas de culpabilisation
+- JAMAIS "suite à mon précédent message", "dernière tentative", "je ne veux pas insister", "la porte reste ouverte"
 - 200-350 caractères`;
       } else {
-        msgType = 'RELANCE 2 (MESSAGE DE CLÔTURE)';
-        toneInstructions = `DERNIÈRE RELANCE. Respectueux du silence.
-- NE PAS repitcher, juste rappeler le poste en quelques mots
-- Laisser la porte ouverte
-- 150-250 caractères max`;
+        msgType = 'RELANCE 2 (NOUVEL ANGLE)';
+        toneInstructions = `DERNIÈRE RELANCE — MAIS JAMAIS DE TON "DERNIÈRE TENTATIVE".
+- Ce message doit être AUTONOME, comme un NOUVEAU premier contact avec un angle différent
+- ⛔ INTERDIT: "dernière tentative", "suite à mon précédent message", "je reviens vers vous", "je ne veux pas insister", "la porte reste ouverte"
+- ⛔ SUJET INTERDIT: "Suite à mon précédent message" — écris un sujet ORIGINAL et accrocheur lié au CONTENU
+- Propose un angle INÉDIT: impact business, stack technique, culture d'équipe, projet concret
+- 200-350 caractères, CTA non-engageant`;
       }
     }
 
