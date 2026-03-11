@@ -57,6 +57,8 @@ export interface Chat {
     timestamp?: string;
     is_sender?: boolean;
   };
+  // Merged chat support: when multiple threads exist for the same candidate
+  _mergedChatIds?: string[];
 }
 
 export interface Message {
