@@ -216,7 +216,7 @@ function ProspectCard({ prospect, index }: { prospect: ProspectProfile; index: n
                   </Badge>
                 )}
                 {signals?.hiring && (
-                  <Badge className="text-[10px] bg-amber-500/10 text-amber-600 border-amber-500/20 border rounded-full gap-1 px-2 py-0.5">
+                  <Badge className="text-[10px] bg-amber-500/10 text-amber-600 border-amber-500/20 border gap-1 px-2 py-0.5">
                     📢 Recrute
                   </Badge>
                 )}
