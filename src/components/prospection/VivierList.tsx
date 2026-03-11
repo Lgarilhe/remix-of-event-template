@@ -586,12 +586,12 @@ export function VivierList() {
             <button
               key={tab.value}
               onClick={() => setActiveSubTab(tab.value)}
-              className={cn(
-                "flex items-center gap-1.5 h-8 px-3 text-xs font-semibold rounded-md transition-all duration-200",
-                isActive
-                  ? "bg-background text-foreground shadow-sm"
-                  : "text-muted-foreground hover:text-foreground"
-              )}
+               className={cn(
+                 "flex items-center gap-1.5 h-8 px-3 text-[10px] font-medium uppercase tracking-wider transition-all duration-200",
+                 isActive
+                   ? "bg-brutal-accent text-foreground"
+                   : "bg-background text-foreground hover:bg-muted"
+               )}
             >
               <Icon className="w-3.5 h-3.5" />
               {tab.label}
