@@ -447,7 +447,7 @@ function EnrichedContactSheet({ contact, enrichment, open, onOpenChange, onCopyM
   if (!contact) return null;
 
   const isEnriched = !!enrichment && enrichment.match_type !== 'not_found';
-  const displayTitle = enrichment?.current_job_title || contact.title;
+  const displayTitle = enrichment?.current_job_title || contact.contact_type || null;
   const displayCompany = enrichment?.current_company || contact.company_name;
 
   return (
