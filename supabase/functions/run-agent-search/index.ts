@@ -505,28 +505,25 @@ serve(async (req) => {
       }
     }
 
-    // ── 7. Score profiles (sequential with cache lookup) ──
+    // ── 7. Score profiles (concurrent with semaphore) ──
 
     const GLOBAL_TIMEOUT = 140_000; // 140s safety margin (Supabase limit ~150s)
     const startTime = Date.now();
     let timedOut = false;
+    const CONCURRENCY = 3;
 
     const scoredProfiles: Array<{ profile: any; score: any; fromCache: boolean }> = [];
     const goProfiles: Array<{ profile: any; score: any }> = [];
     let cacheHits = 0;
 
+    // Separate cached from uncached profiles first
+    const profilesToScore: Array<{ profile: any; index: number }> = [];
+
     for (let i = 0; i < Math.min(filteredProfiles.length, maxProfiles); i++) {
-      // Global timeout guard
-      if (Date.now() - startTime > GLOBAL_TIMEOUT) {
-        timedOut = true;
-        await postStatus(`⏱️ Temps max atteint après ${scoredProfiles.length} profils analysés. Résultats partiels ci-dessous.`);
-        break;
-      }
       const profile = filteredProfiles[i];
       const candidateKey = buildCandidateKey(profile);
       const providerId = profile.provider_id || "";
 
-      // Check score cache first (by candidate_id key or provider_id)
       const cachedByKey = cachedScores.get(candidateKey);
       const cachedById = providerId ? cachedScores.get(providerId) : null;
       const cached = cachedByKey || cachedById;
@@ -538,18 +535,21 @@ serve(async (req) => {
         if (rec === "go" || rec === "Go") {
           goProfiles.push({ profile, score: cached });
         }
-        continue;
+      } else {
+        profilesToScore.push({ profile, index: i });
       }
+    }
 
-      // No cache → call scoring API (sequentially to respect quotas)
-      if (!jobData) {
-        scoredProfiles.push({ profile, score: null, fromCache: false });
-        continue;
-      }
+    // Early stop if cache already has enough
+    if (goProfiles.length < targetGo && jobData && profilesToScore.length > 0) {
+      // Semaphore for controlled concurrency
+      let activeCount = 0;
+      let queueIndex = 0;
 
-      try {
+      const scoreOne = async (profile: any): Promise<{ profile: any; score: any }> => {
+        const providerId = profile.provider_id || "";
         const profileData = {
-          id: providerId || `agent-${Date.now()}`,
+          id: providerId || `agent-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
           name: profile.name || "Unknown",
           headline: profile.headline || "",
           currentRole: profile.current_role || profile.work_experience?.[0]?.role || "",
@@ -586,26 +586,54 @@ serve(async (req) => {
         }, 55000);
 
         const scoreData = await scoreRes.json();
-        scoredProfiles.push({ profile, score: scoreData, fromCache: false });
-        const rec = scoreData?.recommendation;
-        if (rec === "go" || rec === "Go") {
-          goProfiles.push({ profile, score: scoreData });
+        return { profile, score: scoreData };
+      };
+
+      // Process in batches of CONCURRENCY
+      for (let batchStart = 0; batchStart < profilesToScore.length; batchStart += CONCURRENCY) {
+        // Timeout check before each batch
+        if (Date.now() - startTime > GLOBAL_TIMEOUT) {
+          timedOut = true;
+          await postStatus(`⏱️ Temps max atteint après ${scoredProfiles.length} profils analysés. Résultats partiels ci-dessous.`);
+          break;
         }
-      } catch (e) {
-        console.error(`[run-agent-search] Score error for ${profile.name}:`, e);
+
+        // Early stop if enough Go profiles
+        if (goProfiles.length >= targetGo) break;
+
+        const batch = profilesToScore.slice(batchStart, batchStart + CONCURRENCY);
+        const results = await Promise.allSettled(batch.map(({ profile }) => scoreOne(profile)));
+
+        for (const result of results) {
+          if (result.status === "fulfilled") {
+            const { profile, score } = result.value;
+            scoredProfiles.push({ profile, score, fromCache: false });
+            const rec = score?.recommendation;
+            if (rec === "go" || rec === "Go") {
+              goProfiles.push({ profile, score });
+            }
+          } else {
+            const failedProfile = batch[results.indexOf(result)]?.profile;
+            console.error(`[run-agent-search] Score error for ${failedProfile?.name}:`, result.reason);
+            scoredProfiles.push({ profile: failedProfile, score: null, fromCache: false });
+          }
+        }
+
+        // Progress update every batch
+        if (batchStart + CONCURRENCY < profilesToScore.length) {
+          await postStatus(`⏳ ${scoredProfiles.length}/${filteredProfiles.length} profils analysés — ${goProfiles.length} Go trouvés${cacheHits > 0 ? ` (${cacheHits} scores en cache)` : ""}...`);
+        }
+
+        // Small delay between batches to be respectful to downstream APIs
+        if (batchStart + CONCURRENCY < profilesToScore.length) {
+          await new Promise(r => setTimeout(r, 500));
+        }
+      }
+    } else if (!jobData) {
+      // No job data → push all uncached as unscored
+      for (const { profile } of profilesToScore) {
         scoredProfiles.push({ profile, score: null, fromCache: false });
       }
-
-      // Progress update every 5 profiles
-      if ((i + 1) % 5 === 0 && i + 1 < filteredProfiles.length) {
-        await postStatus(`⏳ ${scoredProfiles.length}/${filteredProfiles.length} profils analysés — ${goProfiles.length} Go trouvés${cacheHits > 0 ? ` (${cacheHits} scores en cache)` : ""}...`);
-      }
-
-      // Stop early if we have enough Go profiles
-      if (goProfiles.length >= targetGo) break;
-
-      // Sequential safety: 1.5s between scoring calls to pace LinkedIn-related API usage
-      await new Promise(r => setTimeout(r, 1500));
     }
 
     // ── 8. Build summary ──
