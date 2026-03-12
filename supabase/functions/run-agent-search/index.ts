@@ -195,9 +195,9 @@ serve(async (req) => {
             }),
           }, 15000);
           const paramData = await paramRes.json();
-          if (paramData?.success && paramData.parameters?.length > 0) {
+          if (paramData?.success && paramData.items?.length > 0) {
             // Take the first (best match) location
-            const bestMatch = paramData.parameters[0];
+            const bestMatch = paramData.items[0];
             resolvedLocationIds.push({
               id: bestMatch.id || bestMatch.value,
               priority: "MUST_HAVE",
