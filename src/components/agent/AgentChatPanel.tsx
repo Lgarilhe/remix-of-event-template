@@ -206,20 +206,20 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({ onClose }) => {
 
 function AgentHeader({ onClose }: { onClose?: () => void }) {
   return (
-    <div className="flex items-center justify-between px-4 py-3 border-b-2 border-foreground bg-foreground text-background">
+    <div className="flex items-center justify-between px-4 py-3 border-b border-foreground/10 bg-background">
       <div className="flex items-center gap-2.5">
-        <div className="h-8 w-8 border-2 border-background/30 flex items-center justify-center">
+        <div className="h-8 w-8 bg-foreground text-background flex items-center justify-center">
           <Bot className="w-4 h-4" />
         </div>
         <div>
-          <span className="text-xs font-bold uppercase tracking-wider">Agent de recherche</span>
-          <p className="text-[9px] opacity-60 uppercase tracking-wider">Sourcing automatisé</p>
+          <span className="text-xs font-bold uppercase tracking-wider text-foreground">Agent de recherche</span>
+          <p className="text-[9px] text-muted-foreground uppercase tracking-wider">Sourcing automatisé</p>
         </div>
       </div>
       {onClose && (
         <button
           onClick={onClose}
-          className="text-[10px] font-bold uppercase tracking-wider opacity-60 hover:opacity-100 transition-opacity border border-background/30 px-2 py-1"
+          className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors border border-foreground/10 px-2.5 py-1 hover:border-foreground/30"
         >
           Fermer
         </button>
