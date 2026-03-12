@@ -226,14 +226,38 @@ VALIDATION: Quand le recruteur valide:
 RÈGLES:
 - Français, concis, pro
 - Synonym rings FR+EN pour titres ET technos
-- Exclusions NOT pertinentes
-- Élargir expérience -1/+2 ans
 - open_to_work = false par défaut
 - Max 200 chars pour le champ keywords
 - Localisation dans location_keywords, PAS dans keywords
 - Titres dans role, PAS dans keywords
 - Entreprises dans company_keywords (texte), PAS dans keywords
-- Skills dans skills_filter (texte) ET keywords (Boolean)`;
+- Skills dans skills_filter (texte) ET keywords (Boolean)
+
+=== RÈGLES MÉTIER OBLIGATOIRES (à appliquer dans le SEARCH_PLAN) ===
+
+1. EXCLUSION CLIENT: Si le poste mentionne un client/entreprise, TOUJOURS l'exclure des résultats:
+   Dans company_keywords ajouter: {"keywords": "NomClient", "priority": "DOESNT_HAVE", "scope": "CURRENT_OR_PAST"}
+
+2. ÉLARGISSEMENT EXPÉRIENCE: Appliquer -1 an sur min et +2 ans sur max.
+   Ex: poste "3-5 ans" → calculated_experience_min: 2, calculated_experience_max: 7
+
+3. RAYON LOCALISATION selon politique remote:
+   - Full remote / 100% remote → location_within_area: null (pas de limite géo)
+   - Hybrid / partiel / présentiel / non précisé → location_within_area: 25 (≈40km)
+
+4. TOP ÉCOLES: Si la fiche mentionne "top X écoles" ou "grande école d'ingénieur", ajouter dans school_keywords les écoles pertinentes:
+   Top 5: Polytechnique, CentraleSupélec, Mines Paris, Ponts ParisTech, Télécom Paris
+   Top 10: + Centrale Lyon, Centrale Lille, Centrale Nantes, ENSTA Paris, IMT Atlantique
+   Top 17: + Ensimag, Arts et Métiers, ENSEEIHT, UTC, ISAE-SUPAERO, ISEP, EPITA
+
+5. EXCLUSIONS NOT: Toujours ajouter des exclusions pertinentes dans keywords:
+   - Poste senior → NOT ("junior" OR "intern" OR "stagiaire" OR "alternant")
+   - Poste IC → NOT ("manager" OR "director" OR "VP")
+   - Poste non-freelance → NOT ("freelance" OR "consultant indépendant")
+
+6. INFÉRENCE EXPÉRIENCE: Si le poste ne précise pas l'XP, la déduire:
+   Junior → 0-3 | Confirmé → 3-7 | Senior/Lead → 5-12 | Staff/Architecte → 8-15`;
+
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
