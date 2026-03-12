@@ -323,10 +323,93 @@ function EnrichedContactSheet({ contact, enrichment, open, onOpenChange, onCopyM
     return events.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
   }, [shortlists, notes, placements]);
 
+  // Parse Apollo employment history and find role at last interaction date
+  const careerAnalysis = useMemo(() => {
+    const apolloData = enrichment?.apollo_data;
+    const employmentHistory: { title: string; organization_name: string; start_date?: string; end_date?: string; current?: boolean }[] = apolloData?.employment_history || [];
+    
+    // Find last interaction date from timeline
+    const allDates = [
+      ...shortlists.map((s: any) => s.date_added),
+      ...notes.map((n: any) => n.note_date),
+      ...(contact?.last_interaction_date ? [contact.last_interaction_date] : []),
+    ].filter(Boolean).sort().reverse();
+    const lastInteractionDate = allDates[0] || null;
+    const lastInteractionTs = lastInteractionDate ? new Date(lastInteractionDate).getTime() : null;
+
+    // Find current role (first entry without end_date or marked current)
+    const currentRole = employmentHistory.find(e => !e.end_date || e.current) || employmentHistory[0] || null;
+    
+    // Find role at the time of last interaction
+    let roleAtLastInteraction: typeof currentRole = null;
+    if (lastInteractionTs && employmentHistory.length > 0) {
+      roleAtLastInteraction = employmentHistory.find(e => {
+        const start = e.start_date ? new Date(e.start_date).getTime() : 0;
+        const end = e.end_date ? new Date(e.end_date).getTime() : Date.now();
+        return start <= lastInteractionTs && lastInteractionTs <= end;
+      }) || null;
+    }
+
+    // Build career moves between last interaction and now
+    const careerMoves: { title: string; company: string; startDate?: string; endDate?: string; isCurrent: boolean }[] = [];
+    if (lastInteractionTs) {
+      employmentHistory.forEach(e => {
+        const start = e.start_date ? new Date(e.start_date).getTime() : 0;
+        if (start > lastInteractionTs) {
+          careerMoves.push({ title: e.title, company: e.organization_name, startDate: e.start_date, endDate: e.end_date, isCurrent: !e.end_date || !!e.current });
+        }
+      });
+      careerMoves.sort((a, b) => (a.startDate || '').localeCompare(b.startDate || ''));
+    }
+
+    return { employmentHistory, currentRole, roleAtLastInteraction, lastInteractionDate, careerMoves };
+  }, [enrichment, shortlists, notes, contact]);
+
   // Evolution data
   const evolutions = useMemo(() => {
     const items: { emoji: string; title: string; detail: string; type: 'positive' | 'neutral' | 'negative' }[] = [];
-    if (enrichment) {
+    
+    const { roleAtLastInteraction, currentRole, careerMoves, lastInteractionDate } = careerAnalysis;
+    
+    // Career move analysis based on Apollo history
+    if (roleAtLastInteraction && currentRole && lastInteractionDate) {
+      const sameCompany = roleAtLastInteraction.organization_name === currentRole.organization_name;
+      const sameRole = roleAtLastInteraction.title === currentRole.title;
+      
+      if (!sameCompany) {
+        items.push({ 
+          emoji: '🔄', 
+          title: 'Changement d\'entreprise', 
+          detail: `Lors de nos derniers échanges (${relativeTime(lastInteractionDate)}), était ${roleAtLastInteraction.title} chez ${roleAtLastInteraction.organization_name}. Aujourd'hui : ${currentRole.title} chez ${currentRole.organization_name}`, 
+          type: 'positive' 
+        });
+      } else if (!sameRole) {
+        items.push({ 
+          emoji: '📈', 
+          title: 'Évolution interne', 
+          detail: `Promotion chez ${currentRole.organization_name} : ${roleAtLastInteraction.title} → ${currentRole.title}`, 
+          type: 'positive' 
+        });
+      } else {
+        items.push({ 
+          emoji: '🏢', 
+          title: 'Même poste', 
+          detail: `Toujours ${currentRole.title} chez ${currentRole.organization_name} depuis nos derniers échanges (${relativeTime(lastInteractionDate)})`, 
+          type: 'neutral' 
+        });
+      }
+
+      // Intermediate moves
+      if (careerMoves.length > 1) {
+        items.push({
+          emoji: '🛤️',
+          title: `${careerMoves.length} postes entre-temps`,
+          detail: careerMoves.map(m => `${m.title} @ ${m.company}`).join(' → '),
+          type: 'neutral'
+        });
+      }
+    } else if (enrichment) {
+      // Fallback to basic enrichment comparison
       if (enrichment.still_same_company === false && enrichment.company_change_detail) {
         items.push({ emoji: '🔄', title: 'Changement de poste', detail: enrichment.company_change_detail, type: 'positive' });
       }
@@ -336,15 +419,21 @@ function EnrichedContactSheet({ contact, enrichment, open, onOpenChange, onCopyM
       if (enrichment.current_job_title && contact?.title && enrichment.current_job_title !== contact.title) {
         items.push({ emoji: '📈', title: 'Évolution de titre', detail: `${contact.title} → ${enrichment.current_job_title}`, type: 'positive' });
       }
-      if (enrichment.notable_events && Array.isArray(enrichment.notable_events) && (enrichment.notable_events as any[]).length > 0) {
-        (enrichment.notable_events as any[]).forEach((evt: any) => {
-          items.push({ emoji: '⚡', title: evt.title || 'Événement notable', detail: evt.detail || evt.description || '', type: 'neutral' });
-        });
-      }
-      if (enrichment.location && contact?.city && enrichment.location !== contact.city) {
-        items.push({ emoji: '📍', title: 'Changement de localisation', detail: `${contact.city} → ${enrichment.location}`, type: 'neutral' });
-      }
     }
+
+    // Notable events from AI
+    if (enrichment?.notable_events && Array.isArray(enrichment.notable_events) && (enrichment.notable_events as any[]).length > 0) {
+      (enrichment.notable_events as any[]).forEach((evt: any) => {
+        const evtStr = typeof evt === 'string' ? evt : (evt.title || evt.detail || evt.description || '');
+        if (evtStr) items.push({ emoji: '⚡', title: 'Événement notable', detail: evtStr, type: 'neutral' });
+      });
+    }
+
+    // Location change
+    if (enrichment?.location && contact?.city && enrichment.location !== contact.city) {
+      items.push({ emoji: '📍', title: 'Changement de localisation', detail: `${contact.city} → ${enrichment.location}`, type: 'neutral' });
+    }
+
     // Time since last interaction
     if (contact?.last_interaction_date) {
       const daysSince = Math.floor((Date.now() - new Date(contact.last_interaction_date).getTime()) / (1000 * 60 * 60 * 24));
@@ -355,7 +444,7 @@ function EnrichedContactSheet({ contact, enrichment, open, onOpenChange, onCopyM
       }
     }
     return items;
-  }, [enrichment, contact]);
+  }, [enrichment, contact, careerAnalysis]);
 
   if (!contact) return null;
 
