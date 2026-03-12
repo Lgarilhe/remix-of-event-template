@@ -1643,8 +1643,7 @@ function ContactsView() {
       {!loading && totalCount > 0 && (
         <div className="flex items-center justify-between">
           <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">
-            {filteredContacts.length} contact{filteredContacts.length > 1 ? 's' : ''}
-            {enrichFilter !== 'all' && ` sur ${totalCount}`}
+            {enrichFilter !== 'all' ? `${filteredContacts.length} / ` : ''}{totalCount} contact{totalCount > 1 ? 's' : ''}
           </span>
         </div>
       )}
