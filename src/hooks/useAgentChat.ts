@@ -64,49 +64,59 @@ export const useAgentChat = (conversationId: string | null) => {
     load();
   }, [conversationId]);
 
-  // Polling when search is running
-  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
+  // Realtime subscription for messages + conversation status when search is running
   useEffect(() => {
-    if (!conversationId || conversation?.status !== 'running') {
-      if (pollingRef.current) {
-        clearInterval(pollingRef.current);
-        pollingRef.current = null;
-      }
-      return;
-    }
+    if (!conversationId) return;
 
-    const poll = async () => {
-      const { data } = await supabase
-        .from('agent_messages')
-        .select('*')
-        .eq('conversation_id', conversationId)
-        .order('created_at', { ascending: true });
-      if (data) {
-        const newMessages = data as unknown as AgentMessage[];
-        setMessages(prev => {
-          if (newMessages.length > prev.length) return newMessages;
-          return prev;
-        });
-      }
-      const { data: convData } = await supabase
-        .from('agent_conversations')
-        .select('status, results_summary')
-        .eq('id', conversationId)
-        .single();
-      if (convData && convData.status !== 'running') {
-        setConversation(prev => prev ? { ...prev, ...convData as any } : null);
-      }
-    };
+    // Subscribe to new agent_messages for this conversation
+    const messagesChannel = supabase
+      .channel(`agent_messages:${conversationId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'agent_messages',
+          filter: `conversation_id=eq.${conversationId}`,
+        },
+        (payload) => {
+          const newMsg = payload.new as unknown as AgentMessage;
+          setMessages(prev => {
+            // Avoid duplicates (optimistic messages or re-deliveries)
+            if (prev.some(m => m.id === newMsg.id)) return prev;
+            return [...prev, newMsg];
+          });
+        }
+      )
+      .subscribe();
 
-    pollingRef.current = setInterval(poll, 3000);
+    // Subscribe to conversation status changes (running → completed/error)
+    const convChannel = supabase
+      .channel(`agent_conv:${conversationId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'agent_conversations',
+          filter: `id=eq.${conversationId}`,
+        },
+        (payload) => {
+          const updated = payload.new as any;
+          setConversation(prev => prev ? {
+            ...prev,
+            status: updated.status,
+            results_summary: updated.results_summary ?? prev.results_summary,
+          } : null);
+        }
+      )
+      .subscribe();
+
     return () => {
-      if (pollingRef.current) {
-        clearInterval(pollingRef.current);
-        pollingRef.current = null;
-      }
+      supabase.removeChannel(messagesChannel);
+      supabase.removeChannel(convChannel);
     };
-  }, [conversationId, conversation?.status]);
+  }, [conversationId]);
 
   // Parse thinking content into steps
   const parseThinkingSteps = useCallback((thinking: string): ThinkingStep[] => {
