@@ -1268,9 +1268,31 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
 
 // ========== Scoring Card Component ==========
 
+const DIMENSION_LABELS: Record<string, { label: string; icon: React.ReactNode }> = {
+  tech_fit_llm: { label: 'Tech', icon: <Brain className="w-3 h-3" /> },
+  soft_skills_llm: { label: 'Soft Skills', icon: <Award className="w-3 h-3" /> },
+  seniority: { label: 'Séniorité', icon: <TrendingUp className="w-3 h-3" /> },
+  location: { label: 'Localisation', icon: <MapPin className="w-3 h-3" /> },
+  receptivity: { label: 'Réceptivité', icon: <Send className="w-3 h-3" /> },
+  tenure: { label: 'Stabilité', icon: <Clock className="w-3 h-3" /> },
+  contract_fit: { label: 'Contrat', icon: <FileText className="w-3 h-3" /> },
+};
+
 function ScoringCard({ scoring }: { scoring: ScoringRecord }) {
   const [expanded, setExpanded] = useState(false);
   const details = scoring.scoringDetails;
+  const dims = details?.dimensions;
+
+  // Sort dimensions: weighted first (desc), then unweighted
+  const sortedDimensions = React.useMemo(() => {
+    if (!dims) return [];
+    return Object.entries(dims)
+      .map(([key, dim]) => ({ key, ...dim }))
+      .sort((a, b) => (b.weight || 0) - (a.weight || 0));
+  }, [dims]);
+
+  const weightedDims = sortedDimensions.filter(d => d.weight > 0);
+  const llmDims = sortedDimensions.filter(d => d.weight === 0);
 
   return (
     <div className="border border-foreground/10 bg-foreground/[0.03] hover:border-foreground/30 transition-colors">
@@ -1305,9 +1327,81 @@ function ScoringCard({ scoring }: { scoring: ScoringRecord }) {
       {/* Expanded details */}
       {expanded && details && (
         <div className="px-4 pb-4 space-y-3 border-t border-foreground/10 pt-3">
+          {/* Hard filter KO */}
+          {details.hardFilterPassed === false && details.hardFilterKO && (
+            <div className="flex items-start gap-2 p-2.5 bg-destructive/5 border border-destructive/20">
+              <AlertTriangle className="w-4 h-4 text-destructive shrink-0 mt-0.5" />
+              <div>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-destructive block mb-0.5">Filtre éliminatoire</span>
+                <p className="text-[11px] text-destructive/80">{details.hardFilterKO}</p>
+              </div>
+            </div>
+          )}
+
           {/* Summary */}
           {details.summary && (
             <p className="text-sm text-muted-foreground whitespace-pre-wrap leading-relaxed">{details.summary}</p>
+          )}
+
+          {/* Dimensions — weighted bars */}
+          {weightedDims.length > 0 && (
+            <div>
+              <span className="text-[10px] font-bold uppercase tracking-wider text-foreground mb-2 block">Dimensions</span>
+              <div className="space-y-2">
+                {weightedDims.map(dim => {
+                  const cfg = DIMENSION_LABELS[dim.key] || { label: dim.key, icon: <Target className="w-3 h-3" /> };
+                  return (
+                    <div key={dim.key} className="space-y-0.5">
+                      <div className="flex items-center justify-between text-[10px]">
+                        <span className="flex items-center gap-1 text-muted-foreground">
+                          {cfg.icon}
+                          {cfg.label}
+                          <span className="text-[8px] text-muted-foreground/60">({dim.weight}%)</span>
+                        </span>
+                        <span className={cn("font-bold",
+                          dim.score >= 70 ? 'text-emerald-600' :
+                          dim.score >= 40 ? 'text-amber-600' : 'text-destructive'
+                        )}>{dim.score}</span>
+                      </div>
+                      <div className="h-1.5 bg-foreground/10 rounded-full overflow-hidden">
+                        <div
+                          className={cn("h-full transition-all duration-500 rounded-full",
+                            dim.score >= 70 ? 'bg-emerald-500' :
+                            dim.score >= 40 ? 'bg-amber-500' : 'bg-destructive'
+                          )}
+                          style={{ width: `${dim.score}%` }}
+                        />
+                      </div>
+                      {dim.details && (
+                        <p className="text-[9px] text-muted-foreground/70">{dim.details}</p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* LLM dimensions (weight=0, supplementary) */}
+          {llmDims.length > 0 && (
+            <div>
+              <span className="text-[10px] font-bold uppercase tracking-wider text-foreground mb-1.5 block">Analyse IA</span>
+              <div className="flex flex-wrap gap-2">
+                {llmDims.map(dim => {
+                  const cfg = DIMENSION_LABELS[dim.key] || { label: dim.key, icon: <Brain className="w-3 h-3" /> };
+                  return (
+                    <div key={dim.key} className="flex items-center gap-1.5 px-2 py-1 border border-foreground/10 text-[10px]">
+                      {cfg.icon}
+                      <span className="text-muted-foreground">{cfg.label}</span>
+                      <span className={cn("font-bold",
+                        dim.score >= 70 ? 'text-emerald-600' :
+                        dim.score >= 40 ? 'text-amber-600' : 'text-destructive'
+                      )}>{dim.score}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
           )}
 
           {/* Matching skills */}
@@ -1340,7 +1434,27 @@ function ScoringCard({ scoring }: { scoring: ScoringRecord }) {
             </div>
           )}
 
-          {/* Experience & Location */}
+          {/* Strengths */}
+          {details.strengths && details.strengths.length > 0 && (
+            <div>
+              <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 mb-1 block">Forces</span>
+              <ul className="text-[11px] text-muted-foreground space-y-0.5">
+                {details.strengths.map((s: string, i: number) => <li key={i}>• {s}</li>)}
+              </ul>
+            </div>
+          )}
+
+          {/* Concerns / Weaknesses */}
+          {(details.concerns || details.weaknesses) && (details.concerns || details.weaknesses)!.length > 0 && (
+            <div>
+              <span className="text-[10px] font-bold uppercase tracking-wider text-amber-700 mb-1 block">Points d'attention</span>
+              <ul className="text-[11px] text-muted-foreground space-y-0.5">
+                {(details.concerns || details.weaknesses)!.map((w: string, i: number) => <li key={i}>• {w}</li>)}
+              </ul>
+            </div>
+          )}
+
+          {/* Experience & Location (legacy fields) */}
           <div className="flex flex-wrap gap-3 text-[11px]">
             {details.experience_match && (
               <div className="flex items-center gap-1">
@@ -1378,21 +1492,15 @@ function ScoringCard({ scoring }: { scoring: ScoringRecord }) {
             </div>
           )}
 
-          {/* Strengths & Weaknesses */}
-          {details.strengths && details.strengths.length > 0 && (
-            <div>
-              <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 mb-1 block">Forces</span>
-              <ul className="text-[11px] text-muted-foreground space-y-0.5">
-                {details.strengths.map((s: string, i: number) => <li key={i}>• {s}</li>)}
-              </ul>
-            </div>
-          )}
-          {details.weaknesses && details.weaknesses.length > 0 && (
-            <div>
-              <span className="text-[10px] font-bold uppercase tracking-wider text-amber-700 mb-1 block">Faiblesses</span>
-              <ul className="text-[11px] text-muted-foreground space-y-0.5">
-                {details.weaknesses.map((w: string, i: number) => <li key={i}>• {w}</li>)}
-              </ul>
+          {/* LLM Score badge */}
+          {details.llmScore != null && (
+            <div className="pt-2 border-t border-foreground/10 flex items-center gap-2 text-[10px]">
+              <Brain className="w-3.5 h-3.5 text-muted-foreground" />
+              <span className="text-muted-foreground">Score LLM :</span>
+              <span className={cn("font-bold",
+                details.llmScore >= 70 ? 'text-emerald-600' :
+                details.llmScore >= 40 ? 'text-amber-600' : 'text-destructive'
+              )}>{details.llmScore}/100</span>
             </div>
           )}
         </div>
