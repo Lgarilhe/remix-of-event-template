@@ -14,15 +14,15 @@ export const AgentJobSelector: React.FC<AgentJobSelectorProps> = ({
   jobs, selectedJob, onSelectJob, onLaunch,
 }) => {
   return (
-    <div className="px-5 py-4 border-b border-white/[0.06] space-y-3">
-      <p className="text-xs font-medium" style={{ color: 'rgba(255,255,255,0.35)' }}>
+    <div className="px-4 py-4 border-b border-foreground/10 space-y-3">
+      <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-muted-foreground">
         Nouveau sourcing
       </p>
 
       {/* Job cards */}
-      <div className="space-y-2 max-h-[200px] overflow-y-auto agent-scrollbar pr-1">
+      <div className="space-y-1.5 max-h-[200px] overflow-y-auto scrollbar-hide pr-1">
         {jobs.length === 0 ? (
-          <p className="text-xs py-4 text-center" style={{ color: 'rgba(255,255,255,0.25)' }}>
+          <p className="text-xs py-4 text-center text-muted-foreground">
             Aucun poste actif
           </p>
         ) : (
@@ -32,41 +32,28 @@ export const AgentJobSelector: React.FC<AgentJobSelectorProps> = ({
               <button
                 key={job.id}
                 onClick={() => onSelectJob(isSelected ? null : job)}
-                className="w-full text-left px-3 py-2.5 rounded-lg transition-all duration-200 flex items-center gap-3"
-                style={{
-                  background: isSelected ? 'rgba(0,240,255,0.06)' : 'rgba(255,255,255,0.02)',
-                  border: isSelected ? '1px solid rgba(0,240,255,0.3)' : '1px solid rgba(255,255,255,0.06)',
-                  boxShadow: isSelected ? '0 0 24px rgba(0,240,255,0.06)' : 'none',
-                }}
-                onMouseEnter={e => {
-                  if (!isSelected) {
-                    e.currentTarget.style.background = 'rgba(255,255,255,0.04)';
-                    e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)';
-                  }
-                }}
-                onMouseLeave={e => {
-                  if (!isSelected) {
-                    e.currentTarget.style.background = 'rgba(255,255,255,0.02)';
-                    e.currentTarget.style.borderColor = 'rgba(255,255,255,0.06)';
-                  }
-                }}
+                className={cn(
+                  "w-full text-left px-3 py-2.5 transition-colors flex items-center gap-3 border",
+                  isSelected
+                    ? "border-foreground bg-brutal-accent/10"
+                    : "border-foreground/10 hover:border-foreground/30 hover:bg-muted/50"
+                )}
               >
                 {/* Radio dot */}
-                <div
-                  className="h-4 w-4 rounded-full flex items-center justify-center shrink-0 transition-all"
-                  style={{
-                    border: isSelected ? '2px solid #00f0ff' : '2px solid rgba(255,255,255,0.15)',
-                  }}
-                >
-                  {isSelected && (
-                    <div className="h-2 w-2 rounded-full bg-[#00f0ff]" />
-                  )}
+                <div className={cn(
+                  "h-3.5 w-3.5 border-2 flex items-center justify-center shrink-0",
+                  isSelected ? "border-foreground" : "border-foreground/30"
+                )}>
+                  {isSelected && <div className="h-1.5 w-1.5 bg-foreground" />}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium truncate" style={{ color: isSelected ? '#fff' : 'rgba(255,255,255,0.7)' }}>
+                  <p className={cn(
+                    "text-sm font-medium truncate",
+                    isSelected ? "text-foreground" : "text-foreground/70"
+                  )}>
                     {job.title}
                   </p>
-                  <p className="text-xs truncate mt-0.5" style={{ color: 'rgba(255,255,255,0.3)' }}>
+                  <p className="text-xs truncate mt-0.5 text-muted-foreground">
                     {job.client?.name || 'N/A'}
                   </p>
                 </div>
@@ -77,44 +64,19 @@ export const AgentJobSelector: React.FC<AgentJobSelectorProps> = ({
       </div>
 
       {/* Launch button */}
-      <div className="relative">
-        {/* Animated gradient border */}
-        {selectedJob && (
-          <div
-            className="absolute -inset-[2px] rounded-xl opacity-70"
-            style={{
-              background: 'linear-gradient(135deg, #00f0ff, #7c3aed, #f43f5e, #00f0ff)',
-              backgroundSize: '300% 300%',
-              animation: 'agent-gradient-shift 4s ease infinite',
-              filter: 'blur(3px)',
-            }}
-          />
+      <button
+        onClick={onLaunch}
+        disabled={!selectedJob}
+        className={cn(
+          "w-full h-10 text-xs font-bold uppercase tracking-[0.15em] flex items-center justify-center gap-2 border-2 transition-colors",
+          selectedJob
+            ? "border-foreground bg-foreground text-background hover:bg-brutal-accent hover:border-brutal-accent"
+            : "border-foreground/20 text-muted-foreground cursor-not-allowed"
         )}
-        <button
-          onClick={onLaunch}
-          disabled={!selectedJob}
-          className={cn(
-            "relative w-full h-10 text-sm font-medium flex items-center justify-center gap-2 rounded-lg transition-all z-[1]",
-            !selectedJob && "cursor-not-allowed"
-          )}
-          style={
-            selectedJob
-              ? {
-                  background: 'linear-gradient(135deg, rgba(0,240,255,0.15), rgba(124,58,237,0.15))',
-                  color: '#fff',
-                  border: '1px solid rgba(0,240,255,0.3)',
-                }
-              : {
-                  background: 'rgba(255,255,255,0.04)',
-                  color: 'rgba(255,255,255,0.3)',
-                  border: '1px solid rgba(255,255,255,0.06)',
-                }
-          }
-        >
-          Lancer l'agent
-          <ArrowRight className="w-4 h-4" />
-        </button>
-      </div>
+      >
+        Lancer l'agent
+        <ArrowRight className="w-4 h-4" />
+      </button>
     </div>
   );
 };
