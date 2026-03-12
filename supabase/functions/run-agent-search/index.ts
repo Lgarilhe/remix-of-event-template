@@ -274,9 +274,90 @@ serve(async (req) => {
           });
         }
 
-        // Open to work (spotlight)
+        // Past company keywords
+        if (filters.past_company_keywords && Array.isArray(filters.past_company_keywords) && filters.past_company_keywords.length > 0) {
+          searchBody.past_company = filters.past_company_keywords.map((c: any) => {
+            if (typeof c === "string") {
+              return { keywords: c, priority: "MUST_HAVE" };
+            }
+            return { keywords: c.keywords || c, priority: c.priority || "MUST_HAVE" };
+          });
+        }
+
+        // Industry (resolve IDs like location)
+        if (resolvedIndustryIds.length > 0) {
+          searchBody.industry = { include: resolvedIndustryIds };
+        }
+
+        // School (resolve IDs like location)
+        if (resolvedSchoolIds.length > 0) {
+          searchBody.school = resolvedSchoolIds.map((id: string) => ({
+            id,
+            priority: "MUST_HAVE",
+          }));
+        }
+
+        // Skills (keywords-based, Recruiter supports this)
+        if (filters.skills_filter && Array.isArray(filters.skills_filter) && filters.skills_filter.length > 0) {
+          searchBody.skills = filters.skills_filter.map((s: any) => {
+            if (typeof s === "string") {
+              return { keywords: s, priority: "MUST_HAVE" };
+            }
+            return { keywords: s.keywords || s, priority: s.priority || "MUST_HAVE" };
+          });
+        }
+
+        // Function/Department (resolve IDs)
+        if (resolvedFunctionIds.length > 0) {
+          searchBody.function = resolvedFunctionIds;
+        }
+
+        // Network distance (1st, 2nd, 3rd+ degree)
+        if (filters.network_distance && Array.isArray(filters.network_distance) && filters.network_distance.length > 0) {
+          searchBody.network_distance = filters.network_distance;
+        }
+
+        // Profile language (ISO 639-1 codes)
+        if (filters.profile_language && Array.isArray(filters.profile_language) && filters.profile_language.length > 0) {
+          searchBody.profile_language = filters.profile_language;
+        }
+
+        // Tenure / Years of experience (Recruiter: { min, max })
+        if (filters.tenure_min != null || filters.tenure_max != null) {
+          const tenureObj: any = {};
+          if (filters.tenure_min != null) tenureObj.min = filters.tenure_min;
+          if (filters.tenure_max != null) tenureObj.max = filters.tenure_max;
+          searchBody.years_of_experience = tenureObj;
+        }
+
+        // Degree filter ({ include: [...], exclude: [...] })
+        if (filters.degree) {
+          searchBody.degree = filters.degree;
+        }
+
+        // Company headcount (array of { min, max })
+        if (filters.company_headcount && Array.isArray(filters.company_headcount) && filters.company_headcount.length > 0) {
+          searchBody.company_headcount = filters.company_headcount;
+        }
+
+        // Spotlights (OPEN_TO_WORK, ACTIVE_TALENT, etc.)
+        if (filters.spotlights && Array.isArray(filters.spotlights) && filters.spotlights.length > 0) {
+          searchBody.spotlights = filters.spotlights;
+        }
+
+        // Open to work (spotlight shorthand)
         if (filters.open_to_work === true) {
           searchBody.open_to_work = true;
+        }
+
+        // Groups (LinkedIn group IDs - resolved)
+        if (resolvedGroupIds.length > 0) {
+          searchBody.groups = resolvedGroupIds;
+        }
+
+        // Recruiting activity
+        if (filters.recruiting_activity && Array.isArray(filters.recruiting_activity) && filters.recruiting_activity.length > 0) {
+          searchBody.recruiting_activity = filters.recruiting_activity;
         }
 
         if (cursor) searchBody.cursor = cursor;
