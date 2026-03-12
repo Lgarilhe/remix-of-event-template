@@ -163,21 +163,19 @@ serve(async (req) => {
       });
     }
 
-    // ── 3. Resolve location IDs & prepare structured filters ──
+    // ── 3. Resolve IDs for structured filters ──
 
     const filters = searchPlan.filters;
     const stopConditions = searchPlan.stop_conditions || { target_go_profiles: 10, max_profiles_to_scan: 200 };
     const maxProfiles = Math.min(stopConditions.max_profiles_to_scan || 200, 200);
     const targetGo = stopConditions.target_go_profiles || 10;
 
-    // Resolve location keywords → LinkedIn IDs via get_parameters
-    let resolvedLocationIds: Array<{ id: string; priority: string; scope: string }> = [];
-    const locationKeywords = filters.location_keywords || [];
-    if (locationKeywords.length > 0) {
-      await postStatus(`📍 Résolution des localisations...`);
-      for (const locKw of locationKeywords) {
+    // Helper: resolve keyword → LinkedIn ID via get_parameters
+    async function resolveIds(type: string, keywords: string[]): Promise<string[]> {
+      const ids: string[] = [];
+      for (const kw of keywords) {
         try {
-          const paramRes = await fetchWithTimeout(`${supabaseUrl}/functions/v1/unipile-search`, {
+          const res = await fetchWithTimeout(`${supabaseUrl}/functions/v1/unipile-search`, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
@@ -188,34 +186,59 @@ serve(async (req) => {
               action: "get_parameters",
               account_id: accountId,
               organization_id: orgId,
-              type: "LOCATION",
-              keywords: locKw,
+              type,
+              keywords: kw,
               service: "RECRUITER",
               limit: 3,
             }),
           }, 15000);
-          const paramData = await paramRes.json();
-          if (paramData?.success && paramData.items?.length > 0) {
-            // Take the first (best match) location
-            const bestMatch = paramData.items[0];
-            resolvedLocationIds.push({
-              id: bestMatch.id,
-              priority: "MUST_HAVE",
-              scope: "CURRENT_OR_OPEN_TO_RELOCATE",
-            });
-            console.log(`[run-agent-search] Location "${locKw}" → ID ${bestMatch.id} (${bestMatch.title})`);
+          const data = await res.json();
+          if (data?.success && data.items?.length > 0) {
+            ids.push(data.items[0].id);
+            console.log(`[run-agent-search] ${type} "${kw}" → ID ${data.items[0].id} (${data.items[0].title})`);
           } else {
-            console.warn(`[run-agent-search] No location ID found for "${locKw}"`);
+            console.warn(`[run-agent-search] No ${type} ID found for "${kw}"`);
           }
         } catch (e) {
-          console.error(`[run-agent-search] Failed to resolve location "${locKw}":`, e);
+          console.error(`[run-agent-search] Failed to resolve ${type} "${kw}":`, e);
         }
       }
+      return ids;
     }
+
+    // Resolve all ID-based filters in parallel
+    await postStatus(`📍 Résolution des filtres...`);
+
+    const locationKeywords = filters.location_keywords || [];
+    const industryKeywords = filters.industry_keywords || [];
+    const schoolKeywords = filters.school_keywords || [];
+    const functionKeywords = filters.function_keywords || [];
+    const groupKeywords = filters.group_keywords || [];
+
+    const [locationIds, industryIds, schoolIds, functionIds, groupIds] = await Promise.all([
+      locationKeywords.length > 0 ? resolveIds("LOCATION", locationKeywords) : Promise.resolve([]),
+      industryKeywords.length > 0 ? resolveIds("INDUSTRY", industryKeywords) : Promise.resolve([]),
+      schoolKeywords.length > 0 ? resolveIds("SCHOOL", schoolKeywords) : Promise.resolve([]),
+      functionKeywords.length > 0 ? resolveIds("JOB_FUNCTION", functionKeywords) : Promise.resolve([]),
+      groupKeywords.length > 0 ? resolveIds("GROUPS", groupKeywords) : Promise.resolve([]),
+    ]);
+
+    // Build location with priority/scope structure
+    const resolvedLocationIds = locationIds.map(id => ({
+      id,
+      priority: "MUST_HAVE",
+      scope: "CURRENT_OR_OPEN_TO_RELOCATE",
+    }));
+    const resolvedIndustryIds = industryIds;
+    const resolvedSchoolIds = schoolIds;
+    const resolvedFunctionIds = functionIds;
+    const resolvedGroupIds = groupIds;
+
+    const resolvedCount = resolvedLocationIds.length + resolvedIndustryIds.length + resolvedSchoolIds.length + resolvedFunctionIds.length + resolvedGroupIds.length;
 
     // ── 4. Search LinkedIn (sequential with delays) ──
 
-    await postStatus(`🔍 Recherche lancée — je scanne les profils LinkedIn...${dedupCount > 0 ? `\n📋 ${dedupCount} profils déjà traités seront ignorés.` : ""}${resolvedLocationIds.length > 0 ? `\n📍 ${resolvedLocationIds.length} localisation(s) résolue(s).` : ""}`);
+    await postStatus(`🔍 Recherche lancée — je scanne les profils LinkedIn...${dedupCount > 0 ? `\n📋 ${dedupCount} profils déjà traités seront ignorés.` : ""}${resolvedCount > 0 ? `\n📍 ${resolvedCount} filtre(s) résolu(s).` : ""}`);
 
     let allProfiles: any[] = [];
     let cursor: string | null = null;
