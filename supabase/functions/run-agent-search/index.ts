@@ -104,13 +104,19 @@ serve(async (req) => {
 
     // Verify user belongs to the conversation's organization
     if (conv.organization_id) {
-      const { data: membership } = await supabase
+      const { data: membership, error: membershipError } = await supabase
         .from("organization_members")
         .select("id")
         .eq("user_id", user.id)
         .eq("organization_id", conv.organization_id)
-        .eq("status", "active")
         .maybeSingle();
+
+      if (membershipError) {
+        console.error("[run-agent-search] Membership lookup failed:", membershipError);
+        return new Response(JSON.stringify({ error: "Membership lookup failed" }), {
+          status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
 
       if (!membership) {
         return new Response(JSON.stringify({ error: "Forbidden" }), {
