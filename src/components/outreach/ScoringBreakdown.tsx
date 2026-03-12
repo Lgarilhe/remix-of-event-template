@@ -106,8 +106,6 @@ const InsightsPanel: React.FC<{ strengths: string[]; concerns: string[] }> = ({ 
 
 export const ScoringBreakdown: React.FC<ScoringBreakdownProps> = ({ result }) => {
   const details = result.scoring_details;
-  if (!details) return null;
-
   const { strengths = [], concerns = [] } = details || {};
   const hasDimensions = !!(result.dimensions && Object.values(result.dimensions).some(v => v != null));
   const hasInsights = strengths.length > 0 || concerns.length > 0;
