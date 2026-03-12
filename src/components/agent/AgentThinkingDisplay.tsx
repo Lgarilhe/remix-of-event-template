@@ -22,42 +22,70 @@ export const AgentThinkingDisplay: React.FC<AgentThinkingDisplayProps> = ({
 
   return (
     <div className="flex gap-3 justify-start">
-      <div className="h-7 w-7 bg-muted flex items-center justify-center shrink-0 mt-0.5">
-        <Brain className="w-4 h-4 text-muted-foreground" />
+      {/* Thinking Orb */}
+      <div className="relative h-8 w-8 flex items-center justify-center shrink-0 mt-0.5">
+        {isThinking && (
+          <div
+            className="absolute inset-0 rounded-full"
+            style={{
+              background: 'conic-gradient(from 0deg, #00f0ff, #7c3aed, #f43f5e, #00f0ff)',
+              animation: 'agent-spin 2s linear infinite',
+            }}
+          />
+        )}
+        <div
+          className="relative rounded-full flex items-center justify-center"
+          style={{
+            width: isThinking ? 26 : 32,
+            height: isThinking ? 26 : 32,
+            background: '#0a0a0f',
+            border: isThinking ? 'none' : '1px solid rgba(255,255,255,0.08)',
+          }}
+        >
+          <Brain className="w-3.5 h-3.5" style={{ color: isThinking ? '#00f0ff' : 'rgba(255,255,255,0.3)' }} />
+        </div>
       </div>
 
       <div className="flex-1 min-w-0">
-        {/* Collapsed view - current step */}
+        {/* Collapsed view */}
         <button
           onClick={() => setExpanded(!expanded)}
           className="flex items-center gap-2 text-left group w-full"
         >
           <div className="flex items-center gap-2 flex-1 min-w-0">
             {isThinking && (
-              <span className="relative flex h-2 w-2 shrink-0">
-                <span className="animate-ping absolute inline-flex h-full w-full bg-brutal-accent/50 rounded-full" />
-                <span className="relative inline-flex h-2 w-2 bg-brutal-accent rounded-full" />
-              </span>
+              <div className="flex gap-0.5 shrink-0">
+                {[0, 1, 2, 3, 4].map(i => (
+                  <span
+                    key={i}
+                    className="h-[3px] w-[3px] rounded-full bg-[#00f0ff]"
+                    style={{
+                      animation: 'agent-pulse-dot 1.5s ease-in-out infinite',
+                      animationDelay: `${i * 0.15}s`,
+                    }}
+                  />
+                ))}
+              </div>
             )}
-            <span className="text-xs text-muted-foreground truncate">
+            <span className="text-xs truncate" style={{ color: isThinking ? '#00f0ff' : 'rgba(255,255,255,0.4)' }}>
               {isThinking
-                ? (activeStep?.label || 'En train de réfléchir…')
+                ? (activeStep?.label || 'Analyse en cours…')
                 : `Réflexion terminée`
               }
             </span>
             {doneCount > 0 && (
-              <span className="text-[10px] text-muted-foreground/50 shrink-0">
+              <span className="text-[10px] shrink-0" style={{ color: 'rgba(255,255,255,0.2)' }}>
                 {doneCount} étape{doneCount > 1 ? 's' : ''}
               </span>
             )}
           </div>
           <ChevronDown className={cn(
-            "w-3.5 h-3.5 text-muted-foreground/40 transition-transform shrink-0",
+            "w-3.5 h-3.5 transition-transform shrink-0",
             expanded && "rotate-180"
-          )} />
+          )} style={{ color: 'rgba(255,255,255,0.2)' }} />
         </button>
 
-        {/* Expanded view - all steps */}
+        {/* Expanded view */}
         <AnimatePresence>
           {expanded && (
             <motion.div
@@ -67,23 +95,24 @@ export const AgentThinkingDisplay: React.FC<AgentThinkingDisplayProps> = ({
               transition={{ duration: 0.2 }}
               className="overflow-hidden"
             >
-              <div className="mt-2 pl-1 border-l border-foreground/8 space-y-0">
+              <div className="mt-2 pl-1 space-y-0" style={{ borderLeft: '2px solid rgba(0,240,255,0.15)' }}>
                 {steps.map((step, i) => (
-                  <div
-                    key={i}
-                    className="flex items-start gap-2.5 py-1 pl-3 relative"
-                  >
-                    {/* Dot on the line */}
-                    <span className={cn(
-                      "absolute left-[-3px] top-[10px] h-1.5 w-1.5 rounded-full shrink-0",
-                      step.status === 'active' ? "bg-brutal-accent" :
-                      step.status === 'done' ? "bg-foreground/20" :
-                      "bg-foreground/10"
-                    )} />
-                    <span className={cn(
-                      "text-xs leading-relaxed",
-                      step.status === 'active' ? "text-foreground" : "text-muted-foreground/60"
-                    )}>
+                  <div key={i} className="flex items-start gap-2.5 py-1 pl-3 relative">
+                    <span
+                      className="absolute left-[-4px] top-[10px] h-1.5 w-1.5 rounded-full shrink-0"
+                      style={{
+                        background: step.status === 'active' ? '#00f0ff'
+                          : step.status === 'done' ? 'rgba(255,255,255,0.2)'
+                          : 'rgba(255,255,255,0.06)',
+                        boxShadow: step.status === 'active' ? '0 0 6px rgba(0,240,255,0.5)' : 'none',
+                      }}
+                    />
+                    <span
+                      className="text-xs leading-relaxed"
+                      style={{
+                        color: step.status === 'active' ? 'rgba(255,255,255,0.8)' : 'rgba(255,255,255,0.35)',
+                      }}
+                    >
                       {step.label}
                     </span>
                   </div>
@@ -111,19 +140,34 @@ export const AgentThinkingSaved: React.FC<{ thinking: string }> = ({ thinking })
       onClick={() => setExpanded(!expanded)}
       className="flex items-center gap-2 text-left mt-1 mb-2 group"
     >
-      <Brain className="w-3 h-3 text-muted-foreground/40 shrink-0" />
-      <span className="text-[11px] text-muted-foreground/50">
+      <Brain className="w-3 h-3 shrink-0" style={{ color: 'rgba(255,255,255,0.25)' }} />
+      <span className="text-[11px]" style={{ color: 'rgba(255,255,255,0.3)' }}>
         {expanded ? 'Masquer' : 'Voir'} la réflexion
       </span>
       <ChevronDown className={cn(
-        "w-3 h-3 text-muted-foreground/30 transition-transform",
+        "w-3 h-3 transition-transform",
         expanded && "rotate-180"
-      )} />
+      )} style={{ color: 'rgba(255,255,255,0.2)' }} />
 
       {expanded && (
-        <div className="absolute mt-1 top-full left-0 right-0 pl-5 border-l border-foreground/8 space-y-0.5">
+        <div
+          className="absolute mt-1 top-full left-0 right-0 pl-5 space-y-0.5 rounded-lg p-2"
+          style={{
+            borderLeft: '2px solid rgba(0,240,255,0.15)',
+            background: 'rgba(0,240,255,0.02)',
+          }}
+        >
           {displayLines.map((line, i) => (
-            <p key={i} className="text-[11px] text-muted-foreground/40 py-0.5 pl-2">{line}</p>
+            <p
+              key={i}
+              className="text-[11px] py-0.5 pl-2"
+              style={{
+                fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
+                color: 'rgba(255,255,255,0.3)',
+              }}
+            >
+              {line}
+            </p>
           ))}
         </div>
       )}

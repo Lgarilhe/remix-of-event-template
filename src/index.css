@@ -252,3 +252,46 @@ All colors MUST be HSL.
     left: 100%;
   }
 }
+
+/* ── Agent dark terminal theme ── */
+@layer utilities {
+  .agent-dark-bg {
+    background: linear-gradient(180deg, #08080d 0%, #0a0a12 100%);
+  }
+
+  .agent-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255,255,255,0.1) transparent;
+  }
+  .agent-scrollbar::-webkit-scrollbar {
+    width: 4px;
+  }
+  .agent-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .agent-scrollbar::-webkit-scrollbar-thumb {
+    background: rgba(255,255,255,0.1);
+    border-radius: 2px;
+  }
+}
+
+@keyframes agent-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+@keyframes agent-gradient-shift {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+@keyframes agent-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-4px); }
+}
+@keyframes agent-fade-slide-up {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes agent-pulse-dot {
+  0%, 100% { opacity: 0.3; }
+  50% { opacity: 1; }
+}
