@@ -154,6 +154,7 @@ export const useAgentChat = (conversationId: string | null) => {
     const convId = overrideConversationId || conversationId;
     if (!convId || !content.trim() || sending) return;
 
+    isStreamingRef.current = true;
     setSending(true);
     setStreamingContent('');
     setThinkingContent('');
