@@ -470,7 +470,7 @@ serve(async (req) => {
       await new Promise(r => setTimeout(r, 1500));
     }
 
-    // ── 7. Build summary ──
+    // ── 8. Build summary ──
 
     const goCount = goProfiles.length;
     const totalScored = scoredProfiles.length;
