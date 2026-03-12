@@ -3,19 +3,20 @@ import { Bot, Loader2, ChevronRight, Target } from 'lucide-react';
 import { AgentConversation } from '@/hooks/useAgentChat';
 import { formatDistanceToNow, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
+import { cn } from '@/lib/utils';
 
 interface Props {
   onSelect: (conv: AgentConversation) => void;
   listConversations: () => Promise<AgentConversation[]>;
 }
 
-const statusMap: Record<string, { label: string; color: string; pulse?: boolean }> = {
-  calibrating: { label: 'Calibration', color: 'rgba(255,255,255,0.4)' },
-  plan_proposed: { label: 'Plan proposé', color: '#00f0ff' },
-  running: { label: 'En cours', color: '#00f0ff', pulse: true },
-  completed: { label: 'Terminé', color: '#34d399' },
-  paused: { label: 'En pause', color: 'rgba(255,255,255,0.4)' },
-  failed: { label: 'Erreur', color: '#f43f5e' },
+const statusMap: Record<string, { label: string; className: string; pulse?: boolean }> = {
+  calibrating: { label: 'Calibration', className: 'text-muted-foreground' },
+  plan_proposed: { label: 'Plan proposé', className: 'text-foreground' },
+  running: { label: 'En cours', className: 'text-brutal-accent', pulse: true },
+  completed: { label: 'Terminé', className: 'text-emerald-600' },
+  paused: { label: 'En pause', className: 'text-muted-foreground' },
+  failed: { label: 'Erreur', className: 'text-destructive' },
 };
 
 export const AgentConversationsList: React.FC<Props> = ({ onSelect, listConversations }) => {
@@ -32,7 +33,9 @@ export const AgentConversationsList: React.FC<Props> = ({ onSelect, listConversa
   if (loading) {
     return (
       <div className="flex items-center justify-center py-16">
-        <Loader2 className="w-5 h-5 animate-spin text-[#00f0ff]/40" />
+        <div className="relative h-5 w-5">
+          <div className="absolute inset-0 border-2 border-foreground border-t-transparent animate-spin" />
+        </div>
       </div>
     );
   }
@@ -40,77 +43,67 @@ export const AgentConversationsList: React.FC<Props> = ({ onSelect, listConversa
   if (conversations.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-16 gap-3">
-        <Bot className="w-8 h-8" style={{ color: 'rgba(255,255,255,0.08)' }} />
+        <div className="h-10 w-10 border border-foreground/20 flex items-center justify-center">
+          <Bot className="w-5 h-5 text-muted-foreground/40" />
+        </div>
         <div className="text-center">
-          <p className="text-sm font-medium" style={{ color: 'rgba(255,255,255,0.35)' }}>Aucune conversation</p>
-          <p className="text-xs mt-1" style={{ color: 'rgba(255,255,255,0.2)' }}>Sélectionnez un poste pour commencer</p>
+          <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Aucune conversation</p>
+          <p className="text-[10px] mt-1 text-muted-foreground/60">Sélectionnez un poste pour commencer</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="flex-1 overflow-y-auto agent-scrollbar">
-      <div className="px-5 pt-4 pb-2">
-        <p className="text-xs font-medium" style={{ color: 'rgba(255,255,255,0.35)' }}>
+    <div className="flex-1 overflow-y-auto scrollbar-hide">
+      <div className="px-4 pt-4 pb-2">
+        <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-muted-foreground">
           Conversations récentes
         </p>
       </div>
       <div className="px-3 space-y-1">
         {conversations.map(conv => {
-          const status = statusMap[conv.status] || { label: conv.status, color: 'rgba(255,255,255,0.4)' };
+          const status = statusMap[conv.status] || { label: conv.status, className: 'text-muted-foreground' };
           const goCount = (conv.results_summary as any)?.go_count;
           return (
             <button
               key={conv.id}
               onClick={() => onSelect(conv)}
-              className="w-full text-left px-3 py-3 rounded-lg transition-all duration-200 group flex items-center gap-3"
-              style={{
-                background: 'rgba(255,255,255,0.02)',
-                border: '1px solid rgba(255,255,255,0.06)',
-              }}
-              onMouseEnter={e => {
-                e.currentTarget.style.background = 'rgba(255,255,255,0.04)';
-                e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)';
-              }}
-              onMouseLeave={e => {
-                e.currentTarget.style.background = 'rgba(255,255,255,0.02)';
-                e.currentTarget.style.borderColor = 'rgba(255,255,255,0.06)';
-              }}
+              className="w-full text-left px-3 py-2.5 transition-colors group flex items-center gap-3 border border-foreground/10 hover:border-foreground/30 hover:bg-muted/50"
             >
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium truncate text-white/80 group-hover:text-white transition-colors">
+                <p className="text-sm font-medium truncate text-foreground/80 group-hover:text-foreground transition-colors">
                   {conv.job_title || 'Conversation'}
                 </p>
                 <div className="flex items-center gap-2 mt-1">
-                  {/* Status pill */}
+                  {/* Status */}
                   <div className="flex items-center gap-1.5">
                     {status.pulse ? (
                       <span className="relative flex h-1.5 w-1.5">
-                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full" style={{ background: status.color, opacity: 0.5 }} />
-                        <span className="relative inline-flex h-1.5 w-1.5 rounded-full" style={{ background: status.color }} />
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-brutal-accent/50" />
+                        <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-brutal-accent" />
                       </span>
                     ) : (
-                      <span className="h-1.5 w-1.5 rounded-full shrink-0" style={{ background: status.color }} />
+                      <span className="h-1.5 w-1.5 bg-foreground/30 shrink-0" />
                     )}
-                    <span className="text-xs" style={{ color: status.color }}>{status.label}</span>
+                    <span className={cn("text-[10px] uppercase tracking-wider font-medium", status.className)}>{status.label}</span>
                   </div>
                   {goCount != null && (
                     <>
-                      <span style={{ color: 'rgba(255,255,255,0.15)' }}>·</span>
+                      <span className="text-foreground/15">·</span>
                       <div className="flex items-center gap-1">
-                        <Target className="w-3 h-3 text-[#00f0ff]" />
-                        <span className="text-xs text-[#00f0ff]">{goCount} Go</span>
+                        <Target className="w-3 h-3 text-foreground" />
+                        <span className="text-[10px] font-bold text-foreground">{goCount} Go</span>
                       </div>
                     </>
                   )}
-                  <span style={{ color: 'rgba(255,255,255,0.1)' }}>·</span>
-                  <span className="text-xs" style={{ color: 'rgba(255,255,255,0.25)' }}>
+                  <span className="text-foreground/10">·</span>
+                  <span className="text-[10px] text-muted-foreground">
                     {formatDistanceToNow(parseISO(conv.updated_at), { addSuffix: true, locale: fr })}
                   </span>
                 </div>
               </div>
-              <ChevronRight className="w-4 h-4 shrink-0 transition-colors" style={{ color: 'rgba(255,255,255,0.15)' }} />
+              <ChevronRight className="w-4 h-4 shrink-0 text-foreground/20 group-hover:text-foreground/50 transition-colors" />
             </button>
           );
         })}

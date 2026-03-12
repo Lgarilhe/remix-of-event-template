@@ -31,18 +31,12 @@ export const AgentMessageBubble: React.FC<AgentMessageBubbleProps> = ({ message,
   // ── Status message ──
   if (isStatus) {
     return (
-      <div
-        className="flex items-center gap-3 px-4 py-2.5 rounded-lg text-xs"
-        style={{
-          background: 'rgba(0,240,255,0.04)',
-          color: 'rgba(255,255,255,0.5)',
-        }}
-      >
-        <span className="relative flex h-2 w-2">
-          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#00f0ff]/50" />
-          <span className="relative inline-flex h-2 w-2 rounded-full bg-[#00f0ff]" />
+      <div className="flex items-center gap-3 px-3 py-2 border border-foreground/10 bg-muted/30 text-xs text-muted-foreground">
+        <span className="relative flex h-1.5 w-1.5">
+          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-brutal-accent/50" />
+          <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-brutal-accent" />
         </span>
-        <span>{cleanContent}</span>
+        <span className="uppercase tracking-wider font-medium">{cleanContent}</span>
       </div>
     );
   }
@@ -51,14 +45,7 @@ export const AgentMessageBubble: React.FC<AgentMessageBubbleProps> = ({ message,
   if (isUser) {
     return (
       <div className="flex justify-end">
-        <div
-          className="max-w-[80%] px-4 py-3 text-sm leading-relaxed rounded-2xl rounded-br-sm"
-          style={{
-            background: 'linear-gradient(135deg, rgba(124,58,237,0.3), rgba(124,58,237,0.15))',
-            border: '1px solid rgba(124,58,237,0.25)',
-            color: 'rgba(255,255,255,0.9)',
-          }}
-        >
+        <div className="max-w-[80%] px-3 py-2.5 text-sm leading-relaxed bg-foreground text-background border-2 border-foreground">
           <div className="[&_p]:my-0">
             <ReactMarkdown>{cleanContent}</ReactMarkdown>
           </div>
@@ -75,23 +62,8 @@ export const AgentMessageBubble: React.FC<AgentMessageBubbleProps> = ({ message,
         {thinking && <ThinkingToggle thinking={thinking} />}
 
         {cleanContent && (
-          <div
-            className="px-4 py-3 rounded-xl"
-            style={{
-              background: 'rgba(255,255,255,0.02)',
-              border: '1px solid rgba(255,255,255,0.06)',
-            }}
-          >
-            <div
-              className="prose prose-sm prose-invert max-w-none [&_p]:my-1.5 [&_ul]:my-2 [&_ol]:my-2 [&_li]:my-0.5 [&_h1]:text-base [&_h2]:text-sm [&_h3]:text-sm [&_h1]:font-bold [&_h2]:font-bold [&_h3]:font-semibold [&_h1]:mt-3 [&_h1]:mb-1.5 [&_h2]:mt-3 [&_h2]:mb-1.5 [&_h3]:mt-2 [&_h3]:mb-1 [&_hr]:my-3 [&_code]:text-xs [&_code]:bg-white/5 [&_code]:px-1.5 [&_code]:py-0.5 text-sm"
-              style={{
-                '--tw-prose-body': 'rgba(255,255,255,0.65)',
-                '--tw-prose-headings': 'rgba(255,255,255,0.95)',
-                '--tw-prose-bold': 'rgba(255,255,255,0.95)',
-                '--tw-prose-bullets': '#00f0ff',
-                '--tw-prose-counters': '#00f0ff',
-              } as React.CSSProperties}
-            >
+          <div className="px-3 py-2.5 border border-foreground/10 bg-background">
+            <div className="prose prose-sm max-w-none [&_p]:my-1.5 [&_ul]:my-2 [&_ol]:my-2 [&_li]:my-0.5 [&_h1]:text-base [&_h2]:text-sm [&_h3]:text-sm [&_h1]:font-bold [&_h2]:font-bold [&_h3]:font-semibold [&_h1]:mt-3 [&_h1]:mb-1.5 [&_h2]:mt-3 [&_h2]:mb-1.5 [&_h3]:mt-2 [&_h3]:mb-1 [&_hr]:my-3 [&_code]:text-xs [&_code]:bg-muted [&_code]:px-1.5 [&_code]:py-0.5 [&_li]:marker:text-foreground text-sm text-foreground/80 [&_strong]:text-foreground">
               <ReactMarkdown>{cleanContent}</ReactMarkdown>
             </div>
           </div>
@@ -100,7 +72,7 @@ export const AgentMessageBubble: React.FC<AgentMessageBubbleProps> = ({ message,
         {searchPlan && <SearchPlanCard plan={searchPlan} />}
 
         {isStreaming && (
-          <span className="inline-block w-0.5 h-4 bg-[#00f0ff]/60 animate-pulse ml-4 mt-1" />
+          <span className="inline-block w-0.5 h-4 bg-foreground animate-pulse ml-3 mt-1" />
         )}
       </div>
     </div>
@@ -124,45 +96,27 @@ function ThinkingToggle({ thinking }: { thinking: string }) {
         onClick={() => setExpanded(!expanded)}
         className="flex items-center gap-2 text-left group"
       >
-        <div
-          className="h-5 w-5 rounded-full flex items-center justify-center transition-all"
-          style={{
-            background: expanded ? 'rgba(0,240,255,0.15)' : 'rgba(255,255,255,0.06)',
-            border: expanded ? '1px solid rgba(0,240,255,0.3)' : '1px solid rgba(255,255,255,0.08)',
-          }}
-        >
-          <Brain className="w-2.5 h-2.5" style={{ color: expanded ? '#00f0ff' : 'rgba(255,255,255,0.4)' }} />
+        <div className={cn(
+          "h-5 w-5 flex items-center justify-center border transition-colors",
+          expanded ? "border-foreground bg-foreground text-background" : "border-foreground/20 text-muted-foreground"
+        )}>
+          <Brain className="w-2.5 h-2.5" />
         </div>
-        <span className="text-xs group-hover:text-white/50 transition-colors" style={{ color: 'rgba(255,255,255,0.35)' }}>
+        <span className="text-xs text-muted-foreground group-hover:text-foreground transition-colors">
           {expanded ? 'Masquer' : 'Voir'} la réflexion ({displayLines.length} étapes)
         </span>
         <ChevronDown className={cn(
-          "w-3 h-3 transition-transform",
+          "w-3 h-3 transition-transform text-muted-foreground",
           expanded && "rotate-180"
-        )} style={{ color: 'rgba(255,255,255,0.2)' }} />
+        )} />
       </button>
 
       {expanded && (
-        <div
-          className="mt-2 ml-1 pl-3 space-y-1 rounded-lg p-3"
-          style={{
-            borderLeft: '2px solid rgba(0,240,255,0.15)',
-            background: 'rgba(0,240,255,0.02)',
-          }}
-        >
+        <div className="mt-2 ml-1 pl-3 space-y-1 p-3 border-l-2 border-foreground/20 bg-muted/30">
           {displayLines.map((line, i) => (
             <div key={i} className="flex items-start gap-2 relative">
-              <span
-                className="absolute left-[-14.5px] top-[7px] h-1.5 w-1.5 rounded-full shrink-0"
-                style={{ background: 'rgba(255,255,255,0.15)' }}
-              />
-              <p
-                className="text-[11px] leading-relaxed"
-                style={{
-                  fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
-                  color: 'rgba(255,255,255,0.35)',
-                }}
-              >
+              <span className="absolute left-[-14.5px] top-[7px] h-1.5 w-1.5 bg-foreground/20 shrink-0" />
+              <p className="text-[11px] leading-relaxed font-mono text-muted-foreground">
                 {line}
               </p>
             </div>
@@ -178,22 +132,16 @@ function SearchPlanCard({ plan }: { plan: Record<string, unknown> }) {
   const stopConditions = (plan as any).stop_conditions || {};
 
   return (
-    <div
-      className="mt-4 p-4 space-y-3 rounded-xl"
-      style={{
-        background: 'rgba(0,240,255,0.03)',
-        border: '1px solid rgba(0,240,255,0.15)',
-      }}
-    >
+    <div className="mt-3 p-3 space-y-3 border-2 border-foreground">
       <div className="flex items-center gap-2.5">
-        <CheckCircle2 className="w-4 h-4 text-[#00f0ff]" />
-        <span className="text-xs font-bold uppercase tracking-wider text-white">
+        <CheckCircle2 className="w-4 h-4 text-foreground" />
+        <span className="text-[10px] font-bold uppercase tracking-[0.15em] text-foreground">
           Plan de recherche
         </span>
       </div>
 
       {(plan as any).summary && (
-        <p className="text-sm leading-relaxed" style={{ color: 'rgba(255,255,255,0.55)' }}>
+        <p className="text-sm leading-relaxed text-muted-foreground">
           {(plan as any).summary}
         </p>
       )}
@@ -215,14 +163,7 @@ function SearchPlanCard({ plan }: { plan: Record<string, unknown> }) {
 
 function PlanPill({ icon: Icon, label }: { icon: React.ElementType; label: string }) {
   return (
-    <div
-      className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs"
-      style={{
-        background: 'rgba(0,240,255,0.1)',
-        border: '1px solid rgba(0,240,255,0.2)',
-        color: '#00f0ff',
-      }}
-    >
+    <div className="inline-flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider border border-foreground/30 bg-muted text-foreground">
       <Icon className="w-3.5 h-3.5" />
       <span>{label}</span>
     </div>
