@@ -507,11 +507,21 @@ serve(async (req) => {
 
     // ── 7. Score profiles (sequential with cache lookup) ──
 
+    const GLOBAL_TIMEOUT = 140_000; // 140s safety margin (Supabase limit ~150s)
+    const startTime = Date.now();
+    let timedOut = false;
+
     const scoredProfiles: Array<{ profile: any; score: any; fromCache: boolean }> = [];
     const goProfiles: Array<{ profile: any; score: any }> = [];
     let cacheHits = 0;
 
     for (let i = 0; i < Math.min(filteredProfiles.length, maxProfiles); i++) {
+      // Global timeout guard
+      if (Date.now() - startTime > GLOBAL_TIMEOUT) {
+        timedOut = true;
+        await postStatus(`⏱️ Temps max atteint après ${scoredProfiles.length} profils analysés. Résultats partiels ci-dessous.`);
+        break;
+      }
       const profile = filteredProfiles[i];
       const candidateKey = buildCandidateKey(profile);
       const providerId = profile.provider_id || "";
@@ -603,8 +613,10 @@ serve(async (req) => {
     const goCount = goProfiles.length;
     const totalScored = scoredProfiles.length;
 
-    let summaryMsg = `✅ **Recherche terminée !**\n\n`;
-    summaryMsg += `- 📊 **${totalScored}** profils analysés\n`;
+    let summaryMsg = timedOut
+      ? `⏱️ **Recherche partielle** (temps max atteint)\n\n`
+      : `✅ **Recherche terminée !**\n\n`;
+    summaryMsg += `- 📊 **${totalScored}** profils analysés${timedOut ? ` sur ${Math.min(filteredProfiles.length, maxProfiles)}` : ""}\n`;
     summaryMsg += `- ✅ **${goCount}** profils qualifiés "Go"\n`;
     if (cacheHits > 0) summaryMsg += `- ⚡ **${cacheHits}** scores récupérés du cache\n`;
     if (skippedDedup > 0) summaryMsg += `- 🔄 **${skippedDedup}** profils déjà traités ignorés\n`;
@@ -678,6 +690,21 @@ serve(async (req) => {
 
   } catch (error) {
     console.error("[run-agent-search] Error:", error);
+
+    // Cleanup: ensure conversation doesn't stay stuck in "running"
+    try {
+      const { conversation_id } = await req.clone().json().catch(() => ({}));
+      if (conversation_id) {
+        const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+        const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+        const cleanupClient = createClient(supabaseUrl, serviceKey);
+        await cleanupClient.from("agent_conversations")
+          .update({ status: "error" })
+          .eq("id", conversation_id)
+          .eq("status", "running");
+      }
+    } catch (_) { /* best-effort cleanup */ }
+
     return new Response(
       JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
