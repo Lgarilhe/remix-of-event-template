@@ -858,7 +858,18 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
                     <div className="space-y-2">
                       {enrichedProfile.education.map((edu, i) => (
                         <div key={i} className="flex items-start gap-2">
-                          <GraduationCap className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" />
+                          {edu.logo ? (
+                            <img
+                              src={edu.logo}
+                              alt={edu.school}
+                              className="w-4 h-4 object-contain shrink-0 mt-0.5"
+                              onError={(e) => {
+                                (e.currentTarget as HTMLImageElement).style.display = 'none';
+                              }}
+                            />
+                          ) : (
+                            <GraduationCap className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" />
+                          )}
                           <div>
                             <p className="text-sm font-medium text-foreground">{edu.school}</p>
                             {(edu.degree || edu.field) && (
