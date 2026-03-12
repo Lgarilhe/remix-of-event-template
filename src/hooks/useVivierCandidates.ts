@@ -39,6 +39,9 @@ export interface VivierFilters {
   source_base: string | null;
   contact_type: string | null;
   min_shortlists: number;
+  city: string | null;
+  has_placements: boolean | null;
+  sort_by: string;
 }
 
 const DEFAULT_FILTERS: VivierFilters = {
@@ -46,6 +49,9 @@ const DEFAULT_FILTERS: VivierFilters = {
   source_base: null,
   contact_type: null,
   min_shortlists: 1,
+  city: null,
+  has_placements: null,
+  sort_by: 'recent',
 };
 
 export function useVivierContacts() {
@@ -68,6 +74,9 @@ export function useVivierContacts() {
         p_contact_type: activeFilters.contact_type,
         p_min_shortlists: activeFilters.min_shortlists,
         p_search: activeFilters.search || null,
+        p_city: activeFilters.city || null,
+        p_has_placements: activeFilters.has_placements,
+        p_sort_by: activeFilters.sort_by || 'recent',
       });
       if (error) throw error;
       const rows = (data || []) as any[];
@@ -115,6 +124,9 @@ export function useVivierCompanies() {
         p_source_base: activeFilters.source_base,
         p_min_shortlists: activeFilters.min_shortlists,
         p_search: activeFilters.search || null,
+        p_city: activeFilters.city || null,
+        p_has_placements: activeFilters.has_placements,
+        p_sort_by: activeFilters.sort_by || 'recent',
       });
       if (error) throw error;
       const rows = (data || []) as any[];
