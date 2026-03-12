@@ -258,7 +258,7 @@ function EnrichedContactSheet({ contact, enrichment, open, onOpenChange, onCopyM
     const fetchDetails = async () => {
       const [slRes, notesRes, placRes] = await Promise.all([
         supabase.from('airtable_shortlists').select('airtable_id, status, date_added, created_at, job_airtable_id, candidate_airtable_id')
-          .eq('contact_airtable_id', contact.airtable_id).order('date_added', { ascending: false, nullsFirst: false }).limit(30),
+          .eq('contact_airtable_id', contact.airtable_id).order('date_added', { ascending: false, nullsFirst: false }).limit(100),
         supabase.from('airtable_notes').select('airtable_id, title, detail, note_type, note_date, author')
           .eq('contact_airtable_id', contact.airtable_id).order('note_date', { ascending: false }).limit(30),
         supabase.from('airtable_placements').select('airtable_id, name, status, start_date, salary, contract_type, candidate_airtable_id, company_airtable_id')
@@ -310,18 +310,31 @@ function EnrichedContactSheet({ contact, enrichment, open, onOpenChange, onCopyM
 
   // Build unified timeline
   const timeline = useMemo(() => {
-    const events: { type: string; emoji: string; title: string; subtitle?: string; date: string; highlight?: boolean }[] = [];
+    const events: { type: string; emoji: string; title: string; subtitle?: string; date: string; highlight?: boolean; status?: string; candidateName?: string }[] = [];
     shortlists.forEach((s: any) => {
-      events.push({ type: 'shortlist', emoji: '📋', title: s.job_title || 'Shortlist', subtitle: s.candidate_name ? `👤 ${s.candidate_name}` : undefined, date: s.date_added || '', highlight: false });
+      events.push({ type: 'shortlist', emoji: '📋', title: s.job_title || 'Shortlist', subtitle: s.candidate_name ? `👤 ${s.candidate_name}` : undefined, date: s.date_added || '', highlight: false, status: s.status || null, candidateName: s.candidate_name || null });
     });
     notes.forEach((n: any) => {
       events.push({ type: 'note', emoji: '📝', title: n.title || 'Note', subtitle: n.detail?.slice(0, 100), date: n.note_date || '', highlight: false });
     });
     placements.forEach((p: any) => {
-      events.push({ type: 'placement', emoji: '🏆', title: p.name || 'Placement', subtitle: p.candidate_name ? `👤 ${p.candidate_name}` : undefined, date: p.start_date || '', highlight: true });
+      events.push({ type: 'placement', emoji: '🏆', title: p.name || 'Placement', subtitle: p.candidate_name ? `👤 ${p.candidate_name}` : undefined, date: p.start_date || '', highlight: true, status: p.status || null, candidateName: p.candidate_name || null });
     });
     return events.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
   }, [shortlists, notes, placements]);
+
+  // Grouped shortlists by job for organized view
+  const shortlistsByJob = useMemo(() => {
+    const map = new Map<string, { jobTitle: string; candidates: { name: string | null; status: string | null; date: string | null }[]; latestDate: string | null }>();
+    shortlists.forEach((s: any) => {
+      const key = s.job_title || s.job_airtable_id || 'unknown';
+      const existing = map.get(key) || { jobTitle: s.job_title || 'Poste inconnu', candidates: [], latestDate: null };
+      existing.candidates.push({ name: s.candidate_name || null, status: s.status || null, date: s.date_added || null });
+      if (!existing.latestDate || (s.date_added && s.date_added > existing.latestDate)) existing.latestDate = s.date_added;
+      map.set(key, existing);
+    });
+    return [...map.values()].sort((a, b) => (b.latestDate || '').localeCompare(a.latestDate || ''));
+  }, [shortlists]);
 
   // Parse Apollo employment history and find role at last interaction date
   const careerAnalysis = useMemo(() => {
@@ -707,7 +720,7 @@ function EnrichedContactSheet({ contact, enrichment, open, onOpenChange, onCopyM
 
               {/* ═══ TAB: HISTORIQUE ═══ */}
               {activeDetailTab === 'historique' && (
-                <div className="space-y-1">
+                <div className="space-y-4">
                   {timeline.length === 0 ? (
                     <div className="text-center py-10">
                       <Clock className="w-10 h-10 mx-auto mb-3 text-muted-foreground/30" />
@@ -715,12 +728,122 @@ function EnrichedContactSheet({ contact, enrichment, open, onOpenChange, onCopyM
                     </div>
                   ) : (
                     <>
-                      <div className="text-[9px] uppercase tracking-widest text-muted-foreground mb-3 font-medium">
-                        {timeline.length} interaction{timeline.length > 1 ? 's' : ''} — chronologie complète
+                      {/* Summary counters */}
+                      <div className="grid grid-cols-3 gap-2">
+                        <div className="border border-border p-2.5 text-center">
+                          <div className="text-lg font-bold tabular-nums">{shortlists.length}</div>
+                          <div className="text-[8px] uppercase tracking-widest text-muted-foreground">Shortlists</div>
+                        </div>
+                        <div className="border border-border p-2.5 text-center">
+                          <div className="text-lg font-bold tabular-nums">{notes.length}</div>
+                          <div className="text-[8px] uppercase tracking-widest text-muted-foreground">Notes</div>
+                        </div>
+                        <div className={cn("border-2 p-2.5 text-center", placements.length > 0 ? "border-foreground bg-foreground text-background" : "border-border")}>
+                          <div className="text-lg font-bold tabular-nums">{placements.length}</div>
+                          <div className="text-[8px] uppercase tracking-widest opacity-60">Placements</div>
+                        </div>
                       </div>
-                      {timeline.map((evt, i) => (
-                        <TimelineEvent key={`${evt.type}-${i}`} emoji={evt.emoji} title={evt.title} subtitle={evt.subtitle} date={evt.date} highlight={evt.highlight} />
-                      ))}
+
+                      {/* ── PLACEMENTS SECTION ── */}
+                      {placements.length > 0 && (
+                        <div>
+                          <SectionHeader emoji="🏆" label="Placements réussis" count={placements.length} />
+                          <div className="space-y-2">
+                            {placements.map((p: any, i: number) => (
+                              <div key={i} className="border-2 border-foreground bg-foreground/5 p-3">
+                                <div className="flex items-center justify-between">
+                                  <div className="text-xs font-bold">{p.name || 'Placement'}</div>
+                                  {p.status && <Badge variant="outline" className="text-[8px] uppercase tracking-widest border-foreground/30">{p.status}</Badge>}
+                                </div>
+                                <div className="flex items-center gap-3 mt-1.5 text-[10px] text-muted-foreground">
+                                  {p.candidate_name && <span className="flex items-center gap-1"><UserCheck className="w-3 h-3" />{p.candidate_name}</span>}
+                                  {p.start_date && <span className="flex items-center gap-1"><Calendar className="w-3 h-3" />{p.start_date.slice(0, 7)}</span>}
+                                  {p.salary && <span className="font-medium text-foreground">{p.salary}</span>}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* ── SHORTLISTS GROUPED BY JOB ── */}
+                      {shortlistsByJob.length > 0 && (
+                        <div>
+                          <SectionHeader emoji="📋" label="Shortlists par poste" count={shortlists.length} />
+                          <div className="space-y-2">
+                            {shortlistsByJob.map((group, gi) => {
+                              const statusCounts = new Map<string, number>();
+                              group.candidates.forEach(c => {
+                                const s = c.status || 'Inconnu';
+                                statusCounts.set(s, (statusCounts.get(s) || 0) + 1);
+                              });
+                              return (
+                                <div key={gi} className="border border-border">
+                                  <div className="p-3 bg-muted/20 flex items-center gap-2 border-b border-border">
+                                    <Briefcase className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                                    <div className="flex-1 min-w-0">
+                                      <div className="text-[11px] font-bold leading-snug truncate">{group.jobTitle}</div>
+                                      <div className="text-[9px] text-muted-foreground">
+                                        {group.candidates.length} candidat{group.candidates.length > 1 ? 's' : ''}
+                                        {group.latestDate && <> · {relativeTime(group.latestDate)}</>}
+                                      </div>
+                                    </div>
+                                  </div>
+                                  {/* Status breakdown */}
+                                  <div className="p-2 flex flex-wrap gap-1.5">
+                                    {[...statusCounts.entries()].map(([status, count]) => (
+                                      <span key={status} className={cn(
+                                        "text-[9px] px-2 py-0.5 border font-medium",
+                                        status.toLowerCase().includes('gagn') || status.toLowerCase().includes('plac') ? "border-foreground bg-foreground text-background" :
+                                        status.toLowerCase().includes('perdu') || status.toLowerCase().includes('refus') ? "border-destructive/30 text-destructive bg-destructive/5" :
+                                        status.toLowerCase().includes('itw') || status.toLowerCase().includes('entretien') ? "border-[hsl(var(--brutal-accent))] text-foreground bg-[hsl(var(--brutal-accent)/0.1)]" :
+                                        "border-border text-muted-foreground"
+                                      )}>
+                                        {status} ({count})
+                                      </span>
+                                    ))}
+                                  </div>
+                                  {/* Candidates list */}
+                                  <div className="divide-y divide-border">
+                                    {group.candidates.map((c, ci) => (
+                                      <div key={ci} className="px-3 py-1.5 flex items-center gap-2 text-[10px]">
+                                        <Users className="w-3 h-3 text-muted-foreground shrink-0" />
+                                        <span className="flex-1 truncate">{c.name || 'Candidat inconnu'}</span>
+                                        {c.status && <span className={cn(
+                                          "text-[8px] px-1.5 py-0.5 border uppercase tracking-wider shrink-0",
+                                          c.status.toLowerCase().includes('gagn') || c.status.toLowerCase().includes('plac') ? "border-foreground bg-foreground text-background" :
+                                          c.status.toLowerCase().includes('perdu') || c.status.toLowerCase().includes('refus') ? "border-destructive/30 text-destructive" :
+                                          "border-border text-muted-foreground"
+                                        )}>{c.status}</span>}
+                                        {c.date && <span className="text-[9px] text-muted-foreground tabular-nums shrink-0">{c.date.slice(0, 7)}</span>}
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* ── NOTES SECTION ── */}
+                      {notes.length > 0 && (
+                        <div>
+                          <SectionHeader emoji="📝" label="Notes internes" count={notes.length} />
+                          <div className="space-y-1">
+                            {notes.map((n: any, i: number) => (
+                              <div key={i} className="border-l-2 border-border ml-2 p-3 hover:bg-muted/10 transition-colors">
+                                <div className="flex items-center justify-between">
+                                  <div className="text-[11px] font-semibold leading-snug">{n.title || 'Note'}</div>
+                                  <span className="text-[9px] text-muted-foreground shrink-0">{relativeTime(n.note_date) || n.note_date || ''}</span>
+                                </div>
+                                {n.detail && <div className="text-[10px] text-muted-foreground mt-1 leading-relaxed line-clamp-3">{n.detail}</div>}
+                                {n.author && <div className="text-[9px] text-muted-foreground/60 mt-1 flex items-center gap-1"><UserCheck className="w-3 h-3" />{n.author}</div>}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </>
                   )}
                 </div>
