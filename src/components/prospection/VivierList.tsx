@@ -710,7 +710,7 @@ function EnrichedContactSheet({ contact, enrichment, open, onOpenChange, onCopyM
                             {[
                               { 
                                 label: 'Poste', 
-                                before: careerAnalysis.roleAtLastInteraction?.title || null, 
+                                before: careerAnalysis.roleAtLastInteraction?.title || contact.contact_type || null, 
                                 after: careerAnalysis.currentRole?.title || enrichment?.current_job_title 
                               },
                               { 
