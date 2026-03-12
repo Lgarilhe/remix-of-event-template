@@ -163,14 +163,29 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
         endDate: exp.end ? `${exp.end.year || ''}${exp.end.month ? `-${String(exp.end.month).padStart(2, '0')}` : ''}` : undefined,
         isCurrent: !exp.end,
       })),
-      education: (raw.education || []).slice(0, 4).map((edu: any) => ({
-        school: edu.school || edu.school_name || '',
-        logo: edu.school_logo || edu.logo_url || edu.logo || undefined,
-        degree: edu.degree || edu.degree_name || '',
-        field: edu.field_of_study || edu.field || '',
-        startYear: edu.start?.year?.toString(),
-        endYear: edu.end?.year?.toString(),
-      })),
+      education: (raw.education || []).slice(0, 4).map((edu: any) => {
+        const schoolName = typeof edu.school === 'string'
+          ? edu.school
+          : edu.school?.name || edu.school_name || edu.school_details?.name || '';
+
+        const schoolLogo =
+          edu.school_logo ||
+          edu.logo_url ||
+          edu.logo ||
+          edu.school_details?.logo ||
+          edu.school_details?.logo_url ||
+          edu.school_details?.image ||
+          (typeof edu.school === 'object' ? edu.school?.logo : undefined);
+
+        return {
+          school: schoolName,
+          logo: schoolLogo || undefined,
+          degree: edu.degree || edu.degree_name || '',
+          field: edu.field_of_study || edu.field || '',
+          startYear: edu.start?.year?.toString(),
+          endYear: edu.end?.year?.toString(),
+        };
+      }),
       yearsOfExperience,
       languages: raw.languages?.map((l: any) => typeof l === 'string' ? l : l.name).filter(Boolean) || [],
     };
@@ -843,7 +858,18 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
                     <div className="space-y-2">
                       {enrichedProfile.education.map((edu, i) => (
                         <div key={i} className="flex items-start gap-2">
-                          <GraduationCap className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" />
+                          {edu.logo ? (
+                            <img
+                              src={edu.logo}
+                              alt={edu.school}
+                              className="w-4 h-4 object-contain shrink-0 mt-0.5"
+                              onError={(e) => {
+                                (e.currentTarget as HTMLImageElement).style.display = 'none';
+                              }}
+                            />
+                          ) : (
+                            <GraduationCap className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" />
+                          )}
                           <div>
                             <p className="text-sm font-medium text-foreground">{edu.school}</p>
                             {(edu.degree || edu.field) && (

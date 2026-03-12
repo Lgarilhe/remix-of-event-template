@@ -21,6 +21,7 @@ export interface EnrichedProfile {
   }>;
   education?: Array<{
     school: string;
+    logo?: string;
     degree?: string;
     field?: string;
     startYear?: string;
@@ -120,7 +121,8 @@ export function useProfileEnrichment(): UseProfileEnrichmentResult {
           isCurrent: !exp.end_date && !exp.ends_at,
         })),
         education: (profile.education || []).slice(0, 3).map((edu: any) => ({
-          school: edu.school_name || edu.school,
+          school: edu.school_name || edu.school || edu.school_details?.name,
+          logo: edu.school_logo || edu.logo_url || edu.logo || edu.school_details?.logo,
           degree: edu.degree_name || edu.degree,
           field: edu.field_of_study || edu.field,
           startYear: edu.start_date?.year || edu.starts_at?.year,
