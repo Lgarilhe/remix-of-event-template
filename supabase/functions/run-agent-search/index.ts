@@ -507,11 +507,21 @@ serve(async (req) => {
 
     // ── 7. Score profiles (sequential with cache lookup) ──
 
+    const GLOBAL_TIMEOUT = 140_000; // 140s safety margin (Supabase limit ~150s)
+    const startTime = Date.now();
+    let timedOut = false;
+
     const scoredProfiles: Array<{ profile: any; score: any; fromCache: boolean }> = [];
     const goProfiles: Array<{ profile: any; score: any }> = [];
     let cacheHits = 0;
 
     for (let i = 0; i < Math.min(filteredProfiles.length, maxProfiles); i++) {
+      // Global timeout guard
+      if (Date.now() - startTime > GLOBAL_TIMEOUT) {
+        timedOut = true;
+        await postStatus(`⏱️ Temps max atteint après ${scoredProfiles.length} profils analysés. Résultats partiels ci-dessous.`);
+        break;
+      }
       const profile = filteredProfiles[i];
       const candidateKey = buildCandidateKey(profile);
       const providerId = profile.provider_id || "";
