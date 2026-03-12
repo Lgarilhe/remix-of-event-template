@@ -279,6 +279,7 @@ export const useAgentChat = (conversationId: string | null) => {
         toast.error('Erreur de communication', { description: 'Impossible de contacter l\'assistant. Réessayez.' });
       }
     } finally {
+      isStreamingRef.current = false;
       setSending(false);
       setThinkingContent('');
       setThinkingSteps([]);
