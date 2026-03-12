@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
-import { Bot, CheckCircle2, MapPin, Calendar, Target } from 'lucide-react';
+import { Bot, CheckCircle2, MapPin, Calendar, Target, Brain, ChevronDown } from 'lucide-react';
 import { AgentMessage } from '@/hooks/useAgentChat';
 import { cn } from '@/lib/utils';
 
@@ -18,6 +18,7 @@ export function extractOptions(content: string): string[] {
 export const AgentMessageBubble: React.FC<AgentMessageBubbleProps> = ({ message, isStreaming }) => {
   const isUser = message.role === 'user';
   const isStatus = message.role === 'status';
+  const thinking = message.metadata?.thinking as string | undefined;
 
   const cleanContent = message.content
     .replace(/\[SEARCH_PLAN\][\s\S]*?\[\/SEARCH_PLAN\]/g, '')
@@ -61,6 +62,9 @@ export const AgentMessageBubble: React.FC<AgentMessageBubbleProps> = ({ message,
       </div>
 
       <div className="flex-1 min-w-0 text-sm leading-relaxed text-foreground">
+        {/* Thinking toggle for saved messages */}
+        {thinking && <ThinkingToggle thinking={thinking} />}
+
         {cleanContent && (
           <div className="prose prose-sm prose-neutral dark:prose-invert max-w-none [&_p]:my-1.5 [&_ul]:my-2 [&_ol]:my-2 [&_li]:my-0.5 [&_h1]:text-base [&_h2]:text-sm [&_h3]:text-sm [&_h1]:font-bold [&_h2]:font-bold [&_h3]:font-semibold [&_h1]:mt-3 [&_h1]:mb-1.5 [&_h2]:mt-3 [&_h2]:mb-1.5 [&_h3]:mt-2 [&_h3]:mb-1 [&_strong]:font-bold [&_hr]:my-3 [&_hr]:border-foreground/8 [&_code]:text-xs [&_code]:bg-muted [&_code]:px-1.5 [&_code]:py-0.5 text-sm">
             <ReactMarkdown>{cleanContent}</ReactMarkdown>
@@ -76,6 +80,47 @@ export const AgentMessageBubble: React.FC<AgentMessageBubbleProps> = ({ message,
     </div>
   );
 };
+
+function ThinkingToggle({ thinking }: { thinking: string }) {
+  const [expanded, setExpanded] = useState(false);
+
+  const lines = thinking.split('\n').filter(l => l.trim() && l.trim().length > 5);
+  const displayLines = lines.slice(0, 10).map(l => {
+    const trimmed = l.trim();
+    return trimmed.length > 100 ? trimmed.slice(0, 97) + '…' : trimmed;
+  });
+
+  if (displayLines.length === 0) return null;
+
+  return (
+    <div className="mb-3">
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="flex items-center gap-2 text-left group"
+      >
+        <Brain className="w-3.5 h-3.5 text-muted-foreground/40 shrink-0" />
+        <span className="text-xs text-muted-foreground/50 group-hover:text-muted-foreground transition-colors">
+          {expanded ? 'Masquer' : 'Voir'} la réflexion ({displayLines.length} étapes)
+        </span>
+        <ChevronDown className={cn(
+          "w-3 h-3 text-muted-foreground/30 transition-transform",
+          expanded && "rotate-180"
+        )} />
+      </button>
+
+      {expanded && (
+        <div className="mt-2 ml-1 pl-3 border-l border-foreground/8 space-y-1">
+          {displayLines.map((line, i) => (
+            <div key={i} className="flex items-start gap-2 relative">
+              <span className="absolute left-[-14.5px] top-[7px] h-1.5 w-1.5 rounded-full bg-foreground/15 shrink-0" />
+              <p className="text-xs text-muted-foreground/50 leading-relaxed">{line}</p>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 function SearchPlanCard({ plan }: { plan: Record<string, unknown> }) {
   const filters = (plan as any).filters || {};

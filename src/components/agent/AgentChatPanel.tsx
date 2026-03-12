@@ -5,6 +5,7 @@ import { AgentMessageBubble, extractOptions } from './AgentMessageBubble';
 import { AgentOptionsSheet } from './AgentOptionsSheet';
 import { AgentConversationsList } from './AgentConversationsList';
 import { AgentJobSelector } from './AgentJobSelector';
+import { AgentThinkingDisplay } from './AgentThinkingDisplay';
 import { Job } from '@/types/jobs';
 import { useNotionJobs } from '@/hooks/useNotionJobs';
 import { cn } from '@/lib/utils';
@@ -27,11 +28,12 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({ onClose }) => {
   const {
     messages, loading, sending, streamingContent, conversation,
     sendMessage, createConversation, listConversations,
+    thinkingSteps, isThinking, thinkingContent,
   } = useAgentChat(conversationId);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, streamingContent]);
+  }, [messages, streamingContent, thinkingSteps]);
 
   const handleNewConversation = useCallback(async (job?: Job | null) => {
     const id = await createConversation(job);
@@ -92,7 +94,6 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({ onClose }) => {
   if (showList) {
     return (
       <div className="flex flex-col h-full bg-background">
-        {/* Header */}
         <div className="px-5 py-4 border-b border-foreground/8">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
@@ -105,26 +106,14 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({ onClose }) => {
               </div>
             </div>
             {onClose && (
-              <button
-                onClick={onClose}
-                className="text-xs text-muted-foreground hover:text-foreground transition-colors"
-              >
+              <button onClick={onClose} className="text-xs text-muted-foreground hover:text-foreground transition-colors">
                 Fermer
               </button>
             )}
           </div>
         </div>
-
-        <AgentJobSelector
-          jobs={activeJobs}
-          selectedJob={selectedJob}
-          onSelectJob={setSelectedJob}
-          onLaunch={() => handleNewConversation(selectedJob)}
-        />
-        <AgentConversationsList
-          onSelect={handleSelectConversation}
-          listConversations={listConversations}
-        />
+        <AgentJobSelector jobs={activeJobs} selectedJob={selectedJob} onSelectJob={setSelectedJob} onLaunch={() => handleNewConversation(selectedJob)} />
+        <AgentConversationsList onSelect={handleSelectConversation} listConversations={listConversations} />
       </div>
     );
   }
@@ -184,6 +173,16 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({ onClose }) => {
           ))
         )}
 
+        {/* Thinking display */}
+        {(isThinking || thinkingSteps.length > 0) && !streamingContent && (
+          <AgentThinkingDisplay
+            steps={thinkingSteps}
+            isThinking={isThinking}
+            thinkingContent={thinkingContent}
+          />
+        )}
+
+        {/* Streaming response */}
         {streamingContent && (
           <AgentMessageBubble
             message={{

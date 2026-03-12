@@ -26,11 +26,19 @@ export interface AgentConversation {
   updated_at: string;
 }
 
+export interface ThinkingStep {
+  label: string;
+  status: 'pending' | 'active' | 'done';
+}
+
 export const useAgentChat = (conversationId: string | null) => {
   const [messages, setMessages] = useState<AgentMessage[]>([]);
   const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
   const [streamingContent, setStreamingContent] = useState('');
+  const [thinkingContent, setThinkingContent] = useState('');
+  const [thinkingSteps, setThinkingSteps] = useState<ThinkingStep[]>([]);
+  const [isThinking, setIsThinking] = useState(false);
   const [conversation, setConversation] = useState<AgentConversation | null>(null);
   const { organizationId } = useOrganization();
   const abortRef = useRef<AbortController | null>(null);
@@ -56,7 +64,7 @@ export const useAgentChat = (conversationId: string | null) => {
     load();
   }, [conversationId]);
 
-  // Realtime subscription ONLY when search is running (to get progress messages)
+  // Polling when search is running
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
@@ -68,7 +76,6 @@ export const useAgentChat = (conversationId: string | null) => {
       return;
     }
 
-    // Poll for new messages every 3 seconds during search
     const poll = async () => {
       const { data } = await supabase
         .from('agent_messages')
@@ -82,7 +89,6 @@ export const useAgentChat = (conversationId: string | null) => {
           return prev;
         });
       }
-      // Also check conversation status
       const { data: convData } = await supabase
         .from('agent_conversations')
         .select('status, results_summary')
@@ -102,6 +108,33 @@ export const useAgentChat = (conversationId: string | null) => {
     };
   }, [conversationId, conversation?.status]);
 
+  // Parse thinking content into steps
+  const parseThinkingSteps = useCallback((thinking: string): ThinkingStep[] => {
+    if (!thinking) return [];
+    
+    // Split thinking into logical chunks (by sentences or paragraphs)
+    const lines = thinking.split('\n').filter(l => l.trim());
+    const steps: ThinkingStep[] = [];
+    
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.length < 5) continue;
+      
+      // Detect step-like patterns
+      let label = trimmed;
+      if (label.length > 80) label = label.slice(0, 77) + '…';
+      
+      steps.push({ label, status: 'done' });
+    }
+    
+    // Last step is active if we're still thinking
+    if (steps.length > 0) {
+      steps[steps.length - 1].status = 'active';
+    }
+    
+    return steps.slice(-8); // Keep last 8 steps visible
+  }, []);
+
   // Send message with streaming
   const sendMessage = useCallback(async (content: string, jobContext?: Job | null, overrideConversationId?: string) => {
     const convId = overrideConversationId || conversationId;
@@ -109,6 +142,9 @@ export const useAgentChat = (conversationId: string | null) => {
 
     setSending(true);
     setStreamingContent('');
+    setThinkingContent('');
+    setThinkingSteps([]);
+    setIsThinking(false);
 
     // Optimistic user message
     const tempMsg: AgentMessage = {
@@ -149,6 +185,7 @@ export const useAgentChat = (conversationId: string | null) => {
       const reader = response.body!.getReader();
       const decoder = new TextDecoder();
       let accumulated = '';
+      let accumulatedThinking = '';
 
       while (true) {
         const { done, value } = await reader.read();
@@ -163,8 +200,23 @@ export const useAgentChat = (conversationId: string | null) => {
             if (data === '[DONE]') continue;
             try {
               const parsed = JSON.parse(data);
+              
+              // Handle thinking content
+              const thinkingText = parsed.choices?.[0]?.delta?.thinking;
+              if (thinkingText) {
+                accumulatedThinking += thinkingText;
+                setThinkingContent(accumulatedThinking);
+                setThinkingSteps(parseThinkingSteps(accumulatedThinking));
+                setIsThinking(true);
+                continue;
+              }
+              
               const text = parsed.choices?.[0]?.delta?.content;
               if (text) {
+                // First content token = thinking is done
+                if (isThinking || accumulatedThinking) {
+                  setIsThinking(false);
+                }
                 accumulated += text;
                 setStreamingContent(accumulated);
               }
@@ -174,11 +226,13 @@ export const useAgentChat = (conversationId: string | null) => {
       }
 
       setStreamingContent('');
-      // The message is saved server-side and will arrive via realtime
-      // But add it immediately for responsiveness
+      setIsThinking(false);
+
       if (accumulated) {
-        // Extract metadata
         const metadata: Record<string, unknown> = {};
+        if (accumulatedThinking) {
+          metadata.thinking = accumulatedThinking;
+        }
         const planMatch = accumulated.match(/\[SEARCH_PLAN\]\s*([\s\S]*?)\s*\[\/SEARCH_PLAN\]/);
         if (planMatch) {
           try { metadata.search_plan = JSON.parse(planMatch[1]); } catch {}
@@ -186,10 +240,8 @@ export const useAgentChat = (conversationId: string | null) => {
         const actionMatch = accumulated.match(/\[AGENT_ACTION\]\s*([\s\S]*?)\s*\[\/AGENT_ACTION\]/);
         if (actionMatch) {
           try { metadata.agent_action = JSON.parse(actionMatch[1]); } catch {}
-          // Trigger search when agent says go
           if ((metadata.agent_action as any)?.action === 'start_search') {
             setConversation(prev => prev ? { ...prev, status: 'running' } : null);
-            // Fire and forget — trigger the search orchestration
             triggerSearch(convId);
           }
         }
@@ -209,11 +261,12 @@ export const useAgentChat = (conversationId: string | null) => {
       }
     } finally {
       setSending(false);
+      setThinkingContent('');
+      setThinkingSteps([]);
       abortRef.current = null;
     }
-  }, [conversationId, sending]);
+  }, [conversationId, sending, parseThinkingSteps]);
 
-  // Trigger search orchestration
   const triggerSearch = useCallback(async (convId: string) => {
     try {
       const { data: { session } } = await supabase.auth.getSession();
@@ -234,7 +287,6 @@ export const useAgentChat = (conversationId: string | null) => {
     }
   }, []);
 
-  // Create new conversation
   const createConversation = useCallback(async (job?: Job | null): Promise<string | null> => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user || !organizationId) return null;
@@ -261,7 +313,6 @@ export const useAgentChat = (conversationId: string | null) => {
     return data.id;
   }, [organizationId]);
 
-  // List conversations
   const listConversations = useCallback(async (): Promise<AgentConversation[]> => {
     if (!organizationId) return [];
     const { data } = await supabase
@@ -278,6 +329,9 @@ export const useAgentChat = (conversationId: string | null) => {
     loading,
     sending,
     streamingContent,
+    thinkingContent,
+    thinkingSteps,
+    isThinking,
     conversation,
     sendMessage,
     createConversation,
