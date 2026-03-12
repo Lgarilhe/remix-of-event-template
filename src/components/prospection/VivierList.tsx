@@ -16,6 +16,32 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { motion } from 'framer-motion';
 
+/* ─── Section Header ─── */
+function SectionHeader({ emoji, label, count }: { emoji: string; label: string; count?: number }) {
+  return (
+    <div className="flex items-center gap-2 mb-2.5">
+      <span className="text-sm">{emoji}</span>
+      <span className="text-[10px] font-bold uppercase tracking-widest text-foreground">{label}</span>
+      {count !== undefined && (
+        <span className="ml-auto text-[10px] text-muted-foreground tabular-nums">{count}</span>
+      )}
+    </div>
+  );
+}
+
+/* ─── Stat Block ─── */
+function StatBlock({ value, label, highlight }: { value: number; label: string; highlight?: boolean }) {
+  return (
+    <div className={cn(
+      "border p-3 text-center transition-colors",
+      highlight ? "border-foreground bg-foreground text-background" : "border-border bg-muted/30"
+    )}>
+      <div className="text-xl font-bold tabular-nums">{value}</div>
+      <div className="text-[9px] uppercase tracking-widest text-current opacity-60 mt-0.5">{label}</div>
+    </div>
+  );
+}
+
 /* ─── Company Detail Sheet ─── */
 function CompanyDetailSheet({ company, open, onOpenChange }: { company: VivierCompany | null; open: boolean; onOpenChange: (v: boolean) => void }) {
   const [contacts, setContacts] = useState<any[]>([]);
@@ -56,69 +82,87 @@ function CompanyDetailSheet({ company, open, onOpenChange }: { company: VivierCo
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="w-full sm:max-w-lg overflow-y-auto">
-        <SheetHeader>
-          <SheetTitle className="text-left flex items-center gap-2">
-             <div className="w-8 h-8 bg-foreground text-background flex items-center justify-center">
-               <Building2 className="w-4 h-4" />
+      <SheetContent className="w-full sm:max-w-lg overflow-y-auto p-0 border-l-2 border-foreground">
+        {/* Hero header */}
+        <div className="bg-foreground text-background p-5 sm:p-6">
+          <div className="flex items-start gap-4">
+            <div className="h-14 w-14 border-2 border-background/30 flex items-center justify-center text-lg font-bold uppercase shrink-0">
+              {(company.company_name || '??').slice(0, 2).toUpperCase()}
             </div>
-            {company.company_name || 'Société'}
-          </SheetTitle>
-          {company.city && <p className="text-sm text-muted-foreground text-left flex items-center gap-1"><MapPin className="w-3.5 h-3.5" /> {company.city}</p>}
-        </SheetHeader>
-        <div className="mt-4 space-y-4">
-          {company.description && <p className="text-xs text-muted-foreground line-clamp-3">{company.description}</p>}
-          {company.headcount && <Badge variant="outline" className="text-[10px]">{company.headcount} employés</Badge>}
-          <div className="grid grid-cols-4 gap-2">
-            {[
-              { label: 'Contacts', value: company.contact_count },
-              { label: 'Shortlists', value: company.shortlist_count },
-              { label: 'Placements', value: company.placement_count },
-              { label: 'Notes', value: company.note_count },
-            ].map(s => (
-              <div key={s.label} className="border border-border p-2.5 text-center bg-muted/30">
-                <div className="text-lg font-bold">{s.value}</div>
-                <div className="text-[10px] text-muted-foreground">{s.label}</div>
+            <div className="flex-1 min-w-0">
+              <SheetHeader className="p-0">
+                <SheetTitle className="text-left text-background text-lg font-bold leading-tight">
+                  {company.company_name || 'Société'}
+                </SheetTitle>
+              </SheetHeader>
+              <div className="flex items-center gap-3 mt-1.5 text-xs text-background/60">
+                {company.city && <span className="flex items-center gap-1"><MapPin className="w-3 h-3" /> {company.city}</span>}
+                {company.headcount && <span className="flex items-center gap-1"><Users className="w-3 h-3" /> {company.headcount}</span>}
               </div>
-            ))}
+              {company.source_base && (
+                <div className="mt-2">
+                  <span className="text-[9px] uppercase tracking-widest px-2 py-0.5 border border-background/20 text-background/50">{company.source_base}</span>
+                </div>
+              )}
+            </div>
           </div>
+        </div>
+
+        <div className="p-4 sm:p-5 space-y-5">
+          {company.description && (
+            <p className="text-xs text-muted-foreground leading-relaxed">{company.description}</p>
+          )}
+
+          <div className="grid grid-cols-4 gap-1.5">
+            <StatBlock value={company.contact_count} label="Contacts" />
+            <StatBlock value={company.shortlist_count} label="Shortlists" highlight={company.shortlist_count >= 10} />
+            <StatBlock value={company.placement_count} label="Placements" highlight={company.placement_count > 0} />
+            <StatBlock value={company.note_count} label="Notes" />
+          </div>
+
+          <EngagementBar shortlists={company.shortlist_count} placements={company.placement_count} notes={company.note_count} contacts={company.contact_count} />
+
           {loadingDetails ? (
-             <div className="space-y-2"><Skeleton className="h-4 w-full" /><Skeleton className="h-4 w-3/4" /></div>
+            <div className="space-y-2"><Skeleton className="h-4 w-full" /><Skeleton className="h-4 w-3/4" /><Skeleton className="h-4 w-1/2" /></div>
           ) : (
             <>
               {contacts.length > 0 && (
                 <div>
-                  <h4 className="text-xs font-semibold text-muted-foreground mb-2">Contacts ({contacts.length})</h4>
-                  <div className="space-y-1.5">
+                  <SectionHeader emoji="👤" label="Contacts" count={contacts.length} />
+                  <div className="space-y-1">
                     {contacts.map((ct: any) => (
-                       <div key={ct.airtable_id} className="border border-border/40 p-2.5 text-xs flex items-center gap-2.5 hover:bg-muted/30 transition-colors">
-                         <div className="h-7 w-7 bg-muted flex items-center justify-center text-[9px] font-bold shrink-0 uppercase text-foreground">
-                           {(ct.full_name || '??').split(' ').map((w: string) => w[0]).join('').slice(0, 2)}
+                      <div key={ct.airtable_id} className="border border-border p-3 flex items-center gap-3 hover:bg-muted/30 transition-colors group">
+                        <div className="h-8 w-8 bg-muted flex items-center justify-center text-[10px] font-bold shrink-0 uppercase text-foreground">
+                          {(ct.full_name || '??').split(' ').map((w: string) => w[0]).join('').slice(0, 2)}
                         </div>
                         <div className="flex-1 min-w-0">
-                          <div className="font-medium truncate">{ct.full_name || 'Sans nom'}</div>
-                          <div className="text-muted-foreground truncate">
-                            {ct.title && <span>{ct.title}</span>}
-                            {ct.email && <span> · {ct.email}</span>}
+                          <div className="text-xs font-semibold truncate">{ct.full_name || 'Sans nom'}</div>
+                          <div className="text-[10px] text-muted-foreground truncate">
+                            {ct.title}{ct.title && ct.email && ' · '}{ct.email}
                           </div>
                         </div>
-                        {ct.contact_type && <Badge variant="outline" className="text-[9px] shrink-0">{ct.contact_type}</Badge>}
+                        {ct.contact_type && (
+                          <span className="text-[9px] uppercase tracking-wider text-muted-foreground border border-border px-1.5 py-0.5 shrink-0">{ct.contact_type}</span>
+                        )}
                       </div>
                     ))}
                   </div>
                 </div>
               )}
+
               {shortlists.length > 0 && (
                 <div>
-                  <h4 className="text-xs font-semibold text-muted-foreground mb-2">Shortlists ({shortlists.length})</h4>
-                  <div className="space-y-1.5">
+                  <SectionHeader emoji="📋" label="Shortlists" count={shortlists.length} />
+                  <div className="space-y-1">
                     {shortlists.map((s: any) => (
-                       <div key={s.airtable_id} className="border border-border/40 p-2.5 text-xs space-y-0.5">
-                        <div className="font-medium">{s.job_title || 'Poste inconnu'}</div>
-                        <div className="text-muted-foreground flex items-center gap-2">
-                          {s.candidate_name && <span>{s.candidate_name}</span>}
-                          {s.date_added && <span>· {s.date_added}</span>}
-                          {s.status && <Badge variant="outline" className="text-[9px]">{s.status}</Badge>}
+                      <div key={s.airtable_id} className="border border-border p-3 space-y-1">
+                        <div className="text-xs font-semibold">{s.job_title || 'Poste inconnu'}</div>
+                        <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+                          {s.candidate_name && <span>👤 {s.candidate_name}</span>}
+                          {s.date_added && <span>· {relativeTime(s.date_added) || s.date_added}</span>}
+                          {s.status && (
+                            <span className="border border-border px-1.5 py-0.5 text-[9px] uppercase tracking-wider">{s.status}</span>
+                          )}
                         </div>
                       </div>
                     ))}
@@ -181,118 +225,196 @@ function EnrichedContactSheet({ contact, enrichment, open, onOpenChange, onCopyM
 
   if (!contact) return null;
 
+  const isEnriched = !!enrichment && enrichment.match_type !== 'not_found';
+  const displayTitle = enrichment?.current_job_title || contact.title;
+  const displayCompany = enrichment?.current_company || contact.company_name;
+
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="w-full sm:max-w-lg overflow-y-auto">
-        <SheetHeader>
-          <SheetTitle className="text-left">{contact.full_name || 'Sans nom'}</SheetTitle>
-          {contact.title && <p className="text-sm text-muted-foreground text-left">{contact.title}</p>}
-        </SheetHeader>
-        <div className="mt-4 space-y-4">
-          {/* Contact info */}
-          <div className="space-y-1 text-sm">
-            {contact.company_name && <div className="flex items-center gap-2 text-muted-foreground"><Building2 className="w-3.5 h-3.5" /> {contact.company_name}</div>}
-            {contact.email && <div className="flex items-center gap-2 text-muted-foreground"><Mail className="w-3.5 h-3.5" /> {contact.email}</div>}
-            {contact.city && <div className="flex items-center gap-2 text-muted-foreground"><MapPin className="w-3.5 h-3.5" /> {contact.city}</div>}
+      <SheetContent className="w-full sm:max-w-lg overflow-y-auto p-0 border-l-2 border-foreground">
+        {/* Hero header */}
+        <div className="bg-foreground text-background p-5 sm:p-6">
+          <div className="flex items-start gap-4">
+            <div className={cn(
+              "h-14 w-14 border-2 flex items-center justify-center text-lg font-bold uppercase shrink-0",
+              isEnriched ? "border-[hsl(var(--brutal-accent))]" : "border-background/30"
+            )}>
+              {(contact.full_name || '??').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()}
+            </div>
+            <div className="flex-1 min-w-0">
+              <SheetHeader className="p-0">
+                <SheetTitle className="text-left text-background text-lg font-bold leading-tight">
+                  {contact.full_name || 'Sans nom'}
+                </SheetTitle>
+              </SheetHeader>
+              {(displayTitle || displayCompany) && (
+                <p className="text-xs text-background/60 mt-1 leading-snug">
+                  {displayTitle}{displayTitle && displayCompany && ' · '}{displayCompany}
+                </p>
+              )}
+              <div className="flex items-center gap-3 mt-2 flex-wrap">
+                {contact.email && (
+                  <span className="text-[10px] text-background/50 flex items-center gap-1"><Mail className="w-3 h-3" /> {contact.email}</span>
+                )}
+                {contact.city && (
+                  <span className="text-[10px] text-background/50 flex items-center gap-1"><MapPin className="w-3 h-3" /> {contact.city}</span>
+                )}
+              </div>
+              {enrichment?.is_relevant !== null && enrichment?.is_relevant !== undefined && (
+                <div className="mt-2.5">
+                  <span className={cn(
+                    "text-[9px] uppercase tracking-widest px-2 py-1 font-bold",
+                    enrichment.is_relevant
+                      ? "bg-[hsl(var(--brutal-accent))] text-foreground"
+                      : "border border-background/20 text-background/40"
+                  )}>
+                    {enrichment.is_relevant ? '✓ Pertinent' : '✗ Non pertinent'}
+                  </span>
+                </div>
+              )}
+            </div>
           </div>
+        </div>
 
-          {/* Enrich button */}
-          <Button
-            size="sm"
-            variant={enrichment ? 'outline' : 'default'}
+        <div className="p-4 sm:p-5 space-y-4">
+          {/* Enrich CTA */}
+          <button
             onClick={() => onEnrichSingle?.(contact.airtable_id)}
-            className="w-full h-9 text-xs gap-1.5"
+            className={cn(
+              "w-full h-10 flex items-center justify-center gap-2 text-xs font-medium uppercase tracking-wider border-2 transition-all duration-200",
+              enrichment
+                ? "border-border text-foreground hover:border-foreground hover:bg-muted/30"
+                : "border-foreground bg-foreground text-background hover:bg-foreground/90"
+            )}
           >
             {enrichment ? <RefreshCw className="w-3.5 h-3.5" /> : <Sparkles className="w-3.5 h-3.5" />}
-            {enrichment ? 'Ré-enrichir & regénérer le message' : 'Enrichir & générer le message'}
-          </Button>
+            {enrichment ? 'Ré-enrichir & regénérer' : 'Enrichir & générer le message'}
+          </button>
 
-          {/* Enriched profile */}
-          {enrichment && enrichment.match_type !== 'not_found' && (
-            <div className="border border-[hsl(var(--skalr-purple)/0.2)] bg-[hsl(var(--skalr-purple)/0.04)] p-3.5 space-y-2">
-              <div className="flex items-center gap-2">
-                <Sparkles className="w-4 h-4 text-[hsl(var(--skalr-purple))]" />
-                <span className="text-xs font-semibold">Profil enrichi</span>
-                <Badge variant="outline" className="text-[9px]">{enrichment.match_type === 'linkedin' ? 'LinkedIn' : 'Fuzzy'}</Badge>
+          {/* Enriched profile card */}
+          {isEnriched && (
+            <div className="border-2 border-[hsl(var(--brutal-accent))] bg-[hsl(var(--brutal-accent)/0.04)]">
+              <div className="px-4 py-2.5 border-b border-[hsl(var(--brutal-accent)/0.2)] flex items-center gap-2">
+                <Sparkles className="w-3.5 h-3.5 text-[hsl(var(--skalr-purple))]" />
+                <span className="text-[10px] font-bold uppercase tracking-widest">Profil enrichi</span>
+                <span className="ml-auto text-[9px] uppercase tracking-wider border border-border px-1.5 py-0.5 text-muted-foreground">
+                  {enrichment!.match_type === 'linkedin' ? 'LinkedIn' : 'Fuzzy'}
+                </span>
               </div>
-              {enrichment.current_job_title && (
-                <div className="text-sm">
-                  <span className="font-medium">{enrichment.current_job_title}</span>
-                  {enrichment.current_company && <span className="text-muted-foreground"> @ {enrichment.current_company}</span>}
-                </div>
-              )}
-              {enrichment.headline && <p className="text-xs text-muted-foreground">{enrichment.headline}</p>}
-              {enrichment.location && <div className="text-xs text-muted-foreground flex items-center gap-1"><MapPin className="w-3 h-3" /> {enrichment.location}</div>}
-              {enrichment.linkedin_url && (
-                <a href={enrichment.linkedin_url} target="_blank" rel="noopener noreferrer" className="text-xs text-[hsl(var(--skalr-purple))] flex items-center gap-1 hover:underline">
-                  <ExternalLink className="w-3 h-3" /> LinkedIn
-                </a>
-              )}
-              {enrichment.is_relevant !== null && (
-                <div className="flex items-center gap-2">
-                  <Badge variant={enrichment.is_relevant ? 'default' : 'secondary'} className="text-[10px]">
-                    {enrichment.is_relevant ? '✓ Pertinent' : '✗ Non pertinent'}
-                  </Badge>
-                  {enrichment.relevance_reason && <span className="text-[10px] text-muted-foreground">{enrichment.relevance_reason}</span>}
-                </div>
-              )}
+              <div className="p-4 space-y-2.5">
+                {enrichment!.headline && (
+                  <p className="text-xs text-muted-foreground italic">{enrichment!.headline}</p>
+                )}
+                {enrichment!.location && (
+                  <div className="text-xs text-muted-foreground flex items-center gap-1.5">
+                    <MapPin className="w-3 h-3 shrink-0" /> {enrichment!.location}
+                  </div>
+                )}
+                {enrichment!.linkedin_url && (
+                  <a
+                    href={enrichment!.linkedin_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 text-xs font-semibold text-[hsl(var(--skalr-purple))] hover:underline"
+                  >
+                    <ExternalLink className="w-3 h-3" /> Voir sur LinkedIn
+                  </a>
+                )}
+                {enrichment!.relevance_reason && (
+                  <p className="text-[11px] text-muted-foreground leading-relaxed border-t border-border/40 pt-2.5 mt-2.5">
+                    {enrichment!.relevance_reason}
+                  </p>
+                )}
+              </div>
             </div>
           )}
 
           {enrichment?.match_type === 'not_found' && (
-            <div className="border border-border/40 p-3 text-xs text-muted-foreground">
-              Aucun profil trouvé sur Apollo pour ce contact.
+            <div className="border border-border p-4 text-center">
+              <span className="text-xs text-muted-foreground">Aucun profil trouvé sur Apollo pour ce contact.</span>
             </div>
           )}
 
           {/* Generated message */}
           {enrichment?.generated_message && (
-            <div className="border border-border/40 p-3.5 space-y-2">
-              <div className="flex items-center justify-between">
+            <div className="border-2 border-foreground">
+              <div className="px-4 py-2.5 border-b border-foreground flex items-center justify-between bg-muted/20">
                 <div className="flex items-center gap-2">
-                  <span className="text-xs font-semibold text-muted-foreground">
-                    {enrichment.message_type === 'sms' ? '📱 SMS' : '💬 LinkedIn'}
+                  <span className="text-sm">{enrichment.message_type === 'sms' ? '📱' : '💬'}</span>
+                  <span className="text-[10px] font-bold uppercase tracking-widest">
+                    {enrichment.message_type === 'sms' ? 'SMS' : 'LinkedIn'}
                   </span>
                   {enrichment.message_status && (
-                    <Badge variant="outline" className="text-[9px]">{enrichment.message_status}</Badge>
+                    <span className="text-[9px] uppercase tracking-wider border border-border px-1.5 py-0.5 text-muted-foreground">
+                      {enrichment.message_status}
+                    </span>
                   )}
                 </div>
-                <Button variant="outline" size="sm" onClick={handleCopy} className="h-7 text-[10px] gap-1">
+                <button
+                  onClick={handleCopy}
+                  className={cn(
+                    "h-7 px-3 flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-wider border transition-all",
+                    copied
+                      ? "border-foreground bg-foreground text-background"
+                      : "border-border hover:border-foreground"
+                  )}
+                >
                   {copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
-                  {copied ? 'Copié' : 'Copier'}
-                </Button>
+                  {copied ? 'Copié !' : 'Copier'}
+                </button>
               </div>
-              <p className="text-sm whitespace-pre-wrap bg-muted/30 p-3">{enrichment.generated_message}</p>
-              <div className="text-[10px] text-muted-foreground">{enrichment.generated_message.length} caractères</div>
+              <div className="p-4">
+                <p className="text-sm leading-relaxed whitespace-pre-wrap">{enrichment.generated_message}</p>
+                <div className="mt-3 pt-2.5 border-t border-border/40 text-[9px] text-muted-foreground uppercase tracking-widest">
+                  {enrichment.generated_message.length} caractères
+                </div>
+              </div>
             </div>
           )}
 
+          {/* Stats */}
+          <div className="grid grid-cols-3 gap-1.5">
+            <StatBlock value={contact.shortlist_count} label="Shortlists" highlight={contact.shortlist_count >= 5} />
+            <StatBlock value={contact.placement_count} label="Placements" highlight={contact.placement_count > 0} />
+            <StatBlock value={contact.note_count} label="Notes" />
+          </div>
+
           {loadingDetails ? (
-            <div className="space-y-2"><Skeleton className="h-4 w-full" /><Skeleton className="h-4 w-3/4" /></div>
+            <div className="space-y-2"><Skeleton className="h-4 w-full" /><Skeleton className="h-4 w-3/4" /><Skeleton className="h-4 w-1/2" /></div>
           ) : (
             <>
               {shortlists.length > 0 && (
                 <div>
-                  <h4 className="text-xs font-semibold text-muted-foreground mb-2">Shortlists</h4>
-                  <div className="space-y-1.5">
+                  <SectionHeader emoji="📋" label="Shortlists" count={shortlists.length} />
+                  <div className="space-y-1">
                     {shortlists.map((s: any) => (
-                      <div key={s.airtable_id} className="border border-border/40 p-2.5 text-xs space-y-0.5">
-                        <div className="font-medium">{s.job_title || 'Poste inconnu'}</div>
-                        <div className="text-muted-foreground">{s.candidate_name} {s.date_added && `· ${s.date_added}`} {s.status && <Badge variant="outline" className="text-[9px] ml-1">{s.status}</Badge>}</div>
+                      <div key={s.airtable_id} className="border border-border p-3 space-y-1 hover:bg-muted/20 transition-colors">
+                        <div className="text-xs font-semibold">{s.job_title || 'Poste inconnu'}</div>
+                        <div className="flex items-center gap-2 text-[10px] text-muted-foreground flex-wrap">
+                          {s.candidate_name && <span>👤 {s.candidate_name}</span>}
+                          {s.date_added && <span>· {relativeTime(s.date_added) || s.date_added}</span>}
+                          {s.status && (
+                            <span className="border border-border px-1.5 py-0.5 text-[9px] uppercase tracking-wider">{s.status}</span>
+                          )}
+                        </div>
                       </div>
                     ))}
                   </div>
                 </div>
               )}
+
               {notes.length > 0 && (
                 <div>
-                  <h4 className="text-xs font-semibold text-muted-foreground mb-2">Notes</h4>
-                  <div className="space-y-1.5">
+                  <SectionHeader emoji="📝" label="Notes" count={notes.length} />
+                  <div className="space-y-1">
                     {notes.map((n: any) => (
-                      <div key={n.airtable_id} className="border border-border/40 p-2.5 text-xs space-y-0.5">
-                        <div className="font-medium">{n.title || 'Note'}</div>
-                        {n.detail && <div className="text-muted-foreground line-clamp-2">{n.detail}</div>}
-                        <div className="text-muted-foreground">{n.note_date} {n.author && <span className="italic">— {n.author}</span>}</div>
+                      <div key={n.airtable_id} className="border border-border p-3 space-y-1 hover:bg-muted/20 transition-colors">
+                        <div className="text-xs font-semibold">{n.title || 'Note'}</div>
+                        {n.detail && <div className="text-[11px] text-muted-foreground line-clamp-3 leading-relaxed">{n.detail}</div>}
+                        <div className="text-[10px] text-muted-foreground">
+                          {n.note_date && (relativeTime(n.note_date) || n.note_date)}
+                          {n.author && <span className="italic"> — {n.author}</span>}
+                        </div>
                       </div>
                     ))}
                   </div>
