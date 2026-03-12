@@ -688,6 +688,21 @@ serve(async (req) => {
 
   } catch (error) {
     console.error("[run-agent-search] Error:", error);
+
+    // Cleanup: ensure conversation doesn't stay stuck in "running"
+    try {
+      const { conversation_id } = await req.clone().json().catch(() => ({}));
+      if (conversation_id) {
+        const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+        const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+        const cleanupClient = createClient(supabaseUrl, serviceKey);
+        await cleanupClient.from("agent_conversations")
+          .update({ status: "error" })
+          .eq("id", conversation_id)
+          .eq("status", "running");
+      }
+    } catch (_) { /* best-effort cleanup */ }
+
     return new Response(
       JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
