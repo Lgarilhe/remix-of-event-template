@@ -3224,10 +3224,14 @@ export type Database = {
       }
       get_vivier_companies: {
         Args: {
+          p_city?: string
+          p_has_placements?: boolean
           p_limit?: number
+          p_min_placements?: number
           p_min_shortlists?: number
           p_offset?: number
           p_search?: string
+          p_sort_by?: string
           p_source_base?: string
         }
         Returns: {
@@ -3248,11 +3252,14 @@ export type Database = {
       }
       get_vivier_contacts: {
         Args: {
+          p_city?: string
           p_contact_type?: string
-          p_limit: number
+          p_has_placements?: boolean
+          p_limit?: number
           p_min_shortlists?: number
-          p_offset: number
+          p_offset?: number
           p_search?: string
+          p_sort_by?: string
           p_source_base?: string
         }
         Returns: {
