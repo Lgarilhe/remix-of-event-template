@@ -225,15 +225,33 @@ export function useCandidateFullProfile(candidateId: string, linkedinUrl: string
     }
 
     async function fetchScoringHistory(profileId: string) {
-      const { data } = await supabase
-        .from('job_candidate_status')
-        .select('*')
-        .eq('candidate_id', profileId)
-        .order('updated_at', { ascending: false });
+      const [{ data }, { data: matchScoresData }] = await Promise.all([
+        supabase
+          .from('job_candidate_status')
+          .select('*')
+          .eq('candidate_id', profileId)
+          .order('updated_at', { ascending: false }),
+        supabase
+          .from('match_scores')
+          .select('candidate_id, job_id, score, scoring_result')
+          .eq('candidate_id', profileId)
+          .order('created_at', { ascending: false }),
+      ]);
       
       if (!data || data.length === 0) {
         setScoringHistory([]);
         return;
+      }
+
+      // Build a map from match_scores for richer data
+      const matchScoresMap = new Map<string, any>();
+      if (matchScoresData) {
+        matchScoresData.forEach((ms: any) => {
+          const key = `${ms.candidate_id}|${ms.job_id}`;
+          if (!matchScoresMap.has(key) && ms.scoring_result) {
+            matchScoresMap.set(key, ms.scoring_result);
+          }
+        });
       }
 
       // Fetch job titles from search_history for all unique job_ids
@@ -255,18 +273,37 @@ export function useCandidateFullProfile(candidateId: string, linkedinUrl: string
         }
       }
 
-      setScoringHistory(data.map((r: any) => ({
-        id: r.id,
-        jobId: r.job_id,
-        jobTitle: jobTitleMap.get(r.job_id) || null,
-        score: r.score,
-        recommendation: r.recommendation,
-        status: r.status,
-        pipelineStage: r.pipeline_stage,
-        scoringDetails: r.scoring_details,
-        createdAt: r.created_at,
-        updatedAt: r.updated_at,
-      })));
+      setScoringHistory(data.map((r: any) => {
+        // Merge scoring_details from job_candidate_status with richer match_scores data
+        const matchResult = matchScoresMap.get(`${r.candidate_id}|${r.job_id}`);
+        const baseDetails = r.scoring_details || {};
+        const mergedDetails = {
+          ...baseDetails,
+          // Enrich with match_scores data if available
+          ...(matchResult ? {
+            dimensions: matchResult.dimensions || baseDetails.dimensions,
+            strengths: matchResult.strengths || baseDetails.strengths,
+            concerns: matchResult.concerns || baseDetails.concerns,
+            llmScore: matchResult.llmScore ?? baseDetails.llmScore,
+            hardFilterPassed: matchResult.hardFilterPassed ?? baseDetails.hardFilterPassed,
+            hardFilterKO: matchResult.hardFilterKO || baseDetails.hardFilterKO,
+            summary: matchResult.summary || baseDetails.summary,
+          } : {}),
+        };
+
+        return {
+          id: r.id,
+          jobId: r.job_id,
+          jobTitle: jobTitleMap.get(r.job_id) || null,
+          score: r.score,
+          recommendation: r.recommendation,
+          status: r.status,
+          pipelineStage: r.pipeline_stage,
+          scoringDetails: Object.keys(mergedDetails).length > 0 ? mergedDetails : null,
+          createdAt: r.created_at,
+          updatedAt: r.updated_at,
+        };
+      }));
     }
 
     async function fetchAirtableHistory(url: string) {
