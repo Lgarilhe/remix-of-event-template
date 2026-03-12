@@ -3249,9 +3249,9 @@ export type Database = {
       get_vivier_contacts: {
         Args: {
           p_contact_type?: string
-          p_limit?: number
+          p_limit: number
           p_min_shortlists?: number
-          p_offset?: number
+          p_offset: number
           p_search?: string
           p_source_base?: string
         }
@@ -3290,6 +3290,7 @@ export type Database = {
         Returns: boolean
       }
       release_sequence_lock: { Args: { p_run_id: string }; Returns: undefined }
+      unaccent: { Args: { "": string }; Returns: string }
     }
     Enums: {
       app_role: "admin" | "user"
