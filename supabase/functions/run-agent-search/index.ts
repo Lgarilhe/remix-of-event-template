@@ -163,21 +163,19 @@ serve(async (req) => {
       });
     }
 
-    // ── 3. Resolve location IDs & prepare structured filters ──
+    // ── 3. Resolve IDs for structured filters ──
 
     const filters = searchPlan.filters;
     const stopConditions = searchPlan.stop_conditions || { target_go_profiles: 10, max_profiles_to_scan: 200 };
     const maxProfiles = Math.min(stopConditions.max_profiles_to_scan || 200, 200);
     const targetGo = stopConditions.target_go_profiles || 10;
 
-    // Resolve location keywords → LinkedIn IDs via get_parameters
-    let resolvedLocationIds: Array<{ id: string; priority: string; scope: string }> = [];
-    const locationKeywords = filters.location_keywords || [];
-    if (locationKeywords.length > 0) {
-      await postStatus(`📍 Résolution des localisations...`);
-      for (const locKw of locationKeywords) {
+    // Helper: resolve keyword → LinkedIn ID via get_parameters
+    async function resolveIds(type: string, keywords: string[]): Promise<string[]> {
+      const ids: string[] = [];
+      for (const kw of keywords) {
         try {
-          const paramRes = await fetchWithTimeout(`${supabaseUrl}/functions/v1/unipile-search`, {
+          const res = await fetchWithTimeout(`${supabaseUrl}/functions/v1/unipile-search`, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
@@ -188,34 +186,59 @@ serve(async (req) => {
               action: "get_parameters",
               account_id: accountId,
               organization_id: orgId,
-              type: "LOCATION",
-              keywords: locKw,
+              type,
+              keywords: kw,
               service: "RECRUITER",
               limit: 3,
             }),
           }, 15000);
-          const paramData = await paramRes.json();
-          if (paramData?.success && paramData.items?.length > 0) {
-            // Take the first (best match) location
-            const bestMatch = paramData.items[0];
-            resolvedLocationIds.push({
-              id: bestMatch.id,
-              priority: "MUST_HAVE",
-              scope: "CURRENT_OR_OPEN_TO_RELOCATE",
-            });
-            console.log(`[run-agent-search] Location "${locKw}" → ID ${bestMatch.id} (${bestMatch.title})`);
+          const data = await res.json();
+          if (data?.success && data.items?.length > 0) {
+            ids.push(data.items[0].id);
+            console.log(`[run-agent-search] ${type} "${kw}" → ID ${data.items[0].id} (${data.items[0].title})`);
           } else {
-            console.warn(`[run-agent-search] No location ID found for "${locKw}"`);
+            console.warn(`[run-agent-search] No ${type} ID found for "${kw}"`);
           }
         } catch (e) {
-          console.error(`[run-agent-search] Failed to resolve location "${locKw}":`, e);
+          console.error(`[run-agent-search] Failed to resolve ${type} "${kw}":`, e);
         }
       }
+      return ids;
     }
+
+    // Resolve all ID-based filters in parallel
+    await postStatus(`📍 Résolution des filtres...`);
+
+    const locationKeywords = filters.location_keywords || [];
+    const industryKeywords = filters.industry_keywords || [];
+    const schoolKeywords = filters.school_keywords || [];
+    const functionKeywords = filters.function_keywords || [];
+    const groupKeywords = filters.group_keywords || [];
+
+    const [locationIds, industryIds, schoolIds, functionIds, groupIds] = await Promise.all([
+      locationKeywords.length > 0 ? resolveIds("LOCATION", locationKeywords) : Promise.resolve([]),
+      industryKeywords.length > 0 ? resolveIds("INDUSTRY", industryKeywords) : Promise.resolve([]),
+      schoolKeywords.length > 0 ? resolveIds("SCHOOL", schoolKeywords) : Promise.resolve([]),
+      functionKeywords.length > 0 ? resolveIds("JOB_FUNCTION", functionKeywords) : Promise.resolve([]),
+      groupKeywords.length > 0 ? resolveIds("GROUPS", groupKeywords) : Promise.resolve([]),
+    ]);
+
+    // Build location with priority/scope structure
+    const resolvedLocationIds = locationIds.map(id => ({
+      id,
+      priority: "MUST_HAVE",
+      scope: "CURRENT_OR_OPEN_TO_RELOCATE",
+    }));
+    const resolvedIndustryIds = industryIds;
+    const resolvedSchoolIds = schoolIds;
+    const resolvedFunctionIds = functionIds;
+    const resolvedGroupIds = groupIds;
+
+    const resolvedCount = resolvedLocationIds.length + resolvedIndustryIds.length + resolvedSchoolIds.length + resolvedFunctionIds.length + resolvedGroupIds.length;
 
     // ── 4. Search LinkedIn (sequential with delays) ──
 
-    await postStatus(`🔍 Recherche lancée — je scanne les profils LinkedIn...${dedupCount > 0 ? `\n📋 ${dedupCount} profils déjà traités seront ignorés.` : ""}${resolvedLocationIds.length > 0 ? `\n📍 ${resolvedLocationIds.length} localisation(s) résolue(s).` : ""}`);
+    await postStatus(`🔍 Recherche lancée — je scanne les profils LinkedIn...${dedupCount > 0 ? `\n📋 ${dedupCount} profils déjà traités seront ignorés.` : ""}${resolvedCount > 0 ? `\n📍 ${resolvedCount} filtre(s) résolu(s).` : ""}`);
 
     let allProfiles: any[] = [];
     let cursor: string | null = null;
@@ -274,9 +297,90 @@ serve(async (req) => {
           });
         }
 
-        // Open to work (spotlight)
+        // Past company keywords
+        if (filters.past_company_keywords && Array.isArray(filters.past_company_keywords) && filters.past_company_keywords.length > 0) {
+          searchBody.past_company = filters.past_company_keywords.map((c: any) => {
+            if (typeof c === "string") {
+              return { keywords: c, priority: "MUST_HAVE" };
+            }
+            return { keywords: c.keywords || c, priority: c.priority || "MUST_HAVE" };
+          });
+        }
+
+        // Industry (resolve IDs like location)
+        if (resolvedIndustryIds.length > 0) {
+          searchBody.industry = { include: resolvedIndustryIds };
+        }
+
+        // School (resolve IDs like location)
+        if (resolvedSchoolIds.length > 0) {
+          searchBody.school = resolvedSchoolIds.map((id: string) => ({
+            id,
+            priority: "MUST_HAVE",
+          }));
+        }
+
+        // Skills (keywords-based, Recruiter supports this)
+        if (filters.skills_filter && Array.isArray(filters.skills_filter) && filters.skills_filter.length > 0) {
+          searchBody.skills = filters.skills_filter.map((s: any) => {
+            if (typeof s === "string") {
+              return { keywords: s, priority: "MUST_HAVE" };
+            }
+            return { keywords: s.keywords || s, priority: s.priority || "MUST_HAVE" };
+          });
+        }
+
+        // Function/Department (resolve IDs)
+        if (resolvedFunctionIds.length > 0) {
+          searchBody.function = resolvedFunctionIds;
+        }
+
+        // Network distance (1st, 2nd, 3rd+ degree)
+        if (filters.network_distance && Array.isArray(filters.network_distance) && filters.network_distance.length > 0) {
+          searchBody.network_distance = filters.network_distance;
+        }
+
+        // Profile language (ISO 639-1 codes)
+        if (filters.profile_language && Array.isArray(filters.profile_language) && filters.profile_language.length > 0) {
+          searchBody.profile_language = filters.profile_language;
+        }
+
+        // Tenure / Years of experience (Recruiter: { min, max })
+        if (filters.tenure_min != null || filters.tenure_max != null) {
+          const tenureObj: any = {};
+          if (filters.tenure_min != null) tenureObj.min = filters.tenure_min;
+          if (filters.tenure_max != null) tenureObj.max = filters.tenure_max;
+          searchBody.years_of_experience = tenureObj;
+        }
+
+        // Degree filter ({ include: [...], exclude: [...] })
+        if (filters.degree) {
+          searchBody.degree = filters.degree;
+        }
+
+        // Company headcount (array of { min, max })
+        if (filters.company_headcount && Array.isArray(filters.company_headcount) && filters.company_headcount.length > 0) {
+          searchBody.company_headcount = filters.company_headcount;
+        }
+
+        // Spotlights (OPEN_TO_WORK, ACTIVE_TALENT, etc.)
+        if (filters.spotlights && Array.isArray(filters.spotlights) && filters.spotlights.length > 0) {
+          searchBody.spotlights = filters.spotlights;
+        }
+
+        // Open to work (spotlight shorthand)
         if (filters.open_to_work === true) {
           searchBody.open_to_work = true;
+        }
+
+        // Groups (LinkedIn group IDs - resolved)
+        if (resolvedGroupIds.length > 0) {
+          searchBody.groups = resolvedGroupIds;
+        }
+
+        // Recruiting activity
+        if (filters.recruiting_activity && Array.isArray(filters.recruiting_activity) && filters.recruiting_activity.length > 0) {
+          searchBody.recruiting_activity = filters.recruiting_activity;
         }
 
         if (cursor) searchBody.cursor = cursor;
