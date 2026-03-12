@@ -310,18 +310,31 @@ function EnrichedContactSheet({ contact, enrichment, open, onOpenChange, onCopyM
 
   // Build unified timeline
   const timeline = useMemo(() => {
-    const events: { type: string; emoji: string; title: string; subtitle?: string; date: string; highlight?: boolean }[] = [];
+    const events: { type: string; emoji: string; title: string; subtitle?: string; date: string; highlight?: boolean; status?: string; candidateName?: string }[] = [];
     shortlists.forEach((s: any) => {
-      events.push({ type: 'shortlist', emoji: '📋', title: s.job_title || 'Shortlist', subtitle: s.candidate_name ? `👤 ${s.candidate_name}` : undefined, date: s.date_added || '', highlight: false });
+      events.push({ type: 'shortlist', emoji: '📋', title: s.job_title || 'Shortlist', subtitle: s.candidate_name ? `👤 ${s.candidate_name}` : undefined, date: s.date_added || '', highlight: false, status: s.status || null, candidateName: s.candidate_name || null });
     });
     notes.forEach((n: any) => {
       events.push({ type: 'note', emoji: '📝', title: n.title || 'Note', subtitle: n.detail?.slice(0, 100), date: n.note_date || '', highlight: false });
     });
     placements.forEach((p: any) => {
-      events.push({ type: 'placement', emoji: '🏆', title: p.name || 'Placement', subtitle: p.candidate_name ? `👤 ${p.candidate_name}` : undefined, date: p.start_date || '', highlight: true });
+      events.push({ type: 'placement', emoji: '🏆', title: p.name || 'Placement', subtitle: p.candidate_name ? `👤 ${p.candidate_name}` : undefined, date: p.start_date || '', highlight: true, status: p.status || null, candidateName: p.candidate_name || null });
     });
     return events.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
   }, [shortlists, notes, placements]);
+
+  // Grouped shortlists by job for organized view
+  const shortlistsByJob = useMemo(() => {
+    const map = new Map<string, { jobTitle: string; candidates: { name: string | null; status: string | null; date: string | null }[]; latestDate: string | null }>();
+    shortlists.forEach((s: any) => {
+      const key = s.job_title || s.job_airtable_id || 'unknown';
+      const existing = map.get(key) || { jobTitle: s.job_title || 'Poste inconnu', candidates: [], latestDate: null };
+      existing.candidates.push({ name: s.candidate_name || null, status: s.status || null, date: s.date_added || null });
+      if (!existing.latestDate || (s.date_added && s.date_added > existing.latestDate)) existing.latestDate = s.date_added;
+      map.set(key, existing);
+    });
+    return [...map.values()].sort((a, b) => (b.latestDate || '').localeCompare(a.latestDate || ''));
+  }, [shortlists]);
 
   // Parse Apollo employment history and find role at last interaction date
   const careerAnalysis = useMemo(() => {
