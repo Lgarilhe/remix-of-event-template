@@ -165,6 +165,7 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
       })),
       education: (raw.education || []).slice(0, 4).map((edu: any) => ({
         school: edu.school || edu.school_name || '',
+        logo: edu.school_logo || edu.logo_url || edu.logo || undefined,
         degree: edu.degree || edu.degree_name || '',
         field: edu.field_of_study || edu.field || '',
         startYear: edu.start?.year?.toString(),
@@ -1552,12 +1553,21 @@ function ExperienceItem({ exp }: { exp: { title: string; company: string; logo?:
   );
 }
 
-function EducationItem({ edu }: { edu: { school: string; degree?: string; field?: string; startYear?: string; endYear?: string } }) {
+function EducationItem({ edu }: { edu: { school: string; logo?: string; degree?: string; field?: string; startYear?: string; endYear?: string } }) {
   const [expanded, setExpanded] = React.useState(false);
   const hasDetails = edu.degree || edu.field;
   return (
     <div className="relative pl-5 py-1.5">
-      <div className="absolute left-0.5 top-3 w-2 h-2 rounded-full border-2 bg-background border-foreground/30" />
+      {edu.logo ? (
+        <img
+          src={edu.logo}
+          alt={edu.school}
+          className="absolute left-0 top-2.5 w-3 h-3 rounded-sm object-contain"
+          onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+        />
+      ) : (
+        <div className="absolute left-0.5 top-3 w-2 h-2 rounded-full border-2 bg-background border-foreground/30" />
+      )}
       <div className="flex items-start justify-between gap-2">
         <div className="flex-1 min-w-0">
           <p className="text-[10px] font-medium text-foreground leading-tight">{edu.school}</p>
