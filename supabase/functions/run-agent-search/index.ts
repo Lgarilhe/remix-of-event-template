@@ -12,12 +12,14 @@ function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 30
   return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timer));
 }
 
-// Build a dedup key from profile data (same logic as match_scores candidate_id)
+// Primary dedup key: provider_id (LinkedIn URN) when available, fallback to name-based key
 function buildCandidateKey(profile: any): string {
+  const providerId = (profile.provider_id || "").trim();
+  if (providerId) return `pid:${providerId}`;
+  // Fallback: name + company (without headline which changes frequently)
   const name = (profile.name || "").trim().toLowerCase();
-  const headline = (profile.headline || "").trim().toLowerCase();
   const company = (profile.current_company || profile.work_experience?.[0]?.company || "").trim().toLowerCase();
-  return `${name}|${headline}|${company}`;
+  return `name:${name}|${company}`;
 }
 
 serve(async (req) => {
