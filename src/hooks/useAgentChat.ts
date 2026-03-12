@@ -275,8 +275,11 @@ export const useAgentChat = (conversationId: string | null) => {
         }]);
       }
     } catch (err) {
-      if ((err as Error).name !== 'AbortError') {
+      if ((err as Error).name === 'AbortError') {
+        toast.info('Streaming interrompu', { description: 'La réponse a été coupée. Le message partiel a été sauvegardé côté serveur.' });
+      } else {
         console.error('[useAgentChat] Error:', err);
+        toast.error('Erreur de communication', { description: 'Impossible de contacter l\'assistant. Réessayez.' });
       }
     } finally {
       setSending(false);
