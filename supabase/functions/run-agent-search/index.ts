@@ -340,7 +340,7 @@ serve(async (req) => {
 
     await postStatus(`📊 ${allProfiles.length} nouveaux profils trouvés${skippedDedup > 0 ? ` (${skippedDedup} déjà traités ignorés)` : ""} — scoring en cours...`);
 
-    // ── 4. Filter by calculated experience ──
+    // ── 5. Filter by calculated experience ──
 
     let filteredProfiles = allProfiles;
     if (filters.calculated_experience_min != null || filters.calculated_experience_max != null) {
