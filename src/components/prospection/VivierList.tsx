@@ -1494,7 +1494,7 @@ function CompaniesView() {
 
   return (
     <div className="space-y-3">
-      <VivierFilterBar searchInput={searchInput} setSearchInput={setSearchInput} onSearch={() => updateFilters({ search: searchInput })} filters={filters} updateFilters={updateFilters} />
+      <VivierFilterBar searchInput={searchInput} setSearchInput={setSearchInput} onSearch={() => updateFilters({ search: searchInput })} filters={filters} updateFilters={updateFilters} showContactType />
 
       {!loading && totalCount > 0 && (
         <div className="flex items-center justify-between">
