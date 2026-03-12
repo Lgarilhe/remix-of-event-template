@@ -35,3 +35,9 @@ verify_jwt = false
 
 [functions.enrich-vivier-contacts]
 verify_jwt = false
+
+[functions.search-agent-chat]
+verify_jwt = false
+
+[functions.run-agent-search]
+verify_jwt = false
