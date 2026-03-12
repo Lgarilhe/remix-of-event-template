@@ -21,6 +21,7 @@ export interface EnrichedProfile {
   }>;
   education?: Array<{
     school: string;
+    logo?: string;
     degree?: string;
     field?: string;
     startYear?: string;
