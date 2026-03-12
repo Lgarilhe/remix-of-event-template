@@ -366,7 +366,7 @@ serve(async (req) => {
       },
       body: JSON.stringify({
         model: "claude-sonnet-4-5-20250929",
-        max_tokens: 16000,
+        max_tokens: 32000,
         thinking: {
           type: "enabled",
           budget_tokens: 16000,
