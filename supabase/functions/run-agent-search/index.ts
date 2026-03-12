@@ -354,7 +354,7 @@ serve(async (req) => {
       });
     }
 
-    // ── 5. Load job data for scoring ──
+    // ── 6. Load job data for scoring ──
 
     let jobData: any = null;
     if (jobId) {
