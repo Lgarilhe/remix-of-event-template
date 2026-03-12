@@ -610,43 +610,27 @@ serve(async (req) => {
           networkDistance: profile.network_distance,
         };
 
-        const MAX_RETRIES = 3;
-        let lastError: any = null;
+        try {
+          const scoreRes = await fetchWithRetry(`${supabaseUrl}/functions/v1/score-profile-job`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${serviceKey}`,
+              "apikey": anonKey,
+            },
+            body: JSON.stringify({
+              profile: profileData,
+              job: jobData,
+              organization_id: orgId,
+            }),
+          }, { timeoutMs: 55000, maxRetries: 3 });
 
-        for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
-          try {
-            const scoreRes = await fetchWithTimeout(`${supabaseUrl}/functions/v1/score-profile-job`, {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                "Authorization": `Bearer ${serviceKey}`,
-                "apikey": anonKey,
-              },
-              body: JSON.stringify({
-                profile: profileData,
-                job: jobData,
-                organization_id: orgId,
-              }),
-            }, 55000);
-
-            if (!scoreRes.ok && scoreRes.status >= 500) {
-              throw new Error(`Score API returned ${scoreRes.status}`);
-            }
-
-            const scoreData = await scoreRes.json();
-            return { profile, score: scoreData };
-          } catch (err) {
-            lastError = err;
-            if (attempt < MAX_RETRIES - 1) {
-              const delay = 1000 * Math.pow(2, attempt); // 1s, 2s, 4s
-              console.warn(`[run-agent-search] Scoring retry ${attempt + 1}/${MAX_RETRIES} for ${profile.name} in ${delay}ms:`, err);
-              await new Promise(r => setTimeout(r, delay));
-            }
-          }
+          const scoreData = await scoreRes.json();
+          return { profile, score: scoreData };
+        } catch (err) {
+          console.error(`[run-agent-search] Scoring failed for ${profile.name}:`, err);
+          return { profile, score: null };
         }
-
-        console.error(`[run-agent-search] Scoring failed after ${MAX_RETRIES} retries for ${profile.name}:`, lastError);
-        return { profile, score: null };
       };
 
       // Process in batches of CONCURRENCY
