@@ -422,7 +422,7 @@ function EnrichedContactSheet({ contact, enrichment, open, onOpenChange, onCopyM
   const evolutions = useMemo(() => {
     const items: { emoji: string; title: string; detail: string; type: 'positive' | 'neutral' | 'negative' }[] = [];
     
-    const { roleAtLastInteraction, currentRole, lastKnownRole, careerMoves, lastInteractionDate } = careerAnalysis;
+    const { roleAtLastInteraction, currentRole, lastKnownRole, secondaryCurrentRoles, careerMoves, lastInteractionDate } = careerAnalysis;
     
     // Case: no current role detected (person left last known company)
     if (!currentRole && lastKnownRole && lastInteractionDate) {
