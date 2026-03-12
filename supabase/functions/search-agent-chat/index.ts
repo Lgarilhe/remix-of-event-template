@@ -396,6 +396,11 @@ serve(async (req) => {
               }
             }
 
+            // Emit plan_saved event so the client knows the DB is up to date
+            const donePayload: Record<string, unknown> = { done: true };
+            if (metadata?.search_plan) donePayload.plan_saved = true;
+            if (metadata?.agent_action) donePayload.agent_action = metadata.agent_action;
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify(donePayload)}\n\n`));
             controller.enqueue(encoder.encode("data: [DONE]\n\n"));
             controller.close();
             break;
