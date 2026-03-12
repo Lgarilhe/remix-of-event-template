@@ -343,14 +343,40 @@ function EnrichedContactSheet({ contact, enrichment, open, onOpenChange, onCopyM
     const lastInteractionDate = shortlistDates[0] || noteDates[0] || null;
     const lastInteractionTs = lastInteractionDate ? new Date(lastInteractionDate).getTime() : null;
 
-    // Find current role (must be actually current — no end_date or marked current)
-    let currentRole = employmentHistory.find(e => !e.end_date || e.current) || null;
+    // Find all current roles (no end_date or marked current)
+    const allCurrentRoles = employmentHistory.filter(e => !e.end_date || e.current);
+    
+    // Heuristic to find the PRIMARY current role among concurrent ones
+    // Priority: longest tenure (earliest start_date), excluding short/side-project-like titles
+    const sideProjectKeywords = ['facilitator', 'associate', 'volunteer', 'mentor', 'advisor', 'board member', 'fondateur', 'founder', 'bénévole', 'freelance'];
+    let currentRole: typeof employmentHistory[0] | null = null;
+    
+    if (allCurrentRoles.length === 1) {
+      currentRole = allCurrentRoles[0];
+    } else if (allCurrentRoles.length > 1) {
+      // Sort: longest tenure first (earliest start_date), deprioritize side-project titles
+      const scored = allCurrentRoles.map(role => {
+        const titleLower = (role.title || '').toLowerCase();
+        const isSideProject = sideProjectKeywords.some(kw => titleLower.includes(kw));
+        const startTs = role.start_date ? new Date(role.start_date).getTime() : Date.now();
+        return { role, isSideProject, startTs };
+      });
+      // Primary = not side project + longest tenure
+      scored.sort((a, b) => {
+        if (a.isSideProject !== b.isSideProject) return a.isSideProject ? 1 : -1;
+        return a.startTs - b.startTs; // earliest start = longest tenure
+      });
+      currentRole = scored[0].role;
+    }
+    
     // Fallback: use Apollo root-level title/org (LinkedIn headline) if no current in history
     if (!currentRole && apolloData?.title) {
       currentRole = { title: apolloData.title, organization_name: apolloData.organization_name || apolloData.organization?.name || '', start_date: undefined, end_date: undefined, current: true };
     }
     // If still no current role, use the most recent role as "last known"
     const lastKnownRole = currentRole || employmentHistory[0] || null;
+    // Keep track of secondary concurrent roles for display
+    const secondaryCurrentRoles = allCurrentRoles.filter(r => r !== currentRole);
     
     // Find role at the time of last interaction
     let roleAtLastInteraction: typeof currentRole = null;
