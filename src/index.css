@@ -252,9 +252,3 @@ All colors MUST be HSL.
     left: 100%;
   }
 }
-
-/* Agent conic-gradient spin */
-@keyframes agent-spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
-}
