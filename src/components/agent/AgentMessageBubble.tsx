@@ -41,9 +41,9 @@ export const AgentMessageBubble: React.FC<AgentMessageBubbleProps> = ({ message,
     return (
       <div className="flex justify-end">
         <div className="max-w-[75%] bg-muted text-foreground px-3.5 py-2.5 text-[11px] leading-relaxed">
-          <ReactMarkdown className="prose prose-xs prose-neutral dark:prose-invert max-w-none [&_p]:my-0.5 text-[11px]">
-            {cleanContent}
-          </ReactMarkdown>
+          <div className="prose prose-xs prose-neutral dark:prose-invert max-w-none [&_p]:my-0.5 text-[11px]">
+            <ReactMarkdown>{cleanContent}</ReactMarkdown>
+          </div>
         </div>
       </div>
     );
