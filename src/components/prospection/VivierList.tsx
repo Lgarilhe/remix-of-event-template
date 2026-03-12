@@ -385,7 +385,7 @@ function EnrichedContactSheet({ contact, enrichment, open, onOpenChange, onCopyM
       careerMoves.sort((a, b) => (a.startDate || '').localeCompare(b.startDate || ''));
     }
 
-    return { employmentHistory, currentRole, roleAtLastInteraction, lastInteractionDate, careerMoves };
+    return { employmentHistory, currentRole, lastKnownRole, roleAtLastInteraction, lastInteractionDate, careerMoves };
   }, [enrichment, shortlists, notes, contact]);
 
   // Evolution data
