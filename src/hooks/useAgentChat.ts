@@ -40,6 +40,7 @@ export const useAgentChat = (conversationId: string | null) => {
   const [thinkingContent, setThinkingContent] = useState('');
   const [thinkingSteps, setThinkingSteps] = useState<ThinkingStep[]>([]);
   const [isThinking, setIsThinking] = useState(false);
+  const isStreamingRef = useRef(false);
   const [conversation, setConversation] = useState<AgentConversation | null>(null);
   const { organizationId } = useOrganization();
   const abortRef = useRef<AbortController | null>(null);
@@ -81,9 +82,11 @@ export const useAgentChat = (conversationId: string | null) => {
           filter: `conversation_id=eq.${conversationId}`,
         },
         (payload) => {
+          // Skip Realtime inserts while streaming — the DB reload after stream
+          // is the single source of truth, preventing duplicates.
+          if (isStreamingRef.current) return;
           const newMsg = payload.new as unknown as AgentMessage;
           setMessages(prev => {
-            // Avoid duplicates (optimistic messages or re-deliveries)
             if (prev.some(m => m.id === newMsg.id)) return prev;
             return [...prev, newMsg];
           });
@@ -151,6 +154,7 @@ export const useAgentChat = (conversationId: string | null) => {
     const convId = overrideConversationId || conversationId;
     if (!convId || !content.trim() || sending) return;
 
+    isStreamingRef.current = true;
     setSending(true);
     setStreamingContent('');
     setThinkingContent('');
@@ -275,6 +279,7 @@ export const useAgentChat = (conversationId: string | null) => {
         toast.error('Erreur de communication', { description: 'Impossible de contacter l\'assistant. Réessayez.' });
       }
     } finally {
+      isStreamingRef.current = false;
       setSending(false);
       setThinkingContent('');
       setThinkingSteps([]);
