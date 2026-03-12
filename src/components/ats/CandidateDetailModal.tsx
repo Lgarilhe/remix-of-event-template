@@ -165,6 +165,7 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
       })),
       education: (raw.education || []).slice(0, 4).map((edu: any) => ({
         school: edu.school || edu.school_name || '',
+        logo: edu.school_logo || edu.logo_url || edu.logo || undefined,
         degree: edu.degree || edu.degree_name || '',
         field: edu.field_of_study || edu.field || '',
         startYear: edu.start?.year?.toString(),
