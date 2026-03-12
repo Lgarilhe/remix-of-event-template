@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { Send, ArrowLeft, Loader2, Bot, Target } from 'lucide-react';
+import { Send, ArrowLeft, Loader2, Bot } from 'lucide-react';
 import { AnimatedOrb } from '@/components/ui/AnimatedOrb';
 import { useAgentChat, AgentConversation } from '@/hooks/useAgentChat';
 import { AgentMessageBubble, extractOptions } from './AgentMessageBubble';
@@ -95,7 +95,6 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({ onClose }) => {
   if (showList) {
     return (
       <div className="flex flex-col h-full bg-background">
-        {/* Header */}
         <div className="px-4 py-3 border-b-2 border-foreground">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
@@ -169,21 +168,21 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({ onClose }) => {
       </div>
 
       {/* Messages area */}
-      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4 scrollbar-hide">
+      <div className="flex-1 overflow-y-auto px-4 py-5 space-y-5 scrollbar-hide">
         {loading ? (
           <div className="flex items-center justify-center py-16">
             <div className="flex flex-col items-center gap-3">
-              <div className="relative h-8 w-8">
-                <div className="absolute inset-0 border-2 border-foreground border-t-transparent animate-spin" />
-              </div>
-              <span className="text-xs uppercase tracking-wider text-muted-foreground">Chargement…</span>
+              <AnimatedOrb size={32} speed={3}>
+                <Bot className="w-3.5 h-3.5 text-foreground/50" />
+              </AnimatedOrb>
+              <span className="text-xs text-muted-foreground">Chargement…</span>
             </div>
           </div>
         ) : messages.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 gap-4">
-            <div className="h-12 w-12 border-2 border-foreground/20 flex items-center justify-center">
+            <AnimatedOrb size={48} speed={8}>
               <Bot className="w-5 h-5 text-muted-foreground" />
-            </div>
+            </AnimatedOrb>
             <div className="text-center space-y-1.5">
               <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Prêt à sourcer</p>
               <p className="text-xs max-w-[240px] leading-relaxed text-muted-foreground/70">
@@ -197,7 +196,7 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({ onClose }) => {
           ))
         )}
 
-        {/* Thinking display */}
+        {/* Live thinking display */}
         {(isThinking || thinkingSteps.length > 0) && !streamingContent && (
           <AgentThinkingDisplay
             steps={thinkingSteps}
@@ -232,8 +231,8 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({ onClose }) => {
       />
 
       {/* Input bar */}
-      <div className="shrink-0 border-t-2 border-foreground px-4 py-3 z-10">
-        <div className="flex items-end gap-2 border border-foreground px-3 py-2">
+      <div className="shrink-0 border-t border-foreground/10 px-4 py-3 z-10">
+        <div className="flex items-end gap-2 border border-foreground/20 focus-within:border-foreground/50 transition-colors px-3 py-2">
           <textarea
             ref={inputRef}
             value={input}
@@ -241,7 +240,7 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({ onClose }) => {
             onKeyDown={handleKeyDown}
             placeholder="Écrivez votre message…"
             rows={1}
-            className="flex-1 resize-none text-sm bg-transparent text-foreground placeholder:text-muted-foreground/50 focus:outline-none min-h-[24px] max-h-[120px]"
+            className="flex-1 resize-none text-sm bg-transparent text-foreground placeholder:text-muted-foreground/40 focus:outline-none min-h-[24px] max-h-[120px]"
             onInput={(e) => {
               const target = e.target as HTMLTextAreaElement;
               target.style.height = 'auto';
@@ -252,16 +251,16 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({ onClose }) => {
             onClick={() => handleSend()}
             disabled={!input.trim() || sending}
             className={cn(
-              "h-8 w-8 flex items-center justify-center shrink-0 transition-colors",
+              "h-7 w-7 flex items-center justify-center shrink-0 transition-colors",
               input.trim() && !sending
                 ? "bg-foreground text-background hover:bg-brutal-accent"
                 : "bg-muted text-muted-foreground cursor-not-allowed"
             )}
           >
             {sending ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
             ) : (
-              <Send className="w-3.5 h-3.5" />
+              <Send className="w-3 h-3" />
             )}
           </button>
         </div>

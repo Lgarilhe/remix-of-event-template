@@ -18,27 +18,26 @@ export const AgentOptionsSheet: React.FC<AgentOptionsSheetProps> = ({
     <AnimatePresence>
       {open && (
         <motion.div
-          initial={{ y: 12, opacity: 0 }}
+          initial={{ y: 8, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
-          exit={{ y: 12, opacity: 0 }}
-          transition={{ type: 'spring', damping: 24, stiffness: 300 }}
-          className="shrink-0 border-t border-foreground/10 px-4 py-3 z-10 bg-muted/30"
+          exit={{ y: 8, opacity: 0 }}
+          transition={{ type: 'spring', damping: 26, stiffness: 300 }}
+          className="shrink-0 border-t border-foreground/8 px-4 py-3 z-10 bg-muted/10"
         >
-          <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-muted-foreground mb-2.5">
+          <p className="text-[10px] font-medium uppercase tracking-[0.12em] text-muted-foreground/50 mb-2">
             Choisis une approche
           </p>
-          <div className="flex flex-col gap-1.5">
+          <div className="flex flex-col gap-1">
             {options.map((opt, i) => (
               <motion.button
                 key={i}
-                initial={{ opacity: 0, y: 8 }}
+                initial={{ opacity: 0, y: 6 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: i * 0.08, duration: 0.25 }}
+                transition={{ delay: i * 0.06, duration: 0.2 }}
                 onClick={() => onSelect(opt)}
-                className="w-full text-left px-3 py-2.5 text-xs font-medium flex items-center gap-3 transition-colors border border-foreground/10 hover:border-foreground/40 hover:bg-brutal-accent/10 text-foreground/80"
+                className="w-full text-left px-3 py-2 text-xs font-medium flex items-center gap-2.5 transition-colors border border-foreground/8 hover:border-foreground/25 hover:bg-muted/30 text-foreground/75"
               >
-                {/* Number badge */}
-                <span className="h-5 w-5 flex items-center justify-center text-[10px] font-bold shrink-0 bg-foreground text-background">
+                <span className="h-[18px] w-[18px] flex items-center justify-center text-[9px] font-bold shrink-0 bg-foreground/8 text-foreground/50">
                   {i + 1}
                 </span>
                 <span>{opt}</span>
