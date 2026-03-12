@@ -746,12 +746,12 @@ function EnrichedContactSheet({ contact, enrichment, open, onOpenChange, onCopyM
                               { 
                                 label: 'Poste', 
                                 before: careerAnalysis.roleAtLastInteraction?.title || contact.contact_type || null, 
-                                after: careerAnalysis.currentRole?.title || enrichment?.current_job_title 
+                                after: careerAnalysis.currentRole?.title || enrichment?.current_job_title || (careerAnalysis.lastKnownRole && !careerAnalysis.currentRole ? `${careerAnalysis.lastKnownRole.title} (terminé)` : null)
                               },
                               { 
                                 label: 'Entreprise', 
                                 before: careerAnalysis.roleAtLastInteraction?.organization_name || contact.company_name, 
-                                after: careerAnalysis.currentRole?.organization_name || enrichment?.current_company 
+                                after: careerAnalysis.currentRole?.organization_name || enrichment?.current_company || (careerAnalysis.lastKnownRole && !careerAnalysis.currentRole ? `${careerAnalysis.lastKnownRole.organization_name} (quitté)` : null)
                               },
                               { label: 'Localisation', before: contact.city, after: enrichment?.location },
                             ].filter(r => r.before || r.after).map((row, i) => {
