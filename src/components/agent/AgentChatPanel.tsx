@@ -277,7 +277,7 @@ function AgentInputBar({
           onClick={onSend}
           disabled={!input.trim() || sending}
           className={cn(
-            "h-[38px] w-[38px] flex items-center justify-center border-2 border-foreground transition-all shrink-0",
+            "h-[38px] w-[38px] flex items-center justify-center border border-foreground/15 transition-all shrink-0",
             input.trim() && !sending
               ? "bg-foreground text-background hover:opacity-80"
               : "bg-muted text-muted-foreground cursor-not-allowed border-foreground/10"
