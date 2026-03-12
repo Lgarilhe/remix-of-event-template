@@ -448,7 +448,7 @@ serve(async (req) => {
 
         if (cursor) searchBody.cursor = cursor;
 
-        const searchRes = await fetchWithTimeout(`${supabaseUrl}/functions/v1/unipile-search`, {
+        const searchRes = await fetchWithRetry(`${supabaseUrl}/functions/v1/unipile-search`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -456,7 +456,7 @@ serve(async (req) => {
             "apikey": anonKey,
           },
           body: JSON.stringify(searchBody),
-        }, 30000);
+        }, { timeoutMs: 30000, maxRetries: 3 });
 
         const searchData = await searchRes.json();
         if (!searchData?.success) {
