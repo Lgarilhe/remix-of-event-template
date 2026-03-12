@@ -63,6 +63,23 @@ serve(async (req) => {
       });
     }
 
+    // Verify user belongs to the conversation's organization
+    if (conv.organization_id) {
+      const { data: membership } = await supabase
+        .from("organization_members")
+        .select("id")
+        .eq("user_id", user.id)
+        .eq("organization_id", conv.organization_id)
+        .eq("status", "active")
+        .maybeSingle();
+
+      if (!membership) {
+        return new Response(JSON.stringify({ error: "Forbidden" }), {
+          status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    }
+
     const searchPlan = conv.search_config as any;
     if (!searchPlan?.filters) {
       return new Response(JSON.stringify({ error: "No search plan configured" }), {

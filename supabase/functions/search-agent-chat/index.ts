@@ -265,6 +265,29 @@ serve(async (req) => {
       });
     }
 
+    // Verify user belongs to the conversation's organization
+    const { data: conv } = await supabase
+      .from("agent_conversations")
+      .select("organization_id")
+      .eq("id", conversation_id)
+      .single();
+
+    if (conv?.organization_id) {
+      const { data: membership } = await supabase
+        .from("organization_members")
+        .select("id")
+        .eq("user_id", user.id)
+        .eq("organization_id", conv.organization_id)
+        .eq("status", "active")
+        .maybeSingle();
+
+      if (!membership) {
+        return new Response(JSON.stringify({ error: "Forbidden" }), {
+          status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    }
+
     // Save user message
     await supabase.from("agent_messages").insert({
       conversation_id,
