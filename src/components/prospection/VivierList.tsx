@@ -323,10 +323,93 @@ function EnrichedContactSheet({ contact, enrichment, open, onOpenChange, onCopyM
     return events.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
   }, [shortlists, notes, placements]);
 
+  // Parse Apollo employment history and find role at last interaction date
+  const careerAnalysis = useMemo(() => {
+    const apolloData = enrichment?.apollo_data;
+    const employmentHistory: { title: string; organization_name: string; start_date?: string; end_date?: string; current?: boolean }[] = apolloData?.employment_history || [];
+    
+    // Find last interaction date from timeline
+    const allDates = [
+      ...shortlists.map((s: any) => s.date_added),
+      ...notes.map((n: any) => n.note_date),
+      ...(contact?.last_interaction_date ? [contact.last_interaction_date] : []),
+    ].filter(Boolean).sort().reverse();
+    const lastInteractionDate = allDates[0] || null;
+    const lastInteractionTs = lastInteractionDate ? new Date(lastInteractionDate).getTime() : null;
+
+    // Find current role (first entry without end_date or marked current)
+    const currentRole = employmentHistory.find(e => !e.end_date || e.current) || employmentHistory[0] || null;
+    
+    // Find role at the time of last interaction
+    let roleAtLastInteraction: typeof currentRole = null;
+    if (lastInteractionTs && employmentHistory.length > 0) {
+      roleAtLastInteraction = employmentHistory.find(e => {
+        const start = e.start_date ? new Date(e.start_date).getTime() : 0;
+        const end = e.end_date ? new Date(e.end_date).getTime() : Date.now();
+        return start <= lastInteractionTs && lastInteractionTs <= end;
+      }) || null;
+    }
+
+    // Build career moves between last interaction and now
+    const careerMoves: { title: string; company: string; startDate?: string; endDate?: string; isCurrent: boolean }[] = [];
+    if (lastInteractionTs) {
+      employmentHistory.forEach(e => {
+        const start = e.start_date ? new Date(e.start_date).getTime() : 0;
+        if (start > lastInteractionTs) {
+          careerMoves.push({ title: e.title, company: e.organization_name, startDate: e.start_date, endDate: e.end_date, isCurrent: !e.end_date || !!e.current });
+        }
+      });
+      careerMoves.sort((a, b) => (a.startDate || '').localeCompare(b.startDate || ''));
+    }
+
+    return { employmentHistory, currentRole, roleAtLastInteraction, lastInteractionDate, careerMoves };
+  }, [enrichment, shortlists, notes, contact]);
+
   // Evolution data
   const evolutions = useMemo(() => {
     const items: { emoji: string; title: string; detail: string; type: 'positive' | 'neutral' | 'negative' }[] = [];
-    if (enrichment) {
+    
+    const { roleAtLastInteraction, currentRole, careerMoves, lastInteractionDate } = careerAnalysis;
+    
+    // Career move analysis based on Apollo history
+    if (roleAtLastInteraction && currentRole && lastInteractionDate) {
+      const sameCompany = roleAtLastInteraction.organization_name === currentRole.organization_name;
+      const sameRole = roleAtLastInteraction.title === currentRole.title;
+      
+      if (!sameCompany) {
+        items.push({ 
+          emoji: '🔄', 
+          title: 'Changement d\'entreprise', 
+          detail: `Lors de nos derniers échanges (${relativeTime(lastInteractionDate)}), était ${roleAtLastInteraction.title} chez ${roleAtLastInteraction.organization_name}. Aujourd'hui : ${currentRole.title} chez ${currentRole.organization_name}`, 
+          type: 'positive' 
+        });
+      } else if (!sameRole) {
+        items.push({ 
+          emoji: '📈', 
+          title: 'Évolution interne', 
+          detail: `Promotion chez ${currentRole.organization_name} : ${roleAtLastInteraction.title} → ${currentRole.title}`, 
+          type: 'positive' 
+        });
+      } else {
+        items.push({ 
+          emoji: '🏢', 
+          title: 'Même poste', 
+          detail: `Toujours ${currentRole.title} chez ${currentRole.organization_name} depuis nos derniers échanges (${relativeTime(lastInteractionDate)})`, 
+          type: 'neutral' 
+        });
+      }
+
+      // Intermediate moves
+      if (careerMoves.length > 1) {
+        items.push({
+          emoji: '🛤️',
+          title: `${careerMoves.length} postes entre-temps`,
+          detail: careerMoves.map(m => `${m.title} @ ${m.company}`).join(' → '),
+          type: 'neutral'
+        });
+      }
+    } else if (enrichment) {
+      // Fallback to basic enrichment comparison
       if (enrichment.still_same_company === false && enrichment.company_change_detail) {
         items.push({ emoji: '🔄', title: 'Changement de poste', detail: enrichment.company_change_detail, type: 'positive' });
       }
@@ -336,15 +419,21 @@ function EnrichedContactSheet({ contact, enrichment, open, onOpenChange, onCopyM
       if (enrichment.current_job_title && contact?.title && enrichment.current_job_title !== contact.title) {
         items.push({ emoji: '📈', title: 'Évolution de titre', detail: `${contact.title} → ${enrichment.current_job_title}`, type: 'positive' });
       }
-      if (enrichment.notable_events && Array.isArray(enrichment.notable_events) && (enrichment.notable_events as any[]).length > 0) {
-        (enrichment.notable_events as any[]).forEach((evt: any) => {
-          items.push({ emoji: '⚡', title: evt.title || 'Événement notable', detail: evt.detail || evt.description || '', type: 'neutral' });
-        });
-      }
-      if (enrichment.location && contact?.city && enrichment.location !== contact.city) {
-        items.push({ emoji: '📍', title: 'Changement de localisation', detail: `${contact.city} → ${enrichment.location}`, type: 'neutral' });
-      }
     }
+
+    // Notable events from AI
+    if (enrichment?.notable_events && Array.isArray(enrichment.notable_events) && (enrichment.notable_events as any[]).length > 0) {
+      (enrichment.notable_events as any[]).forEach((evt: any) => {
+        const evtStr = typeof evt === 'string' ? evt : (evt.title || evt.detail || evt.description || '');
+        if (evtStr) items.push({ emoji: '⚡', title: 'Événement notable', detail: evtStr, type: 'neutral' });
+      });
+    }
+
+    // Location change
+    if (enrichment?.location && contact?.city && enrichment.location !== contact.city) {
+      items.push({ emoji: '📍', title: 'Changement de localisation', detail: `${contact.city} → ${enrichment.location}`, type: 'neutral' });
+    }
+
     // Time since last interaction
     if (contact?.last_interaction_date) {
       const daysSince = Math.floor((Date.now() - new Date(contact.last_interaction_date).getTime()) / (1000 * 60 * 60 * 24));
@@ -355,7 +444,7 @@ function EnrichedContactSheet({ contact, enrichment, open, onOpenChange, onCopyM
       }
     }
     return items;
-  }, [enrichment, contact]);
+  }, [enrichment, contact, careerAnalysis]);
 
   if (!contact) return null;
 
@@ -564,7 +653,7 @@ function EnrichedContactSheet({ contact, enrichment, open, onOpenChange, onCopyM
               {/* ═══ TAB: ÉVOLUTIONS ═══ */}
               {activeDetailTab === 'evolutions' && (
                 <div className="space-y-3">
-                  {evolutions.length === 0 ? (
+                  {evolutions.length === 0 && careerAnalysis.employmentHistory.length === 0 ? (
                     <div className="text-center py-10">
                       <TrendingUp className="w-10 h-10 mx-auto mb-3 text-muted-foreground/30" />
                       <p className="text-xs text-muted-foreground">Aucune évolution détectée</p>
@@ -572,6 +661,24 @@ function EnrichedContactSheet({ contact, enrichment, open, onOpenChange, onCopyM
                     </div>
                   ) : (
                     <>
+                      {/* Context: when was last interaction */}
+                      {careerAnalysis.lastInteractionDate && (
+                        <div className="border-2 border-foreground bg-foreground text-background p-3 flex items-center gap-3">
+                          <Clock className="w-5 h-5 shrink-0 text-[hsl(var(--brutal-accent))]" />
+                          <div>
+                            <div className="text-[9px] uppercase tracking-widest text-background/50">Dernier échange avec Konekt</div>
+                            <div className="text-sm font-bold">{relativeTime(careerAnalysis.lastInteractionDate)}</div>
+                          </div>
+                          {careerAnalysis.roleAtLastInteraction && (
+                            <div className="ml-auto text-right">
+                              <div className="text-[9px] uppercase tracking-widest text-background/50">Poste à l'époque</div>
+                              <div className="text-[11px] font-medium">{careerAnalysis.roleAtLastInteraction.title}</div>
+                              <div className="text-[10px] text-background/60">{careerAnalysis.roleAtLastInteraction.organization_name}</div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
                       <div className="text-[9px] uppercase tracking-widest text-muted-foreground mb-1 font-medium">
                         Changements depuis nos derniers échanges
                       </div>
@@ -590,19 +697,29 @@ function EnrichedContactSheet({ contact, enrichment, open, onOpenChange, onCopyM
                         </div>
                       ))}
 
-                      {/* Comparison table if enriched */}
+                      {/* Comparison table: role at last interaction vs now */}
                       {isEnriched && (
                         <div className="mt-4">
-                          <div className="text-[9px] uppercase tracking-widest text-muted-foreground mb-2 font-medium">Comparaison avant / après</div>
+                          <div className="text-[9px] uppercase tracking-widest text-muted-foreground mb-2 font-medium">
+                            Comparaison : {careerAnalysis.lastInteractionDate ? `à l'époque vs aujourd'hui` : 'CRM vs aujourd\'hui'}
+                          </div>
                           <div className="border border-border divide-y divide-border">
                             <div className="grid grid-cols-3 text-[9px] uppercase tracking-widest text-muted-foreground bg-muted/30">
                               <div className="p-2">Champ</div>
-                              <div className="p-2">Avant</div>
-                              <div className="p-2">Maintenant</div>
+                              <div className="p-2">{careerAnalysis.lastInteractionDate ? `À l'époque` : 'CRM'}</div>
+                              <div className="p-2">Aujourd'hui</div>
                             </div>
                             {[
-                              { label: 'Poste', before: contact.title, after: enrichment?.current_job_title },
-                              { label: 'Entreprise', before: contact.company_name, after: enrichment?.current_company },
+                              { 
+                                label: 'Poste', 
+                                before: careerAnalysis.roleAtLastInteraction?.title || contact.title, 
+                                after: careerAnalysis.currentRole?.title || enrichment?.current_job_title 
+                              },
+                              { 
+                                label: 'Entreprise', 
+                                before: careerAnalysis.roleAtLastInteraction?.organization_name || contact.company_name, 
+                                after: careerAnalysis.currentRole?.organization_name || enrichment?.current_company 
+                              },
                               { label: 'Localisation', before: contact.city, after: enrichment?.location },
                             ].filter(r => r.before || r.after).map((row, i) => {
                               const changed = row.before !== row.after && row.before && row.after;
@@ -611,6 +728,49 @@ function EnrichedContactSheet({ contact, enrichment, open, onOpenChange, onCopyM
                                   <div className="p-2 text-[10px] font-medium">{row.label}</div>
                                   <div className="p-2 text-[10px] text-muted-foreground">{row.before || '—'}</div>
                                   <div className={cn("p-2 text-[10px]", changed ? "font-semibold text-foreground" : "text-muted-foreground")}>{row.after || '—'}</div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Full career timeline from Apollo */}
+                      {careerAnalysis.employmentHistory.length > 0 && (
+                        <div className="mt-4">
+                          <div className="text-[9px] uppercase tracking-widest text-muted-foreground mb-2 font-medium">
+                            Parcours professionnel complet (Apollo)
+                          </div>
+                          <div className="space-y-0">
+                            {careerAnalysis.employmentHistory.map((job, i) => {
+                              const isCurrent = !job.end_date || job.current;
+                              const wasActiveAtLastInteraction = careerAnalysis.roleAtLastInteraction?.title === job.title && careerAnalysis.roleAtLastInteraction?.organization_name === job.organization_name;
+                              return (
+                                <div key={i} className={cn(
+                                  "flex items-start gap-3 p-2.5 border-l-2 ml-2",
+                                  isCurrent ? "border-l-foreground bg-muted/20" : 
+                                  wasActiveAtLastInteraction ? "border-l-[hsl(var(--brutal-accent))] bg-[hsl(var(--brutal-accent)/0.04)]" :
+                                  "border-l-border"
+                                )}>
+                                  <div className={cn(
+                                    "-ml-[11px] w-5 h-5 flex items-center justify-center text-[8px] shrink-0 border",
+                                    isCurrent ? "bg-foreground text-background border-foreground" :
+                                    wasActiveAtLastInteraction ? "bg-[hsl(var(--brutal-accent))] text-foreground border-[hsl(var(--brutal-accent))]" :
+                                    "bg-background text-muted-foreground border-border"
+                                  )}>
+                                    {isCurrent ? '●' : wasActiveAtLastInteraction ? '◆' : '○'}
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <div className="text-[11px] font-semibold leading-snug">{job.title}</div>
+                                    <div className="text-[10px] text-muted-foreground">{job.organization_name}</div>
+                                  </div>
+                                  <div className="text-right shrink-0">
+                                    <div className="text-[9px] text-muted-foreground">
+                                      {job.start_date ? relativeTime(job.start_date) || job.start_date.slice(0, 7) : '?'}
+                                    </div>
+                                    {isCurrent && <span className="text-[8px] font-bold uppercase tracking-widest text-foreground">Actuel</span>}
+                                    {wasActiveAtLastInteraction && !isCurrent && <span className="text-[8px] font-bold uppercase tracking-widest text-[hsl(var(--skalr-purple))]">À l'époque</span>}
+                                  </div>
                                 </div>
                               );
                             })}
