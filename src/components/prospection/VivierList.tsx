@@ -1013,7 +1013,7 @@ function ContactCard({ contact, enrichment, index, onClick }: { contact: VivierC
   const initials = (contact.full_name || '??').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
   const timeAgo = relativeTime(contact.last_interaction_date);
   const displayCompany = enrichment?.current_company || contact.company_name;
-  const displayTitle = enrichment?.current_job_title || contact.title;
+  const displayTitle = enrichment?.current_job_title || contact.contact_type || null;
   const isEnriched = !!enrichment && enrichment.match_type !== 'not_found';
 
   return (
