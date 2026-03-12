@@ -199,11 +199,11 @@ serve(async (req) => {
             // Take the first (best match) location
             const bestMatch = paramData.items[0];
             resolvedLocationIds.push({
-              id: bestMatch.id || bestMatch.value,
+              id: bestMatch.id,
               priority: "MUST_HAVE",
               scope: "CURRENT_OR_OPEN_TO_RELOCATE",
             });
-            console.log(`[run-agent-search] Location "${locKw}" → ID ${bestMatch.id || bestMatch.value} (${bestMatch.label || bestMatch.name})`);
+            console.log(`[run-agent-search] Location "${locKw}" → ID ${bestMatch.id} (${bestMatch.title})`);
           } else {
             console.warn(`[run-agent-search] No location ID found for "${locKw}"`);
           }
