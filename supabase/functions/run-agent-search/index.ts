@@ -163,14 +163,59 @@ serve(async (req) => {
       });
     }
 
-    // ── 3. Search LinkedIn (sequential with delays) ──
+    // ── 3. Resolve location IDs & prepare structured filters ──
 
     const filters = searchPlan.filters;
     const stopConditions = searchPlan.stop_conditions || { target_go_profiles: 10, max_profiles_to_scan: 200 };
     const maxProfiles = Math.min(stopConditions.max_profiles_to_scan || 200, 200);
     const targetGo = stopConditions.target_go_profiles || 10;
 
-    await postStatus(`🔍 Recherche lancée — je scanne les profils LinkedIn...${dedupCount > 0 ? `\n📋 ${dedupCount} profils déjà traités seront ignorés.` : ""}`);
+    // Resolve location keywords → LinkedIn IDs via get_parameters
+    let resolvedLocationIds: Array<{ id: string; priority: string; scope: string }> = [];
+    const locationKeywords = filters.location_keywords || [];
+    if (locationKeywords.length > 0) {
+      await postStatus(`📍 Résolution des localisations...`);
+      for (const locKw of locationKeywords) {
+        try {
+          const paramRes = await fetchWithTimeout(`${supabaseUrl}/functions/v1/unipile-search`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${serviceKey}`,
+              "apikey": anonKey,
+            },
+            body: JSON.stringify({
+              action: "get_parameters",
+              account_id: accountId,
+              organization_id: orgId,
+              type: "LOCATION",
+              keywords: locKw,
+              service: "RECRUITER",
+              limit: 3,
+            }),
+          }, 15000);
+          const paramData = await paramRes.json();
+          if (paramData?.success && paramData.parameters?.length > 0) {
+            // Take the first (best match) location
+            const bestMatch = paramData.parameters[0];
+            resolvedLocationIds.push({
+              id: bestMatch.id || bestMatch.value,
+              priority: "MUST_HAVE",
+              scope: "CURRENT_OR_OPEN_TO_RELOCATE",
+            });
+            console.log(`[run-agent-search] Location "${locKw}" → ID ${bestMatch.id || bestMatch.value} (${bestMatch.label || bestMatch.name})`);
+          } else {
+            console.warn(`[run-agent-search] No location ID found for "${locKw}"`);
+          }
+        } catch (e) {
+          console.error(`[run-agent-search] Failed to resolve location "${locKw}":`, e);
+        }
+      }
+    }
+
+    // ── 4. Search LinkedIn (sequential with delays) ──
+
+    await postStatus(`🔍 Recherche lancée — je scanne les profils LinkedIn...${dedupCount > 0 ? `\n📋 ${dedupCount} profils déjà traités seront ignorés.` : ""}${resolvedLocationIds.length > 0 ? `\n📍 ${resolvedLocationIds.length} localisation(s) résolue(s).` : ""}`);
 
     let allProfiles: any[] = [];
     let cursor: string | null = null;
@@ -181,28 +226,12 @@ serve(async (req) => {
     while (allProfiles.length < maxProfiles && round < maxRounds) {
       round++;
       try {
-        // Build the keywords string using the same strategy as manual search.
-        // The agent's prompt now generates rich Boolean keywords with synonym rings,
-        // layered AND/OR, location, and NOT exclusions — exactly like generate-search-filters.
-        // The keywords field already includes location (e.g. "AND (Paris OR Île-de-France)")
-        // because structured filters (location, role) require LinkedIn numeric IDs
-        // which we don't have. Role titles are also folded into keywords for the API call.
-        const keywordParts: string[] = [];
+        // Keywords = technologies/skills ONLY (no location, no titles)
+        const searchKeywords = filters.keywords || undefined;
         
-        // Primary keywords (technologies/skills boolean with synonym rings + location)
-        if (filters.keywords) keywordParts.push(filters.keywords);
+        console.log(`[run-agent-search] Round ${round} keywords: ${searchKeywords?.slice(0, 200)}`);
         
-        // Fold role titles into keywords if present (since structured role filter needs IDs)
-        if (filters.role && Array.isArray(filters.role)) {
-          for (const r of filters.role) {
-            if (r.keywords) keywordParts.push(`(${r.keywords})`);
-          }
-        }
-        
-        const combinedKeywords = keywordParts.join(" AND ").trim() || undefined;
-        
-        console.log(`[run-agent-search] Round ${round} keywords: ${combinedKeywords?.slice(0, 200)}`);
-        
+        // Build search body with ALL structured filters
         const searchBody: any = {
           action: "search",
           account_id: accountId,
@@ -210,9 +239,46 @@ serve(async (req) => {
           api: "recruiter",
           category: "people",
           limit: 25,
-          keywords: combinedKeywords,
-          open_to_work: filters.open_to_work || undefined,
+          keywords: searchKeywords,
         };
+
+        // Location (resolved IDs)
+        if (resolvedLocationIds.length > 0) {
+          searchBody.location = resolvedLocationIds;
+          if (filters.location_within_area) {
+            searchBody.location_within_area = filters.location_within_area;
+          }
+        }
+
+        // Role / Job titles (keywords-based, Recruiter API supports this natively)
+        if (filters.role && Array.isArray(filters.role) && filters.role.length > 0) {
+          searchBody.role = filters.role.map((r: any) => ({
+            keywords: r.keywords,
+            priority: r.priority || "MUST_HAVE",
+            scope: r.scope || "CURRENT",
+          }));
+        }
+
+        // Seniority
+        if (filters.seniority && Array.isArray(filters.seniority) && filters.seniority.length > 0) {
+          searchBody.seniority = filters.seniority;
+        }
+
+        // Company keywords (Recruiter supports keywords-based company filter)
+        if (filters.company_keywords && Array.isArray(filters.company_keywords) && filters.company_keywords.length > 0) {
+          searchBody.company_keywords = filters.company_keywords.map((c: any) => {
+            if (typeof c === "string") {
+              return { keywords: c, priority: "MUST_HAVE", scope: "CURRENT" };
+            }
+            return { keywords: c.keywords || c, priority: c.priority || "MUST_HAVE", scope: c.scope || "CURRENT" };
+          });
+        }
+
+        // Open to work (spotlight)
+        if (filters.open_to_work === true) {
+          searchBody.open_to_work = true;
+        }
+
         if (cursor) searchBody.cursor = cursor;
 
         const searchRes = await fetchWithTimeout(`${supabaseUrl}/functions/v1/unipile-search`, {
