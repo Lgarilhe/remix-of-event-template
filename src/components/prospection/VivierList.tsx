@@ -772,52 +772,74 @@ function EnrichedContactSheet({ contact, enrichment, open, onOpenChange, onCopyM
                           <SectionHeader emoji="📋" label="Shortlists par poste" count={shortlists.length} />
                           <div className="space-y-2">
                             {shortlistsByJob.map((group, gi) => {
-                              const statusCounts = new Map<string, number>();
-                              group.candidates.forEach(c => {
-                                const s = c.status || 'Inconnu';
-                                statusCounts.set(s, (statusCounts.get(s) || 0) + 1);
-                              });
+                              // Compute max pipeline stage reached across all candidates
+                              const maxStage = Math.max(...group.candidates.map(c => statusToStageOrder(c.status)));
+                              const maxStageLabel = PIPELINE_STAGES.find(s => s.order === maxStage)?.label || '—';
+                              const maxStageEmoji = PIPELINE_STAGES.find(s => s.order === maxStage)?.emoji || '○';
+                              
+                              // Pipeline progress bar
+                              const stageReachedIndex = PIPELINE_STAGES.findIndex(s => s.order === maxStage);
+                              const progressPct = PIPELINE_STAGES.length > 0 ? Math.round(((stageReachedIndex + 1) / PIPELINE_STAGES.length) * 100) : 0;
+
                               return (
                                 <div key={gi} className="border border-border">
-                                  <div className="p-3 bg-muted/20 flex items-center gap-2 border-b border-border">
-                                    <Briefcase className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
-                                    <div className="flex-1 min-w-0">
-                                      <div className="text-[11px] font-bold leading-snug truncate">{group.jobTitle}</div>
-                                      <div className="text-[9px] text-muted-foreground">
-                                        {group.candidates.length} candidat{group.candidates.length > 1 ? 's' : ''}
-                                        {group.latestDate && <> · {relativeTime(group.latestDate)}</>}
+                                  <div className="p-3 bg-muted/20 border-b border-border">
+                                    <div className="flex items-center gap-2">
+                                      <Briefcase className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                                      <div className="flex-1 min-w-0">
+                                        <div className="text-[11px] font-bold leading-snug truncate">{group.jobTitle}</div>
+                                        <div className="text-[9px] text-muted-foreground">
+                                          {group.candidates.length} candidat{group.candidates.length > 1 ? 's' : ''}
+                                          {group.latestDate && <> · {relativeTime(group.latestDate)}</>}
+                                        </div>
+                                      </div>
+                                    </div>
+                                    {/* Pipeline progress */}
+                                    <div className="mt-2">
+                                      <div className="flex items-center justify-between mb-1">
+                                        <span className="text-[9px] text-muted-foreground uppercase tracking-widest">Stade max atteint</span>
+                                        <span className="text-[10px] font-bold flex items-center gap-1">{maxStageEmoji} {maxStageLabel}</span>
+                                      </div>
+                                      <div className="h-1.5 bg-border w-full">
+                                        <div className={cn(
+                                          "h-full transition-all",
+                                          maxStage >= 8 ? "bg-foreground" : maxStage >= 5 ? "bg-[hsl(var(--brutal-accent))]" : "bg-muted-foreground/40"
+                                        )} style={{ width: `${progressPct}%` }} />
+                                      </div>
+                                      <div className="flex justify-between mt-0.5">
+                                        {PIPELINE_STAGES.map((stage, si) => (
+                                          <span key={si} className={cn(
+                                            "text-[7px]",
+                                            si <= stageReachedIndex ? "text-foreground font-medium" : "text-muted-foreground/40"
+                                          )}>{stage.short}</span>
+                                        ))}
                                       </div>
                                     </div>
                                   </div>
-                                  {/* Status breakdown */}
-                                  <div className="p-2 flex flex-wrap gap-1.5">
-                                    {[...statusCounts.entries()].map(([status, count]) => (
-                                      <span key={status} className={cn(
-                                        "text-[9px] px-2 py-0.5 border font-medium",
-                                        status.toLowerCase().includes('gagn') || status.toLowerCase().includes('plac') ? "border-foreground bg-foreground text-background" :
-                                        status.toLowerCase().includes('perdu') || status.toLowerCase().includes('refus') ? "border-destructive/30 text-destructive bg-destructive/5" :
-                                        status.toLowerCase().includes('itw') || status.toLowerCase().includes('entretien') ? "border-[hsl(var(--brutal-accent))] text-foreground bg-[hsl(var(--brutal-accent)/0.1)]" :
-                                        "border-border text-muted-foreground"
-                                      )}>
-                                        {status} ({count})
-                                      </span>
-                                    ))}
-                                  </div>
-                                  {/* Candidates list */}
+                                  {/* Candidates list sorted by stage */}
                                   <div className="divide-y divide-border">
-                                    {group.candidates.map((c, ci) => (
-                                      <div key={ci} className="px-3 py-1.5 flex items-center gap-2 text-[10px]">
-                                        <Users className="w-3 h-3 text-muted-foreground shrink-0" />
-                                        <span className="flex-1 truncate">{c.name || 'Candidat inconnu'}</span>
-                                        {c.status && <span className={cn(
-                                          "text-[8px] px-1.5 py-0.5 border uppercase tracking-wider shrink-0",
-                                          c.status.toLowerCase().includes('gagn') || c.status.toLowerCase().includes('plac') ? "border-foreground bg-foreground text-background" :
-                                          c.status.toLowerCase().includes('perdu') || c.status.toLowerCase().includes('refus') ? "border-destructive/30 text-destructive" :
-                                          "border-border text-muted-foreground"
-                                        )}>{c.status}</span>}
-                                        {c.date && <span className="text-[9px] text-muted-foreground tabular-nums shrink-0">{c.date.slice(0, 7)}</span>}
-                                      </div>
-                                    ))}
+                                    {[...group.candidates]
+                                      .sort((a, b) => statusToStageOrder(b.status) - statusToStageOrder(a.status))
+                                      .map((c, ci) => {
+                                        const stage = PIPELINE_STAGES.find(s => s.order === statusToStageOrder(c.status));
+                                        const isAdvanced = (stage?.order || 0) >= 5;
+                                        const isPlaced = (stage?.order || 0) >= 8;
+                                        return (
+                                          <div key={ci} className={cn(
+                                            "px-3 py-2 flex items-center gap-2 text-[10px]",
+                                            isPlaced && "bg-foreground/5"
+                                          )}>
+                                            <span className="text-xs shrink-0">{stage?.emoji || '○'}</span>
+                                            <span className="flex-1 truncate font-medium">{c.name || 'Candidat inconnu'}</span>
+                                            <span className={cn(
+                                              "text-[8px] px-1.5 py-0.5 border uppercase tracking-wider shrink-0",
+                                              isPlaced ? "border-foreground bg-foreground text-background" :
+                                              isAdvanced ? "border-[hsl(var(--brutal-accent))] text-foreground bg-[hsl(var(--brutal-accent)/0.1)]" :
+                                              "border-border text-muted-foreground"
+                                            )}>{stage?.label || c.status || '?'}</span>
+                                          </div>
+                                        );
+                                    })}
                                   </div>
                                 </div>
                               );
