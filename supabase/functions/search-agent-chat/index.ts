@@ -249,7 +249,11 @@ serve(async (req) => {
       },
       body: JSON.stringify({
         model: "claude-sonnet-4-5-20250929",
-        max_tokens: 2048,
+        max_tokens: 16000,
+        thinking: {
+          type: "enabled",
+          budget_tokens: 8000,
+        },
         system: [{ type: "text", text: systemPrompt, cache_control: { type: "ephemeral" } }],
         messages,
         stream: true,
