@@ -12,6 +12,43 @@ function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 30
   return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timer));
 }
 
+const RETRYABLE_STATUS = new Set([429, 502, 503, 504]);
+
+async function fetchWithRetry(
+  url: string,
+  options: RequestInit = {},
+  { timeoutMs = 30000, maxRetries = 3 } = {},
+): Promise<Response> {
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    const res = await fetchWithTimeout(url, options, timeoutMs);
+
+    if (res.ok || !RETRYABLE_STATUS.has(res.status)) {
+      return res;
+    }
+
+    // Log retryable error with body excerpt for diagnostics
+    const errBody = await res.text().catch(() => "");
+    console.warn(
+      `[fetchWithRetry] ${res.status} on ${url.split("/").pop()} (attempt ${attempt + 1}/${maxRetries}): ${errBody.slice(0, 200)}`,
+    );
+
+    if (attempt < maxRetries - 1) {
+      const delay = res.status === 429
+        ? Math.min(5000 * Math.pow(2, attempt), 30000)   // 429: longer backoff (5s, 10s, 20s)
+        : 1000 * Math.pow(2, attempt);                     // 5xx: standard backoff (1s, 2s, 4s)
+      await new Promise(r => setTimeout(r, delay));
+    } else {
+      // Final attempt failed — return a synthetic error response
+      return new Response(JSON.stringify({ error: `Failed after ${maxRetries} retries (last status: ${res.status})` }), {
+        status: res.status,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+  }
+  // Should never reach here, but TypeScript needs it
+  throw new Error("fetchWithRetry: unreachable");
+}
+
 // Primary dedup key: provider_id (LinkedIn URN) when available, fallback to name-based key
 function buildCandidateKey(profile: any): string {
   const providerId = (profile.provider_id || "").trim();
@@ -411,7 +448,7 @@ serve(async (req) => {
 
         if (cursor) searchBody.cursor = cursor;
 
-        const searchRes = await fetchWithTimeout(`${supabaseUrl}/functions/v1/unipile-search`, {
+        const searchRes = await fetchWithRetry(`${supabaseUrl}/functions/v1/unipile-search`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -419,7 +456,7 @@ serve(async (req) => {
             "apikey": anonKey,
           },
           body: JSON.stringify(searchBody),
-        }, 30000);
+        }, { timeoutMs: 30000, maxRetries: 3 });
 
         const searchData = await searchRes.json();
         if (!searchData?.success) {
@@ -573,43 +610,27 @@ serve(async (req) => {
           networkDistance: profile.network_distance,
         };
 
-        const MAX_RETRIES = 3;
-        let lastError: any = null;
+        try {
+          const scoreRes = await fetchWithRetry(`${supabaseUrl}/functions/v1/score-profile-job`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${serviceKey}`,
+              "apikey": anonKey,
+            },
+            body: JSON.stringify({
+              profile: profileData,
+              job: jobData,
+              organization_id: orgId,
+            }),
+          }, { timeoutMs: 55000, maxRetries: 3 });
 
-        for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
-          try {
-            const scoreRes = await fetchWithTimeout(`${supabaseUrl}/functions/v1/score-profile-job`, {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                "Authorization": `Bearer ${serviceKey}`,
-                "apikey": anonKey,
-              },
-              body: JSON.stringify({
-                profile: profileData,
-                job: jobData,
-                organization_id: orgId,
-              }),
-            }, 55000);
-
-            if (!scoreRes.ok && scoreRes.status >= 500) {
-              throw new Error(`Score API returned ${scoreRes.status}`);
-            }
-
-            const scoreData = await scoreRes.json();
-            return { profile, score: scoreData };
-          } catch (err) {
-            lastError = err;
-            if (attempt < MAX_RETRIES - 1) {
-              const delay = 1000 * Math.pow(2, attempt); // 1s, 2s, 4s
-              console.warn(`[run-agent-search] Scoring retry ${attempt + 1}/${MAX_RETRIES} for ${profile.name} in ${delay}ms:`, err);
-              await new Promise(r => setTimeout(r, delay));
-            }
-          }
+          const scoreData = await scoreRes.json();
+          return { profile, score: scoreData };
+        } catch (err) {
+          console.error(`[run-agent-search] Scoring failed for ${profile.name}:`, err);
+          return { profile, score: null };
         }
-
-        console.error(`[run-agent-search] Scoring failed after ${MAX_RETRIES} retries for ${profile.name}:`, lastError);
-        return { profile, score: null };
       };
 
       // Process in batches of CONCURRENCY
