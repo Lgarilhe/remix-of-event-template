@@ -249,7 +249,11 @@ serve(async (req) => {
       },
       body: JSON.stringify({
         model: "claude-sonnet-4-5-20250929",
-        max_tokens: 2048,
+        max_tokens: 16000,
+        thinking: {
+          type: "enabled",
+          budget_tokens: 8000,
+        },
         system: [{ type: "text", text: systemPrompt, cache_control: { type: "ephemeral" } }],
         messages,
         stream: true,
@@ -321,14 +325,24 @@ serve(async (req) => {
 
               try {
                 const event = JSON.parse(jsonStr);
-                let text = "";
-                if (event.type === "content_block_delta" && event.delta?.text) {
-                  text = event.delta.text;
+                
+                // Handle thinking deltas
+                if (event.type === "content_block_delta" && event.delta?.type === "thinking_delta") {
+                  const thinkingText = event.delta.thinking || "";
+                  if (thinkingText) {
+                    const chunk = { choices: [{ delta: { thinking: thinkingText }, index: 0 }] };
+                    controller.enqueue(encoder.encode(`data: ${JSON.stringify(chunk)}\n\n`));
+                  }
                 }
-                if (text) {
-                  fullResponse += text;
-                  const chunk = { choices: [{ delta: { content: text }, index: 0 }] };
-                  controller.enqueue(encoder.encode(`data: ${JSON.stringify(chunk)}\n\n`));
+                
+                // Handle text deltas
+                if (event.type === "content_block_delta" && event.delta?.type === "text_delta") {
+                  const text = event.delta.text || "";
+                  if (text) {
+                    fullResponse += text;
+                    const chunk = { choices: [{ delta: { content: text }, index: 0 }] };
+                    controller.enqueue(encoder.encode(`data: ${JSON.stringify(chunk)}\n\n`));
+                  }
                 }
               } catch {}
             }
