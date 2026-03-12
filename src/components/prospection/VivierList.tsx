@@ -471,6 +471,17 @@ function EnrichedContactSheet({ contact, enrichment, open, onOpenChange, onCopyM
           type: 'neutral'
         });
       }
+
+      // Secondary concurrent roles (side projects, associations, etc.)
+      if (secondaryCurrentRoles.length > 0) {
+        const rolesList = secondaryCurrentRoles.map(r => `${r.title} @ ${r.organization_name}`).join(', ');
+        items.push({
+          emoji: '🔀',
+          title: `${secondaryCurrentRoles.length} rôle${secondaryCurrentRoles.length > 1 ? 's' : ''} en parallèle`,
+          detail: rolesList,
+          type: 'neutral'
+        });
+      }
     } else if (enrichment) {
       // Fallback to basic enrichment comparison
       if (enrichment.still_same_company === false && enrichment.company_change_detail) {
