@@ -297,24 +297,23 @@ serve(async (req) => {
           searchBody.seniority = filters.seniority;
         }
 
-        // Company keywords (Recruiter supports keywords-based company filter)
-        if (filters.company_keywords && Array.isArray(filters.company_keywords) && filters.company_keywords.length > 0) {
-          searchBody.company_keywords = filters.company_keywords.map((c: any) => {
-            if (typeof c === "string") {
-              return { keywords: c, priority: "MUST_HAVE", scope: "CURRENT" };
-            }
-            return { keywords: c.keywords || c, priority: c.priority || "MUST_HAVE", scope: c.scope || "CURRENT" };
-          });
+        // Company (resolved IDs from company_keywords)
+        if (resolvedCompanyIds.length > 0) {
+          // Determine scope from the original filter config
+          const companyScope = (filters.company_keywords || []).find((c: any) => typeof c === "object" && c.scope)?.scope || "CURRENT";
+          searchBody.company = resolvedCompanyIds.map((id: string) => ({
+            id,
+            priority: "MUST_HAVE",
+            scope: companyScope,
+          }));
         }
 
-        // Past company keywords
-        if (filters.past_company_keywords && Array.isArray(filters.past_company_keywords) && filters.past_company_keywords.length > 0) {
-          searchBody.past_company = filters.past_company_keywords.map((c: any) => {
-            if (typeof c === "string") {
-              return { keywords: c, priority: "MUST_HAVE" };
-            }
-            return { keywords: c.keywords || c, priority: c.priority || "MUST_HAVE" };
-          });
+        // Past company (resolved IDs from past_company_keywords)
+        if (resolvedPastCompanyIds.length > 0) {
+          searchBody.past_company = resolvedPastCompanyIds.map((id: string) => ({
+            id,
+            priority: "MUST_HAVE",
+          }));
         }
 
         // Industry (resolve IDs like location)
@@ -330,14 +329,12 @@ serve(async (req) => {
           }));
         }
 
-        // Skills (keywords-based, Recruiter supports this)
-        if (filters.skills_filter && Array.isArray(filters.skills_filter) && filters.skills_filter.length > 0) {
-          searchBody.skills = filters.skills_filter.map((s: any) => {
-            if (typeof s === "string") {
-              return { keywords: s, priority: "MUST_HAVE" };
-            }
-            return { keywords: s.keywords || s, priority: s.priority || "MUST_HAVE" };
-          });
+        // Skills (resolved IDs from skills_filter)
+        if (resolvedSkillIds.length > 0) {
+          searchBody.skills = resolvedSkillIds.map((id: string) => ({
+            id,
+            priority: "MUST_HAVE",
+          }));
         }
 
         // Function/Department (resolve IDs)
