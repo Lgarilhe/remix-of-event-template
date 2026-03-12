@@ -414,8 +414,8 @@ function EnrichedContactSheet({ contact, enrichment, open, onOpenChange, onCopyM
       if (enrichment.still_same_company === true) {
         items.push({ emoji: '🏢', title: 'Même entreprise', detail: `Toujours chez ${enrichment.current_company || contact?.company_name || '—'}`, type: 'neutral' });
       }
-      if (enrichment.current_job_title && contact?.title && enrichment.current_job_title !== contact.title) {
-        items.push({ emoji: '📈', title: 'Évolution de titre', detail: `${contact.title} → ${enrichment.current_job_title}`, type: 'positive' });
+      if (enrichment.current_job_title) {
+        items.push({ emoji: '💼', title: 'Poste actuel', detail: `${enrichment.current_job_title}${enrichment.current_company ? ` chez ${enrichment.current_company}` : ''}`, type: 'neutral' });
       }
     }
 
@@ -447,7 +447,7 @@ function EnrichedContactSheet({ contact, enrichment, open, onOpenChange, onCopyM
   if (!contact) return null;
 
   const isEnriched = !!enrichment && enrichment.match_type !== 'not_found';
-  const displayTitle = enrichment?.current_job_title || contact.title;
+  const displayTitle = enrichment?.current_job_title || contact.contact_type || null;
   const displayCompany = enrichment?.current_company || contact.company_name;
 
   return (
@@ -710,7 +710,7 @@ function EnrichedContactSheet({ contact, enrichment, open, onOpenChange, onCopyM
                             {[
                               { 
                                 label: 'Poste', 
-                                before: careerAnalysis.roleAtLastInteraction?.title || contact.title, 
+                                before: careerAnalysis.roleAtLastInteraction?.title || null, 
                                 after: careerAnalysis.currentRole?.title || enrichment?.current_job_title 
                               },
                               { 
@@ -1013,7 +1013,7 @@ function ContactCard({ contact, enrichment, index, onClick }: { contact: VivierC
   const initials = (contact.full_name || '??').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
   const timeAgo = relativeTime(contact.last_interaction_date);
   const displayCompany = enrichment?.current_company || contact.company_name;
-  const displayTitle = enrichment?.current_job_title || contact.title;
+  const displayTitle = enrichment?.current_job_title || contact.contact_type || null;
   const isEnriched = !!enrichment && enrichment.match_type !== 'not_found';
 
   return (
