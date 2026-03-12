@@ -341,11 +341,26 @@ function EnrichedContactSheet({ contact, enrichment, open, onOpenChange, onCopyM
     // Find role at the time of last interaction
     let roleAtLastInteraction: typeof currentRole = null;
     if (lastInteractionTs && employmentHistory.length > 0) {
+      // Exact match: interaction date falls within start–end range
       roleAtLastInteraction = employmentHistory.find(e => {
         const start = e.start_date ? new Date(e.start_date).getTime() : 0;
         const end = e.end_date ? new Date(e.end_date).getTime() : Date.now();
         return start <= lastInteractionTs && lastInteractionTs <= end;
       }) || null;
+
+      // Fallback: find the closest role by start_date if exact match fails
+      if (!roleAtLastInteraction) {
+        let closestDist = Infinity;
+        employmentHistory.forEach(e => {
+          if (!e.start_date) return;
+          const start = new Date(e.start_date).getTime();
+          const dist = Math.abs(start - lastInteractionTs);
+          if (dist < closestDist) {
+            closestDist = dist;
+            roleAtLastInteraction = e;
+          }
+        });
+      }
     }
 
     // Build career moves between last interaction and now
