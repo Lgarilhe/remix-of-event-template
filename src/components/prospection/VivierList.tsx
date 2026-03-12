@@ -343,8 +343,10 @@ function EnrichedContactSheet({ contact, enrichment, open, onOpenChange, onCopyM
     const lastInteractionDate = shortlistDates[0] || noteDates[0] || null;
     const lastInteractionTs = lastInteractionDate ? new Date(lastInteractionDate).getTime() : null;
 
-    // Find current role (first entry without end_date or marked current)
-    const currentRole = employmentHistory.find(e => !e.end_date || e.current) || employmentHistory[0] || null;
+    // Find current role (must be actually current — no end_date or marked current)
+    const currentRole = employmentHistory.find(e => !e.end_date || e.current) || null;
+    // If no current role from history, use the most recent role as "last known"
+    const lastKnownRole = currentRole || employmentHistory[0] || null;
     
     // Find role at the time of last interaction
     let roleAtLastInteraction: typeof currentRole = null;
@@ -383,14 +385,24 @@ function EnrichedContactSheet({ contact, enrichment, open, onOpenChange, onCopyM
       careerMoves.sort((a, b) => (a.startDate || '').localeCompare(b.startDate || ''));
     }
 
-    return { employmentHistory, currentRole, roleAtLastInteraction, lastInteractionDate, careerMoves };
+    return { employmentHistory, currentRole, lastKnownRole, roleAtLastInteraction, lastInteractionDate, careerMoves };
   }, [enrichment, shortlists, notes, contact]);
 
   // Evolution data
   const evolutions = useMemo(() => {
     const items: { emoji: string; title: string; detail: string; type: 'positive' | 'neutral' | 'negative' }[] = [];
     
-    const { roleAtLastInteraction, currentRole, careerMoves, lastInteractionDate } = careerAnalysis;
+    const { roleAtLastInteraction, currentRole, lastKnownRole, careerMoves, lastInteractionDate } = careerAnalysis;
+    
+    // Case: no current role detected (person left last known company)
+    if (!currentRole && lastKnownRole && lastInteractionDate) {
+      items.push({
+        emoji: '❓',
+        title: 'Poste actuel inconnu',
+        detail: `Dernier poste connu : ${lastKnownRole.title} chez ${lastKnownRole.organization_name} (terminé${lastKnownRole.end_date ? ' en ' + new Date(lastKnownRole.end_date).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' }) : ''})`,
+        type: 'negative'
+      });
+    }
     
     // Career move analysis based on Apollo history
     if (roleAtLastInteraction && currentRole && lastInteractionDate) {
@@ -734,12 +746,12 @@ function EnrichedContactSheet({ contact, enrichment, open, onOpenChange, onCopyM
                               { 
                                 label: 'Poste', 
                                 before: careerAnalysis.roleAtLastInteraction?.title || contact.contact_type || null, 
-                                after: careerAnalysis.currentRole?.title || enrichment?.current_job_title 
+                                after: careerAnalysis.currentRole?.title || enrichment?.current_job_title || (careerAnalysis.lastKnownRole && !careerAnalysis.currentRole ? `${careerAnalysis.lastKnownRole.title} (terminé)` : null)
                               },
                               { 
                                 label: 'Entreprise', 
                                 before: careerAnalysis.roleAtLastInteraction?.organization_name || contact.company_name, 
-                                after: careerAnalysis.currentRole?.organization_name || enrichment?.current_company 
+                                after: careerAnalysis.currentRole?.organization_name || enrichment?.current_company || (careerAnalysis.lastKnownRole && !careerAnalysis.currentRole ? `${careerAnalysis.lastKnownRole.organization_name} (quitté)` : null)
                               },
                               { label: 'Localisation', before: contact.city, after: enrichment?.location },
                             ].filter(r => r.before || r.after).map((row, i) => {
