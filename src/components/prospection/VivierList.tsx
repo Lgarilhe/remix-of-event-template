@@ -781,18 +781,6 @@ function EnrichedContactSheet({ contact, enrichment, open, onOpenChange, onCopyM
                   )}
                 </div>
               )}
-                                  <div className="p-2 text-[10px] text-muted-foreground">{row.before || '—'}</div>
-                                  <div className={cn("p-2 text-[10px]", changed ? "font-semibold text-foreground" : "text-muted-foreground")}>{row.after || '—'}</div>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      )}
-                    </>
-                  )}
-                </div>
-              )}
 
               {/* ═══ TAB: ÉQUIPE ═══ */}
               {activeDetailTab === 'equipe' && (
