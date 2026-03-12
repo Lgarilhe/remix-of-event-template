@@ -336,18 +336,30 @@ serve(async (req) => {
     // Build messages for AI
     const messages: Message[] = [];
 
-    // Add job context as first user message if provided
-    if (job_context) {
-      messages.push({
-        role: "user",
-        content: `Contexte du poste:\n- Titre: ${job_context.title}\n- Client: ${job_context.client?.name || "N/A"}\n- Localisation: ${job_context.location || "N/A"}\n- Remote: ${job_context.remote || "N/A"}\n- Séniorité: ${job_context.seniority || "N/A"}\n- XP: ${job_context.xpMin || "?"}-${job_context.xpMax || "?"} ans\n- Skills: ${(job_context.skills || []).join(", ")}\n- Description: ${(job_context.description || "").slice(0, 500)}\n- Must-have: ${job_context.mustHave || "N/A"}\n- Should-have: ${job_context.shouldHave || "N/A"}\n- Nice-to-have: ${job_context.niceToHave || "N/A"}\n- Critères sourcing: ${job_context.sourcingCriteria || "N/A"}`,
-      });
-    }
+    // Prepend job context into the first user message from history (avoid consecutive user messages)
+    const jobContextPrefix = job_context
+      ? `Contexte du poste:\n- Titre: ${job_context.title}\n- Client: ${job_context.client?.name || "N/A"}\n- Localisation: ${job_context.location || "N/A"}\n- Remote: ${job_context.remote || "N/A"}\n- Séniorité: ${job_context.seniority || "N/A"}\n- XP: ${job_context.xpMin || "?"}-${job_context.xpMax || "?"} ans\n- Skills: ${(job_context.skills || []).join(", ")}\n- Description: ${(job_context.description || "").slice(0, 500)}\n- Must-have: ${job_context.mustHave || "N/A"}\n- Should-have: ${job_context.shouldHave || "N/A"}\n- Nice-to-have: ${job_context.niceToHave || "N/A"}\n- Critères sourcing: ${job_context.sourcingCriteria || "N/A"}\n\n`
+      : "";
+    let jobContextInjected = !job_context; // true if no context to inject
 
-    // Add conversation history
+    // Add conversation history, ensuring role alternation
     for (const msg of (history || [])) {
       if (msg.role === "user" || msg.role === "assistant") {
-        messages.push({ role: msg.role as "user" | "assistant", content: msg.content });
+        let content = msg.content;
+
+        // Inject job context into the first user message
+        if (!jobContextInjected && msg.role === "user") {
+          content = jobContextPrefix + content;
+          jobContextInjected = true;
+        }
+
+        // Merge consecutive same-role messages instead of creating duplicates
+        const last = messages[messages.length - 1];
+        if (last && last.role === msg.role) {
+          last.content += "\n\n" + content;
+        } else {
+          messages.push({ role: msg.role as "user" | "assistant", content });
+        }
       }
     }
 
