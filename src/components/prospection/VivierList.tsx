@@ -328,13 +328,11 @@ function EnrichedContactSheet({ contact, enrichment, open, onOpenChange, onCopyM
     const apolloData = enrichment?.apollo_data;
     const employmentHistory: { title: string; organization_name: string; start_date?: string; end_date?: string; current?: boolean }[] = apolloData?.employment_history || [];
     
-    // Find last interaction date from timeline
-    const allDates = [
-      ...shortlists.map((s: any) => s.date_added),
-      ...notes.map((n: any) => n.note_date),
-      ...(contact?.last_interaction_date ? [contact.last_interaction_date] : []),
-    ].filter(Boolean).sort().reverse();
-    const lastInteractionDate = allDates[0] || null;
+    // Find last interaction date — prioritize shortlist dates (most reliable)
+    const shortlistDates = shortlists.map((s: any) => s.date_added).filter(Boolean).sort().reverse();
+    const noteDates = notes.map((n: any) => n.note_date).filter(Boolean).sort().reverse();
+    // Use last shortlist date as primary, fallback to notes
+    const lastInteractionDate = shortlistDates[0] || noteDates[0] || null;
     const lastInteractionTs = lastInteractionDate ? new Date(lastInteractionDate).getTime() : null;
 
     // Find current role (first entry without end_date or marked current)
