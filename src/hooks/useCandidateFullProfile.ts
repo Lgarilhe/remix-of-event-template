@@ -32,6 +32,12 @@ export interface SequenceEnrollmentInfo {
   connectionStatus: string | null;
 }
 
+export interface ScoringDimension {
+  score: number;
+  weight: number;
+  details: string;
+}
+
 export interface ScoringRecord {
   id: string;
   jobId: string;
@@ -51,6 +57,11 @@ export interface ScoringRecord {
     salary_analysis?: any;
     strengths?: string[];
     weaknesses?: string[];
+    concerns?: string[];
+    dimensions?: Record<string, ScoringDimension>;
+    llmScore?: number;
+    hardFilterPassed?: boolean;
+    hardFilterKO?: string;
   } | null;
   createdAt: string;
   updatedAt: string;
