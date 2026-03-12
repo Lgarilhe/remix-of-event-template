@@ -79,10 +79,58 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
 
   const fullProfile = useCandidateFullProfile(candidate.candidateId, candidate.linkedin);
   const { data: notionJobs } = useNotionJobs();
+  const [profileSnapshot, setProfileSnapshot] = useState<any | null>(candidate.linkedinProfileData ?? null);
+  const [snapshotLoading, setSnapshotLoading] = useState(false);
+
+  useEffect(() => {
+    setProfileSnapshot(candidate.linkedinProfileData ?? null);
+
+    if (candidate.linkedinProfileData) {
+      setSnapshotLoading(false);
+      return;
+    }
+
+    let isMounted = true;
+
+    const fetchLinkedInSnapshot = async () => {
+      setSnapshotLoading(true);
+      try {
+        const { data, error } = await supabase
+          .from('job_candidate_status')
+          .select('linkedin_profile_data')
+          .eq('candidate_id', candidate.candidateId)
+          .not('linkedin_profile_data', 'is', null)
+          .order('updated_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (error) throw error;
+
+        if (isMounted && data?.linkedin_profile_data) {
+          setProfileSnapshot(data.linkedin_profile_data);
+        }
+      } catch (error) {
+        console.warn('[ATS] Snapshot LinkedIn indisponible:', error);
+      } finally {
+        if (isMounted) setSnapshotLoading(false);
+      }
+    };
+
+    void fetchLinkedInSnapshot();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [candidate.candidateId, candidate.linkedinProfileData]);
+
+  const candidateWithProfileData = React.useMemo<ATSCandidate>(() => ({
+    ...candidate,
+    linkedinProfileData: profileSnapshot ?? candidate.linkedinProfileData ?? null,
+  }), [candidate, profileSnapshot]);
 
   // Build enriched profile from stored LinkedIn data (no API call needed)
   const enrichedProfile: EnrichedProfile | null = React.useMemo(() => {
-    const raw = candidate.linkedinProfileData;
+    const raw = candidateWithProfileData.linkedinProfileData;
     if (!raw) return null;
     
     const workExperience = raw.work_experience || [];
@@ -125,9 +173,9 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
       yearsOfExperience,
       languages: raw.languages?.map((l: any) => typeof l === 'string' ? l : l.name).filter(Boolean) || [],
     };
-  }, [candidate.linkedinProfileData, candidate.name, candidate.headline]);
-  
-  const enrichLoading = false;
+  }, [candidateWithProfileData.linkedinProfileData, candidate.name, candidate.headline]);
+
+  const enrichLoading = snapshotLoading && !candidateWithProfileData.linkedinProfileData;
 
   // Build job details from Notion jobs + sourcing project
   const [projectNotes, setProjectNotes] = useState<string | null>(null);
@@ -978,7 +1026,7 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
 
             {/* ==================== FRAUD DETECTION TAB ==================== */}
             {activeTab === 'fraud' && (
-              <FraudDetectionTab candidate={candidate} />
+              <FraudDetectionTab candidate={candidateWithProfileData} />
             )}
 
             {/* ==================== ACTIVITY TAB ==================== */}
