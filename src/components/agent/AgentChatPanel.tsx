@@ -121,7 +121,7 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({ onClose }) => {
   return (
     <div className="flex flex-col h-full bg-background relative">
       {/* Header */}
-      <div className="flex items-center gap-2.5 px-4 py-3 border-b-2 border-foreground shrink-0 bg-background">
+      <div className="flex items-center gap-2.5 px-4 py-3 border-b border-foreground/10 shrink-0 bg-background">
         <button
           onClick={() => setShowList(true)}
           className="h-7 w-7 border border-foreground flex items-center justify-center hover:bg-foreground hover:text-background transition-colors"
@@ -206,20 +206,20 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({ onClose }) => {
 
 function AgentHeader({ onClose }: { onClose?: () => void }) {
   return (
-    <div className="flex items-center justify-between px-4 py-3 border-b-2 border-foreground bg-foreground text-background">
+    <div className="flex items-center justify-between px-4 py-3 border-b border-foreground/10 bg-background">
       <div className="flex items-center gap-2.5">
-        <div className="h-8 w-8 border-2 border-background/30 flex items-center justify-center">
+        <div className="h-8 w-8 bg-foreground text-background flex items-center justify-center">
           <Bot className="w-4 h-4" />
         </div>
         <div>
-          <span className="text-xs font-bold uppercase tracking-wider">Agent de recherche</span>
-          <p className="text-[9px] opacity-60 uppercase tracking-wider">Sourcing automatisé</p>
+          <span className="text-xs font-bold uppercase tracking-wider text-foreground">Agent de recherche</span>
+          <p className="text-[9px] text-muted-foreground uppercase tracking-wider">Sourcing automatisé</p>
         </div>
       </div>
       {onClose && (
         <button
           onClick={onClose}
-          className="text-[10px] font-bold uppercase tracking-wider opacity-60 hover:opacity-100 transition-opacity border border-background/30 px-2 py-1"
+          className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors border border-foreground/10 px-2.5 py-1 hover:border-foreground/30"
         >
           Fermer
         </button>
@@ -256,7 +256,7 @@ function AgentInputBar({
   inputRef: React.RefObject<HTMLTextAreaElement>;
 }) {
   return (
-    <div className="shrink-0 border-t-2 border-foreground p-3 bg-background z-10">
+    <div className="shrink-0 border-t border-foreground/10 p-3 bg-background z-10">
       <div className="flex items-end gap-2">
         <textarea
           ref={inputRef}
@@ -265,7 +265,7 @@ function AgentInputBar({
           onKeyDown={onKeyDown}
           placeholder="Décrivez le profil recherché…"
           rows={1}
-          className="flex-1 resize-none px-3 py-2.5 text-xs border-2 border-foreground bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-brutal-accent min-h-[38px] max-h-[100px] transition-colors"
+          className="flex-1 resize-none px-3 py-2.5 text-xs border border-foreground/15 bg-muted/30 text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-foreground/40 focus:bg-background min-h-[38px] max-h-[100px] transition-colors"
           style={{ height: 'auto', overflow: 'auto' }}
           onInput={(e) => {
             const target = e.target as HTMLTextAreaElement;
@@ -277,10 +277,10 @@ function AgentInputBar({
           onClick={onSend}
           disabled={!input.trim() || sending}
           className={cn(
-            "h-[38px] w-[38px] flex items-center justify-center border-2 border-foreground transition-all shrink-0",
+            "h-[38px] w-[38px] flex items-center justify-center border border-foreground/15 transition-all shrink-0",
             input.trim() && !sending
-              ? "bg-foreground text-background hover:bg-brutal-accent hover:border-brutal-accent hover:text-foreground"
-              : "bg-muted text-muted-foreground cursor-not-allowed border-muted"
+              ? "bg-foreground text-background hover:opacity-80"
+              : "bg-muted text-muted-foreground cursor-not-allowed border-foreground/10"
           )}
         >
           {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}

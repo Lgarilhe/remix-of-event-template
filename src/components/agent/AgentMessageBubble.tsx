@@ -1,6 +1,6 @@
 import React from 'react';
 import ReactMarkdown from 'react-markdown';
-import { Bot, User, CheckCircle2, MapPin, Calendar, Target } from 'lucide-react';
+import { Bot, CheckCircle2, MapPin, Calendar, Target } from 'lucide-react';
 import { AgentMessage } from '@/hooks/useAgentChat';
 import { cn } from '@/lib/utils';
 
@@ -36,22 +36,29 @@ export const AgentMessageBubble: React.FC<AgentMessageBubbleProps> = ({ message,
     );
   }
 
-  return (
-    <div className={cn("flex gap-2", isUser ? "justify-end" : "justify-start")}>
-      {!isUser && (
-        <div className="h-6 w-6 bg-foreground text-background flex items-center justify-center shrink-0 mt-0.5">
-          <Bot className="w-3 h-3" />
+  // ── User message: simple right-aligned, subtle bg ──
+  if (isUser) {
+    return (
+      <div className="flex justify-end">
+        <div className="max-w-[75%] bg-muted text-foreground px-3.5 py-2.5 text-[11px] leading-relaxed">
+          <div className="prose prose-xs prose-neutral dark:prose-invert max-w-none [&_p]:my-0.5 text-[11px]">
+            <ReactMarkdown>{cleanContent}</ReactMarkdown>
+          </div>
         </div>
-      )}
+      </div>
+    );
+  }
 
-      <div className={cn(
-        "max-w-[85%] text-[11px] leading-relaxed",
-        isUser
-          ? "bg-foreground text-background px-3 py-2"
-          : "border-2 border-foreground/10 px-3 py-2"
-      )}>
+  // ── Assistant message: left-aligned, no border, clean ──
+  return (
+    <div className="flex gap-2.5 justify-start">
+      <div className="h-6 w-6 bg-foreground text-background flex items-center justify-center shrink-0 mt-1">
+        <Bot className="w-3 h-3" />
+      </div>
+
+      <div className="max-w-[85%] text-[11px] leading-relaxed text-foreground">
         {cleanContent && (
-          <div className="prose prose-xs prose-neutral dark:prose-invert max-w-none [&_p]:my-1 [&_ul]:my-1 [&_li]:my-0 [&_h1]:text-xs [&_h2]:text-[11px] [&_h3]:text-[11px] [&_h1]:my-1.5 [&_h2]:my-1.5 [&_h3]:my-1 [&_strong]:font-bold text-[11px]">
+          <div className="prose prose-xs prose-neutral dark:prose-invert max-w-none [&_p]:my-1 [&_ul]:my-1 [&_ol]:my-1 [&_li]:my-0 [&_h1]:text-xs [&_h2]:text-[11px] [&_h3]:text-[11px] [&_h1]:my-1.5 [&_h2]:my-1.5 [&_h3]:my-1 [&_strong]:font-bold [&_hr]:my-2 [&_hr]:border-foreground/10 text-[11px]">
             <ReactMarkdown>{cleanContent}</ReactMarkdown>
           </div>
         )}
@@ -59,15 +66,9 @@ export const AgentMessageBubble: React.FC<AgentMessageBubbleProps> = ({ message,
         {searchPlan && <SearchPlanCard plan={searchPlan} />}
 
         {isStreaming && (
-          <span className="inline-block w-1.5 h-3 bg-brutal-accent animate-pulse ml-0.5" />
+          <span className="inline-block w-1.5 h-3 bg-brutal-accent animate-pulse ml-0.5 mt-1" />
         )}
       </div>
-
-      {isUser && (
-        <div className="h-6 w-6 border-2 border-foreground/20 flex items-center justify-center shrink-0 mt-0.5">
-          <User className="w-3 h-3 text-muted-foreground" />
-        </div>
-      )}
     </div>
   );
 };
@@ -77,11 +78,9 @@ function SearchPlanCard({ plan }: { plan: Record<string, unknown> }) {
   const stopConditions = (plan as any).stop_conditions || {};
 
   return (
-    <div className="mt-2 border-2 border-foreground bg-background p-3 space-y-2">
+    <div className="mt-3 border border-foreground/10 bg-muted/30 p-3 space-y-2">
       <div className="flex items-center gap-2">
-        <div className="h-5 w-5 bg-foreground text-background flex items-center justify-center">
-          <CheckCircle2 className="w-3 h-3" />
-        </div>
+        <CheckCircle2 className="w-3.5 h-3.5 text-brutal-accent" />
         <span className="text-[10px] font-bold uppercase tracking-wider text-foreground">
           Plan de recherche
         </span>
@@ -110,7 +109,7 @@ function SearchPlanCard({ plan }: { plan: Record<string, unknown> }) {
 
 function PlanPill({ icon: Icon, label }: { icon: React.ElementType; label: string }) {
   return (
-    <div className="flex items-center gap-1 px-2 py-1 border border-foreground/20 bg-muted/30 text-[9px] font-medium text-foreground">
+    <div className="flex items-center gap-1 px-2 py-1 border border-foreground/10 bg-background text-[9px] font-medium text-foreground">
       <Icon className="w-2.5 h-2.5 text-muted-foreground" />
       {label}
     </div>
