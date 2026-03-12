@@ -363,7 +363,7 @@ serve(async (req) => {
         max_tokens: 16000,
         thinking: {
           type: "enabled",
-          budget_tokens: 8000,
+          budget_tokens: 16000,
         },
         system: [{ type: "text", text: systemPrompt, cache_control: { type: "ephemeral" } }],
         messages,
