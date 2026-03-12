@@ -186,6 +186,7 @@ export const useAgentChat = (conversationId: string | null) => {
       const decoder = new TextDecoder();
       let accumulated = '';
       let accumulatedThinking = '';
+      let serverConfirmedAction: Record<string, unknown> | null = null;
 
       while (true) {
         const { done, value } = await reader.read();
@@ -200,6 +201,14 @@ export const useAgentChat = (conversationId: string | null) => {
             if (data === '[DONE]') continue;
             try {
               const parsed = JSON.parse(data);
+
+              // Server-side confirmation event (emitted after DB save)
+              if (parsed.done === true) {
+                if (parsed.agent_action) {
+                  serverConfirmedAction = parsed.agent_action as Record<string, unknown>;
+                }
+                continue;
+              }
               
               // Handle thinking content
               const thinkingText = parsed.choices?.[0]?.delta?.thinking;
@@ -237,13 +246,12 @@ export const useAgentChat = (conversationId: string | null) => {
         if (planMatch) {
           try { metadata.search_plan = JSON.parse(planMatch[1]); } catch {}
         }
-        const actionMatch = accumulated.match(/\[AGENT_ACTION\]\s*([\s\S]*?)\s*\[\/AGENT_ACTION\]/);
-        if (actionMatch) {
-          try { metadata.agent_action = JSON.parse(actionMatch[1]); } catch {}
-          if ((metadata.agent_action as any)?.action === 'start_search') {
-            setConversation(prev => prev ? { ...prev, status: 'running' } : null);
-            triggerSearch(convId);
-          }
+
+        // Only trigger search if server confirmed the action (plan is saved in DB)
+        if (serverConfirmedAction && (serverConfirmedAction as any)?.action === 'start_search') {
+          metadata.agent_action = serverConfirmedAction;
+          setConversation(prev => prev ? { ...prev, status: 'running' } : null);
+          triggerSearch(convId);
         }
 
         setMessages(prev => [...prev, {
