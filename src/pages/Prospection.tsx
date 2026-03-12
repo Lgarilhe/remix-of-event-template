@@ -88,17 +88,21 @@ export default function Prospection() {
 
       <main className="pt-16 sm:pt-20 pb-8 w-full max-w-full">
         <div className="max-w-[1800px] mx-auto w-full min-w-0 px-3 sm:px-6 lg:px-8">
-          {/* Header */}
-          <div className="flex items-center gap-2 mb-4 hidden md:flex">
-            <div className="h-8 w-8 bg-foreground text-background flex items-center justify-center shrink-0">
-              <Crosshair className="w-4 h-4" />
+          {/* Compact header bar with title + tabs inline */}
+          <div className="flex items-center gap-3 mb-3 md:mb-5">
+            {/* Title — desktop only */}
+            <div className="hidden md:flex items-center gap-2 shrink-0">
+              <div className="h-8 w-8 bg-foreground text-background flex items-center justify-center shrink-0">
+                <Crosshair className="w-4 h-4" />
+              </div>
+              <h1 className="text-lg font-bold text-foreground uppercase tracking-tight">Prospection</h1>
             </div>
-            <h1 className="text-xl sm:text-2xl font-bold text-foreground uppercase tracking-tight">Prospection</h1>
-          </div>
 
-          {/* Tabs */}
-          <div className="mb-3 md:mb-5">
-            <div className="flex gap-0 w-full min-w-0 overflow-x-auto no-scrollbar">
+            {/* Separator — desktop only */}
+            <div className="hidden md:block w-px h-6 bg-border" />
+
+            {/* Tabs */}
+            <div className="flex gap-0 min-w-0 overflow-x-auto no-scrollbar">
               {tabs.map((tab, index) => {
                 const isActive = activeTab === tab.value;
                 return (
@@ -106,7 +110,7 @@ export default function Prospection() {
                     key={tab.value}
                     onClick={() => setActiveTab(tab.value)}
                     className={cn(
-                      "relative overflow-hidden flex items-center justify-center gap-1 h-[34px] px-2 sm:px-4 text-[10px] sm:text-xs font-medium uppercase tracking-wider border border-foreground transition-colors duration-200 group shrink-0",
+                      "relative overflow-hidden flex items-center justify-center gap-1 h-[34px] px-3 sm:px-4 text-[10px] sm:text-xs font-medium uppercase tracking-wider border border-foreground transition-colors duration-200 group shrink-0",
                       index > 0 && "border-l-0",
                       isActive
                         ? "bg-brutal-accent text-foreground"
