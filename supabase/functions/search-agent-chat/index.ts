@@ -62,7 +62,7 @@ Le moteur résout automatiquement les noms textuels en IDs LinkedIn via l'API ge
 
 --- FILTRES TEXTUELS (envoyés directement) ---
 
-1. **keywords** (string) → TECHNOLOGIES/COMPÉTENCES UNIQUEMENT
+1. **keywords** (string) → TECHNOLOGIES/COMPÉTENCES UNIQUEMENT (Boolean query)
    - Requête Boolean: (Tech1 OR Syn1) AND (Tech2 OR Syn2) NOT (exclusions)
    - NE PAS inclure titres de poste, localisation, ni noms d'entreprises ici
    - Max ~200 caractères
@@ -74,54 +74,57 @@ Le moteur résout automatiquement les noms textuels en IDs LinkedIn via l'API ge
    - Scopes: "CURRENT", "PAST", "CURRENT_OR_PAST"
    - Priorities: "MUST_HAVE", "CAN_HAVE", "DOESNT_HAVE"
 
-3. **company_keywords** (array d'objets ou strings) → ENTREPRISES ACTUELLES
-   - Format simple: ["Google", "Meta", "Datadog"]
-   - Format avancé: [{"keywords": "Google", "priority": "MUST_HAVE", "scope": "CURRENT"}]
-   - Scopes: "CURRENT", "PAST", "CURRENT_OR_PAST"
+--- FILTRES À RÉSOLUTION D'IDS (texte → résolu automatiquement en IDs LinkedIn) ---
+
+3. **company_keywords** (array de strings) → ENTREPRISES ACTUELLES
+   - Noms textuels: ["Google", "Meta", "Datadog"]
+   - Résolu automatiquement en IDs LinkedIn via get_parameters type COMPANY
 
 4. **past_company_keywords** (array de strings) → ENTREPRISES PASSÉES
-   - ["McKinsey", "BCG", "Bain"]
+   - Noms textuels: ["McKinsey", "BCG", "Bain"]
+   - Résolu automatiquement en IDs LinkedIn via get_parameters type COMPANY
 
-5. **skills_filter** (array d'objets ou strings) → COMPÉTENCES STRUCTURÉES
-   - Format: [{"keywords": "Python", "priority": "MUST_HAVE"}]
+5. **skills_filter** (array de strings) → COMPÉTENCES STRUCTURÉES
+   - Noms textuels: ["Python", "Machine Learning", "Kubernetes"]
+   - Résolu automatiquement en IDs LinkedIn via get_parameters type SKILL
    - Utilisé en PLUS de keywords pour un ciblage précis
 
-6. **seniority** (array de strings) → NIVEAU HIÉRARCHIQUE
-   - Valeurs Recruiter: "owner", "partner", "cxo", "vp", "director", "manager", "senior", "entry", "training", "unpaid"
-
-7. **network_distance** (array de numbers) → DEGRÉ DE CONNEXION
-   - [1, 2, 3] → 1er, 2e, 3e+ degré
-
-8. **profile_language** (array de strings) → LANGUE DU PROFIL
-   - Codes ISO 639-1: ["fr", "en", "de"]
-
---- FILTRES À RÉSOLUTION D'IDS (noms textuels résolus automatiquement) ---
-
-9. **location_keywords** (array de strings) → LOCALISATION
+6. **location_keywords** (array de strings) → LOCALISATION
    - Noms de villes/régions: ["Paris", "Lyon", "Île-de-France"]
-   - Résolu automatiquement en IDs LinkedIn
+   - Résolu automatiquement en IDs LinkedIn via get_parameters type LOCATION
 
-10. **location_within_area** (number|null) → Rayon en MILES autour de la localisation
+7. **location_within_area** (number|null) → Rayon en MILES autour de la localisation
 
-11. **industry_keywords** (array de strings) → SECTEUR D'ACTIVITÉ
-    - ["Technology", "Financial Services", "Healthcare"]
-    - Résolu automatiquement en IDs LinkedIn
+8. **industry_keywords** (array de strings) → SECTEUR D'ACTIVITÉ
+   - ["Technology", "Financial Services", "Healthcare"]
+   - Résolu automatiquement en IDs LinkedIn via get_parameters type INDUSTRY
 
-12. **school_keywords** (array de strings) → ÉCOLES/UNIVERSITÉS
-    - ["Polytechnique", "HEC Paris", "ESSEC"]
-    - Résolu automatiquement en IDs LinkedIn
+9. **school_keywords** (array de strings) → ÉCOLES/UNIVERSITÉS
+   - ["Polytechnique", "HEC Paris", "ESSEC"]
+   - Résolu automatiquement en IDs LinkedIn via get_parameters type SCHOOL
 
-13. **function_keywords** (array de strings) → DÉPARTEMENT/FONCTION
+10. **function_keywords** (array de strings) → DÉPARTEMENT/FONCTION
     - ["Engineering", "Marketing", "Finance", "Sales"]
-    - Résolu automatiquement en IDs LinkedIn
+    - Résolu automatiquement en IDs LinkedIn via get_parameters type JOB_FUNCTION
 
-14. **group_keywords** (array de strings) → GROUPES LINKEDIN
+11. **group_keywords** (array de strings) → GROUPES LINKEDIN
     - ["French Tech", "Product Hunt"]
-    - Résolu automatiquement en IDs LinkedIn
+    - Résolu automatiquement en IDs LinkedIn via get_parameters type GROUPS
+
+--- FILTRES ENUM (valeurs directes, pas de résolution) ---
+
+12. **seniority** (array de strings) → NIVEAU HIÉRARCHIQUE
+    - Valeurs Recruiter: "owner", "partner", "cxo", "vp", "director", "manager", "senior", "entry", "training", "unpaid"
+
+13. **network_distance** (array de numbers) → DEGRÉ DE CONNEXION
+    - [1, 2, 3] → 1er, 2e, 3e+ degré
+
+14. **profile_language** (array de strings) → LANGUE DU PROFIL
+    - Codes ISO 639-1: ["fr", "en", "de"]
 
 --- FILTRES AVANCÉS ---
 
-15. **tenure_min / tenure_max** (numbers) → ANNÉES D'EXPÉRIENCE TOTALES (filtre LinkedIn natif)
+15. **tenure_min / tenure_max** (numbers) → ANNÉES D'EXPÉRIENCE (filtre LinkedIn natif)
     - Valeurs min valides: 0, 1, 3, 6, 10
     - Valeurs max valides: 1, 2, 5, 10
 
@@ -185,7 +188,7 @@ Tu DOIS TOUJOURS retourner calculated_experience_min ET calculated_experience_ma
     "industry_keywords": [],
     "school_keywords": [],
     "function_keywords": [],
-    "skills_filter": [],
+    "skills_filter": ["Python", "Machine Learning"],
     "network_distance": [],
     "profile_language": [],
     "tenure_min": null,
@@ -228,7 +231,9 @@ RÈGLES:
 - open_to_work = false par défaut
 - Max 200 chars pour le champ keywords
 - Localisation dans location_keywords, PAS dans keywords
-- Titres dans role, PAS dans keywords`;
+- Titres dans role, PAS dans keywords
+- Entreprises dans company_keywords (texte), PAS dans keywords
+- Skills dans skills_filter (texte) ET keywords (Boolean)`;
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
