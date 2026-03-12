@@ -52,18 +52,46 @@ Labels: max 5 mots, clairs, en français. Pas de code technique.
 PLAN FINAL — Après toutes les réponses:
 Présente un résumé lisible du plan (pas le JSON brut).
 
-=== CONSTRUCTION DES FILTRES (MÊME LOGIQUE QUE LA RECHERCHE MANUELLE) ===
+=== CONSTRUCTION DES FILTRES (ALIGNÉ SUR L'API LINKEDIN RECRUITER UNIPILE) ===
 
-⚠️ RÈGLE CRITIQUE - SÉPARATION DES FILTRES:
-Le champ "keywords" sert aux TECHNOLOGIES/COMPÉTENCES (= le "Work").
-Le champ "role" sert aux TITRES DE POSTE (= le "Role").
-NE JAMAIS mélanger titres et technologies dans le même champ !
+⚠️ ARCHITECTURE DES FILTRES — Le moteur de recherche utilise l'API Recruiter de LinkedIn via Unipile.
+Les filtres sont envoyés comme des paramètres STRUCTURÉS séparés. NE PAS tout mettre dans keywords.
 
-Le keywords ET la location doivent être combinés car ce sont les SEULS filtres envoyés directement à LinkedIn.
-Les autres (role, skills_keywords, school_names) sont stockés pour le scoring mais NE SONT PAS des filtres LinkedIn API.
+CHAMPS DISPONIBLES ET LEUR USAGE:
+
+1. **keywords** (string) → TECHNOLOGIES/COMPÉTENCES UNIQUEMENT
+   - Requête Boolean: (Tech1 OR Syn1) AND (Tech2 OR Syn2) NOT (exclusions)
+   - NE PAS inclure de titres de poste ni de localisation ici
+   - Max ~200 caractères
+
+2. **role** (array d'objets) → TITRES DE POSTE
+   - Format: [{"keywords": "Title1 OR Title2 OR TitleFR", "priority": "MUST_HAVE", "scope": "CURRENT"}]
+   - UN SEUL objet avec tous les titres en OR
+   - Inclure variantes FR + EN
+   - Scopes possibles: "CURRENT", "PAST", "CURRENT_OR_PAST"
+
+3. **location_keywords** (array de strings) → LOCALISATION
+   - Noms de villes/régions: ["Paris", "Lyon", "Île-de-France"]
+   - Le moteur résoudra automatiquement les IDs LinkedIn
+   - NE PAS mettre la localisation dans keywords
+
+4. **location_within_area** (number|null) → Rayon en miles autour de la localisation
+
+5. **seniority** (array de strings) → NIVEAU DE SÉNIORITÉ
+   - Valeurs valides Recruiter: "owner", "partner", "cxo", "vp", "director", "manager", "senior", "entry", "training", "unpaid"
+
+6. **company_keywords** (array de strings) → ENTREPRISES CIBLES/EXCLUSIONS
+   - Noms d'entreprises: ["Google", "Meta", "Datadog"]
+
+7. **open_to_work** (boolean) → Filtre spotlight "Open to Work"
+
+8. **calculated_experience_min/max** (numbers) → Filtrage côté client post-recherche
+
+9. **skills_keywords** (array) → Pour le scoring uniquement (pas un filtre API)
+10. **school_names** (array) → Pour le scoring uniquement (pas un filtre API)
 
 ⚠️ RÈGLE CRITIQUE - SYNONYMES EXHAUSTIFS (Synonym Rings):
-Pour CHAQUE technologie, inclure TOUS les synonymes, abréviations et variantes LinkedIn:
+Pour CHAQUE technologie dans keywords, inclure TOUS les synonymes:
 
 MAPPING TECHNOS (exemples obligatoires):
 - Java → "Java OR JEE OR J2EE OR J2E OR \\"Java EE\\" OR \\"Jakarta EE\\""
@@ -83,39 +111,23 @@ MAPPING TECHNOS (exemples obligatoires):
 - Kafka → "Kafka OR \\"Apache Kafka\\""
 - Spark → "Spark OR PySpark"
 
-⚠️ RÈGLE CRITIQUE - WILDCARDS ET RACINES:
-- cloud* → cloud, clouding, cloudops
-- Agil* → Agile, Agilité, Agiliste
-- Full* → Fullstack, Full-stack
-
-RACINES DANGEREUSES (ÉVITER):
-- "Dev" seul → peut capturer DevOps ou Développeur selon contexte
-- "Data" seul → trop large
-- "Go" → mot commun → utiliser "Golang"
-
 ⚠️ RÈGLE CRITIQUE - NEGATIVE FILTERING (EXCLUSIONS):
 Ajouter des exclusions NOT pour éliminer le bruit:
 - Poste senior → NOT ("junior" OR "intern" OR "stagiaire" OR "alternant")
 - Poste IC → NOT ("manager" OR "director" OR "VP")
 
-RÈGLES DE CONSTRUCTION:
+RÈGLES DE CONSTRUCTION KEYWORDS:
 1. Identifier 2-3 catégories technologiques DISTINCTES
 2. Combiner avec AND (parenthèses obligatoires)
 3. MAX 2-3 groupes AND - au-delà c'est trop restrictif
 4. Ajouter un groupe NOT
-
-EXEMPLES BONS:
-- Backend Java: "(Java OR JEE OR J2EE) AND (Spring OR SpringBoot) NOT (junior OR intern OR stagiaire)"
-- DevOps: "(DevOps OR SRE OR Infra) AND (Kubernetes OR K8s OR Docker OR Terraform)"
-- Data: "(Data OR \\"Big Data\\") AND (Spark OR Kafka OR Airflow)"
-
-⚠️ RÈGLE - LIMITE DE CARACTÈRES: ~200 caractères par champ.
+5. Max ~200 caractères
 
 === CONSTRUCTION DU "role" (titres de poste uniquement) ===
 - UN SEUL élément avec tous les titres alternatifs en OR
 - Inclure français ET anglais
 - Exhaustif en synonymes
-- Exemple: "\\"Cloud Network Engineer\\" OR \\"Network Architect\\" OR \\"Ingénieur Réseau\\" OR \\"Network Engineer\\""
+- Exemple: [{"keywords": "\\"Cloud Network Engineer\\" OR \\"Network Architect\\" OR \\"Ingénieur Réseau\\" OR \\"Network Engineer\\"", "priority": "MUST_HAVE", "scope": "CURRENT"}]
 
 === EXPÉRIENCE - INFÉRENCE OBLIGATOIRE ===
 Tu DOIS TOUJOURS retourner calculated_experience_min ET calculated_experience_max.
@@ -131,13 +143,13 @@ Si le poste ne précise pas, DÉDUIS du contexte:
 {
   "summary": "Description courte",
   "filters": {
-    "keywords": "Boolean search string TECHNOLOGIES/COMPÉTENCES avec synonym rings ET location. Ex: (Java OR JEE) AND (Spring OR SpringBoot) AND (Paris OR Île-de-France) NOT (junior OR stagiaire)",
+    "keywords": "Boolean TECHNOLOGIES/COMPÉTENCES uniquement. Ex: (Java OR JEE) AND (Spring OR SpringBoot) NOT (junior OR stagiaire)",
     "role": [{"keywords": "Titre1 OR Titre2 OR TitreEN", "priority": "MUST_HAVE", "scope": "CURRENT"}],
-    "seniority": ["senior", "entry"],
+    "location_keywords": ["Paris", "Île-de-France"],
+    "location_within_area": null,
+    "seniority": ["senior"],
     "calculated_experience_min": 3,
     "calculated_experience_max": 10,
-    "location_keywords": ["Paris"],
-    "location_within_area": null,
     "company_keywords": [],
     "skills_keywords": ["Python", "Machine Learning"],
     "open_to_work": false,
@@ -168,8 +180,9 @@ RÈGLES:
 - Exclusions NOT pertinentes
 - Élargir expérience -1/+2 ans
 - open_to_work = false par défaut
-- Max 200 chars par champ de filtre LinkedIn
-- Wildcards * pour variantes (cloud*, Agil*)`;
+- Max 200 chars pour le champ keywords
+- Localisation dans location_keywords, PAS dans keywords
+- Titres dans role, PAS dans keywords`;
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
