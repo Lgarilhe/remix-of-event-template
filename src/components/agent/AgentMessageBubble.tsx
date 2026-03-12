@@ -27,21 +27,25 @@ export const AgentMessageBubble: React.FC<AgentMessageBubbleProps> = ({ message,
 
   const searchPlan = message.metadata?.search_plan as Record<string, unknown> | undefined;
 
+  // ── Status message ──
   if (isStatus) {
     return (
-      <div className="flex items-center gap-2.5 px-3 py-2 border-l-2 border-brutal-accent bg-brutal-accent/5 text-[10px] text-foreground/70">
-        <span className="h-1.5 w-1.5 bg-brutal-accent rounded-full animate-pulse" />
-        <span className="font-medium">{cleanContent}</span>
+      <div className="flex items-center gap-3 px-4 py-2.5 bg-muted/40 text-xs text-muted-foreground">
+        <span className="relative flex h-2 w-2">
+          <span className="animate-ping absolute inline-flex h-full w-full bg-brutal-accent/60 rounded-full" />
+          <span className="relative inline-flex h-2 w-2 bg-brutal-accent rounded-full" />
+        </span>
+        <span>{cleanContent}</span>
       </div>
     );
   }
 
-  // ── User message: simple right-aligned, subtle bg ──
+  // ── User message ──
   if (isUser) {
     return (
       <div className="flex justify-end">
-        <div className="max-w-[75%] bg-muted text-foreground px-3.5 py-2.5 text-[11px] leading-relaxed">
-          <div className="prose prose-xs prose-neutral dark:prose-invert max-w-none [&_p]:my-0.5 text-[11px]">
+        <div className="max-w-[80%] bg-foreground text-background px-4 py-3 text-sm leading-relaxed">
+          <div className="[&_p]:my-0">
             <ReactMarkdown>{cleanContent}</ReactMarkdown>
           </div>
         </div>
@@ -49,16 +53,16 @@ export const AgentMessageBubble: React.FC<AgentMessageBubbleProps> = ({ message,
     );
   }
 
-  // ── Assistant message: left-aligned, no border, clean ──
+  // ── Assistant message ──
   return (
-    <div className="flex gap-2.5 justify-start">
-      <div className="h-6 w-6 bg-foreground text-background flex items-center justify-center shrink-0 mt-1">
-        <Bot className="w-3 h-3" />
+    <div className="flex gap-3 justify-start">
+      <div className="h-7 w-7 bg-muted flex items-center justify-center shrink-0 mt-0.5">
+        <Bot className="w-4 h-4 text-foreground/70" />
       </div>
 
-      <div className="max-w-[85%] text-[11px] leading-relaxed text-foreground">
+      <div className="flex-1 min-w-0 text-sm leading-relaxed text-foreground">
         {cleanContent && (
-          <div className="prose prose-xs prose-neutral dark:prose-invert max-w-none [&_p]:my-1 [&_ul]:my-1 [&_ol]:my-1 [&_li]:my-0 [&_h1]:text-xs [&_h2]:text-[11px] [&_h3]:text-[11px] [&_h1]:my-1.5 [&_h2]:my-1.5 [&_h3]:my-1 [&_strong]:font-bold [&_hr]:my-2 [&_hr]:border-foreground/10 text-[11px]">
+          <div className="prose prose-sm prose-neutral dark:prose-invert max-w-none [&_p]:my-1.5 [&_ul]:my-2 [&_ol]:my-2 [&_li]:my-0.5 [&_h1]:text-base [&_h2]:text-sm [&_h3]:text-sm [&_h1]:font-bold [&_h2]:font-bold [&_h3]:font-semibold [&_h1]:mt-3 [&_h1]:mb-1.5 [&_h2]:mt-3 [&_h2]:mb-1.5 [&_h3]:mt-2 [&_h3]:mb-1 [&_strong]:font-bold [&_hr]:my-3 [&_hr]:border-foreground/8 [&_code]:text-xs [&_code]:bg-muted [&_code]:px-1.5 [&_code]:py-0.5 text-sm">
             <ReactMarkdown>{cleanContent}</ReactMarkdown>
           </div>
         )}
@@ -66,7 +70,7 @@ export const AgentMessageBubble: React.FC<AgentMessageBubbleProps> = ({ message,
         {searchPlan && <SearchPlanCard plan={searchPlan} />}
 
         {isStreaming && (
-          <span className="inline-block w-1.5 h-3 bg-brutal-accent animate-pulse ml-0.5 mt-1" />
+          <span className="inline-block w-0.5 h-4 bg-foreground/40 animate-pulse ml-0.5 mt-1" />
         )}
       </div>
     </div>
@@ -78,26 +82,26 @@ function SearchPlanCard({ plan }: { plan: Record<string, unknown> }) {
   const stopConditions = (plan as any).stop_conditions || {};
 
   return (
-    <div className="mt-3 border border-foreground/10 bg-muted/30 p-3 space-y-2">
-      <div className="flex items-center gap-2">
-        <CheckCircle2 className="w-3.5 h-3.5 text-brutal-accent" />
-        <span className="text-[10px] font-bold uppercase tracking-wider text-foreground">
+    <div className="mt-4 border border-foreground/8 bg-muted/20 p-4 space-y-3">
+      <div className="flex items-center gap-2.5">
+        <CheckCircle2 className="w-4 h-4 text-brutal-accent" />
+        <span className="text-xs font-bold uppercase tracking-wider text-foreground">
           Plan de recherche
         </span>
       </div>
 
       {(plan as any).summary && (
-        <p className="text-[10px] text-muted-foreground leading-relaxed">
+        <p className="text-sm text-muted-foreground leading-relaxed">
           {(plan as any).summary}
         </p>
       )}
 
-      <div className="flex flex-wrap gap-1.5">
+      <div className="flex flex-wrap gap-2">
         {filters.location_keywords?.length > 0 && (
           <PlanPill icon={MapPin} label={filters.location_keywords.join(', ')} />
         )}
         {filters.calculated_experience_min != null && (
-          <PlanPill icon={Calendar} label={`${filters.calculated_experience_min}-${filters.calculated_experience_max} ans`} />
+          <PlanPill icon={Calendar} label={`${filters.calculated_experience_min}–${filters.calculated_experience_max} ans`} />
         )}
         {stopConditions.target_go_profiles && (
           <PlanPill icon={Target} label={`${stopConditions.target_go_profiles} profils Go`} />
@@ -109,9 +113,9 @@ function SearchPlanCard({ plan }: { plan: Record<string, unknown> }) {
 
 function PlanPill({ icon: Icon, label }: { icon: React.ElementType; label: string }) {
   return (
-    <div className="flex items-center gap-1 px-2 py-1 border border-foreground/10 bg-background text-[9px] font-medium text-foreground">
-      <Icon className="w-2.5 h-2.5 text-muted-foreground" />
-      {label}
+    <div className="inline-flex items-center gap-1.5 px-2.5 py-1.5 border border-foreground/8 bg-background text-xs text-foreground">
+      <Icon className="w-3.5 h-3.5 text-muted-foreground" />
+      <span>{label}</span>
     </div>
   );
 }

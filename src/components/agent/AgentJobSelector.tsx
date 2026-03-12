@@ -1,7 +1,7 @@
 import React from 'react';
-import { Plus, Briefcase, Zap } from 'lucide-react';
 import { Job } from '@/types/jobs';
 import { cn } from '@/lib/utils';
+import { ArrowRight } from 'lucide-react';
 
 interface AgentJobSelectorProps {
   jobs: Job[];
@@ -14,13 +14,10 @@ export const AgentJobSelector: React.FC<AgentJobSelectorProps> = ({
   jobs, selectedJob, onSelectJob, onLaunch,
 }) => {
   return (
-    <div className="p-4 border-b border-foreground/10 space-y-3">
-      <div className="flex items-center gap-2">
-        <Briefcase className="w-3 h-3 text-muted-foreground" />
-        <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-          Nouveau sourcing
-        </p>
-      </div>
+    <div className="px-5 py-4 border-b border-foreground/8 space-y-3">
+      <p className="text-xs font-medium text-muted-foreground">
+        Nouveau sourcing
+      </p>
 
       <select
         value={selectedJob?.id || ''}
@@ -28,7 +25,7 @@ export const AgentJobSelector: React.FC<AgentJobSelectorProps> = ({
           const job = jobs.find(j => j.id === e.target.value);
           onSelectJob(job || null);
         }}
-        className="w-full h-9 px-3 text-xs border-2 border-foreground bg-background text-foreground focus:outline-none focus:border-brutal-accent transition-colors"
+        className="w-full h-10 px-3 text-sm border border-foreground/12 bg-background text-foreground focus:outline-none focus:border-foreground/30 transition-colors"
       >
         <option value="">Sélectionner un poste…</option>
         {jobs.map(job => (
@@ -42,14 +39,14 @@ export const AgentJobSelector: React.FC<AgentJobSelectorProps> = ({
         onClick={onLaunch}
         disabled={!selectedJob}
         className={cn(
-          "w-full h-10 text-[11px] font-bold uppercase tracking-wider border-2 flex items-center justify-center gap-2 transition-all",
+          "w-full h-10 text-sm font-medium flex items-center justify-center gap-2 transition-all",
           selectedJob
-            ? "border-foreground bg-foreground text-background hover:bg-brutal-accent hover:border-brutal-accent hover:text-foreground"
-            : "border-muted bg-muted text-muted-foreground cursor-not-allowed"
+            ? "bg-foreground text-background hover:opacity-90"
+            : "bg-muted text-muted-foreground/50 cursor-not-allowed"
         )}
       >
-        <Zap className="w-3.5 h-3.5" />
-        Lancer un agent
+        Lancer l'agent
+        <ArrowRight className="w-4 h-4" />
       </button>
     </div>
   );
