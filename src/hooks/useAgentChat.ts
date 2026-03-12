@@ -248,31 +248,24 @@ export const useAgentChat = (conversationId: string | null) => {
       setStreamingContent('');
       setIsThinking(false);
 
-      if (accumulated) {
-        const metadata: Record<string, unknown> = {};
-        if (accumulatedThinking) {
-          metadata.thinking = accumulatedThinking;
-        }
-        const planMatch = accumulated.match(/\[SEARCH_PLAN\]\s*([\s\S]*?)\s*\[\/SEARCH_PLAN\]/);
-        if (planMatch) {
-          try { metadata.search_plan = JSON.parse(planMatch[1]); } catch {}
-        }
+      // Reload canonical messages from DB — the server already saved
+      // both user + assistant messages, and Realtime may have pushed them too.
+      // This single reload eliminates all duplicate/race issues.
+      const { data: freshMessages } = await supabase
+        .from('agent_messages')
+        .select('*')
+        .eq('conversation_id', convId)
+        .order('created_at', { ascending: true });
+      if (freshMessages) {
+        setMessages(freshMessages as unknown as AgentMessage[]);
+      }
 
-        // Only trigger search if server confirmed the action (plan is saved in DB)
+      // Handle search trigger from accumulated content
+      if (accumulated) {
         if (serverConfirmedAction && (serverConfirmedAction as any)?.action === 'start_search') {
-          metadata.agent_action = serverConfirmedAction;
           setConversation(prev => prev ? { ...prev, status: 'running' } : null);
           triggerSearch(convId);
         }
-
-        setMessages(prev => [...prev, {
-          id: `assistant-${Date.now()}`,
-          conversation_id: convId,
-          role: 'assistant',
-          content: accumulated,
-          metadata,
-          created_at: new Date().toISOString(),
-        }]);
       }
     } catch (err) {
       if ((err as Error).name === 'AbortError') {
