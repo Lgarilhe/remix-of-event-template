@@ -377,7 +377,7 @@ serve(async (req) => {
       }
     }
 
-    // ── 6. Score profiles (sequential with cache lookup) ──
+    // ── 7. Score profiles (sequential with cache lookup) ──
 
     const scoredProfiles: Array<{ profile: any; score: any; fromCache: boolean }> = [];
     const goProfiles: Array<{ profile: any; score: any }> = [];
