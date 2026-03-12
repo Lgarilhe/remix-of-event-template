@@ -256,7 +256,7 @@ function AgentInputBar({
   inputRef: React.RefObject<HTMLTextAreaElement>;
 }) {
   return (
-    <div className="shrink-0 border-t-2 border-foreground p-3 bg-background z-10">
+    <div className="shrink-0 border-t border-foreground/10 p-3 bg-background z-10">
       <div className="flex items-end gap-2">
         <textarea
           ref={inputRef}
