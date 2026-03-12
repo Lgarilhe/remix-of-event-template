@@ -410,10 +410,11 @@ serve(async (req) => {
         while (true) {
           const { done, value } = await reader.read();
           if (done) {
+            // Extract metadata from response
+            const metadata: Record<string, unknown> = {};
+
             // Save full assistant message
             if (fullResponse.trim()) {
-              // Extract metadata from response
-              const metadata: Record<string, unknown> = {};
               const planMatch = fullResponse.match(/\[SEARCH_PLAN\]\s*([\s\S]*?)\s*\[\/SEARCH_PLAN\]/);
               if (planMatch) {
                 try { metadata.search_plan = JSON.parse(planMatch[1]); } catch {}
@@ -438,10 +439,10 @@ serve(async (req) => {
               }
             }
 
-            // Emit plan_saved event so the client knows the DB is up to date
+            // Emit done event so the client knows the DB is up to date
             const donePayload: Record<string, unknown> = { done: true };
-            if (metadata?.search_plan) donePayload.plan_saved = true;
-            if (metadata?.agent_action) donePayload.agent_action = metadata.agent_action;
+            if (metadata.search_plan) donePayload.plan_saved = true;
+            if (metadata.agent_action) donePayload.agent_action = metadata.agent_action;
             controller.enqueue(encoder.encode(`data: ${JSON.stringify(donePayload)}\n\n`));
             controller.enqueue(encoder.encode("data: [DONE]\n\n"));
             controller.close();
