@@ -16,7 +16,27 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { motion } from 'framer-motion';
 
-/* ─── Section Header ─── */
+/* ─── Pipeline stage mapping from Airtable shortlist statuses ─── */
+const PIPELINE_STAGES = [
+  { order: 1, label: 'Pressenti', short: 'PR', emoji: '○', statuses: ['pressenti', 'intéressé', 'candidature web', 'en reflexion', 'attente cv'] },
+  { order: 2, label: 'CV envoyé', short: 'CV', emoji: '◔', statuses: ['cv sent', 'attente test'] },
+  { order: 3, label: 'ITW 1', short: 'I1', emoji: '◑', statuses: ['itw 1 planifié', 'itw 1 à planifier', '1er entretien'] },
+  { order: 4, label: 'ITW 2+', short: 'I2', emoji: '◕', statuses: ['itw 2+ planifié', 'itw 2+ à planifier', 'entretien 2+'] },
+  { order: 5, label: 'ITW Final', short: 'IF', emoji: '◉', statuses: ['itw final à planifier', 'itw final planifié', 'entretien final'] },
+  { order: 6, label: 'Offre', short: 'OF', emoji: '⭐', statuses: ['offer extended', 'offre déclinée', 'offre trop basse'] },
+  { order: 7, label: 'Rejeté', short: 'RE', emoji: '✕', statuses: ['client rejeté', 'candidat rejeté', 'pas pertinent', 'pas intéressé', 'pas de fit technique', 'pas de fit projet', 'problème expérience', 'problème distance', 'problème motivation', 'problème diplôme', 'problème prétention salaire', 'problème salaire', 'problème technique', 'problème fit humain', 'fit humain', 'mauvaise référence', 'autre offre accepté-externe', 'autre offre accepté-interne', 'plus de nouvelles', 'pas présenté à l\'entretien', 'poste supprimé où annulé', 'rejet suite réflexion', 'trop de turnover', 'délais retour'] },
+  { order: 8, label: 'Placé', short: 'PL', emoji: '🏆', statuses: ['placé', 'placed'] },
+];
+
+function statusToStageOrder(status: string | null): number {
+  if (!status) return 0;
+  const lower = status.toLowerCase().trim();
+  for (const stage of PIPELINE_STAGES) {
+    if (stage.statuses.includes(lower)) return stage.order;
+  }
+  return 0;
+}
+
 function SectionHeader({ emoji, label, count }: { emoji: string; label: string; count?: number }) {
   return (
     <div className="flex items-center gap-2 mb-2.5">
