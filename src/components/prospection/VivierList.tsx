@@ -523,8 +523,10 @@ function EnrichedContactSheet({ contact, enrichment, open, onOpenChange, onCopyM
   if (!contact) return null;
 
   const isEnriched = !!enrichment && enrichment.match_type !== 'not_found';
-  const displayTitle = enrichment?.current_job_title || contact.contact_type || null;
-  const displayCompany = enrichment?.current_company || contact.company_name;
+  // Use careerAnalysis primary role (handles concurrent side projects) over raw enrichment title
+  const primaryRole = careerAnalysis.currentRole;
+  const displayTitle = primaryRole?.title || enrichment?.current_job_title || contact.contact_type || null;
+  const displayCompany = primaryRole?.organization_name || enrichment?.current_company || contact.company_name;
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
