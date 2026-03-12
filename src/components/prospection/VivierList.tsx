@@ -414,8 +414,8 @@ function EnrichedContactSheet({ contact, enrichment, open, onOpenChange, onCopyM
       if (enrichment.still_same_company === true) {
         items.push({ emoji: '🏢', title: 'Même entreprise', detail: `Toujours chez ${enrichment.current_company || contact?.company_name || '—'}`, type: 'neutral' });
       }
-      if (enrichment.current_job_title && contact?.title && enrichment.current_job_title !== contact.title) {
-        items.push({ emoji: '📈', title: 'Évolution de titre', detail: `${contact.title} → ${enrichment.current_job_title}`, type: 'positive' });
+      if (enrichment.current_job_title) {
+        items.push({ emoji: '💼', title: 'Poste actuel', detail: `${enrichment.current_job_title}${enrichment.current_company ? ` chez ${enrichment.current_company}` : ''}`, type: 'neutral' });
       }
     }
 
