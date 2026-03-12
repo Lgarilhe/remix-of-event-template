@@ -82,9 +82,11 @@ export const useAgentChat = (conversationId: string | null) => {
           filter: `conversation_id=eq.${conversationId}`,
         },
         (payload) => {
+          // Skip Realtime inserts while streaming — the DB reload after stream
+          // is the single source of truth, preventing duplicates.
+          if (isStreamingRef.current) return;
           const newMsg = payload.new as unknown as AgentMessage;
           setMessages(prev => {
-            // Avoid duplicates (optimistic messages or re-deliveries)
             if (prev.some(m => m.id === newMsg.id)) return prev;
             return [...prev, newMsg];
           });
