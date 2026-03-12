@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { useVivierContacts, useVivierCompanies, VivierContact, VivierCompany } from '@/hooks/useVivierCandidates';
 import { useVivierEnrichment, VivierEnrichment } from '@/hooks/useVivierEnrichment';
 import { Input } from '@/components/ui/input';
@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Progress } from '@/components/ui/progress';
-import { Search, Mail, Building2, ChevronLeft, ChevronRight, Users, FileText, Trophy, MapPin, Briefcase, Sparkles, Copy, Check, ExternalLink, Phone, RefreshCw } from 'lucide-react';
+import { Search, Mail, Building2, ChevronLeft, ChevronRight, Users, FileText, Trophy, MapPin, Briefcase, Sparkles, Copy, Check, ExternalLink, Phone, RefreshCw, ArrowRightLeft, Clock, MessageSquare, UserCheck, TrendingUp, Calendar, Star } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -177,7 +177,68 @@ function CompanyDetailSheet({ company, open, onOpenChange }: { company: VivierCo
   );
 }
 
-/* ─── Enriched Contact Detail Sheet ─── */
+/* ─── Detail Tab Button ─── */
+function DetailTab({ active, emoji, label, count, onClick }: { active: boolean; emoji: string; label: string; count?: number; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      className={cn(
+        "relative overflow-hidden flex items-center gap-1 h-[30px] px-2.5 text-[9px] font-medium uppercase tracking-wider border border-foreground transition-colors group shrink-0",
+        active ? "bg-foreground text-background" : "bg-background text-foreground"
+      )}
+    >
+      <span className="text-xs relative z-10">{emoji}</span>
+      <span className="relative z-10 whitespace-nowrap">{label}</span>
+      {count !== undefined && count > 0 && (
+        <span className={cn(
+          "relative z-10 text-[8px] tabular-nums font-bold ml-0.5",
+          active ? "text-background/60" : "text-muted-foreground"
+        )}>{count}</span>
+      )}
+      {!active && (
+        <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
+      )}
+    </button>
+  );
+}
+
+/* ─── Timeline Event ─── */
+function TimelineEvent({ emoji, title, subtitle, date, highlight }: { emoji: string; title: string; subtitle?: string; date?: string; highlight?: boolean }) {
+  return (
+    <div className={cn(
+      "flex items-start gap-3 p-3 border-l-2 ml-2 transition-colors",
+      highlight ? "border-l-foreground bg-muted/20" : "border-l-border"
+    )}>
+      <span className="text-sm shrink-0 -ml-[22px] bg-background border border-border w-7 h-7 flex items-center justify-center">{emoji}</span>
+      <div className="flex-1 min-w-0">
+        <div className="text-xs font-semibold text-foreground leading-snug">{title}</div>
+        {subtitle && <div className="text-[11px] text-muted-foreground mt-0.5 leading-relaxed line-clamp-2">{subtitle}</div>}
+      </div>
+      {date && <span className="text-[9px] text-muted-foreground uppercase tracking-wider shrink-0 mt-0.5">{relativeTime(date) || date}</span>}
+    </div>
+  );
+}
+
+/* ─── Recruiter Stat Card ─── */
+function RecruiterCard({ name, interactions, lastDate, types }: { name: string; interactions: number; lastDate?: string; types: { notes: number; shortlists: number } }) {
+  const initials = name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
+  return (
+    <div className="border border-border p-3 flex items-center gap-3 hover:bg-muted/20 transition-colors">
+      <div className="h-9 w-9 bg-foreground text-background flex items-center justify-center text-[10px] font-bold shrink-0 uppercase">{initials}</div>
+      <div className="flex-1 min-w-0">
+        <div className="text-xs font-semibold">{name}</div>
+        <div className="flex items-center gap-2 mt-0.5 text-[10px] text-muted-foreground">
+          <span className="font-medium tabular-nums">{interactions} interaction{interactions > 1 ? 's' : ''}</span>
+          {types.notes > 0 && <span>· 📝 {types.notes}</span>}
+          {types.shortlists > 0 && <span>· 📋 {types.shortlists}</span>}
+        </div>
+      </div>
+      {lastDate && <span className="text-[9px] text-muted-foreground uppercase tracking-wider shrink-0">{relativeTime(lastDate)}</span>}
+    </div>
+  );
+}
+
+/* ─── Enriched Contact Detail Sheet (Tabbed) ─── */
 function EnrichedContactSheet({ contact, enrichment, open, onOpenChange, onCopyMessage, onEnrichSingle }: {
   contact: VivierContact | null; enrichment: VivierEnrichment | null; open: boolean; onOpenChange: (v: boolean) => void;
   onCopyMessage?: (id: string) => void;
@@ -185,21 +246,27 @@ function EnrichedContactSheet({ contact, enrichment, open, onOpenChange, onCopyM
 }) {
   const [shortlists, setShortlists] = useState<any[]>([]);
   const [notes, setNotes] = useState<any[]>([]);
+  const [placements, setPlacements] = useState<any[]>([]);
   const [loadingDetails, setLoadingDetails] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [activeDetailTab, setActiveDetailTab] = useState<'resume' | 'historique' | 'evolutions' | 'equipe'>('resume');
 
   useEffect(() => {
     if (!contact || !open) return;
     setLoadingDetails(true);
+    setActiveDetailTab('resume');
     const fetchDetails = async () => {
-      const [slRes, notesRes] = await Promise.all([
+      const [slRes, notesRes, placRes] = await Promise.all([
         supabase.from('airtable_shortlists').select('airtable_id, status, date_added, job_airtable_id, candidate_airtable_id')
-          .eq('contact_airtable_id', contact.airtable_id).order('date_added', { ascending: false }).limit(20),
+          .eq('contact_airtable_id', contact.airtable_id).order('date_added', { ascending: false }).limit(30),
         supabase.from('airtable_notes').select('airtable_id, title, detail, note_type, note_date, author')
-          .eq('contact_airtable_id', contact.airtable_id).order('note_date', { ascending: false }).limit(15),
+          .eq('contact_airtable_id', contact.airtable_id).order('note_date', { ascending: false }).limit(30),
+        supabase.from('airtable_placements').select('airtable_id, name, status, start_date, salary, contract_type, candidate_airtable_id, company_airtable_id')
+          .eq('company_airtable_id', contact.company_airtable_id || '__none__').order('start_date', { ascending: false }).limit(15),
       ]);
       const jobIds = new Set<string>(); const candIds = new Set<string>();
       (slRes.data || []).forEach((s: any) => { if (s.job_airtable_id) jobIds.add(s.job_airtable_id); if (s.candidate_airtable_id) candIds.add(s.candidate_airtable_id); });
+      (placRes.data || []).forEach((p: any) => { if (p.candidate_airtable_id) candIds.add(p.candidate_airtable_id); });
       const [jobsRes, candsRes] = await Promise.all([
         jobIds.size > 0 ? supabase.from('airtable_jobs').select('airtable_id, title').in('airtable_id', [...jobIds]) : Promise.resolve({ data: [] as any[] }),
         candIds.size > 0 ? supabase.from('airtable_candidates').select('airtable_id, full_name').in('airtable_id', [...candIds]) : Promise.resolve({ data: [] as any[] }),
@@ -208,6 +275,7 @@ function EnrichedContactSheet({ contact, enrichment, open, onOpenChange, onCopyM
       const candMap = new Map((candsRes.data || []).map((c: any) => [c.airtable_id, c.full_name]));
       setShortlists((slRes.data || []).map((s: any) => ({ ...s, job_title: s.job_airtable_id ? jobMap.get(s.job_airtable_id) || null : null, candidate_name: s.candidate_airtable_id ? candMap.get(s.candidate_airtable_id) || null : null })));
       setNotes(notesRes.data || []);
+      setPlacements((placRes.data || []).map((p: any) => ({ ...p, candidate_name: p.candidate_airtable_id ? candMap.get(p.candidate_airtable_id) || null : null })));
       setLoadingDetails(false);
     };
     fetchDetails();
@@ -222,6 +290,72 @@ function EnrichedContactSheet({ contact, enrichment, open, onOpenChange, onCopyM
       onCopyMessage?.(contact!.airtable_id);
     }
   };
+
+  // Compute recruiter stats from notes + shortlists authors
+  const recruiterStats = useMemo(() => {
+    const map = new Map<string, { notes: number; shortlists: number; lastDate: string | null }>();
+    notes.forEach((n: any) => {
+      if (!n.author) return;
+      const name = n.author.trim();
+      const prev = map.get(name) || { notes: 0, shortlists: 0, lastDate: null };
+      prev.notes++;
+      if (!prev.lastDate || (n.note_date && n.note_date > prev.lastDate)) prev.lastDate = n.note_date;
+      map.set(name, prev);
+    });
+    // Extract authors from shortlists raw_data if available
+    return [...map.entries()]
+      .map(([name, data]) => ({ name, interactions: data.notes + data.shortlists, lastDate: data.lastDate, types: { notes: data.notes, shortlists: data.shortlists } }))
+      .sort((a, b) => b.interactions - a.interactions);
+  }, [notes]);
+
+  // Build unified timeline
+  const timeline = useMemo(() => {
+    const events: { type: string; emoji: string; title: string; subtitle?: string; date: string; highlight?: boolean }[] = [];
+    shortlists.forEach((s: any) => {
+      events.push({ type: 'shortlist', emoji: '📋', title: s.job_title || 'Shortlist', subtitle: s.candidate_name ? `👤 ${s.candidate_name}` : undefined, date: s.date_added || '', highlight: false });
+    });
+    notes.forEach((n: any) => {
+      events.push({ type: 'note', emoji: '📝', title: n.title || 'Note', subtitle: n.detail?.slice(0, 100), date: n.note_date || '', highlight: false });
+    });
+    placements.forEach((p: any) => {
+      events.push({ type: 'placement', emoji: '🏆', title: p.name || 'Placement', subtitle: p.candidate_name ? `👤 ${p.candidate_name}` : undefined, date: p.start_date || '', highlight: true });
+    });
+    return events.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+  }, [shortlists, notes, placements]);
+
+  // Evolution data
+  const evolutions = useMemo(() => {
+    const items: { emoji: string; title: string; detail: string; type: 'positive' | 'neutral' | 'negative' }[] = [];
+    if (enrichment) {
+      if (enrichment.still_same_company === false && enrichment.company_change_detail) {
+        items.push({ emoji: '🔄', title: 'Changement de poste', detail: enrichment.company_change_detail, type: 'positive' });
+      }
+      if (enrichment.still_same_company === true) {
+        items.push({ emoji: '🏢', title: 'Même entreprise', detail: `Toujours chez ${enrichment.current_company || contact?.company_name || '—'}`, type: 'neutral' });
+      }
+      if (enrichment.current_job_title && contact?.title && enrichment.current_job_title !== contact.title) {
+        items.push({ emoji: '📈', title: 'Évolution de titre', detail: `${contact.title} → ${enrichment.current_job_title}`, type: 'positive' });
+      }
+      if (enrichment.notable_events && Array.isArray(enrichment.notable_events) && (enrichment.notable_events as any[]).length > 0) {
+        (enrichment.notable_events as any[]).forEach((evt: any) => {
+          items.push({ emoji: '⚡', title: evt.title || 'Événement notable', detail: evt.detail || evt.description || '', type: 'neutral' });
+        });
+      }
+      if (enrichment.location && contact?.city && enrichment.location !== contact.city) {
+        items.push({ emoji: '📍', title: 'Changement de localisation', detail: `${contact.city} → ${enrichment.location}`, type: 'neutral' });
+      }
+    }
+    // Time since last interaction
+    if (contact?.last_interaction_date) {
+      const daysSince = Math.floor((Date.now() - new Date(contact.last_interaction_date).getTime()) / (1000 * 60 * 60 * 24));
+      if (daysSince > 365) {
+        items.push({ emoji: '⏰', title: 'Contact inactif', detail: `Dernier échange il y a ${Math.floor(daysSince / 365)} an${Math.floor(daysSince / 365) > 1 ? 's' : ''} — opportunité de réactivation`, type: 'negative' });
+      } else if (daysSince > 180) {
+        items.push({ emoji: '⏰', title: 'Contact dormant', detail: `Dernier échange il y a ${Math.floor(daysSince / 30)} mois`, type: 'neutral' });
+      }
+    }
+    return items;
+  }, [enrichment, contact]);
 
   if (!contact) return null;
 
@@ -276,148 +410,272 @@ function EnrichedContactSheet({ contact, enrichment, open, onOpenChange, onCopyM
           </div>
         </div>
 
-        <div className="p-4 sm:p-5 space-y-4">
-          {/* Enrich CTA */}
-          <button
-            onClick={() => onEnrichSingle?.(contact.airtable_id)}
-            className={cn(
-              "w-full h-10 flex items-center justify-center gap-2 text-xs font-medium uppercase tracking-wider border-2 transition-all duration-200",
-              enrichment
-                ? "border-border text-foreground hover:border-foreground hover:bg-muted/30"
-                : "border-foreground bg-foreground text-background hover:bg-foreground/90"
-            )}
-          >
-            {enrichment ? <RefreshCw className="w-3.5 h-3.5" /> : <Sparkles className="w-3.5 h-3.5" />}
-            {enrichment ? 'Ré-enrichir & regénérer' : 'Enrichir & générer le message'}
-          </button>
-
-          {/* Enriched profile card */}
-          {isEnriched && (
-            <div className="border-2 border-[hsl(var(--brutal-accent))] bg-[hsl(var(--brutal-accent)/0.04)]">
-              <div className="px-4 py-2.5 border-b border-[hsl(var(--brutal-accent)/0.2)] flex items-center gap-2">
-                <Sparkles className="w-3.5 h-3.5 text-[hsl(var(--skalr-purple))]" />
-                <span className="text-[10px] font-bold uppercase tracking-widest">Profil enrichi</span>
-                <span className="ml-auto text-[9px] uppercase tracking-wider border border-border px-1.5 py-0.5 text-muted-foreground">
-                  {enrichment!.match_type === 'linkedin' ? 'LinkedIn' : 'Fuzzy'}
-                </span>
-              </div>
-              <div className="p-4 space-y-2.5">
-                {enrichment!.headline && (
-                  <p className="text-xs text-muted-foreground italic">{enrichment!.headline}</p>
-                )}
-                {enrichment!.location && (
-                  <div className="text-xs text-muted-foreground flex items-center gap-1.5">
-                    <MapPin className="w-3 h-3 shrink-0" /> {enrichment!.location}
-                  </div>
-                )}
-                {enrichment!.linkedin_url && (
-                  <a
-                    href={enrichment!.linkedin_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1.5 text-xs font-semibold text-[hsl(var(--skalr-purple))] hover:underline"
-                  >
-                    <ExternalLink className="w-3 h-3" /> Voir sur LinkedIn
-                  </a>
-                )}
-                {enrichment!.relevance_reason && (
-                  <p className="text-[11px] text-muted-foreground leading-relaxed border-t border-border/40 pt-2.5 mt-2.5">
-                    {enrichment!.relevance_reason}
-                  </p>
-                )}
-              </div>
-            </div>
-          )}
-
-          {enrichment?.match_type === 'not_found' && (
-            <div className="border border-border p-4 text-center">
-              <span className="text-xs text-muted-foreground">Aucun profil trouvé sur Apollo pour ce contact.</span>
-            </div>
-          )}
-
-          {/* Generated message */}
-          {enrichment?.generated_message && (
-            <div className="border-2 border-foreground">
-              <div className="px-4 py-2.5 border-b border-foreground flex items-center justify-between bg-muted/20">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm">{enrichment.message_type === 'sms' ? '📱' : '💬'}</span>
-                  <span className="text-[10px] font-bold uppercase tracking-widest">
-                    {enrichment.message_type === 'sms' ? 'SMS' : 'LinkedIn'}
-                  </span>
-                  {enrichment.message_status && (
-                    <span className="text-[9px] uppercase tracking-wider border border-border px-1.5 py-0.5 text-muted-foreground">
-                      {enrichment.message_status}
-                    </span>
-                  )}
-                </div>
-                <button
-                  onClick={handleCopy}
-                  className={cn(
-                    "h-7 px-3 flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-wider border transition-all",
-                    copied
-                      ? "border-foreground bg-foreground text-background"
-                      : "border-border hover:border-foreground"
-                  )}
-                >
-                  {copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
-                  {copied ? 'Copié !' : 'Copier'}
-                </button>
-              </div>
-              <div className="p-4">
-                <p className="text-sm leading-relaxed whitespace-pre-wrap">{enrichment.generated_message}</p>
-                <div className="mt-3 pt-2.5 border-t border-border/40 text-[9px] text-muted-foreground uppercase tracking-widest">
-                  {enrichment.generated_message.length} caractères
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Stats */}
-          <div className="grid grid-cols-3 gap-1.5">
-            <StatBlock value={contact.shortlist_count} label="Shortlists" highlight={contact.shortlist_count >= 5} />
-            <StatBlock value={contact.placement_count} label="Placements" highlight={contact.placement_count > 0} />
-            <StatBlock value={contact.note_count} label="Notes" />
+        {/* Stats bar */}
+        <div className="grid grid-cols-4 gap-0 border-b border-foreground">
+          <div className="p-2.5 text-center border-r border-border">
+            <div className="text-lg font-bold tabular-nums">{contact.shortlist_count}</div>
+            <div className="text-[8px] uppercase tracking-widest text-muted-foreground">Shortlists</div>
           </div>
+          <div className="p-2.5 text-center border-r border-border">
+            <div className="text-lg font-bold tabular-nums">{contact.placement_count}</div>
+            <div className="text-[8px] uppercase tracking-widest text-muted-foreground">Placements</div>
+          </div>
+          <div className="p-2.5 text-center border-r border-border">
+            <div className="text-lg font-bold tabular-nums">{contact.note_count}</div>
+            <div className="text-[8px] uppercase tracking-widest text-muted-foreground">Notes</div>
+          </div>
+          <div className="p-2.5 text-center">
+            <div className="text-lg font-bold tabular-nums">{recruiterStats.length}</div>
+            <div className="text-[8px] uppercase tracking-widest text-muted-foreground">Recruteurs</div>
+          </div>
+        </div>
 
+        {/* Tabs */}
+        <div className="flex gap-0 overflow-x-auto no-scrollbar border-b border-border bg-muted/20">
+          <DetailTab active={activeDetailTab === 'resume'} emoji="📋" label="Résumé" onClick={() => setActiveDetailTab('resume')} />
+          <DetailTab active={activeDetailTab === 'historique'} emoji="🕐" label="Historique" count={timeline.length} onClick={() => setActiveDetailTab('historique')} />
+          <DetailTab active={activeDetailTab === 'evolutions'} emoji="📈" label="Évolutions" count={evolutions.length} onClick={() => setActiveDetailTab('evolutions')} />
+          <DetailTab active={activeDetailTab === 'equipe'} emoji="👥" label="Équipe" count={recruiterStats.length} onClick={() => setActiveDetailTab('equipe')} />
+        </div>
+
+        <div className="p-4 sm:p-5">
           {loadingDetails ? (
-            <div className="space-y-2"><Skeleton className="h-4 w-full" /><Skeleton className="h-4 w-3/4" /><Skeleton className="h-4 w-1/2" /></div>
+            <div className="space-y-3"><Skeleton className="h-6 w-full" /><Skeleton className="h-4 w-3/4" /><Skeleton className="h-4 w-1/2" /><Skeleton className="h-20 w-full" /></div>
           ) : (
             <>
-              {shortlists.length > 0 && (
-                <div>
-                  <SectionHeader emoji="📋" label="Shortlists" count={shortlists.length} />
-                  <div className="space-y-1">
-                    {shortlists.map((s: any) => (
-                      <div key={s.airtable_id} className="border border-border p-3 space-y-1 hover:bg-muted/20 transition-colors">
-                        <div className="text-xs font-semibold">{s.job_title || 'Poste inconnu'}</div>
-                        <div className="flex items-center gap-2 text-[10px] text-muted-foreground flex-wrap">
-                          {s.candidate_name && <span>👤 {s.candidate_name}</span>}
-                          {s.date_added && <span>· {relativeTime(s.date_added) || s.date_added}</span>}
-                          {s.status && (
-                            <span className="border border-border px-1.5 py-0.5 text-[9px] uppercase tracking-wider">{s.status}</span>
+              {/* ═══ TAB: RÉSUMÉ ═══ */}
+              {activeDetailTab === 'resume' && (
+                <div className="space-y-4">
+                  {/* Enrich CTA */}
+                  <button
+                    onClick={() => onEnrichSingle?.(contact.airtable_id)}
+                    className={cn(
+                      "w-full h-10 flex items-center justify-center gap-2 text-xs font-medium uppercase tracking-wider border-2 transition-all duration-200",
+                      enrichment
+                        ? "border-border text-foreground hover:border-foreground hover:bg-muted/30"
+                        : "border-foreground bg-foreground text-background hover:bg-foreground/90"
+                    )}
+                  >
+                    {enrichment ? <RefreshCw className="w-3.5 h-3.5" /> : <Sparkles className="w-3.5 h-3.5" />}
+                    {enrichment ? 'Ré-enrichir & regénérer' : 'Enrichir & générer le message'}
+                  </button>
+
+                  {/* Enriched profile card */}
+                  {isEnriched && (
+                    <div className="border-2 border-[hsl(var(--brutal-accent))] bg-[hsl(var(--brutal-accent)/0.04)]">
+                      <div className="px-4 py-2.5 border-b border-[hsl(var(--brutal-accent)/0.2)] flex items-center gap-2">
+                        <Sparkles className="w-3.5 h-3.5 text-[hsl(var(--skalr-purple))]" />
+                        <span className="text-[10px] font-bold uppercase tracking-widest">Profil enrichi</span>
+                        <span className="ml-auto text-[9px] uppercase tracking-wider border border-border px-1.5 py-0.5 text-muted-foreground">
+                          {enrichment!.match_type === 'linkedin' ? 'LinkedIn' : 'Fuzzy'}
+                        </span>
+                      </div>
+                      <div className="p-4 space-y-2.5">
+                        {enrichment!.headline && <p className="text-xs text-muted-foreground italic">{enrichment!.headline}</p>}
+                        {enrichment!.location && (
+                          <div className="text-xs text-muted-foreground flex items-center gap-1.5"><MapPin className="w-3 h-3 shrink-0" /> {enrichment!.location}</div>
+                        )}
+                        {enrichment!.linkedin_url && (
+                          <a href={enrichment!.linkedin_url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 text-xs font-semibold text-[hsl(var(--skalr-purple))] hover:underline">
+                            <ExternalLink className="w-3 h-3" /> Voir sur LinkedIn
+                          </a>
+                        )}
+                        {enrichment!.relevance_reason && (
+                          <p className="text-[11px] text-muted-foreground leading-relaxed border-t border-border/40 pt-2.5 mt-2.5">{enrichment!.relevance_reason}</p>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {enrichment?.match_type === 'not_found' && (
+                    <div className="border border-border p-4 text-center">
+                      <span className="text-xs text-muted-foreground">Aucun profil trouvé sur Apollo pour ce contact.</span>
+                    </div>
+                  )}
+
+                  {/* Generated message */}
+                  {enrichment?.generated_message && (
+                    <div className="border-2 border-foreground">
+                      <div className="px-4 py-2.5 border-b border-foreground flex items-center justify-between bg-muted/20">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm">{enrichment.message_type === 'sms' ? '📱' : '💬'}</span>
+                          <span className="text-[10px] font-bold uppercase tracking-widest">
+                            {enrichment.message_type === 'sms' ? 'SMS' : 'LinkedIn'}
+                          </span>
+                          {enrichment.message_status && (
+                            <span className="text-[9px] uppercase tracking-wider border border-border px-1.5 py-0.5 text-muted-foreground">{enrichment.message_status}</span>
                           )}
                         </div>
+                        <button
+                          onClick={handleCopy}
+                          className={cn(
+                            "h-7 px-3 flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-wider border transition-all",
+                            copied ? "border-foreground bg-foreground text-background" : "border-border hover:border-foreground"
+                          )}
+                        >
+                          {copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                          {copied ? 'Copié !' : 'Copier'}
+                        </button>
                       </div>
-                    ))}
+                      <div className="p-4">
+                        <p className="text-sm leading-relaxed whitespace-pre-wrap">{enrichment.generated_message}</p>
+                        <div className="mt-3 pt-2.5 border-t border-border/40 text-[9px] text-muted-foreground uppercase tracking-widest">
+                          {enrichment.generated_message.length} caractères
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Quick summary: last interaction + top recruiter */}
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="border border-border p-3">
+                      <div className="text-[9px] uppercase tracking-widest text-muted-foreground mb-1">Dernier échange</div>
+                      <div className="text-xs font-semibold">{contact.last_interaction_date ? relativeTime(contact.last_interaction_date) || contact.last_interaction_date : '—'}</div>
+                    </div>
+                    <div className="border border-border p-3">
+                      <div className="text-[9px] uppercase tracking-widest text-muted-foreground mb-1">Top recruteur</div>
+                      <div className="text-xs font-semibold">{recruiterStats[0]?.name || '—'}</div>
+                    </div>
                   </div>
                 </div>
               )}
 
-              {notes.length > 0 && (
-                <div>
-                  <SectionHeader emoji="📝" label="Notes" count={notes.length} />
-                  <div className="space-y-1">
-                    {notes.map((n: any) => (
-                      <div key={n.airtable_id} className="border border-border p-3 space-y-1 hover:bg-muted/20 transition-colors">
-                        <div className="text-xs font-semibold">{n.title || 'Note'}</div>
-                        {n.detail && <div className="text-[11px] text-muted-foreground line-clamp-3 leading-relaxed">{n.detail}</div>}
-                        <div className="text-[10px] text-muted-foreground">
-                          {n.note_date && (relativeTime(n.note_date) || n.note_date)}
-                          {n.author && <span className="italic"> — {n.author}</span>}
-                        </div>
+              {/* ═══ TAB: HISTORIQUE ═══ */}
+              {activeDetailTab === 'historique' && (
+                <div className="space-y-1">
+                  {timeline.length === 0 ? (
+                    <div className="text-center py-10">
+                      <Clock className="w-10 h-10 mx-auto mb-3 text-muted-foreground/30" />
+                      <p className="text-xs text-muted-foreground">Aucune interaction enregistrée</p>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="text-[9px] uppercase tracking-widest text-muted-foreground mb-3 font-medium">
+                        {timeline.length} interaction{timeline.length > 1 ? 's' : ''} — chronologie complète
                       </div>
-                    ))}
-                  </div>
+                      {timeline.map((evt, i) => (
+                        <TimelineEvent key={`${evt.type}-${i}`} emoji={evt.emoji} title={evt.title} subtitle={evt.subtitle} date={evt.date} highlight={evt.highlight} />
+                      ))}
+                    </>
+                  )}
+                </div>
+              )}
+
+              {/* ═══ TAB: ÉVOLUTIONS ═══ */}
+              {activeDetailTab === 'evolutions' && (
+                <div className="space-y-3">
+                  {evolutions.length === 0 ? (
+                    <div className="text-center py-10">
+                      <TrendingUp className="w-10 h-10 mx-auto mb-3 text-muted-foreground/30" />
+                      <p className="text-xs text-muted-foreground">Aucune évolution détectée</p>
+                      <p className="text-[10px] text-muted-foreground mt-1">Enrichissez ce contact pour détecter les changements</p>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="text-[9px] uppercase tracking-widest text-muted-foreground mb-1 font-medium">
+                        Changements depuis nos derniers échanges
+                      </div>
+                      {evolutions.map((evo, i) => (
+                        <div key={i} className={cn(
+                          "border-2 p-4 space-y-1.5",
+                          evo.type === 'positive' ? "border-foreground bg-[hsl(var(--brutal-accent)/0.06)]" :
+                          evo.type === 'negative' ? "border-destructive/40 bg-destructive/5" :
+                          "border-border"
+                        )}>
+                          <div className="flex items-center gap-2">
+                            <span className="text-base">{evo.emoji}</span>
+                            <span className="text-xs font-bold uppercase tracking-wider">{evo.title}</span>
+                          </div>
+                          <p className="text-[11px] text-muted-foreground leading-relaxed pl-7">{evo.detail}</p>
+                        </div>
+                      ))}
+
+                      {/* Comparison table if enriched */}
+                      {isEnriched && (
+                        <div className="mt-4">
+                          <div className="text-[9px] uppercase tracking-widest text-muted-foreground mb-2 font-medium">Comparaison avant / après</div>
+                          <div className="border border-border divide-y divide-border">
+                            <div className="grid grid-cols-3 text-[9px] uppercase tracking-widest text-muted-foreground bg-muted/30">
+                              <div className="p-2">Champ</div>
+                              <div className="p-2">Avant</div>
+                              <div className="p-2">Maintenant</div>
+                            </div>
+                            {[
+                              { label: 'Poste', before: contact.title, after: enrichment?.current_job_title },
+                              { label: 'Entreprise', before: contact.company_name, after: enrichment?.current_company },
+                              { label: 'Localisation', before: contact.city, after: enrichment?.location },
+                            ].filter(r => r.before || r.after).map((row, i) => {
+                              const changed = row.before !== row.after && row.before && row.after;
+                              return (
+                                <div key={i} className={cn("grid grid-cols-3", changed && "bg-[hsl(var(--brutal-accent)/0.04)]")}>
+                                  <div className="p-2 text-[10px] font-medium">{row.label}</div>
+                                  <div className="p-2 text-[10px] text-muted-foreground">{row.before || '—'}</div>
+                                  <div className={cn("p-2 text-[10px]", changed ? "font-semibold text-foreground" : "text-muted-foreground")}>{row.after || '—'}</div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
+
+              {/* ═══ TAB: ÉQUIPE ═══ */}
+              {activeDetailTab === 'equipe' && (
+                <div className="space-y-3">
+                  {recruiterStats.length === 0 ? (
+                    <div className="text-center py-10">
+                      <Users className="w-10 h-10 mx-auto mb-3 text-muted-foreground/30" />
+                      <p className="text-xs text-muted-foreground">Aucun recruteur identifié</p>
+                      <p className="text-[10px] text-muted-foreground mt-1">Les auteurs des notes et shortlists apparaîtront ici</p>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="text-[9px] uppercase tracking-widest text-muted-foreground mb-1 font-medium">
+                        Recruteurs ayant interagi avec ce contact
+                      </div>
+                      {/* Top recruiter highlight */}
+                      {recruiterStats.length > 0 && (
+                        <div className="border-2 border-foreground bg-foreground text-background p-4 flex items-center gap-3">
+                          <div className="h-12 w-12 border-2 border-background/30 flex items-center justify-center text-sm font-bold uppercase shrink-0">
+                            {recruiterStats[0].name.split(' ').map(w => w[0]).join('').slice(0, 2)}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <Star className="w-3.5 h-3.5 text-[hsl(var(--brutal-accent))]" />
+                              <span className="text-[9px] uppercase tracking-widest text-background/50">Contact principal</span>
+                            </div>
+                            <div className="text-sm font-bold mt-0.5">{recruiterStats[0].name}</div>
+                            <div className="text-[10px] text-background/60 mt-0.5">
+                              {recruiterStats[0].interactions} interaction{recruiterStats[0].interactions > 1 ? 's' : ''}
+                              {recruiterStats[0].lastDate && ` · Dernier: ${relativeTime(recruiterStats[0].lastDate)}`}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                      {/* Other recruiters */}
+                      {recruiterStats.slice(1).map((r, i) => (
+                        <RecruiterCard key={i} name={r.name} interactions={r.interactions} lastDate={r.lastDate || undefined} types={r.types} />
+                      ))}
+
+                      {/* Recommendation */}
+                      {recruiterStats.length > 0 && (
+                        <div className="border border-[hsl(var(--brutal-accent))] bg-[hsl(var(--brutal-accent)/0.06)] p-3 mt-2">
+                          <div className="flex items-center gap-1.5 mb-1.5">
+                            <Sparkles className="w-3.5 h-3.5 text-[hsl(var(--skalr-purple))]" />
+                            <span className="text-[9px] font-bold uppercase tracking-widest">Recommandation</span>
+                          </div>
+                          <p className="text-[11px] text-muted-foreground leading-relaxed">
+                            {recruiterStats[0].name} est le recruteur le mieux positionné pour reprendre contact.
+                            {recruiterStats[0].lastDate && ` Dernier échange : ${relativeTime(recruiterStats[0].lastDate)}.`}
+                            {recruiterStats.length > 1 && ` ${recruiterStats[1].name} peut aussi intervenir en support (${recruiterStats[1].interactions} interactions).`}
+                          </p>
+                        </div>
+                      )}
+                    </>
+                  )}
                 </div>
               )}
             </>
