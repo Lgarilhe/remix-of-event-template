@@ -257,8 +257,8 @@ function EnrichedContactSheet({ contact, enrichment, open, onOpenChange, onCopyM
     setActiveDetailTab('resume');
     const fetchDetails = async () => {
       const [slRes, notesRes, placRes] = await Promise.all([
-        supabase.from('airtable_shortlists').select('airtable_id, status, date_added, job_airtable_id, candidate_airtable_id')
-          .eq('contact_airtable_id', contact.airtable_id).order('date_added', { ascending: false }).limit(30),
+        supabase.from('airtable_shortlists').select('airtable_id, status, date_added, created_at, job_airtable_id, candidate_airtable_id')
+          .eq('contact_airtable_id', contact.airtable_id).order('date_added', { ascending: false, nullsFirst: false }).limit(30),
         supabase.from('airtable_notes').select('airtable_id, title, detail, note_type, note_date, author')
           .eq('contact_airtable_id', contact.airtable_id).order('note_date', { ascending: false }).limit(30),
         supabase.from('airtable_placements').select('airtable_id, name, status, start_date, salary, contract_type, candidate_airtable_id, company_airtable_id')
