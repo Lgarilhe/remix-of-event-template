@@ -337,6 +337,7 @@ export const useAgentChat = (conversationId: string | null) => {
       .from('agent_conversations')
       .select('*')
       .eq('organization_id', organizationId)
+      .is('archived_at', null)
       .order('updated_at', { ascending: false })
       .limit(20);
     return (data || []) as unknown as AgentConversation[];

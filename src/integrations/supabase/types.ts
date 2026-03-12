@@ -16,6 +16,7 @@ export type Database = {
     Tables: {
       agent_conversations: {
         Row: {
+          archived_at: string | null
           created_at: string
           created_by: string
           id: string
@@ -29,6 +30,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          archived_at?: string | null
           created_at?: string
           created_by: string
           id?: string
@@ -42,6 +44,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          archived_at?: string | null
           created_at?: string
           created_by?: string
           id?: string
@@ -3151,6 +3154,7 @@ export type Database = {
         Args: { p_run_id: string; p_ttl_minutes?: number }
         Returns: boolean
       }
+      archive_old_agent_conversations: { Args: never; Returns: number }
       cosine_similarity_match: {
         Args: { p_candidate_id: string; p_job_id: string }
         Returns: number
