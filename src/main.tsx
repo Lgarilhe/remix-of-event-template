@@ -6,6 +6,21 @@ import { HelmetProvider } from 'react-helmet-async';
 import App from "./App.tsx";
 import "./index.css";
 
+// Auto-reload on stale chunk errors (after deploys)
+window.addEventListener('error', (e) => {
+  if (
+    e.message?.includes('Failed to fetch dynamically imported module') ||
+    e.message?.includes('Importing a module script failed')
+  ) {
+    const reloaded = sessionStorage.getItem('chunk-reload');
+    if (!reloaded) {
+      sessionStorage.setItem('chunk-reload', '1');
+      window.location.reload();
+    }
+  }
+});
+window.addEventListener('load', () => sessionStorage.removeItem('chunk-reload'));
+
 const queryClient = new QueryClient();
 
 createRoot(document.getElementById("root")!).render(
