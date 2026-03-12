@@ -214,13 +214,20 @@ serve(async (req) => {
     const schoolKeywords = filters.school_keywords || [];
     const functionKeywords = filters.function_keywords || [];
     const groupKeywords = filters.group_keywords || [];
+    // Extract company/past_company/skills names for ID resolution
+    const companyNames: string[] = (filters.company_keywords || []).map((c: any) => typeof c === "string" ? c : (c.keywords || c));
+    const pastCompanyNames: string[] = (filters.past_company_keywords || []).map((c: any) => typeof c === "string" ? c : (c.keywords || c));
+    const skillNames: string[] = (filters.skills_filter || []).map((s: any) => typeof s === "string" ? s : (s.keywords || s));
 
-    const [locationIds, industryIds, schoolIds, functionIds, groupIds] = await Promise.all([
+    const [locationIds, industryIds, schoolIds, functionIds, groupIds, companyIds, pastCompanyIds, skillIds] = await Promise.all([
       locationKeywords.length > 0 ? resolveIds("LOCATION", locationKeywords) : Promise.resolve([]),
       industryKeywords.length > 0 ? resolveIds("INDUSTRY", industryKeywords) : Promise.resolve([]),
       schoolKeywords.length > 0 ? resolveIds("SCHOOL", schoolKeywords) : Promise.resolve([]),
       functionKeywords.length > 0 ? resolveIds("JOB_FUNCTION", functionKeywords) : Promise.resolve([]),
       groupKeywords.length > 0 ? resolveIds("GROUPS", groupKeywords) : Promise.resolve([]),
+      companyNames.length > 0 ? resolveIds("COMPANY", companyNames) : Promise.resolve([]),
+      pastCompanyNames.length > 0 ? resolveIds("COMPANY", pastCompanyNames) : Promise.resolve([]),
+      skillNames.length > 0 ? resolveIds("SKILL", skillNames) : Promise.resolve([]),
     ]);
 
     // Build location with priority/scope structure
@@ -233,8 +240,11 @@ serve(async (req) => {
     const resolvedSchoolIds = schoolIds;
     const resolvedFunctionIds = functionIds;
     const resolvedGroupIds = groupIds;
+    const resolvedCompanyIds = companyIds;
+    const resolvedPastCompanyIds = pastCompanyIds;
+    const resolvedSkillIds = skillIds;
 
-    const resolvedCount = resolvedLocationIds.length + resolvedIndustryIds.length + resolvedSchoolIds.length + resolvedFunctionIds.length + resolvedGroupIds.length;
+    const resolvedCount = resolvedLocationIds.length + resolvedIndustryIds.length + resolvedSchoolIds.length + resolvedFunctionIds.length + resolvedGroupIds.length + resolvedCompanyIds.length + resolvedPastCompanyIds.length + resolvedSkillIds.length;
 
     // ── 4. Search LinkedIn (sequential with delays) ──
 
