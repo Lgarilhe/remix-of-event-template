@@ -39,7 +39,7 @@ export const useAgentChat = (conversationId: string | null) => {
   const [streamingContent, setStreamingContent] = useState('');
   const [thinkingContent, setThinkingContent] = useState('');
   const [thinkingSteps, setThinkingSteps] = useState<ThinkingStep[]>([]);
-  const [isThinking, setIsThinking] = useState(false);
+  const [isStreaming, setIsStreaming] = useState(false);
   const [conversation, setConversation] = useState<AgentConversation | null>(null);
   const { organizationId } = useOrganization();
   const abortRef = useRef<AbortController | null>(null);
