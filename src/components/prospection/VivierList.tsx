@@ -328,9 +328,17 @@ function EnrichedContactSheet({ contact, enrichment, open, onOpenChange, onCopyM
     const apolloData = enrichment?.apollo_data;
     const employmentHistory: { title: string; organization_name: string; start_date?: string; end_date?: string; current?: boolean }[] = apolloData?.employment_history || [];
     
-    // Find last interaction date — prioritize shortlist dates (most reliable)
-    const shortlistDates = shortlists.map((s: any) => s.date_added).filter(Boolean).sort().reverse();
-    const noteDates = notes.map((n: any) => n.note_date).filter(Boolean).sort().reverse();
+    // Find last interaction date — prioritize shortlist dates, fallback to created_at, then notes
+    const shortlistDates = shortlists
+      .map((s: any) => s.date_added || s.created_at)
+      .filter(Boolean)
+      .sort()
+      .reverse();
+    const noteDates = notes
+      .map((n: any) => n.note_date || n.created_at)
+      .filter(Boolean)
+      .sort()
+      .reverse();
     // Use last shortlist date as primary, fallback to notes
     const lastInteractionDate = shortlistDates[0] || noteDates[0] || null;
     const lastInteractionTs = lastInteractionDate ? new Date(lastInteractionDate).getTime() : null;
