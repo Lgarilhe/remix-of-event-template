@@ -279,8 +279,8 @@ function AgentInputBar({
           className={cn(
             "h-[38px] w-[38px] flex items-center justify-center border-2 border-foreground transition-all shrink-0",
             input.trim() && !sending
-              ? "bg-foreground text-background hover:bg-brutal-accent hover:border-brutal-accent hover:text-foreground"
-              : "bg-muted text-muted-foreground cursor-not-allowed border-muted"
+              ? "bg-foreground text-background hover:opacity-80"
+              : "bg-muted text-muted-foreground cursor-not-allowed border-foreground/10"
           )}
         >
           {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
