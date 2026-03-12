@@ -12,6 +12,43 @@ function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 30
   return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timer));
 }
 
+const RETRYABLE_STATUS = new Set([429, 502, 503, 504]);
+
+async function fetchWithRetry(
+  url: string,
+  options: RequestInit = {},
+  { timeoutMs = 30000, maxRetries = 3 } = {},
+): Promise<Response> {
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    const res = await fetchWithTimeout(url, options, timeoutMs);
+
+    if (res.ok || !RETRYABLE_STATUS.has(res.status)) {
+      return res;
+    }
+
+    // Log retryable error with body excerpt for diagnostics
+    const errBody = await res.text().catch(() => "");
+    console.warn(
+      `[fetchWithRetry] ${res.status} on ${url.split("/").pop()} (attempt ${attempt + 1}/${maxRetries}): ${errBody.slice(0, 200)}`,
+    );
+
+    if (attempt < maxRetries - 1) {
+      const delay = res.status === 429
+        ? Math.min(5000 * Math.pow(2, attempt), 30000)   // 429: longer backoff (5s, 10s, 20s)
+        : 1000 * Math.pow(2, attempt);                     // 5xx: standard backoff (1s, 2s, 4s)
+      await new Promise(r => setTimeout(r, delay));
+    } else {
+      // Final attempt failed — return a synthetic error response
+      return new Response(JSON.stringify({ error: `Failed after ${maxRetries} retries (last status: ${res.status})` }), {
+        status: res.status,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+  }
+  // Should never reach here, but TypeScript needs it
+  throw new Error("fetchWithRetry: unreachable");
+}
+
 // Primary dedup key: provider_id (LinkedIn URN) when available, fallback to name-based key
 function buildCandidateKey(profile: any): string {
   const providerId = (profile.provider_id || "").trim();
