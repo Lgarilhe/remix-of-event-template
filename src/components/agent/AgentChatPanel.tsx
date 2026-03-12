@@ -265,7 +265,7 @@ function AgentInputBar({
           onKeyDown={onKeyDown}
           placeholder="Décrivez le profil recherché…"
           rows={1}
-          className="flex-1 resize-none px-3 py-2.5 text-xs border-2 border-foreground bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-brutal-accent min-h-[38px] max-h-[100px] transition-colors"
+          className="flex-1 resize-none px-3 py-2.5 text-xs border border-foreground/15 bg-muted/30 text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-foreground/40 focus:bg-background min-h-[38px] max-h-[100px] transition-colors"
           style={{ height: 'auto', overflow: 'auto' }}
           onInput={(e) => {
             const target = e.target as HTMLTextAreaElement;
