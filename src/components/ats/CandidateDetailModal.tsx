@@ -1026,7 +1026,7 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
 
             {/* ==================== FRAUD DETECTION TAB ==================== */}
             {activeTab === 'fraud' && (
-              <FraudDetectionTab candidate={candidate} />
+              <FraudDetectionTab candidate={candidateWithProfileData} />
             )}
 
             {/* ==================== ACTIVITY TAB ==================== */}
