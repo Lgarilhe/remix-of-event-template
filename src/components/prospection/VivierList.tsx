@@ -343,8 +343,10 @@ function EnrichedContactSheet({ contact, enrichment, open, onOpenChange, onCopyM
     const lastInteractionDate = shortlistDates[0] || noteDates[0] || null;
     const lastInteractionTs = lastInteractionDate ? new Date(lastInteractionDate).getTime() : null;
 
-    // Find current role (first entry without end_date or marked current)
-    const currentRole = employmentHistory.find(e => !e.end_date || e.current) || employmentHistory[0] || null;
+    // Find current role (must be actually current — no end_date or marked current)
+    const currentRole = employmentHistory.find(e => !e.end_date || e.current) || null;
+    // If no current role from history, use the most recent role as "last known"
+    const lastKnownRole = currentRole || employmentHistory[0] || null;
     
     // Find role at the time of last interaction
     let roleAtLastInteraction: typeof currentRole = null;
