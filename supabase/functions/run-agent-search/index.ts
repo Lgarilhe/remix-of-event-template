@@ -613,8 +613,10 @@ serve(async (req) => {
     const goCount = goProfiles.length;
     const totalScored = scoredProfiles.length;
 
-    let summaryMsg = `✅ **Recherche terminée !**\n\n`;
-    summaryMsg += `- 📊 **${totalScored}** profils analysés\n`;
+    let summaryMsg = timedOut
+      ? `⏱️ **Recherche partielle** (temps max atteint)\n\n`
+      : `✅ **Recherche terminée !**\n\n`;
+    summaryMsg += `- 📊 **${totalScored}** profils analysés${timedOut ? ` sur ${Math.min(filteredProfiles.length, maxProfiles)}` : ""}\n`;
     summaryMsg += `- ✅ **${goCount}** profils qualifiés "Go"\n`;
     if (cacheHits > 0) summaryMsg += `- ⚡ **${cacheHits}** scores récupérés du cache\n`;
     if (skippedDedup > 0) summaryMsg += `- 🔄 **${skippedDedup}** profils déjà traités ignorés\n`;
