@@ -98,8 +98,18 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({ onClose }) => {
         <div className="px-4 py-3 border-b-2 border-foreground">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="h-8 w-8 bg-foreground text-background flex items-center justify-center">
-                <Bot className="w-4 h-4" />
+              {/* Conic-gradient orb */}
+              <div className="relative h-9 w-9 flex items-center justify-center">
+                <div
+                  className="absolute inset-0 opacity-70 blur-[2px] animate-spin"
+                  style={{
+                    background: 'conic-gradient(from 180deg, hsl(var(--brutal-accent)), hsl(var(--skalr-purple)), hsl(var(--skalr-pink)), hsl(var(--brutal-accent)))',
+                    animationDuration: '6s',
+                  }}
+                />
+                <div className="relative h-8 w-8 bg-background flex items-center justify-center border border-foreground/10">
+                  <Bot className="w-4 h-4 text-foreground" />
+                </div>
               </div>
               <div>
                 <h2 className="text-sm font-bold uppercase tracking-wider text-foreground">Agent IA</h2>
