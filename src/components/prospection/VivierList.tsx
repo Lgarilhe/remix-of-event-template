@@ -1142,21 +1142,53 @@ function StatPill({ icon, value, label, highlight }: { icon: React.ReactNode; va
 }
 
 /* ─── Shared filter bar ─── */
-function VivierFilterBar({ searchInput, setSearchInput, onSearch, filters, updateFilters }: {
+function VivierFilterBar({ searchInput, setSearchInput, onSearch, filters, updateFilters, showContactType }: {
   searchInput: string; setSearchInput: (v: string) => void; onSearch: () => void;
-  filters: { source_base: string | null; min_shortlists: number }; updateFilters: (p: any) => void;
+  filters: VivierFilters; updateFilters: (p: Partial<VivierFilters>) => void; showContactType?: boolean;
 }) {
+  const [cityInput, setCityInput] = useState('');
+  const [showMore, setShowMore] = useState(false);
+
+  const activeFilterCount = [
+    filters.source_base,
+    filters.min_shortlists > 1 ? true : null,
+    filters.city,
+    filters.has_placements !== null ? true : null,
+    filters.contact_type,
+    filters.sort_by !== 'recent' ? true : null,
+  ].filter(Boolean).length;
+
   return (
-    <div className="flex flex-col sm:flex-row gap-2">
-      <div className="flex-1 min-w-0">
-        <div className="relative">
+    <div className="space-y-2">
+      {/* Row 1: Search + toggle */}
+      <div className="flex gap-2">
+        <div className="flex-1 min-w-0 relative">
           <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
           <Input placeholder="Rechercher…" value={searchInput} onChange={e => setSearchInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && onSearch()} className="pl-9 h-9 text-xs border-border/60" />
         </div>
+        <button
+          onClick={() => setShowMore(!showMore)}
+          className={cn(
+            "relative overflow-hidden h-9 px-3 flex items-center gap-1.5 border text-[10px] font-medium uppercase tracking-wider shrink-0 transition-colors group",
+            showMore || activeFilterCount > 0
+              ? "border-foreground bg-foreground text-background"
+              : "border-border text-foreground hover:border-foreground"
+          )}
+        >
+          <span className="relative z-10">Filtres</span>
+          {activeFilterCount > 0 && (
+            <span className="relative z-10 bg-background text-foreground text-[9px] font-bold w-4 h-4 flex items-center justify-center">{activeFilterCount}</span>
+          )}
+          {!showMore && activeFilterCount === 0 && (
+            <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
+          )}
+        </button>
       </div>
-      <div className="flex gap-2">
+
+      {/* Row 2: Quick filters (always visible) */}
+      <div className="flex gap-2 overflow-x-auto no-scrollbar">
         <Select value={filters.source_base || 'all'} onValueChange={v => updateFilters({ source_base: v === 'all' ? null : v })}>
-          <SelectTrigger className="w-[140px] h-9 text-xs border-border/60"><SelectValue placeholder="Base" /></SelectTrigger>
+          <SelectTrigger className="w-[140px] h-8 text-[10px] border-border/60 shrink-0"><SelectValue placeholder="Base" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Toutes les bases</SelectItem>
             <SelectItem value="konekt">Konekt</SelectItem>
@@ -1164,18 +1196,126 @@ function VivierFilterBar({ searchInput, setSearchInput, onSearch, filters, updat
           </SelectContent>
         </Select>
         <Select value={String(filters.min_shortlists)} onValueChange={v => updateFilters({ min_shortlists: Number(v) })}>
-          <SelectTrigger className="w-[130px] h-9 text-xs border-border/60"><SelectValue /></SelectTrigger>
+          <SelectTrigger className="w-[120px] h-8 text-[10px] border-border/60 shrink-0"><SelectValue /></SelectTrigger>
           <SelectContent>
+            <SelectItem value="0">Toutes</SelectItem>
             <SelectItem value="1">≥ 1 shortlist</SelectItem>
             <SelectItem value="2">≥ 2 shortlists</SelectItem>
             <SelectItem value="3">≥ 3 shortlists</SelectItem>
             <SelectItem value="5">≥ 5 shortlists</SelectItem>
+            <SelectItem value="10">≥ 10 shortlists</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select value={filters.sort_by} onValueChange={v => updateFilters({ sort_by: v })}>
+          <SelectTrigger className="w-[130px] h-8 text-[10px] border-border/60 shrink-0"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="recent">Plus récent</SelectItem>
+            <SelectItem value="shortlists">Plus de shortlists</SelectItem>
+            <SelectItem value="placements">Plus de placements</SelectItem>
+            <SelectItem value="name">Alphabétique</SelectItem>
+            {!showContactType && <SelectItem value="contacts">Plus de contacts</SelectItem>}
           </SelectContent>
         </Select>
       </div>
+
+      {/* Row 3: Advanced filters (collapsible) */}
+      {showMore && (
+        <motion.div
+          initial={{ height: 0, opacity: 0 }}
+          animate={{ height: 'auto', opacity: 1 }}
+          exit={{ height: 0, opacity: 0 }}
+          transition={{ duration: 0.2 }}
+          className="space-y-2 border border-border p-3 bg-muted/20"
+        >
+          <div className="text-[9px] uppercase tracking-widest text-muted-foreground font-medium mb-1">Filtres avancés</div>
+
+          {/* City */}
+          <div className="flex gap-2">
+            <div className="flex-1 min-w-0 relative">
+              <MapPin className="absolute left-2.5 top-2 h-3 w-3 text-muted-foreground" />
+              <Input
+                placeholder="Ville…"
+                value={cityInput}
+                onChange={e => setCityInput(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') updateFilters({ city: cityInput || null }); }}
+                onBlur={() => { if (cityInput !== (filters.city || '')) updateFilters({ city: cityInput || null }); }}
+                className="pl-8 h-8 text-[11px] border-border/60"
+              />
+            </div>
+            {filters.city && (
+              <button onClick={() => { setCityInput(''); updateFilters({ city: null }); }} className="h-8 px-2 text-[10px] border border-border hover:bg-muted transition-colors">✕</button>
+            )}
+          </div>
+
+          {/* Placements filter */}
+          <div className="flex gap-1.5 flex-wrap">
+            <span className="text-[10px] text-muted-foreground self-center mr-1">Placements :</span>
+            {([
+              { label: 'Tous', value: null },
+              { label: 'Avec placement', value: true },
+              { label: 'Sans placement', value: false },
+            ] as const).map(opt => (
+              <button
+                key={String(opt.value)}
+                onClick={() => updateFilters({ has_placements: opt.value })}
+                className={cn(
+                  "h-7 px-2.5 text-[10px] font-medium border transition-colors",
+                  filters.has_placements === opt.value
+                    ? "border-foreground bg-foreground text-background"
+                    : "border-border text-foreground hover:border-foreground"
+                )}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Contact type (contacts tab only) */}
+          {showContactType && (
+            <div className="flex gap-1.5 flex-wrap">
+              <span className="text-[10px] text-muted-foreground self-center mr-1">Type :</span>
+              {([
+                { label: 'Tous', value: null },
+                { label: 'Candidat', value: 'Candidat' },
+                { label: 'Contact', value: 'Contact' },
+                { label: 'Client', value: 'Client' },
+                { label: 'Prospect', value: 'Prospect' },
+              ] as const).map(opt => (
+                <button
+                  key={String(opt.value)}
+                  onClick={() => updateFilters({ contact_type: opt.value })}
+                  className={cn(
+                    "h-7 px-2.5 text-[10px] font-medium border transition-colors",
+                    filters.contact_type === opt.value
+                      ? "border-foreground bg-foreground text-background"
+                      : "border-border text-foreground hover:border-foreground"
+                  )}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Reset button */}
+          {activeFilterCount > 0 && (
+            <button
+              onClick={() => {
+                setCityInput('');
+                updateFilters({ source_base: null, min_shortlists: 1, city: null, has_placements: null, contact_type: null, sort_by: 'recent' });
+              }}
+              className="text-[10px] text-muted-foreground hover:text-foreground underline transition-colors"
+            >
+              Réinitialiser tous les filtres
+            </button>
+          )}
+        </motion.div>
+      )}
     </div>
   );
 }
+
+import type { VivierFilters } from '@/hooks/useVivierCandidates';
 
 /* ─── Pagination ─── */
 function Pagination({ page, totalPages, goToPage }: { page: number; totalPages: number; goToPage: (p: number) => void }) {
