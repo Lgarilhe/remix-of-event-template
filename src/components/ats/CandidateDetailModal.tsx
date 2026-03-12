@@ -1513,13 +1513,22 @@ function calcDuration(startDate?: string, endDate?: string) {
   return diff <= 0 ? '<1 an' : diff === 1 ? '1 an' : `${diff} ans`;
 }
 
-function ExperienceItem({ exp }: { exp: { title: string; company: string; description?: string; startDate?: string; endDate?: string; isCurrent?: boolean } }) {
+function ExperienceItem({ exp }: { exp: { title: string; company: string; logo?: string; description?: string; startDate?: string; endDate?: string; isCurrent?: boolean } }) {
   const [expanded, setExpanded] = React.useState(false);
   const duration = calcDuration(exp.startDate, exp.endDate);
   return (
     <div className="relative pl-5 py-1.5">
-      {/* Dot */}
-      <div className={cn("absolute left-0.5 top-3 w-2 h-2 rounded-full border-2", exp.isCurrent ? "bg-emerald-500 border-emerald-500" : "bg-background border-foreground/30")} />
+      {/* Dot / Logo */}
+      {exp.logo ? (
+        <img
+          src={exp.logo}
+          alt={exp.company}
+          className="absolute left-0 top-2.5 w-3 h-3 rounded-sm object-contain"
+          onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+        />
+      ) : (
+        <div className={cn("absolute left-0.5 top-3 w-2 h-2 rounded-full border-2", exp.isCurrent ? "bg-emerald-500 border-emerald-500" : "bg-background border-foreground/30")} />
+      )}
       <div className="flex items-start justify-between gap-2">
         <div className="flex-1 min-w-0">
           <p className="text-[10px] font-medium text-foreground leading-tight">{exp.title}</p>
