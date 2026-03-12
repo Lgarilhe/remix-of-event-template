@@ -129,6 +129,62 @@ Deno.serve(async (req) => {
         }
       }
 
+      // If match returned incomplete data (<=1 employment history), try enriching with Apollo ID
+      if (apolloResult && (apolloResult.employment_history || []).length <= 1 && apolloResult.id) {
+        try {
+          console.log(`[Apollo] Enriching incomplete profile ${apolloResult.id} for ${contact.airtable_id}`);
+          const enrichResp = await fetch(`${APOLLO_BASE}/v1/people/match`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "X-Api-Key": APOLLO_API_KEY,
+            },
+            body: JSON.stringify({
+              id: apolloResult.id,
+              reveal_personal_emails: false,
+            }),
+          });
+          if (enrichResp.ok) {
+            const enrichData = await enrichResp.json();
+            const enrichedPerson = enrichData.person || null;
+            if (enrichedPerson && (enrichedPerson.employment_history || []).length > (apolloResult.employment_history || []).length) {
+              console.log(`[Apollo] Got enriched profile with ${(enrichedPerson.employment_history || []).length} jobs (was ${(apolloResult.employment_history || []).length})`);
+              apolloResult = enrichedPerson;
+            }
+          }
+          await new Promise((r) => setTimeout(r, 300));
+        } catch (e) {
+          console.error(`[Apollo] Enrich error for ${contact.airtable_id}:`, e);
+        }
+      }
+
+      // If we got a linkedin_url from Apollo but originally didn't have one, try re-matching via linkedin for full data
+      if (apolloResult && (apolloResult.employment_history || []).length <= 1 && apolloResult.linkedin_url && !linkedinUrl) {
+        try {
+          console.log(`[Apollo] Re-matching via discovered LinkedIn URL for ${contact.airtable_id}`);
+          const reResp = await fetch(`${APOLLO_BASE}/v1/people/match`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "X-Api-Key": APOLLO_API_KEY,
+            },
+            body: JSON.stringify({ linkedin_url: apolloResult.linkedin_url }),
+          });
+          if (reResp.ok) {
+            const reData = await reResp.json();
+            const rePerson = reData.person || null;
+            if (rePerson && (rePerson.employment_history || []).length > (apolloResult.employment_history || []).length) {
+              console.log(`[Apollo] LinkedIn re-match got ${(rePerson.employment_history || []).length} jobs`);
+              apolloResult = rePerson;
+              matchType = "linkedin";
+            }
+          }
+          await new Promise((r) => setTimeout(r, 300));
+        } catch (e) {
+          console.error(`[Apollo] LinkedIn re-match error for ${contact.airtable_id}:`, e);
+        }
+      }
+
       results.push({ contact, apollo: apolloResult, match_type: matchType });
 
       // Small delay to respect rate limits
