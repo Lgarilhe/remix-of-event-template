@@ -207,7 +207,7 @@ export default function ScorecardFullPage() {
               : "bg-background text-foreground hover:bg-foreground hover:text-background"
           )}
         >
-          <User className="w-3.5 h-3.5" />
+          <img src={iconProfile3d} alt="" className="w-5 h-5 object-contain" />
           Profil
           {profileOpen ? <ChevronDown className="w-3 h-3" /> : <ChevronUp className="w-3 h-3" />}
         </button>
