@@ -530,26 +530,67 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
           />
         )}
 
-        {/* Progress dots */}
-        <div className="flex items-center gap-1.5 px-1">
-          {activeEval.criteria.map((c, idx) => {
-            const r = activeEval.ratings[c.id];
-            const isCurrent = idx === currentCriterionIdx;
-            return (
-              <button key={c.id} onClick={() => setCurrentCriterionIdx(idx)}
-                className={cn(
-                  "h-1.5 rounded-full transition-all duration-200",
-                  isCurrent ? "flex-[2] bg-foreground" :
-                  r != null && r >= 4 ? "flex-1 bg-emerald-400" :
-                  r != null && r >= 3 ? "flex-1 bg-amber-400" :
-                  r != null ? "flex-1 bg-red-400" :
-                  "flex-1 bg-foreground/15"
-                )}
-              />
-            );
-          })}
-        </div>
+        {/* Side rail + Card layout */}
+        <div className="flex gap-3">
+          {/* Criteria side rail */}
+          <div className="hidden sm:flex flex-col gap-1 w-[140px] shrink-0 sticky top-24 self-start max-h-[calc(100vh-120px)] overflow-y-auto">
+            {activeEval.criteria.map((c, idx) => {
+              const r = activeEval.ratings[c.id];
+              const isCurrent = idx === currentCriterionIdx;
+              const catConfig = CATEGORY_CONFIG[c.category] || CATEGORY_CONFIG.technical;
+              return (
+                <button key={c.id} onClick={() => setCurrentCriterionIdx(idx)}
+                  className={cn(
+                    "text-left px-2 py-1.5 border-l-2 transition-all text-[10px] leading-tight truncate",
+                    isCurrent
+                      ? "border-foreground bg-foreground/[0.06] text-foreground font-bold"
+                      : r != null
+                        ? "border-foreground/20 text-muted-foreground hover:bg-foreground/[0.03]"
+                        : "border-transparent text-muted-foreground/60 hover:border-foreground/10 hover:text-muted-foreground"
+                  )}>
+                  <div className="flex items-center gap-1.5">
+                    <span className={cn("w-1.5 h-1.5 shrink-0", catConfig.dotColor,
+                      r != null && r >= 4 ? "bg-emerald-400" :
+                      r != null && r >= 3 ? "bg-amber-400" :
+                      r != null ? "bg-red-400" : catConfig.dotColor
+                    )} />
+                    <span className="truncate">{c.label}</span>
+                    {r != null && <span className="text-[8px] tabular-nums ml-auto shrink-0 font-bold">{r}</span>}
+                  </div>
+                </button>
+              );
+            })}
+            {showCoaching && (
+              <label className="flex items-center gap-1.5 px-2 py-2 mt-2 border-t border-foreground/10 cursor-pointer">
+                <input type="checkbox" checked={coachingAutoNav} onChange={e => setCoachingAutoNav(e.target.checked)}
+                  className="w-3 h-3 accent-foreground" />
+                <span className="text-[9px] text-muted-foreground uppercase tracking-wider">Auto-nav</span>
+              </label>
+            )}
+          </div>
 
+          {/* Mobile progress dots */}
+          <div className="flex sm:hidden items-center gap-1.5 px-1 w-full mb-2">
+            {activeEval.criteria.map((c, idx) => {
+              const r = activeEval.ratings[c.id];
+              const isCurrent = idx === currentCriterionIdx;
+              return (
+                <button key={c.id} onClick={() => setCurrentCriterionIdx(idx)}
+                  className={cn(
+                    "h-1.5 rounded-full transition-all duration-200",
+                    isCurrent ? "flex-[2] bg-foreground" :
+                    r != null && r >= 4 ? "flex-1 bg-emerald-400" :
+                    r != null && r >= 3 ? "flex-1 bg-amber-400" :
+                    r != null ? "flex-1 bg-red-400" :
+                    "flex-1 bg-foreground/15"
+                  )}
+                />
+              );
+            })}
+          </div>
+
+          {/* Card column */}
+          <div className="flex-1 min-w-0">
         {/* Single criterion card */}
         {(() => {
           const criterion = activeEval.criteria[currentCriterionIdx];
