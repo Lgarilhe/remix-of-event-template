@@ -4,7 +4,8 @@ import { SEOHead } from '@/components/SEOHead';
 import { ATSDashboard } from '@/components/ats/ATSDashboard';
 import { ATSStatsSkeleton } from '@/components/ats/ATSStatsSkeleton';
 import { useATSData, ATS_STAGES } from '@/hooks/useATSData';
-import { BarChart3, RefreshCw } from 'lucide-react';
+import { BarChart3, RefreshCw, Users } from 'lucide-react';
+import { EmptyState } from '@/components/ui/EmptyState';
 
 export default function Dashboard() {
   const { candidates, loading, isFetching, isFromCache, refetch } = useATSData();
