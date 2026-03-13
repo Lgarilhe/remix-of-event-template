@@ -82,14 +82,18 @@ export const OnboardingStepOrg = ({ onComplete }: Props) => {
           <Input
             placeholder="mon-cabinet"
             value={slug}
-            onChange={(e) => setSlug(generateSlug(e.target.value))}
+            onChange={(e) => { setSlug(generateSlug(e.target.value)); setSlugError(''); }}
             required
             pattern="[a-z0-9-]+"
-            className="border-foreground/20"
+            className={`border-foreground/20 ${slugError ? 'border-destructive' : ''}`}
           />
-          <p className="text-xs text-muted-foreground">
-            Lettres minuscules, chiffres et tirets uniquement.
-          </p>
+          {slugError ? (
+            <p className="text-xs text-destructive">{slugError}</p>
+          ) : (
+            <p className="text-xs text-muted-foreground">
+              Lettres minuscules, chiffres et tirets uniquement.
+            </p>
+          )}
         </div>
 
         <Button
