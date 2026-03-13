@@ -50,14 +50,14 @@ interface Reminder {
 }
 
 const tabsConfig = [
-  { key: 'profile', label: 'Profil', icon: User },
-  { key: 'scoring', label: 'Scoring', icon: Target },
-  { key: 'evaluation', label: 'Évaluation', icon: ClipboardCheck },
-  { key: 'fraud', label: 'Vérification', icon: Shield },
-  { key: 'activity', label: 'Activité', icon: Activity },
-  { key: 'comments', label: 'Discussion', icon: MessageSquare },
-  { key: 'notes', label: 'Notes', icon: StickyNote },
-  { key: 'reminders', label: 'Rappels', icon: Bell },
+  { key: 'profile', label: 'Profil', icon: User, accent: 'hsl(var(--primary))' },
+  { key: 'scoring', label: 'Scoring', icon: Target, accent: 'hsl(330 80% 60%)' },
+  { key: 'evaluation', label: 'Évaluation', icon: ClipboardCheck, accent: 'hsl(160 60% 45%)' },
+  { key: 'fraud', label: 'Vérification', icon: Shield, accent: 'hsl(45 90% 50%)' },
+  { key: 'activity', label: 'Activité', icon: Activity, accent: 'hsl(210 80% 55%)' },
+  { key: 'comments', label: 'Discussion', icon: MessageSquare, accent: 'hsl(270 60% 60%)' },
+  { key: 'notes', label: 'Notes', icon: StickyNote, accent: 'hsl(35 85% 55%)' },
+  { key: 'reminders', label: 'Rappels', icon: Bell, accent: 'hsl(0 70% 55%)' },
 ] as const;
 
 export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
