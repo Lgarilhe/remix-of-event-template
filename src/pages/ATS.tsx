@@ -183,7 +183,6 @@ export default function ATS() {
                 {/* Brutal tabs */}
                 <div className="flex gap-0 overflow-x-auto scrollbar-hide">
                   {viewTabs.map((tab, index) => {
-                    const Icon = tab.icon;
                     const isActive = activeView === tab.value;
                     return (
                       <button
@@ -195,7 +194,7 @@ export default function ATS() {
                           isActive ? "bg-brutal-accent text-foreground" : "bg-background text-foreground"
                         )}
                       >
-                        <Icon className="w-3.5 h-3.5 shrink-0 relative z-10" />
+                        <img src={tab.icon3d} alt="" className="w-5 h-5 object-contain shrink-0 relative z-10" />
                         <span className="relative z-10">{tab.label}</span>
                         {!isActive && (
                           <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
