@@ -274,8 +274,10 @@ export default function ScorecardFullPage() {
                       const isExpanded = expandedExp.has(i);
                       const companySlug = (exp.company || '').toLowerCase().replace(/[^a-z0-9]/g, '');
                       const logoKey = `exp-${companySlug}`;
-                      const logoUrl = `https://logo.clearbit.com/${companySlug}.com`;
+                      const dataLogo = (exp as any).logo;
+                      const clearbitUrl = companySlug ? `https://logo.clearbit.com/${companySlug}.com` : null;
                       const hasLogoError = logoErrors.has(logoKey);
+                      const logoSrc = dataLogo || (!hasLogoError && clearbitUrl ? clearbitUrl : null);
 
                       return (
                         <div key={i} className={cn(
@@ -289,10 +291,9 @@ export default function ScorecardFullPage() {
                           })}
                         >
                           <div className="flex items-start gap-2.5">
-                            {/* Company logo */}
                             <div className="w-8 h-8 shrink-0 border border-foreground/10 bg-foreground/[0.03] flex items-center justify-center overflow-hidden">
-                              {!hasLogoError && companySlug ? (
-                                <img src={logoUrl} alt="" className="w-6 h-6 object-contain"
+                              {logoSrc ? (
+                                <img src={logoSrc} alt="" className="w-6 h-6 object-contain"
                                   onError={() => setLogoErrors(prev => new Set(prev).add(logoKey))} />
                               ) : (
                                 <Building2 className="w-3.5 h-3.5 text-muted-foreground/40" />
