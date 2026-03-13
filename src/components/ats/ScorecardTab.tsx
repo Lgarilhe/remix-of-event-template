@@ -508,18 +508,18 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
           const totalC = activeEval.criteria.length;
 
           return (
-            <div className="border border-foreground/15 relative">
+            <div className="border-2 border-foreground relative">
               {/* Card header */}
-              <div className="px-4 py-3 border-b border-foreground/10 flex items-center justify-between">
+              <div className="px-4 py-3 border-b border-foreground flex items-center justify-between bg-foreground/[0.03]">
                 <div className="flex items-center gap-2 min-w-0">
                   <span className={cn("text-[9px] px-1.5 py-0.5 border font-bold uppercase tracking-wider shrink-0", catConfig.color)}>
                     {catConfig.label}
                   </span>
                   {isCritical && (
-                    <span className="text-[9px] px-1.5 py-0.5 border border-red-300 bg-red-50 text-red-700 font-bold uppercase tracking-wider shrink-0">Critique</span>
+                    <span className="text-[9px] px-1.5 py-0.5 border-2 border-destructive bg-destructive/10 text-destructive font-bold uppercase tracking-wider shrink-0">Critique</span>
                   )}
                 </div>
-                <span className="text-[10px] text-muted-foreground tabular-nums shrink-0">
+                <span className="text-[10px] text-muted-foreground tabular-nums shrink-0 font-bold">
                   {currentCriterionIdx + 1}/{totalC}
                 </span>
               </div>
@@ -527,7 +527,7 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
               {/* Card body */}
               <div className="px-4 py-4 space-y-4">
                 {/* Criterion title */}
-                <h3 className="text-sm font-bold text-foreground leading-snug">{criterion.label}</h3>
+                <h3 className="text-sm font-bold text-foreground leading-snug uppercase tracking-wide">{criterion.label}</h3>
                 <p className="text-[11px] text-muted-foreground leading-relaxed">{criterion.description}</p>
 
                 {/* Big rating buttons */}
@@ -538,10 +538,8 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
                       className={cn(
                         "w-12 h-12 flex items-center justify-center text-lg font-bold border-2 transition-all duration-150",
                         rating === score
-                          ? score >= 4 ? "border-emerald-500 bg-emerald-50 text-emerald-700 scale-110"
-                            : score === 3 ? "border-amber-500 bg-amber-50 text-amber-700 scale-110"
-                            : "border-red-500 bg-red-50 text-red-700 scale-110"
-                          : "border-foreground/15 text-foreground/40 hover:border-foreground/40 hover:text-foreground/70"
+                          ? "border-foreground bg-foreground text-background scale-110"
+                          : "border-foreground/20 text-foreground/40 hover:border-foreground hover:text-foreground"
                       )}
                     >
                       {score}
@@ -551,26 +549,21 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
 
                 {/* Show rubric for selected rating */}
                 {rating && criterion.ratingRubric?.[String(rating)] && (
-                  <div className={cn(
-                    "text-[10px] px-3 py-2 border-l-2",
-                    rating >= 4 ? "border-emerald-400 bg-emerald-50/50 text-emerald-700" :
-                    rating === 3 ? "border-amber-400 bg-amber-50/50 text-amber-700" :
-                    "border-red-400 bg-red-50/50 text-red-700"
-                  )}>
+                  <div className="text-[10px] px-3 py-2 border-l-2 border-foreground bg-foreground/[0.04] text-muted-foreground">
                     {criterion.ratingRubric[String(rating)]}
                   </div>
                 )}
 
                 {/* Points to verify */}
                 {questions.length > 0 && (
-                  <div className="space-y-1">
-                    <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">
+                  <div className="space-y-1.5">
+                    <p className="text-[9px] font-bold uppercase tracking-wider text-foreground">
                       À vérifier
                     </p>
-                    <ul className="space-y-0.5">
+                    <ul className="space-y-1">
                       {questions.slice(0, 3).map((q, qi) => (
                         <li key={qi} className="flex items-start gap-1.5 text-[11px] text-muted-foreground leading-snug">
-                          <span className="text-foreground/30 mt-px">•</span>
+                          <span className="w-1 h-1 bg-foreground/40 shrink-0 mt-1.5" />
                           <span>{q.replace(/^["«]|["»]$/g, '').replace(/\?$/, '')}</span>
                         </li>
                       ))}
@@ -580,23 +573,23 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
 
                 {/* Red flags */}
                 {redFlags.length > 0 && (
-                  <div className="flex items-start gap-2 px-2 py-1.5 border border-orange-200 bg-orange-50/50">
-                    <AlertTriangle className="w-3 h-3 text-orange-500 shrink-0 mt-0.5" />
-                    <span className="text-[10px] text-orange-700 leading-snug">{redFlags[0]}</span>
+                  <div className="flex items-start gap-2 px-2 py-1.5 border-2 border-destructive/30 bg-destructive/5">
+                    <AlertTriangle className="w-3 h-3 text-destructive shrink-0 mt-0.5" />
+                    <span className="text-[10px] text-destructive leading-snug font-medium">{redFlags[0]}</span>
                   </div>
                 )}
 
                 {/* Notes */}
                 <Textarea value={comment} onChange={e => handleComment(criterion.id, e.target.value)}
-                  placeholder="Notes rapides..." className="text-[11px] min-h-[50px] rounded-none border-foreground/15 resize-none py-1.5 px-2" />
+                  placeholder="Notes rapides..." className="text-[11px] min-h-[50px] rounded-none border-2 border-foreground/20 focus:border-foreground resize-none py-1.5 px-2" />
               </div>
 
               {/* Navigation arrows */}
-              <div className="flex items-center justify-between px-4 py-3 border-t border-foreground/10">
+              <div className="flex items-center justify-between px-4 py-3 border-t-2 border-foreground">
                 <button
                   onClick={() => setCurrentCriterionIdx(Math.max(0, currentCriterionIdx - 1))}
                   disabled={currentCriterionIdx === 0}
-                  className="flex items-center gap-1 text-[10px] font-medium uppercase tracking-wider text-foreground disabled:opacity-20 hover:text-foreground/70"
+                  className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-foreground disabled:opacity-20 hover:text-foreground/70"
                 >
                   <ChevronLeft className="w-4 h-4" /> Préc
                 </button>
@@ -607,7 +600,7 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
                     }
                   }}
                   disabled={currentCriterionIdx === totalC - 1}
-                  className="flex items-center gap-1 text-[10px] font-medium uppercase tracking-wider text-foreground disabled:opacity-20 hover:text-foreground/70"
+                  className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-foreground disabled:opacity-20 hover:text-foreground/70"
                 >
                   Suiv <ChevronRight className="w-4 h-4" />
                 </button>
