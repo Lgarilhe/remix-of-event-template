@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Building2, Users, Crown, Shield, User, Trash2, ArrowLeft, Plug, Check, Loader2, Pencil, UserCircle, CreditCard } from 'lucide-react';
+import { Building2, Users, Crown, Shield, User, Trash2, ArrowLeft, Plug, Check, Loader2, Pencil, UserCircle, CreditCard, Sparkles } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useQuery } from '@tanstack/react-query';
