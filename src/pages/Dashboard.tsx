@@ -4,8 +4,9 @@ import { SEOHead } from '@/components/SEOHead';
 import { ATSDashboard } from '@/components/ats/ATSDashboard';
 import { ATSStatsSkeleton } from '@/components/ats/ATSStatsSkeleton';
 import { useATSData, ATS_STAGES } from '@/hooks/useATSData';
-import { BarChart3, RefreshCw, Users } from 'lucide-react';
+import { RefreshCw } from 'lucide-react';
 import { EmptyState } from '@/components/ui/EmptyState';
+import iconDashboard3d from '@/assets/icon-dashboard-3d.png';
 
 export default function Dashboard() {
   const { candidates, loading, isFetching, isFromCache, refetch } = useATSData();
@@ -23,8 +24,8 @@ export default function Dashboard() {
           {/* Header */}
           <div className="flex items-center justify-between gap-3 mb-4">
             <div className="flex items-center gap-2 min-w-0">
-              <div className="h-8 w-8 bg-foreground text-background flex items-center justify-center shrink-0">
-                <BarChart3 className="w-4 h-4" />
+              <div className="h-8 w-8 flex items-center justify-center shrink-0">
+                <img src={iconDashboard3d} alt="" className="w-8 h-8 object-contain" />
               </div>
               <h1 className="text-xl sm:text-2xl font-bold text-foreground uppercase tracking-tight">Dashboard</h1>
               {isFromCache && !isFetching && (
@@ -55,7 +56,7 @@ export default function Dashboard() {
             <ATSStatsSkeleton />
           ) : candidates.length === 0 ? (
             <EmptyState
-              icon={<BarChart3 className="w-7 h-7" />}
+              icon={<img src={iconDashboard3d} alt="" className="w-7 h-7 object-contain" />}
               title="Pas encore de données"
               description="Le dashboard se remplit automatiquement avec vos données candidats. Commencez par sourcer des profils via Outreach."
               actionLabel="Aller sur Outreach"

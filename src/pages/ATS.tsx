@@ -15,7 +15,12 @@ import { ATSStatsSkeleton } from '@/components/ats/ATSStatsSkeleton';
 import { RemindersSidebar } from '@/components/ats/RemindersSidebar';
 import { CandidateDetailModal } from '@/components/ats/CandidateDetailModal';
 import { Tabs, TabsContent } from '@/components/ui/tabs';
-import { LayoutGrid, Table, Clock, Bell, Users, RefreshCw, BarChart3 } from 'lucide-react';
+import { Bell, Users, RefreshCw } from 'lucide-react';
+import iconAts3d from '@/assets/icon-ats-3d.png';
+import iconKanban3d from '@/assets/icon-kanban-3d.png';
+import iconTable3d from '@/assets/icon-table-3d.png';
+import iconTimeline3d from '@/assets/icon-timeline-3d.png';
+import iconAnalytics3d from '@/assets/icon-analytics-3d.png';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { useATSData, ATSCandidate, ATS_STAGES } from '@/hooks/useATSData';
 import { cn } from '@/lib/utils';
@@ -24,10 +29,10 @@ export type { ATSCandidate };
 export { ATS_STAGES };
 
 const viewTabs = [
-  { value: 'kanban', label: 'Kanban', icon: LayoutGrid },
-  { value: 'table', label: 'Table', icon: Table },
-  { value: 'timeline', label: 'Timeline', icon: Clock },
-  { value: 'analytics', label: 'Analytics', icon: BarChart3 },
+  { value: 'kanban', label: 'Kanban', icon3d: iconKanban3d },
+  { value: 'table', label: 'Table', icon3d: iconTable3d },
+  { value: 'timeline', label: 'Timeline', icon3d: iconTimeline3d },
+  { value: 'analytics', label: 'Analytics', icon3d: iconAnalytics3d },
 ] as const;
 
 export default function ATS() {
@@ -122,8 +127,8 @@ export default function ATS() {
           {/* Header — compact single row */}
           <div className="flex items-center justify-between gap-3 mb-3">
             <div className="flex items-center gap-2 min-w-0">
-              <div className="h-8 w-8 bg-foreground text-background flex items-center justify-center shrink-0">
-                <Users className="w-4 h-4" />
+              <div className="h-8 w-8 flex items-center justify-center shrink-0">
+                <img src={iconAts3d} alt="" className="w-8 h-8 object-contain" />
               </div>
               <h1 className="text-xl sm:text-2xl font-bold text-foreground uppercase tracking-tight">ATS</h1>
               {isFromCache && !isFetching && (
@@ -178,7 +183,6 @@ export default function ATS() {
                 {/* Brutal tabs */}
                 <div className="flex gap-0 overflow-x-auto scrollbar-hide">
                   {viewTabs.map((tab, index) => {
-                    const Icon = tab.icon;
                     const isActive = activeView === tab.value;
                     return (
                       <button
@@ -190,7 +194,7 @@ export default function ATS() {
                           isActive ? "bg-brutal-accent text-foreground" : "bg-background text-foreground"
                         )}
                       >
-                        <Icon className="w-3.5 h-3.5 shrink-0 relative z-10" />
+                        <img src={tab.icon3d} alt="" className="w-5 h-5 object-contain shrink-0 relative z-10" />
                         <span className="relative z-10">{tab.label}</span>
                         {!isActive && (
                           <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
@@ -223,7 +227,7 @@ export default function ATS() {
                   <div className="flex-1 min-w-0">
                     {!loading && candidates.length === 0 ? (
                       <EmptyState
-                        icon={<Users className="w-7 h-7" />}
+                        icon={<img src={iconAts3d} alt="" className="w-7 h-7 object-contain" />}
                         title="Aucun candidat dans l'ATS"
                         description="Les candidats apparaîtront ici automatiquement lorsque vous les contacterez via Outreach ou les ajouterez manuellement."
                         actionLabel="Aller sur Outreach"
