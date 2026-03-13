@@ -1,6 +1,7 @@
 import React, { useCallback, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
+import { invokeWithCredits } from '@/lib/invokeWithCredits';
 import { LinkedInProfile } from '@/components/outreach/types';
 import { getYear, parseDate } from '@/components/outreach/dateUtils';
 import { Job } from '@/types/jobs';
