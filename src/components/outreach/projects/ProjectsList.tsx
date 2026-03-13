@@ -65,6 +65,7 @@ const priorityConfig: Record<string, { label: string; color: string }> = {
 export const ProjectsList: React.FC<ProjectsListProps> = ({ onResumeSearch }) => {
   const { projects: sourcingProjects, isLoading: spLoading, deleteProject, updateProject, isDeleting } = useSourcingProjects();
   const { data: notionJobs = [], isLoading: jobsLoading } = useNotionJobs();
+  const { canCreateJob, limits, jobCount } = useQuotaGate();
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
