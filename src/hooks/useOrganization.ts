@@ -81,11 +81,10 @@ export const useOrganization = () => {
       if (error) throw error;
 
       // The trigger auto-adds user as owner and sets active_organization_id
-      // But let's make sure active_organization_id is set
+      // Ensure profile row exists and set active organization
       await supabase
         .from('profiles')
-        .update({ active_organization_id: org.id })
-        .eq('user_id', user.id);
+        .upsert({ user_id: user.id, active_organization_id: org.id }, { onConflict: 'user_id' });
 
       return org as Organization;
     },
