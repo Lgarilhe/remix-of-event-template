@@ -96,7 +96,7 @@ const Auth = () => {
       />
       <div className="w-full max-w-md space-y-8">
         <div>
-          <h2 className="text-4xl font-normal text-foreground tracking-[-0.02em] uppercase">
+          <h2 className="text-2xl sm:text-4xl font-normal text-foreground tracking-[-0.02em] uppercase">
             {isResettingPassword ? 'Nouveau mot de passe' : isForgotPassword ? 'Mot de passe oublié' : isLogin ? 'Sign In' : 'Sign Up'}
           </h2>
           <p className="mt-2 text-sm text-muted-foreground">

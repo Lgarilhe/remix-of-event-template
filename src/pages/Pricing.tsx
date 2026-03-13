@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useSubscriptionPlans, useSubscription } from '@/hooks/useSubscription';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -16,6 +16,7 @@ const planIcons: Record<string, React.ReactNode> = {
 
 const Pricing = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { data: plans = [], isLoading } = useSubscriptionPlans();
   const { planId, isLoading: isLoadingSub } = useSubscription();
   const [yearly, setYearly] = useState(false);
@@ -27,17 +28,21 @@ const Pricing = () => {
 
   return (
     <div className="min-h-screen bg-background">
-      <div className="max-w-5xl mx-auto px-4 py-12">
+      <div className="max-w-5xl mx-auto px-3 sm:px-4 py-8 sm:py-12">
         <button
-          onClick={() => navigate(-1)}
-          className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground mb-8 transition-colors"
+          onClick={() => {
+            const idx = window.history.state?.idx;
+            const canGoBack = typeof idx === 'number' ? idx > 0 : location.key !== 'default';
+            canGoBack ? navigate(-1) : navigate('/outreach', { replace: true });
+          }}
+          className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground mb-6 sm:mb-8 transition-colors"
         >
           <ArrowLeft className="w-4 h-4" />
           Retour
         </button>
 
-        <div className="text-center mb-10">
-          <h1 className="text-3xl font-bold text-foreground mb-3">
+        <div className="text-center mb-8 sm:mb-10">
+          <h1 className="text-2xl sm:text-3xl font-bold text-foreground mb-3">
             Choisissez votre plan
           </h1>
           <p className="text-muted-foreground max-w-lg mx-auto">
