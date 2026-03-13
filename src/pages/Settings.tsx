@@ -273,6 +273,11 @@ const Settings = () => {
             </TabsContent>
           )}
 
+          {/* Credits Tab */}
+          <TabsContent value="credits">
+            <AICreditsSettings />
+          </TabsContent>
+
           {/* Integrations Tab */}
           {isAdmin && (
             <TabsContent value="integrations">
