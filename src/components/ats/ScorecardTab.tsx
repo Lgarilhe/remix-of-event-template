@@ -72,6 +72,7 @@ const CATEGORY_CONFIG: Record<string, { label: string; color: string }> = {
 };
 
 export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedProfile, onOpenProfile }) => {
+  const navigate = useNavigate();
   const [evaluations, setEvaluations] = useState<EvaluationData[]>([]);
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const [generating, setGenerating] = useState(false);
