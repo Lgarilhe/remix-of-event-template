@@ -90,7 +90,7 @@ export function JobDetailDrawer({ jobId, open, onClose }: JobDetailDrawerProps) 
   const filterLocation = filters?.location || filters?.geo || null;
 
   return (
-    <div className="fixed inset-x-0 bottom-0 z-20 bg-background border-t-2 border-foreground shadow-[0_-4px_20px_rgba(0,0,0,0.15)] max-h-[55vh] flex flex-col animate-in slide-in-from-bottom duration-200">
+    <div className="fixed inset-x-0 bottom-[52px] z-20 bg-background border-t-2 border-foreground shadow-[0_-4px_20px_rgba(0,0,0,0.15)] max-h-[50vh] flex flex-col animate-in slide-in-from-bottom duration-200">
       {/* Header */}
       <div className="shrink-0 border-b border-foreground/10">
         <div className="max-w-3xl mx-auto px-4 pt-4 pb-3">
