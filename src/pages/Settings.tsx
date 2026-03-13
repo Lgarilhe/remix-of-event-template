@@ -90,7 +90,7 @@ const Settings = () => {
 
         <h1 className="text-2xl font-semibold text-foreground mb-6">Paramètres</h1>
 
-        <Tabs defaultValue={searchParams.get('tab') === 'integrations' && isAdmin ? 'integrations' : searchParams.get('tab') === 'account' ? 'account' : 'general'} className="space-y-6">
+        <Tabs defaultValue={searchParams.get('tab') === 'billing' ? 'billing' : searchParams.get('tab') === 'integrations' && isAdmin ? 'integrations' : searchParams.get('tab') === 'account' ? 'account' : 'general'} className="space-y-6">
           <TabsList className="w-full justify-start">
             <TabsTrigger value="general" className="gap-2">
               <Building2 className="w-4 h-4" />
