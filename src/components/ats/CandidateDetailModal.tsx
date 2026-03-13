@@ -1224,21 +1224,6 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
           </div>
         )}
 
-        {/* Quick Actions Bar */}
-        <div className="border-t border-foreground/20 px-6 py-3 flex items-center gap-0 bg-foreground/[0.02]">
-          <BrutalActionButton onClick={() => toast.info('Fonctionnalité à venir')} first>
-            <MessageSquare className="w-3.5 h-3.5 relative z-10" />
-            <span className="relative z-10">Message</span>
-          </BrutalActionButton>
-          <BrutalActionButton onClick={() => toast.info('Fonctionnalité à venir')}>
-            <CalendarPlus className="w-3.5 h-3.5 relative z-10" />
-            <span className="relative z-10">Entretien</span>
-          </BrutalActionButton>
-          <BrutalActionButton onClick={() => toast.info('Fonctionnalité à venir')}>
-            <FolderPlus className="w-3.5 h-3.5 relative z-10" />
-            <span className="relative z-10">Projet</span>
-          </BrutalActionButton>
-        </div>
 
         {/* Mobile profile panel — normal flex child at bottom of DialogContent */}
         {isSplitMode && mobileProfileOpen && (
