@@ -233,6 +233,14 @@ export default function Candidates() {
                 <div className="bg-destructive/10 border border-destructive/30 p-6 text-center">
                   <p className="text-destructive">{shortlistError instanceof Error ? shortlistError.message : 'Error'}</p>
                 </div>
+              ) : shortlist.length === 0 ? (
+                <EmptyState
+                  icon={<Users className="w-7 h-7" />}
+                  title="Aucun candidat"
+                  description="Connectez Notion dans les paramètres pour synchroniser votre base candidats, ou commencez à sourcer via Outreach."
+                  actionLabel="Paramètres"
+                  actionHref="/settings?tab=integrations"
+                />
               ) : (
                 <>
                   <TabsContent value="pipeline" className="mt-0">
