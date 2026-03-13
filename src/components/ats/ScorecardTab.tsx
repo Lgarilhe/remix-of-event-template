@@ -474,121 +474,107 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
           />
         )}
 
-        {/* Criteria list */}
-        <div className="space-y-2">
-          {activeEval.criteria.map(criterion => {
+        {/* Criteria list — compact mode */}
+        <div className="space-y-0 border border-foreground/15">
+          {activeEval.criteria.map((criterion, idx) => {
             const rating = activeEval.ratings[criterion.id];
             const comment = activeEval.comments[criterion.id] || '';
             const isExpanded = expandedCriteria.has(criterion.id);
             const catConfig = CATEGORY_CONFIG[criterion.category] || CATEGORY_CONFIG.technical;
-            const hasRedFlags = criterion.redFlags && criterion.redFlags.length > 0;
+            const isCritical = criterion.weight === 3;
+            const topQuestion = criterion.suggestedQuestions?.[0];
+            const topRedFlag = criterion.redFlags?.[0];
 
             return (
-              <div key={criterion.id} className="border border-foreground/15 bg-foreground/[0.02]">
-                <div className="flex items-center gap-3 p-3 cursor-pointer hover:bg-foreground/[0.03] transition-colors"
-                  onClick={() => toggleExpand(criterion.id)}>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-0.5 flex-wrap">
-                      <span className={cn("text-[9px] px-1.5 py-0.5 border font-bold uppercase tracking-wider", catConfig.color)}>
-                        {catConfig.label}
-                      </span>
-                      {criterion.weight === 3 && (
-                        <span className="text-[9px] px-1.5 py-0.5 border border-red-300 bg-red-50 text-red-700 font-bold uppercase tracking-wider">Critique</span>
-                      )}
-                      {criterion.weight === 1 && (
-                        <span className="text-[9px] px-1.5 py-0.5 border border-foreground/20 text-muted-foreground font-medium uppercase tracking-wider">Bonus</span>
-                      )}
-                      {hasRedFlags && (
-                        <span className="text-[9px] px-1.5 py-0.5 border border-orange-300 bg-orange-50 text-orange-600 font-bold uppercase tracking-wider flex items-center gap-0.5">
-                          <AlertTriangle className="w-2.5 h-2.5" /> Red flags
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-sm font-medium text-foreground leading-tight">{criterion.label}</p>
-                  </div>
-                  <div className="flex items-center gap-0.5 shrink-0" onClick={e => e.stopPropagation()}>
+              <div key={criterion.id} className={cn(
+                idx > 0 && "border-t border-foreground/10"
+              )}>
+                {/* Compact row */}
+                <div className="flex items-center gap-2 px-3 py-2 hover:bg-foreground/[0.02] transition-colors">
+                  {/* Category dot */}
+                  <span className={cn(
+                    "w-2 h-2 rounded-full shrink-0",
+                    criterion.category === 'technical' ? "bg-blue-500" :
+                    criterion.category === 'soft_skill' ? "bg-amber-500" :
+                    criterion.category === 'culture_fit' ? "bg-purple-500" :
+                    "bg-emerald-500"
+                  )} />
+
+                  {/* Label */}
+                  <button
+                    onClick={() => toggleExpand(criterion.id)}
+                    className="flex-1 min-w-0 text-left flex items-center gap-1.5"
+                  >
+                    <span className={cn(
+                      "text-[11px] font-medium text-foreground leading-tight truncate",
+                      isCritical && "font-bold"
+                    )}>
+                      {criterion.label}
+                    </span>
+                    {isCritical && <span className="text-[8px] text-red-500 font-bold shrink-0">●</span>}
+                  </button>
+
+                  {/* Inline stars */}
+                  <div className="flex items-center gap-0 shrink-0" onClick={e => e.stopPropagation()}>
                     {[1, 2, 3, 4, 5].map(star => (
                       <button key={star} onClick={() => handleRate(criterion.id, star)} className="p-0.5 transition-colors">
-                        <Star className={cn("w-5 h-5 transition-colors",
-                          rating != null && star <= rating ? "fill-amber-400 text-amber-400" : "text-foreground/15 hover:text-amber-300"
+                        <Star className={cn("w-4 h-4 transition-colors",
+                          rating != null && star <= rating ? "fill-amber-400 text-amber-400" : "text-foreground/10 hover:text-amber-200"
                         )} />
                       </button>
                     ))}
                   </div>
-                  {isExpanded ? <ChevronUp className="w-4 h-4 text-muted-foreground shrink-0" /> : <ChevronDown className="w-4 h-4 text-muted-foreground shrink-0" />}
+
+                  {/* Expand toggle */}
+                  <button onClick={() => toggleExpand(criterion.id)} className="p-0.5 text-muted-foreground/40 hover:text-foreground shrink-0">
+                    {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                  </button>
                 </div>
+
+                {/* Expanded detail — ultra condensed */}
                 {isExpanded && (
-                  <div className="px-3 pb-3 space-y-3 border-t border-foreground/10">
-                    <p className="text-[11px] text-muted-foreground leading-relaxed pt-2 italic">💡 {criterion.description}</p>
+                  <div className="px-3 pb-3 pt-1 ml-5 space-y-2 border-l-2 border-foreground/10">
+                    <p className="text-[10px] text-muted-foreground italic leading-snug">{criterion.description}</p>
 
-                    {/* Rating Rubric */}
-                    {criterion.ratingRubric && Object.keys(criterion.ratingRubric).length > 0 && (
+                    {topQuestion && (
+                      <div className="flex items-start gap-1.5 group">
+                        <MessageSquare className="w-3 h-3 text-muted-foreground/50 shrink-0 mt-0.5" />
+                        <span className="text-[10px] text-foreground/80 leading-snug flex-1">"{topQuestion}"</span>
+                        <button onClick={() => copyToClipboard(topQuestion)} className="opacity-0 group-hover:opacity-100 p-0.5 text-muted-foreground shrink-0">
+                          <Copy className="w-2.5 h-2.5" />
+                        </button>
+                      </div>
+                    )}
+                    {criterion.suggestedQuestions && criterion.suggestedQuestions.length > 1 && (
                       <div className="space-y-1">
-                        <p className="text-[10px] font-bold uppercase tracking-wider text-foreground/70">Rubrique de notation</p>
-                        <div className="grid gap-0.5">
-                          {[1, 2, 3, 4, 5].map(level => {
-                            const desc = criterion.ratingRubric?.[String(level)];
-                            if (!desc) return null;
-                            const isCurrentRating = rating === level;
-                            return (
-                              <div key={level} className={cn(
-                                "flex items-start gap-2 px-2 py-1 text-[10px] transition-colors",
-                                isCurrentRating ? "bg-amber-50 border-l-2 border-amber-400" : "border-l-2 border-transparent"
-                              )}>
-                                <span className={cn(
-                                  "font-bold shrink-0 w-4 text-center",
-                                  isCurrentRating ? "text-amber-600" : "text-muted-foreground"
-                                )}>{level}</span>
-                                <span className={cn(
-                                  "leading-relaxed",
-                                  isCurrentRating ? "text-amber-700 font-medium" : "text-muted-foreground"
-                                )}>{desc}</span>
-                              </div>
-                            );
-                          })}
-                        </div>
+                        {criterion.suggestedQuestions.slice(1).map((q, qi) => (
+                          <div key={qi} className="flex items-start gap-1.5 group">
+                            <span className="text-muted-foreground/30 text-[10px] shrink-0 mt-0.5">•</span>
+                            <span className="text-[10px] text-foreground/60 leading-snug flex-1">"{q}"</span>
+                            <button onClick={() => copyToClipboard(q)} className="opacity-0 group-hover:opacity-100 p-0.5 text-muted-foreground shrink-0">
+                              <Copy className="w-2.5 h-2.5" />
+                            </button>
+                          </div>
+                        ))}
                       </div>
                     )}
 
-                    {/* Suggested Questions */}
-                    {criterion.suggestedQuestions && criterion.suggestedQuestions.length > 0 && (
-                      <div className="space-y-1.5">
-                        <p className="text-[10px] font-bold uppercase tracking-wider text-foreground/70 flex items-center gap-1">
-                          <MessageSquare className="w-3 h-3" /> Questions suggérées
-                        </p>
-                        <div className="space-y-1">
-                          {criterion.suggestedQuestions.map((q, qi) => (
-                            <div key={qi} className="group flex items-start gap-2 px-2 py-1.5 border border-foreground/10 bg-foreground/[0.02] hover:bg-foreground/[0.04] transition-colors">
-                              <span className="text-[11px] text-foreground leading-relaxed flex-1">"{q}"</span>
-                              <button onClick={() => copyToClipboard(q)}
-                                className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 text-muted-foreground hover:text-foreground shrink-0">
-                                <Copy className="w-3 h-3" />
-                              </button>
-                            </div>
-                          ))}
-                        </div>
+                    {topRedFlag && (
+                      <div className="flex items-start gap-1.5 text-orange-600">
+                        <AlertTriangle className="w-3 h-3 shrink-0 mt-0.5" />
+                        <span className="text-[10px] leading-snug">{topRedFlag}</span>
                       </div>
                     )}
 
-                    {/* Red Flags */}
-                    {criterion.redFlags && criterion.redFlags.length > 0 && (
-                      <div className="space-y-1">
-                        <p className="text-[10px] font-bold uppercase tracking-wider text-orange-600 flex items-center gap-1">
-                          <AlertTriangle className="w-3 h-3" /> Signaux d'alerte
-                        </p>
-                        <div className="space-y-1">
-                          {criterion.redFlags.map((rf, ri) => (
-                            <div key={ri} className="flex items-start gap-2 px-2 py-1 border border-orange-200 bg-orange-50/50">
-                              <span className="text-orange-500 shrink-0 mt-0.5">⚠</span>
-                              <span className="text-[10px] text-orange-700 leading-relaxed">{rf}</span>
-                            </div>
-                          ))}
-                        </div>
+                    {/* Rating rubric — compact inline */}
+                    {criterion.ratingRubric && rating && criterion.ratingRubric[String(rating)] && (
+                      <div className="text-[9px] text-amber-700 bg-amber-50 px-2 py-1 border-l-2 border-amber-400">
+                        <span className="font-bold mr-1">{rating}/5:</span> {criterion.ratingRubric[String(rating)]}
                       </div>
                     )}
 
                     <Textarea value={comment} onChange={e => handleComment(criterion.id, e.target.value)}
-                      placeholder="Notes d'entretien pour ce critère..." className="text-xs min-h-[60px] rounded-none border-foreground/20 resize-none" />
+                      placeholder="Notes..." className="text-[11px] min-h-[40px] rounded-none border-foreground/15 resize-none py-1.5 px-2" />
                   </div>
                 )}
               </div>
