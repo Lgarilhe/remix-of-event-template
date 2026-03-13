@@ -24,6 +24,7 @@ const CandidatePortal = lazy(() => import("./pages/CandidatePortal"));
 const Onboarding = lazy(() => import("./pages/Onboarding"));
 const Settings = lazy(() => import("./pages/Settings"));
 const Prospection = lazy(() => import("./pages/Prospection"));
+const Pricing = lazy(() => import("./pages/Pricing"));
 
 const PUBLIC_ROUTES = ['/', '/auth', '/portal'];
 
