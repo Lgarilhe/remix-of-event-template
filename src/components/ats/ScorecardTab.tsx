@@ -561,20 +561,20 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
                   </div>
                 )}
 
-                {/* Top question */}
+                {/* Points to verify */}
                 {questions.length > 0 && (
-                  <div className="space-y-1.5">
-                    <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1">
-                      <MessageSquare className="w-3 h-3" /> À demander
+                  <div className="space-y-1">
+                    <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">
+                      À vérifier
                     </p>
-                    {questions.slice(0, 2).map((q, qi) => (
-                      <div key={qi} className="group flex items-start gap-2 px-2 py-1.5 bg-foreground/[0.03] border border-foreground/10">
-                        <span className="text-[11px] text-foreground leading-snug flex-1">"{q}"</span>
-                        <button onClick={() => copyToClipboard(q)} className="opacity-0 group-hover:opacity-100 p-0.5 text-muted-foreground shrink-0">
-                          <Copy className="w-3 h-3" />
-                        </button>
-                      </div>
-                    ))}
+                    <ul className="space-y-0.5">
+                      {questions.slice(0, 3).map((q, qi) => (
+                        <li key={qi} className="flex items-start gap-1.5 text-[11px] text-muted-foreground leading-snug">
+                          <span className="text-foreground/30 mt-px">•</span>
+                          <span>{q.replace(/^["«]|["»]$/g, '').replace(/\?$/, '')}</span>
+                        </li>
+                      ))}
+                    </ul>
                   </div>
                 )}
 
