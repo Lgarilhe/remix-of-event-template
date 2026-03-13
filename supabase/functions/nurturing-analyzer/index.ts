@@ -140,8 +140,28 @@ serve(async (req) => {
   }
 
   try {
+    // Auth check
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader?.startsWith('Bearer ')) {
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+    const { createClient: createAuthClient } = await import("https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check");
+    const _authClient = createAuthClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_ANON_KEY')!, {
+      global: { headers: { Authorization: authHeader } },
+    });
+    const { data: claimsData, error: claimsError } = await _authClient.auth.getClaims(authHeader.replace('Bearer ', ''));
+    if (claimsError || !claimsData?.claims?.sub) {
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+    const authUserId = claimsData.claims.sub;
+
+    // Rate limit: 10 req/min (heavy operation)
+    const { data: allowed } = await supabase.rpc('check_rate_limit', { p_user_id: authUserId, p_action: 'nurturing_analyzer', p_max_requests: 10, p_window_seconds: 60 });
+    if (allowed === false) {
+      return new Response(JSON.stringify({ error: 'Rate limit exceeded' }), { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
     // IMPORTANT: A Request body can only be consumed once.
-    // We parse it exactly once here and reuse the resulting object for all actions.
     const body = await req.json();
     const { action, account_id, user_id, conversations, jobs } = body;
 
