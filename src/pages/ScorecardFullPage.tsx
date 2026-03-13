@@ -1,9 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { ScorecardTab } from '@/components/ats/ScorecardTab';
 import { ATSCandidate } from '@/hooks/useATSData';
-import { useProfileEnrichment, EnrichedProfile } from '@/hooks/useProfileEnrichment';
+import { EnrichedProfile } from '@/hooks/useProfileEnrichment';
 import { ArrowLeft, Maximize2 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -12,7 +12,6 @@ export default function ScorecardFullPage() {
   const navigate = useNavigate();
   const [candidate, setCandidate] = useState<ATSCandidate | null>(null);
   const [loading, setLoading] = useState(true);
-  const { enrichedProfile, enrich } = useProfileEnrichment();
 
   useEffect(() => {
     if (!candidateId) return;
@@ -69,14 +68,38 @@ export default function ScorecardFullPage() {
 
       setCandidate(c);
       setLoading(false);
-
-      // Enrich profile if we have a LinkedIn URL
-      if (data.linkedin_profile_url) {
-        enrich(data.linkedin_profile_url, data.linkedin_profile_data);
-      }
     };
     load();
   }, [candidateId]);
+
+  // Parse linkedinProfileData into EnrichedProfile
+  const enrichedProfile = useMemo<EnrichedProfile | null>(() => {
+    if (!candidate?.linkedinProfileData) return null;
+    const p = candidate.linkedinProfileData as any;
+    return {
+      name: p.name || p.full_name || candidate.name,
+      headline: p.headline || p.occupation,
+      summary: p.summary || p.about,
+      currentRole: p.current_role || p.headline,
+      currentCompany: p.current_company,
+      location: p.location || p.city,
+      skills: p.skills || [],
+      experiences: (p.experiences || p.positions || []).map((e: any) => ({
+        title: e.title || '',
+        company: e.company || e.company_name || '',
+        description: e.description || '',
+        startDate: e.start_date || e.starts_at,
+        endDate: e.end_date || e.ends_at,
+        isCurrent: e.is_current || !e.end_date,
+      })),
+      education: (p.education || []).map((e: any) => ({
+        school: e.school || e.school_name || '',
+        degree: e.degree || e.degree_name || '',
+        field: e.field || e.field_of_study || '',
+      })),
+      yearsOfExperience: p.years_of_experience,
+    };
+  }, [candidate]);
 
   if (loading) {
     return (
