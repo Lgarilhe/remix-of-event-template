@@ -22,6 +22,7 @@ const Outreach = lazy(() => import("./pages/Outreach"));
 const ATS = lazy(() => import("./pages/ATS"));
 const Dashboard = lazy(() => import("./pages/Dashboard"));
 const Qualification = lazy(() => import("./pages/Qualification"));
+const ScorecardFullPage = lazy(() => import("./pages/ScorecardFullPage"));
 const CandidatePortal = lazy(() => import("./pages/CandidatePortal"));
 const Onboarding = lazy(() => import("./pages/Onboarding"));
 const Settings = lazy(() => import("./pages/Settings"));
@@ -100,6 +101,7 @@ const AppContent = () => {
           <Route path="/ats" element={<ProtectedRoute><OrganizationGuard><ATS /></OrganizationGuard></ProtectedRoute>} />
           <Route path="/dashboard" element={<ProtectedRoute><OrganizationGuard><Dashboard /></OrganizationGuard></ProtectedRoute>} />
           <Route path="/qualification/:id" element={<ProtectedRoute><OrganizationGuard><Qualification /></OrganizationGuard></ProtectedRoute>} />
+          <Route path="/ats/scorecard/:candidateId" element={<ProtectedRoute><OrganizationGuard><ScorecardFullPage /></OrganizationGuard></ProtectedRoute>} />
           <Route path="/settings" element={<ProtectedRoute><OrganizationGuard><Settings /></OrganizationGuard></ProtectedRoute>} />
           <Route path="/prospection" element={<ProtectedRoute><OrganizationGuard><Prospection /></OrganizationGuard></ProtectedRoute>} />
           <Route path="/pricing" element={<ProtectedRoute><OrganizationGuard><Pricing /></OrganizationGuard></ProtectedRoute>} />
