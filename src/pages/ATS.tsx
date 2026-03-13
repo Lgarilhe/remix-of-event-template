@@ -227,7 +227,7 @@ export default function ATS() {
                   <div className="flex-1 min-w-0">
                     {!loading && candidates.length === 0 ? (
                       <EmptyState
-                        icon={<Users className="w-7 h-7" />}
+                        icon={<img src={iconAts3d} alt="" className="w-7 h-7 object-contain" />}
                         title="Aucun candidat dans l'ATS"
                         description="Les candidats apparaîtront ici automatiquement lorsque vous les contacterez via Outreach ou les ajouterez manuellement."
                         actionLabel="Aller sur Outreach"

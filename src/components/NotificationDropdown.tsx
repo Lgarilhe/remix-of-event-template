@@ -38,7 +38,7 @@ export const NotificationDropdown: React.FC = () => {
         onClick={() => setOpen(!open)}
         className="relative overflow-hidden bg-background text-foreground h-[34px] w-[34px] flex items-center justify-center text-[11px] font-medium uppercase border-l-0 border border-foreground leading-none"
       >
-        <Bell className="w-3.5 h-3.5" />
+        <img src={iconBell3d} alt="" className="w-5 h-5 object-contain" />
         {unreadCount > 0 && (
           <span className="absolute top-1 right-1 z-20 min-w-[14px] h-3.5 flex items-center justify-center px-0.5 text-[8px] font-bold bg-destructive text-destructive-foreground rounded-full">
             {unreadCount > 9 ? '9+' : unreadCount}
