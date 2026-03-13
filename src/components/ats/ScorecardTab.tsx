@@ -704,6 +704,8 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
             </div>
           );
         })()}
+          </div>{/* end card column */}
+        </div>{/* end flex rail+card */}
 
         {/* ─── Verdict Section ─── */}
         <div className="border-t-2 border-foreground/20 pt-4 mt-6 space-y-4">
