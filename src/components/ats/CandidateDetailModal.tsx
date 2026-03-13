@@ -460,7 +460,6 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
         <div className="px-3 sm:px-6 pt-2 sm:pt-4">
           <div className="flex gap-0 border-b border-foreground/10 overflow-x-auto no-scrollbar">
             {tabsConfig.map(tab => {
-              const Icon = tab.icon;
               const isActive = activeTab === tab.key;
               const count = tab.key === 'notes' ? notes.length
                 : tab.key === 'reminders' ? activeRemindersCount
@@ -475,20 +474,12 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
                       ? "text-foreground" 
                       : "text-muted-foreground/60 hover:text-foreground/80"
                   )}>
-                  <div
-                    className={cn(
-                      "flex items-center justify-center w-8 h-8 sm:w-6 sm:h-6 rounded-lg sm:rounded-md transition-all duration-200",
-                      isActive 
-                        ? "shadow-sm" 
-                        : "opacity-60 group-hover:opacity-90"
-                    )}
-                    style={{
-                      backgroundColor: isActive ? tab.accent : `color-mix(in srgb, ${tab.accent} 15%, transparent)`,
-                      color: isActive ? 'white' : tab.accent,
-                    }}
-                  >
-                    <Icon className="w-4 h-4 sm:w-3.5 sm:h-3.5" strokeWidth={isActive ? 2.2 : 1.8} />
-                  </div>
+                  <span className={cn(
+                    "text-lg sm:text-base leading-none transition-transform duration-150",
+                    isActive ? "scale-110 drop-shadow-sm" : "opacity-70 grayscale-[30%] group-hover:opacity-100 group-hover:grayscale-0"
+                  )}>
+                    {tab.emoji}
+                  </span>
                   <span className="hidden sm:inline">{tab.label}</span>
                   {count !== null && count > 0 && (
                     <span className={cn(
@@ -499,13 +490,10 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
                     </span>
                   )}
                   {/* Active indicator */}
-                  <span
-                    className={cn(
-                      "absolute bottom-0 left-1/2 -translate-x-1/2 h-0.5 transition-all duration-200 rounded-full",
-                      isActive ? "w-full" : "w-0 group-hover:w-1/2"
-                    )}
-                    style={{ backgroundColor: isActive ? tab.accent : 'hsl(var(--foreground))' }}
-                  />
+                  <span className={cn(
+                    "absolute bottom-0 left-1/2 -translate-x-1/2 h-0.5 bg-foreground transition-all duration-200 rounded-full",
+                    isActive ? "w-full" : "w-0 group-hover:w-1/2"
+                  )} />
                 </button>
               );
             })}
