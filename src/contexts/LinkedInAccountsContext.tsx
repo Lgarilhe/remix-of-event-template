@@ -14,6 +14,7 @@ interface LinkedInAccountsContextType {
   accounts: LinkedInAccount[];
   loading: boolean;
   reload: () => Promise<void>;
+  clear: () => void;
 }
 
 const LinkedInAccountsContext = createContext<LinkedInAccountsContextType>({
