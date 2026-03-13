@@ -334,15 +334,17 @@ export default function ScorecardFullPage() {
                     enrichedProfile.education.map((edu, i) => {
                       const schoolSlug = (edu.school || '').toLowerCase().replace(/[^a-z0-9]/g, '');
                       const logoKey = `edu-${schoolSlug}`;
-                      const logoUrl = `https://logo.clearbit.com/${schoolSlug}.com`;
+                      const dataLogo = (edu as any).logo;
+                      const clearbitUrl = schoolSlug ? `https://logo.clearbit.com/${schoolSlug}.com` : null;
                       const hasLogoError = logoErrors.has(logoKey);
+                      const logoSrc = dataLogo || (!hasLogoError && clearbitUrl ? clearbitUrl : null);
 
                       return (
                         <div key={i} className="border-l-2 border-foreground/15 pl-3 py-2">
                           <div className="flex items-start gap-2.5">
                             <div className="w-8 h-8 shrink-0 border border-foreground/10 bg-foreground/[0.03] flex items-center justify-center overflow-hidden">
-                              {!hasLogoError && schoolSlug ? (
-                                <img src={logoUrl} alt="" className="w-6 h-6 object-contain"
+                              {logoSrc ? (
+                                <img src={logoSrc} alt="" className="w-6 h-6 object-contain"
                                   onError={() => setLogoErrors(prev => new Set(prev).add(logoKey))} />
                               ) : (
                                 <GraduationCap className="w-3.5 h-3.5 text-muted-foreground/40" />
