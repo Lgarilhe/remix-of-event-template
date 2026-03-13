@@ -587,7 +587,7 @@ export function useLinkedInScoring({
           toast.info(`Scoring lot ${batchIndex}/${totalBatches}...`, { id: 'batch-scoring-progress', duration: 3000 });
         }
 
-        const { data, error } = await invokeEdgeFunction('score-profile-job', {
+        const { data, error } = await invokeWithCredits('score-profile-job', 'scoring', {
           profiles: batch, job: jobPayload, customScoringInstructions, accountId: accountId || undefined,
         });
 
