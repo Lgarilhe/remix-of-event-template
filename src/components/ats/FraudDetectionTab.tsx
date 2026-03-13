@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
+import { invokeWithCredits } from '@/lib/invokeWithCredits';
 import { ATSCandidate } from '@/hooks/useATSData';
 import { Shield, ShieldAlert, ShieldCheck, ShieldX, Loader2, AlertTriangle, Clock, TrendingUp, GraduationCap, Shuffle } from 'lucide-react';
 import { cn } from '@/lib/utils';
