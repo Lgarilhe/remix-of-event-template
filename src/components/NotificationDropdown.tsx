@@ -68,7 +68,7 @@ export const NotificationDropdown: React.FC = () => {
           <div className="flex-1 overflow-y-auto">
             {notifications.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
-                <Bell className="w-6 h-6 mb-2 opacity-30" />
+                <img src={iconBell3d} alt="" className="w-6 h-6 mb-2 opacity-30" />
                 <p className="text-[10px] font-medium uppercase tracking-wider">Aucune notification</p>
               </div>
             ) : (
