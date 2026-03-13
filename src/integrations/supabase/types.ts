@@ -212,6 +212,7 @@ export type Database = {
           matched_candidate_phone: string | null
           matched_linkedin_profile_id: string | null
           notes: string | null
+          organization_id: string | null
           raw_data: Json | null
           raw_number: string | null
           recording_url: string | null
@@ -240,6 +241,7 @@ export type Database = {
           matched_candidate_phone?: string | null
           matched_linkedin_profile_id?: string | null
           notes?: string | null
+          organization_id?: string | null
           raw_data?: Json | null
           raw_number?: string | null
           recording_url?: string | null
@@ -268,6 +270,7 @@ export type Database = {
           matched_candidate_phone?: string | null
           matched_linkedin_profile_id?: string | null
           notes?: string | null
+          organization_id?: string | null
           raw_data?: Json | null
           raw_number?: string | null
           recording_url?: string | null
@@ -279,7 +282,15 @@ export type Database = {
           user_name?: string | null
           voicemail_url?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "aircall_calls_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       airtable_appointments: {
         Row: {
@@ -292,6 +303,7 @@ export type Database = {
           id: string
           job_airtable_id: string | null
           notes: string | null
+          organization_id: string | null
           raw_data: Json | null
           shortlist_airtable_id: string | null
           source_base: string
@@ -309,6 +321,7 @@ export type Database = {
           id?: string
           job_airtable_id?: string | null
           notes?: string | null
+          organization_id?: string | null
           raw_data?: Json | null
           shortlist_airtable_id?: string | null
           source_base?: string
@@ -326,6 +339,7 @@ export type Database = {
           id?: string
           job_airtable_id?: string | null
           notes?: string | null
+          organization_id?: string | null
           raw_data?: Json | null
           shortlist_airtable_id?: string | null
           source_base?: string
@@ -333,7 +347,15 @@ export type Database = {
           synced_at?: string
           title?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "airtable_appointments_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       airtable_candidates: {
         Row: {
@@ -347,6 +369,7 @@ export type Database = {
           id: string
           last_name: string | null
           linkedin_url: string | null
+          organization_id: string | null
           phone: string | null
           preferred_contract: string | null
           raw_data: Json | null
@@ -366,6 +389,7 @@ export type Database = {
           id?: string
           last_name?: string | null
           linkedin_url?: string | null
+          organization_id?: string | null
           phone?: string | null
           preferred_contract?: string | null
           raw_data?: Json | null
@@ -385,6 +409,7 @@ export type Database = {
           id?: string
           last_name?: string | null
           linkedin_url?: string | null
+          organization_id?: string | null
           phone?: string | null
           preferred_contract?: string | null
           raw_data?: Json | null
@@ -393,7 +418,15 @@ export type Database = {
           status?: string | null
           synced_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "airtable_candidates_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       airtable_companies: {
         Row: {
@@ -405,6 +438,7 @@ export type Database = {
           headcount: string | null
           id: string
           name: string
+          organization_id: string | null
           raw_data: Json | null
           source_base: string
           synced_at: string
@@ -420,6 +454,7 @@ export type Database = {
           headcount?: string | null
           id?: string
           name: string
+          organization_id?: string | null
           raw_data?: Json | null
           source_base?: string
           synced_at?: string
@@ -435,13 +470,22 @@ export type Database = {
           headcount?: string | null
           id?: string
           name?: string
+          organization_id?: string | null
           raw_data?: Json | null
           source_base?: string
           synced_at?: string
           tech_stack?: string[] | null
           year_founded?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "airtable_companies_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       airtable_contacts: {
         Row: {
@@ -453,6 +497,7 @@ export type Database = {
           email: string | null
           full_name: string | null
           id: string
+          organization_id: string | null
           raw_data: Json | null
           source_base: string
           status: string | null
@@ -468,6 +513,7 @@ export type Database = {
           email?: string | null
           full_name?: string | null
           id?: string
+          organization_id?: string | null
           raw_data?: Json | null
           source_base?: string
           status?: string | null
@@ -483,13 +529,22 @@ export type Database = {
           email?: string | null
           full_name?: string | null
           id?: string
+          organization_id?: string | null
           raw_data?: Json | null
           source_base?: string
           status?: string | null
           synced_at?: string
           title?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "airtable_contacts_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       airtable_glossary: {
         Row: {
@@ -498,6 +553,7 @@ export type Database = {
           created_at: string
           description: string | null
           id: string
+          organization_id: string | null
           raw_data: Json | null
           source_base: string
           synced_at: string
@@ -509,6 +565,7 @@ export type Database = {
           created_at?: string
           description?: string | null
           id?: string
+          organization_id?: string | null
           raw_data?: Json | null
           source_base?: string
           synced_at?: string
@@ -520,12 +577,21 @@ export type Database = {
           created_at?: string
           description?: string | null
           id?: string
+          organization_id?: string | null
           raw_data?: Json | null
           source_base?: string
           synced_at?: string
           term?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "airtable_glossary_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       airtable_jobs: {
         Row: {
@@ -537,6 +603,7 @@ export type Database = {
           criteria: string | null
           description: string | null
           id: string
+          organization_id: string | null
           raw_data: Json | null
           salary: string | null
           source_base: string
@@ -553,6 +620,7 @@ export type Database = {
           criteria?: string | null
           description?: string | null
           id?: string
+          organization_id?: string | null
           raw_data?: Json | null
           salary?: string | null
           source_base?: string
@@ -569,6 +637,7 @@ export type Database = {
           criteria?: string | null
           description?: string | null
           id?: string
+          organization_id?: string | null
           raw_data?: Json | null
           salary?: string | null
           source_base?: string
@@ -576,7 +645,15 @@ export type Database = {
           synced_at?: string
           title?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "airtable_jobs_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       airtable_kpi: {
         Row: {
@@ -585,6 +662,7 @@ export type Database = {
           created_at: string
           id: string
           name: string | null
+          organization_id: string | null
           period: string | null
           raw_data: Json | null
           source_base: string
@@ -597,6 +675,7 @@ export type Database = {
           created_at?: string
           id?: string
           name?: string | null
+          organization_id?: string | null
           period?: string | null
           raw_data?: Json | null
           source_base?: string
@@ -609,13 +688,22 @@ export type Database = {
           created_at?: string
           id?: string
           name?: string | null
+          organization_id?: string | null
           period?: string | null
           raw_data?: Json | null
           source_base?: string
           synced_at?: string
           value?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "airtable_kpi_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       airtable_notes: {
         Row: {
@@ -629,6 +717,7 @@ export type Database = {
           job_airtable_id: string | null
           note_date: string | null
           note_type: string | null
+          organization_id: string | null
           raw_data: Json | null
           shortlist_airtable_id: string | null
           source_base: string
@@ -646,6 +735,7 @@ export type Database = {
           job_airtable_id?: string | null
           note_date?: string | null
           note_type?: string | null
+          organization_id?: string | null
           raw_data?: Json | null
           shortlist_airtable_id?: string | null
           source_base?: string
@@ -663,13 +753,22 @@ export type Database = {
           job_airtable_id?: string | null
           note_date?: string | null
           note_type?: string | null
+          organization_id?: string | null
           raw_data?: Json | null
           shortlist_airtable_id?: string | null
           source_base?: string
           synced_at?: string
           title?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "airtable_notes_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       airtable_placements: {
         Row: {
@@ -681,6 +780,7 @@ export type Database = {
           fees: string | null
           id: string
           name: string | null
+          organization_id: string | null
           raw_data: Json | null
           salary: string | null
           source_base: string
@@ -697,6 +797,7 @@ export type Database = {
           fees?: string | null
           id?: string
           name?: string | null
+          organization_id?: string | null
           raw_data?: Json | null
           salary?: string | null
           source_base?: string
@@ -713,6 +814,7 @@ export type Database = {
           fees?: string | null
           id?: string
           name?: string | null
+          organization_id?: string | null
           raw_data?: Json | null
           salary?: string | null
           source_base?: string
@@ -720,7 +822,15 @@ export type Database = {
           status?: string | null
           synced_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "airtable_placements_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       airtable_shortlists: {
         Row: {
@@ -733,6 +843,7 @@ export type Database = {
           estimated_fees: string | null
           id: string
           job_airtable_id: string | null
+          organization_id: string | null
           raw_data: Json | null
           salary_proposed: string | null
           source_base: string
@@ -749,6 +860,7 @@ export type Database = {
           estimated_fees?: string | null
           id?: string
           job_airtable_id?: string | null
+          organization_id?: string | null
           raw_data?: Json | null
           salary_proposed?: string | null
           source_base?: string
@@ -765,13 +877,22 @@ export type Database = {
           estimated_fees?: string | null
           id?: string
           job_airtable_id?: string | null
+          organization_id?: string | null
           raw_data?: Json | null
           salary_proposed?: string | null
           source_base?: string
           status?: string | null
           synced_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "airtable_shortlists_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       airtable_shortlists_cumulated: {
         Row: {
@@ -781,6 +902,7 @@ export type Database = {
           created_at: string
           id: string
           last_shortlist_date: string | null
+          organization_id: string | null
           raw_data: Json | null
           source_base: string
           synced_at: string
@@ -793,6 +915,7 @@ export type Database = {
           created_at?: string
           id?: string
           last_shortlist_date?: string | null
+          organization_id?: string | null
           raw_data?: Json | null
           source_base?: string
           synced_at?: string
@@ -805,12 +928,21 @@ export type Database = {
           created_at?: string
           id?: string
           last_shortlist_date?: string | null
+          organization_id?: string | null
           raw_data?: Json | null
           source_base?: string
           synced_at?: string
           total_shortlists?: number | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "airtable_shortlists_cumulated_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       airtable_sync_meta: {
         Row: {
@@ -850,6 +982,7 @@ export type Database = {
           due_date: string | null
           id: string
           job_airtable_id: string | null
+          organization_id: string | null
           raw_data: Json | null
           shortlist_airtable_id: string | null
           source_base: string
@@ -868,6 +1001,7 @@ export type Database = {
           due_date?: string | null
           id?: string
           job_airtable_id?: string | null
+          organization_id?: string | null
           raw_data?: Json | null
           shortlist_airtable_id?: string | null
           source_base?: string
@@ -886,6 +1020,7 @@ export type Database = {
           due_date?: string | null
           id?: string
           job_airtable_id?: string | null
+          organization_id?: string | null
           raw_data?: Json | null
           shortlist_airtable_id?: string | null
           source_base?: string
@@ -894,7 +1029,15 @@ export type Database = {
           task_type?: string | null
           title?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "airtable_tasks_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       call_coaching_sessions: {
         Row: {
