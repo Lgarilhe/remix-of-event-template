@@ -585,11 +585,11 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
               </div>
 
               {/* Navigation arrows */}
-              <div className="flex items-center justify-between px-4 py-3 border-t border-foreground/10">
+              <div className="flex items-center justify-between px-4 py-3 border-t-2 border-foreground">
                 <button
                   onClick={() => setCurrentCriterionIdx(Math.max(0, currentCriterionIdx - 1))}
                   disabled={currentCriterionIdx === 0}
-                  className="flex items-center gap-1 text-[10px] font-medium uppercase tracking-wider text-foreground disabled:opacity-20 hover:text-foreground/70"
+                  className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-foreground disabled:opacity-20 hover:text-foreground/70"
                 >
                   <ChevronLeft className="w-4 h-4" /> Préc
                 </button>
@@ -600,7 +600,7 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
                     }
                   }}
                   disabled={currentCriterionIdx === totalC - 1}
-                  className="flex items-center gap-1 text-[10px] font-medium uppercase tracking-wider text-foreground disabled:opacity-20 hover:text-foreground/70"
+                  className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-foreground disabled:opacity-20 hover:text-foreground/70"
                 >
                   Suiv <ChevronRight className="w-4 h-4" />
                 </button>
