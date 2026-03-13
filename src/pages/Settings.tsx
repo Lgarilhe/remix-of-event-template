@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Building2, Users, Crown, Shield, User, Trash2, ArrowLeft, Plug, Check, Loader2, Pencil, UserCircle, CreditCard, Sparkles } from 'lucide-react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useQuery } from '@tanstack/react-query';
 import { IntegrationsSettings } from '@/components/settings/IntegrationsSettings';
@@ -33,6 +33,7 @@ const roleLabels = {
 
 const Settings = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const [searchParams] = useSearchParams();
   const { organization, organizationId, isOwner, isAdmin } = useOrganization();
   const { members, isLoading, pendingInvitations, inviteMember, isInviting, cancelInvitation, updateRole, removeMember } = useOrganizationMembers(organizationId);
@@ -78,11 +79,24 @@ const Settings = () => {
     }
   };
 
+  const handleBack = () => {
+    const idx = window.history.state?.idx;
+    const canGoBackInApp = typeof idx === 'number' ? idx > 0 : location.key !== 'default';
+
+    if (canGoBackInApp) {
+      navigate(-1);
+      return;
+    }
+
+    navigate('/outreach', { replace: true });
+  };
+
   return (
     <div className="min-h-screen bg-background">
       <div className="max-w-3xl mx-auto px-4 py-8">
         <button
-          onClick={() => window.history.length > 1 ? navigate(-1) : navigate('/outreach')}
+          type="button"
+          onClick={handleBack}
           className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground mb-6 transition-colors"
         >
           <ArrowLeft className="w-4 h-4" />
