@@ -423,7 +423,39 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
             </div>
           </div>
           <div className="flex gap-0 self-end sm:self-auto">
-            <button onClick={() => navigate(`/ats/scorecard/${candidate.candidateId}`)}
+            <button onClick={async () => {
+                // Auto-save before navigating to full page
+                if (activeEval) {
+                  try {
+                    const { data: { user } } = await supabase.auth.getUser();
+                    if (user) {
+                      const now = new Date().toISOString();
+                      const payload: any = {
+                        candidate_id: candidate.candidateId,
+                        job_id: candidate.jobId,
+                        job_title: candidate.jobTitle,
+                        criteria: activeEval.criteria as any,
+                        ratings: activeEval.ratings as any,
+                        comments: activeEval.comments as any,
+                        overall_score: activeEval.overallScore,
+                        created_by: user.id,
+                        updated_at: now,
+                        recommendation: activeEval.recommendation || null,
+                        summary: activeEval.summary || null,
+                        follow_up_notes: activeEval.followUpNotes || null,
+                        interview_stage: activeEval.interviewStage || null,
+                      };
+                      if (activeEval.id) {
+                        await supabase.from('candidate_evaluations').update(payload).eq('id', activeEval.id);
+                      } else {
+                        const { data } = await supabase.from('candidate_evaluations').insert(payload).select('id').single();
+                        if (data) updateActiveEval(ev => ({ ...ev, id: data.id }));
+                      }
+                    }
+                  } catch (e) { console.warn('Auto-save before fullscreen failed:', e); }
+                }
+                navigate(`/ats/scorecard/${candidate.candidateId}`);
+              }}
               className="relative overflow-hidden h-[30px] px-2 sm:px-3 flex items-center gap-1.5 border border-foreground text-foreground text-[10px] font-medium uppercase tracking-wider group">
               <Maximize2 className="w-3 h-3 relative z-10" />
               <span className="relative z-10 hidden sm:inline">Plein écran</span>
