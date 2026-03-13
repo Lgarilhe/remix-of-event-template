@@ -9,6 +9,7 @@ import { CandidateList } from '@/components/candidates/CandidateList';
 import { CandidateFilters } from '@/components/candidates/CandidateFilters';
 import { Tabs, TabsContent } from '@/components/ui/tabs';
 import { Loader2, LayoutGrid, List, Users } from 'lucide-react';
+import { EmptyState } from '@/components/ui/EmptyState';
 import { useNotionShortlist, useNotionCandidates } from '@/hooks/useNotionCandidates';
 import { cn } from '@/lib/utils';
 
