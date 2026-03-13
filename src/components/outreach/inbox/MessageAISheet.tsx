@@ -199,7 +199,7 @@ export const MessageAISheet: React.FC<MessageAISheetProps> = ({
       }
 
       // 2. No cache — call analyze-response live
-      const response = await invokeEdgeFunction<{ analysis?: any }>('analyze-response', { context });
+      const response = await invokeWithCredits<{ analysis?: any }>('analyze-response', 'analyze_response', { context });
       if (response.error) throw response.error;
       if (response.data?.success && response.data?.analysis) {
         setAnalysis(response.data.analysis);

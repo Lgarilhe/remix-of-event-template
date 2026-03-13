@@ -129,7 +129,7 @@ export const InlineAIPanel: React.FC<InlineAIPanelProps> = ({
         }
       }
 
-      const response = await invokeEdgeFunction<{ analysis?: any }>('analyze-response', { context });
+      const response = await invokeWithCredits<{ analysis?: any }>('analyze-response', 'analyze_response', { context });
       if (response.error) throw response.error;
       if (response.data?.success && response.data?.analysis) {
         setAnalysis(response.data.analysis);
