@@ -458,7 +458,7 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
 
         {/* Tabs */}
         <div className="px-3 sm:px-6 pt-2 sm:pt-4">
-          <div className="flex gap-0 border-b border-foreground/20 overflow-x-auto">
+          <div className="flex gap-0 border-b border-foreground/10 overflow-x-auto no-scrollbar">
             {tabsConfig.map(tab => {
               const Icon = tab.icon;
               const isActive = activeTab === tab.key;
@@ -470,12 +470,33 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
               return (
                 <button key={tab.key} onClick={() => setActiveTab(tab.key)}
                   className={cn(
-                    "flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-2.5 text-[10px] font-medium uppercase tracking-wider border-b-2 transition-colors -mb-px whitespace-nowrap",
-                    isActive ? "border-foreground text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"
+                    "relative flex flex-col sm:flex-row items-center gap-0.5 sm:gap-1.5 px-3 sm:px-3 py-2 sm:py-2.5 text-[10px] font-medium uppercase tracking-wider transition-all -mb-px whitespace-nowrap group",
+                    isActive 
+                      ? "text-foreground" 
+                      : "text-muted-foreground/50 hover:text-foreground/80"
                   )}>
-                  <Icon className="w-3.5 h-3.5" />
+                  <div className={cn(
+                    "flex items-center justify-center w-7 h-7 sm:w-auto sm:h-auto transition-all",
+                    isActive 
+                      ? "bg-foreground text-background sm:bg-transparent sm:text-foreground" 
+                      : "sm:bg-transparent"
+                  )}>
+                    <Icon className="w-3.5 h-3.5" strokeWidth={isActive ? 2.5 : 1.5} />
+                  </div>
                   <span className="hidden sm:inline">{tab.label}</span>
-                  {count !== null && count > 0 && <span className="text-[9px] text-muted-foreground">({count})</span>}
+                  {count !== null && count > 0 && (
+                    <span className={cn(
+                      "text-[8px] sm:text-[9px] font-bold leading-none",
+                      isActive ? "text-foreground sm:text-muted-foreground" : "text-muted-foreground/50"
+                    )}>
+                      {count}
+                    </span>
+                  )}
+                  {/* Active indicator */}
+                  <span className={cn(
+                    "absolute bottom-0 left-1/2 -translate-x-1/2 h-0.5 bg-foreground transition-all duration-200",
+                    isActive ? "w-full" : "w-0 group-hover:w-1/2"
+                  )} />
                 </button>
               );
             })}
