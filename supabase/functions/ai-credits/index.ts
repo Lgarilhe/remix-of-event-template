@@ -64,12 +64,27 @@ serve(async (req) => {
 
     const adminClient = createClient(supabaseUrl, serviceKey);
     const body = await req.json();
-    const { action: reqAction, organization_id } = body;
+    const reqAction = validateString(body.action);
+    const organization_id = validateUUID(body.organization_id);
 
+    if (!reqAction || !['get_balance', 'check_credits', 'deduct', 'get_history', 'get_costs'].includes(reqAction)) {
+      return new Response(JSON.stringify({ error: "Invalid action" }), {
+        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
     if (!organization_id) {
-      return new Response(JSON.stringify({ error: "organization_id required" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      return new Response(JSON.stringify({ error: "Valid organization_id required" }), {
+        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // Rate limit: 60 requests/min per user
+    const { data: allowed } = await adminClient.rpc("check_rate_limit", {
+      p_user_id: user.id, p_action: "ai_credits", p_max_requests: 60, p_window_seconds: 60,
+    });
+    if (allowed === false) {
+      return new Response(JSON.stringify({ error: "Rate limited" }), {
+        status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
