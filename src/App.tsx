@@ -78,10 +78,6 @@ const AppContent = () => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-    return () => subscription.unsubscribe();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
   const handleSessionExpiredClose = (open: boolean) => {
     setSessionExpired(open);
     if (!open) {
