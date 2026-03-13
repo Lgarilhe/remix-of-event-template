@@ -94,6 +94,8 @@ export const useOrganization = () => {
       toast.success('Organisation créée avec succès');
     },
     onError: (err: Error) => {
+      // Don't toast duplicate slug errors — handled in the form
+      if (err.message?.includes('organizations_slug_key') || err.message?.includes('duplicate key')) return;
       toast.error(`Erreur: ${err.message}`);
     },
   });
