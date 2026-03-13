@@ -186,10 +186,10 @@ export default function ScorecardFullPage() {
         <button
           onClick={() => { setJobOpen(!jobOpen); if (!jobOpen) setProfileOpen(false); }}
           className={cn(
-            "h-9 flex items-center gap-2 px-4 border-2 border-foreground transition-all text-[10px] font-bold uppercase tracking-wider",
+            "h-9 flex items-center gap-2 px-4 border-2 border-foreground shadow-[3px_3px_0px_0px_hsl(var(--foreground))] transition-all text-[10px] font-bold uppercase tracking-wider",
             jobOpen
-              ? "bg-foreground text-background"
-              : "text-foreground hover:bg-foreground hover:text-background"
+              ? "bg-foreground text-background shadow-none translate-x-[1px] translate-y-[1px]"
+              : "bg-background text-foreground hover:bg-foreground hover:text-background"
           )}
         >
           <FileText className="w-3.5 h-3.5" />
@@ -199,10 +199,10 @@ export default function ScorecardFullPage() {
         <button
           onClick={() => { setProfileOpen(!profileOpen); if (!profileOpen) setJobOpen(false); }}
           className={cn(
-            "h-9 flex items-center gap-2 px-4 border-2 border-foreground transition-all text-[10px] font-bold uppercase tracking-wider",
+            "h-9 flex items-center gap-2 px-4 border-2 border-foreground shadow-[3px_3px_0px_0px_hsl(var(--foreground))] transition-all text-[10px] font-bold uppercase tracking-wider",
             profileOpen
-              ? "bg-foreground text-background"
-              : "text-foreground hover:bg-foreground hover:text-background"
+              ? "bg-foreground text-background shadow-none translate-x-[1px] translate-y-[1px]"
+              : "bg-background text-foreground hover:bg-foreground hover:text-background"
           )}
         >
           <User className="w-3.5 h-3.5" />
