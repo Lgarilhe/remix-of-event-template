@@ -1,6 +1,7 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
+import { invokeWithCredits } from '@/lib/invokeWithCredits';
 import { Mic, Square, FileText, Copy, CheckCircle2, Loader2, X, Search, CircleDot, AlertTriangle, User, ArrowRight } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
