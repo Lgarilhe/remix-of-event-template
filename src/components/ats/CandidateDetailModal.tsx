@@ -508,12 +508,14 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
               <ScorecardTab candidate={candidate} enrichedProfile={enrichedProfile} onOpenProfile={() => setMobileProfileOpen(true)} />
             </div>
 
-            {/* Mobile: floating button to open candidate context */}
+            {/* Mobile: floating round pulsing button to open candidate context */}
             <button
               onClick={() => setMobileProfileOpen(true)}
-              className="lg:hidden fixed bottom-4 right-4 z-[2600] h-12 w-12 flex items-center justify-center bg-foreground text-background shadow-lg border-2 border-foreground"
+              className="lg:hidden fixed bottom-6 right-4 z-[2600] h-14 w-14 rounded-full flex items-center justify-center bg-foreground text-background shadow-xl animate-pulse"
+              style={{ animationDuration: '2s' }}
             >
               <User className="w-5 h-5" />
+              <span className="absolute inset-0 rounded-full border-2 border-foreground/40 animate-ping" style={{ animationDuration: '3s' }} />
             </button>
 
             {/* RIGHT: Compact profile (desktop only) */}
@@ -1222,21 +1224,6 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
           </div>
         )}
 
-        {/* Quick Actions Bar */}
-        <div className="border-t border-foreground/20 px-6 py-3 flex items-center gap-0 bg-foreground/[0.02]">
-          <BrutalActionButton onClick={() => toast.info('Fonctionnalité à venir')} first>
-            <MessageSquare className="w-3.5 h-3.5 relative z-10" />
-            <span className="relative z-10">Message</span>
-          </BrutalActionButton>
-          <BrutalActionButton onClick={() => toast.info('Fonctionnalité à venir')}>
-            <CalendarPlus className="w-3.5 h-3.5 relative z-10" />
-            <span className="relative z-10">Entretien</span>
-          </BrutalActionButton>
-          <BrutalActionButton onClick={() => toast.info('Fonctionnalité à venir')}>
-            <FolderPlus className="w-3.5 h-3.5 relative z-10" />
-            <span className="relative z-10">Projet</span>
-          </BrutalActionButton>
-        </div>
 
         {/* Mobile profile panel — normal flex child at bottom of DialogContent */}
         {isSplitMode && mobileProfileOpen && (
