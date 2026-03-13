@@ -3,6 +3,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { useOrganization } from '@/hooks/useOrganization';
 import { Building2, ArrowRight, Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
 
 interface Props {
   onComplete: () => void;
@@ -11,6 +12,7 @@ interface Props {
 export const OnboardingStepOrg = ({ onComplete }: Props) => {
   const [name, setName] = useState('');
   const [slug, setSlug] = useState('');
+  const [slugError, setSlugError] = useState('');
   const { createOrganization, isCreating } = useOrganization();
 
   const generateSlug = (value: string) =>
@@ -24,16 +26,23 @@ export const OnboardingStepOrg = ({ onComplete }: Props) => {
   const handleNameChange = (value: string) => {
     setName(value);
     setSlug(generateSlug(value));
+    setSlugError('');
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim() || !slug.trim()) return;
+    setSlugError('');
     try {
       await createOrganization({ name: name.trim(), slug: slug.trim() });
       onComplete();
-    } catch {
-      // handled in hook
+    } catch (err: any) {
+      const msg = err?.message || '';
+      if (msg.includes('organizations_slug_key') || msg.includes('duplicate key')) {
+        setSlugError('Cet identifiant est déjà pris. Choisissez-en un autre.');
+      } else {
+        toast.error(msg || 'Erreur lors de la création');
+      }
     }
   };
 
@@ -73,14 +82,18 @@ export const OnboardingStepOrg = ({ onComplete }: Props) => {
           <Input
             placeholder="mon-cabinet"
             value={slug}
-            onChange={(e) => setSlug(generateSlug(e.target.value))}
+            onChange={(e) => { setSlug(generateSlug(e.target.value)); setSlugError(''); }}
             required
             pattern="[a-z0-9-]+"
-            className="border-foreground/20"
+            className={`border-foreground/20 ${slugError ? 'border-destructive' : ''}`}
           />
-          <p className="text-xs text-muted-foreground">
-            Lettres minuscules, chiffres et tirets uniquement.
-          </p>
+          {slugError ? (
+            <p className="text-xs text-destructive">{slugError}</p>
+          ) : (
+            <p className="text-xs text-muted-foreground">
+              Lettres minuscules, chiffres et tirets uniquement.
+            </p>
+          )}
         </div>
 
         <Button
