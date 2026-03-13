@@ -1227,7 +1227,7 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
 
         {/* Mobile profile panel — normal flex child at bottom of DialogContent */}
         {isSplitMode && mobileProfileOpen && (
-          <div className="h-[35dvh] shrink-0 border-t-2 border-foreground bg-background flex flex-col lg:hidden">
+          <div className="h-[45dvh] shrink-0 border-t-2 border-foreground bg-background flex flex-col lg:hidden">
             <div className="px-4 py-3 border-b border-foreground/15 flex items-center justify-between shrink-0">
               <div className="flex items-center gap-2">
                 <User className="w-4 h-4" />
