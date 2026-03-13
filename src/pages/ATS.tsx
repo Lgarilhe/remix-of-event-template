@@ -29,10 +29,10 @@ export type { ATSCandidate };
 export { ATS_STAGES };
 
 const viewTabs = [
-  { value: 'kanban', label: 'Kanban', icon: LayoutGrid },
-  { value: 'table', label: 'Table', icon: Table },
-  { value: 'timeline', label: 'Timeline', icon: Clock },
-  { value: 'analytics', label: 'Analytics', icon: BarChart3 },
+  { value: 'kanban', label: 'Kanban', icon3d: iconKanban3d },
+  { value: 'table', label: 'Table', icon3d: iconTable3d },
+  { value: 'timeline', label: 'Timeline', icon3d: iconTimeline3d },
+  { value: 'analytics', label: 'Analytics', icon3d: iconAnalytics3d },
 ] as const;
 
 export default function ATS() {

@@ -24,8 +24,8 @@ export default function Dashboard() {
           {/* Header */}
           <div className="flex items-center justify-between gap-3 mb-4">
             <div className="flex items-center gap-2 min-w-0">
-              <div className="h-8 w-8 bg-foreground text-background flex items-center justify-center shrink-0">
-                <BarChart3 className="w-4 h-4" />
+              <div className="h-8 w-8 flex items-center justify-center shrink-0">
+                <img src={iconDashboard3d} alt="" className="w-8 h-8 object-contain" />
               </div>
               <h1 className="text-xl sm:text-2xl font-bold text-foreground uppercase tracking-tight">Dashboard</h1>
               {isFromCache && !isFetching && (
