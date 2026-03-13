@@ -182,7 +182,7 @@ export default function ScorecardFullPage() {
       </div>
 
       {/* Fixed bottom toolbar */}
-      <div className="fixed inset-x-0 bottom-0 z-30 bg-background border-t-2 border-foreground px-4 py-2 flex items-center justify-between">
+      <div className="fixed inset-x-0 bottom-0 z-30 bg-brutal-accent/10 border-t-2 border-brutal-accent px-4 py-2 flex items-center justify-between">
         <button
           onClick={() => { setJobOpen(!jobOpen); if (!jobOpen) setProfileOpen(false); }}
           className={cn(
