@@ -14,12 +14,14 @@ interface LinkedInAccountsContextType {
   accounts: LinkedInAccount[];
   loading: boolean;
   reload: () => Promise<void>;
+  clear: () => void;
 }
 
 const LinkedInAccountsContext = createContext<LinkedInAccountsContextType>({
   accounts: [],
   loading: false,
   reload: async () => {},
+  clear: () => {},
 });
 
 export const useLinkedInAccounts = () => useContext(LinkedInAccountsContext);
@@ -44,11 +46,19 @@ export const LinkedInAccountsProvider: React.FC<{ children: React.ReactNode }> =
     }
   }, []);
 
+  const clear = useCallback(() => {
+    setAccounts([]);
+    setHasLoaded(false);
+  }, []);
+
   // Load accounts once user is authenticated
   useEffect(() => {
+    let prevUserId: string | null = null;
+
     const checkAndLoad = async () => {
       const { data: { session } } = await supabase.auth.getSession();
       if (session) {
+        prevUserId = session.user.id;
         reload();
       }
     };
@@ -56,8 +66,15 @@ export const LinkedInAccountsProvider: React.FC<{ children: React.ReactNode }> =
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === 'SIGNED_IN' && session) {
+        // If user changed, clear stale accounts first
+        if (prevUserId && prevUserId !== session.user.id) {
+          setAccounts([]);
+          setHasLoaded(false);
+        }
+        prevUserId = session.user.id;
         reload();
       } else if (event === 'SIGNED_OUT') {
+        prevUserId = null;
         setAccounts([]);
         setHasLoaded(false);
       }
@@ -70,7 +87,8 @@ export const LinkedInAccountsProvider: React.FC<{ children: React.ReactNode }> =
     accounts,
     loading: loading && !hasLoaded,
     reload,
-  }), [accounts, loading, hasLoaded, reload]);
+    clear,
+  }), [accounts, loading, hasLoaded, reload, clear]);
 
   return (
     <LinkedInAccountsContext.Provider value={contextValue}>
