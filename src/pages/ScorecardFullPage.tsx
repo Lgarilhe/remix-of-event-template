@@ -4,7 +4,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { ScorecardTab } from '@/components/ats/ScorecardTab';
 import { ATSCandidate } from '@/hooks/useATSData';
 import { EnrichedProfile } from '@/hooks/useProfileEnrichment';
-import { ArrowLeft, Maximize2, User, ChevronUp, ChevronDown, ExternalLink, MapPin, Building2, Briefcase, GraduationCap, Wrench, X } from 'lucide-react';
+import { ArrowLeft, Maximize2, User, ChevronUp, ChevronDown, ExternalLink, MapPin, Building2, Briefcase, GraduationCap, Wrench, X, FileText } from 'lucide-react';
+import { JobDetailDrawer } from '@/components/ats/JobDetailDrawer';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
@@ -17,6 +18,7 @@ export default function ScorecardFullPage() {
   const [profileSection, setProfileSection] = useState<'exp' | 'edu' | 'skills'>('exp');
   const [expandedExp, setExpandedExp] = useState<Set<number>>(new Set());
   const [logoErrors, setLogoErrors] = useState<Set<string>>(new Set());
+  const [jobOpen, setJobOpen] = useState(false);
 
   useEffect(() => {
     if (!candidateId) return;
@@ -179,9 +181,24 @@ export default function ScorecardFullPage() {
         />
       </div>
 
-      {/* Floating profile preview button */}
+      {/* Floating job button (left) */}
       <button
-        onClick={() => setProfileOpen(!profileOpen)}
+        onClick={() => { setJobOpen(!jobOpen); if (!jobOpen) setProfileOpen(false); }}
+        className={cn(
+          "fixed bottom-4 left-4 z-30 h-11 flex items-center gap-2 px-4 border-2 border-foreground shadow-[3px_3px_0px_0px_hsl(var(--foreground))] transition-all",
+          jobOpen
+            ? "bg-foreground text-background"
+            : "bg-background text-foreground hover:bg-foreground hover:text-background"
+        )}
+      >
+        <FileText className="w-4 h-4" />
+        <span className="text-[10px] font-bold uppercase tracking-wider">Poste</span>
+        {jobOpen ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronUp className="w-3.5 h-3.5" />}
+      </button>
+
+      {/* Floating profile preview button (right) */}
+      <button
+        onClick={() => { setProfileOpen(!profileOpen); if (!profileOpen) setJobOpen(false); }}
         className={cn(
           "fixed bottom-4 right-4 z-30 h-11 flex items-center gap-2 px-4 border-2 border-foreground shadow-[3px_3px_0px_0px_hsl(var(--foreground))] transition-all",
           profileOpen
@@ -387,6 +404,13 @@ export default function ScorecardFullPage() {
           </div>
         </div>
       )}
+
+      {/* Job detail drawer */}
+      <JobDetailDrawer
+        jobId={candidate.jobId}
+        open={jobOpen}
+        onClose={() => setJobOpen(false)}
+      />
     </div>
   );
 }
