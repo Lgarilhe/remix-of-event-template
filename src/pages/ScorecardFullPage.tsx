@@ -14,6 +14,9 @@ export default function ScorecardFullPage() {
   const [candidate, setCandidate] = useState<ATSCandidate | null>(null);
   const [loading, setLoading] = useState(true);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [profileSection, setProfileSection] = useState<'exp' | 'edu' | 'skills'>('exp');
+  const [expandedExp, setExpandedExp] = useState<Set<number>>(new Set());
+  const [logoErrors, setLogoErrors] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     if (!candidateId) return;
