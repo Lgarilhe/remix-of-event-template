@@ -181,35 +181,35 @@ export default function ScorecardFullPage() {
         />
       </div>
 
-      {/* Floating job button (left) */}
-      <button
-        onClick={() => { setJobOpen(!jobOpen); if (!jobOpen) setProfileOpen(false); }}
-        className={cn(
-          "fixed bottom-4 left-4 z-30 h-11 flex items-center gap-2 px-4 border-2 border-foreground shadow-[3px_3px_0px_0px_hsl(var(--foreground))] transition-all",
-          jobOpen
-            ? "bg-foreground text-background"
-            : "bg-background text-foreground hover:bg-foreground hover:text-background"
-        )}
-      >
-        <FileText className="w-4 h-4" />
-        <span className="text-[10px] font-bold uppercase tracking-wider">Poste</span>
-        {jobOpen ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronUp className="w-3.5 h-3.5" />}
-      </button>
-
-      {/* Floating profile preview button (right) */}
-      <button
-        onClick={() => { setProfileOpen(!profileOpen); if (!profileOpen) setJobOpen(false); }}
-        className={cn(
-          "fixed bottom-4 right-4 z-30 h-11 flex items-center gap-2 px-4 border-2 border-foreground shadow-[3px_3px_0px_0px_hsl(var(--foreground))] transition-all",
-          profileOpen
-            ? "bg-foreground text-background"
-            : "bg-background text-foreground hover:bg-foreground hover:text-background"
-        )}
-      >
-        <User className="w-4 h-4" />
-        <span className="text-[10px] font-bold uppercase tracking-wider">Profil</span>
-        {profileOpen ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronUp className="w-3.5 h-3.5" />}
-      </button>
+      {/* Fixed bottom toolbar */}
+      <div className="fixed inset-x-0 bottom-0 z-30 bg-background border-t-2 border-foreground px-4 py-2 flex items-center justify-between">
+        <button
+          onClick={() => { setJobOpen(!jobOpen); if (!jobOpen) setProfileOpen(false); }}
+          className={cn(
+            "h-9 flex items-center gap-2 px-4 border-2 border-foreground transition-all text-[10px] font-bold uppercase tracking-wider",
+            jobOpen
+              ? "bg-foreground text-background"
+              : "text-foreground hover:bg-foreground hover:text-background"
+          )}
+        >
+          <FileText className="w-3.5 h-3.5" />
+          Poste
+          {jobOpen ? <ChevronDown className="w-3 h-3" /> : <ChevronUp className="w-3 h-3" />}
+        </button>
+        <button
+          onClick={() => { setProfileOpen(!profileOpen); if (!profileOpen) setJobOpen(false); }}
+          className={cn(
+            "h-9 flex items-center gap-2 px-4 border-2 border-foreground transition-all text-[10px] font-bold uppercase tracking-wider",
+            profileOpen
+              ? "bg-foreground text-background"
+              : "text-foreground hover:bg-foreground hover:text-background"
+          )}
+        >
+          <User className="w-3.5 h-3.5" />
+          Profil
+          {profileOpen ? <ChevronDown className="w-3 h-3" /> : <ChevronUp className="w-3 h-3" />}
+        </button>
+      </div>
 
       {/* Profile preview drawer (bottom sheet) */}
       {profileOpen && (
