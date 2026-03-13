@@ -591,25 +591,8 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
             )}
           </div>
 
-          {/* Mobile progress dots */}
-          <div className="flex sm:hidden items-center gap-1.5 px-1 w-full mb-2">
-            {activeEval.criteria.map((c, idx) => {
-              const r = activeEval.ratings[c.id];
-              const isCurrent = idx === currentCriterionIdx;
-              return (
-                <button key={c.id} onClick={() => setCurrentCriterionIdx(idx)}
-                  className={cn(
-                    "h-1.5 rounded-full transition-all duration-200",
-                    isCurrent ? "flex-[2] bg-foreground" :
-                    r != null && r >= 4 ? "flex-1 bg-emerald-400" :
-                    r != null && r >= 3 ? "flex-1 bg-amber-400" :
-                    r != null ? "flex-1 bg-red-400" :
-                    "flex-1 bg-foreground/15"
-                  )}
-                />
-              );
-            })}
-          </div>
+
+
 
           {/* Card column */}
           <div className="flex-1 min-w-0">
