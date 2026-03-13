@@ -79,28 +79,53 @@ export default function ScorecardFullPage() {
   const enrichedProfile = useMemo<EnrichedProfile | null>(() => {
     if (!candidate?.linkedinProfileData) return null;
     const p = candidate.linkedinProfileData as any;
+
+    const workExperience = p.work_experience || p.experiences || p.positions || [];
+    const currentJob = workExperience.find((exp: any) => !exp.end) || workExperience[0];
+
+    let yearsOfExperience: number | undefined = p.years_of_experience;
+    if (!yearsOfExperience) {
+      const allStartYears = workExperience
+        .map((exp: any) => exp.start?.year)
+        .filter(Boolean) as number[];
+      if (allStartYears.length > 0) {
+        yearsOfExperience = new Date().getFullYear() - Math.min(...allStartYears);
+      }
+    }
+
     return {
-      name: p.name || p.full_name || candidate.name,
+      name: p.name || `${p.first_name || ''} ${p.last_name || ''}`.trim() || candidate.name,
       headline: p.headline || p.occupation,
       summary: p.summary || p.about,
-      currentRole: p.current_role || p.headline,
-      currentCompany: p.current_company,
-      location: p.location || p.city,
-      skills: p.skills || [],
-      experiences: (p.experiences || p.positions || []).map((e: any) => ({
-        title: e.title || '',
-        company: e.company || e.company_name || '',
-        description: e.description || '',
-        startDate: e.start_date || e.starts_at,
-        endDate: e.end_date || e.ends_at,
-        isCurrent: e.is_current || !e.end_date,
+      currentRole: currentJob?.role || currentJob?.title,
+      currentCompany: currentJob?.company || currentJob?.company_name,
+      location: typeof p.location === 'string' ? p.location : p.location?.name || p.city,
+      skills: p.skills?.map((s: any) => typeof s === 'string' ? s : s.name).filter(Boolean) || [],
+      experiences: workExperience.map((exp: any) => ({
+        title: exp.role || exp.title || '',
+        company: exp.company || exp.company_name || '',
+        logo: exp.company_logo || exp.logo_url || exp.logo || undefined,
+        description: exp.description || '',
+        startDate: exp.start ? `${exp.start.year || ''}${exp.start.month ? `-${String(exp.start.month).padStart(2, '0')}` : ''}` : (exp.start_date || ''),
+        endDate: exp.end ? `${exp.end.year || ''}${exp.end.month ? `-${String(exp.end.month).padStart(2, '0')}` : ''}` : (exp.end_date || ''),
+        isCurrent: !exp.end && !exp.end_date,
       })),
-      education: (p.education || []).map((e: any) => ({
-        school: e.school || e.school_name || '',
-        degree: e.degree || e.degree_name || '',
-        field: e.field || e.field_of_study || '',
-      })),
-      yearsOfExperience: p.years_of_experience,
+      education: (p.education || []).map((edu: any) => {
+        const schoolName = typeof edu.school === 'string'
+          ? edu.school
+          : edu.school?.name || edu.school_name || edu.school_details?.name || '';
+        const schoolLogo =
+          edu.school_logo || edu.logo_url || edu.logo ||
+          edu.school_details?.logo || edu.school_details?.logo_url ||
+          (typeof edu.school === 'object' ? edu.school?.logo : undefined);
+        return {
+          school: schoolName,
+          logo: schoolLogo || undefined,
+          degree: edu.degree || edu.degree_name || '',
+          field: edu.field_of_study || edu.field || '',
+        };
+      }),
+      yearsOfExperience,
     };
   }, [candidate]);
 
