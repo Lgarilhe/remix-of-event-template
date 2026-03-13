@@ -111,6 +111,10 @@ const Settings = () => {
                 Abonnement
               </TabsTrigger>
             )}
+            <TabsTrigger value="credits" className="gap-2">
+              <Sparkles className="w-4 h-4" />
+              Crédits IA
+            </TabsTrigger>
             {isAdmin && (
               <TabsTrigger value="integrations" className="gap-2">
                 <Plug className="w-4 h-4" />
