@@ -22,6 +22,16 @@ const CREDIT_COSTS: Record<string, number> = {
   refine_search: 1,
 };
 
+// Input validation helpers
+function validateString(val: unknown, maxLen = 200): string | null {
+  if (typeof val !== 'string') return null;
+  return val.slice(0, maxLen).trim() || null;
+}
+function validateUUID(val: unknown): string | null {
+  if (typeof val !== 'string') return null;
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val) ? val : null;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -29,7 +39,7 @@ serve(async (req) => {
 
   try {
     const authHeader = req.headers.get("Authorization");
-    if (!authHeader) {
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
       return new Response(JSON.stringify({ error: "Missing authorization" }), {
         status: 401,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
