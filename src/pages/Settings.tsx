@@ -105,6 +105,12 @@ const Settings = () => {
               Équipe
             </TabsTrigger>
             {isAdmin && (
+              <TabsTrigger value="billing" className="gap-2">
+                <CreditCard className="w-4 h-4" />
+                Abonnement
+              </TabsTrigger>
+            )}
+            {isAdmin && (
               <TabsTrigger value="integrations" className="gap-2">
                 <Plug className="w-4 h-4" />
                 Intégrations
