@@ -226,7 +226,14 @@ export const ProjectsList: React.FC<ProjectsListProps> = ({ onResumeSearch }) =>
         </div>
 
         <button
-          onClick={() => setShowCreateModal(true)}
+          onClick={() => {
+            if (!canCreateJob) {
+              const { toast } = await import('sonner');
+              toast.error(`Limite de ${limits.max_jobs} projets atteinte. Passez au plan supérieur.`);
+              return;
+            }
+            setShowCreateModal(true);
+          }}
           className="relative overflow-hidden flex items-center gap-2 h-[34px] px-4 text-xs font-medium uppercase tracking-wider border border-foreground bg-foreground text-background shrink-0 group"
         >
           <Plus className="w-3.5 h-3.5 relative z-10" />
