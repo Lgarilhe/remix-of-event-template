@@ -4,8 +4,10 @@ import { supabase } from '@/integrations/supabase/client';
 import { ScorecardTab } from '@/components/ats/ScorecardTab';
 import { ATSCandidate } from '@/hooks/useATSData';
 import { EnrichedProfile } from '@/hooks/useProfileEnrichment';
-import { ArrowLeft, Maximize2, User, ChevronUp, ChevronDown, ExternalLink, MapPin, Building2, Briefcase, GraduationCap, Wrench, X, FileText } from 'lucide-react';
+import { ArrowLeft, Maximize2, User, ChevronUp, ChevronDown, ExternalLink, MapPin, Building2, Briefcase, GraduationCap, Wrench, X } from 'lucide-react';
 import { JobDetailDrawer } from '@/components/ats/JobDetailDrawer';
+import iconProfile3d from '@/assets/icon-profile-3d.png';
+import iconJob3d from '@/assets/icon-job-3d.png';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
@@ -192,7 +194,7 @@ export default function ScorecardFullPage() {
               : "bg-background text-foreground hover:bg-foreground hover:text-background"
           )}
         >
-          <FileText className="w-3.5 h-3.5" />
+          <img src={iconJob3d} alt="" className="w-5 h-5 object-contain" />
           Poste
           {jobOpen ? <ChevronDown className="w-3 h-3" /> : <ChevronUp className="w-3 h-3" />}
         </button>
@@ -205,7 +207,7 @@ export default function ScorecardFullPage() {
               : "bg-background text-foreground hover:bg-foreground hover:text-background"
           )}
         >
-          <User className="w-3.5 h-3.5" />
+          <img src={iconProfile3d} alt="" className="w-5 h-5 object-contain" />
           Profil
           {profileOpen ? <ChevronDown className="w-3 h-3" /> : <ChevronUp className="w-3 h-3" />}
         </button>
