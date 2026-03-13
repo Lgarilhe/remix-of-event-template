@@ -42,7 +42,7 @@ export const FraudDetectionTab: React.FC<Props> = ({ candidate }) => {
     setLoading(true);
     setError(null);
     try {
-      const { data, error: fnError } = await invokeEdgeFunction('detect-profile-fraud', {
+      const { data, error: fnError } = await invokeWithCredits('detect-profile-fraud', 'profile_fraud', {
         profileData: candidate.linkedinProfileData,
         candidateName: candidate.name,
         headline: candidate.headline,

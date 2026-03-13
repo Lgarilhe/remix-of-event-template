@@ -165,7 +165,7 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
 
       const stage = activeEval?.interviewStage || selectedStage || undefined;
 
-      const { data, error } = await invokeEdgeFunction('generate-scorecard', {
+      const { data, error } = await invokeWithCredits('generate-scorecard', 'generate_scorecard', {
         candidateProfile, jobContext, scoringDetails: candidate.scoringDetails, interviewStage: stage,
       });
 

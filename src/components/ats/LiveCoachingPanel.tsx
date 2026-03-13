@@ -435,7 +435,7 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
         ...(criteriaStatus[c.id] || {}),
       }));
 
-      const { data, error } = await invokeEdgeFunction('generate-call-report', {
+      const { data, error } = await invokeWithCredits('generate-call-report', 'call_report', {
         session_id: sessionId,
         full_transcript: fullTranscriptRef.current,
         criteria_with_scores: criteriaWithScores,
