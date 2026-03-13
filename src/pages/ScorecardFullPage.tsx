@@ -404,6 +404,13 @@ export default function ScorecardFullPage() {
           </div>
         </div>
       )}
+
+      {/* Job detail drawer */}
+      <JobDetailDrawer
+        jobId={candidate.jobId}
+        open={jobOpen}
+        onClose={() => setJobOpen(false)}
+      />
     </div>
   );
 }
