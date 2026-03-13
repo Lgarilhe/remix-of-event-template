@@ -106,33 +106,33 @@ const Settings = () => {
         <h1 className="text-2xl font-semibold text-foreground mb-6">Paramètres</h1>
 
         <Tabs defaultValue={searchParams.get('tab') === 'credits' ? 'credits' : searchParams.get('tab') === 'billing' ? 'billing' : searchParams.get('tab') === 'integrations' && isAdmin ? 'integrations' : searchParams.get('tab') === 'account' ? 'account' : 'general'} className="space-y-6">
-          <TabsList className="w-full justify-start">
-            <TabsTrigger value="general" className="gap-2">
+          <TabsList className="w-full justify-start overflow-x-auto no-scrollbar flex-nowrap">
+            <TabsTrigger value="general" className="gap-1.5 shrink-0">
               <Building2 className="w-4 h-4" />
-              Général
+              <span className="hidden sm:inline">Général</span>
             </TabsTrigger>
-            <TabsTrigger value="account" className="gap-2">
+            <TabsTrigger value="account" className="gap-1.5 shrink-0">
               <UserCircle className="w-4 h-4" />
-              Mon compte
+              <span className="hidden sm:inline">Mon compte</span>
             </TabsTrigger>
-            <TabsTrigger value="team" className="gap-2">
+            <TabsTrigger value="team" className="gap-1.5 shrink-0">
               <Users className="w-4 h-4" />
-              Équipe
+              <span className="hidden sm:inline">Équipe</span>
             </TabsTrigger>
             {isAdmin && (
-              <TabsTrigger value="billing" className="gap-2">
+              <TabsTrigger value="billing" className="gap-1.5 shrink-0">
                 <CreditCard className="w-4 h-4" />
-                Abonnement
+                <span className="hidden sm:inline">Abonnement</span>
               </TabsTrigger>
             )}
-            <TabsTrigger value="credits" className="gap-2">
+            <TabsTrigger value="credits" className="gap-1.5 shrink-0">
               <Sparkles className="w-4 h-4" />
-              Crédits IA
+              <span className="hidden sm:inline">Crédits IA</span>
             </TabsTrigger>
             {isAdmin && (
-              <TabsTrigger value="integrations" className="gap-2">
+              <TabsTrigger value="integrations" className="gap-1.5 shrink-0">
                 <Plug className="w-4 h-4" />
-                Intégrations
+                <span className="hidden sm:inline">Intégrations</span>
               </TabsTrigger>
             )}
           </TabsList>

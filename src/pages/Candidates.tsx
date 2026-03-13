@@ -172,20 +172,20 @@ export default function Candidates() {
       />
       <Navbar />
 
-      <main className="pt-20 pb-12">
-        <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8">
+      <main className="pt-16 sm:pt-20 pb-8 sm:pb-12">
+        <div className="max-w-[1600px] mx-auto px-3 sm:px-6 lg:px-8">
           {/* Header */}
-          <div className="mb-8">
-            <div className="flex items-center gap-3 mb-2">
-              <div className="h-10 w-10 bg-foreground text-background flex items-center justify-center border border-foreground">
-                <Users className="w-5 h-5" />
+          <div className="mb-4 sm:mb-8">
+            <div className="flex items-center gap-2 sm:gap-3 mb-1 sm:mb-2">
+              <div className="h-8 w-8 sm:h-10 sm:w-10 bg-foreground text-background flex items-center justify-center border border-foreground">
+                <Users className="w-4 h-4 sm:w-5 sm:h-5" />
               </div>
-              <h1 className="text-3xl font-bold text-foreground uppercase tracking-tight">Candidats</h1>
+              <h1 className="text-xl sm:text-3xl font-bold text-foreground uppercase tracking-tight">Candidats</h1>
               {shortlistLoading && (
-                <span className="text-sm text-muted-foreground animate-pulse">Chargement...</span>
+                <span className="text-xs sm:text-sm text-muted-foreground animate-pulse">Chargement...</span>
               )}
             </div>
-            <p className="text-muted-foreground ml-[52px]">
+            <p className="text-xs sm:text-sm text-muted-foreground ml-10 sm:ml-[52px]">
               {shortlist.length} candidature{shortlist.length > 1 ? 's' : ''} • {candidatesData.length} candidat{candidatesData.length > 1 ? 's' : ''} en base
             </p>
           </div>
