@@ -13,38 +13,41 @@ function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15
 }
 
 /**
- * Resolve Unipile credentials: try org-specific first, then fall back to env vars.
+ * Resolve Unipile credentials for a specific organization only.
+ * No global fallback to avoid cross-tenant data leaks.
  */
-async function resolveUnipileCredentials(organizationId?: string): Promise<{ apiKey: string; dsn: string } | null> {
-  if (organizationId) {
-    try {
-      const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-      const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-      const sb = createClient(supabaseUrl, serviceKey);
-      
-      const { data } = await sb
-        .from('organization_integrations')
-        .select('unipile_api_key, unipile_dsn, unipile_connected')
-        .eq('organization_id', organizationId)
-        .single();
-      
-      if (data?.unipile_connected && data?.unipile_api_key && data?.unipile_dsn) {
-        const rawDsn = data.unipile_dsn;
-        const dsn = rawDsn.startsWith('http') ? rawDsn.replace(/^https?:\/\//, '') : rawDsn;
-        console.log(`[unipile-accounts] Using org-specific credentials for org ${organizationId}`);
-        return { apiKey: data.unipile_api_key, dsn };
-      }
-    } catch (e) {
-      console.warn('[unipile-accounts] Failed to resolve org credentials:', e);
+async function resolveUnipileCredentials(organizationId: string): Promise<{ apiKey: string; dsn: string } | null> {
+  try {
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const sb = createClient(supabaseUrl, serviceKey);
+
+    const { data } = await sb
+      .from('organization_integrations')
+      .select('unipile_api_key, unipile_dsn, unipile_connected')
+      .eq('organization_id', organizationId)
+      .single();
+
+    if (data?.unipile_connected && data?.unipile_api_key && data?.unipile_dsn) {
+      const rawDsn = data.unipile_dsn;
+      const dsn = rawDsn.startsWith('http') ? rawDsn.replace(/^https?:\/\//, '') : rawDsn;
+      console.log(`[unipile-accounts] Using org-specific credentials for org ${organizationId}`);
+      return { apiKey: data.unipile_api_key, dsn };
     }
+  } catch (e) {
+    console.warn('[unipile-accounts] Failed to resolve org credentials:', e);
   }
-  
-  const apiKey = Deno.env.get('UNIPILE_API_KEY');
-  const dsn = Deno.env.get('UNIPILE_DSN');
-  if (apiKey && dsn) {
-    return { apiKey, dsn };
-  }
+
   return null;
+}
+
+class HttpError extends Error {
+  status: number;
+
+  constructor(status: number, message: string) {
+    super(message);
+    this.status = status;
+  }
 }
 
 Deno.serve(async (req) => {
@@ -53,13 +56,69 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { action, organization_id, ...params } = await req.json();
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
+      throw new HttpError(401, 'Missing authorization header');
+    }
 
-    const credentials = await resolveUnipileCredentials(organization_id);
+    const body = await req.json();
+    const { action, organization_id: requestedOrgId, ...params } = body ?? {};
+
+    if (typeof action !== 'string' || !action.trim()) {
+      throw new HttpError(400, 'Action requise');
+    }
+
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
+    const supabaseServiceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+
+    const userClient = createClient(supabaseUrl, supabaseAnonKey, {
+      global: { headers: { Authorization: authHeader } },
+    });
+
+    const adminClient = createClient(supabaseUrl, supabaseServiceRoleKey);
+
+    const { data: { user }, error: authError } = await userClient.auth.getUser();
+    if (authError || !user) {
+      throw new HttpError(401, 'Unauthorized');
+    }
+
+    let organizationId = typeof requestedOrgId === 'string' ? requestedOrgId : null;
+
+    if (!organizationId) {
+      const { data: profile, error: profileError } = await adminClient
+        .from('profiles')
+        .select('active_organization_id')
+        .eq('user_id', user.id)
+        .maybeSingle();
+
+      if (profileError) {
+        throw new HttpError(400, 'Impossible de déterminer l’organisation active');
+      }
+
+      organizationId = profile?.active_organization_id ?? null;
+    }
+
+    if (!organizationId) {
+      throw new HttpError(400, 'Aucune organisation active');
+    }
+
+    const { data: membership } = await adminClient
+      .from('organization_members')
+      .select('id')
+      .eq('organization_id', organizationId)
+      .eq('user_id', user.id)
+      .maybeSingle();
+
+    if (!membership) {
+      throw new HttpError(403, 'Forbidden');
+    }
+
+    const credentials = await resolveUnipileCredentials(organizationId);
     if (!credentials) {
       return new Response(
-        JSON.stringify({ success: false, error: 'Unipile not configured' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        JSON.stringify({ success: false, error: 'LinkedIn non configuré pour cette organisation' }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
@@ -488,9 +547,10 @@ Deno.serve(async (req) => {
     }
   } catch (error) {
     console.error('Error:', error);
+    const status = error instanceof HttpError ? error.status : 500;
     return new Response(
       JSON.stringify({ success: false, error: error instanceof Error ? error.message : 'Erreur interne' }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      { status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
 });

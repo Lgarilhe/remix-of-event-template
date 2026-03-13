@@ -34,12 +34,15 @@ export const LinkedInAccountsProvider: React.FC<{ children: React.ReactNode }> =
   const reload = useCallback(async () => {
     setLoading(true);
     try {
-      const { data } = await invokeEdgeFunction('unipile-accounts', { action: 'list' });
-      if (data?.success) {
-        setAccounts((data as any).accounts || []);
+      const { data, error } = await invokeEdgeFunction('unipile-accounts', { action: 'list' });
+      if (error || !data?.success) {
+        setAccounts([]);
+        return;
       }
+      setAccounts((data as any).accounts || []);
     } catch (e) {
       console.error('Failed to load LinkedIn accounts:', e);
+      setAccounts([]);
     } finally {
       setLoading(false);
       setHasLoaded(true);

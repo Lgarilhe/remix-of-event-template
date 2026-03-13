@@ -35,11 +35,14 @@ export const OnboardingStepProfile = ({ onNext, onBack }: Props) => {
 
       const { error } = await supabase
         .from('profiles')
-        .update({
-          display_name: displayName.trim() || null,
-          job_title: jobTitle.trim() || null,
-        })
-        .eq('user_id', user.id);
+        .upsert(
+          {
+            user_id: user.id,
+            display_name: displayName.trim() || null,
+            job_title: jobTitle.trim() || null,
+          },
+          { onConflict: 'user_id' }
+        );
 
       if (error) throw error;
       onNext();
