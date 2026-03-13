@@ -16,6 +16,7 @@ import { RemindersSidebar } from '@/components/ats/RemindersSidebar';
 import { CandidateDetailModal } from '@/components/ats/CandidateDetailModal';
 import { Tabs, TabsContent } from '@/components/ui/tabs';
 import { LayoutGrid, Table, Clock, Bell, Users, RefreshCw, BarChart3 } from 'lucide-react';
+import { EmptyState } from '@/components/ui/EmptyState';
 import { useATSData, ATSCandidate, ATS_STAGES } from '@/hooks/useATSData';
 import { cn } from '@/lib/utils';
 
@@ -220,40 +221,52 @@ export default function ATS() {
               ) : (
                 <div className="flex gap-6">
                   <div className="flex-1 min-w-0">
-                    <TabsContent value="kanban" className="mt-0">
-                      {loading && candidates.length === 0 ? (
-                        <ATSKanbanSkeleton />
-                      ) : (
-                        <ATSKanban
-                          data={kanbanData}
-                          stages={ATS_STAGES}
-                          onStageChange={handleStageChange}
-                          onCandidateClick={handleCandidateClick}
-                        />
-                      )}
-                    </TabsContent>
-
-                    <TabsContent value="table" className="mt-0">
-                      {loading && candidates.length === 0 ? (
-                        <ATSTableSkeleton />
-                      ) : (
-                        <ATSTable
-                          candidates={filteredCandidates}
-                          onCandidateClick={handleCandidateClick}
-                        />
-                      )}
-                    </TabsContent>
-
-                    <TabsContent value="timeline" className="mt-0">
-                      <ATSTimeline
-                        candidates={filteredCandidates}
-                        onCandidateClick={handleCandidateClick}
+                    {!loading && candidates.length === 0 ? (
+                      <EmptyState
+                        icon={<Users className="w-7 h-7" />}
+                        title="Aucun candidat dans l'ATS"
+                        description="Les candidats apparaîtront ici automatiquement lorsque vous les contacterez via Outreach ou les ajouterez manuellement."
+                        actionLabel="Aller sur Outreach"
+                        actionHref="/outreach"
                       />
-                    </TabsContent>
+                    ) : (
+                      <>
+                        <TabsContent value="kanban" className="mt-0">
+                          {loading && candidates.length === 0 ? (
+                            <ATSKanbanSkeleton />
+                          ) : (
+                            <ATSKanban
+                              data={kanbanData}
+                              stages={ATS_STAGES}
+                              onStageChange={handleStageChange}
+                              onCandidateClick={handleCandidateClick}
+                            />
+                          )}
+                        </TabsContent>
 
-                    <TabsContent value="analytics" className="mt-0">
-                      <ATSPipelineAnalytics candidates={filteredCandidates} />
-                    </TabsContent>
+                        <TabsContent value="table" className="mt-0">
+                          {loading && candidates.length === 0 ? (
+                            <ATSTableSkeleton />
+                          ) : (
+                            <ATSTable
+                              candidates={filteredCandidates}
+                              onCandidateClick={handleCandidateClick}
+                            />
+                          )}
+                        </TabsContent>
+
+                        <TabsContent value="timeline" className="mt-0">
+                          <ATSTimeline
+                            candidates={filteredCandidates}
+                            onCandidateClick={handleCandidateClick}
+                          />
+                        </TabsContent>
+
+                        <TabsContent value="analytics" className="mt-0">
+                          <ATSPipelineAnalytics candidates={filteredCandidates} />
+                        </TabsContent>
+                      </>
+                    )}
                   </div>
 
                   {showReminders && (

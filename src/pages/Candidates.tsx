@@ -9,6 +9,7 @@ import { CandidateList } from '@/components/candidates/CandidateList';
 import { CandidateFilters } from '@/components/candidates/CandidateFilters';
 import { Tabs, TabsContent } from '@/components/ui/tabs';
 import { Loader2, LayoutGrid, List, Users } from 'lucide-react';
+import { EmptyState } from '@/components/ui/EmptyState';
 import { useNotionShortlist, useNotionCandidates } from '@/hooks/useNotionCandidates';
 import { cn } from '@/lib/utils';
 
@@ -233,6 +234,14 @@ export default function Candidates() {
                 <div className="bg-destructive/10 border border-destructive/30 p-6 text-center">
                   <p className="text-destructive">{shortlistError instanceof Error ? shortlistError.message : 'Error'}</p>
                 </div>
+              ) : shortlist.length === 0 ? (
+                <EmptyState
+                  icon={<Users className="w-7 h-7" />}
+                  title="Aucun candidat"
+                  description="Connectez Notion dans les paramètres pour synchroniser votre base candidats, ou commencez à sourcer via Outreach."
+                  actionLabel="Paramètres"
+                  actionHref="/settings?tab=integrations"
+                />
               ) : (
                 <>
                   <TabsContent value="pipeline" className="mt-0">

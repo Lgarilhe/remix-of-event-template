@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useSourcingProjects, SourcingProject } from '@/hooks/useSourcingProjects';
+import { useQuotaGate } from '@/hooks/useQuotaGate';
 import { useNotionJobs } from '@/hooks/useNotionJobs';
 import { useMultipleProjectStats, ProjectStats } from '@/hooks/useProjectStats';
 import { UnifiedProject, mergeProjectsAndJobs } from '@/types/projects';
@@ -64,6 +65,7 @@ const priorityConfig: Record<string, { label: string; color: string }> = {
 export const ProjectsList: React.FC<ProjectsListProps> = ({ onResumeSearch }) => {
   const { projects: sourcingProjects, isLoading: spLoading, deleteProject, updateProject, isDeleting } = useSourcingProjects();
   const { data: notionJobs = [], isLoading: jobsLoading } = useNotionJobs();
+  const { canCreateJob, limits, jobCount } = useQuotaGate();
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -224,7 +226,15 @@ export const ProjectsList: React.FC<ProjectsListProps> = ({ onResumeSearch }) =>
         </div>
 
         <button
-          onClick={() => setShowCreateModal(true)}
+          onClick={() => {
+            if (!canCreateJob) {
+              import('sonner').then(({ toast }) => {
+                toast.error(`Limite de ${limits.max_jobs} projets atteinte. Passez au plan supérieur.`);
+              });
+              return;
+            }
+            setShowCreateModal(true);
+          }}
           className="relative overflow-hidden flex items-center gap-2 h-[34px] px-4 text-xs font-medium uppercase tracking-wider border border-foreground bg-foreground text-background shrink-0 group"
         >
           <Plus className="w-3.5 h-3.5 relative z-10" />

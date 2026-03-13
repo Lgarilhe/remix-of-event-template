@@ -3,6 +3,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { UserPlus, Loader2 } from 'lucide-react';
+import { useQuotaGate } from '@/hooks/useQuotaGate';
+import { toast } from 'sonner';
 
 interface InviteMemberFormProps {
   onInvite: (email: string, role: string) => Promise<void>;
@@ -12,10 +14,15 @@ interface InviteMemberFormProps {
 export const InviteMemberForm = ({ onInvite, isLoading }: InviteMemberFormProps) => {
   const [email, setEmail] = useState('');
   const [role, setRole] = useState('member');
+  const { canAddMember, limits } = useQuotaGate();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email.trim()) return;
+    if (!canAddMember) {
+      toast.error(`Limite de ${limits.max_members} membre${limits.max_members > 1 ? 's' : ''} atteinte. Passez au plan supérieur.`);
+      return;
+    }
     await onInvite(email.trim().toLowerCase(), role);
     setEmail('');
   };
