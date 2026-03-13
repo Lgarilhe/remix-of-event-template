@@ -2596,6 +2596,27 @@ export type Database = {
           },
         ]
       }
+      rate_limit_log: {
+        Row: {
+          action: string
+          created_at: string
+          id: string
+          user_id: string
+        }
+        Insert: {
+          action: string
+          created_at?: string
+          id?: string
+          user_id: string
+        }
+        Update: {
+          action?: string
+          created_at?: string
+          id?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       round_robin_state: {
         Row: {
           id: string
@@ -3348,6 +3369,16 @@ export type Database = {
         Returns: boolean
       }
       archive_old_agent_conversations: { Args: never; Returns: number }
+      check_rate_limit: {
+        Args: {
+          p_action: string
+          p_max_requests: number
+          p_user_id: string
+          p_window_seconds?: number
+        }
+        Returns: boolean
+      }
+      cleanup_rate_limit_log: { Args: never; Returns: undefined }
       cosine_similarity_match: {
         Args: { p_candidate_id: string; p_job_id: string }
         Returns: number
