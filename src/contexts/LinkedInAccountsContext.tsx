@@ -21,6 +21,7 @@ const LinkedInAccountsContext = createContext<LinkedInAccountsContextType>({
   accounts: [],
   loading: false,
   reload: async () => {},
+  clear: () => {},
 });
 
 export const useLinkedInAccounts = () => useContext(LinkedInAccountsContext);
