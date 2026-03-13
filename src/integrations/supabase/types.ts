@@ -2596,6 +2596,27 @@ export type Database = {
           },
         ]
       }
+      rate_limit_log: {
+        Row: {
+          action: string
+          created_at: string
+          id: string
+          user_id: string
+        }
+        Insert: {
+          action: string
+          created_at?: string
+          id?: string
+          user_id: string
+        }
+        Update: {
+          action?: string
+          created_at?: string
+          id?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       round_robin_state: {
         Row: {
           id: string
@@ -3348,6 +3369,16 @@ export type Database = {
         Returns: boolean
       }
       archive_old_agent_conversations: { Args: never; Returns: number }
+      check_rate_limit: {
+        Args: {
+          p_action: string
+          p_max_requests: number
+          p_user_id: string
+          p_window_seconds?: number
+        }
+        Returns: boolean
+      }
+      cleanup_rate_limit_log: { Args: never; Returns: undefined }
       cosine_similarity_match: {
         Args: { p_candidate_id: string; p_job_id: string }
         Returns: number
@@ -3397,6 +3428,41 @@ export type Database = {
       get_org_role: {
         Args: { _org_id: string; _user_id: string }
         Returns: string
+      }
+      get_portal_token: {
+        Args: { p_token: string }
+        Returns: {
+          candidate_id: string
+          candidate_name: string | null
+          company_description: string | null
+          company_logo_url: string | null
+          company_name: string | null
+          created_at: string
+          created_by: string
+          documents: Json | null
+          estimated_days_to_next: number | null
+          expires_at: string | null
+          faq: Json | null
+          id: string
+          is_active: boolean
+          job_id: string | null
+          job_title: string | null
+          next_steps: string | null
+          organization_id: string | null
+          pipeline_stage: string | null
+          recruiter_email: string | null
+          recruiter_name: string | null
+          recruiter_phone: string | null
+          stage_updated_at: string | null
+          token: string
+          updated_at: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "candidate_portal_tokens"
+          isOneToOne: false
+          isSetofReturn: true
+        }
       }
       get_user_org_id: { Args: { _user_id: string }; Returns: string }
       get_vivier_candidates: {
