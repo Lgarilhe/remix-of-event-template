@@ -1,104 +1,170 @@
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
-import { Input } from '@/components/ui/input';
-import { Button } from '@/components/ui/button';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useOrganization } from '@/hooks/useOrganization';
 import { InvitationBanner } from '@/components/InvitationBanner';
-import { Building2 } from 'lucide-react';
+import { OnboardingStepOrg } from '@/components/onboarding/OnboardingStepOrg';
+import { OnboardingStepProfile } from '@/components/onboarding/OnboardingStepProfile';
+import { OnboardingStepLinkedIn } from '@/components/onboarding/OnboardingStepLinkedIn';
+import { OnboardingStepInvite } from '@/components/onboarding/OnboardingStepInvite';
+import { Building2, User, Linkedin, UserPlus } from 'lucide-react';
+
+const STEPS = [
+  { id: 'org', label: 'Organisation', icon: Building2 },
+  { id: 'profile', label: 'Profil', icon: User },
+  { id: 'linkedin', label: 'LinkedIn', icon: Linkedin },
+  { id: 'invite', label: 'Équipe', icon: UserPlus },
+] as const;
 
 const Onboarding = () => {
-  const [name, setName] = useState('');
-  const [slug, setSlug] = useState('');
+  const [step, setStep] = useState(0);
+  const [direction, setDirection] = useState(1);
+  const [orgCreated, setOrgCreated] = useState(false);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { createOrganization, isCreating } = useOrganization();
+  const { organization, organizationId } = useOrganization();
 
-  const generateSlug = (value: string) => {
-    return value
-      .toLowerCase()
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '')
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-|-$/g, '');
-  };
-
-  const handleNameChange = (value: string) => {
-    setName(value);
-    setSlug(generateSlug(value));
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!name.trim() || !slug.trim()) return;
-
-    try {
-      await createOrganization({ name: name.trim(), slug: slug.trim() });
-      // Wait for the org query to be refetched before navigating
-      await queryClient.invalidateQueries({ queryKey: ['active-organization'] });
-      await queryClient.refetchQueries({ queryKey: ['active-organization'] });
-      navigate('/outreach', { replace: true });
-    } catch {
-      // Error handled in hook
+  // If org already exists (e.g. accepted invitation), skip to step 1
+  useEffect(() => {
+    if (organization && !orgCreated) {
+      setOrgCreated(true);
+      if (step === 0) {
+        setStep(1);
+      }
     }
+  }, [organization, orgCreated, step]);
+
+  const goNext = useCallback(() => {
+    setDirection(1);
+    if (step < STEPS.length - 1) {
+      setStep(s => s + 1);
+    } else {
+      // Finish onboarding
+      queryClient.invalidateQueries({ queryKey: ['active-organization'] });
+      navigate('/outreach', { replace: true });
+    }
+  }, [step, navigate, queryClient]);
+
+  const goBack = useCallback(() => {
+    setDirection(-1);
+    setStep(s => Math.max(0, s - 1));
+  }, []);
+
+  const handleOrgCreated = useCallback(() => {
+    setOrgCreated(true);
+    goNext();
+  }, [goNext]);
+
+  const handleFinish = useCallback(async () => {
+    await queryClient.invalidateQueries({ queryKey: ['active-organization'] });
+    await queryClient.refetchQueries({ queryKey: ['active-organization'] });
+    navigate('/outreach', { replace: true });
+  }, [navigate, queryClient]);
+
+  const progress = ((step + 1) / STEPS.length) * 100;
+
+  const variants = {
+    enter: (dir: number) => ({
+      x: dir > 0 ? '100%' : '-100%',
+      opacity: 0,
+    }),
+    center: {
+      x: 0,
+      opacity: 1,
+    },
+    exit: (dir: number) => ({
+      x: dir > 0 ? '-100%' : '100%',
+      opacity: 0,
+    }),
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background px-4">
-      <div className="w-full max-w-md space-y-8">
+    <div className="min-h-screen flex flex-col bg-background">
+      {/* Top progress bar */}
+      <div className="w-full h-1 bg-muted">
+        <motion.div
+          className="h-full bg-primary"
+          initial={{ width: 0 }}
+          animate={{ width: `${progress}%` }}
+          transition={{ duration: 0.4, ease: 'easeInOut' }}
+        />
+      </div>
+
+      {/* Step indicators */}
+      <div className="flex items-center justify-center gap-2 pt-8 pb-4 px-4">
+        {STEPS.map((s, i) => {
+          const Icon = s.icon;
+          const isActive = i === step;
+          const isDone = i < step;
+          return (
+            <div key={s.id} className="flex items-center gap-2">
+              {i > 0 && (
+                <div className={`w-8 h-px ${isDone ? 'bg-primary' : 'bg-border'} transition-colors duration-300`} />
+              )}
+              <motion.div
+                className={`flex items-center justify-center w-9 h-9 rounded-full border-2 transition-colors duration-300 ${
+                  isActive
+                    ? 'border-primary bg-primary text-primary-foreground'
+                    : isDone
+                    ? 'border-primary bg-primary/10 text-primary'
+                    : 'border-border bg-background text-muted-foreground'
+                }`}
+                animate={isActive ? { scale: [1, 1.1, 1] } : {}}
+                transition={{ duration: 0.3 }}
+              >
+                <Icon className="w-4 h-4" />
+              </motion.div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Invitation banner */}
+      <div className="px-4 max-w-lg mx-auto w-full">
         <InvitationBanner />
+      </div>
 
-        <div className="text-center">
-          <div className="mx-auto w-16 h-16 bg-primary/10 rounded-2xl flex items-center justify-center mb-6">
-            <Building2 className="w-8 h-8 text-primary" />
-          </div>
-          <h1 className="text-3xl font-semibold text-foreground tracking-tight">
-            Créer votre organisation
-          </h1>
-          <p className="mt-2 text-sm text-muted-foreground">
-            Pour commencer, donnez un nom à votre espace de travail — ou acceptez une invitation ci-dessus.
-          </p>
+      {/* Step content */}
+      <div className="flex-1 flex items-center justify-center px-4 overflow-hidden">
+        <div className="w-full max-w-lg relative" style={{ minHeight: 400 }}>
+          <AnimatePresence mode="wait" custom={direction}>
+            <motion.div
+              key={step}
+              custom={direction}
+              variants={variants}
+              initial="enter"
+              animate="center"
+              exit="exit"
+              transition={{ duration: 0.35, ease: [0.4, 0, 0.2, 1] }}
+              className="w-full"
+            >
+              {step === 0 && (
+                <OnboardingStepOrg onComplete={handleOrgCreated} />
+              )}
+              {step === 1 && (
+                <OnboardingStepProfile onNext={goNext} onBack={goBack} />
+              )}
+              {step === 2 && (
+                <OnboardingStepLinkedIn onNext={goNext} onBack={goBack} />
+              )}
+              {step === 3 && (
+                <OnboardingStepInvite
+                  organizationId={organizationId}
+                  onFinish={handleFinish}
+                  onBack={goBack}
+                />
+              )}
+            </motion.div>
+          </AnimatePresence>
         </div>
+      </div>
 
-        <form onSubmit={handleSubmit} className="space-y-5">
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-foreground">
-              Nom de l'organisation
-            </label>
-            <Input
-              placeholder="Ex: Mon Cabinet de Recrutement"
-              value={name}
-              onChange={(e) => handleNameChange(e.target.value)}
-              required
-              className="border-foreground/20"
-            />
-          </div>
-
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-foreground">
-              Identifiant (slug)
-            </label>
-            <Input
-              placeholder="mon-cabinet"
-              value={slug}
-              onChange={(e) => setSlug(generateSlug(e.target.value))}
-              required
-              pattern="[a-z0-9-]+"
-              className="border-foreground/20"
-            />
-            <p className="text-xs text-muted-foreground">
-              Utilisé dans les URLs. Lettres minuscules, chiffres et tirets uniquement.
-            </p>
-          </div>
-
-          <Button
-            type="submit"
-            disabled={isCreating || !name.trim() || !slug.trim()}
-            className="w-full"
-          >
-            {isCreating ? 'Création...' : 'Créer l\'organisation'}
-          </Button>
-        </form>
+      {/* Step counter */}
+      <div className="text-center pb-6">
+        <span className="text-xs text-muted-foreground">
+          {step + 1} / {STEPS.length}
+        </span>
       </div>
     </div>
   );
