@@ -50,14 +50,14 @@ interface Reminder {
 }
 
 const tabsConfig = [
-  { key: 'profile', label: 'Profil', icon: User },
-  { key: 'scoring', label: 'Scoring', icon: Target },
-  { key: 'evaluation', label: 'Évaluation', icon: ClipboardCheck },
-  { key: 'fraud', label: 'Vérification', icon: Shield },
-  { key: 'activity', label: 'Activité', icon: Activity },
-  { key: 'comments', label: 'Discussion', icon: MessageSquare },
-  { key: 'notes', label: 'Notes', icon: StickyNote },
-  { key: 'reminders', label: 'Rappels', icon: Bell },
+  { key: 'profile', label: 'Profil', icon: User, accent: 'hsl(var(--primary))' },
+  { key: 'scoring', label: 'Scoring', icon: Target, accent: 'hsl(330 80% 60%)' },
+  { key: 'evaluation', label: 'Évaluation', icon: ClipboardCheck, accent: 'hsl(160 60% 45%)' },
+  { key: 'fraud', label: 'Vérification', icon: Shield, accent: 'hsl(45 90% 50%)' },
+  { key: 'activity', label: 'Activité', icon: Activity, accent: 'hsl(210 80% 55%)' },
+  { key: 'comments', label: 'Discussion', icon: MessageSquare, accent: 'hsl(270 60% 60%)' },
+  { key: 'notes', label: 'Notes', icon: StickyNote, accent: 'hsl(35 85% 55%)' },
+  { key: 'reminders', label: 'Rappels', icon: Bell, accent: 'hsl(0 70% 55%)' },
 ] as const;
 
 export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
@@ -473,30 +473,39 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
                     "relative flex flex-col sm:flex-row items-center gap-0.5 sm:gap-1.5 px-3 sm:px-3 py-2 sm:py-2.5 text-[10px] font-medium uppercase tracking-wider transition-all -mb-px whitespace-nowrap group",
                     isActive 
                       ? "text-foreground" 
-                      : "text-muted-foreground/50 hover:text-foreground/80"
+                      : "text-muted-foreground/60 hover:text-foreground/80"
                   )}>
-                  <div className={cn(
-                    "flex items-center justify-center w-7 h-7 sm:w-auto sm:h-auto transition-all",
-                    isActive 
-                      ? "bg-foreground text-background sm:bg-transparent sm:text-foreground" 
-                      : "sm:bg-transparent"
-                  )}>
-                    <Icon className="w-3.5 h-3.5" strokeWidth={isActive ? 2.5 : 1.5} />
+                  <div
+                    className={cn(
+                      "flex items-center justify-center w-8 h-8 sm:w-6 sm:h-6 rounded-lg sm:rounded-md transition-all duration-200",
+                      isActive 
+                        ? "shadow-sm" 
+                        : "opacity-60 group-hover:opacity-90"
+                    )}
+                    style={{
+                      backgroundColor: isActive ? tab.accent : `color-mix(in srgb, ${tab.accent} 15%, transparent)`,
+                      color: isActive ? 'white' : tab.accent,
+                    }}
+                  >
+                    <Icon className="w-4 h-4 sm:w-3.5 sm:h-3.5" strokeWidth={isActive ? 2.2 : 1.8} />
                   </div>
                   <span className="hidden sm:inline">{tab.label}</span>
                   {count !== null && count > 0 && (
                     <span className={cn(
-                      "text-[8px] sm:text-[9px] font-bold leading-none",
-                      isActive ? "text-foreground sm:text-muted-foreground" : "text-muted-foreground/50"
+                      "text-[8px] sm:text-[9px] font-bold leading-none tabular-nums",
+                      isActive ? "text-foreground" : "text-muted-foreground/50"
                     )}>
                       {count}
                     </span>
                   )}
                   {/* Active indicator */}
-                  <span className={cn(
-                    "absolute bottom-0 left-1/2 -translate-x-1/2 h-0.5 bg-foreground transition-all duration-200",
-                    isActive ? "w-full" : "w-0 group-hover:w-1/2"
-                  )} />
+                  <span
+                    className={cn(
+                      "absolute bottom-0 left-1/2 -translate-x-1/2 h-0.5 transition-all duration-200 rounded-full",
+                      isActive ? "w-full" : "w-0 group-hover:w-1/2"
+                    )}
+                    style={{ backgroundColor: isActive ? tab.accent : 'hsl(var(--foreground))' }}
+                  />
                 </button>
               );
             })}
