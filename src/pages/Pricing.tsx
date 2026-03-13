@@ -16,6 +16,7 @@ const planIcons: Record<string, React.ReactNode> = {
 
 const Pricing = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { data: plans = [], isLoading } = useSubscriptionPlans();
   const { planId, isLoading: isLoadingSub } = useSubscription();
   const [yearly, setYearly] = useState(false);
