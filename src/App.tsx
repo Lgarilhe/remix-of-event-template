@@ -8,6 +8,7 @@ import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { OrganizationGuard } from "@/components/OrganizationGuard";
 import { LinkedInAccountsProvider } from "@/contexts/LinkedInAccountsContext";
 import { supabase } from "@/integrations/supabase/client";
+import { clearOrgIdCache } from "@/lib/orgContext";
 import Auth from "./pages/Auth";
 
 import NotFound from "./pages/NotFound";
