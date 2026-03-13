@@ -228,8 +228,9 @@ export const ProjectsList: React.FC<ProjectsListProps> = ({ onResumeSearch }) =>
         <button
           onClick={() => {
             if (!canCreateJob) {
-              const { toast } = await import('sonner');
-              toast.error(`Limite de ${limits.max_jobs} projets atteinte. Passez au plan supérieur.`);
+              import('sonner').then(({ toast }) => {
+                toast.error(`Limite de ${limits.max_jobs} projets atteinte. Passez au plan supérieur.`);
+              });
               return;
             }
             setShowCreateModal(true);
