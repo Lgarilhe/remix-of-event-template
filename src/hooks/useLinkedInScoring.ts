@@ -438,7 +438,7 @@ export function useLinkedInScoring({
     try {
       const profileData = buildProfileData(profile);
 
-      const { data, error } = await invokeEdgeFunction('score-profile-job', {
+      const { data, error } = await invokeWithCredits('score-profile-job', 'scoring', {
         profile: profileData,
         job: {
           id: selectedJob.id,
