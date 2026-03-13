@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Building2, Users, Crown, Shield, User, Trash2, ArrowLeft, Plug, Check, Loader2, Pencil, UserCircle, CreditCard } from 'lucide-react';
+import { Building2, Users, Crown, Shield, User, Trash2, ArrowLeft, Plug, Check, Loader2, Pencil, UserCircle, CreditCard, Sparkles } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useQuery } from '@tanstack/react-query';
@@ -16,6 +16,7 @@ import { PendingInvitations } from '@/components/settings/PendingInvitations';
 import { TeamManagement } from '@/components/settings/TeamManagement';
 import { MyLinkedInAccount } from '@/components/settings/MyLinkedInAccount';
 import { BillingSettings } from '@/components/settings/BillingSettings';
+import { AICreditsSettings } from '@/components/settings/AICreditsSettings';
 import { toast } from 'sonner';
 
 const roleIcons = {
@@ -90,7 +91,7 @@ const Settings = () => {
 
         <h1 className="text-2xl font-semibold text-foreground mb-6">Paramètres</h1>
 
-        <Tabs defaultValue={searchParams.get('tab') === 'billing' ? 'billing' : searchParams.get('tab') === 'integrations' && isAdmin ? 'integrations' : searchParams.get('tab') === 'account' ? 'account' : 'general'} className="space-y-6">
+        <Tabs defaultValue={searchParams.get('tab') === 'credits' ? 'credits' : searchParams.get('tab') === 'billing' ? 'billing' : searchParams.get('tab') === 'integrations' && isAdmin ? 'integrations' : searchParams.get('tab') === 'account' ? 'account' : 'general'} className="space-y-6">
           <TabsList className="w-full justify-start">
             <TabsTrigger value="general" className="gap-2">
               <Building2 className="w-4 h-4" />
@@ -110,6 +111,10 @@ const Settings = () => {
                 Abonnement
               </TabsTrigger>
             )}
+            <TabsTrigger value="credits" className="gap-2">
+              <Sparkles className="w-4 h-4" />
+              Crédits IA
+            </TabsTrigger>
             {isAdmin && (
               <TabsTrigger value="integrations" className="gap-2">
                 <Plug className="w-4 h-4" />
@@ -267,6 +272,11 @@ const Settings = () => {
               <BillingSettings />
             </TabsContent>
           )}
+
+          {/* Credits Tab */}
+          <TabsContent value="credits">
+            <AICreditsSettings />
+          </TabsContent>
 
           {/* Integrations Tab */}
           {isAdmin && (

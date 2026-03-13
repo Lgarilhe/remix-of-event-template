@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
+import { invokeWithCredits } from '@/lib/invokeWithCredits';
 import { ATSCandidate } from '@/hooks/useATSData';
 import { Shield, ShieldAlert, ShieldCheck, ShieldX, Loader2, AlertTriangle, Clock, TrendingUp, GraduationCap, Shuffle } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -42,7 +42,7 @@ export const FraudDetectionTab: React.FC<Props> = ({ candidate }) => {
     setLoading(true);
     setError(null);
     try {
-      const { data, error: fnError } = await invokeEdgeFunction('detect-profile-fraud', {
+      const { data, error: fnError } = await invokeWithCredits('detect-profile-fraud', 'profile_fraud', {
         profileData: candidate.linkedinProfileData,
         candidateName: candidate.name,
         headline: candidate.headline,

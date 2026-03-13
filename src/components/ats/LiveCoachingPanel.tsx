@@ -1,6 +1,7 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
+import { invokeWithCredits } from '@/lib/invokeWithCredits';
 import { Mic, Square, FileText, Copy, CheckCircle2, Loader2, X, Search, CircleDot, AlertTriangle, User, ArrowRight } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -141,7 +142,7 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
   }) => {
     setIsAnalyzing(true);
     try {
-      const { data } = await invokeEdgeFunction('live-coach', {
+      const { data } = await invokeWithCredits('live-coach', 'live_coaching', {
         session_id: params.sessionId,
         full_transcript: params.fullTranscript,
         latest_chunk: params.latestChunk,
@@ -434,7 +435,7 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
         ...(criteriaStatus[c.id] || {}),
       }));
 
-      const { data, error } = await invokeEdgeFunction('generate-call-report', {
+      const { data, error } = await invokeWithCredits('generate-call-report', 'call_report', {
         session_id: sessionId,
         full_transcript: fullTranscriptRef.current,
         criteria_with_scores: criteriaWithScores,

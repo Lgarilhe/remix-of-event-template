@@ -1,6 +1,7 @@
 import React, { useCallback, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
+import { invokeWithCredits } from '@/lib/invokeWithCredits';
 import { LinkedInProfile } from '@/components/outreach/types';
 import { getYear, parseDate } from '@/components/outreach/dateUtils';
 import { Job } from '@/types/jobs';
@@ -437,7 +438,7 @@ export function useLinkedInScoring({
     try {
       const profileData = buildProfileData(profile);
 
-      const { data, error } = await invokeEdgeFunction('score-profile-job', {
+      const { data, error } = await invokeWithCredits('score-profile-job', 'scoring', {
         profile: profileData,
         job: {
           id: selectedJob.id,
@@ -586,7 +587,7 @@ export function useLinkedInScoring({
           toast.info(`Scoring lot ${batchIndex}/${totalBatches}...`, { id: 'batch-scoring-progress', duration: 3000 });
         }
 
-        const { data, error } = await invokeEdgeFunction('score-profile-job', {
+        const { data, error } = await invokeWithCredits('score-profile-job', 'scoring', {
           profiles: batch, job: jobPayload, customScoringInstructions, accountId: accountId || undefined,
         });
 
