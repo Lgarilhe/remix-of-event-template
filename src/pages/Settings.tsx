@@ -15,6 +15,7 @@ import { InviteMemberForm } from '@/components/settings/InviteMemberForm';
 import { PendingInvitations } from '@/components/settings/PendingInvitations';
 import { TeamManagement } from '@/components/settings/TeamManagement';
 import { MyLinkedInAccount } from '@/components/settings/MyLinkedInAccount';
+import { BillingSettings } from '@/components/settings/BillingSettings';
 import { toast } from 'sonner';
 
 const roleIcons = {
