@@ -33,6 +33,7 @@ const roleLabels = {
 
 const Settings = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const [searchParams] = useSearchParams();
   const { organization, organizationId, isOwner, isAdmin } = useOrganization();
   const { members, isLoading, pendingInvitations, inviteMember, isInviting, cancelInvitation, updateRole, removeMember } = useOrganizationMembers(organizationId);
