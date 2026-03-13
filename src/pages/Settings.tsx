@@ -261,6 +261,13 @@ const Settings = () => {
             )}
           </TabsContent>
 
+          {/* Billing Tab */}
+          {isAdmin && (
+            <TabsContent value="billing">
+              <BillingSettings />
+            </TabsContent>
+          )}
+
           {/* Integrations Tab */}
           {isAdmin && (
             <TabsContent value="integrations">
