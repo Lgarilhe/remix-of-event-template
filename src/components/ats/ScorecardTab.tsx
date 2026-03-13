@@ -64,11 +64,11 @@ interface EvaluationData {
   interviewStage?: InterviewStage;
 }
 
-const CATEGORY_CONFIG: Record<string, { label: string; color: string }> = {
-  technical: { label: 'Tech', color: 'border-blue-400 bg-blue-50 text-blue-700' },
-  soft_skill: { label: 'Soft', color: 'border-amber-400 bg-amber-50 text-amber-700' },
-  culture_fit: { label: 'Culture', color: 'border-purple-400 bg-purple-50 text-purple-700' },
-  motivation: { label: 'Motiv.', color: 'border-emerald-400 bg-emerald-50 text-emerald-700' },
+const CATEGORY_CONFIG: Record<string, { label: string; color: string; dotColor: string }> = {
+  technical: { label: 'Tech', color: 'border-blue-400 bg-blue-50 text-blue-700', dotColor: 'bg-blue-400' },
+  soft_skill: { label: 'Soft', color: 'border-amber-400 bg-amber-50 text-amber-700', dotColor: 'bg-amber-400' },
+  culture_fit: { label: 'Culture', color: 'border-purple-400 bg-purple-50 text-purple-700', dotColor: 'bg-purple-400' },
+  motivation: { label: 'Motiv.', color: 'border-emerald-400 bg-emerald-50 text-emerald-700', dotColor: 'bg-emerald-400' },
 };
 
 export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedProfile, onOpenProfile }) => {
