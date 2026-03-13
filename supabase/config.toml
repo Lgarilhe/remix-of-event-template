@@ -51,5 +51,29 @@ verify_jwt = false
 [functions.generate-scorecard]
 verify_jwt = false
 
-[functions.detect-profile-fraud]
+[functions.analyze-linkedin-profile]
+verify_jwt = false
+
+[functions.analyze-response]
+verify_jwt = false
+
+[functions.screen-candidate]
+verify_jwt = false
+
+[functions.generate-search-filters]
+verify_jwt = false
+
+[functions.chat-filter-assistant]
+verify_jwt = false
+
+[functions.refine-search-filters]
+verify_jwt = false
+
+[functions.nurturing-analyzer]
+verify_jwt = false
+
+[functions.generate-reply-suggestions]
+verify_jwt = false
+
+[functions.ai-credits]
 verify_jwt = false
