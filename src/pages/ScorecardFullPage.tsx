@@ -18,6 +18,7 @@ export default function ScorecardFullPage() {
   const [profileSection, setProfileSection] = useState<'exp' | 'edu' | 'skills'>('exp');
   const [expandedExp, setExpandedExp] = useState<Set<number>>(new Set());
   const [logoErrors, setLogoErrors] = useState<Set<string>>(new Set());
+  const [jobOpen, setJobOpen] = useState(false);
 
   useEffect(() => {
     if (!candidateId) return;
