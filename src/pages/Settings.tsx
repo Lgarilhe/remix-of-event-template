@@ -79,11 +79,24 @@ const Settings = () => {
     }
   };
 
+  const handleBack = () => {
+    const idx = window.history.state?.idx;
+    const canGoBackInApp = typeof idx === 'number' ? idx > 0 : location.key !== 'default';
+
+    if (canGoBackInApp) {
+      navigate(-1);
+      return;
+    }
+
+    navigate('/outreach', { replace: true });
+  };
+
   return (
     <div className="min-h-screen bg-background">
       <div className="max-w-3xl mx-auto px-4 py-8">
         <button
-          onClick={() => window.history.length > 1 ? navigate(-1) : navigate('/outreach')}
+          type="button"
+          onClick={handleBack}
           className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground mb-6 transition-colors"
         >
           <ArrowLeft className="w-4 h-4" />
