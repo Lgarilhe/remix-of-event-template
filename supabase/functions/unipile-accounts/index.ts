@@ -38,6 +38,15 @@ async function resolveUnipileCredentials(organizationId: string): Promise<{ apiK
     console.warn('[unipile-accounts] Failed to resolve org credentials:', e);
   }
 
+  // Fallback to global environment variables
+  const globalApiKey = Deno.env.get('UNIPILE_API_KEY');
+  const globalDsn = Deno.env.get('UNIPILE_DSN');
+  if (globalApiKey && globalDsn) {
+    const dsn = globalDsn.startsWith('http') ? globalDsn.replace(/^https?:\/\//, '') : globalDsn;
+    console.log(`[unipile-accounts] Using global credentials (fallback) for org ${organizationId}`);
+    return { apiKey: globalApiKey, dsn };
+  }
+
   return null;
 }
 
