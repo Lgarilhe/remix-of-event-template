@@ -4,6 +4,7 @@ import { getYear } from './dateUtils';
 import { Job } from '@/types/jobs';
 import { supabase } from '@/integrations/supabase/client';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
+import { invokeWithCredits } from '@/lib/invokeWithCredits';
 import { invokeUnipile } from '@/lib/invokeUnipile';
 import {
   Dialog,
