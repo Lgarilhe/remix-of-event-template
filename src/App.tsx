@@ -1,13 +1,15 @@
-import React, { useEffect, useState, lazy, Suspense } from "react";
+import React, { useEffect, useState, useRef, lazy, Suspense } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Routes, Route, useLocation, useNavigate } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import { SessionExpiredDialog } from "@/components/SessionExpiredDialog";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { OrganizationGuard } from "@/components/OrganizationGuard";
 import { LinkedInAccountsProvider } from "@/contexts/LinkedInAccountsContext";
 import { supabase } from "@/integrations/supabase/client";
+import { clearOrgIdCache } from "@/lib/orgContext";
 import Auth from "./pages/Auth";
 
 import NotFound from "./pages/NotFound";
@@ -33,6 +35,8 @@ const AppContent = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const locationRef = React.useRef(location.pathname);
+  const prevUserIdRef = useRef<string | null>(null);
+  const queryClient = useQueryClient();
   
   // Keep ref in sync without re-subscribing the listener
   useEffect(() => {
@@ -45,6 +49,11 @@ const AppContent = () => {
       console.log('[App] Auth event:', event, '| has session:', !!session);
       
       if (event === 'SIGNED_OUT' || (event === 'TOKEN_REFRESHED' && !session)) {
+        // Clear all caches to prevent data leaks between accounts
+        clearOrgIdCache();
+        queryClient.clear();
+        prevUserIdRef.current = null;
+
         const currentPath = locationRef.current;
         const isPublicRoute = PUBLIC_ROUTES.some(route => 
           currentPath === route || currentPath.startsWith(route + '/')
@@ -54,6 +63,13 @@ const AppContent = () => {
           setSessionExpired(true);
         }
       } else if (event === 'SIGNED_IN' || (event === 'TOKEN_REFRESHED' && session)) {
+        // If user changed (different account), clear stale caches
+        const newUserId = session?.user?.id ?? null;
+        if (prevUserIdRef.current && prevUserIdRef.current !== newUserId) {
+          clearOrgIdCache();
+          queryClient.clear();
+        }
+        prevUserIdRef.current = newUserId;
         setSessionExpired(false);
       }
     });
