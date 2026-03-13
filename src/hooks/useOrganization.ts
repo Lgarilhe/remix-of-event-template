@@ -35,7 +35,7 @@ export const useOrganization = () => {
         .from('profiles')
         .select('active_organization_id')
         .eq('user_id', user.id)
-        .single();
+        .maybeSingle();
 
       if (profileError || !profile?.active_organization_id) {
         return null;
