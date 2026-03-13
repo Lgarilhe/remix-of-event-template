@@ -530,6 +530,28 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
           />
         )}
 
+        {/* Mobile category tabs (horizontal scroll) */}
+        <div className="flex sm:hidden items-center gap-1.5 overflow-x-auto pb-2 -mx-1 px-1">
+          {activeEval.criteria.map((c, idx) => {
+            const r = activeEval.ratings[c.id];
+            const isCurrent = idx === currentCriterionIdx;
+            const catConfig = CATEGORY_CONFIG[c.category] || CATEGORY_CONFIG.technical;
+            return (
+              <button key={c.id} onClick={() => setCurrentCriterionIdx(idx)}
+                className={cn(
+                  "shrink-0 px-2 py-1 text-[9px] font-bold uppercase tracking-wider border transition-all whitespace-nowrap",
+                  isCurrent
+                    ? catConfig.color + " ring-1 ring-offset-1"
+                    : r != null
+                      ? "border-foreground/20 text-muted-foreground"
+                      : "border-foreground/10 text-muted-foreground/50"
+                )}>
+                {idx + 1}. {catConfig.label}
+              </button>
+            );
+          })}
+        </div>
+
         {/* Side rail + Card layout */}
         <div className="flex gap-3">
           {/* Criteria side rail */}
