@@ -127,8 +127,8 @@ export default function ATS() {
           {/* Header — compact single row */}
           <div className="flex items-center justify-between gap-3 mb-3">
             <div className="flex items-center gap-2 min-w-0">
-              <div className="h-8 w-8 bg-foreground text-background flex items-center justify-center shrink-0">
-                <Users className="w-4 h-4" />
+              <div className="h-8 w-8 flex items-center justify-center shrink-0">
+                <img src={iconAts3d} alt="" className="w-8 h-8 object-contain" />
               </div>
               <h1 className="text-xl sm:text-2xl font-bold text-foreground uppercase tracking-tight">ATS</h1>
               {isFromCache && !isFetching && (

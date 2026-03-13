@@ -56,7 +56,7 @@ export default function Dashboard() {
             <ATSStatsSkeleton />
           ) : candidates.length === 0 ? (
             <EmptyState
-              icon={<BarChart3 className="w-7 h-7" />}
+              icon={<img src={iconDashboard3d} alt="" className="w-7 h-7 object-contain" />}
               title="Pas encore de données"
               description="Le dashboard se remplit automatiquement avec vos données candidats. Commencez par sourcer des profils via Outreach."
               actionLabel="Aller sur Outreach"
