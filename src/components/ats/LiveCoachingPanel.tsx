@@ -142,7 +142,7 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
   }) => {
     setIsAnalyzing(true);
     try {
-      const { data } = await invokeEdgeFunction('live-coach', {
+      const { data } = await invokeWithCredits('live-coach', 'live_coaching', {
         session_id: params.sessionId,
         full_transcript: params.fullTranscript,
         latest_chunk: params.latestChunk,
