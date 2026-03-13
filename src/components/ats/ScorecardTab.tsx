@@ -423,8 +423,14 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
             </div>
           </div>
           <div className="flex gap-0 self-end sm:self-auto">
+            <button onClick={() => navigate(`/ats/scorecard/${candidate.candidateId}`)}
+              className="relative overflow-hidden h-[30px] px-2 sm:px-3 flex items-center gap-1.5 border border-foreground text-foreground text-[10px] font-medium uppercase tracking-wider group">
+              <Maximize2 className="w-3 h-3 relative z-10" />
+              <span className="relative z-10 hidden sm:inline">Plein écran</span>
+              <span className="absolute inset-0 bg-foreground/5 translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
+            </button>
             <button onClick={() => setShowCoaching(true)} disabled={showCoaching}
-              className="relative overflow-hidden h-[30px] px-2 sm:px-3 flex items-center gap-1.5 border border-red-500 text-red-500 text-[10px] font-medium uppercase tracking-wider group disabled:opacity-50">
+              className="relative overflow-hidden h-[30px] px-2 sm:px-3 flex items-center gap-1.5 border border-red-500 text-red-500 text-[10px] font-medium uppercase tracking-wider group disabled:opacity-50 -ml-px">
               <Mic className="w-3 h-3 relative z-10" />
               <span className="relative z-10 hidden sm:inline">Coaching Live</span>
               <span className="absolute inset-0 bg-red-50 translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
