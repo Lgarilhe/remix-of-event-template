@@ -79,6 +79,7 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
   const [expandedCriteria, setExpandedCriteria] = useState<Set<string>>(new Set());
   const [selectedStage, setSelectedStage] = useState<InterviewStage | ''>('');
   const [showCoaching, setShowCoaching] = useState(false);
+  const [currentCriterionIdx, setCurrentCriterionIdx] = useState(0);
 
   const activeEval = activeIndex !== null ? evaluations[activeIndex] : null;
 
