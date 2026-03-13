@@ -498,7 +498,20 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
             jobContext={`Poste: ${candidate.jobTitle || 'N/A'}`}
             criteria={activeEval.criteria}
             scorecardId={activeEval.id}
-            onCriteriaUpdate={() => {}}
+            onCriteriaUpdate={(updates) => {
+              // Auto-navigate to the most recently covered criterion
+              if (!coachingAutoNav || !activeEval) return;
+              const coveredIds = Object.entries(updates)
+                .filter(([, u]) => u.covered)
+                .map(([id]) => id);
+              if (coveredIds.length === 0) return;
+              const latestCovered = coveredIds[coveredIds.length - 1];
+              if (latestCovered !== lastAutoNavCriterionRef.current) {
+                lastAutoNavCriterionRef.current = latestCovered;
+                const idx = activeEval.criteria.findIndex(c => c.id === latestCovered);
+                if (idx !== -1) setCurrentCriterionIdx(idx);
+              }
+            }}
             onAutoScores={(scores) => {
               for (const [id, score] of Object.entries(scores)) {
                 handleRate(id, score);
