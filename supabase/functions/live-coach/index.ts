@@ -12,6 +12,27 @@ serve(async (req) => {
   }
 
   try {
+    // Auth check
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader?.startsWith('Bearer ')) {
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+    const _authClient = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_ANON_KEY')!, {
+      global: { headers: { Authorization: authHeader } },
+    });
+    const { data: claimsData, error: claimsError } = await _authClient.auth.getClaims(authHeader.replace('Bearer ', ''));
+    if (claimsError || !claimsData?.claims?.sub) {
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+    const userId = claimsData.claims.sub;
+
+    // Rate limit: 30 req/min
+    const svc = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
+    const { data: allowed } = await svc.rpc('check_rate_limit', { p_user_id: userId, p_action: 'live_coach', p_max_requests: 30, p_window_seconds: 60 });
+    if (allowed === false) {
+      return new Response(JSON.stringify({ error: 'Rate limit exceeded' }), { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
     const body = await req.json();
 
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
@@ -259,12 +280,23 @@ IMPORTANT : Sois CONCIS et RAPIDE.`;
     }
 
     // Save to DB (fire-and-forget for speed)
-    const supabase = createClient(
+    // Verify session belongs to the authenticated user before updating
+    const supabaseAdmin = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    supabase
+    const { data: sessionRow } = await supabaseAdmin
+      .from("call_coaching_sessions")
+      .select("created_by")
+      .eq("id", session_id)
+      .single();
+
+    if (sessionRow?.created_by !== userId) {
+      return new Response(JSON.stringify({ error: 'Forbidden' }), { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
+    supabaseAdmin
       .from("call_coaching_sessions")
       .update({
         transcript: full_transcript,
