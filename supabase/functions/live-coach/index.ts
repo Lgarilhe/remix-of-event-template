@@ -280,12 +280,23 @@ IMPORTANT : Sois CONCIS et RAPIDE.`;
     }
 
     // Save to DB (fire-and-forget for speed)
-    const supabase = createClient(
+    // Verify session belongs to the authenticated user before updating
+    const supabaseAdmin = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    supabase
+    const { data: sessionRow } = await supabaseAdmin
+      .from("call_coaching_sessions")
+      .select("created_by")
+      .eq("id", session_id)
+      .single();
+
+    if (sessionRow?.created_by !== userId) {
+      return new Response(JSON.stringify({ error: 'Forbidden' }), { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
+    supabaseAdmin
       .from("call_coaching_sessions")
       .update({
         transcript: full_transcript,
