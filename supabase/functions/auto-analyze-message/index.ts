@@ -249,6 +249,23 @@ serve(async (req) => {
   }
 
   try {
+    // ── Auth: accept service_role key (webhook calls) OR valid JWT (user calls) ──
+    const authHeader = req.headers.get('Authorization');
+    const isServiceRole = authHeader === `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`;
+    
+    if (!isServiceRole) {
+      if (!authHeader) {
+        return new Response(JSON.stringify({ error: 'Missing authorization' }), { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      }
+      const supabaseAuth = createClient(SUPABASE_URL, Deno.env.get('SUPABASE_ANON_KEY')!, {
+        global: { headers: { Authorization: authHeader } },
+      });
+      const { data: { user }, error: authError } = await supabaseAuth.auth.getUser();
+      if (authError || !user) {
+        return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      }
+    }
+
     const { chat_id, account_id, sender_id } = await req.json();
     
     if (!chat_id || !account_id) {
