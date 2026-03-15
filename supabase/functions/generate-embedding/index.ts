@@ -1,9 +1,9 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 };
 
 function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
@@ -18,6 +18,27 @@ serve(async (req) => {
   }
 
   try {
+    // Auth check
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader?.startsWith('Bearer ')) {
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+    const _authClient = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_ANON_KEY')!, {
+      global: { headers: { Authorization: authHeader } },
+    });
+    const { data: claimsData, error: claimsError } = await _authClient.auth.getClaims(authHeader.replace('Bearer ', ''));
+    if (claimsError || !claimsData?.claims?.sub) {
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+    const userId = claimsData.claims.sub;
+
+    // Rate limit: 30 req/min
+    const svc = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
+    const { data: allowed } = await svc.rpc('check_rate_limit', { p_user_id: userId, p_action: 'generate_embedding', p_max_requests: 30, p_window_seconds: 60 });
+    if (allowed === false) {
+      return new Response(JSON.stringify({ error: 'Rate limit exceeded' }), { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
     const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
     if (!OPENAI_API_KEY) {
       throw new Error("OPENAI_API_KEY not configured");
@@ -28,7 +49,7 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    const { text, type, entityId } = await req.json();
+    const { text, type, entityId, organization_id } = await req.json();
 
     if (!text || !type || !entityId) {
       return new Response(
@@ -42,6 +63,19 @@ serve(async (req) => {
         JSON.stringify({ error: "type must be 'candidate' or 'job'" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
+    }
+
+    // Verify user belongs to the organization if provided
+    if (organization_id) {
+      const { data: membership } = await supabase
+        .from('organization_members')
+        .select('id')
+        .eq('user_id', userId)
+        .eq('organization_id', organization_id)
+        .maybeSingle();
+      if (!membership) {
+        return new Response(JSON.stringify({ error: 'Forbidden' }), { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
     }
 
     // Call OpenAI Embeddings API
@@ -72,16 +106,17 @@ serve(async (req) => {
 
     // Build upsert payload with embedding as a pgvector-compatible string
     const embeddingStr = `[${embedding.join(',')}]`;
+    const upsertPayload: Record<string, unknown> = { [idCol]: entityId, embedding: embeddingStr };
+    if (organization_id) {
+      upsertPayload.organization_id = organization_id;
+    }
 
     // Retry upsert up to 2 times to handle transient 502s
     let lastError: string | null = null;
     for (let attempt = 0; attempt < 3; attempt++) {
       const { error: upsertError } = await supabase
         .from(table)
-        .upsert(
-          { [idCol]: entityId, embedding: embeddingStr },
-          { onConflict: idCol }
-        );
+        .upsert(upsertPayload, { onConflict: idCol });
 
       if (!upsertError) {
         lastError = null;
@@ -108,7 +143,7 @@ serve(async (req) => {
   } catch (err) {
     console.error('generate-embedding error:', err);
     return new Response(
-      JSON.stringify({ error: err.message }),
+      JSON.stringify({ error: err instanceof Error ? err.message : String(err) }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
