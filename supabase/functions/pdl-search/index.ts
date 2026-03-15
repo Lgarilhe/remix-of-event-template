@@ -8,12 +8,27 @@ const corsHeaders = {
 
 const PDL_BASE = 'https://api.peopledatalabs.com/v5';
 
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.75.1';
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
+    // --- Auth: validate JWT ---
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader?.startsWith('Bearer ')) {
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+    const supabaseAuth = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_ANON_KEY')!, {
+      global: { headers: { Authorization: authHeader } },
+    });
+    const { data: { user }, error: authError } = await supabaseAuth.auth.getUser();
+    if (authError || !user) {
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+
     const PDL_API_KEY = Deno.env.get('PDL_API_KEY');
     if (!PDL_API_KEY) {
       return new Response(JSON.stringify({ success: false, error: 'PDL_API_KEY not configured' }), {
