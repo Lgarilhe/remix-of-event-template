@@ -1,5 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import type { ShortlistEntry, Candidate } from '@/pages/Candidates';
+import { supabase } from '@/integrations/supabase/client';
+import { getActiveOrganizationId } from '@/lib/orgContext';
 
 // Cache configuration - aggressive caching for Notion data
 const STALE_TIME = 30 * 60 * 1000; // 30 minutes
@@ -31,13 +33,20 @@ function extractItems<T>(response: unknown, key: 'shortlist' | 'candidates'): T[
 }
 
 async function fetchNotionPayload<T>(type: 'shortlist' | 'candidates'): Promise<T[]> {
+  const orgId = await getActiveOrganizationId();
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session?.access_token) throw new Error('Not authenticated');
+
   const response = await fetch(
     `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/fetch-notion-candidates?type=${type}`,
     {
+      method: 'POST',
       headers: {
-        'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+        'Authorization': `Bearer ${session.access_token}`,
+        'apikey': import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
         'Content-Type': 'application/json',
       },
+      body: JSON.stringify({ organization_id: orgId }),
     }
   );
 
