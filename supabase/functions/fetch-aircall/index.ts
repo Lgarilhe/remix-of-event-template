@@ -17,6 +17,12 @@ Deno.serve(async (req) => {
   }
 
   try {
+    // --- Auth: validate JWT and org membership ---
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader?.startsWith('Bearer ')) {
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+
     let AIRCALL_API_ID = Deno.env.get('AIRCALL_API_ID');
     let AIRCALL_API_TOKEN = Deno.env.get('AIRCALL_API_TOKEN');
 
@@ -24,10 +30,25 @@ Deno.serve(async (req) => {
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
+    const supabaseAuth = createClient(supabaseUrl, Deno.env.get('SUPABASE_ANON_KEY')!, {
+      global: { headers: { Authorization: authHeader } },
+    });
+    const { data: { user }, error: authError } = await supabaseAuth.auth.getUser();
+    if (authError || !user) {
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+
     // Resolve org-specific Aircall credentials
     let body: any = {};
     try { body = await req.clone().json(); } catch {}
     const orgId = body?.organization_id || null;
+
+    if (orgId) {
+      const { data: membership } = await supabase.from('organization_members').select('id').eq('user_id', user.id).eq('organization_id', orgId).maybeSingle();
+      if (!membership) {
+        return new Response(JSON.stringify({ error: 'Forbidden' }), { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      }
+    }
     if (orgId) {
       try {
         const { data } = await supabase

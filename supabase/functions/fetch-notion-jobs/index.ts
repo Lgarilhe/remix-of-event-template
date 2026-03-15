@@ -731,6 +731,19 @@ serve(async (req) => {
   }
 
   try {
+    // --- Auth: validate JWT and org membership ---
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader?.startsWith('Bearer ')) {
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+    const supabaseAuth = createClient(SUPABASE_URL, Deno.env.get('SUPABASE_ANON_KEY')!, {
+      global: { headers: { Authorization: authHeader } },
+    });
+    const { data: { user }, error: authError } = await supabaseAuth.auth.getUser();
+    if (authError || !user) {
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+
     // Parse request body
     let body: any = {};
     try {
@@ -739,9 +752,13 @@ serve(async (req) => {
       // No body or invalid JSON, use defaults
     }
 
-    // Resolve per-org credentials if organization_id is provided
-    if (body?.organization_id) {
-      await resolveOrgCredentials(body.organization_id);
+    const organizationId = body?.organization_id || null;
+    if (organizationId) {
+      const { data: membership } = await supabase.from('organization_members').select('id').eq('user_id', user.id).eq('organization_id', organizationId).maybeSingle();
+      if (!membership) {
+        return new Response(JSON.stringify({ error: 'Forbidden' }), { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      }
+      await resolveOrgCredentials(organizationId);
     }
 
     if (!NOTION_API_KEY) {
