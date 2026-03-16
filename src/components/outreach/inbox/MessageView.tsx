@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
+import { useAttendeePicturesContext } from '@/contexts/AttendeePicturesContext';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { InMailTextEditor } from '../InMailTextEditor';
