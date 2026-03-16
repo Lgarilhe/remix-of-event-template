@@ -53,7 +53,6 @@ export const AnimatedOrb: React.FC<AnimatedOrbProps> = ({
     let nextLook = 120;
 
     const isDark = document.documentElement.classList.contains('dark');
-    const bg: [number, number, number] = isDark ? [38, 38, 38] : [255, 255, 255];
 
     function frame() {
       if (!ctx) return;
