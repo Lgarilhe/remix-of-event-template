@@ -263,7 +263,7 @@ export const InvitationsPanel: React.FC<InvitationsPanelProps> = ({
         </div>
       </CardHeader>
 
-      <CardContent className="min-h-0 flex-1 overflow-hidden p-0">
+      <CardContent className="p-0">
         {invitations.length > 0 && (
           <div className="border-b border-foreground/10 bg-muted/20 px-4 py-3 sm:px-5">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
