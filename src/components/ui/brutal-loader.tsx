@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { cn } from '@/lib/utils';
-import { AnimatedOrb } from './AnimatedOrb';
 
 const LOADING_MESSAGES = [
   'Chargement en cours…',
@@ -30,6 +29,37 @@ const MESSAGE_SETS: Record<string, string[]> = {
   search: SEARCH_MESSAGES,
   sequences: SEQUENCE_MESSAGES,
 };
+
+/** Brutal square spinner — 3 nested squares rotating at different speeds */
+function BrutalSpinner({ size = 40 }: { size?: number }) {
+  const s = size;
+  const mid = s * 0.6;
+  const inner = s * 0.28;
+  return (
+    <div className="relative" style={{ width: s, height: s }}>
+      {/* Outer — slow CCW */}
+      <div
+        className="absolute inset-0 border-2 border-foreground/20 animate-[spin_4s_linear_infinite_reverse]"
+      />
+      {/* Mid — medium CW with accent */}
+      <div
+        className="absolute border-2 border-brutal-accent/50 animate-[spin_2.5s_linear_infinite]"
+        style={{
+          width: mid, height: mid,
+          top: (s - mid) / 2, left: (s - mid) / 2,
+        }}
+      />
+      {/* Inner — fast CCW, filled accent */}
+      <div
+        className="absolute skalr-gradient-bg animate-[spin_1.5s_linear_infinite_reverse]"
+        style={{
+          width: inner, height: inner,
+          top: (s - inner) / 2, left: (s - inner) / 2,
+        }}
+      />
+    </div>
+  );
+}
 
 interface BrutalLoaderProps {
   className?: string;
@@ -64,7 +94,7 @@ export const BrutalLoader: React.FC<BrutalLoaderProps> = ({
   if (compact) {
     return (
       <div className={cn('flex items-center gap-3 py-4', className)}>
-        <AnimatedOrb size={24} speed={4} />
+        <BrutalSpinner size={20} />
         <span
           className={cn(
             'text-[11px] text-muted-foreground tracking-wider transition-opacity duration-300 ease-out',
@@ -79,11 +109,9 @@ export const BrutalLoader: React.FC<BrutalLoaderProps> = ({
 
   return (
     <div className={cn('flex flex-col items-center justify-center py-12', className)}>
-      {/* Animated eye orb as spinner */}
-      <div className="relative mb-5">
-        <AnimatedOrb size={48} speed={5} />
-        {/* Pulsing ring around the orb */}
-        <div className="absolute inset-[-6px] rounded-full border border-brutal-accent/20 animate-[pulse_2.5s_ease-in-out_infinite]" />
+      {/* Spinner */}
+      <div className="mb-5">
+        <BrutalSpinner size={44} />
       </div>
 
       {/* Rotating text */}
@@ -96,7 +124,7 @@ export const BrutalLoader: React.FC<BrutalLoaderProps> = ({
         {pool[msgIndex]}
       </p>
 
-      {/* Skeleton rows with staggered entrance + gradient shimmer */}
+      {/* Skeleton rows */}
       <div className="w-full max-w-md space-y-2">
         {Array.from({ length: rows }).map((_, i) => (
           <div
@@ -107,7 +135,6 @@ export const BrutalLoader: React.FC<BrutalLoaderProps> = ({
               animationFillMode: 'backwards',
             }}
           >
-            {/* Gradient shimmer sweep */}
             <div
               className="absolute inset-0 animate-[shimmer_2s_ease-in-out_infinite]"
               style={{
@@ -116,21 +143,11 @@ export const BrutalLoader: React.FC<BrutalLoaderProps> = ({
                   'linear-gradient(90deg, transparent 0%, hsl(var(--brutal-accent) / 0.04) 40%, hsl(var(--brutal-accent) / 0.08) 50%, hsl(var(--brutal-accent) / 0.04) 60%, transparent 100%)',
               }}
             />
-            {/* Faux content blocks */}
             <div className="flex items-center gap-3 px-4 h-full">
-              <div
-                className="w-7 h-7 bg-foreground/[0.04] shrink-0"
-                style={{ animationDelay: `${i * 100}ms` }}
-              />
+              <div className="w-7 h-7 bg-foreground/[0.04] shrink-0" />
               <div className="flex-1 space-y-1.5">
-                <div
-                  className="h-2 bg-foreground/[0.06]"
-                  style={{ width: `${60 + (i % 3) * 15}%` }}
-                />
-                <div
-                  className="h-1.5 bg-foreground/[0.04]"
-                  style={{ width: `${35 + (i % 2) * 20}%` }}
-                />
+                <div className="h-2 bg-foreground/[0.06]" style={{ width: `${60 + (i % 3) * 15}%` }} />
+                <div className="h-1.5 bg-foreground/[0.04]" style={{ width: `${35 + (i % 2) * 20}%` }} />
               </div>
             </div>
           </div>
