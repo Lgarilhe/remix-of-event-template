@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
-import { CheckCircle2, MapPin, Calendar, Target, Brain, ChevronDown, Sparkles, Search, BarChart3, Send, Activity, Users, Briefcase, GraduationCap, Building2, Settings2, FileText } from 'lucide-react';
+import { CheckCircle2, MapPin, Calendar, Target, Brain, ChevronDown, Search, BarChart3, Send, Activity } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { AgentMessage } from '@/hooks/useAgentChat';
 import { AnimatedOrb } from '@/components/ui/AnimatedOrb';
@@ -100,26 +100,6 @@ export const AgentMessageBubble: React.FC<AgentMessageBubbleProps> = ({ message,
     ? finalContent.slice(finalContent.indexOf('\n', stepMatch.index || 0) + 1).trim()
     : finalContent;
 
-  const stepIconMap: Record<string, React.ElementType> = {
-    'compétences': Settings2,
-    'skills': Settings2,
-    'expérience': Briefcase,
-    'experience': Briefcase,
-    'localisation': MapPin,
-    'location': MapPin,
-    'formation': GraduationCap,
-    'education': GraduationCap,
-    'entreprises': Building2,
-    'companies': Building2,
-    'titre': FileText,
-    'title': FileText,
-    'profil': Users,
-    'profile': Users,
-  };
-
-  const StepIcon = stepLabel
-    ? (Object.entries(stepIconMap).find(([key]) => stepLabel.toLowerCase().includes(key))?.[1] || Target)
-    : Target;
 
   return (
     <div
@@ -129,34 +109,14 @@ export const AgentMessageBubble: React.FC<AgentMessageBubbleProps> = ({ message,
       {/* Thinking card for saved messages */}
       {thinking && <ThinkingCard thinking={thinking} />}
 
-      {/* Calibration step header */}
+      {/* Calibration step — inline pill */}
       {stepCurrent != null && stepTotal != null && stepLabel && (
-        <div className="flex items-center gap-3 py-1">
-          <div className="h-7 w-7 border border-foreground/20 bg-foreground text-background flex items-center justify-center shrink-0">
-            <StepIcon className="w-3.5 h-3.5" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2">
-              <span className="text-[10px] font-bold uppercase tracking-[0.15em] text-brutal-accent tabular-nums">
-                {stepCurrent}/{stepTotal}
-              </span>
-              <span className="text-xs font-bold uppercase tracking-wider text-foreground">
-                {stepLabel}
-              </span>
-            </div>
-            {/* Progress bar */}
-            <div className="flex gap-0.5 mt-1.5">
-              {Array.from({ length: stepTotal }).map((_, i) => (
-                <div
-                  key={i}
-                  className={cn(
-                    "h-[3px] flex-1 transition-all duration-300",
-                    i < stepCurrent ? "bg-brutal-accent" : "bg-foreground/10"
-                  )}
-                />
-              ))}
-            </div>
-          </div>
+        <div className="flex items-center gap-2 mb-1">
+          <span className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.12em] text-muted-foreground">
+            <span className="text-brutal-accent tabular-nums">{stepCurrent}/{stepTotal}</span>
+            <span className="text-foreground/30">·</span>
+            <span>{stepLabel}</span>
+          </span>
         </div>
       )}
 
