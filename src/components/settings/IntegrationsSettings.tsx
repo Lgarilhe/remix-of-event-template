@@ -122,14 +122,15 @@ const LinkedInHostedAuthCard = ({
   const { mappings, getMappingForAccount } = useMemberLinkedInAccounts();
   const [proxyCache, setProxyCache] = useState<Record<string, { country: string | null; mode: string | null }>>({});
 
-  // Initialize proxy cache from mappings
+  // Initialize proxy cache from mappings (use JSON key to avoid infinite loop)
+  const mappingsKey = JSON.stringify(mappings.map(m => [m.linkedin_account_id, m.proxy_country, m.proxy_mode]));
   useEffect(() => {
     const cache: Record<string, { country: string | null; mode: string | null }> = {};
     mappings.forEach(m => {
       cache[m.linkedin_account_id] = { country: m.proxy_country, mode: m.proxy_mode ?? null };
     });
     setProxyCache(cache);
-  }, [mappings]);
+  }, [mappingsKey]);
   const handleConnectLinkedIn = async () => {
     setGenerating(true);
     try {
