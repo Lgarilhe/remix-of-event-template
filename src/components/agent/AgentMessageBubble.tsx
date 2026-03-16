@@ -7,7 +7,6 @@ import { AnimatedOrb } from '@/components/ui/AnimatedOrb';
 import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
 import { filterThinkingLines } from './filterThinking';
-import { cn as _cn } from '@/lib/utils';
 
 interface AgentMessageBubbleProps {
   message: AgentMessage;
