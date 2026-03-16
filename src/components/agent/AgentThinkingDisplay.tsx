@@ -139,15 +139,27 @@ export const AgentThinkingDisplay: React.FC<AgentThinkingDisplayProps> = ({
           </div>
         )}
 
-        {/* Streaming thinking content */}
-        {thinkingContent && (
-          <div className="border-t border-brutal-accent/10 px-3.5 py-3 max-h-[120px] overflow-y-auto scrollbar-hide">
-            <p className="font-mono text-[11px] text-muted-foreground/60 leading-relaxed whitespace-pre-wrap">
-              {thinkingContent}
-              <span className="inline-block w-[2px] h-3 bg-brutal-accent/50 ml-0.5 animate-pulse align-middle" />
-            </p>
-          </div>
-        )}
+        {/* Streaming thinking content — strip markdown noise */}
+        {thinkingContent && (() => {
+          const cleaned = thinkingContent
+            .replace(/^#{1,6}\s+/gm, '')        // strip heading markers
+            .replace(/\*{1,3}([^*]+)\*{1,3}/g, '$1') // strip bold/italic
+            .replace(/\[OPTIONS\][\s\S]*?(\[\/OPTIONS\]|$)/g, '')
+            .replace(/\[SEARCH_PLAN\][\s\S]*?(\[\/SEARCH_PLAN\]|$)/g, '')
+            .replace(/\[AGENT_ACTION\][\s\S]*?(\[\/AGENT_ACTION\]|$)/g, '')
+            .replace(/^[-*]\s+/gm, '· ')        // normalize list markers
+            .replace(/`([^`]+)`/g, '$1')         // strip inline code
+            .trim();
+          if (!cleaned) return null;
+          return (
+            <div className="border-t border-brutal-accent/10 px-3.5 py-3 max-h-[120px] overflow-y-auto scrollbar-hide">
+              <p className="font-mono text-[11px] text-muted-foreground/50 leading-relaxed whitespace-pre-wrap">
+                {cleaned}
+                <span className="inline-block w-[2px] h-3 bg-brutal-accent/50 ml-0.5 animate-pulse align-middle" />
+              </p>
+            </div>
+          );
+        })()}
       </div>
     </div>
   );
