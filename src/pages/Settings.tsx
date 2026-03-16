@@ -219,6 +219,7 @@ const Settings = () => {
                       </p>
                     </div>
                   </div>
+                  </div>
                 </CardContent>
               </Card>
             )}
