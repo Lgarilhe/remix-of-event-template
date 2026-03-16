@@ -180,7 +180,7 @@ export default function Candidates() {
               <div className="h-8 w-8 sm:h-10 sm:w-10 bg-foreground text-background flex items-center justify-center border border-foreground">
                 <Users className="w-4 h-4 sm:w-5 sm:h-5" />
               </div>
-              <h1 className="text-xl sm:text-3xl font-bold text-foreground uppercase tracking-tight font-sans">Candidats</h1>
+              <h1 className="text-xl sm:text-3xl font-bold text-foreground uppercase tracking-tight">Candidats</h1>
               {shortlistLoading && (
                 <span className="text-xs sm:text-sm text-muted-foreground animate-pulse">Chargement...</span>
               )}
