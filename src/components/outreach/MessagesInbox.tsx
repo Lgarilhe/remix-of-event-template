@@ -43,7 +43,6 @@ export const MessagesInbox: React.FC<MessagesInboxProps> = (props) => {
     </AttendeePicturesProvider>
   );
 };
-};
 
 const MessagesInboxInner: React.FC<
   MessagesInboxProps & { selectedAccount: string }
