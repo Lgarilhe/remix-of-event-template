@@ -211,7 +211,7 @@ export const useAgentChat = (conversationId: string | null) => {
     setSending(true);
     setStreamingContent('');
     setThinkingContent('');
-    setThinkingSteps([]);
+    setThinkingPhases([]);
     setIsThinking(false);
 
     // Optimistic user message
