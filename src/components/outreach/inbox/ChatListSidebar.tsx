@@ -287,6 +287,8 @@ export const ChatListSidebar: React.FC<ChatListSidebarProps> = ({
                 category={categoriesMap.get(chat.id) || null}
                 onSetCategory={onSetCategory}
                 onClick={() => onChatSelect(chat)}
+                onDeleteChat={onDeleteChat}
+                isDeletingChat={isDeletingChat}
               />
             ))}
             {hasMoreChats && searchQuery && onLoadAllChats && (
