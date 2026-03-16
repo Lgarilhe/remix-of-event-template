@@ -2,6 +2,7 @@ import React from 'react';
 import { LinkedInAccount } from '@/pages/Outreach';
 import { MessageSquare } from 'lucide-react';
 import { useMessagesInbox } from '@/hooks/useMessagesInbox';
+import { useMessageActions } from '@/hooks/useMessageActions';
 import { ChatListSidebar } from './inbox/ChatListSidebar';
 import { MessageView } from './inbox/MessageView';
 import { AddToPipelineModal } from './AddToPipelineModal';
@@ -48,7 +49,31 @@ const MessagesInboxInner: React.FC<
     onChatChange,
   });
 
+  const { addReaction, deleteMessage, deleteChat, isReacting, isDeleting } = useMessageActions(
+    inbox.organizationId ?? null
+  );
+
   const candidateProfile = getCurrentCandidateProfile(inbox.selectedChat);
+
+  const handleDeleteChat = async (chatId: string) => {
+    const success = await deleteChat(chatId);
+    if (success) {
+      if (inbox.selectedChat?.id === chatId) {
+        inbox.setSelectedChat(null);
+      }
+      inbox.fetchChats(true);
+    }
+    return success;
+  };
+
+  const handleDeleteMessage = async (messageId: string) => {
+    const success = await deleteMessage(messageId);
+    if (success) {
+      // Refresh messages
+      inbox.fetchChats(false);
+    }
+    return success;
+  };
 
   return (
     <>
@@ -86,6 +111,10 @@ const MessagesInboxInner: React.FC<
             onEnrollInSequence={inbox.handleEnrollInSequence}
             onScheduleCall={inbox.handleScheduleCall}
             calendlyLink={inbox.calendlyLink}
+            onAddReaction={addReaction}
+            onDeleteMessage={handleDeleteMessage}
+            isReacting={isReacting}
+            isDeleting={isDeleting}
           />
         </div>
       )}
@@ -118,6 +147,8 @@ const MessagesInboxInner: React.FC<
           loadingAllChats={inbox.loadingAllChats}
           onLoadMoreChats={inbox.loadMoreChats}
           onLoadAllChats={inbox.loadAllChats}
+          onDeleteChat={handleDeleteChat}
+          isDeletingChat={isDeleting}
         />
 
         {/* Desktop Message View */}
@@ -153,6 +184,10 @@ const MessagesInboxInner: React.FC<
             onEnrollInSequence={inbox.handleEnrollInSequence}
             onScheduleCall={inbox.handleScheduleCall}
             calendlyLink={inbox.calendlyLink}
+            onAddReaction={addReaction}
+            onDeleteMessage={handleDeleteMessage}
+            isReacting={isReacting}
+            isDeleting={isDeleting}
           />
         </div>
 

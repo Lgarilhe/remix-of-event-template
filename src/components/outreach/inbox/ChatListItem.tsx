@@ -22,7 +22,17 @@ import {
   DropdownMenuTrigger,
   DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu';
-import { Tag, X } from 'lucide-react';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { Tag, X, Trash2, Loader2 } from 'lucide-react';
 
 interface ChatListItemProps {
   chat: Chat;
@@ -31,6 +41,8 @@ interface ChatListItemProps {
   category: ChatCategory | null;
   onSetCategory: (chatId: string, accountId: string, category: ChatCategory | null) => void;
   onClick: () => void;
+  onDeleteChat?: (chatId: string) => Promise<boolean>;
+  isDeletingChat?: boolean;
 }
 
 export const ChatListItem: React.FC<ChatListItemProps> = ({
@@ -40,7 +52,10 @@ export const ChatListItem: React.FC<ChatListItemProps> = ({
   category,
   onSetCategory,
   onClick,
+  onDeleteChat,
+  isDeletingChat,
 }) => {
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const displayName = getChatDisplayName(chat);
   const headline = getChatHeadline(chat);
   const subject = getChatSubject(chat);
@@ -131,8 +146,21 @@ export const ChatListItem: React.FC<ChatListItemProps> = ({
         </div>
       </button>
 
-      {/* Category quick action — visible on hover */}
-      <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+      {/* Hover actions */}
+      <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity flex gap-0.5">
+        {/* Delete chat button */}
+        {onDeleteChat && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              setShowDeleteConfirm(true);
+            }}
+            className="h-6 w-6 flex items-center justify-center bg-destructive text-destructive-foreground border border-foreground/30 hover:bg-destructive/80 transition-colors"
+          >
+            <Trash2 className="w-3 h-3" />
+          </button>
+        )}
+        {/* Category tag */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button className="h-6 w-6 flex items-center justify-center bg-background border border-foreground/30 hover:bg-muted transition-colors">
@@ -172,6 +200,33 @@ export const ChatListItem: React.FC<ChatListItemProps> = ({
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
+
+      {/* Delete confirmation dialog */}
+      <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Supprimer cette conversation ?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Cette action est irréversible. La conversation sera définitivement supprimée.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuler</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={isDeletingChat}
+              onClick={async () => {
+                if (onDeleteChat) {
+                  await onDeleteChat(chat.id);
+                  setShowDeleteConfirm(false);
+                }
+              }}
+            >
+              {isDeletingChat ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+              Supprimer
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };

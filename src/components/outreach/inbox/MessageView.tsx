@@ -6,6 +6,16 @@ import { ToneSelector, AITone } from './ToneSelector';
 import { InlineAIPanel } from './InlineAIPanel';
 import { ActivityEventCard } from './ActivityEventCard';
 import { useProfileActivity, ActivityEvent } from '@/hooks/useProfileActivity';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { 
   ChevronLeft,
   User,
@@ -16,6 +26,7 @@ import {
   Check,
   Zap,
   CalendarPlus,
+  Trash2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Chat, Message, SequenceEnrollmentInfo, JobData } from '@/hooks/useMessagesInbox';
@@ -30,6 +41,8 @@ import {
   getAttendeeProfileId,
   formatMessageTime,
 } from '@/hooks/useMessagesInboxHelpers';
+
+const REACTION_EMOJIS = ['👍', '❤️', '🔥', '👏', '😂', '😮'];
 
 interface MessageViewProps {
   selectedChat: Chat | null;
@@ -59,6 +72,10 @@ interface MessageViewProps {
   onEnrollInSequence: () => void;
   onScheduleCall: () => void;
   calendlyLink?: string | null;
+  onAddReaction?: (messageId: string, reaction: string) => Promise<boolean>;
+  onDeleteMessage?: (messageId: string) => Promise<boolean>;
+  isReacting?: boolean;
+  isDeleting?: boolean;
 }
 
 export const MessageView: React.FC<MessageViewProps> = ({
@@ -82,11 +99,17 @@ export const MessageView: React.FC<MessageViewProps> = ({
   onEnrollInSequence,
   onScheduleCall,
   calendlyLink,
+  onAddReaction,
+  onDeleteMessage,
+  isReacting,
+  isDeleting,
 }) => {
   const [localTone, setLocalTone] = useState<AITone>(selectedTone);
   const currentTone = onToneChange ? selectedTone : localTone;
   const handleToneChange = onToneChange || setLocalTone;
   const [aiPanelOpen, setAiPanelOpen] = useState(false);
+  const [reactingMsgId, setReactingMsgId] = useState<string | null>(null);
+  const [deleteMsgConfirm, setDeleteMsgConfirm] = useState<string | null>(null);
   const localContainerRef = useRef<HTMLDivElement>(null);
 
   // Scroll to bottom when messages load or change
@@ -299,37 +322,73 @@ export const MessageView: React.FC<MessageViewProps> = ({
               return (
                 <div
                   key={msg.id || idx}
-                  className={cn("flex", msg.is_sender ? "justify-end" : "justify-start")}
+                  className={cn("flex group/msg relative", msg.is_sender ? "justify-end" : "justify-start")}
                 >
-                  <div
-                    className={cn(
-                      "max-w-[75%] px-4 py-2.5",
-                      msg.is_sender
-                        ? "bg-foreground text-background"
-                        : "bg-muted text-foreground border border-foreground"
-                    )}
-                  >
-                    <p className="text-sm whitespace-pre-wrap break-words">{getMessageText(msg)}</p>
-                    <div className={cn(
-                      "flex items-center gap-1 mt-1",
-                      msg.is_sender ? "justify-end" : "justify-start"
-                    )}>
-                      <span className={cn(
-                        "text-[10px]",
-                        msg.is_sender ? "text-background/70" : "text-muted-foreground"
-                      )}>
-                        {formatMessageTime(msg.timestamp)}
-                      </span>
-                      {!!msg.is_sender && (
-                        (msg.read || msg.seen === 1) ? (
-                          <CheckCheck className="w-3 h-3 text-background/70" />
-                        ) : msg.delivered ? (
-                          <Check className="w-3 h-3 text-background/70" />
-                        ) : (
-                          <Clock className="w-3 h-3 text-background/50" />
-                        )
+                  <div className="relative max-w-[75%]">
+                    <div
+                      className={cn(
+                        "px-4 py-2.5",
+                        msg.is_sender
+                          ? "bg-foreground text-background"
+                          : "bg-muted text-foreground border border-foreground"
                       )}
+                    >
+                      <p className="text-sm whitespace-pre-wrap break-words">{getMessageText(msg)}</p>
+                      <div className={cn(
+                        "flex items-center gap-1 mt-1",
+                        msg.is_sender ? "justify-end" : "justify-start"
+                      )}>
+                        <span className={cn(
+                          "text-[10px]",
+                          msg.is_sender ? "text-background/70" : "text-muted-foreground"
+                        )}>
+                          {formatMessageTime(msg.timestamp)}
+                        </span>
+                        {!!msg.is_sender && (
+                          (msg.read || msg.seen === 1) ? (
+                            <CheckCheck className="w-3 h-3 text-background/70" />
+                          ) : msg.delivered ? (
+                            <Check className="w-3 h-3 text-background/70" />
+                          ) : (
+                            <Clock className="w-3 h-3 text-background/50" />
+                          )
+                        )}
+                      </div>
                     </div>
+
+                    {/* Reaction bar for received messages */}
+                    {!msg.is_sender && onAddReaction && msg.id && (
+                      <div className="absolute -bottom-3 left-2 opacity-0 group-hover/msg:opacity-100 transition-opacity z-10 flex gap-0.5 bg-background/90 backdrop-blur-sm border border-foreground/20 px-1 py-0.5 shadow-md">
+                        {REACTION_EMOJIS.map(emoji => (
+                          <button
+                            key={emoji}
+                            disabled={isReacting && reactingMsgId === msg.id}
+                            onClick={async () => {
+                              setReactingMsgId(msg.id);
+                              await onAddReaction(msg.id, emoji);
+                              setReactingMsgId(null);
+                            }}
+                            className="h-6 w-6 flex items-center justify-center text-sm hover:bg-accent transition-colors disabled:opacity-50"
+                          >
+                            {isReacting && reactingMsgId === msg.id ? (
+                              <Loader2 className="w-3 h-3 animate-spin" />
+                            ) : (
+                              emoji
+                            )}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Delete button for sent messages */}
+                    {msg.is_sender && onDeleteMessage && msg.id && (
+                      <button
+                        onClick={() => setDeleteMsgConfirm(msg.id)}
+                        className="absolute -top-2 -right-2 opacity-0 group-hover/msg:opacity-100 transition-opacity z-10 h-6 w-6 flex items-center justify-center bg-destructive text-destructive-foreground border border-foreground/20 shadow-md hover:bg-destructive/80"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </button>
+                    )}
                   </div>
                 </div>
               );
@@ -387,6 +446,33 @@ export const MessageView: React.FC<MessageViewProps> = ({
           </button>
         </div>
       </div>
+
+      {/* Delete message confirmation dialog */}
+      <AlertDialog open={!!deleteMsgConfirm} onOpenChange={(open) => !open && setDeleteMsgConfirm(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Supprimer ce message ?</AlertDialogTitle>
+            <AlertDialogDescription>
+              LinkedIn : la suppression n'est possible que dans les 60 premières minutes après l'envoi. Cette action est irréversible.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuler</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={isDeleting}
+              onClick={async () => {
+                if (deleteMsgConfirm && onDeleteMessage) {
+                  await onDeleteMessage(deleteMsgConfirm);
+                  setDeleteMsgConfirm(null);
+                }
+              }}
+            >
+              {isDeleting ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+              Supprimer
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };

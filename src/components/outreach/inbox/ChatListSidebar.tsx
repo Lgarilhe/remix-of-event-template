@@ -35,6 +35,8 @@ interface ChatListSidebarProps {
   loadingAllChats?: boolean;
   onLoadMoreChats?: () => void;
   onLoadAllChats?: () => void;
+  onDeleteChat?: (chatId: string) => Promise<boolean>;
+  isDeletingChat?: boolean;
 }
 
 export const ChatListSidebar: React.FC<ChatListSidebarProps> = ({
@@ -62,6 +64,8 @@ export const ChatListSidebar: React.FC<ChatListSidebarProps> = ({
   loadingAllChats = false,
   onLoadMoreChats,
   onLoadAllChats,
+  onDeleteChat,
+  isDeletingChat,
 }) => {
   const [filtersExpanded, setFiltersExpanded] = useState(false);
 
@@ -283,6 +287,8 @@ export const ChatListSidebar: React.FC<ChatListSidebarProps> = ({
                 category={categoriesMap.get(chat.id) || null}
                 onSetCategory={onSetCategory}
                 onClick={() => onChatSelect(chat)}
+                onDeleteChat={onDeleteChat}
+                isDeletingChat={isDeletingChat}
               />
             ))}
             {hasMoreChats && searchQuery && onLoadAllChats && (
