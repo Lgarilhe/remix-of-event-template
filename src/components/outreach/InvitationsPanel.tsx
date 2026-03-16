@@ -178,7 +178,7 @@ export const InvitationsPanel: React.FC<InvitationsPanelProps> = ({
   };
 
   return (
-    <Card className="overflow-hidden border-foreground bg-background">
+    <Card className="flex max-h-[calc(100vh-140px)] flex-col overflow-hidden border-foreground bg-background">
       <CardHeader className="border-b border-foreground bg-gradient-to-r from-background via-background to-brutal-accent/10 p-0">
         <div className="flex flex-col gap-4 p-4 sm:p-5">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -263,7 +263,7 @@ export const InvitationsPanel: React.FC<InvitationsPanelProps> = ({
         </div>
       </CardHeader>
 
-      <CardContent className="p-0">
+      <CardContent className="min-h-0 flex-1 overflow-hidden p-0">
         {invitations.length > 0 && (
           <div className="border-b border-foreground/10 bg-muted/20 px-4 py-3 sm:px-5">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
@@ -310,7 +310,7 @@ export const InvitationsPanel: React.FC<InvitationsPanelProps> = ({
           </div>
         )}
 
-        <ScrollArea className="max-h-[calc(100vh-320px)]">
+        <ScrollArea className="h-full">
           {loading && invitations.length === 0 ? (
             <div className="grid gap-3 p-4 sm:p-5">
               {Array.from({ length: 6 }).map((_, index) => (
