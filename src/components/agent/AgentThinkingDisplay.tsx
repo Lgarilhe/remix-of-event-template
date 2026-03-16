@@ -1,5 +1,5 @@
-import React from 'react';
-import { Sparkles, Check, Loader2, FileSearch, Filter, Search, BarChart3, type LucideIcon } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Sparkles, Check, FileSearch, Filter, Search, BarChart3, type LucideIcon } from 'lucide-react';
 import { ThinkingStep } from '@/hooks/useAgentChat';
 import { cn } from '@/lib/utils';
 
@@ -23,10 +23,40 @@ function getStepIcon(label: string): LucideIcon {
 export const AgentThinkingDisplay: React.FC<AgentThinkingDisplayProps> = ({
   steps, isThinking, thinkingContent,
 }) => {
+  const [collapsed, setCollapsed] = useState(false);
+  const prevThinking = useRef(isThinking);
+
+  // Auto-collapse 1s after thinking ends
+  useEffect(() => {
+    if (prevThinking.current && !isThinking) {
+      const timer = setTimeout(() => setCollapsed(true), 1000);
+      return () => clearTimeout(timer);
+    }
+    if (isThinking) setCollapsed(false);
+    prevThinking.current = isThinking;
+  }, [isThinking]);
+
   if (steps.length === 0 && !isThinking) return null;
 
   const activeStep = steps.find(s => s.status === 'active');
   const doneCount = steps.filter(s => s.status === 'done').length;
+
+  // Collapsed summary line
+  if (collapsed && !isThinking) {
+    return (
+      <div className="animate-fade-in">
+        <button
+          onClick={() => setCollapsed(false)}
+          className="w-full border border-brutal-accent/20 px-3.5 py-2.5 flex items-center gap-2 hover:bg-brutal-accent/5 transition-colors text-left"
+        >
+          <span className="text-xs">✅</span>
+          <span className="text-xs text-muted-foreground">
+            Réflexion terminée — {doneCount} étape{doneCount > 1 ? 's' : ''}
+          </span>
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="animate-fade-in">
@@ -43,7 +73,6 @@ export const AgentThinkingDisplay: React.FC<AgentThinkingDisplayProps> = ({
           ) : (
             <Check className="w-3.5 h-3.5 text-brutal-accent shrink-0" />
           )}
-
           <span className={cn(
             "text-xs font-semibold flex-1 min-w-0 truncate uppercase tracking-wider",
             isThinking ? "text-foreground" : "text-muted-foreground"
@@ -53,7 +82,6 @@ export const AgentThinkingDisplay: React.FC<AgentThinkingDisplayProps> = ({
               : 'Réflexion terminée'
             }
           </span>
-
           {doneCount > 0 && (
             <span className="text-[10px] text-muted-foreground/60 shrink-0 tabular-nums font-mono">
               {doneCount}/{steps.length}
@@ -74,7 +102,7 @@ export const AgentThinkingDisplay: React.FC<AgentThinkingDisplayProps> = ({
           </div>
         )}
 
-        {/* Steps list — always visible */}
+        {/* Steps list */}
         {steps.length > 0 && (
           <div className="border-t border-brutal-accent/10 px-3.5 py-3 space-y-1 max-h-[calc(6*32px)] overflow-y-auto scrollbar-hide">
             {steps.map((step, i) => {
@@ -110,6 +138,7 @@ export const AgentThinkingDisplay: React.FC<AgentThinkingDisplayProps> = ({
             })}
           </div>
         )}
+
         {/* Streaming thinking content */}
         {thinkingContent && (
           <div className="border-t border-brutal-accent/10 px-3.5 py-3 max-h-[120px] overflow-y-auto scrollbar-hide">
