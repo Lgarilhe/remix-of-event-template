@@ -11,6 +11,35 @@ import { Job } from '@/types/jobs';
 import { useNotionJobs } from '@/hooks/useNotionJobs';
 import { cn } from '@/lib/utils';
 
+const CHAT_LOADING_MESSAGES = [
+  'Chargement des messages…',
+  'Synchronisation en cours…',
+  'Presque prêt…',
+];
+
+function LoadingMessages() {
+  const [index, setIndex] = React.useState(0);
+  const [fade, setFade] = React.useState(true);
+  React.useEffect(() => {
+    const interval = setInterval(() => {
+      setFade(false);
+      setTimeout(() => {
+        setIndex((prev) => (prev + 1) % CHAT_LOADING_MESSAGES.length);
+        setFade(true);
+      }, 200);
+    }, 2400);
+    return () => clearInterval(interval);
+  }, []);
+  return (
+    <p className={cn(
+      "text-xs text-muted-foreground uppercase tracking-[0.15em] font-medium transition-opacity duration-200",
+      fade ? "opacity-100" : "opacity-0"
+    )}>
+      {CHAT_LOADING_MESSAGES[index]}
+    </p>
+  );
+}
+
 interface AgentChatPanelProps {
   onClose?: () => void;
 }
@@ -215,12 +244,34 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({ onClose }) => {
       {/* Messages area */}
       <div className="flex-1 overflow-y-auto px-4 py-5 space-y-5 scrollbar-hide">
         {loading ? (
-          <div className="flex items-center justify-center py-16">
-            <div className="flex flex-col items-center gap-3">
-              <AnimatedOrb size={32} speed={3}>
-                <Bot className="w-3.5 h-3.5 text-foreground/50" />
-              </AnimatedOrb>
-              <span className="text-xs text-muted-foreground">Chargement…</span>
+          <div className="flex flex-col items-center justify-center py-16 gap-6">
+            {/* Brutal square scanner */}
+            <div className="relative">
+              <div className="h-12 w-12 border-2 border-foreground relative">
+                <div
+                  className="absolute inset-x-1 h-[2px] animate-[scan_1.5s_ease-in-out_infinite]"
+                  style={{ background: 'linear-gradient(90deg, hsl(var(--skalr-purple)), hsl(var(--skalr-pink)))' }}
+                />
+                <div className="absolute -top-1 -left-1 w-2 h-2 bg-foreground" />
+                <div className="absolute -top-1 -right-1 w-2 h-2 bg-foreground" />
+                <div className="absolute -bottom-1 -left-1 w-2 h-2 bg-foreground" />
+                <div className="absolute -bottom-1 -right-1 w-2 h-2 bg-foreground" />
+              </div>
+            </div>
+            <LoadingMessages />
+            <div className="w-full max-w-[280px] space-y-2">
+              {[1, 2, 3].map((i) => (
+                <div
+                  key={i}
+                  className="h-10 border border-foreground/10 bg-muted relative overflow-hidden"
+                  style={{ animationDelay: `${i * 150}ms` }}
+                >
+                  <div
+                    className="absolute inset-0 bg-gradient-to-r from-transparent via-foreground/[0.04] to-transparent animate-[shimmer_1.8s_infinite]"
+                    style={{ animationDelay: `${i * 200}ms` }}
+                  />
+                </div>
+              ))}
             </div>
           </div>
         ) : messages.length === 0 ? (
@@ -357,9 +408,14 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({ onClose }) => {
             )}
           >
             {sending ? (
-              <AnimatedOrb size={24} speed={4}>
-                <Send className="w-2 h-2 text-foreground/60" />
-              </AnimatedOrb>
+              <div className="h-7 w-7 flex items-center justify-center relative">
+                <div className="h-5 w-5 border border-foreground/30 relative">
+                  <div
+                    className="absolute w-[5px] h-[5px] -top-[2.5px] -left-[2.5px] skalr-gradient-bg animate-[spin_1.5s_linear_infinite]"
+                    style={{ transformOrigin: '12.5px 12.5px' }}
+                  />
+                </div>
+              </div>
             ) : (
               <Send className="w-3 h-3" />
             )}
