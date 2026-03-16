@@ -23,6 +23,7 @@ import { WebhookManager } from '@/components/outreach/WebhookManager';
 import { ProxyConfigPanel } from '@/components/outreach/ProxyConfigPanel';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import { BrutalLoader } from '@/components/ui/brutal-loader';
 
 import notionLogo from '@/assets/notion-logo.png';
 import calendlyLogo from '@/assets/calendly-logo.png';

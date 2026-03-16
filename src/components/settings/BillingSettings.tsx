@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { CreditCard, ArrowUpRight, Calendar, Sparkles } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
+import { BrutalLoader } from '@/components/ui/brutal-loader';
 
 export const BillingSettings = () => {
   const navigate = useNavigate();
