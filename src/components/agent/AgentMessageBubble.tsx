@@ -119,16 +119,9 @@ export const AgentMessageBubble: React.FC<AgentMessageBubbleProps> = ({ message,
       {/* Summary card */}
       {summary && <SummaryCard items={summary.items} tags={summary.tags} />}
 
-      {/* Calibration step tag */}
+      {/* Calibration step card */}
       {stepCurrent != null && stepTotal != null && stepLabel && (
-        <div className="flex items-center gap-2 mb-2">
-          <span className="inline-flex items-center gap-1 bg-foreground text-background px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.12em]">
-            {stepCurrent}/{stepTotal}
-          </span>
-          <span className="text-xs font-bold uppercase tracking-wider text-foreground">
-            {stepLabel}
-          </span>
-        </div>
+        <StepCard current={stepCurrent} total={stepTotal} title={stepLabel} question={displayContent || ''} />
       )}
 
       {displayContent && (
