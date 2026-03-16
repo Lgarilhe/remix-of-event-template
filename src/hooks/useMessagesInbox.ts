@@ -979,6 +979,7 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
       
       setTimeout(() => scrollToBottom(true), 100);
 
+      emitQuotaAction('messagesSent', 1, selectedAccount);
       toast.success('Message envoyé');
     } catch (error) {
       console.error('Error sending message:', error);
