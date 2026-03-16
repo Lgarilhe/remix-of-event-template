@@ -156,7 +156,7 @@ All colors MUST be HSL.
 
   html,
   body {
-    @apply bg-background text-foreground font-serif font-medium;
+    @apply bg-background text-foreground font-sans font-medium;
     width: 100%;
     min-width: 0;
     overflow-x: auto;
