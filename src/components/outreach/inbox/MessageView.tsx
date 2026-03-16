@@ -179,19 +179,8 @@ export const MessageView: React.FC<MessageViewProps> = ({
   const displayName = getChatDisplayName(selectedChat);
   const headline = getChatHeadline(selectedChat);
   const subject = getChatSubject(selectedChat);
-  const staticAvatar = getChatAvatar(selectedChat);
   const jobInfo = getChatJobInfo(selectedChat, enrollmentsMap);
 
-  const { getPicture, fetchPicture } = useAttendeePicturesContext();
-  const attendeeId = selectedChat?.attendees?.[0]?.id;
-  const cachedPicture = attendeeId ? getPicture(attendeeId) : null;
-  const avatar = staticAvatar || cachedPicture || undefined;
-
-  useEffect(() => {
-    if (!staticAvatar && attendeeId && !getPicture(attendeeId)) {
-      fetchPicture(attendeeId);
-    }
-  }, [attendeeId, staticAvatar, fetchPicture, getPicture]);
   const hasCandidateMessage = messages.some(m => !m.is_sender);
 
   // Find the full job data for the current conversation's job
