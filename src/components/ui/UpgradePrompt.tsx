@@ -38,7 +38,7 @@ export const UpgradePrompt = ({
       <div className="h-14 w-14 bg-foreground text-background flex items-center justify-center mx-auto mb-4">
         <Sparkles className="w-7 h-7" />
       </div>
-      <h2 className="text-base sm:text-lg font-semibold text-foreground mb-2 uppercase tracking-wide">
+      <h2 className="text-base sm:text-lg font-semibold text-foreground mb-2 uppercase tracking-wide font-sans">
         {title}
       </h2>
       <p className="text-muted-foreground text-xs sm:text-sm mb-6 max-w-md mx-auto leading-relaxed">
