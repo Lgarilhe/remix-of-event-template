@@ -100,26 +100,6 @@ export const AgentMessageBubble: React.FC<AgentMessageBubbleProps> = ({ message,
     ? finalContent.slice(finalContent.indexOf('\n', stepMatch.index || 0) + 1).trim()
     : finalContent;
 
-  const stepIconMap: Record<string, React.ElementType> = {
-    'compétences': Settings2,
-    'skills': Settings2,
-    'expérience': Briefcase,
-    'experience': Briefcase,
-    'localisation': MapPin,
-    'location': MapPin,
-    'formation': GraduationCap,
-    'education': GraduationCap,
-    'entreprises': Building2,
-    'companies': Building2,
-    'titre': FileText,
-    'title': FileText,
-    'profil': Users,
-    'profile': Users,
-  };
-
-  const StepIcon = stepLabel
-    ? (Object.entries(stepIconMap).find(([key]) => stepLabel.toLowerCase().includes(key))?.[1] || Target)
-    : Target;
 
   return (
     <div
