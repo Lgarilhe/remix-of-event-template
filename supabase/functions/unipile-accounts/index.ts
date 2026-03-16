@@ -940,6 +940,67 @@ Deno.serve(async (req) => {
         );
       }
 
+      case 'get_attendee_picture': {
+        const { attendee_id } = params;
+        if (!attendee_id) {
+          throw new HttpError(400, 'attendee_id requis');
+        }
+
+        try {
+          const pictureRes = await fetchWithTimeout(`${baseUrl}/chat_attendees/${attendee_id}/picture`, {
+            headers: { 'X-API-KEY': apiKey, 'Accept': 'image/*' },
+          }, 10000);
+
+          if (pictureRes.ok) {
+            const contentType = pictureRes.headers.get('content-type') || 'image/jpeg';
+            const buffer = await pictureRes.arrayBuffer();
+            // Limit to ~500KB to avoid overly large base64 payloads
+            if (buffer.byteLength > 500_000) {
+              return new Response(
+                JSON.stringify({ success: false, error: 'Image trop volumineuse' }),
+                { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+              );
+            }
+            const bytes = new Uint8Array(buffer);
+            let binary = '';
+            for (let i = 0; i < bytes.length; i++) {
+              binary += String.fromCharCode(bytes[i]);
+            }
+            const base64 = btoa(binary);
+            const dataUrl = `data:${contentType};base64,${base64}`;
+            return new Response(
+              JSON.stringify({ success: true, data_url: dataUrl }),
+              { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            );
+          }
+        } catch (e) {
+          console.warn('[get_attendee_picture] Binary fetch failed, trying metadata fallback:', e);
+        }
+
+        // Fallback: try metadata endpoint for picture_url
+        try {
+          const metaRes = await fetchWithTimeout(`${baseUrl}/chat_attendees/${attendee_id}`, {
+            headers: { 'X-API-KEY': apiKey, 'Accept': 'application/json' },
+          }, 10000);
+          if (metaRes.ok) {
+            const meta = await metaRes.json();
+            if (meta.picture_url) {
+              return new Response(
+                JSON.stringify({ success: true, picture_url: meta.picture_url }),
+                { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+              );
+            }
+          }
+        } catch (e) {
+          console.warn('[get_attendee_picture] Metadata fallback failed:', e);
+        }
+
+        return new Response(
+          JSON.stringify({ success: false, error: 'Photo non disponible' }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
       default:
         return new Response(
           JSON.stringify({ success: false, error: 'Action non reconnue' }),
