@@ -446,6 +446,33 @@ export const MessageView: React.FC<MessageViewProps> = ({
           </button>
         </div>
       </div>
+
+      {/* Delete message confirmation dialog */}
+      <AlertDialog open={!!deleteMsgConfirm} onOpenChange={(open) => !open && setDeleteMsgConfirm(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Supprimer ce message ?</AlertDialogTitle>
+            <AlertDialogDescription>
+              LinkedIn : la suppression n'est possible que dans les 60 premières minutes après l'envoi. Cette action est irréversible.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuler</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={isDeleting}
+              onClick={async () => {
+                if (deleteMsgConfirm && onDeleteMessage) {
+                  await onDeleteMessage(deleteMsgConfirm);
+                  setDeleteMsgConfirm(null);
+                }
+              }}
+            >
+              {isDeleting ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+              Supprimer
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };
