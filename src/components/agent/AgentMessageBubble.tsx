@@ -58,6 +58,7 @@ export const AgentMessageBubble: React.FC<AgentMessageBubbleProps> = ({ message,
     .replace(/^#{1,6}\s+/gm, '')                          // headings
     .replace(/\*{1,3}([^*]+)\*{1,3}/g, '$1')              // bold/italic
     .replace(/~~([^~]+)~~/g, '$1')                         // strikethrough
+    .replace(/^[-*•]\s+/gm, '')                            // list bullets
     .replace(/^\d+\.\s+/gm, '')                            // numbered lists
     .replace(/`([^`]+)`/g, '$1')                           // inline code
     .replace(/^>\s+/gm, '')                                // blockquotes
