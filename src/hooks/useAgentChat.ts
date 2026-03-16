@@ -283,7 +283,7 @@ export const useAgentChat = (conversationId: string | null) => {
               if (thinkingText) {
                 accumulatedThinking += thinkingText;
                 setThinkingContent(accumulatedThinking);
-                setThinkingSteps(parseThinkingSteps(accumulatedThinking));
+                setThinkingSteps(parseThinkingPhases(accumulatedThinking));
                 setIsThinking(true);
                 continue;
               }
