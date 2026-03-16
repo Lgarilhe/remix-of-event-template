@@ -1,4 +1,5 @@
 import React, { useState, useCallback } from 'react';
+import { emitQuotaAction } from '@/lib/quotaEvents';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { MessageSquare, Loader2, Send } from 'lucide-react';
