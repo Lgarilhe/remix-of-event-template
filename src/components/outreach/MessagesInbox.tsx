@@ -240,6 +240,24 @@ const MessagesInboxInner: React.FC<
           />
         )}
       </div>
-    </>
+      </div>
+    </AttendeePicturesProvider>
   );
+};
+
+/** Preloads attendee pictures for visible chats that lack a static avatar */
+const PreloadAttendeePictures: React.FC<{ chats: import('@/hooks/useMessagesInbox').Chat[] }> = ({ chats }) => {
+  const { preloadPictures } = useAttendeePicturesContext();
+
+  useEffect(() => {
+    const ids = chats
+      .filter((c) => !getChatAvatar(c) && c.attendees?.[0]?.id)
+      .map((c) => c.attendees![0]!.id!)
+      .slice(0, 20);
+    if (ids.length > 0) {
+      preloadPictures(ids);
+    }
+  }, [chats, preloadPictures]);
+
+  return null;
 };
