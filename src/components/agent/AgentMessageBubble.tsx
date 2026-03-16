@@ -129,34 +129,14 @@ export const AgentMessageBubble: React.FC<AgentMessageBubbleProps> = ({ message,
       {/* Thinking card for saved messages */}
       {thinking && <ThinkingCard thinking={thinking} />}
 
-      {/* Calibration step header */}
+      {/* Calibration step — inline pill */}
       {stepCurrent != null && stepTotal != null && stepLabel && (
-        <div className="flex items-center gap-3 py-1">
-          <div className="h-7 w-7 border border-foreground/20 bg-foreground text-background flex items-center justify-center shrink-0">
-            <StepIcon className="w-3.5 h-3.5" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2">
-              <span className="text-[10px] font-bold uppercase tracking-[0.15em] text-brutal-accent tabular-nums">
-                {stepCurrent}/{stepTotal}
-              </span>
-              <span className="text-xs font-bold uppercase tracking-wider text-foreground">
-                {stepLabel}
-              </span>
-            </div>
-            {/* Progress bar */}
-            <div className="flex gap-0.5 mt-1.5">
-              {Array.from({ length: stepTotal }).map((_, i) => (
-                <div
-                  key={i}
-                  className={cn(
-                    "h-[3px] flex-1 transition-all duration-300",
-                    i < stepCurrent ? "bg-brutal-accent" : "bg-foreground/10"
-                  )}
-                />
-              ))}
-            </div>
-          </div>
+        <div className="flex items-center gap-2 mb-1">
+          <span className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.12em] text-muted-foreground">
+            <span className="text-brutal-accent tabular-nums">{stepCurrent}/{stepTotal}</span>
+            <span className="text-foreground/30">·</span>
+            <span>{stepLabel}</span>
+          </span>
         </div>
       )}
 
