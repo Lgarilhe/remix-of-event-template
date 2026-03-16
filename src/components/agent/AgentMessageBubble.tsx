@@ -104,6 +104,9 @@ export const AgentMessageBubble: React.FC<AgentMessageBubbleProps> = ({ message,
 
   return (
     <div className="animate-fade-in space-y-0">
+      {/* Thinking card */}
+      {thinking && <ThinkingCard thinking={thinking} />}
+
       {/* Calibration step tag */}
       {stepCurrent != null && stepTotal != null && stepLabel && (
         <div className="flex items-center gap-2 mb-2">
