@@ -33,46 +33,51 @@ const NavLogo: React.FC = () => {
     return () => clearInterval(interval);
   }, []);
 
-  // Eye positions based on look direction
-  const eyeOffsetX = face === 'look-left' ? -0.6 : face === 'look-right' ? 0.6 : 0;
-  const eyeOffsetY = face === 'surprise' ? -0.15 : 0;
+  const lookX = face === 'look-left' ? -0.8 : face === 'look-right' ? 0.8 : 0;
 
-  // Eye sizes
-  const eyeRx = face === 'surprise' ? 0.75 : 0.65;
-  const eyeRy = face === 'surprise' ? 0.9 : 0.75;
+  // Eyes — cute round dots with pupils
+  const eyeL = { cx: 5, cy: 5.5 };
+  const eyeR = { cx: 9, cy: 5.5 };
 
-  // Left eye
   const leftEye = (
-    <ellipse cx={4.45 + eyeOffsetX} cy={5.34 + eyeOffsetY} rx={eyeRx} ry={eyeRy} fill="currentColor">
-      <animate attributeName="cx" dur="0.15s" fill="freeze" />
-    </ellipse>
+    <g>
+      <circle cx={eyeL.cx} cy={eyeL.cy} r="1.15" fill="currentColor" />
+      <circle cx={eyeL.cx + lookX * 0.3} cy={eyeL.cy - 0.1} r="0.45" fill="hsl(var(--background))" />
+    </g>
   );
 
-  // Right eye (winks)
-  const rightEye = face === 'wink'
-    ? <line x1="8.9" y1="5.34" x2="10.2" y2="5.34" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
-    : (
-      <ellipse cx={9.55 + eyeOffsetX} cy={5.34 + eyeOffsetY} rx={eyeRx} ry={eyeRy} fill="currentColor">
-        <animate attributeName="cx" dur="0.15s" fill="freeze" />
-      </ellipse>
-    );
+  const rightEye = face === 'wink' ? (
+    <path d={`M${eyeR.cx - 1.1} ${eyeR.cy} Q${eyeR.cx} ${eyeR.cy + 1} ${eyeR.cx + 1.1} ${eyeR.cy}`} stroke="currentColor" strokeWidth="0.9" strokeLinecap="round" fill="none" />
+  ) : (
+    <g>
+      <circle cx={eyeR.cx} cy={eyeR.cy} r="1.15" fill="currentColor" />
+      <circle cx={eyeR.cx + lookX * 0.3} cy={eyeR.cy - 0.1} r="0.45" fill="hsl(var(--background))" />
+    </g>
+  );
 
-  // Mouth variations
+  // Mouth
   let mouth: React.ReactNode;
   if (face === 'surprise') {
-    mouth = <ellipse cx="7.5" cy="10" rx="1" ry="1.1" fill="currentColor" />;
+    mouth = <circle cx="7" cy="9.8" r="0.9" fill="none" stroke="currentColor" strokeWidth="0.9" />;
   } else if (face === 'happy') {
-    mouth = <path d="M4.5 8.8 Q7.5 12 10.5 8.8" stroke="currentColor" strokeWidth="1" strokeLinecap="round" fill="none" />;
+    mouth = <path d="M4.2 8.6 Q7 11.8 9.8 8.6" stroke="currentColor" strokeWidth="0.9" strokeLinecap="round" fill="none" />;
   } else {
-    // Smirk: small curve bottom-right, like the original
-    mouth = <path d="M6.2 9.5 Q8.2 10.8 10.2 9" stroke="currentColor" strokeWidth="1" strokeLinecap="round" fill="none" />;
+    mouth = <path d="M5.8 9 Q7.5 10.6 9.8 8.8" stroke="currentColor" strokeWidth="0.9" strokeLinecap="round" fill="none" />;
   }
 
-  // Eyebrows for surprise
+  // Eyebrows
   const eyebrows = face === 'surprise' ? (
     <>
-      <line x1="3.3" y1="3.4" x2="5.6" y2="3.6" stroke="currentColor" strokeWidth="0.8" strokeLinecap="round" />
-      <line x1="8.4" y1="3.6" x2="10.7" y2="3.4" stroke="currentColor" strokeWidth="0.8" strokeLinecap="round" />
+      <path d="M3.6 3.8 Q5 3 6.2 3.8" stroke="currentColor" strokeWidth="0.7" strokeLinecap="round" fill="none" />
+      <path d="M7.8 3.8 Q9 3 10.4 3.8" stroke="currentColor" strokeWidth="0.7" strokeLinecap="round" fill="none" />
+    </>
+  ) : null;
+
+  // Blush cheeks for happy
+  const blush = face === 'happy' ? (
+    <>
+      <circle cx="3.5" cy="7.5" r="1" fill="hsl(var(--brutal-accent))" opacity="0.35" />
+      <circle cx="10.5" cy="7.5" r="1" fill="hsl(var(--brutal-accent))" opacity="0.35" />
     </>
   ) : null;
 
@@ -84,12 +89,12 @@ const NavLogo: React.FC = () => {
         setTimeout(() => setFace('idle'), rand.duration);
       }}
     >
-      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 14 14" className="w-5 h-5" style={{ transition: 'transform 0.2s', transform: face === 'surprise' ? 'scale(1.1)' : 'scale(1)', color: 'hsl(var(--foreground))' }}>
-        <circle cx="7" cy="7" r="6.5" fill="hsl(var(--background))" stroke="currentColor" strokeWidth="1.1" />
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 14 14" className="w-5 h-5" style={{ transition: 'transform 0.15s ease-out', transform: face === 'surprise' ? 'scale(1.08)' : 'scale(1)', color: 'hsl(var(--foreground))' }}>
+        <circle cx="7" cy="7" r="6.2" fill="hsl(var(--background))" stroke="currentColor" strokeWidth="1.2" />
         {eyebrows}
         {leftEye}
         {rightEye}
-        <circle cx="7" cy="7.6" r="0.35" fill="currentColor" />
+        {blush}
         {mouth}
       </svg>
     </div>
