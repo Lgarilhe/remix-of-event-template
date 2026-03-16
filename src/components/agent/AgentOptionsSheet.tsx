@@ -9,16 +9,6 @@ interface AgentOptionsSheetProps {
   open: boolean;
 }
 
-const optionIconMap: Array<{ test: RegExp; icon: LucideIcon }> = [
-  { test: /lancer|démarrer|go|start/i, icon: Rocket },
-  { test: /modifier|affiner|ajuster|changer/i, icon: SlidersHorizontal },
-  { test: /voir|détail|analyser|consulter/i, icon: Eye },
-  { test: /arrêter|pause|stop/i, icon: Pause },
-];
-
-function getOptionIcon(text: string): LucideIcon {
-  return optionIconMap.find(m => m.test.test(text))?.icon ?? ArrowRight;
-}
 
 export const AgentOptionsSheet: React.FC<AgentOptionsSheetProps> = ({
   options, onSelect, onDismiss, open,
