@@ -31,7 +31,7 @@ export const AnimatedOrb: React.FC<AnimatedOrbProps> = ({
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    const ctx = canvas.getContext('2d');
+    const ctx = canvas.getContext('2d', { alpha: true });
     if (!ctx) return;
 
     const dpr = window.devicePixelRatio || 1;
@@ -53,13 +53,11 @@ export const AnimatedOrb: React.FC<AnimatedOrbProps> = ({
     let nextLook = 120;
 
     const isDark = document.documentElement.classList.contains('dark');
-    const bg: [number, number, number] = isDark ? [38, 38, 38] : [255, 255, 255];
 
     function frame() {
       if (!ctx) return;
 
-      ctx.fillStyle = `rgb(${bg[0]},${bg[1]},${bg[2]})`;
-      ctx.fillRect(0, 0, w, h);
+      ctx.clearRect(0, 0, w, h);
 
       nextLook--;
       if (nextLook <= 0) {
@@ -81,18 +79,19 @@ export const AnimatedOrb: React.FC<AnimatedOrbProps> = ({
       const blinkY = blink ? Math.sin(blinkT * Math.PI) : 0;
 
       // Ambient glow
-      const outerR = w * 0.38;
-      const grad = ctx.createRadialGradient(cx, cy, outerR * 0.3, cx, cy, outerR);
-      grad.addColorStop(0, `rgba(${SKALR_COLORS[0][0]},${SKALR_COLORS[0][1]},${SKALR_COLORS[0][2]},0.08)`);
-      grad.addColorStop(1, `rgba(${SKALR_COLORS[0][0]},${SKALR_COLORS[0][1]},${SKALR_COLORS[0][2]},0)`);
+      const outerR = w * 0.42;
+      const grad = ctx.createRadialGradient(cx, cy, outerR * 0.2, cx, cy, outerR);
+      grad.addColorStop(0, `rgba(${SKALR_COLORS[0][0]},${SKALR_COLORS[0][1]},${SKALR_COLORS[0][2]},0.15)`);
+      grad.addColorStop(0.6, `rgba(${SKALR_COLORS[3][0]},${SKALR_COLORS[3][1]},${SKALR_COLORS[3][2]},0.06)`);
+      grad.addColorStop(1, 'rgba(0,0,0,0)');
       ctx.fillStyle = grad;
       ctx.beginPath();
       ctx.arc(cx, cy, outerR, 0, Math.PI * 2);
       ctx.fill();
 
       // Eye shape
-      const eyeW = w * 0.52;
-      const eyeH = w * 0.22;
+      const eyeW = w * 0.62;
+      const eyeH = w * 0.28;
       const squeeze = 1 - blinkY * 0.95;
 
       ctx.save();
@@ -101,13 +100,17 @@ export const AnimatedOrb: React.FC<AnimatedOrbProps> = ({
 
       ctx.beginPath();
       ctx.ellipse(0, 0, eyeW / 2, eyeH / 2, 0, 0, Math.PI * 2);
-      ctx.strokeStyle = `rgba(${SKALR_COLORS[0][0]},${SKALR_COLORS[0][1]},${SKALR_COLORS[0][2]},0.7)`;
-      ctx.lineWidth = 1.5 * dpr;
+      ctx.strokeStyle = `rgba(${SKALR_COLORS[0][0]},${SKALR_COLORS[0][1]},${SKALR_COLORS[0][2]},0.85)`;
+      ctx.lineWidth = 2 * dpr;
       ctx.stroke();
+
+      // Fill the eye white area
+      ctx.fillStyle = isDark ? 'rgba(20,20,25,0.9)' : 'rgba(255,255,255,0.95)';
+      ctx.fill();
       ctx.clip();
 
       // Iris
-      const irisR = eyeH * 0.52;
+      const irisR = eyeH * 0.58;
       const breath = (Math.sin(t * 1.5 * speed) + 1) / 2;
       const irisGrad = ctx.createRadialGradient(lookX, lookY, 0, lookX, lookY, irisR);
       irisGrad.addColorStop(0, `rgba(${SKALR_COLORS[3][0]},${SKALR_COLORS[3][1]},${SKALR_COLORS[3][2]},${0.9 + breath * 0.1})`);
