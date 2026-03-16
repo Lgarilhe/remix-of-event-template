@@ -109,6 +109,14 @@ export const AgentThinkingDisplay: React.FC<AgentThinkingDisplayProps> = ({
               );
             })}
           </div>
+        {/* Streaming thinking content */}
+        {thinkingContent && (
+          <div className="border-t border-brutal-accent/10 px-3.5 py-3 max-h-[120px] overflow-y-auto scrollbar-hide">
+            <p className="font-mono text-[11px] text-muted-foreground/60 leading-relaxed whitespace-pre-wrap">
+              {thinkingContent}
+              <span className="inline-block w-[2px] h-3 bg-brutal-accent/50 ml-0.5 animate-pulse align-middle" />
+            </p>
+          </div>
         )}
       </div>
     </div>
