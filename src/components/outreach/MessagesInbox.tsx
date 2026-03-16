@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { LinkedInAccount } from '@/pages/Outreach';
 import { MessageSquare } from 'lucide-react';
 import { useMessagesInbox } from '@/hooks/useMessagesInbox';
@@ -6,10 +6,11 @@ import { useMessageActions } from '@/hooks/useMessageActions';
 import { ChatListSidebar } from './inbox/ChatListSidebar';
 import { MessageView } from './inbox/MessageView';
 import { AddToPipelineModal } from './AddToPipelineModal';
-import { getCurrentCandidateProfile } from '@/hooks/useMessagesInboxHelpers';
+import { getCurrentCandidateProfile, getChatAvatar } from '@/hooks/useMessagesInboxHelpers';
 import { Button } from '@/components/ui/button';
 import { GitBranch, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { AttendeePicturesProvider, useAttendeePicturesContext } from '@/contexts/AttendeePicturesContext';
 
 interface MessagesInboxProps {
   accounts: LinkedInAccount[];
