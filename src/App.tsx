@@ -123,7 +123,9 @@ const App = () => {
   return (
     <TooltipProvider>
       <LinkedInAccountsProvider>
-        <AppContent />
+        <AgentDrawerProvider>
+          <AppContent />
+        </AgentDrawerProvider>
       </LinkedInAccountsProvider>
     </TooltipProvider>
   );
