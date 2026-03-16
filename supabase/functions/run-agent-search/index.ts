@@ -65,6 +65,32 @@ function isGoRecommendation(recommendation: unknown): boolean {
   return normalized === "GO" || normalized === "STRONG_MATCH" || normalized === "GOOD_MATCH";
 }
 
+function diversifyResults(
+  profiles: Array<{ profile: any; score: any }>,
+  maxPerCompany: number = 3
+): Array<{ profile: any; score: any }> {
+  const companyCounts = new Map<string, number>();
+  const result: typeof profiles = [];
+  const overflow: typeof profiles = [];
+
+  for (const item of profiles) {
+    const company = (
+      item.profile.current_company || 
+      item.profile.work_experience?.[0]?.company || 
+      "unknown"
+    ).trim().toLowerCase();
+    const count = companyCounts.get(company) || 0;
+    if (count < maxPerCompany) {
+      companyCounts.set(company, count + 1);
+      result.push(item);
+    } else {
+      overflow.push(item);
+    }
+  }
+
+  return [...result, ...overflow];
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -746,8 +772,9 @@ Deno.serve(async (req) => {
       const sorted = goProfiles
         .filter(p => p.score?.score != null)
         .sort((a, b) => (b.score.score || 0) - (a.score.score || 0));
+      const diversifiedGo = diversifyResults(sorted, 3);
 
-      for (const { profile, score } of sorted.slice(0, 10)) {
+      for (const { profile, score } of diversifiedGo.slice(0, 10)) {
         const name = profile.name || "Inconnu";
         const headline = profile.headline || "";
         const sc = score.score || 0;
