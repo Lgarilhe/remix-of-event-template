@@ -8,7 +8,8 @@ import { SessionExpiredDialog } from "@/components/SessionExpiredDialog";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { OrganizationGuard } from "@/components/OrganizationGuard";
 import { LinkedInAccountsProvider } from "@/contexts/LinkedInAccountsContext";
-import { AgentDrawerProvider, AgentFloatingButton } from "@/components/agent";
+import { AgentProvider } from "@/contexts/AgentContext";
+import { AgentDrawer, AgentFloatingButton } from "@/components/agent";
 import { supabase } from "@/integrations/supabase/client";
 import { clearOrgIdCache } from "@/lib/orgContext";
 import Auth from "./pages/Auth";
@@ -40,18 +41,15 @@ const AppContent = () => {
   const prevUserIdRef = useRef<string | null>(null);
   const queryClient = useQueryClient();
   
-  // Keep ref in sync without re-subscribing the listener
   useEffect(() => {
     locationRef.current = location.pathname;
   }, [location.pathname]);
 
-  // Single stable auth listener — never re-subscribes
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       console.log('[App] Auth event:', event, '| has session:', !!session);
       
       if (event === 'SIGNED_OUT' || (event === 'TOKEN_REFRESHED' && !session)) {
-        // Clear all caches to prevent data leaks between accounts
         clearOrgIdCache();
         queryClient.clear();
         prevUserIdRef.current = null;
@@ -65,7 +63,6 @@ const AppContent = () => {
           setSessionExpired(true);
         }
       } else if (event === 'SIGNED_IN' || (event === 'TOKEN_REFRESHED' && session)) {
-        // If user changed (different account), clear stale caches
         const newUserId = session?.user?.id ?? null;
         if (prevUserIdRef.current && prevUserIdRef.current !== newUserId) {
           clearOrgIdCache();
@@ -110,6 +107,7 @@ const AppContent = () => {
           <Route path="*" element={<NotFound />} />
         </Routes>
       </Suspense>
+      <AgentDrawer />
       <AgentFloatingButton />
       <SessionExpiredDialog 
         open={sessionExpired} 
@@ -123,9 +121,9 @@ const App = () => {
   return (
     <TooltipProvider>
       <LinkedInAccountsProvider>
-        <AgentDrawerProvider>
+        <AgentProvider>
           <AppContent />
-        </AgentDrawerProvider>
+        </AgentProvider>
       </LinkedInAccountsProvider>
     </TooltipProvider>
   );

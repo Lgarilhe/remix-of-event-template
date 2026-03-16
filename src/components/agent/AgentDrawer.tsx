@@ -4,20 +4,18 @@ import {
   SheetContent,
 } from '@/components/ui/sheet';
 import { AgentChatPanel } from './AgentChatPanel';
+import { useAgent } from '@/contexts/AgentContext';
 
-interface AgentDrawerProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-}
+export const AgentDrawer: React.FC = () => {
+  const { isOpen, closeAgent } = useAgent();
 
-export const AgentDrawer: React.FC<AgentDrawerProps> = ({ open, onOpenChange }) => {
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
+    <Sheet open={isOpen} onOpenChange={(open) => { if (!open) closeAgent(); }}>
       <SheetContent
         side="right"
         className="w-full sm:w-[420px] p-0 glass-strong border-l border-foreground/10 border-t-0 border-r-0 border-b-0 h-full flex flex-col [&>button]:hidden"
       >
-        <AgentChatPanel onClose={() => onOpenChange(false)} />
+        <AgentChatPanel onClose={closeAgent} />
       </SheetContent>
     </Sheet>
   );
