@@ -52,7 +52,10 @@ export const ChatListItem: React.FC<ChatListItemProps> = ({
   category,
   onSetCategory,
   onClick,
+  onDeleteChat,
+  isDeletingChat,
 }) => {
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const displayName = getChatDisplayName(chat);
   const headline = getChatHeadline(chat);
   const subject = getChatSubject(chat);
