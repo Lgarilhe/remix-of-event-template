@@ -310,7 +310,7 @@ export const InvitationsPanel: React.FC<InvitationsPanelProps> = ({
           </div>
         )}
 
-        <ScrollArea className="h-full">
+        <div className="max-h-[60vh] overflow-y-auto">
           {loading && invitations.length === 0 ? (
             <div className="grid gap-3 p-4 sm:p-5">
               {Array.from({ length: 6 }).map((_, index) => (
