@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { Brain, ChevronDown, Search, BarChart3, Send, Activity } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { AgentMessage } from '@/hooks/useAgentChat';
 import { AnimatedOrb } from '@/components/ui/AnimatedOrb';
+import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
 
 interface AgentMessageBubbleProps {
@@ -150,7 +151,7 @@ export const AgentMessageBubble: React.FC<AgentMessageBubbleProps> = ({ message,
         </div>
       )}
 
-      {searchPlan && <SearchPlanCard plan={searchPlan} />}
+      {searchPlan && <SearchPlanCard plan={searchPlan} conversationId={message.conversation_id} />}
 
       {isStreaming && (
         <span className="inline-block w-0.5 h-4 bg-foreground animate-pulse mt-1" />
@@ -230,10 +231,44 @@ function ThinkingCard({ thinking }: { thinking: string }) {
   );
 }
 
-// ── Search Plan Card — Timeline style ──
-function SearchPlanCard({ plan }: { plan: Record<string, unknown> }) {
+// ── Search Plan Card — with auto LinkedIn count estimation ──
+function SearchPlanCard({ plan, conversationId }: { plan: Record<string, unknown>; conversationId: string }) {
   const filters = (plan as any).filters || {};
   const stopConditions = (plan as any).stop_conditions || {};
+
+  const [estimatedCount, setEstimatedCount] = useState<number | null>(null);
+  const [countLoading, setCountLoading] = useState(false);
+  const [countError, setCountError] = useState(false);
+
+  // Auto-fetch count on mount
+  useEffect(() => {
+    if (!conversationId) return;
+    let cancelled = false;
+
+    const fetchCount = async () => {
+      setCountLoading(true);
+      setCountError(false);
+      try {
+        const { data, error } = await supabase.functions.invoke('estimate-search-count', {
+          body: { conversation_id: conversationId },
+        });
+        if (!cancelled) {
+          if (error || !data?.success) {
+            setCountError(true);
+          } else {
+            setEstimatedCount(data.total);
+          }
+        }
+      } catch {
+        if (!cancelled) setCountError(true);
+      } finally {
+        if (!cancelled) setCountLoading(false);
+      }
+    };
+
+    fetchCount();
+    return () => { cancelled = true; };
+  }, [conversationId]);
 
   const normalizeList = (value: unknown): string[] => {
     if (Array.isArray(value)) {
@@ -288,10 +323,31 @@ function SearchPlanCard({ plan }: { plan: Record<string, unknown> }) {
 
   return (
     <div className="border-2 border-foreground/15 overflow-hidden">
-      <div className="px-3.5 py-3 flex items-center gap-2.5 border-b border-foreground/10">
+      <div className="px-3.5 py-3 flex items-center justify-between border-b border-foreground/10">
         <span className="text-[10px] font-bold uppercase tracking-[0.15em] text-foreground">
           Plan de recherche
         </span>
+        {/* LinkedIn count badge */}
+        <div className="flex items-center gap-1.5">
+          {countLoading ? (
+            <span className="text-[10px] text-muted-foreground/50 animate-pulse">
+              Estimation…
+            </span>
+          ) : countError ? (
+            <span className="text-[10px] text-muted-foreground/40">—</span>
+          ) : estimatedCount !== null ? (
+            <span className={cn(
+              "px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.1em] border-2 tabular-nums",
+              estimatedCount > 100
+                ? "border-emerald-500/30 text-emerald-600 bg-emerald-500/5"
+                : estimatedCount > 20
+                  ? "border-foreground/15 text-foreground/70"
+                  : "border-amber-500/30 text-amber-600 bg-amber-500/5"
+            )}>
+              {estimatedCount.toLocaleString('fr-FR')} profils LinkedIn
+            </span>
+          ) : null}
+        </div>
       </div>
 
       {/* Criteria list */}
