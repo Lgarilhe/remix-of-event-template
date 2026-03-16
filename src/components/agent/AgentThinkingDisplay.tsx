@@ -76,30 +76,31 @@ export const AgentThinkingDisplay: React.FC<AgentThinkingDisplayProps> = ({
 
         {/* Steps list — always visible */}
         {steps.length > 0 && (
-          <div className="border-t border-brutal-accent/10 px-3.5 py-3 space-y-1.5 max-h-[220px] overflow-y-auto scrollbar-hide">
+          <div className="border-t border-brutal-accent/10 px-3.5 py-3 space-y-1 max-h-[calc(6*32px)] overflow-y-auto scrollbar-hide">
             {steps.map((step, i) => {
               const StepIcon = getStepIcon(step.label);
               return (
                 <div
                   key={i}
                   className={cn(
-                    "flex items-center gap-2.5 py-1 px-2 transition-colors",
+                    "flex items-center gap-2.5 py-1 px-2 transition-colors animate-fade-in",
                     step.status === 'active' && "bg-brutal-accent/5"
                   )}
+                  style={{ animationDelay: `${i * 80}ms`, animationFillMode: 'backwards' }}
                 >
                   {step.status === 'done' ? (
-                    <Check className="w-3 h-3 text-brutal-accent shrink-0" />
+                    <Check className="w-3 h-3 shrink-0" style={{ color: 'hsl(142 71% 45%)' }} />
                   ) : step.status === 'active' ? (
-                    <Loader2 className="w-3 h-3 text-brutal-accent shrink-0 animate-spin" />
+                    <StepIcon className="w-3 h-3 text-brutal-accent shrink-0 animate-pulse" />
                   ) : (
-                    <StepIcon className="w-3 h-3 text-foreground/20 shrink-0" />
+                    <StepIcon className="w-3 h-3 text-muted-foreground/30 shrink-0" />
                   )}
                   <span className={cn(
                     "text-[11px] leading-relaxed font-mono",
                     step.status === 'active'
-                      ? "text-foreground"
+                      ? "text-foreground font-medium"
                       : step.status === 'done'
-                        ? "text-muted-foreground"
+                        ? "text-foreground/70 line-through decoration-foreground/20"
                         : "text-muted-foreground/40"
                   )}>
                     {step.label}
