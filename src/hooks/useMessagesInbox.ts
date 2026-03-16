@@ -2,6 +2,7 @@ import { useCallback, useRef, useEffect, useReducer } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { invokeUnipile } from '@/lib/invokeUnipile';
+import { emitQuotaAction } from '@/lib/quotaEvents';
 import { toast } from 'sonner';
 import { useOrganization } from '@/hooks/useOrganization';
 import { useChatCategories } from './useChatCategories';
