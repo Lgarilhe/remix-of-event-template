@@ -8,33 +8,87 @@ import { AuthSheet } from './AuthSheet';
 import { NotificationDropdown } from './NotificationDropdown';
 
 
+type FaceState = 'idle' | 'wink' | 'surprise' | 'happy' | 'look-left' | 'look-right';
+
+const EXPRESSIONS: { state: FaceState; duration: number }[] = [
+  { state: 'wink', duration: 400 },
+  { state: 'look-left', duration: 600 },
+  { state: 'look-right', duration: 600 },
+  { state: 'surprise', duration: 500 },
+  { state: 'happy', duration: 700 },
+  { state: 'wink', duration: 400 },
+];
+
 const NavLogo: React.FC = () => {
-  const [isWinking, setIsWinking] = useState(false);
+  const [face, setFace] = useState<FaceState>('idle');
+  const indexRef = useRef(0);
 
   useEffect(() => {
     const interval = setInterval(() => {
-      setIsWinking(true);
-      setTimeout(() => setIsWinking(false), 300);
-    }, 4000);
+      const expr = EXPRESSIONS[indexRef.current % EXPRESSIONS.length];
+      setFace(expr.state);
+      setTimeout(() => setFace('idle'), expr.duration);
+      indexRef.current++;
+    }, 3500);
     return () => clearInterval(interval);
   }, []);
 
-  // Right eye: normal pill vs wink (flat line)
-  const rightEye = isWinking
-    ? <line x1="8.55" y1="5.34" x2="10.55" y2="5.34" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-    : <ellipse cx="9.55" cy="5.34" rx="0.65" ry="0.75" fill="currentColor" />;
+  // Eye positions based on look direction
+  const eyeOffsetX = face === 'look-left' ? -0.6 : face === 'look-right' ? 0.6 : 0;
+  const eyeOffsetY = face === 'surprise' ? -0.15 : 0;
+
+  // Eye sizes
+  const eyeRx = face === 'surprise' ? 0.75 : 0.65;
+  const eyeRy = face === 'surprise' ? 0.9 : 0.75;
+
+  // Left eye
+  const leftEye = (
+    <ellipse cx={4.45 + eyeOffsetX} cy={5.34 + eyeOffsetY} rx={eyeRx} ry={eyeRy} fill="currentColor">
+      <animate attributeName="cx" dur="0.15s" fill="freeze" />
+    </ellipse>
+  );
+
+  // Right eye (winks)
+  const rightEye = face === 'wink'
+    ? <line x1="8.9" y1="5.34" x2="10.2" y2="5.34" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+    : (
+      <ellipse cx={9.55 + eyeOffsetX} cy={5.34 + eyeOffsetY} rx={eyeRx} ry={eyeRy} fill="currentColor">
+        <animate attributeName="cx" dur="0.15s" fill="freeze" />
+      </ellipse>
+    );
+
+  // Mouth variations
+  let mouth: React.ReactNode;
+  if (face === 'surprise') {
+    mouth = <ellipse cx="7" cy="9.8" rx="1.1" ry="1.3" fill="currentColor" />;
+  } else if (face === 'happy') {
+    mouth = <path d="M3.8 8.5 Q7 12 10.2 8.5" stroke="currentColor" strokeWidth="1" strokeLinecap="round" fill="none" />;
+  } else {
+    mouth = <path d="M4.8 9.2 Q7 10.8 9.5 8.8" stroke="currentColor" strokeWidth="1" strokeLinecap="round" fill="none" />;
+  }
+
+  // Eyebrows for surprise
+  const eyebrows = face === 'surprise' ? (
+    <>
+      <line x1="3.3" y1="3.4" x2="5.6" y2="3.6" stroke="currentColor" strokeWidth="0.8" strokeLinecap="round" />
+      <line x1="8.4" y1="3.6" x2="10.7" y2="3.4" stroke="currentColor" strokeWidth="0.8" strokeLinecap="round" />
+    </>
+  ) : null;
 
   return (
-    <div className="bg-foreground text-background h-[34px] w-[34px] border border-foreground flex items-center justify-center">
-      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 14 14" className="w-4 h-4">
-        {/* Face circle */}
+    <div className="bg-foreground text-background h-[34px] w-[34px] border border-foreground flex items-center justify-center cursor-pointer"
+      onClick={() => {
+        const rand = EXPRESSIONS[Math.floor(Math.random() * EXPRESSIONS.length)];
+        setFace(rand.state);
+        setTimeout(() => setFace('idle'), rand.duration);
+      }}
+    >
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 14 14" className="w-4 h-4" style={{ transition: 'transform 0.2s', transform: face === 'surprise' ? 'scale(1.1)' : 'scale(1)' }}>
         <circle cx="7" cy="7" r="6.5" fill="none" stroke="currentColor" strokeWidth="1.1" />
-        {/* Left eye — always open */}
-        <ellipse cx="4.45" cy="5.34" rx="0.65" ry="0.75" fill="currentColor" />
-        {/* Right eye — winks */}
+        {eyebrows}
+        {leftEye}
         {rightEye}
-        {/* Smirk mouth */}
-        <path d="M4.8 9.2 Q7 10.8 9.5 8.8" stroke="currentColor" strokeWidth="1" strokeLinecap="round" fill="none" />
+        {mouth}
       </svg>
     </div>
   );
