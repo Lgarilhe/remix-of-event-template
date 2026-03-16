@@ -94,7 +94,7 @@ export function useInvitationsReceived(organizationId: string | null) {
       const res = await invoke('handle_invitation_received', {
         account_id: accountId,
         invitation_id: invitation.id,
-        action: 'decline',
+        invitation_action: 'decline',
         shared_secret: invitation.shared_secret,
         provider: invitation.provider,
       });
