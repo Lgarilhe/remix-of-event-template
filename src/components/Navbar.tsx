@@ -102,6 +102,7 @@ export const Navbar: React.FC = () => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(false);
   const navigate = useNavigate();
+  const unreadMsgCount = user ? useUnreadMessageNotifications() : 0;
   const [pendingRoute, setPendingRoute] = useState<string | null>(null);
   const lastScrollY = useRef(0);
 
