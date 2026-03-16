@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Building2 } from 'lucide-react';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { Job } from '@/types/jobs';
 import { Button } from '@/components/ui/button';
@@ -332,20 +333,32 @@ export const JobSelector: React.FC<JobSelectorProps> = ({ selectedJob, onJobChan
                     }}
                   >
                     {selectedJob?.id === job.id && <Check className="absolute left-2 top-3 h-4 w-4" />}
-                    <div className="flex flex-col gap-0.5 min-w-0 w-full">
-                      <div className="flex items-baseline gap-1.5">
-                        <span className="font-medium truncate">{job.title}</span>
-                      </div>
-                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                        {job.client?.name && (
-                          <span className="truncate">{job.client.name}</span>
-                        )}
-                        {job.skills?.length > 0 && (
-                          <>
-                            {job.client?.name && <span>·</span>}
-                            <span className="whitespace-nowrap">{job.skills.length} compétence{job.skills.length > 1 ? 's' : ''}</span>
-                          </>
-                        )}
+                    <div className="flex items-center gap-2.5 min-w-0 w-full">
+                      {job.client?.website ? (
+                        <img
+                          src={`https://www.google.com/s2/favicons?domain=${new URL(job.client.website.startsWith('http') ? job.client.website : 'https://' + job.client.website).hostname}&sz=32`}
+                          alt=""
+                          className="w-5 h-5 rounded shrink-0"
+                          onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                        />
+                      ) : (
+                        <div className="w-5 h-5 rounded bg-muted flex items-center justify-center shrink-0">
+                          <Building2 className="w-3 h-3 text-muted-foreground" />
+                        </div>
+                      )}
+                      <div className="flex flex-col gap-0 min-w-0">
+                        <span className="font-medium truncate leading-tight">{job.title}</span>
+                        <div className="flex items-center gap-2 text-xs text-muted-foreground leading-tight">
+                          {job.client?.name && (
+                            <span className="truncate">{job.client.name}</span>
+                          )}
+                          {job.skills?.length > 0 && (
+                            <>
+                              {job.client?.name && <span>·</span>}
+                              <span className="whitespace-nowrap">{job.skills.length} compétence{job.skills.length > 1 ? 's' : ''}</span>
+                            </>
+                          )}
+                        </div>
                       </div>
                     </div>
                   </button>
