@@ -6,8 +6,8 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 };
 
-let RAW_AIRTABLE_API_KEY = Deno.env.get("AIRTABLE_API_KEY");
-let AIRTABLE_API_KEY = RAW_AIRTABLE_API_KEY?.trim();
+// No global integration credentials — always resolved from organization_integrations
+let AIRTABLE_API_KEY: string | undefined;
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
@@ -36,30 +36,27 @@ async function fetchWithRetry(url: string, options: RequestInit = {}, maxRetries
 }
 
 function sleep(ms: number) { return new Promise(r => setTimeout(r, ms)); }
-// Base configs
+// Base configs — populated per-org only
 const BASES: Record<string, { baseId: string | undefined; label: string }> = {
-  konekt: { baseId: Deno.env.get("AIRTABLE_BASE_ID")?.trim(), label: 'Konekt' },
-  prospect: { baseId: Deno.env.get("AIRTABLE_BASE_ID_2")?.trim(), label: 'Konekt prospect' },
+  konekt: { baseId: undefined, label: 'Konekt' },
+  prospect: { baseId: undefined, label: 'Konekt prospect' },
 };
 
-async function resolveOrgAirtableCredentials(orgId: string | null) {
-  if (!orgId) return;
-  try {
-    const { data } = await supabase
-      .from('organization_integrations')
-      .select('airtable_api_key, airtable_base_id, airtable_base_id_2, airtable_connected')
-      .eq('organization_id', orgId)
-      .single();
-    if (!data?.airtable_connected) return;
-    if (data.airtable_api_key) {
-      AIRTABLE_API_KEY = data.airtable_api_key.trim();
-    }
-    if (data.airtable_base_id) BASES.konekt.baseId = data.airtable_base_id.trim();
-    if (data.airtable_base_id_2) BASES.prospect.baseId = data.airtable_base_id_2.trim();
-    console.log('[fetch-airtable] Using org-specific Airtable credentials');
-  } catch (e) {
-    console.warn('[fetch-airtable] Failed to load org credentials:', e);
+async function resolveOrgAirtableCredentials(orgId: string) {
+  const { data } = await supabase
+    .from('organization_integrations')
+    .select('airtable_api_key, airtable_base_id, airtable_base_id_2, airtable_connected')
+    .eq('organization_id', orgId)
+    .single();
+
+  if (!data?.airtable_connected || !data.airtable_api_key) {
+    throw new Error('Intégration Airtable non configurée pour votre organisation. Rendez-vous dans Settings > Intégrations.');
   }
+
+  AIRTABLE_API_KEY = data.airtable_api_key.trim();
+  if (data.airtable_base_id) BASES.konekt.baseId = data.airtable_base_id.trim();
+  if (data.airtable_base_id_2) BASES.prospect.baseId = data.airtable_base_id_2.trim();
+  console.log('[fetch-airtable] Using org-specific Airtable credentials');
 }
 
 // Airtable table names per base (both bases share similar French table names)
