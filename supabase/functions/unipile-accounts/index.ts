@@ -804,15 +804,16 @@ Deno.serve(async (req) => {
       }
 
       case 'handle_invitation_received': {
-        const { account_id, invitation_id, action: invAction, shared_secret, provider } = params;
-        if (!account_id || !invitation_id || !invAction || !shared_secret) {
-          throw new HttpError(400, 'account_id, invitation_id, action et shared_secret requis');
+        const { account_id, invitation_id, invitation_action: invAction, action: legacyAction, shared_secret, provider } = params;
+        const finalAction = invAction || legacyAction;
+        if (!account_id || !invitation_id || !finalAction || !shared_secret) {
+          throw new HttpError(400, 'account_id, invitation_id, invitation_action et shared_secret requis');
         }
-        if (invAction !== 'accept' && invAction !== 'decline') {
-          throw new HttpError(400, 'action doit être "accept" ou "decline"');
+        if (finalAction !== 'accept' && finalAction !== 'decline') {
+          throw new HttpError(400, 'invitation_action doit être "accept" ou "decline"');
         }
 
-        console.log(`[handle_invitation_received] ${invAction} invitation ${invitation_id}`);
+        console.log(`[handle_invitation_received] ${finalAction} invitation ${invitation_id}`);
         const handleRes = await fetchWithTimeout(`${baseUrl}/users/invite/received/${invitation_id}`, {
           method: 'POST',
           headers: {
@@ -824,7 +825,7 @@ Deno.serve(async (req) => {
             provider: provider || 'LINKEDIN',
             shared_secret,
             account_id,
-            action: invAction,
+            action: finalAction,
           }),
         });
         const handleData = await handleRes.json();
@@ -838,7 +839,7 @@ Deno.serve(async (req) => {
         }
 
         return new Response(
-          JSON.stringify({ success: true, status: handleData.status || (invAction === 'accept' ? 'ACCEPTED' : 'DECLINED') }),
+          JSON.stringify({ success: true, status: handleData.status || (finalAction === 'accept' ? 'ACCEPTED' : 'DECLINED') }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
