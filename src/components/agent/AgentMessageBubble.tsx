@@ -54,6 +54,15 @@ export const AgentMessageBubble: React.FC<AgentMessageBubbleProps> = ({ message,
     .replace(/\[SEARCH_PLAN\][\s\S]*?(\[\/SEARCH_PLAN\]|$)/g, '')
     .replace(/\[AGENT_ACTION\][\s\S]*?(\[\/AGENT_ACTION\]|$)/g, '')
     .replace(/\[OPTIONS\][\s\S]*?(\[\/OPTIONS\]|$)/g, '')
+    // Strip AI-style markdown formatting
+    .replace(/^#{1,6}\s+/gm, '')                          // headings
+    .replace(/\*{1,3}([^*]+)\*{1,3}/g, '$1')              // bold/italic
+    .replace(/^[-*•]\s+/gm, '')                            // list bullets
+    .replace(/^\d+\.\s+/gm, '')                            // numbered lists
+    .replace(/`([^`]+)`/g, '$1')                           // inline code
+    .replace(/^>\s+/gm, '')                                // blockquotes
+    .replace(/---+/g, '')                                  // horizontal rules
+    .replace(/\n{3,}/g, '\n\n')                            // collapse extra newlines
     .trim();
 
   const searchPlan = message.metadata?.search_plan as Record<string, unknown> | undefined;
@@ -120,10 +129,8 @@ export const AgentMessageBubble: React.FC<AgentMessageBubbleProps> = ({ message,
       )}
 
       {displayContent && (
-        <div className="text-sm leading-relaxed text-foreground/80">
-          <div className="prose prose-sm max-w-none [&_p]:my-1.5 [&_ul]:my-2 [&_ol]:my-2 [&_li]:my-0.5 [&_h1]:text-base [&_h2]:text-sm [&_h3]:text-sm [&_h1]:font-bold [&_h2]:font-bold [&_h3]:font-semibold [&_h1]:mt-3 [&_h1]:mb-1.5 [&_h2]:mt-3 [&_h2]:mb-1.5 [&_h3]:mt-2 [&_h3]:mb-1 [&_hr]:my-3 [&_code]:text-xs [&_code]:bg-muted [&_code]:px-1.5 [&_code]:py-0.5 [&_li]:marker:text-foreground/50 text-sm [&_strong]:text-foreground">
-            <ReactMarkdown>{displayContent}</ReactMarkdown>
-          </div>
+        <div className="text-sm leading-relaxed text-foreground/80 whitespace-pre-wrap">
+          {displayContent}
         </div>
       )}
 
