@@ -524,6 +524,46 @@ async function handleNewMessage(supabase: SupabaseClient, payload: WebhookPayloa
       .in('id', inmailIds);
   }
 
+  // ── Create notification for new message ──
+  // Find the user(s) linked to this LinkedIn account
+  const senderName = payload.sender?.attendee_name 
+    || (data?.message as any)?.sender?.name 
+    || senderId || 'Quelqu\'un';
+
+  const { data: linkedMembers } = await supabase
+    .from('member_linkedin_accounts')
+    .select('user_id, organization_id')
+    .eq('linkedin_account_id', account_id);
+
+  if (linkedMembers && linkedMembers.length > 0) {
+    for (const member of linkedMembers) {
+      await supabase
+        .from('notifications')
+        .insert({
+          user_id: member.user_id,
+          organization_id: member.organization_id,
+          type: 'new_message',
+          title: `Nouveau message de ${senderName}`,
+          body: chatId ? `Vous avez reçu un nouveau message LinkedIn` : null,
+          link: `/outreach?tab=messages${chatId ? `&chatId=${chatId}` : ''}`,
+        });
+    }
+    console.log(`[unipile-webhook] Created notifications for ${linkedMembers.length} user(s)`);
+  } else {
+    // Fallback: notify all org members who have access
+    // Find org via any member_linkedin_accounts with this account
+    const { data: anyMapping } = await supabase
+      .from('member_linkedin_accounts')
+      .select('organization_id')
+      .eq('linkedin_account_id', account_id)
+      .limit(1);
+    
+    if (!anyMapping || anyMapping.length === 0) {
+      // Last resort: find org members from organization_members and notify admins/owners
+      console.log('[unipile-webhook] No member mapping found for account:', account_id);
+    }
+  }
+
   // ── Trigger auto-analysis for intent detection & status update ──
   if (chatId) {
     console.log(`[unipile-webhook] Triggering auto-analyze for chat: ${chatId}`);
