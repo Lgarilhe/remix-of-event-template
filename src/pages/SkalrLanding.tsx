@@ -1,61 +1,33 @@
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence, useInView } from 'framer-motion';
-import { Button } from '@/components/ui/button';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { 
-  Search, Brain, Send, MessageSquare, LayoutGrid, 
-  ArrowRight, Check, Linkedin, Shield, Zap, 
-  ChevronDown, X, Mail, Loader2, Users, Briefcase, Building2
+  ArrowRight, Check, ChevronDown, X, Loader2,
+  Search, Brain, Send, MessageSquare, LayoutGrid
 } from 'lucide-react';
 import { SEOHead } from '@/components/SEOHead';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
+import { Button } from '@/components/ui/button';
 import { supabase } from '@/integrations/supabase/client';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { useToast } from '@/hooks/use-toast';
-import heroVideo from '@/assets/hero-video.mp4';
+import landingDashboard from '@/assets/landing-dashboard.png';
 
-// Redirect authenticated users away from landing page
 const useRedirectIfAuthenticated = () => {
   const navigate = useNavigate();
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) {
-        navigate('/outreach', { replace: true });
-      }
+      if (session) navigate('/outreach', { replace: true });
     });
-
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === 'SIGNED_IN' && session) {
-        navigate('/outreach', { replace: true });
-      }
+      if (event === 'SIGNED_IN' && session) navigate('/outreach', { replace: true });
     });
-
     return () => subscription.unsubscribe();
   }, [navigate]);
 };
 
 const CALENDLY_URL = 'https://calendly.com/demo/30min';
-
-// Animated counter component
-const AnimatedStat = ({ value, suffix = '' }: { value: string; suffix?: string }) => {
-  const ref = useRef<HTMLDivElement>(null);
-  const isInView = useInView(ref, { once: true });
-  
-  return (
-    <div ref={ref}>
-      <motion.span
-        initial={{ opacity: 0, y: 20 }}
-        animate={isInView ? { opacity: 1, y: 0 } : {}}
-        transition={{ duration: 0.6, ease: 'easeOut' }}
-        className="text-6xl md:text-7xl font-bold skalr-gradient-text"
-      >
-        {value}{suffix}
-      </motion.span>
-    </div>
-  );
-};
 
 const SkalrLanding = () => {
   useRedirectIfAuthenticated();
@@ -69,12 +41,10 @@ const SkalrLanding = () => {
 
   const handleContactSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
     if (!contactForm.name.trim() || !contactForm.email.trim() || !contactForm.message.trim()) {
       toast({ title: "Erreur", description: "Veuillez remplir tous les champs obligatoires.", variant: "destructive" });
       return;
     }
-
     setIsSubmitting(true);
     try {
       const { error } = await supabase.from('contact_submissions').insert({
@@ -83,357 +53,157 @@ const SkalrLanding = () => {
         company: contactForm.company.trim() || null,
         message: contactForm.message.trim(),
       });
-
       if (error) throw error;
-
       try {
-        const notionResponse = await invokeEdgeFunction('notify-notion', {
+        await invokeEdgeFunction('notify-notion', {
           name: contactForm.name.trim(),
           email: contactForm.email.trim(),
           company: contactForm.company.trim() || null,
           message: contactForm.message.trim(),
         });
-        
-        if (notionResponse.error) {
-          console.warn('Notion sync failed:', notionResponse.error);
-        }
-      } catch (notionError) {
-        console.warn('Notion sync error (non-blocking):', notionError);
-      }
-
+      } catch (e) { console.warn('Notion sync error:', e); }
       toast({ title: "Message envoyé !", description: "Nous vous recontacterons très vite." });
       setContactForm({ name: '', email: '', company: '', message: '' });
       setShowContact(false);
     } catch (error) {
       console.error('Contact form error:', error);
-      toast({ title: "Erreur", description: "Une erreur est survenue. Veuillez réessayer.", variant: "destructive" });
+      toast({ title: "Erreur", description: "Une erreur est survenue.", variant: "destructive" });
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const scrollToSection = (id: string) => {
-    document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' });
-  };
-
-  const steps = [
-    {
-      num: '01',
-      icon: Search,
-      title: 'Trouvez les bons profils',
-      description: 'Recherche LinkedIn avancée avec filtres par poste, expérience, école, localisation. Identifiez les meilleurs talents en quelques clics.',
-    },
-    {
-      num: '02',
-      icon: Brain,
-      title: "Qualifiez avec l'IA",
-      description: "Scoring automatique de chaque profil par rapport à vos offres. L'IA analyse les compétences, l'expérience et la compatibilité.",
-    },
-    {
-      num: '03',
-      icon: Send,
-      title: 'Engagez en automatique',
-      description: "Séquences d'InMails et messages personnalisés par l'IA. Relances automatiques, horaires optimisés, A/B testing intégré.",
-    },
-    {
-      num: '04',
-      icon: MessageSquare,
-      title: 'Centralisez les échanges',
-      description: 'Inbox unifiée pour gérer toutes vos conversations candidats. Suggestions de réponses par IA, suivi des interactions.',
-    },
-    {
-      num: '05',
-      icon: LayoutGrid,
-      title: "Suivez dans l'ATS",
-      description: 'Pipeline kanban avec statuts automatiques, timeline complète et notes collaboratives. Tout votre recrutement en un seul endroit.',
-    },
+  const features = [
+    { num: '001', title: 'Sourcer', description: 'Recherche LinkedIn avancée avec filtres intelligents sur tout votre vivier' },
+    { num: '002', title: 'Qualifier', description: "Scoring IA automatique de chaque profil par rapport à vos offres" },
+    { num: '003', title: 'Engager', description: "Séquences d'InMails personnalisées et relances automatiques" },
+    { num: '004', title: 'Suivre', description: "Pipeline kanban, inbox unifiée et notes collaboratives" },
   ];
 
-  const personas = [
-    {
-      id: 'recruiter',
-      label: 'Recruteur interne',
-      icon: Users,
-      title: 'Automatisez le sourcing, concentrez-vous sur les entretiens',
-      description: "Libérez-vous des tâches répétitives. Skalr trouve et contacte les candidats pour vous, pendant que vous vous concentrez sur l'évaluation et les entretiens.",
-      benefits: [
-        'Sourcing LinkedIn automatisé',
-        'Séquences de messages personnalisées',
-        'Pipeline candidats en temps réel',
-        'Scoring IA pour prioriser les profils',
-      ],
-    },
-    {
-      id: 'ta',
-      label: 'Talent Acquisition',
-      icon: Briefcase,
-      title: 'Vue complète du pipeline, métriques et reporting',
-      description: "Pilotez votre stratégie de recrutement avec des données précises. Suivez les performances de vos séquences, analysez vos taux de conversion et optimisez en continu.",
-      benefits: [
-        'Dashboard avec KPIs en temps réel',
-        'Analyse des taux de réponse par séquence',
-        'Gestion multi-postes centralisée',
-        'Historique complet des interactions',
-      ],
-    },
-    {
-      id: 'founder',
-      label: 'Fondateur',
-      icon: Zap,
-      title: "Recrutez vos premiers talents sans passer par une agence",
-      description: "Vous n'avez pas de budget pour un cabinet ? Skalr vous donne les outils pour recruter comme un pro, même sans équipe RH dédiée.",
-      benefits: [
-        'Interface simple, prise en main rapide',
-        "Messages générés par l'IA",
-        'Coût 10x inférieur à un cabinet',
-        'Résultats dès la première semaine',
-      ],
-    },
-    {
-      id: 'agency',
-      label: 'Cabinet de recrutement',
-      icon: Building2,
-      title: 'Gérez plusieurs mandats et centralisez vos candidats',
-      description: "Multipliez vos mandats sans multiplier vos efforts. Organisez vos recherches par projet, centralisez vos viviers et automatisez vos approches.",
-      benefits: [
-        'Projets de sourcing par mandat',
-        'Vivier de candidats partagé',
-        'Séquences réutilisables',
-        'Suivi client intégré',
-      ],
-    },
+  const values = [
+    { title: 'La vitesse crée la valeur', description: "Contactez 3x plus de candidats qualifiés chaque semaine grâce à l'automatisation intelligente." },
+    { title: 'Le recrutement est un système', description: "Nous connectons sourcing, engagement et suivi dans un flux continu et mesurable." },
+    { title: "La qualité avant le volume", description: "Le scoring IA priorise les profils pertinents pour maximiser votre taux de conversion." },
   ];
 
   const stats = [
-    { value: 'x3', label: 'profils contactés par semaine' },
-    { value: '-60%', label: 'temps de sourcing' },
-    { value: '+80%', label: 'taux de réponse avec les séquences IA' },
+    { value: '×3', label: 'profils contactés par semaine' },
+    { value: '−60%', label: 'temps de sourcing' },
+    { value: '+80%', label: 'taux de réponse' },
   ];
 
   const faqs = [
-    {
-      question: 'Comment ça marche ?',
-      answer: "Connectez votre compte LinkedIn via notre intégration sécurisée, configurez vos filtres de recherche, et laissez Skalr trouver, scorer et contacter les meilleurs profils pour vous. Tout est centralisé dans votre dashboard.",
-    },
-    {
-      question: 'Mon compte LinkedIn est-il en sécurité ?',
-      answer: "Absolument. Nous utilisons des connexions sécurisées et respectons les limites de LinkedIn. Vos identifiants sont chiffrés et ne sont jamais stockés en clair. Des milliers de recruteurs utilisent Skalr sans aucun problème.",
-    },
-    {
-      question: "Combien de messages puis-je envoyer ?",
-      answer: "Cela dépend de votre abonnement LinkedIn (InMail) et de votre plan Skalr. Nous optimisons automatiquement le volume et les horaires d'envoi pour maximiser vos taux de réponse tout en respectant les limites.",
-    },
-    {
-      question: "C'est gratuit ?",
-      answer: "Skalr propose un essai gratuit pour découvrir la plateforme. Ensuite, nos plans sont adaptés à la taille de votre équipe et à vos besoins. Commencez gratuitement et upgradez quand vous êtes prêt.",
-    },
-  ];
-
-  const heroBadges = [
-    { icon: Search, label: 'Sourcing IA' },
-    { icon: Zap, label: 'Séquences auto' },
-    { icon: LayoutGrid, label: 'ATS intégré' },
+    { question: 'Comment ça marche ?', answer: "Connectez votre compte LinkedIn via notre intégration sécurisée, configurez vos filtres de recherche, et laissez Skalr trouver, scorer et contacter les meilleurs profils pour vous." },
+    { question: 'Mon compte LinkedIn est-il en sécurité ?', answer: "Absolument. Nous utilisons des connexions sécurisées et respectons les limites de LinkedIn. Vos identifiants sont chiffrés et ne sont jamais stockés en clair." },
+    { question: "Combien de messages puis-je envoyer ?", answer: "Cela dépend de votre abonnement LinkedIn et de votre plan Skalr. Nous optimisons automatiquement le volume et les horaires d'envoi." },
+    { question: "C'est gratuit ?", answer: "Skalr propose un essai gratuit pour découvrir la plateforme. Nos plans sont ensuite adaptés à la taille de votre équipe." },
   ];
 
   return (
     <>
       <SEOHead 
-        title="Skalr - Plateforme de recrutement tout-en-un"
-        description="Trouvez, engagez et recrutez vos meilleurs talents. Sourcing LinkedIn, séquences automatisées et suivi candidat en une seule plateforme."
-        keywords="recrutement saas, sourcing linkedin, ats, sequences automatisées, talent acquisition, outil recrutement"
+        title="Skalr — Plateforme de recrutement tout-en-un"
+        description="Trouvez, engagez et recrutez vos meilleurs talents. Sourcing LinkedIn, séquences automatisées et suivi candidat."
+        keywords="recrutement saas, sourcing linkedin, ats, talent acquisition"
       />
-      
-      <div className="min-h-screen bg-zinc-950 text-white">
-        
-        {/* ===== HERO ===== */}
-        <section className="relative min-h-screen overflow-hidden">
-          {/* Video background */}
-          <div className="absolute inset-0">
-            <video autoPlay muted loop playsInline preload="none" className="absolute inset-0 w-full h-full object-cover">
-              <source src={heroVideo} type="video/mp4" />
-            </video>
-            <div className="absolute inset-0 bg-black/60" />
-            <div className="absolute inset-0 bg-gradient-to-b from-black/40 via-transparent to-zinc-950" />
-          </div>
 
-          {/* Navigation */}
-          <nav className="relative z-20 px-6 py-5">
-            <div className="max-w-6xl mx-auto flex items-center justify-between">
-              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-xl font-semibold text-white">
-                skalr<span className="text-zinc-500">.</span>
-              </motion.div>
-              
-              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.1 }} className="hidden md:flex items-center gap-8">
-                {[
-                  { label: 'Fonctionnalités', id: 'features' },
-                  { label: 'Comment ça marche', id: 'how' },
-                  { label: 'Résultats', id: 'results' },
-                ].map((item) => (
-                  <button
-                    key={item.id}
-                    onClick={() => scrollToSection(item.id)}
-                    className="text-sm text-zinc-400 hover:text-white transition-colors"
-                  >
-                    {item.label}
-                  </button>
-                ))}
-              </motion.div>
+      <div className="min-h-screen bg-white text-foreground">
 
-              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.2 }} className="flex items-center gap-3">
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => setShowCalendly(true)}
-                  className="text-zinc-300 hover:text-white hover:bg-white/10 rounded-full px-4"
+        {/* ===== NAV ===== */}
+        <nav className="fixed top-0 left-0 right-0 z-50 bg-white/80 backdrop-blur-md border-b border-border/50">
+          <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
+            <span className="text-xl font-bold tracking-tight text-foreground font-editorial italic">Skalr</span>
+            
+            <div className="hidden md:flex items-center gap-8">
+              {['Produit', 'Résultats', 'FAQ'].map((label) => (
+                <button
+                  key={label}
+                  onClick={() => document.getElementById(label.toLowerCase())?.scrollIntoView({ behavior: 'smooth' })}
+                  className="text-sm text-muted-foreground hover:text-foreground transition-colors"
                 >
-                  Réserver une démo
-                </Button>
-                <Button 
-                  size="sm"
-                  onClick={() => navigate('/auth')}
-                  className="rounded-full bg-white text-zinc-900 hover:bg-zinc-100 font-medium px-5"
-                >
-                  Commencer gratuitement
-                </Button>
-              </motion.div>
-            </div>
-          </nav>
-
-          {/* Hero Content */}
-          <div className="relative z-10 flex items-center min-h-[calc(100vh-80px)] px-6">
-            <div className="max-w-6xl mx-auto w-full">
-              <div className="max-w-3xl mx-auto text-center">
-                <motion.div
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.6 }}
-                  className="mb-6"
-                >
-                  <span className="inline-flex items-center gap-2 text-sm text-zinc-400 font-medium border border-zinc-700 rounded-full px-4 py-1.5">
-                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                    Plateforme de recrutement tout-en-un
-                  </span>
-                </motion.div>
-
-                <motion.h1
-                  initial={{ opacity: 0, y: 30 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.6, delay: 0.1 }}
-                  className="text-5xl md:text-6xl lg:text-7xl font-bold text-white tracking-tight leading-[1.05] mb-6"
-                >
-                  Trouvez, engagez et recrutez{' '}
-                  <span className="skalr-gradient-text">vos meilleurs talents</span>
-                </motion.h1>
-
-                <motion.p
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.6, delay: 0.2 }}
-                  className="text-lg md:text-xl text-zinc-400 max-w-2xl mx-auto mb-10 leading-relaxed"
-                >
-                  La plateforme tout-en-un qui combine sourcing LinkedIn, 
-                  séquences automatisées et suivi candidat.
-                </motion.p>
-
-                <motion.div
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.6, delay: 0.3 }}
-                  className="flex flex-wrap justify-center gap-4 mb-12"
-                >
-                  <Button 
-                    size="lg"
-                    onClick={() => navigate('/auth')}
-                    className="rounded-full skalr-gradient-bg text-white hover:opacity-90 font-medium px-8 h-13 text-base border-0"
-                  >
-                    Commencer gratuitement
-                    <ArrowRight className="ml-2 h-4 w-4" />
-                  </Button>
-                  
-                  <Button 
-                    size="lg"
-                    variant="outline"
-                    onClick={() => scrollToSection('how')}
-                    className="rounded-full border-zinc-600 text-white hover:bg-white/10 font-medium px-8 h-13 text-base"
-                  >
-                    Voir comment ça marche
-                  </Button>
-                </motion.div>
-
-                {/* Badges */}
-                <motion.div
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.6, delay: 0.4 }}
-                  className="flex flex-wrap justify-center gap-3"
-                >
-                  {heroBadges.map((badge, i) => (
-                    <div key={i} className="flex items-center gap-2 bg-white/5 border border-zinc-700/50 rounded-full px-4 py-2 text-sm text-zinc-300">
-                      <badge.icon className="h-4 w-4 text-zinc-400" />
-                      {badge.label}
-                    </div>
-                  ))}
-                </motion.div>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        {/* ===== FEATURES / STEPS (style Zeliq) ===== */}
-        <section id="features" className="py-28 px-6">
-          <div className="max-w-6xl mx-auto">
-            <motion.div
-              initial={{ opacity: 0, y: 30 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              className="text-center mb-20"
-            >
-              <span className="text-sm font-medium skalr-gradient-text uppercase tracking-widest mb-4 block">
-                Fonctionnalités
-              </span>
-              <h2 className="text-4xl md:text-5xl font-bold tracking-tight mb-5">
-                Tout ce dont vous avez besoin
-              </h2>
-              <p className="text-lg text-zinc-400 max-w-2xl mx-auto">
-                Du sourcing à l'embauche, chaque étape est couverte par un outil pensé pour les recruteurs.
-              </p>
-            </motion.div>
-
-            <div className="space-y-6">
-              {steps.map((step, index) => (
-                <motion.div
-                  key={index}
-                  initial={{ opacity: 0, y: 30 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  viewport={{ once: true }}
-                  transition={{ delay: index * 0.08 }}
-                  className="group relative flex items-start gap-6 md:gap-10 p-6 md:p-8 rounded-2xl bg-zinc-900/50 border border-zinc-800/50 hover:border-zinc-700 hover:bg-zinc-900 transition-all"
-                >
-                  {/* Number */}
-                  <div className="flex-shrink-0">
-                    <span className="text-3xl md:text-4xl font-bold text-zinc-700 group-hover:skalr-gradient-text transition-all">
-                      {step.num}
-                    </span>
-                  </div>
-
-                  {/* Icon */}
-                  <div className="flex-shrink-0 w-12 h-12 rounded-xl bg-zinc-800 border border-zinc-700 flex items-center justify-center group-hover:border-zinc-600 transition-colors">
-                    <step.icon className="h-5 w-5 text-zinc-400 group-hover:text-white transition-colors" />
-                  </div>
-
-                  {/* Content */}
-                  <div className="flex-1 min-w-0">
-                    <h3 className="text-xl md:text-2xl font-semibold mb-2">{step.title}</h3>
-                    <p className="text-zinc-400 leading-relaxed max-w-2xl">{step.description}</p>
-                  </div>
-                </motion.div>
+                  {label}
+                </button>
               ))}
             </div>
+
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => setShowCalendly(true)}
+                className="hidden sm:inline-flex text-sm text-muted-foreground hover:text-foreground transition-colors"
+              >
+                Réserver une démo
+              </button>
+              <button
+                onClick={() => navigate('/auth')}
+                className="inline-flex items-center gap-1.5 text-sm font-medium text-foreground hover:opacity-70 transition-opacity"
+              >
+                Commencer <ArrowRight className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          </div>
+        </nav>
+
+        {/* ===== HERO ===== */}
+        <section className="landing-sky-gradient pt-32 pb-16 px-6">
+          <div className="max-w-4xl mx-auto text-center">
+            <motion.h1
+              initial={{ opacity: 0, y: 30 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.7 }}
+              className="font-editorial text-5xl sm:text-6xl md:text-7xl lg:text-[5.5rem] leading-[1.05] tracking-tight text-foreground mb-6"
+            >
+              Le recrutement,{' '}
+              <em className="italic">simplifié</em>{' '}
+              et accéléré
+            </motion.h1>
+
+            <motion.p
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6, delay: 0.15 }}
+              className="text-lg md:text-xl text-muted-foreground max-w-2xl mx-auto mb-10 leading-relaxed"
+            >
+              Trouvez, engagez et recrutez vos meilleurs talents — avec clarté et efficacité.
+            </motion.p>
+
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6, delay: 0.25 }}
+              className="flex flex-wrap justify-center gap-3 mb-16"
+            >
+              <button
+                onClick={() => setShowCalendly(true)}
+                className="inline-flex items-center gap-2 h-12 px-7 bg-foreground text-background rounded-full text-sm font-medium hover:opacity-90 transition-opacity"
+              >
+                <span className="w-1.5 h-1.5 rounded-full bg-[hsl(var(--landing-accent-yellow))]" />
+                Réserver une démo
+              </button>
+              <button
+                onClick={() => navigate('/auth')}
+                className="inline-flex items-center gap-2 h-12 px-7 border border-foreground text-foreground rounded-full text-sm font-medium hover:bg-foreground hover:text-background transition-colors"
+              >
+                <span className="w-1.5 h-1.5 rounded-full bg-foreground" />
+                Commencer gratuitement
+              </button>
+            </motion.div>
+
+            {/* Dashboard Preview */}
+            <motion.div
+              initial={{ opacity: 0, y: 40 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.8, delay: 0.35 }}
+              className="max-w-3xl mx-auto"
+            >
+              <div className="rounded-2xl border border-border/60 shadow-xl overflow-hidden bg-white">
+                <img src={landingDashboard} alt="Skalr dashboard preview" className="w-full" />
+              </div>
+            </motion.div>
           </div>
         </section>
 
-        {/* ===== HOW / PERSONAS (style Zeliq tabs) ===== */}
-        <section id="how" className="py-28 px-6 bg-zinc-900/50">
+        {/* ===== FEATURES ===== */}
+        <section id="produit" className="py-24 px-6">
           <div className="max-w-6xl mx-auto">
             <motion.div
               initial={{ opacity: 0, y: 30 }}
@@ -441,114 +211,134 @@ const SkalrLanding = () => {
               viewport={{ once: true }}
               className="text-center mb-16"
             >
-              <span className="text-sm font-medium skalr-gradient-text uppercase tracking-widest mb-4 block">
-                Pour toutes les équipes
-              </span>
-              <h2 className="text-4xl md:text-5xl font-bold tracking-tight mb-5">
-                Adapté à votre rôle
+              <h2 className="font-editorial text-4xl sm:text-5xl md:text-6xl tracking-tight text-foreground leading-[1.1]">
+                Tout ce qu'il faut pour sourcer,<br className="hidden md:block" />
+                qualifier et recruter
               </h2>
-              <p className="text-lg text-zinc-400 max-w-2xl mx-auto">
-                Que vous soyez recruteur, fondateur ou cabinet, Skalr s'adapte à vos besoins.
-              </p>
             </motion.div>
 
-            <Tabs defaultValue="recruiter" className="w-full">
-              <TabsList className="w-full max-w-2xl mx-auto grid grid-cols-2 md:grid-cols-4 bg-zinc-800/50 border border-zinc-700 rounded-xl p-1 mb-12 h-auto">
-                {personas.map((persona) => (
-                  <TabsTrigger
-                    key={persona.id}
-                    value={persona.id}
-                    className="rounded-lg py-3 text-sm data-[state=active]:bg-zinc-700 data-[state=active]:text-white text-zinc-400 transition-all"
-                  >
-                    <persona.icon className="h-4 w-4 mr-2" />
-                    <span className="hidden sm:inline">{persona.label}</span>
-                    <span className="sm:hidden">{persona.label.split(' ')[0]}</span>
-                  </TabsTrigger>
-                ))}
-              </TabsList>
+            <div className="grid md:grid-cols-2 gap-10 items-start">
+              {/* Left: visual */}
+              <motion.div
+                initial={{ opacity: 0, x: -30 }}
+                whileInView={{ opacity: 1, x: 0 }}
+                viewport={{ once: true }}
+                className="relative aspect-[4/3] rounded-2xl overflow-hidden bg-gradient-to-br from-[hsl(var(--landing-sky-start))] to-[hsl(var(--landing-sky-end))]"
+              >
+                <div className="absolute inset-0 flex items-end p-6">
+                  <div className="bg-white rounded-xl shadow-lg p-4 max-w-[280px]">
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="inline-block px-2 py-0.5 rounded-full bg-[hsl(var(--landing-accent-yellow))] text-[10px] font-semibold uppercase">
+                        Match IA
+                      </span>
+                    </div>
+                    <p className="text-sm font-medium text-foreground">Score 94% — profil idéal pour votre poste</p>
+                    <p className="text-xs text-muted-foreground mt-1">Ajuster les critères →</p>
+                  </div>
+                </div>
+              </motion.div>
 
-              {personas.map((persona) => (
-                <TabsContent key={persona.id} value={persona.id}>
+              {/* Right: numbered list */}
+              <div className="space-y-0">
+                {features.map((feature, i) => (
                   <motion.div
+                    key={i}
                     initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.4 }}
-                    className="grid md:grid-cols-2 gap-10 items-center"
+                    whileInView={{ opacity: 1, y: 0 }}
+                    viewport={{ once: true }}
+                    transition={{ delay: i * 0.08 }}
+                    className="flex items-start justify-between gap-4 py-6 border-b border-border last:border-b-0"
                   >
                     <div>
-                      <h3 className="text-3xl md:text-4xl font-bold mb-4">{persona.title}</h3>
-                      <p className="text-zinc-400 text-lg leading-relaxed mb-8">{persona.description}</p>
-                      
-                      <ul className="space-y-4 mb-8">
-                        {persona.benefits.map((benefit, i) => (
-                          <li key={i} className="flex items-center gap-3">
-                            <div className="w-6 h-6 rounded-full skalr-gradient-bg flex items-center justify-center flex-shrink-0">
-                              <Check className="h-3.5 w-3.5 text-white" />
-                            </div>
-                            <span className="text-zinc-300">{benefit}</span>
-                          </li>
-                        ))}
-                      </ul>
-
-                      <Button 
-                        onClick={() => navigate('/auth')}
-                        className="rounded-full skalr-gradient-bg text-white hover:opacity-90 font-medium px-6 border-0"
-                      >
-                        Essayer gratuitement
-                        <ArrowRight className="ml-2 h-4 w-4" />
-                      </Button>
+                      <h3 className="text-lg font-semibold text-foreground mb-1">{feature.title}</h3>
+                      <p className="text-sm text-muted-foreground leading-relaxed">{feature.description}</p>
                     </div>
-
-                    {/* Visual placeholder */}
-                    <div className="relative">
-                      <div className="aspect-[4/3] rounded-2xl bg-gradient-to-br from-zinc-800 to-zinc-900 border border-zinc-700 flex items-center justify-center overflow-hidden">
-                        <div className="text-center p-8">
-                          <persona.icon className="h-16 w-16 text-zinc-600 mx-auto mb-4" />
-                          <p className="text-zinc-500 text-sm">{persona.label}</p>
-                        </div>
-                      </div>
-                      {/* Glow effect */}
-                      <div className="absolute -inset-4 bg-gradient-to-r from-purple-500/10 via-pink-500/10 to-blue-500/10 rounded-3xl blur-2xl -z-10" />
-                    </div>
+                    <span className="text-xs text-muted-foreground font-mono shrink-0 pt-1">{feature.num}</span>
                   </motion.div>
-                </TabsContent>
-              ))}
-            </Tabs>
+                ))}
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  whileInView={{ opacity: 1 }}
+                  viewport={{ once: true }}
+                  className="pt-6"
+                >
+                  <button
+                    onClick={() => navigate('/auth')}
+                    className="inline-flex items-center gap-2 h-11 px-6 bg-foreground text-background rounded-full text-sm font-medium hover:opacity-90 transition-opacity"
+                  >
+                    <span className="w-1.5 h-1.5 rounded-full bg-[hsl(var(--landing-accent-yellow))]" />
+                    Découvrir la plateforme
+                  </button>
+                </motion.div>
+              </div>
+            </div>
           </div>
         </section>
 
-        {/* ===== RESULTS / STATS ===== */}
-        <section id="results" className="py-28 px-6">
+        {/* ===== VALUES ===== */}
+        <section className="py-24 px-6 bg-muted/40">
           <div className="max-w-6xl mx-auto">
             <motion.div
               initial={{ opacity: 0, y: 30 }}
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
-              className="text-center mb-20"
+              className="text-center mb-16"
             >
-              <span className="text-sm font-medium skalr-gradient-text uppercase tracking-widest mb-4 block">
-                Résultats
-              </span>
-              <h2 className="text-4xl md:text-5xl font-bold tracking-tight mb-5">
-                Des résultats concrets
+              <h2 className="font-editorial text-4xl sm:text-5xl tracking-tight text-foreground leading-[1.1]">
+                Conçu pour la clarté.<br />
+                <em className="italic">Pensé pour l'action.</em>
               </h2>
-              <p className="text-lg text-zinc-400 max-w-2xl mx-auto">
-                Les équipes qui utilisent Skalr transforment leur recrutement.
-              </p>
             </motion.div>
 
             <div className="grid md:grid-cols-3 gap-8">
-              {stats.map((stat, index) => (
+              {values.map((value, i) => (
                 <motion.div
-                  key={index}
-                  initial={{ opacity: 0, y: 30 }}
+                  key={i}
+                  initial={{ opacity: 0, y: 20 }}
                   whileInView={{ opacity: 1, y: 0 }}
                   viewport={{ once: true }}
-                  transition={{ delay: index * 0.15 }}
-                  className="text-center p-10 rounded-2xl bg-zinc-900/50 border border-zinc-800/50"
+                  transition={{ delay: i * 0.1 }}
+                  className="text-center"
                 >
-                  <AnimatedStat value={stat.value} />
-                  <p className="text-zinc-400 mt-4 text-lg">{stat.label}</p>
+                  <div className="w-10 h-10 rounded-full border border-border flex items-center justify-center mx-auto mb-5">
+                    <span className="text-xs font-mono text-muted-foreground">{String(i + 1).padStart(2, '0')}</span>
+                  </div>
+                  <h3 className="text-base font-semibold text-foreground mb-2">{value.title}</h3>
+                  <p className="text-sm text-muted-foreground leading-relaxed">{value.description}</p>
+                </motion.div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* ===== STATS ===== */}
+        <section id="résultats" className="py-24 px-6">
+          <div className="max-w-6xl mx-auto">
+            <motion.div
+              initial={{ opacity: 0, y: 30 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              className="text-center mb-16"
+            >
+              <h2 className="font-editorial text-4xl sm:text-5xl tracking-tight text-foreground">
+                Des résultats concrets
+              </h2>
+            </motion.div>
+
+            <div className="grid md:grid-cols-3 gap-6">
+              {stats.map((stat, i) => (
+                <motion.div
+                  key={i}
+                  initial={{ opacity: 0, y: 20 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true }}
+                  transition={{ delay: i * 0.12 }}
+                  className="text-center py-12 px-6 rounded-2xl border border-border bg-white"
+                >
+                  <span className="text-5xl md:text-6xl font-bold text-foreground tracking-tight block mb-3">
+                    {stat.value}
+                  </span>
+                  <p className="text-sm text-muted-foreground">{stat.label}</p>
                 </motion.div>
               ))}
             </div>
@@ -556,27 +346,25 @@ const SkalrLanding = () => {
         </section>
 
         {/* ===== TESTIMONIAL ===== */}
-        <section className="py-20 px-6 bg-zinc-900/50">
-          <div className="max-w-4xl mx-auto">
+        <section className="py-20 px-6 bg-muted/40">
+          <div className="max-w-3xl mx-auto">
             <motion.div
               initial={{ opacity: 0, y: 30 }}
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
               className="text-center"
             >
-              <div className="p-10 md:p-14 rounded-2xl border border-zinc-800/50 bg-zinc-900/30">
-                <p className="text-2xl md:text-3xl font-medium leading-relaxed mb-8 text-zinc-200">
-                  "Skalr a transformé notre façon de recruter. On contacte 3x plus de candidats qualifiés, 
-                  et notre taux de réponse a explosé grâce aux séquences IA."
-                </p>
-                <div className="flex items-center justify-center gap-4">
-                  <div className="w-12 h-12 rounded-full skalr-gradient-bg flex items-center justify-center text-white font-semibold">
-                    T
-                  </div>
-                  <div className="text-left">
-                    <div className="font-medium text-white">Head of Talent, Scale-up Tech</div>
-                    <div className="text-sm text-zinc-500">Équipe de 80 personnes</div>
-                  </div>
+              <blockquote className="font-editorial text-2xl sm:text-3xl md:text-4xl leading-[1.3] text-foreground mb-8">
+                "Skalr a transformé notre façon de recruter. On contacte 3× plus de candidats qualifiés, 
+                et notre taux de réponse a explosé."
+              </blockquote>
+              <div className="flex items-center justify-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-foreground flex items-center justify-center text-background text-sm font-semibold">
+                  T
+                </div>
+                <div className="text-left">
+                  <div className="text-sm font-medium text-foreground">Head of Talent, Scale-up Tech</div>
+                  <div className="text-xs text-muted-foreground">Équipe de 80 personnes</div>
                 </div>
               </div>
             </motion.div>
@@ -584,7 +372,7 @@ const SkalrLanding = () => {
         </section>
 
         {/* ===== FAQ ===== */}
-        <section className="py-28 px-6">
+        <section id="faq" className="py-24 px-6">
           <div className="max-w-2xl mx-auto">
             <motion.div
               initial={{ opacity: 0, y: 30 }}
@@ -592,44 +380,37 @@ const SkalrLanding = () => {
               viewport={{ once: true }}
               className="text-center mb-14"
             >
-              <h2 className="text-3xl md:text-4xl font-bold tracking-tight">
+              <h2 className="font-editorial text-3xl sm:text-4xl tracking-tight text-foreground">
                 Questions fréquentes
               </h2>
             </motion.div>
 
-            <div className="space-y-3">
-              {faqs.map((faq, index) => (
+            <div className="space-y-0">
+              {faqs.map((faq, i) => (
                 <motion.div
-                  key={index}
-                  initial={{ opacity: 0, y: 20 }}
+                  key={i}
+                  initial={{ opacity: 0, y: 15 }}
                   whileInView={{ opacity: 1, y: 0 }}
                   viewport={{ once: true }}
-                  transition={{ delay: index * 0.05 }}
-                  className="bg-zinc-900/50 rounded-xl border border-zinc-800/50 overflow-hidden"
+                  transition={{ delay: i * 0.05 }}
+                  className="border-b border-border"
                 >
                   <button
-                    onClick={() => setOpenFaq(openFaq === index ? null : index)}
-                    className="w-full p-5 flex items-center justify-between text-left hover:bg-zinc-800/30 transition-colors"
+                    onClick={() => setOpenFaq(openFaq === i ? null : i)}
+                    className="w-full py-5 flex items-center justify-between text-left group"
                   >
-                    <span className="font-medium pr-4 text-zinc-200">{faq.question}</span>
-                    <ChevronDown 
-                      className={`h-5 w-5 text-zinc-500 shrink-0 transition-transform duration-200 ${
-                        openFaq === index ? 'rotate-180' : ''
-                      }`} 
-                    />
+                    <span className="font-medium text-foreground group-hover:opacity-70 transition-opacity">{faq.question}</span>
+                    <ChevronDown className={`h-4 w-4 text-muted-foreground shrink-0 transition-transform duration-200 ${openFaq === i ? 'rotate-180' : ''}`} />
                   </button>
-                  
                   <AnimatePresence>
-                    {openFaq === index && (
+                    {openFaq === i && (
                       <motion.div
                         initial={{ height: 0 }}
                         animate={{ height: 'auto' }}
                         exit={{ height: 0 }}
                         className="overflow-hidden"
                       >
-                        <div className="px-5 pb-5 text-zinc-400 leading-relaxed">
-                          {faq.answer}
-                        </div>
+                        <p className="pb-5 text-sm text-muted-foreground leading-relaxed">{faq.answer}</p>
                       </motion.div>
                     )}
                   </AnimatePresence>
@@ -640,59 +421,50 @@ const SkalrLanding = () => {
         </section>
 
         {/* ===== CTA FINAL ===== */}
-        <section className="py-28 px-6 relative overflow-hidden">
-          {/* Background glow */}
-          <div className="absolute inset-0 flex items-center justify-center">
-            <div className="w-[600px] h-[600px] bg-gradient-to-r from-purple-500/10 via-pink-500/10 to-blue-500/10 rounded-full blur-3xl" />
-          </div>
-          
-          <div className="max-w-3xl mx-auto text-center relative z-10">
+        <section className="py-28 px-6 landing-sky-gradient">
+          <div className="max-w-3xl mx-auto text-center">
             <motion.div
               initial={{ opacity: 0, y: 30 }}
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
             >
-              <h2 className="text-4xl md:text-5xl lg:text-6xl font-bold tracking-tight mb-6">
+              <h2 className="font-editorial text-4xl sm:text-5xl md:text-6xl tracking-tight text-foreground mb-6 leading-[1.1]">
                 Vos prochains talents{' '}
-                <span className="skalr-gradient-text">vous attendent</span>
+                <em className="italic">vous attendent</em>
               </h2>
-              <p className="text-lg text-zinc-400 mb-10 max-w-xl mx-auto">
-                Rejoignez les équipes qui recrutent mieux, plus vite et à moindre coût avec Skalr.
+              <p className="text-lg text-muted-foreground mb-10 max-w-xl mx-auto">
+                Rejoignez les équipes qui recrutent mieux, plus vite et à moindre coût.
               </p>
-              <div className="flex flex-wrap justify-center gap-4">
-                <Button 
-                  size="lg"
+              <div className="flex flex-wrap justify-center gap-3">
+                <button
                   onClick={() => navigate('/auth')}
-                  className="rounded-full skalr-gradient-bg text-white hover:opacity-90 font-medium px-10 h-14 text-lg border-0"
+                  className="inline-flex items-center gap-2 h-13 px-8 bg-foreground text-background rounded-full text-base font-medium hover:opacity-90 transition-opacity"
                 >
+                  <span className="w-1.5 h-1.5 rounded-full bg-[hsl(var(--landing-accent-yellow))]" />
                   Commencer gratuitement
-                  <ArrowRight className="ml-2 h-5 w-5" />
-                </Button>
-                <Button 
-                  size="lg"
-                  variant="outline"
+                  <ArrowRight className="h-4 w-4 ml-1" />
+                </button>
+                <button
                   onClick={() => setShowCalendly(true)}
-                  className="rounded-full border-zinc-600 text-white hover:bg-white/10 font-medium px-8 h-14 text-lg"
+                  className="inline-flex items-center gap-2 h-13 px-8 border border-foreground text-foreground rounded-full text-base font-medium hover:bg-foreground hover:text-background transition-colors"
                 >
                   Réserver une démo
-                </Button>
+                </button>
               </div>
             </motion.div>
           </div>
         </section>
 
         {/* ===== FOOTER ===== */}
-        <footer className="py-10 px-6 border-t border-zinc-800">
+        <footer className="py-10 px-6 border-t border-border">
           <div className="max-w-6xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
-            <span className="text-lg font-semibold text-white">
-              skalr<span className="text-zinc-600">.</span>
-            </span>
-            <div className="flex items-center gap-6 text-sm text-zinc-500">
-              <a href="#" className="hover:text-zinc-300 transition-colors">Mentions légales</a>
-              <a href="#" className="hover:text-zinc-300 transition-colors">Confidentialité</a>
-              <button onClick={() => setShowContact(true)} className="hover:text-zinc-300 transition-colors">Contact</button>
+            <span className="text-lg font-bold tracking-tight text-foreground font-editorial italic">Skalr</span>
+            <div className="flex items-center gap-6 text-sm text-muted-foreground">
+              <a href="#" className="hover:text-foreground transition-colors">Mentions légales</a>
+              <a href="#" className="hover:text-foreground transition-colors">Confidentialité</a>
+              <button onClick={() => setShowContact(true)} className="hover:text-foreground transition-colors">Contact</button>
             </div>
-            <span className="text-sm text-zinc-500">© 2025 Skalr</span>
+            <span className="text-sm text-muted-foreground">© 2025 Skalr</span>
           </div>
         </footer>
 
@@ -703,7 +475,7 @@ const SkalrLanding = () => {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+              className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm"
               onClick={() => setShowCalendly(false)}
             >
               <motion.div
@@ -715,111 +487,69 @@ const SkalrLanding = () => {
               >
                 <button
                   onClick={() => setShowCalendly(false)}
-                  className="absolute top-4 right-4 z-10 w-10 h-10 rounded-full bg-zinc-100 hover:bg-zinc-200 flex items-center justify-center transition-colors"
+                  className="absolute top-4 right-4 z-10 w-10 h-10 rounded-full bg-muted hover:bg-muted/80 flex items-center justify-center transition-colors"
                 >
-                  <X className="h-5 w-5 text-zinc-600" />
+                  <X className="h-5 w-5 text-foreground" />
                 </button>
-                
-                <iframe
-                  src={CALENDLY_URL}
-                  className="w-full h-full border-0"
-                  title="Réserver une démo"
-                />
+                <iframe src={CALENDLY_URL} className="w-full h-full border-0" title="Réserver une démo" />
               </motion.div>
             </motion.div>
           )}
         </AnimatePresence>
 
-        {/* ===== CONTACT FORM MODAL ===== */}
+        {/* ===== CONTACT MODAL ===== */}
         <AnimatePresence>
           {showContact && (
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+              className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm"
               onClick={() => setShowContact(false)}
             >
               <motion.div
                 initial={{ opacity: 0, scale: 0.95, y: 20 }}
                 animate={{ opacity: 1, scale: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.95, y: 20 }}
-                className="relative w-full max-w-lg bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden shadow-2xl p-8"
+                className="relative w-full max-w-lg bg-white border border-border rounded-2xl overflow-hidden shadow-2xl p-8"
                 onClick={(e) => e.stopPropagation()}
               >
                 <button
                   onClick={() => setShowContact(false)}
-                  className="absolute top-4 right-4 w-10 h-10 rounded-full bg-zinc-800 hover:bg-zinc-700 flex items-center justify-center transition-colors"
+                  className="absolute top-4 right-4 w-10 h-10 rounded-full bg-muted hover:bg-muted/80 flex items-center justify-center transition-colors"
                 >
-                  <X className="h-5 w-5 text-zinc-400" />
+                  <X className="h-5 w-5 text-foreground" />
                 </button>
 
-                <h3 className="text-2xl font-semibold text-white mb-2">Nous contacter</h3>
-                <p className="text-zinc-400 mb-6">Laissez-nous un message, nous revenons vers vous rapidement.</p>
+                <h3 className="text-xl font-semibold text-foreground mb-1">Nous contacter</h3>
+                <p className="text-sm text-muted-foreground mb-6">Laissez-nous un message, nous revenons vers vous rapidement.</p>
 
                 <form onSubmit={handleContactSubmit} className="space-y-4">
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-sm font-medium text-zinc-300 mb-1">Nom *</label>
-                      <Input
-                        value={contactForm.name}
-                        onChange={(e) => setContactForm({ ...contactForm, name: e.target.value })}
-                        placeholder="Votre nom"
-                        className="rounded-lg bg-zinc-800 border-zinc-700 text-white placeholder:text-zinc-500"
-                        required
-                      />
+                      <label className="block text-sm font-medium text-foreground mb-1">Nom *</label>
+                      <Input value={contactForm.name} onChange={(e) => setContactForm({ ...contactForm, name: e.target.value })} placeholder="Votre nom" required />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-zinc-300 mb-1">Email *</label>
-                      <Input
-                        type="email"
-                        value={contactForm.email}
-                        onChange={(e) => setContactForm({ ...contactForm, email: e.target.value })}
-                        placeholder="vous@entreprise.com"
-                        className="rounded-lg bg-zinc-800 border-zinc-700 text-white placeholder:text-zinc-500"
-                        required
-                      />
+                      <label className="block text-sm font-medium text-foreground mb-1">Email *</label>
+                      <Input type="email" value={contactForm.email} onChange={(e) => setContactForm({ ...contactForm, email: e.target.value })} placeholder="vous@entreprise.com" required />
                     </div>
                   </div>
-                  
                   <div>
-                    <label className="block text-sm font-medium text-zinc-300 mb-1">Entreprise</label>
-                    <Input
-                      value={contactForm.company}
-                      onChange={(e) => setContactForm({ ...contactForm, company: e.target.value })}
-                      placeholder="Nom de votre entreprise"
-                      className="rounded-lg bg-zinc-800 border-zinc-700 text-white placeholder:text-zinc-500"
-                    />
+                    <label className="block text-sm font-medium text-foreground mb-1">Entreprise</label>
+                    <Input value={contactForm.company} onChange={(e) => setContactForm({ ...contactForm, company: e.target.value })} placeholder="Nom de votre entreprise" />
                   </div>
-                  
                   <div>
-                    <label className="block text-sm font-medium text-zinc-300 mb-1">Message *</label>
-                    <Textarea
-                      value={contactForm.message}
-                      onChange={(e) => setContactForm({ ...contactForm, message: e.target.value })}
-                      placeholder="Comment pouvons-nous vous aider ?"
-                      className="rounded-lg min-h-[120px] bg-zinc-800 border-zinc-700 text-white placeholder:text-zinc-500"
-                      required
-                    />
+                    <label className="block text-sm font-medium text-foreground mb-1">Message *</label>
+                    <Textarea value={contactForm.message} onChange={(e) => setContactForm({ ...contactForm, message: e.target.value })} placeholder="Comment pouvons-nous vous aider ?" className="min-h-[120px]" required />
                   </div>
-
-                  <Button
+                  <button
                     type="submit"
                     disabled={isSubmitting}
-                    className="w-full rounded-full skalr-gradient-bg text-white hover:opacity-90 h-12 font-medium border-0"
+                    className="w-full inline-flex items-center justify-center gap-2 h-12 bg-foreground text-background rounded-full text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-50"
                   >
-                    {isSubmitting ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Envoi en cours...
-                      </>
-                    ) : (
-                      <>
-                        Envoyer le message
-                        <ArrowRight className="ml-2 h-4 w-4" />
-                      </>
-                    )}
-                  </Button>
+                    {isSubmitting ? <><Loader2 className="h-4 w-4 animate-spin" /> Envoi...</> : <>Envoyer <ArrowRight className="h-4 w-4" /></>}
+                  </button>
                 </form>
               </motion.div>
             </motion.div>
