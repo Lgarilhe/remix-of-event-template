@@ -100,6 +100,7 @@ export function useProfileEnrichment(): UseProfileEnrichmentResult {
       });
 
       if (!response?.success) throw new Error(response?.error as string || 'Failed to fetch profile');
+      emitQuotaAction('profileVisits', 1, accountId);
 
       const profile = response.profile as Record<string, any>;
       

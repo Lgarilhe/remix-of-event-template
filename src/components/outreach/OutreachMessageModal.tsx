@@ -248,6 +248,13 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
 
       if (!data?.success) throw new Error(data?.error as string || 'Erreur lors de l\'envoi');
 
+      // Track quota
+      if (!isFirstDegree) {
+        emitQuotaAction('inmailsSent', 1, selectedAccount);
+      } else {
+        emitQuotaAction('messagesSent', 1, selectedAccount);
+      }
+
       setMessageSent(true);
       toast.success(isFirstDegree ? 'Message envoyé !' : 'InMail envoyé !');
       

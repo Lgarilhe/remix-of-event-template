@@ -105,6 +105,7 @@ export const CardMessageThread: React.FC<CardMessageThreadProps> = ({
       });
 
       if (!data?.success) throw new Error(data?.error as string || "Erreur lors de l'envoi");
+      emitQuotaAction('messagesSent', 1, accountId);
 
       const newMessage: ChatMessage = {
         id: (data.message as any)?.id || Date.now().toString(),

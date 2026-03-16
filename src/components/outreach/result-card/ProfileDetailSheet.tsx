@@ -179,6 +179,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
         });
         if (cancelled) return;
         if (response?.success && response.profile) {
+          emitQuotaAction('profileVisits', 1, accountId);
           const p = response.profile as Record<string, any>;
           setEnrichedProfile({
             ...profile,
