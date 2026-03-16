@@ -545,7 +545,7 @@ Deno.serve(async (req) => {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            "Authorization": `Bearer ${serviceKey}`,
+            "Authorization": authHeader!,
             "apikey": anonKey,
           },
           body: JSON.stringify({ organization_id: orgId }),
@@ -553,6 +553,8 @@ Deno.serve(async (req) => {
         const jobsData = await jobRes.json();
         if (jobsData?.success) {
           jobData = (jobsData.jobs || []).find((j: any) => j.id === jobId);
+        } else {
+          console.error("[run-agent-search] Failed to load job data:", jobsData);
         }
       } catch (e) {
         console.error("[run-agent-search] Failed to load job:", e);
