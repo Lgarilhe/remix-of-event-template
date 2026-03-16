@@ -162,24 +162,8 @@ export const AgentMessageBubble: React.FC<AgentMessageBubbleProps> = ({ message,
 function ThinkingCard({ thinking }: { thinking: string }) {
   const [expanded, setExpanded] = useState(false);
 
-  const stripMd = (t: string) => t
-    .replace(/\*{1,3}([^*]+)\*{1,3}/g, '$1')
-    .replace(/~~([^~]+)~~/g, '$1')
-    .replace(/`([^`]+)`/g, '$1')
-    .replace(/^#{1,6}\s+/gm, '')
-    .replace(/^[-*•]\s+/gm, '')
-    .replace(/^\d+\.\s+/gm, '')
-    .replace(/^>\s+/gm, '')
-    .trim();
-
-  const displayLines = thinking.split('\n')
-    .filter(l => isThinkingLineUseful(l))
-    .slice(0, 12)
-    .map(l => {
-      const cleaned = stripMd(l);
-      return cleaned.length > 120 ? cleaned.slice(0, 117) + '…' : cleaned;
-    })
-    .filter(Boolean);
+  const displayLines = filterThinkingLines(thinking, 12)
+    .map(l => l.length > 120 ? l.slice(0, 117) + '…' : l);
 
   if (displayLines.length === 0) return null;
 
