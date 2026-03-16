@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
-import { CheckCircle2, MapPin, Calendar, Target, Brain, ChevronDown, Search, BarChart3, Send, Activity } from 'lucide-react';
+import { MapPin, Calendar, Target, Brain, ChevronDown, Search, BarChart3, Send, Activity, Crosshair, Code, Building2, Briefcase, Globe, FileText, type LucideIcon } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { AgentMessage } from '@/hooks/useAgentChat';
 import { AnimatedOrb } from '@/components/ui/AnimatedOrb';
