@@ -167,7 +167,7 @@ export default function Outreach() {
                 <div className="flex items-center gap-2.5 sm:gap-3 mb-1">
                   <h1 className="text-xl sm:text-2xl font-bold text-foreground tracking-tight uppercase">Outreach</h1>
                 </div>
-                <p className="text-xs sm:text-sm text-muted-foreground hidden sm:block ml-[44px] sm:ml-[52px]">
+                <p className="text-xs sm:text-sm text-muted-foreground hidden sm:block">
                   Sourcing, séquences & suivi candidats
                 </p>
               </div>
