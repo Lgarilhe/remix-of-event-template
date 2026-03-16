@@ -971,9 +971,11 @@ ${workExpText}
 Évalue TOUTES ces dimensions :
 
 1. **Adéquation technique** (0-100) : Le candidat maîtrise-t-il les compétences requises ?
-   → Sois intelligent sur les synonymes : VMware=vSphere, K8s=Kubernetes, "admin Linux" implique bash/shell.
-   → Considère les skills IMPLICITES dans les descriptions d'expérience, pas seulement les skills déclarés.
-   → Un "Chef de projet infrastructure" chez un hébergeur a probablement des compétences datacenter.
+   → Synonymes : VMware=vSphere, K8s=Kubernetes, "admin Linux" implique bash/shell.
+   → Skills implicites : considère les skills TRÈS PROBABLES (>80% confiance) selon le contexte employeur+rôle.
+     Exemple OUI : "SRE chez OVH" → infra cloud, Linux, monitoring très probables.
+     Exemple NON : "Chef de projet infra chez BNP Paribas" → ne PAS supposer datacenter/cloud.
+   → En cas de doute sur un skill implicite, ne le compte PAS comme matché. Mentionne-le dans concerns.
    → Liste les skills effectivement matchés ET les skills critiques manquants.
 
 2. **Must-have** : Si des critères sont marqués must-have/obligatoires, le candidat les satisfait-il ?
