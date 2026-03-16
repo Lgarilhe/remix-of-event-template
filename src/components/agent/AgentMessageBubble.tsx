@@ -60,12 +60,14 @@ export const AgentMessageBubble: React.FC<AgentMessageBubbleProps> = ({ message,
 
   // ── Status message ──
   if (isStatus) {
+    const StatusIcon = /recherche/i.test(cleanContent) ? Search
+      : /scoring/i.test(cleanContent) ? BarChart3
+      : /envoi/i.test(cleanContent) ? Send
+      : Activity;
+
     return (
       <div className="flex items-center gap-2.5 px-3 py-2 border border-foreground/8 bg-muted/20 text-xs animate-fade-in">
-        <span className="relative flex h-1.5 w-1.5">
-          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-brutal-accent/50" />
-          <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-brutal-accent" />
-        </span>
+        <StatusIcon className="w-3.5 h-3.5 text-brutal-accent shrink-0" />
         <span className="text-muted-foreground font-medium">{cleanContent}</span>
       </div>
     );
