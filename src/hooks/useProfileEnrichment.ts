@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { invokeUnipile } from '@/lib/invokeUnipile';
+import { emitQuotaAction } from '@/lib/quotaEvents';
 
 export interface EnrichedProfile {
   name: string;
