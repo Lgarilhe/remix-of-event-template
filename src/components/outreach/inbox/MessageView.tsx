@@ -108,6 +108,8 @@ export const MessageView: React.FC<MessageViewProps> = ({
   const currentTone = onToneChange ? selectedTone : localTone;
   const handleToneChange = onToneChange || setLocalTone;
   const [aiPanelOpen, setAiPanelOpen] = useState(false);
+  const [reactingMsgId, setReactingMsgId] = useState<string | null>(null);
+  const [deleteMsgConfirm, setDeleteMsgConfirm] = useState<string | null>(null);
   const localContainerRef = useRef<HTMLDivElement>(null);
 
   // Scroll to bottom when messages load or change
