@@ -119,19 +119,12 @@ export const AgentMessageBubble: React.FC<AgentMessageBubbleProps> = ({ message,
       {/* Summary card */}
       {summary && <SummaryCard items={summary.items} tags={summary.tags} />}
 
-      {/* Calibration step tag */}
+      {/* Calibration step card */}
       {stepCurrent != null && stepTotal != null && stepLabel && (
-        <div className="flex items-center gap-2 mb-2">
-          <span className="inline-flex items-center gap-1 bg-foreground text-background px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.12em]">
-            {stepCurrent}/{stepTotal}
-          </span>
-          <span className="text-xs font-bold uppercase tracking-wider text-foreground">
-            {stepLabel}
-          </span>
-        </div>
+        <StepCard current={stepCurrent} total={stepTotal} title={stepLabel} question={displayContent || ''} />
       )}
 
-      {displayContent && (
+      {displayContent && !stepCurrent && (
         <div className="text-sm leading-relaxed">
           <div className="prose prose-sm max-w-none [&_p]:my-1.5 [&_ul]:my-2 [&_ol]:my-2 [&_li]:my-0.5 [&_h1]:text-base [&_h2]:text-sm [&_h3]:text-sm [&_h1]:font-bold [&_h2]:font-bold [&_h3]:font-semibold [&_h1]:mt-3 [&_h1]:mb-1.5 [&_h2]:mt-3 [&_h2]:mb-1.5 [&_h3]:mt-2 [&_h3]:mb-1 [&_hr]:my-3 [&_code]:text-xs [&_code]:bg-muted [&_code]:px-1.5 [&_code]:py-0.5 [&_li]:marker:text-foreground/50 text-sm text-foreground/80 [&_strong]:text-foreground">
             <ReactMarkdown>{displayContent}</ReactMarkdown>
@@ -223,6 +216,45 @@ function ThinkingCard({ thinking }: { thinking: string }) {
           </motion.div>
         )}
       </AnimatePresence>
+    </div>
+  );
+}
+
+// ── Step Card ──
+function StepCard({ current, total, title, question }: {
+  current: number; total: number; title: string; question: string;
+}) {
+  return (
+    <div className="border border-foreground/10 p-4 mb-2">
+      <div className="flex items-center gap-3 mb-3">
+        <div className="w-7 h-7 flex items-center justify-center text-xs font-semibold text-white shrink-0 skalr-gradient-bg">
+          {current}
+        </div>
+        <div>
+          <p className="text-[10px] font-medium uppercase tracking-[0.1em] text-muted-foreground">
+            Étape {current} sur {total}
+          </p>
+          <p className="text-sm font-semibold text-foreground">{title}</p>
+        </div>
+      </div>
+      {question && (
+        <p className="text-sm text-foreground/70 leading-relaxed">{question}</p>
+      )}
+      <div className="flex gap-1 mt-3">
+        {Array.from({ length: total }).map((_, i) => (
+          <div
+            key={i}
+            className={cn(
+              "h-[3px] flex-1",
+              i < current - 1
+                ? "bg-foreground/25"
+                : i === current - 1
+                  ? "skalr-gradient-bg"
+                  : "bg-foreground/8"
+            )}
+          />
+        ))}
+      </div>
     </div>
   );
 }
