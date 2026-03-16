@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { Brain, ChevronDown, Search, BarChart3, Send, Activity } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
