@@ -1,24 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Sparkles, Check, FileSearch, Filter, Search, BarChart3, type LucideIcon } from 'lucide-react';
-import { ThinkingStep } from '@/hooks/useAgentChat';
+import { ThinkingPhase } from '@/hooks/useAgentChat';
 import { cn } from '@/lib/utils';
-import { filterThinkingLines } from './filterThinking';
 
 interface AgentThinkingDisplayProps {
-  steps: ThinkingStep[];
+  steps: ThinkingPhase[];
   isThinking: boolean;
   thinkingContent: string;
-}
-
-const stepIconMap: Array<{ test: RegExp; icon: LucideIcon }> = [
-  { test: /analyse|fiche/i, icon: FileSearch },
-  { test: /filtre|linkedin/i, icon: Filter },
-  { test: /recherche|profil/i, icon: Search },
-  { test: /score|évaluation/i, icon: BarChart3 },
-];
-
-function getStepIcon(label: string): LucideIcon {
-  return stepIconMap.find(m => m.test.test(label))?.icon ?? Sparkles;
 }
 
 export const AgentThinkingDisplay: React.FC<AgentThinkingDisplayProps> = ({
@@ -39,8 +26,8 @@ export const AgentThinkingDisplay: React.FC<AgentThinkingDisplayProps> = ({
 
   if (steps.length === 0 && !isThinking) return null;
 
-  const activeStep = steps.find(s => s.status === 'active');
   const doneCount = steps.filter(s => s.status === 'done').length;
+  const totalTriggered = steps.filter(s => s.status !== 'pending').length;
 
   // Collapsed summary line
   if (collapsed && !isThinking) {
@@ -48,11 +35,11 @@ export const AgentThinkingDisplay: React.FC<AgentThinkingDisplayProps> = ({
       <div className="animate-fade-in">
         <button
           onClick={() => setCollapsed(false)}
-          className="w-full border border-brutal-accent/20 px-3.5 py-2.5 flex items-center gap-2 hover:bg-brutal-accent/5 transition-colors text-left"
+          className="w-full border border-foreground/10 px-3.5 py-2.5 flex items-center gap-2.5 hover:bg-muted/30 transition-colors text-left"
         >
-          <span className="text-xs">✅</span>
+          <PhaseCircle status="done" />
           <span className="text-xs text-muted-foreground">
-            Réflexion terminée — {doneCount} étape{doneCount > 1 ? 's' : ''}
+            Réflexion terminée — {totalTriggered} phase{totalTriggered > 1 ? 's' : ''}
           </span>
         </button>
       </div>
@@ -63,23 +50,23 @@ export const AgentThinkingDisplay: React.FC<AgentThinkingDisplayProps> = ({
     <div className="animate-fade-in">
       <div
         className={cn(
-          "border border-brutal-accent/20 overflow-hidden transition-shadow duration-300",
-          isThinking && "shadow-[0_0_20px_-4px_hsl(var(--brutal-accent)/0.25)]"
+          "border border-foreground/10 overflow-hidden transition-shadow duration-300",
+          isThinking && "shadow-[0_0_20px_-4px_hsl(var(--brutal-accent)/0.2)]"
         )}
       >
         {/* Header */}
         <div className="flex items-center gap-2.5 px-3.5 py-3">
           {isThinking ? (
-            <Sparkles className="w-3.5 h-3.5 text-brutal-accent animate-pulse shrink-0" />
+            <PhaseCircle status="active" />
           ) : (
-            <Check className="w-3.5 h-3.5 text-brutal-accent shrink-0" />
+            <PhaseCircle status="done" />
           )}
           <span className={cn(
             "text-xs font-semibold flex-1 min-w-0 truncate uppercase tracking-wider",
             isThinking ? "text-foreground" : "text-muted-foreground"
           )}>
             {isThinking
-              ? (activeStep?.label || 'Réflexion en cours…')
+              ? (steps.find(s => s.status === 'active')?.label || 'Réflexion en cours…')
               : 'Réflexion terminée'
             }
           </span>
@@ -103,60 +90,62 @@ export const AgentThinkingDisplay: React.FC<AgentThinkingDisplayProps> = ({
           </div>
         )}
 
-        {/* Steps list */}
+        {/* Phase list */}
         {steps.length > 0 && (
-          <div className="border-t border-brutal-accent/10 px-3.5 py-3 space-y-1 max-h-[calc(6*32px)] overflow-y-auto scrollbar-hide">
-            {steps.map((step, i) => {
-              const StepIcon = getStepIcon(step.label);
-              return (
-                <div
-                  key={i}
-                  className={cn(
-                    "flex items-center gap-2.5 py-1 px-2 transition-colors animate-fade-in",
-                    step.status === 'active' && "bg-brutal-accent/5"
-                  )}
-                  style={{ animationDelay: `${i * 80}ms`, animationFillMode: 'backwards' }}
-                >
-                  {step.status === 'done' ? (
-                    <Check className="w-3 h-3 shrink-0" style={{ color: 'hsl(142 71% 45%)' }} />
-                  ) : step.status === 'active' ? (
-                    <StepIcon className="w-3 h-3 text-brutal-accent shrink-0 animate-pulse" />
-                  ) : (
-                    <StepIcon className="w-3 h-3 text-muted-foreground/30 shrink-0" />
-                  )}
-                  <span className={cn(
-                    "text-[11px] leading-relaxed font-mono",
-                    step.status === 'active'
-                      ? "text-foreground font-medium"
-                      : step.status === 'done'
-                        ? "text-foreground/70 line-through decoration-foreground/20"
-                        : "text-muted-foreground/40"
-                  )}>
-                    {step.label}
-                  </span>
-                </div>
-              );
-            })}
+          <div className="border-t border-foreground/8 px-3.5 py-3 space-y-1">
+            {steps.map((phase, i) => (
+              <div
+                key={phase.id}
+                className={cn(
+                  "flex items-center gap-2.5 py-1.5 px-2 transition-colors animate-fade-in",
+                  phase.status === 'active' && "bg-brutal-accent/5"
+                )}
+                style={{ animationDelay: `${i * 60}ms`, animationFillMode: 'backwards' }}
+              >
+                <PhaseCircle status={phase.status} />
+                <span className={cn(
+                  "text-[11px] leading-relaxed",
+                  phase.status === 'active'
+                    ? "text-foreground font-medium"
+                    : phase.status === 'done'
+                      ? "text-foreground/70 line-through decoration-foreground/20"
+                      : "text-muted-foreground/40"
+                )}>
+                  {phase.label}
+                </span>
+              </div>
+            ))}
           </div>
         )}
-
-        {/* Streaming thinking — filtered via shared utility */}
-        {thinkingContent && (() => {
-          const display = filterThinkingLines(thinkingContent, 3);
-          if (display.length === 0) return null;
-
-          return (
-            <div className="border-t border-brutal-accent/10 px-3.5 py-2.5">
-              {display.map((line, i) => (
-                <p key={i} className="text-[11px] text-muted-foreground/40 leading-relaxed truncate">
-                  {line}
-                </p>
-              ))}
-              <span className="inline-block w-[2px] h-3 bg-brutal-accent/40 animate-pulse align-middle mt-0.5" />
-            </div>
-          );
-        })()}
       </div>
     </div>
   );
 };
+
+// ── Animated circle indicator ──
+function PhaseCircle({ status }: { status: 'pending' | 'active' | 'done' }) {
+  if (status === 'done') {
+    return (
+      <span className="relative flex h-3.5 w-3.5 shrink-0 items-center justify-center">
+        <span className="h-2.5 w-2.5 rounded-full" style={{ background: 'hsl(142 71% 45%)' }} />
+      </span>
+    );
+  }
+
+  if (status === 'active') {
+    return (
+      <span className="relative flex h-3.5 w-3.5 shrink-0 items-center justify-center">
+        <span className="absolute h-3.5 w-3.5 rounded-full border-2 border-brutal-accent/30" />
+        <span className="absolute h-3.5 w-3.5 rounded-full border-2 border-transparent border-t-brutal-accent animate-spin" />
+        <span className="h-1.5 w-1.5 rounded-full bg-brutal-accent/60" />
+      </span>
+    );
+  }
+
+  // pending
+  return (
+    <span className="relative flex h-3.5 w-3.5 shrink-0 items-center justify-center">
+      <span className="h-2.5 w-2.5 rounded-full border border-foreground/15" />
+    </span>
+  );
+}

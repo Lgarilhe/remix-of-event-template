@@ -3,7 +3,7 @@ import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { useOrganization } from './useOrganization';
 import { Job } from '@/types/jobs';
-import { isThinkingLineUseful } from '@/components/agent/filterThinking';
+// filterThinking utilities used by display components directly
 
 export interface AgentMessage {
   id: string;
