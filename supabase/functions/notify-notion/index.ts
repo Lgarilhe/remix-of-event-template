@@ -98,15 +98,36 @@ const handler = async (req: Request): Promise<Response> => {
   }
 
   try {
-    if (!NOTION_API_KEY) {
-      throw new Error("NOTION_API_KEY is not configured");
+    const body = await req.json();
+    const { name, email, company, message, organization_id }: ContactSubmission & { organization_id?: string } = body;
+
+    // Resolve Notion credentials from organization_integrations
+    if (!organization_id) {
+      return new Response(
+        JSON.stringify({ error: "organization_id est requis" }),
+        { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } }
+      );
     }
 
-    if (!NOTION_DATABASE_ID) {
-      throw new Error("NOTION_LEADS_DB_ID is not configured");
+    const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+    const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
+    const { data: integrationData } = await supabase
+      .from('organization_integrations')
+      .select('notion_api_key, notion_leads_db_id, notion_connected')
+      .eq('organization_id', organization_id)
+      .single();
+
+    if (!integrationData?.notion_connected || !integrationData.notion_api_key || !integrationData.notion_leads_db_id) {
+      return new Response(
+        JSON.stringify({ error: "Intégration Notion non configurée pour votre organisation. Rendez-vous dans Settings > Intégrations." }),
+        { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } }
+      );
     }
 
-    const { name, email, company, message }: ContactSubmission = await req.json();
+    NOTION_API_KEY = integrationData.notion_api_key;
+    NOTION_DATABASE_ID = integrationData.notion_leads_db_id;
 
     if (!name || !email || !message) {
       return new Response(
