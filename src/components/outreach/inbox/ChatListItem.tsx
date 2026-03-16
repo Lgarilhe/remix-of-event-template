@@ -57,15 +57,27 @@ export const ChatListItem: React.FC<ChatListItemProps> = ({
   isDeletingChat,
 }) => {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const { getPicture, fetchPicture } = useAttendeePicturesContext();
   const displayName = getChatDisplayName(chat);
   const headline = getChatHeadline(chat);
   const subject = getChatSubject(chat);
-  const avatar = getChatAvatar(chat);
+  const staticAvatar = getChatAvatar(chat);
   const unread = hasUnread(chat);
   const unreadCount = getUnreadCount(chat);
   const statusInfo = getChatStatusInfo(chat, enrollmentsMap);
   const sourceType = getMessageSourceType(chat);
   const categoryInfo = category ? CHAT_CATEGORIES[category] : null;
+
+  const attendeeId = chat.attendees?.[0]?.id;
+  const cachedPicture = attendeeId ? getPicture(attendeeId) : null;
+  const avatar = staticAvatar || cachedPicture || undefined;
+
+  // Lazy-fetch picture if not available
+  useEffect(() => {
+    if (!staticAvatar && attendeeId && !getPicture(attendeeId)) {
+      fetchPicture(attendeeId);
+    }
+  }, [attendeeId, staticAvatar, fetchPicture, getPicture]);
 
   return (
     <div className="relative group overflow-hidden">
