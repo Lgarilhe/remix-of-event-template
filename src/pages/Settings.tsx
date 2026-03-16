@@ -146,8 +146,8 @@ const Settings = () => {
             {activeTab === 'general' && (
               <Card>
                 <CardHeader>
-                  <CardTitle className="flex items-center gap-2 text-lg">
-                    <Building2 className="w-5 h-5" />
+                  <CardTitle className="flex items-center gap-2 text-sm font-bold uppercase tracking-wider">
+                    <Building2 className="w-4 h-4" />
                     Organisation
                   </CardTitle>
                 </CardHeader>
