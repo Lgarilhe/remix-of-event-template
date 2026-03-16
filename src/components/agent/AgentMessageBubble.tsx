@@ -94,43 +94,51 @@ export const AgentMessageBubble: React.FC<AgentMessageBubbleProps> = ({ message,
   }
 
   // ── Assistant message ──
-  const { candidates, contentWithout: afterCandidates } = !isUser && !isStatus
-    ? extractCandidates(cleanContent)
-    : { candidates: [], contentWithout: cleanContent };
+  const { candidates, contentWithout: afterCandidates } = extractCandidates(cleanContent);
 
-  const { summary, remaining: finalContent } = extractSummary(afterCandidates);
+  // Extract summary card if present
+  const { summary, remaining: afterSummary } = extractSummary(afterCandidates);
 
-  // Detect calibration step pattern: "➡️ 3/5 — Expérience" or "✅ 2/5 — Compétences**" etc.
-  const stepMatch = finalContent.match(/^[^\w]*(\d+)\/(\d+)\s*[—–\-]\s*(.+?)[\n\r]/);
+  // Detect calibration step
+  const stepMatch = afterSummary.match(/^[^\w]*(\d+)\/(\d+)\s*[—–\-]\s*(.+?)[\n\r]/);
   const stepCurrent = stepMatch ? parseInt(stepMatch[1]) : null;
   const stepTotal = stepMatch ? parseInt(stepMatch[2]) : null;
   const stepLabel = stepMatch ? stepMatch[3].trim().replace(/\*+/g, '') : null;
   const contentAfterStep = stepMatch
-    ? finalContent.slice(finalContent.indexOf('\n', stepMatch.index || 0) + 1).trim()
-    : finalContent;
+    ? afterSummary.slice(afterSummary.indexOf('\n', stepMatch.index || 0) + 1).trim()
+    : afterSummary;
 
-  const displayContent = stepCurrent != null ? contentAfterStep : finalContent;
+  const displayContent = stepCurrent != null ? contentAfterStep : afterSummary;
 
   return (
     <div className="animate-fade-in space-y-0">
-      {/* Thinking card */}
       {thinking && <ThinkingCard thinking={thinking} />}
 
-      {/* Summary card */}
       {summary && <SummaryCard items={summary.items} tags={summary.tags} />}
 
-      {/* Calibration step card */}
       {stepCurrent != null && stepTotal != null && stepLabel && (
-        <StepCard current={stepCurrent} total={stepTotal} title={stepLabel} question={displayContent || ''} />
+        <StepCard
+          current={stepCurrent}
+          total={stepTotal}
+          title={stepLabel}
+          question={displayContent.split('\n\n')[0] || ''}
+        />
       )}
 
-      {displayContent && !stepCurrent && (
-        <div className="text-sm leading-relaxed">
-          <div className="prose prose-sm max-w-none [&_p]:my-1.5 [&_ul]:my-2 [&_ol]:my-2 [&_li]:my-0.5 [&_h1]:text-base [&_h2]:text-sm [&_h3]:text-sm [&_h1]:font-bold [&_h2]:font-bold [&_h3]:font-semibold [&_h1]:mt-3 [&_h1]:mb-1.5 [&_h2]:mt-3 [&_h2]:mb-1.5 [&_h3]:mt-2 [&_h3]:mb-1 [&_hr]:my-3 [&_code]:text-xs [&_code]:bg-muted [&_code]:px-1.5 [&_code]:py-0.5 [&_li]:marker:text-foreground/50 text-sm text-foreground/80 [&_strong]:text-foreground">
-            <ReactMarkdown>{displayContent}</ReactMarkdown>
+      {/* Remaining content after step question — or full content if no step */}
+      {(() => {
+        const remaining = stepCurrent != null
+          ? displayContent.split('\n\n').slice(1).join('\n\n').trim()
+          : displayContent;
+        if (!remaining) return null;
+        return (
+          <div className="text-sm leading-relaxed">
+            <div className="prose prose-sm max-w-none [&_p]:my-1.5 [&_ul]:my-2 [&_ol]:my-2 [&_li]:my-0.5 [&_h1]:text-base [&_h2]:text-sm [&_h3]:text-sm [&_h1]:font-bold [&_h2]:font-bold [&_h3]:font-semibold [&_h1]:mt-3 [&_h1]:mb-1.5 [&_h2]:mt-3 [&_h2]:mb-1.5 [&_h3]:mt-2 [&_h3]:mb-1 [&_hr]:my-3 [&_code]:text-xs [&_code]:bg-muted [&_code]:px-1.5 [&_code]:py-0.5 [&_li]:marker:text-foreground/50 text-sm text-foreground/80 [&_strong]:text-foreground">
+              <ReactMarkdown>{remaining}</ReactMarkdown>
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {candidates.length > 0 && (
         <div className="space-y-1.5 mt-2">
