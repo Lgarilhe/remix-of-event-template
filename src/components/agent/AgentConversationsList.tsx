@@ -57,7 +57,7 @@ export const AgentConversationsList: React.FC<Props> = ({ onSelect, listConversa
   return (
     <div className="flex-1 overflow-y-auto scrollbar-hide">
       <div className="px-4 pt-4 pb-2">
-        <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-muted-foreground">
+        <p className="text-xs font-display font-black uppercase tracking-[0.15em] text-muted-foreground">
           Conversations récentes
         </p>
       </div>
@@ -69,7 +69,11 @@ export const AgentConversationsList: React.FC<Props> = ({ onSelect, listConversa
             <button
               key={conv.id}
               onClick={() => onSelect(conv)}
-              className="w-full text-left px-3 py-2.5 transition-colors group flex items-center gap-3 border border-foreground/10 hover:border-foreground/30 hover:bg-muted/50"
+              className={cn(
+                "w-full text-left px-3 py-2.5 transition-colors group flex items-center gap-3 border border-foreground/10 hover:border-foreground/30 hover:bg-muted/50",
+                conv.status === 'running' && "border-l-2 border-l-brutal-accent",
+                conv.status === 'completed' && "border-l-2 border-l-green-500/50"
+              )}
             >
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium truncate text-foreground/80 group-hover:text-foreground transition-colors">
@@ -99,7 +103,7 @@ export const AgentConversationsList: React.FC<Props> = ({ onSelect, listConversa
                   )}
                   <span className="text-foreground/10">·</span>
                   <span className="text-[10px] text-muted-foreground">
-                    {formatDistanceToNow(parseISO(conv.updated_at), { addSuffix: true, locale: fr })}
+                    il y a {formatDistanceToNow(parseISO(conv.updated_at), { locale: fr })}
                   </span>
                 </div>
               </div>
