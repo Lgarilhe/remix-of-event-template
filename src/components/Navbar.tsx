@@ -6,6 +6,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { User } from '@supabase/supabase-js';
 import { AuthSheet } from './AuthSheet';
 import { NotificationDropdown } from './NotificationDropdown';
+import { useUnreadMessageNotifications } from '@/hooks/useUnreadMessageNotifications';
 
 
 type FaceState = 'idle' | 'wink' | 'surprise' | 'happy' | 'look-left' | 'look-right';
