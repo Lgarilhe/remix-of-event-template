@@ -201,25 +201,24 @@ export const JobSelector: React.FC<JobSelectorProps> = ({ selectedJob, onJobChan
   // Show skeleton while loading
   if (loading) {
     return (
-      <div className="bg-brutal-accent/10 border border-brutal-accent p-3 space-y-2">
+      <div className="border border-foreground bg-background p-3 space-y-2">
         <div className="flex items-center gap-2">
-          <Target className="w-4 h-4 text-brutal-accent" />
-          <span className="text-xs font-medium text-foreground uppercase tracking-wide">Scoring Job</span>
+          <span className="text-sm">🎯</span>
+          <span className="text-[11px] font-bold text-foreground uppercase tracking-widest">Scoring Job</span>
         </div>
-        <Skeleton className="h-10 w-full" />
+        <Skeleton className="h-9 w-full" />
       </div>
     );
   }
 
   return (
-    <div className="bg-brutal-accent/10 border border-brutal-accent p-3 space-y-2">
+    <div className="border border-foreground bg-background p-3 space-y-2">
       <div className="flex items-center gap-2">
-        <Target className="w-4 h-4 text-brutal-accent" />
-        <label className="text-xs font-medium text-foreground uppercase tracking-wide">
+        <span className="text-sm">🎯</span>
+        <label className="text-[11px] font-bold text-foreground uppercase tracking-widest">
           Scoring Job
         </label>
         <div className="ml-auto flex items-center gap-1">
-          {/* Sync from Notion button */}
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
@@ -228,9 +227,9 @@ export const JobSelector: React.FC<JobSelectorProps> = ({ selectedJob, onJobChan
                   size="sm"
                   onClick={refreshJobs}
                   disabled={isRefreshing}
-                  className="h-6 px-2 text-muted-foreground hover:text-foreground hover:bg-muted"
+                  className="h-6 w-6 p-0 text-muted-foreground hover:text-foreground"
                 >
-                  <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin' : ''}`} />
+                  <RefreshCw className={cn('w-3.5 h-3.5', isRefreshing && 'animate-spin')} />
                 </Button>
               </TooltipTrigger>
               <TooltipContent side="bottom">
@@ -243,7 +242,7 @@ export const JobSelector: React.FC<JobSelectorProps> = ({ selectedJob, onJobChan
               variant="ghost"
               size="sm"
               onClick={() => onJobChange(null)}
-              className="h-5 w-5 p-0 text-muted-foreground hover:text-foreground hover:bg-muted"
+              className="h-6 w-6 p-0 text-muted-foreground hover:text-foreground"
             >
               <X className="w-3 h-3" />
             </Button>
@@ -255,12 +254,12 @@ export const JobSelector: React.FC<JobSelectorProps> = ({ selectedJob, onJobChan
         <select
           value={selectedJob?.id || 'none'}
           onChange={(e) => handleChange(e.target.value)}
-          className="flex h-10 w-full items-center border border-foreground/30 bg-background px-3 py-2 text-sm focus:outline-none focus:border-foreground"
+          className="flex h-9 w-full items-center border border-foreground bg-background px-3 py-2 text-sm focus:outline-none"
         >
           <option value="none">Pas de scoring job</option>
           {jobs.map((job) => (
             <option key={job.id} value={job.id}>
-              {job.title}{job.client?.name ? ` @ ${job.client.name}` : ''}
+              {job.title}{job.client?.name ? ` — ${job.client.name}` : ''}
             </option>
           ))}
         </select>
@@ -269,38 +268,60 @@ export const JobSelector: React.FC<JobSelectorProps> = ({ selectedJob, onJobChan
           <button
             type="button"
             className={cn(
-              "flex h-10 w-full items-center justify-between border border-foreground/30 bg-background px-3 py-2 text-sm",
-              "focus:outline-none focus:border-foreground"
+              "flex h-9 w-full items-center justify-between border border-foreground bg-background px-3 py-1.5 text-sm transition-shadow",
+              "hover:shadow-[2px_2px_0px_hsl(var(--brutal-accent))]",
+              "focus:outline-none focus:shadow-[2px_2px_0px_hsl(var(--brutal-accent))]",
+              selectedJob && "border-brutal-accent"
             )}
             onClick={() => setPopoverOpen((prev) => !prev)}
           >
-            <span className={cn("truncate", !selectedJob && "text-muted-foreground")}>
-              {selectedJob ? selectedJob.title : "Sélectionner un poste pour le scoring"}
-            </span>
+            {selectedJob ? (
+              <div className="flex items-center gap-2 min-w-0">
+                {selectedJob.client?.website ? (
+                  <img
+                    src={`https://www.google.com/s2/favicons?domain=${new URL(selectedJob.client.website.startsWith('http') ? selectedJob.client.website : 'https://' + selectedJob.client.website).hostname}&sz=32`}
+                    alt=""
+                    className="w-4 h-4 shrink-0"
+                    onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                  />
+                ) : null}
+                <span className="truncate font-medium">{selectedJob.title}</span>
+                {selectedJob.client?.name && (
+                  <span className="text-xs text-muted-foreground shrink-0">— {selectedJob.client.name}</span>
+                )}
+              </div>
+            ) : (
+              <span className="text-muted-foreground">Sélectionner un poste…</span>
+            )}
             <ChevronDown className={cn("h-4 w-4 opacity-50 shrink-0 ml-2 transition-transform", popoverOpen && "rotate-180")} />
           </button>
 
           {popoverOpen && (
-            <div className="absolute left-0 right-0 mt-1 z-[70] border border-border bg-popover text-popover-foreground shadow-md" onPointerDown={(e) => e.stopPropagation()}>
-              <div className="p-2 border-b border-border">
+            <div
+              className="absolute left-0 right-0 mt-1 z-[70] border border-foreground bg-background shadow-[3px_3px_0px_hsl(var(--foreground)/0.1)]"
+              onPointerDown={(e) => e.stopPropagation()}
+            >
+              <div className="p-2 border-b border-foreground/20">
                 <div className="relative">
-                  <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
                   <Input
                     placeholder="Rechercher un poste..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="pl-8 h-8 text-sm"
+                    className="pl-8 h-8 text-sm border-foreground/30 rounded-none"
                     autoFocus
                   />
                 </div>
               </div>
 
-              <div className="max-h-[300px] overflow-y-auto py-1">
+              <div className="max-h-[300px] overflow-y-auto">
+                {/* No scoring option */}
                 <button
                   type="button"
                   className={cn(
-                    "relative flex w-full items-center py-2 pl-8 pr-3 text-sm text-left hover:bg-accent hover:text-accent-foreground",
-                    !selectedJob && "bg-accent"
+                    "flex w-full items-center gap-2 px-3 py-2 text-sm text-left border-b border-foreground/10 transition-colors",
+                    "hover:bg-foreground/5",
+                    !selectedJob && "bg-foreground/5 font-medium"
                   )}
                   onClick={() => {
                     handleChange('none');
@@ -308,80 +329,98 @@ export const JobSelector: React.FC<JobSelectorProps> = ({ selectedJob, onJobChan
                     setSearchQuery('');
                   }}
                 >
-                  {!selectedJob && <Check className="absolute left-2 h-4 w-4" />}
-                  <span className="text-muted-foreground italic">Pas de scoring job</span>
+                  {!selectedJob ? (
+                    <Check className="w-3.5 h-3.5 text-foreground shrink-0" />
+                  ) : (
+                    <span className="w-3.5 shrink-0" />
+                  )}
+                  <span className="text-muted-foreground">Aucun poste</span>
                 </button>
 
                 {filteredJobs.length === 0 && searchQuery && (
-                  <div className="p-3 text-center text-sm text-muted-foreground">
-                    Aucun poste trouvé pour "{searchQuery}"
+                  <div className="p-4 text-center text-sm text-muted-foreground">
+                    Aucun poste trouvé pour « {searchQuery} »
                   </div>
                 )}
 
-                {filteredJobs.map((job) => (
-                  <button
-                    key={job.id}
-                    type="button"
-                    className={cn(
-                      "relative flex w-full items-start py-2.5 pl-8 pr-3 text-sm text-left hover:bg-accent hover:text-accent-foreground group",
-                      selectedJob?.id === job.id && "bg-accent"
-                    )}
-                    onClick={() => {
-                      handleChange(job.id);
-                      setPopoverOpen(false);
-                      setSearchQuery('');
-                    }}
-                  >
-                    {selectedJob?.id === job.id && <Check className="absolute left-2 top-3 h-4 w-4" />}
-                    <div className="flex items-center gap-2.5 min-w-0 w-full">
-                      {job.client?.website ? (
+                {filteredJobs.map((job) => {
+                  const isSelected = selectedJob?.id === job.id;
+                  const faviconUrl = job.client?.website
+                    ? `https://www.google.com/s2/favicons?domain=${new URL(job.client.website.startsWith('http') ? job.client.website : 'https://' + job.client.website).hostname}&sz=32`
+                    : null;
+
+                  return (
+                    <button
+                      key={job.id}
+                      type="button"
+                      className={cn(
+                        "flex w-full items-center gap-2.5 px-3 py-2.5 text-sm text-left border-b border-foreground/5 transition-colors",
+                        "hover:bg-foreground/5",
+                        isSelected && "bg-brutal-accent/10 border-l-2 border-l-brutal-accent"
+                      )}
+                      onClick={() => {
+                        handleChange(job.id);
+                        setPopoverOpen(false);
+                        setSearchQuery('');
+                      }}
+                    >
+                      {/* Check / favicon column */}
+                      {isSelected ? (
+                        <Check className="w-3.5 h-3.5 text-brutal-accent shrink-0" />
+                      ) : faviconUrl ? (
                         <img
-                          src={`https://www.google.com/s2/favicons?domain=${new URL(job.client.website.startsWith('http') ? job.client.website : 'https://' + job.client.website).hostname}&sz=32`}
+                          src={faviconUrl}
                           alt=""
-                          className="w-5 h-5 rounded shrink-0"
-                          onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                          className="w-4 h-4 shrink-0"
+                          onError={(e) => { 
+                            const el = e.target as HTMLImageElement;
+                            el.style.display = 'none';
+                          }}
                         />
                       ) : (
-                        <div className="w-5 h-5 rounded bg-muted flex items-center justify-center shrink-0">
-                          <Building2 className="w-3 h-3 text-muted-foreground" />
+                        <div className="w-4 h-4 border border-foreground/20 bg-muted flex items-center justify-center shrink-0">
+                          <Building2 className="w-2.5 h-2.5 text-muted-foreground" />
                         </div>
                       )}
-                      <div className="flex flex-col gap-0 min-w-0">
-                        <span className="font-medium truncate leading-tight">{job.title}</span>
-                        <div className="flex items-center gap-2 text-xs text-muted-foreground leading-tight">
-                          {job.client?.name && (
-                            <span className="truncate">{job.client.name}</span>
-                          )}
+
+                      {/* Job info */}
+                      <div className="flex flex-col min-w-0">
+                        <span className={cn("font-medium truncate leading-tight", isSelected && "text-foreground")}>
+                          {job.title}
+                        </span>
+                        <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground leading-tight">
+                          {job.client?.name && <span className="truncate">{job.client.name}</span>}
                           {job.skills?.length > 0 && (
                             <>
-                              {job.client?.name && <span>·</span>}
-                              <span className="whitespace-nowrap">{job.skills.length} compétence{job.skills.length > 1 ? 's' : ''}</span>
+                              {job.client?.name && <span className="text-foreground/20">·</span>}
+                              <span>{job.skills.length} compétence{job.skills.length > 1 ? 's' : ''}</span>
                             </>
                           )}
                         </div>
                       </div>
-                    </div>
-                  </button>
-                ))}
+                    </button>
+                  );
+                })}
               </div>
             </div>
           )}
         </div>
       )}
 
-      {selectedJob && (
+      {/* Selected job skills preview */}
+      {selectedJob && selectedJob.skills?.length > 0 && (
         <div className="flex flex-wrap gap-1 pt-1">
-          {selectedJob.skills?.slice(0, 5).map((skill, i) => (
+          {selectedJob.skills.slice(0, 5).map((skill, i) => (
             <span 
               key={i} 
-              className="text-[10px] px-1.5 py-0.5 bg-muted border border-foreground/20 text-foreground/70 font-medium"
+              className="text-[10px] px-1.5 py-0.5 border border-foreground/20 bg-foreground/5 text-foreground/70 font-medium uppercase tracking-wide"
             >
               {skill}
             </span>
           ))}
-          {(selectedJob.skills?.length || 0) > 5 && (
-            <span className="text-[10px] text-muted-foreground">
-              +{(selectedJob.skills?.length || 0) - 5}
+          {(selectedJob.skills.length) > 5 && (
+            <span className="text-[10px] text-muted-foreground font-medium">
+              +{selectedJob.skills.length - 5}
             </span>
           )}
         </div>
