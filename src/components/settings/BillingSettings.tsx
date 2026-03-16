@@ -24,8 +24,8 @@ export const BillingSettings = () => {
       {/* Current Plan */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-lg">
-            <CreditCard className="w-5 h-5" />
+          <CardTitle className="flex items-center gap-2 text-sm font-bold uppercase tracking-wider">
+            <CreditCard className="w-4 h-4" />
             Abonnement
           </CardTitle>
         </CardHeader>
