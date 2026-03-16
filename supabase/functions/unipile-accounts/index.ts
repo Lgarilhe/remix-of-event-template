@@ -813,7 +813,7 @@ Deno.serve(async (req) => {
           throw new HttpError(400, 'invitation_action doit être "accept" ou "decline"');
         }
 
-        console.log(`[handle_invitation_received] ${invAction} invitation ${invitation_id}`);
+        console.log(`[handle_invitation_received] ${finalAction} invitation ${invitation_id}`);
         const handleRes = await fetchWithTimeout(`${baseUrl}/users/invite/received/${invitation_id}`, {
           method: 'POST',
           headers: {
@@ -825,7 +825,7 @@ Deno.serve(async (req) => {
             provider: provider || 'LINKEDIN',
             shared_secret,
             account_id,
-            action: invAction,
+            action: finalAction,
           }),
         });
         const handleData = await handleRes.json();
@@ -839,7 +839,7 @@ Deno.serve(async (req) => {
         }
 
         return new Response(
-          JSON.stringify({ success: true, status: handleData.status || (invAction === 'accept' ? 'ACCEPTED' : 'DECLINED') }),
+          JSON.stringify({ success: true, status: handleData.status || (finalAction === 'accept' ? 'ACCEPTED' : 'DECLINED') }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
