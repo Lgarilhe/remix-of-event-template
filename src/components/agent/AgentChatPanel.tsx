@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { Send, ArrowLeft, Loader2, Bot } from 'lucide-react';
+import { Send, ArrowLeft, Loader2, Bot, Target, Search, BarChart3, Sparkles } from 'lucide-react';
 import { AnimatedOrb } from '@/components/ui/AnimatedOrb';
 import { useAgentChat, AgentConversation } from '@/hooks/useAgentChat';
 import { AgentMessageBubble, extractOptions } from './AgentMessageBubble';
