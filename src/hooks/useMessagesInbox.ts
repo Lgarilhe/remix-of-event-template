@@ -156,6 +156,31 @@ function mergeChatsByCandidate(chats: Chat[]): Chat[] {
   return merged;
 }
 
+
+function areMessagesEquivalent(a: Message[], b: Message[]): boolean {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+
+  for (let i = 0; i < a.length; i += 1) {
+    const left = a[i];
+    const right = b[i];
+
+    if (
+      left.id !== right.id ||
+      left.timestamp !== right.timestamp ||
+      left.is_sender !== right.is_sender ||
+      left.read !== right.read ||
+      left.seen !== right.seen ||
+      left.delivered !== right.delivered ||
+      getMessageText(left) !== getMessageText(right)
+    ) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
 interface UseMessagesInboxOptions {
   selectedAccount: string | null;
   onUnreadCountChange?: (count: number) => void;
