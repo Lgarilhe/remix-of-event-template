@@ -85,16 +85,28 @@ export const AgentMessageBubble: React.FC<AgentMessageBubbleProps> = ({ message,
   }
 
   // ── Assistant message ──
+  const { candidates, contentWithout: finalContent } = !isUser && !isStatus
+    ? extractCandidates(cleanContent)
+    : { candidates: [], contentWithout: cleanContent };
+
   return (
     <div className="space-y-2 animate-fade-in">
       {/* Thinking card for saved messages */}
       {thinking && <ThinkingCard thinking={thinking} />}
 
-      {cleanContent && (
+      {finalContent && (
         <div className="text-sm leading-relaxed">
           <div className="prose prose-sm max-w-none [&_p]:my-1.5 [&_ul]:my-2 [&_ol]:my-2 [&_li]:my-0.5 [&_h1]:text-base [&_h2]:text-sm [&_h3]:text-sm [&_h1]:font-bold [&_h2]:font-bold [&_h3]:font-semibold [&_h1]:mt-3 [&_h1]:mb-1.5 [&_h2]:mt-3 [&_h2]:mb-1.5 [&_h3]:mt-2 [&_h3]:mb-1 [&_hr]:my-3 [&_code]:text-xs [&_code]:bg-muted [&_code]:px-1.5 [&_code]:py-0.5 [&_li]:marker:text-foreground/50 text-sm text-foreground/80 [&_strong]:text-foreground">
-            <ReactMarkdown>{cleanContent}</ReactMarkdown>
+            <ReactMarkdown>{finalContent}</ReactMarkdown>
           </div>
+        </div>
+      )}
+
+      {candidates.length > 0 && (
+        <div className="space-y-1.5">
+          {candidates.map((c, i) => (
+            <CandidateMiniCard key={i} candidate={c} />
+          ))}
         </div>
       )}
 
