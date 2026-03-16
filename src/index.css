@@ -166,10 +166,10 @@ All colors MUST be HSL.
     font-family: 'Instrument Serif', Georgia, 'Times New Roman', serif;
   }
 
-  /* Override: uppercase brutal titles stay sans-serif */
-  h1.uppercase, h2.uppercase, h3.uppercase,
-  h1[class*="uppercase"], h2[class*="uppercase"], h3[class*="uppercase"] {
-    font-family: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif;
+  /* Brutal uppercase headings: revert to sans-serif */
+  .font-sans h1, .font-sans h2, .font-sans h3,
+  h1.font-sans, h2.font-sans, h3.font-sans {
+    font-family: inherit;
   }
 
   #root {
