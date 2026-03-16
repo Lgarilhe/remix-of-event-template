@@ -32,7 +32,7 @@ function extractNotionPageId(input: string): string {
   return input;
 }
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }

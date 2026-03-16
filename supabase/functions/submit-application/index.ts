@@ -50,7 +50,7 @@ async function createNotionPage(databaseId: string, properties: Record<string, u
   return response.json();
 }
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
