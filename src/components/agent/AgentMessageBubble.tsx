@@ -151,7 +151,7 @@ export const AgentMessageBubble: React.FC<AgentMessageBubbleProps> = ({ message,
         </div>
       )}
 
-      {searchPlan && <SearchPlanCard plan={searchPlan} />}
+      {searchPlan && <SearchPlanCard plan={searchPlan} conversationId={message.conversation_id} />}
 
       {isStreaming && (
         <span className="inline-block w-0.5 h-4 bg-foreground animate-pulse mt-1" />
