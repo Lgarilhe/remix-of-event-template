@@ -49,7 +49,31 @@ const MessagesInboxInner: React.FC<
     onChatChange,
   });
 
+  const { addReaction, deleteMessage, deleteChat, isReacting, isDeleting } = useMessageActions(
+    inbox.organizationId ?? null
+  );
+
   const candidateProfile = getCurrentCandidateProfile(inbox.selectedChat);
+
+  const handleDeleteChat = async (chatId: string) => {
+    const success = await deleteChat(chatId);
+    if (success) {
+      if (inbox.selectedChat?.id === chatId) {
+        inbox.setSelectedChat(null);
+      }
+      inbox.fetchChats(true);
+    }
+    return success;
+  };
+
+  const handleDeleteMessage = async (messageId: string) => {
+    const success = await deleteMessage(messageId);
+    if (success) {
+      // Refresh messages
+      inbox.fetchChats(false);
+    }
+    return success;
+  };
 
   return (
     <>
