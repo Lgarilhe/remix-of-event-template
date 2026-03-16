@@ -106,7 +106,7 @@ export const AICreditsSettings = () => {
         <CardContent>
           {isLoadingHistory ? (
             <div className="flex justify-center py-4">
-              <div className="w-4 h-4 border-2 border-foreground/20 border-t-foreground rounded-full animate-spin" />
+              <BrutalLoader compact />
             </div>
           ) : history.length === 0 ? (
             <p className="text-sm text-muted-foreground text-center py-4">Aucune utilisation pour le moment</p>

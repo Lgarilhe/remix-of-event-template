@@ -14,7 +14,7 @@ export const BillingSettings = () => {
   if (isLoading) {
     return (
       <div className="flex justify-center py-12">
-        <div className="w-5 h-5 border-2 border-foreground/20 border-t-foreground rounded-full animate-spin" />
+        <BrutalLoader compact />
       </div>
     );
   }
