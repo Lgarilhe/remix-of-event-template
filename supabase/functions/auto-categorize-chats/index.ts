@@ -1,5 +1,4 @@
-import "https://deno.land/x/xhr@0.1.0/mod.ts";
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+// Deno.serve used directly
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -109,7 +108,7 @@ Pas de texte avant ou après.`,
   throw new Error('AI API unavailable after retries');
 }
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }

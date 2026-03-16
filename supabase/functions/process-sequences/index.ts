@@ -1,4 +1,4 @@
-import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
+// Deno.serve used directly
 import { createClient } from "npm:@supabase/supabase-js@2.75.1";
 
 // No wildcard CORS — this function is called by cron (service role) and frontend (authenticated users)
@@ -27,7 +27,7 @@ const profileInfoCache = new Map<string, { network_distance?: string; provider_i
 
 console.log('[process-sequences] Config:', { hasDSN: !!UNIPILE_DSN, hasApiKey: !!UNIPILE_API_KEY });
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }

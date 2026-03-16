@@ -1,4 +1,4 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+// Deno.serve used directly
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check";
 
 const corsHeaders = {
@@ -16,7 +16,7 @@ function sanitizeArray(val: unknown, maxItems = 30, maxLen = 100): string[] {
   return val.slice(0, maxItems).map(v => sanitize(v, maxLen)).filter(Boolean);
 }
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }

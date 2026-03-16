@@ -1,4 +1,4 @@
-import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
+// Deno.serve used directly
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 
 const corsHeaders = {
@@ -259,7 +259,7 @@ RÈGLES:
    Junior → 0-3 | Confirmé → 3-7 | Senior/Lead → 5-12 | Staff/Architecte → 8-15`;
 
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }

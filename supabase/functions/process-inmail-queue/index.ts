@@ -1,4 +1,4 @@
-﻿import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
+﻿// Deno.serve used directly
 import { createClient } from "npm:@supabase/supabase-js@2.75.1";
 
 const corsHeaders = {
@@ -95,7 +95,7 @@ function calculateNextScheduledTime(timezone: string): Date {
   return nextTime;
 }
 
-serve(async (req: Request) => {
+Deno.serve(async (req: Request) => {
   // Handle CORS preflight
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });

@@ -1,4 +1,4 @@
-import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
+// Deno.serve used directly
 import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check";
 
 const corsHeaders = {
@@ -1483,7 +1483,7 @@ async function scoreProfile(
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
