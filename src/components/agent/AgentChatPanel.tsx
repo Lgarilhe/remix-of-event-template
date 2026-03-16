@@ -265,7 +265,22 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({ onClose }) => {
       />
 
       {/* Input bar */}
-      <div className="shrink-0 glass border-t border-foreground/10 px-4 py-3 z-10">
+      <div className="shrink-0 glass border-t border-foreground/10 px-4 py-3 z-10 space-y-2">
+        {selectedJob && conversationId !== jobSentForConv && (
+          <div className="flex items-center gap-1.5">
+            <span className="bg-brutal-accent/10 text-xs px-2 py-1 border border-brutal-accent/30 flex items-center gap-1.5 truncate max-w-full">
+              <span>📋</span>
+              <span className="truncate">{selectedJob.title}</span>
+              <button
+                onClick={() => setSelectedJob(null)}
+                className="ml-0.5 text-muted-foreground hover:text-foreground transition-colors"
+                aria-label="Retirer le job"
+              >
+                ✕
+              </button>
+            </span>
+          </div>
+        )}
         <div className="flex items-end gap-2 border border-foreground/20 focus-within:border-foreground/50 focus-within:shadow-[0_0_16px_-4px_hsl(var(--brutal-accent)/0.2)] transition-all duration-200 px-3 py-2">
           <textarea
             ref={inputRef}
