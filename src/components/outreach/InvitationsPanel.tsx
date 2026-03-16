@@ -178,7 +178,7 @@ export const InvitationsPanel: React.FC<InvitationsPanelProps> = ({
   };
 
   return (
-    <Card className="overflow-hidden border-foreground bg-background">
+    <Card className="flex max-h-[calc(100vh-140px)] flex-col overflow-hidden border-foreground bg-background">
       <CardHeader className="border-b border-foreground bg-gradient-to-r from-background via-background to-brutal-accent/10 p-0">
         <div className="flex flex-col gap-4 p-4 sm:p-5">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
