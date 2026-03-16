@@ -379,12 +379,10 @@ Deno.serve(async (req) => {
 
         // Company (resolved IDs from company_keywords)
         if (resolvedCompanyIds.length > 0) {
-          // Determine scope from the original filter config
-          const companyScope = (filters.company_keywords || []).find((c: any) => typeof c === "object" && c.scope)?.scope || "CURRENT";
-          searchBody.company = resolvedCompanyIds.map((id: string) => ({
+          searchBody.company = resolvedCompanyIds.map((id: string, i: number) => ({
             id,
-            priority: "MUST_HAVE",
-            scope: companyScope,
+            priority: companyEntries[i]?.priority || "MUST_HAVE",
+            scope: companyEntries[i]?.scope || "CURRENT",
           }));
         }
 
