@@ -556,7 +556,7 @@ const SkalrLanding = () => {
                   <X className="h-4 w-4 text-foreground" />
                 </button>
 
-                <h3 className="text-lg font-bold text-foreground uppercase tracking-wide mb-1 font-sans">Nous contacter</h3>
+                <h3 className="text-lg font-bold text-foreground uppercase tracking-wide mb-1">Nous contacter</h3>
                 <p className="text-sm text-muted-foreground mb-6">Laissez-nous un message, nous revenons vers vous rapidement.</p>
 
                 <form onSubmit={handleContactSubmit} className="space-y-4">
