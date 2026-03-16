@@ -94,7 +94,7 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({ onClose }) => {
   // ── List view ──
   if (showList) {
     return (
-      <div className="flex flex-col h-full bg-background">
+      <div className="flex flex-col h-full bg-background animate-slide-in-left">
         <div className="px-4 py-3 border-b-2 border-foreground">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
