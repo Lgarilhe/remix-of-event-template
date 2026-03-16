@@ -33,6 +33,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { Tag, X, Trash2, Loader2 } from 'lucide-react';
+import { useAttendeePicturesContext } from '@/contexts/AttendeePicturesContext';
 
 interface ChatListItemProps {
   chat: Chat;
