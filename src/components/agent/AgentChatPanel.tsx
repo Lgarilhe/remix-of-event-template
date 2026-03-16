@@ -63,7 +63,7 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({ onClose }) => {
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, streamingContent, thinkingSteps]);
+  }, [messages, streamingContent, thinkingPhases]);
 
   const handleNewConversation = useCallback(async (job?: Job | null) => {
     const id = await createConversation(job);
