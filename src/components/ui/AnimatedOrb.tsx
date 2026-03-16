@@ -78,62 +78,81 @@ export const AnimatedOrb: React.FC<AnimatedOrbProps> = ({
       }
       const blinkY = blink ? Math.sin(blinkT * Math.PI) : 0;
 
-      // Ambient glow
-      const outerR = w * 0.42;
-      const grad = ctx.createRadialGradient(cx, cy, outerR * 0.2, cx, cy, outerR);
-      grad.addColorStop(0, `rgba(${SKALR_COLORS[0][0]},${SKALR_COLORS[0][1]},${SKALR_COLORS[0][2]},0.15)`);
-      grad.addColorStop(0.6, `rgba(${SKALR_COLORS[3][0]},${SKALR_COLORS[3][1]},${SKALR_COLORS[3][2]},0.06)`);
+      // Outer glow — two layers for more punch
+      const outerR = w * 0.48;
+      const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, outerR);
+      grad.addColorStop(0, `rgba(${SKALR_COLORS[3][0]},${SKALR_COLORS[3][1]},${SKALR_COLORS[3][2]},0.25)`);
+      grad.addColorStop(0.4, `rgba(${SKALR_COLORS[0][0]},${SKALR_COLORS[0][1]},${SKALR_COLORS[0][2]},0.12)`);
       grad.addColorStop(1, 'rgba(0,0,0,0)');
       ctx.fillStyle = grad;
       ctx.beginPath();
       ctx.arc(cx, cy, outerR, 0, Math.PI * 2);
       ctx.fill();
 
-      // Eye shape
-      const eyeW = w * 0.62;
-      const eyeH = w * 0.28;
+      // Eye shape — almond/lemon shape for more character
+      const eyeW = w * 0.78;
+      const eyeH = w * 0.34;
       const squeeze = 1 - blinkY * 0.95;
 
       ctx.save();
       ctx.translate(cx, cy);
       ctx.scale(1, squeeze);
 
+      // Draw almond eye shape using bezier curves
       ctx.beginPath();
-      ctx.ellipse(0, 0, eyeW / 2, eyeH / 2, 0, 0, Math.PI * 2);
-      ctx.strokeStyle = `rgba(${SKALR_COLORS[0][0]},${SKALR_COLORS[0][1]},${SKALR_COLORS[0][2]},0.85)`;
-      ctx.lineWidth = 2 * dpr;
-      ctx.stroke();
+      const hw = eyeW / 2;
+      const hh = eyeH / 2;
+      ctx.moveTo(-hw, 0);
+      ctx.bezierCurveTo(-hw * 0.6, -hh * 1.3, hw * 0.6, -hh * 1.3, hw, 0);
+      ctx.bezierCurveTo(hw * 0.6, hh * 1.3, -hw * 0.6, hh * 1.3, -hw, 0);
+      ctx.closePath();
 
-      // Fill the eye white area
-      ctx.fillStyle = isDark ? 'rgba(20,20,25,0.9)' : 'rgba(255,255,255,0.95)';
+      // Eye fill
+      ctx.fillStyle = isDark ? 'rgba(15,15,20,0.95)' : 'rgba(255,255,255,0.97)';
       ctx.fill();
+
+      // Eye border — gradient stroke
+      ctx.lineWidth = 2.5 * dpr;
+      const strokeGrad = ctx.createLinearGradient(-hw, 0, hw, 0);
+      strokeGrad.addColorStop(0, `rgba(${SKALR_COLORS[1][0]},${SKALR_COLORS[1][1]},${SKALR_COLORS[1][2]},0.9)`);
+      strokeGrad.addColorStop(0.5, `rgba(${SKALR_COLORS[0][0]},${SKALR_COLORS[0][1]},${SKALR_COLORS[0][2]},1)`);
+      strokeGrad.addColorStop(1, `rgba(${SKALR_COLORS[3][0]},${SKALR_COLORS[3][1]},${SKALR_COLORS[3][2]},0.9)`);
+      ctx.strokeStyle = strokeGrad;
+      ctx.stroke();
       ctx.clip();
 
-      // Iris
-      const irisR = eyeH * 0.58;
+      // Iris — larger, more vivid
+      const irisR = eyeH * 0.72;
       const breath = (Math.sin(t * 1.5 * speed) + 1) / 2;
       const irisGrad = ctx.createRadialGradient(lookX, lookY, 0, lookX, lookY, irisR);
-      irisGrad.addColorStop(0, `rgba(${SKALR_COLORS[3][0]},${SKALR_COLORS[3][1]},${SKALR_COLORS[3][2]},${0.9 + breath * 0.1})`);
-      irisGrad.addColorStop(0.5, `rgba(${SKALR_COLORS[0][0]},${SKALR_COLORS[0][1]},${SKALR_COLORS[0][2]},0.7)`);
-      irisGrad.addColorStop(1, `rgba(${SKALR_COLORS[1][0]},${SKALR_COLORS[1][1]},${SKALR_COLORS[1][2]},0.3)`);
+      irisGrad.addColorStop(0, `rgba(${SKALR_COLORS[3][0]},${SKALR_COLORS[3][1]},${SKALR_COLORS[3][2]},1)`);
+      irisGrad.addColorStop(0.4, `rgba(${SKALR_COLORS[0][0]},${SKALR_COLORS[0][1]},${SKALR_COLORS[0][2]},0.9)`);
+      irisGrad.addColorStop(0.8, `rgba(${SKALR_COLORS[1][0]},${SKALR_COLORS[1][1]},${SKALR_COLORS[1][2]},0.6)`);
+      irisGrad.addColorStop(1, `rgba(${SKALR_COLORS[1][0]},${SKALR_COLORS[1][1]},${SKALR_COLORS[1][2]},0.15)`);
       ctx.fillStyle = irisGrad;
       ctx.beginPath();
       ctx.arc(lookX, lookY, irisR, 0, Math.PI * 2);
       ctx.fill();
 
-      // Pupil
-      const pupilR = irisR * 0.35 + breath * irisR * 0.08;
-      ctx.fillStyle = isDark ? '#111' : '#0a0a0a';
+      // Pupil — deep black, breathing
+      const pupilR = irisR * 0.32 + breath * irisR * 0.06;
+      ctx.fillStyle = '#050508';
       ctx.beginPath();
       ctx.arc(lookX, lookY, pupilR, 0, Math.PI * 2);
       ctx.fill();
 
-      // Specular highlight
-      const specX = lookX - irisR * 0.25;
-      const specY = lookY - irisR * 0.25;
-      ctx.fillStyle = 'rgba(255,255,255,0.7)';
+      // Specular highlights — two for depth
+      const specX = lookX - irisR * 0.28;
+      const specY = lookY - irisR * 0.28;
+      ctx.fillStyle = 'rgba(255,255,255,0.85)';
       ctx.beginPath();
-      ctx.arc(specX, specY, pupilR * 0.35, 0, Math.PI * 2);
+      ctx.arc(specX, specY, pupilR * 0.4, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Secondary smaller highlight
+      ctx.fillStyle = 'rgba(255,255,255,0.5)';
+      ctx.beginPath();
+      ctx.arc(lookX + irisR * 0.2, lookY + irisR * 0.15, pupilR * 0.18, 0, Math.PI * 2);
       ctx.fill();
 
       ctx.restore();
