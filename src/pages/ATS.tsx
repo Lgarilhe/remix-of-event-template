@@ -130,7 +130,7 @@ export default function ATS() {
               <div className="h-8 w-8 flex items-center justify-center shrink-0">
                 <img src={iconAts3d} alt="" className="w-8 h-8 object-contain" />
               </div>
-              <h1 className="text-xl sm:text-2xl font-bold text-foreground uppercase tracking-tight">ATS</h1>
+              <h1 className="text-xl sm:text-2xl font-bold text-foreground uppercase tracking-tight font-sans">ATS</h1>
               {isFromCache && !isFetching && (
                 <span className="text-[9px] text-emerald-600 border border-emerald-300 px-1.5 py-0.5 uppercase tracking-wider font-medium hidden sm:inline">
                   Cache

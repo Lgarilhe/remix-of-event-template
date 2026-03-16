@@ -293,7 +293,7 @@ const SkalrLanding = () => {
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between gap-2 mb-1">
-                        <h3 className="text-base font-bold text-foreground uppercase tracking-wide">{feature.title}</h3>
+                        <h3 className="text-base font-bold text-foreground uppercase tracking-wide font-sans">{feature.title}</h3>
                         <span className="text-[10px] text-muted-foreground font-mono">{feature.num}</span>
                       </div>
                       <p className="text-sm text-muted-foreground leading-relaxed">{feature.description}</p>
@@ -344,7 +344,7 @@ const SkalrLanding = () => {
                   <div className="w-8 h-8 border-2 border-foreground flex items-center justify-center mb-5 bg-brutal-accent">
                     <span className="text-[11px] font-bold text-foreground">{String(i + 1).padStart(2, '0')}</span>
                   </div>
-                  <h3 className="text-sm font-bold text-foreground uppercase tracking-wide mb-2">{value.title}</h3>
+                  <h3 className="text-sm font-bold text-foreground uppercase tracking-wide mb-2 font-sans">{value.title}</h3>
                   <p className="text-sm text-muted-foreground leading-relaxed">{value.description}</p>
                 </motion.div>
               ))}
@@ -556,7 +556,7 @@ const SkalrLanding = () => {
                   <X className="h-4 w-4 text-foreground" />
                 </button>
 
-                <h3 className="text-lg font-bold text-foreground uppercase tracking-wide mb-1">Nous contacter</h3>
+                <h3 className="text-lg font-bold text-foreground uppercase tracking-wide mb-1 font-sans">Nous contacter</h3>
                 <p className="text-sm text-muted-foreground mb-6">Laissez-nous un message, nous revenons vers vous rapidement.</p>
 
                 <form onSubmit={handleContactSubmit} className="space-y-4">
