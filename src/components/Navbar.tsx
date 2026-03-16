@@ -60,11 +60,11 @@ const NavLogo: React.FC = () => {
   // Mouth variations
   let mouth: React.ReactNode;
   if (face === 'surprise') {
-    mouth = <ellipse cx="7" cy="9.8" rx="1.1" ry="1.3" fill="currentColor" />;
+    mouth = <ellipse cx="7.5" cy="10" rx="1" ry="1.1" fill="currentColor" />;
   } else if (face === 'happy') {
-    mouth = <path d="M3.8 8.5 Q7 12 10.2 8.5" stroke="currentColor" strokeWidth="1" strokeLinecap="round" fill="none" />;
+    mouth = <path d="M4.5 8.8 Q7.5 12 10.5 8.8" stroke="currentColor" strokeWidth="1" strokeLinecap="round" fill="none" />;
   } else {
-    mouth = <path d="M4.8 9.2 Q7 10.8 9.5 8.8" stroke="currentColor" strokeWidth="1" strokeLinecap="round" fill="none" />;
+    mouth = <path d="M5.5 9.2 Q7.5 10.6 10 9" stroke="currentColor" strokeWidth="1" strokeLinecap="round" fill="none" />;
   }
 
   // Eyebrows for surprise
