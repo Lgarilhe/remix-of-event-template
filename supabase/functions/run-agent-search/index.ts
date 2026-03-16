@@ -199,6 +199,7 @@ Deno.serve(async (req) => {
     // ── 2. Resolve LinkedIn account ──
 
     let accountId: string | null = null;
+    console.log(`[run-agent-search] Resolving LinkedIn account for org: ${orgId}`);
     try {
       const accountsRes = await fetchWithTimeout(`${supabaseUrl}/functions/v1/unipile-accounts`, {
         method: "POST",
@@ -208,10 +209,12 @@ Deno.serve(async (req) => {
           "apikey": anonKey,
         },
         body: JSON.stringify({ action: "list", organization_id: orgId }),
-      });
+      }, 15000);
       const accountsData = await accountsRes.json();
+      console.log(`[run-agent-search] unipile-accounts response: success=${accountsData?.success}, accounts=${accountsData?.accounts?.length || 0}`);
       if (accountsData?.success && accountsData.accounts?.length > 0) {
         accountId = accountsData.accounts[0].id;
+        console.log(`[run-agent-search] Using account: ${accountId}`);
       }
     } catch (e) {
       console.error("[run-agent-search] Failed to get accounts:", e);
