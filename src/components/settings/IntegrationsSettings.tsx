@@ -208,32 +208,43 @@ const LinkedInHostedAuthCard = ({
               <span className="ml-2 text-sm text-muted-foreground">Chargement des comptes...</span>
             </div>
           ) : linkedInAccounts.length > 0 ? (
-            <div className="space-y-2">
+          <div className="space-y-2">
               {linkedInAccounts.map((account: any) => (
-                <div key={account.id} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
-                  <div className="flex items-center gap-3">
-                    {account.profile_picture_url ? (
-                      <img src={account.profile_picture_url} alt="" className="w-8 h-8 rounded-full" />
-                    ) : (
-                      <div className="w-8 h-8 bg-primary/10 rounded-full flex items-center justify-center">
-                        <Linkedin className="w-4 h-4 text-primary" />
-                      </div>
-                    )}
-                    <div>
-                      <p className="text-sm font-medium text-foreground">{account.name}</p>
-                      <div className="flex items-center gap-1.5">
-                        <div className={cn(
-                          'w-1.5 h-1.5 rounded-full',
-                          account.status === 'OK' ? 'bg-green-500' : 'bg-amber-500'
-                        )} />
-                        <span className="text-xs text-muted-foreground">
-                          {account.status === 'OK' ? 'Actif' : account.status}
-                        </span>
+                <div key={account.id} className="p-3 bg-muted/50 rounded-lg space-y-1">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      {account.profile_picture_url ? (
+                        <img src={account.profile_picture_url} alt="" className="w-8 h-8 rounded-full" />
+                      ) : (
+                        <div className="w-8 h-8 bg-primary/10 rounded-full flex items-center justify-center">
+                          <Linkedin className="w-4 h-4 text-primary" />
+                        </div>
+                      )}
+                      <div>
+                        <p className="text-sm font-medium text-foreground">{account.name}</p>
+                        <div className="flex items-center gap-1.5">
+                          <div className={cn(
+                            'w-1.5 h-1.5 rounded-full',
+                            account.status === 'OK' ? 'bg-green-500' : 'bg-amber-500'
+                          )} />
+                          <span className="text-xs text-muted-foreground">
+                            {account.status === 'OK' ? 'Actif' : account.status}
+                          </span>
+                        </div>
                       </div>
                     </div>
                   </div>
+                  {account.status === 'OK' && (
+                    <ProxyConfigPanel
+                      accountId={account.id}
+                      accountName={account.name || account.id}
+                      currentCountry={proxyCache[account.id] ?? getMappingForAccount(account.id)?.proxy_country ?? null}
+                      onUpdated={(country) => setProxyCache(prev => ({ ...prev, [account.id]: country }))}
+                    />
+                  )}
                 </div>
               ))}
+            </div>
             </div>
           ) : (
             <p className="text-sm text-muted-foreground text-center py-2">
