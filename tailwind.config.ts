@@ -14,19 +14,19 @@ export default {
   	},
   	extend: {
   		fontFamily: {
-  			sans: [
-  				'Inter',
-  				'ui-sans-serif',
-  				'system-ui',
-  				'-apple-system',
-  				'BlinkMacSystemFont',
-  				'Segoe UI',
-  				'Roboto',
-  				'Helvetica Neue',
-  				'Arial',
-  				'Noto Sans',
-  				'sans-serif'
-  			],
+			sans: [
+				'Instrument Sans',
+				'ui-sans-serif',
+				'system-ui',
+				'-apple-system',
+				'BlinkMacSystemFont',
+				'Segoe UI',
+				'Roboto',
+				'Helvetica Neue',
+				'Arial',
+				'Noto Sans',
+				'sans-serif'
+			],
   			serif: [
   				'Lora',
   				'ui-serif',
