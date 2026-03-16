@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Rocket, SlidersHorizontal, Eye, Pause, ArrowRight, type LucideIcon } from 'lucide-react';
 
