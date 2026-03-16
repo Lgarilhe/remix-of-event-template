@@ -14,17 +14,13 @@ export const AgentJobSelector: React.FC<AgentJobSelectorProps> = ({
   jobs, selectedJob, onSelectJob, onLaunch,
 }) => {
   return (
-    <div className="px-4 py-4 border-b-2 border-foreground/10 space-y-3">
-      <p className="text-[10px] font-display font-black uppercase tracking-[0.18em] text-foreground/50 px-1">
-        Nouveau sourcing
-      </p>
-
-      {/* Job cards */}
-      <div className="space-y-1 max-h-[200px] overflow-y-auto scrollbar-hide">
+    <div className="flex flex-col flex-1 overflow-hidden">
+      {/* Job cards — scrollable */}
+      <div className="flex-1 overflow-y-auto scrollbar-hide px-4 py-3 space-y-1">
         {jobs.length === 0 ? (
-          <p className="text-xs py-4 text-center text-muted-foreground">
-            Aucun poste actif
-          </p>
+          <div className="flex flex-col items-center justify-center py-16 gap-2">
+            <p className="text-xs text-muted-foreground/50">Aucun poste actif</p>
+          </div>
         ) : (
           jobs.map(job => {
             const isSelected = selectedJob?.id === job.id;
@@ -79,20 +75,22 @@ export const AgentJobSelector: React.FC<AgentJobSelectorProps> = ({
         )}
       </div>
 
-      {/* Launch button */}
-      <button
-        onClick={onLaunch}
-        disabled={!selectedJob}
-        className={cn(
-          "w-full h-11 text-[11px] font-bold uppercase tracking-[0.18em] flex items-center justify-center gap-2 border-2 transition-all duration-150",
-          selectedJob
-            ? "border-foreground bg-foreground text-background hover:shadow-[4px_4px_0_0_hsl(var(--brutal-accent)/0.5)] active:translate-x-[2px] active:translate-y-[2px] active:shadow-none"
-            : "border-foreground/15 text-muted-foreground/40 cursor-not-allowed"
-        )}
-      >
-        Lancer l'agent
-        <ArrowRight className="w-3.5 h-3.5" />
-      </button>
+      {/* Launch button — pinned bottom */}
+      <div className="shrink-0 px-4 py-3 border-t border-foreground/10">
+        <button
+          onClick={onLaunch}
+          disabled={!selectedJob}
+          className={cn(
+            "w-full h-11 text-[11px] font-bold uppercase tracking-[0.18em] flex items-center justify-center gap-2 border-2 transition-all duration-150",
+            selectedJob
+              ? "border-foreground bg-foreground text-background hover:shadow-[4px_4px_0_0_hsl(var(--brutal-accent)/0.5)] active:translate-x-[2px] active:translate-y-[2px] active:shadow-none"
+              : "border-foreground/15 text-muted-foreground/40 cursor-not-allowed"
+          )}
+        >
+          Lancer l'agent
+          <ArrowRight className="w-3.5 h-3.5" />
+        </button>
+      </div>
     </div>
   );
 };
