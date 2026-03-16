@@ -131,15 +131,21 @@ export const useAgentChat = (conversationId: string | null) => {
     const steps: ThinkingStep[] = [];
     
     for (const line of lines) {
-      if (!isThinkingLineUseful(line)) continue;
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.length < 10) continue;
       
-      let label = line.trim()
+      // Skip technical/noisy lines — only show human-readable steps
+      if (!isThinkingLineUseful(trimmed)) continue;
+      
+      // Clean up the label
+      let label = trimmed
         .replace(/\*{1,3}([^*]+)\*{1,3}/g, '$1')
         .replace(/`([^`]+)`/g, '$1')
         .replace(/^[-·•]\s*/, '')
         .replace(/^\d+\.\s*/, '');
+      
+      if (label.length > 60) label = label.slice(0, 57) + '…';
       if (label.length < 10) continue;
-      if (label.length > 80) label = label.slice(0, 77) + '…';
       
       steps.push({ label, status: 'done' });
     }
@@ -149,7 +155,12 @@ export const useAgentChat = (conversationId: string | null) => {
       steps[steps.length - 1].status = 'active';
     }
     
-    return steps.slice(-8);
+    // If no useful steps found, show a generic one
+    if (steps.length === 0 && thinking.length > 50) {
+      steps.push({ label: 'Analyse en cours…', status: 'active' });
+    }
+    
+    return steps.slice(-6);
   }, []);
 
   // Send message with streaming
