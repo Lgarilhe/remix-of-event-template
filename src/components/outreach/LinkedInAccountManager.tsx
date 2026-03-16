@@ -62,6 +62,17 @@ export const LinkedInAccountManager: React.FC<LinkedInAccountManagerProps> = ({
   const [connecting, setConnecting] = useState(false);
   const [disconnecting, setDisconnecting] = useState<string | null>(null);
   const [reconnectingAccount, setReconnectingAccount] = useState<LinkedInAccount | null>(null);
+  const [proxyCache, setProxyCache] = useState<Record<string, string | null>>({});
+  const { mappings, getMappingForAccount } = useMemberLinkedInAccounts();
+
+  // Initialize proxy cache from mappings
+  useEffect(() => {
+    const cache: Record<string, string | null> = {};
+    mappings.forEach(m => {
+      cache[m.linkedin_account_id] = m.proxy_country;
+    });
+    setProxyCache(cache);
+  }, [mappings]);
   
   // Signature settings
   const [signatureName, setSignatureName] = useState(() => {
