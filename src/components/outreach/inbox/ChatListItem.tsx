@@ -146,8 +146,21 @@ export const ChatListItem: React.FC<ChatListItemProps> = ({
         </div>
       </button>
 
-      {/* Category quick action — visible on hover */}
-      <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+      {/* Hover actions */}
+      <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity flex gap-0.5">
+        {/* Delete chat button */}
+        {onDeleteChat && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              setShowDeleteConfirm(true);
+            }}
+            className="h-6 w-6 flex items-center justify-center bg-destructive text-destructive-foreground border border-foreground/30 hover:bg-destructive/80 transition-colors"
+          >
+            <Trash2 className="w-3 h-3" />
+          </button>
+        )}
+        {/* Category tag */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button className="h-6 w-6 flex items-center justify-center bg-background border border-foreground/30 hover:bg-muted transition-colors">
@@ -187,6 +200,33 @@ export const ChatListItem: React.FC<ChatListItemProps> = ({
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
+
+      {/* Delete confirmation dialog */}
+      <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Supprimer cette conversation ?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Cette action est irréversible. La conversation sera définitivement supprimée.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuler</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={isDeletingChat}
+              onClick={async () => {
+                if (onDeleteChat) {
+                  await onDeleteChat(chat.id);
+                  setShowDeleteConfirm(false);
+                }
+              }}
+            >
+              {isDeletingChat ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+              Supprimer
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };
