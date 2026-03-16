@@ -112,7 +112,7 @@ export const AnimatedOrb: React.FC<AnimatedOrbProps> = ({
       ctx.fill();
 
       // Eye border — gradient stroke
-      ctx.lineWidth = 2.5 * dpr;
+      ctx.lineWidth = 3 * dpr;
       const strokeGrad = ctx.createLinearGradient(-hw, 0, hw, 0);
       strokeGrad.addColorStop(0, `rgba(${SKALR_COLORS[1][0]},${SKALR_COLORS[1][1]},${SKALR_COLORS[1][2]},0.9)`);
       strokeGrad.addColorStop(0.5, `rgba(${SKALR_COLORS[0][0]},${SKALR_COLORS[0][1]},${SKALR_COLORS[0][2]},1)`);
