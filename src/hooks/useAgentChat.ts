@@ -3,7 +3,7 @@ import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { useOrganization } from './useOrganization';
 import { Job } from '@/types/jobs';
-import { isThinkingLineUseful } from '@/components/agent/filterThinking';
+// filterThinking utilities used by display components directly
 
 export interface AgentMessage {
   id: string;
@@ -28,7 +28,8 @@ export interface AgentConversation {
   updated_at: string;
 }
 
-export interface ThinkingStep {
+export interface ThinkingPhase {
+  id: string;
   label: string;
   status: 'pending' | 'active' | 'done';
 }
@@ -39,7 +40,7 @@ export const useAgentChat = (conversationId: string | null) => {
   const [sending, setSending] = useState(false);
   const [streamingContent, setStreamingContent] = useState('');
   const [thinkingContent, setThinkingContent] = useState('');
-  const [thinkingSteps, setThinkingSteps] = useState<ThinkingStep[]>([]);
+  const [thinkingSteps, setThinkingSteps] = useState<ThinkingPhase[]>([]);
   const [isThinking, setIsThinking] = useState(false);
   const isStreamingRef = useRef(false);
   const [conversation, setConversation] = useState<AgentConversation | null>(null);
@@ -123,44 +124,82 @@ export const useAgentChat = (conversationId: string | null) => {
     };
   }, [conversationId]);
 
-  // Parse thinking content into steps — only keep human-readable lines
-  const parseThinkingSteps = useCallback((thinking: string): ThinkingStep[] => {
-    if (!thinking) return [];
-    
-    const lines = thinking.split('\n').filter(l => l.trim());
-    const steps: ThinkingStep[] = [];
-    
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (!trimmed || trimmed.length < 10) continue;
-      
-      // Skip technical/noisy lines — only show human-readable steps
-      if (!isThinkingLineUseful(trimmed)) continue;
-      
-      // Clean up the label
-      let label = trimmed
-        .replace(/\*{1,3}([^*]+)\*{1,3}/g, '$1')
-        .replace(/`([^`]+)`/g, '$1')
-        .replace(/^[-·•]\s*/, '')
-        .replace(/^\d+\.\s*/, '');
-      
-      if (label.length > 60) label = label.slice(0, 57) + '…';
-      if (label.length < 10) continue;
-      
-      steps.push({ label, status: 'done' });
+  // ── Phase detection — maps thinking keywords to clean user-facing labels ──
+  const AGENT_PHASES: Array<{ id: string; label: string; triggers: RegExp }> = [
+    {
+      id: 'analyze',
+      label: 'Analyse de la fiche de poste',
+      triggers: /fiche de poste|job description|résumé du poste|poste.*demande|le client|profil recherché|mission|cahier des charges/i,
+    },
+    {
+      id: 'titles',
+      label: 'Définition des titres cibles',
+      triggers: /titres?\s*(de poste|cible|à cibler)|engineering manager|lead|architecte|role.*keywords|variantes?\s*(fr|en)/i,
+    },
+    {
+      id: 'filters',
+      label: 'Construction des filtres LinkedIn',
+      triggers: /keywords|boolean|filter|filtre|company_keywords|location_keywords|skills_filter|seniority|exclusion|NOT\s*\(/i,
+    },
+    {
+      id: 'location',
+      label: 'Paramétrage de la localisation',
+      triggers: /localisation|location|géo|remote|hybrid|rayon|km|miles|île-de-france|paris|lyon/i,
+    },
+    {
+      id: 'experience',
+      label: 'Calibrage de l\'expérience',
+      triggers: /expérience|experience|senior|junior|années?\s*d'xp|tenure|calculated_experience/i,
+    },
+    {
+      id: 'companies',
+      label: 'Ciblage des entreprises',
+      triggers: /entreprise|company|GAFAM|startup|scale-?up|exclure.*client|company_keywords/i,
+    },
+    {
+      id: 'plan',
+      label: 'Finalisation du plan de recherche',
+      triggers: /plan\s*(de recherche|final)|search_plan|récapitul|résumé.*plan|lancer.*recherche/i,
+    },
+    {
+      id: 'scoring',
+      label: 'Préparation du scoring',
+      triggers: /scoring|score|évaluation|must.have|nice.to.have|critère/i,
+    },
+  ];
+
+  const parseThinkingPhases = useCallback((thinking: string): ThinkingPhase[] => {
+    if (!thinking || thinking.length < 20) return [];
+
+    const phases: ThinkingPhase[] = AGENT_PHASES.map(p => ({
+      id: p.id,
+      label: p.label,
+      status: 'pending' as const,
+    }));
+
+    // Scan thinking content to detect which phases have been triggered
+    let lastTriggeredIndex = -1;
+    for (let i = 0; i < AGENT_PHASES.length; i++) {
+      if (AGENT_PHASES[i].triggers.test(thinking)) {
+        phases[i].status = 'done';
+        lastTriggeredIndex = i;
+      }
     }
-    
-    // Last step is active if we're still thinking
-    if (steps.length > 0) {
-      steps[steps.length - 1].status = 'active';
+
+    // The last triggered phase is "active" (still being worked on)
+    if (lastTriggeredIndex >= 0) {
+      phases[lastTriggeredIndex].status = 'active';
     }
-    
-    // If no useful steps found, show a generic one
-    if (steps.length === 0 && thinking.length > 50) {
-      steps.push({ label: 'Analyse en cours…', status: 'active' });
-    }
-    
-    return steps.slice(-6);
+
+    // Only return phases that are triggered or the next pending one
+    const firstPendingAfterDone = phases.findIndex(
+      (p, i) => p.status === 'pending' && i > lastTriggeredIndex
+    );
+    const visibleEnd = firstPendingAfterDone >= 0
+      ? Math.min(firstPendingAfterDone + 1, phases.length)
+      : phases.length;
+
+    return phases.slice(0, visibleEnd);
   }, []);
 
   // Send message with streaming
@@ -244,7 +283,7 @@ export const useAgentChat = (conversationId: string | null) => {
               if (thinkingText) {
                 accumulatedThinking += thinkingText;
                 setThinkingContent(accumulatedThinking);
-                setThinkingSteps(parseThinkingSteps(accumulatedThinking));
+                setThinkingSteps(parseThinkingPhases(accumulatedThinking));
                 setIsThinking(true);
                 continue;
               }
@@ -299,7 +338,7 @@ export const useAgentChat = (conversationId: string | null) => {
       setThinkingSteps([]);
       abortRef.current = null;
     }
-  }, [conversationId, sending, parseThinkingSteps]);
+  }, [conversationId, sending, parseThinkingPhases]);
 
   const triggerSearch = useCallback(async (convId: string) => {
     try {
