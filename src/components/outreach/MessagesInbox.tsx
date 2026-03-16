@@ -240,7 +240,7 @@ const MessagesInboxInner: React.FC<
           />
         )}
       </div>
-      </div>
+      </>
     </AttendeePicturesProvider>
   );
 };
