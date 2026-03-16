@@ -234,14 +234,24 @@ const LinkedInHostedAuthCard = ({
                       </div>
                     </div>
                   </div>
-                  {account.status === 'OK' && (
-                    <ProxyConfigPanel
-                      accountId={account.id}
-                      accountName={account.name || account.id}
-                      currentCountry={proxyCache[account.id] ?? getMappingForAccount(account.id)?.proxy_country ?? null}
-                      onUpdated={(country) => setProxyCache(prev => ({ ...prev, [account.id]: country }))}
-                    />
-                  )}
+                  {account.status === 'OK' && (() => {
+                    const mapping = getMappingForAccount(account.id);
+                    const cached = proxyCache[account.id];
+                    return (
+                      <ProxyConfigPanel
+                        accountId={account.id}
+                        accountName={account.name || account.id}
+                        currentCountry={cached?.country ?? mapping?.proxy_country ?? null}
+                        currentMode={cached?.mode ?? mapping?.proxy_mode ?? null}
+                        currentHost={mapping?.proxy_host ?? null}
+                        currentPort={mapping?.proxy_port ?? null}
+                        currentProtocol={mapping?.proxy_protocol ?? null}
+                        proxyIsActive={mapping?.proxy_is_active ?? null}
+                        proxyLastError={mapping?.proxy_last_error ?? null}
+                        onUpdated={(country, mode) => setProxyCache(prev => ({ ...prev, [account.id]: { country, mode } }))}
+                      />
+                    );
+                  })()}
                 </div>
               ))}
             </div>

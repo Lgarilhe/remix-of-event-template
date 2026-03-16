@@ -13,6 +13,12 @@ export interface MemberLinkedInMapping {
   linked_by: string;
   proxy_country: string | null;
   proxy_updated_at: string | null;
+  proxy_mode: string | null;
+  proxy_host: string | null;
+  proxy_port: number | null;
+  proxy_protocol: string | null;
+  proxy_last_error: string | null;
+  proxy_is_active: boolean | null;
 }
 
 export function useMemberLinkedInAccounts() {
