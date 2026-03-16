@@ -762,6 +762,142 @@ Deno.serve(async (req) => {
         );
       }
 
+      case 'list_invitations_received': {
+        const { account_id, limit: invLimit, cursor: invCursor } = params;
+        if (!account_id) {
+          throw new HttpError(400, 'Account ID requis');
+        }
+        let invUrl = `${baseUrl}/users/invite/received?account_id=${account_id}&limit=${invLimit || 20}`;
+        if (invCursor) invUrl += `&cursor=${invCursor}`;
+
+        console.log(`[list_invitations_received] GET ${invUrl}`);
+        const invRes = await fetchWithTimeout(invUrl, {
+          headers: { 'X-API-KEY': apiKey, 'Accept': 'application/json' },
+        });
+        const invData = await invRes.json();
+        console.log(`[list_invitations_received] Response ${invRes.status}: ${JSON.stringify(invData).slice(0, 500)}`);
+
+        if (!invRes.ok) {
+          return new Response(
+            JSON.stringify({ success: false, error: invData.message || 'Erreur lors de la récupération des invitations' }),
+            { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
+        const mappedInvitations = (invData.items || []).map((item: any) => ({
+          id: item.id,
+          inviter_name: item.inviter?.inviter_name || 'Inconnu',
+          inviter_id: item.inviter?.inviter_id || '',
+          inviter_public_identifier: item.inviter?.inviter_public_identifier || '',
+          inviter_description: item.inviter?.inviter_description || null,
+          invitation_text: item.invitation_text || null,
+          date: item.date || '',
+          parsed_datetime: item.parsed_datetime || null,
+          shared_secret: item.specifics?.shared_secret || '',
+          provider: item.specifics?.provider || 'LINKEDIN',
+        }));
+
+        return new Response(
+          JSON.stringify({ success: true, invitations: mappedInvitations, cursor: invData.cursor || null }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      case 'handle_invitation_received': {
+        const { account_id, invitation_id, action: invAction, shared_secret, provider } = params;
+        if (!account_id || !invitation_id || !invAction || !shared_secret) {
+          throw new HttpError(400, 'account_id, invitation_id, action et shared_secret requis');
+        }
+        if (invAction !== 'accept' && invAction !== 'decline') {
+          throw new HttpError(400, 'action doit être "accept" ou "decline"');
+        }
+
+        console.log(`[handle_invitation_received] ${invAction} invitation ${invitation_id}`);
+        const handleRes = await fetchWithTimeout(`${baseUrl}/users/invite/received/${invitation_id}`, {
+          method: 'POST',
+          headers: {
+            'X-API-KEY': apiKey,
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+          },
+          body: JSON.stringify({
+            provider: provider || 'LINKEDIN',
+            shared_secret,
+            account_id,
+            action: invAction,
+          }),
+        });
+        const handleData = await handleRes.json();
+        console.log(`[handle_invitation_received] Response ${handleRes.status}:`, JSON.stringify(handleData));
+
+        if (!handleRes.ok) {
+          return new Response(
+            JSON.stringify({ success: false, error: handleData.message || `Erreur lors du traitement de l'invitation` }),
+            { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
+        return new Response(
+          JSON.stringify({ success: true, status: handleData.status || (invAction === 'accept' ? 'ACCEPTED' : 'DECLINED') }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      case 'bulk_handle_invitations': {
+        const { account_id, invitations: bulkInvitations } = params;
+        if (!account_id || !Array.isArray(bulkInvitations) || bulkInvitations.length === 0) {
+          throw new HttpError(400, 'account_id et invitations[] requis');
+        }
+
+        console.log(`[bulk_handle_invitations] Processing ${bulkInvitations.length} invitations`);
+        const results: Array<{ invitation_id: string; status: string; error?: string }> = [];
+
+        for (const inv of bulkInvitations) {
+          const { invitation_id, shared_secret, action: bulkAction } = inv as { invitation_id: string; shared_secret: string; action: string };
+          try {
+            const bulkRes = await fetchWithTimeout(`${baseUrl}/users/invite/received/${invitation_id}`, {
+              method: 'POST',
+              headers: {
+                'X-API-KEY': apiKey,
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+              },
+              body: JSON.stringify({
+                provider: 'LINKEDIN',
+                shared_secret,
+                account_id,
+                action: bulkAction,
+              }),
+            });
+            const bulkData = await bulkRes.json();
+            console.log(`[bulk] ${invitation_id}: ${bulkRes.status}`);
+
+            if (bulkRes.status === 429) {
+              results.push({ invitation_id, status: 'RATE_LIMITED', error: 'Rate limit atteint' });
+              break; // Stop processing
+            }
+
+            if (!bulkRes.ok) {
+              results.push({ invitation_id, status: 'ERROR', error: bulkData.message || 'Erreur' });
+            } else {
+              results.push({ invitation_id, status: bulkData.status || (bulkAction === 'accept' ? 'ACCEPTED' : 'DECLINED') });
+            }
+          } catch (e) {
+            results.push({ invitation_id, status: 'ERROR', error: e instanceof Error ? e.message : 'Erreur inconnue' });
+          }
+
+          // Anti-detection delay: 1.5s between calls
+          if (bulkInvitations.indexOf(inv) < bulkInvitations.length - 1) {
+            await new Promise(resolve => setTimeout(resolve, 1500));
+          }
+        }
+
+        return new Response(
+          JSON.stringify({ success: true, results }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
       case 'get_account_details': {
         // Get full details for an account, including proxy info
         const { account_id } = params;

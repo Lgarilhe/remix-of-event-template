@@ -5,13 +5,14 @@ import { Navbar } from '@/components/Navbar';
 import { SEOHead } from '@/components/SEOHead';
 import { applySubscriptionOverrides } from '@/components/outreach/LinkedInAccountManager';
 import { LinkedInSearch } from '@/components/outreach/LinkedInSearch';
+import { InvitationsPanel } from '@/components/outreach/InvitationsPanel';
 import { SequencesList } from '@/components/outreach/SequencesList';
 import { MessagesInbox } from '@/components/outreach/MessagesInbox';
 import { NurturingDashboard } from '@/components/outreach/NurturingDashboard';
 import { InMailQueueStatus } from '@/components/outreach/InMailQueueStatus';
 import { ProjectsList } from '@/components/outreach/projects';
 import { AgentChatPanel } from '@/components/agent';
-import { Search, Users, Settings, Bot } from 'lucide-react';
+import { Search, Users, Settings, Bot, UserPlus } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { OutreachSearchProvider } from '@/contexts/OutreachSearchContext';
@@ -42,6 +43,7 @@ const tabs = [
   { value: 'agent', label: 'Agent', shortLabel: 'Agent', emoji: '🤖' },
   { value: 'search', label: 'Recherche', shortLabel: 'Recherche', emoji: '🔍' },
   { value: 'messages', label: 'Messages', shortLabel: 'Msg', emoji: '💬' },
+  { value: 'invitations', label: 'Invitations', shortLabel: 'Invit.', emoji: '🤝' },
   { value: 'sequences', label: 'Séquences', shortLabel: 'Séq.', emoji: '🔗' },
   { value: 'nurturing', label: 'Nurturing', shortLabel: 'Nurt.', emoji: '✨' },
 ] as const;
@@ -54,7 +56,7 @@ export default function Outreach() {
   const [loading, setLoading] = useState(true);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   
-  const { isAdmin, isOwner } = useOrganization();
+  const { isAdmin, isOwner, organizationId } = useOrganization();
   const { mappings, getUserLinkedAccountId } = useMemberLinkedInAccounts();
   
   const validTabs = tabs.map(t => t.value) as string[];
@@ -268,6 +270,15 @@ export default function Outreach() {
               />
             </div>
           )}
+
+          <div className={cn("mt-0 min-w-0", activeTab !== 'invitations' && 'hidden')}>
+            <InvitationsPanel
+              accounts={accounts}
+              selectedAccount={selectedAccount}
+              onAccountChange={setSelectedAccount}
+              organizationId={organizationId}
+            />
+          </div>
 
           <div className={cn("mt-0", activeTab !== 'sequences' && 'hidden')}>
             <div className="bg-background border border-foreground p-3 sm:p-6">
