@@ -203,10 +203,10 @@ const Settings = () => {
               <>
                 <Card>
                   <CardHeader>
-                    <CardTitle className="flex items-center gap-2 text-lg">
-                      <Users className="w-5 h-5" />
+                    <CardTitle className="flex items-center gap-2 text-sm font-bold uppercase tracking-wider">
+                      <Users className="w-4 h-4" />
                       Équipe
-                      <Badge variant="secondary" className="ml-auto">{members.length} membre{members.length > 1 ? 's' : ''}</Badge>
+                      <Badge variant="secondary" className="ml-auto text-[10px]">{members.length} membre{members.length > 1 ? 's' : ''}</Badge>
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
