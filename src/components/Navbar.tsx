@@ -84,14 +84,14 @@ const NavLogo: React.FC = () => {
         setTimeout(() => setFace('idle'), rand.duration);
       }}
     >
-      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 14 14" className="w-4 h-4" style={{ transition: 'transform 0.2s', transform: face === 'surprise' ? 'scale(1.1)' : 'scale(1)' }}>
-        <circle cx="7" cy="7" r="6.5" fill="currentColor" stroke="currentColor" strokeWidth="0" />
-        <g style={{ color: 'var(--foreground)' }} className="text-foreground">
-          <circle cx="7" cy="7" r="6.5" fill="hsl(var(--background))" stroke="hsl(var(--foreground))" strokeWidth="1.1" />
-        {eyebrows}
-        {leftEye}
-        {rightEye}
-        {mouth}
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 14 14" className="w-5 h-5" style={{ transition: 'transform 0.2s', transform: face === 'surprise' ? 'scale(1.1)' : 'scale(1)' }}>
+        <circle cx="7" cy="7" r="6.5" fill="hsl(var(--background))" stroke="hsl(var(--foreground))" strokeWidth="1.1" />
+        <g fill="hsl(var(--foreground))" stroke="hsl(var(--foreground))">
+          {eyebrows}
+          {leftEye}
+          {rightEye}
+          {mouth}
+        </g>
       </svg>
     </div>
   );
