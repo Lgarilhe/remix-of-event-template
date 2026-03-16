@@ -1501,6 +1501,8 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
   }, [messages, loadingMessages, scrollToBottom]);
 
   return {
+    // Organization
+    organizationId,
     // Chat state
     chats,
     filteredChats,
