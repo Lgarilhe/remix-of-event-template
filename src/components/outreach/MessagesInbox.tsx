@@ -37,11 +37,7 @@ export const MessagesInbox: React.FC<MessagesInboxProps> = (props) => {
     );
   }
 
-  return (
-    <AttendeePicturesProvider organizationId={null}>
-      <MessagesInboxInner {...props} selectedAccount={selectedAccount} />
-    </AttendeePicturesProvider>
-  );
+  return <MessagesInboxInner {...props} selectedAccount={selectedAccount} />;
 };
 
 const MessagesInboxInner: React.FC<
