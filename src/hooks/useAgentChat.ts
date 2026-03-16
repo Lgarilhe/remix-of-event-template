@@ -28,7 +28,8 @@ export interface AgentConversation {
   updated_at: string;
 }
 
-export interface ThinkingStep {
+export interface ThinkingPhase {
+  id: string;
   label: string;
   status: 'pending' | 'active' | 'done';
 }
