@@ -77,6 +77,8 @@ const MessagesInboxInner: React.FC<
   };
 
   return (
+    <AttendeePicturesProvider organizationId={inbox.organizationId ?? null}>
+    <PreloadAttendeePictures chats={inbox.chats} />
     <>
       {/* Mobile fullscreen message view */}
       {inbox.selectedChat && (
