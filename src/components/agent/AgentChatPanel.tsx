@@ -11,6 +11,35 @@ import { Job } from '@/types/jobs';
 import { useNotionJobs } from '@/hooks/useNotionJobs';
 import { cn } from '@/lib/utils';
 
+const CHAT_LOADING_MESSAGES = [
+  'Chargement des messages…',
+  'Synchronisation en cours…',
+  'Presque prêt…',
+];
+
+function LoadingMessages() {
+  const [index, setIndex] = React.useState(0);
+  const [fade, setFade] = React.useState(true);
+  React.useEffect(() => {
+    const interval = setInterval(() => {
+      setFade(false);
+      setTimeout(() => {
+        setIndex((prev) => (prev + 1) % CHAT_LOADING_MESSAGES.length);
+        setFade(true);
+      }, 200);
+    }, 2400);
+    return () => clearInterval(interval);
+  }, []);
+  return (
+    <p className={cn(
+      "text-xs text-muted-foreground uppercase tracking-[0.15em] font-medium transition-opacity duration-200",
+      fade ? "opacity-100" : "opacity-0"
+    )}>
+      {CHAT_LOADING_MESSAGES[index]}
+    </p>
+  );
+}
+
 interface AgentChatPanelProps {
   onClose?: () => void;
 }
