@@ -103,7 +103,7 @@ async function resolveNetworkDistance(
   return { networkDistance: profile.network_distance || null, resolvedProviderId: profile.provider_id || null };
 }
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }

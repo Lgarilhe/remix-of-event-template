@@ -119,7 +119,7 @@ NOMS D'ÉCOLES PRÉCIS (toujours utiliser ces noms exacts):
 - "42 Paris" ou "École 42"
 - "Epitech" ou "Epita"`;
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }

@@ -16,7 +16,7 @@ function sanitizeArray(val: unknown, maxItems = 30, maxLen = 100): string[] {
   return val.slice(0, maxItems).map(v => sanitize(v, maxLen)).filter(Boolean);
 }
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }

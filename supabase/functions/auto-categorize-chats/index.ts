@@ -108,7 +108,7 @@ Pas de texte avant ou après.`,
   throw new Error('AI API unavailable after retries');
 }
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }

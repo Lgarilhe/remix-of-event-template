@@ -59,7 +59,7 @@ const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
  * Returns the select/multi_select/status options for the Postes database.
  * Cached in notion_api_cache for 1 hour.
  */
-serve(async (req) => {
+Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
