@@ -679,6 +679,89 @@ Deno.serve(async (req) => {
         );
       }
 
+      case 'add_reaction': {
+        const { message_id, reaction } = params;
+        if (!message_id || !reaction) {
+          throw new HttpError(400, 'message_id et reaction requis');
+        }
+        console.log(`[add_reaction] Adding "${reaction}" to message ${message_id}`);
+        const reactionRes = await fetchWithTimeout(`${baseUrl}/messages/${message_id}/reaction`, {
+          method: 'POST',
+          headers: {
+            'X-API-KEY': apiKey,
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+          },
+          body: JSON.stringify({ reaction }),
+        });
+        const reactionData = await reactionRes.json();
+        console.log(`[add_reaction] Response ${reactionRes.status}:`, JSON.stringify(reactionData));
+        if (!reactionRes.ok) {
+          return new Response(
+            JSON.stringify({ success: false, error: reactionData.message || 'Erreur lors de l\'ajout de la réaction' }),
+            { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+        return new Response(
+          JSON.stringify({ success: true, ...reactionData }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      case 'delete_message': {
+        const { message_id } = params;
+        if (!message_id) {
+          throw new HttpError(400, 'message_id requis');
+        }
+        console.log(`[delete_message] Deleting message ${message_id}`);
+        const delMsgRes = await fetchWithTimeout(`${baseUrl}/messages/${message_id}`, {
+          method: 'DELETE',
+          headers: {
+            'X-API-KEY': apiKey,
+            'Accept': 'application/json',
+          },
+        });
+        const delMsgData = await delMsgRes.json();
+        console.log(`[delete_message] Response ${delMsgRes.status}:`, JSON.stringify(delMsgData));
+        if (!delMsgRes.ok) {
+          return new Response(
+            JSON.stringify({ success: false, error: delMsgData.message || 'Impossible de supprimer le message' }),
+            { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+        return new Response(
+          JSON.stringify({ success: true, ...delMsgData }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      case 'delete_chat': {
+        const { chat_id } = params;
+        if (!chat_id) {
+          throw new HttpError(400, 'chat_id requis');
+        }
+        console.log(`[delete_chat] Deleting chat ${chat_id}`);
+        const delChatRes = await fetchWithTimeout(`${baseUrl}/chats/${chat_id}`, {
+          method: 'DELETE',
+          headers: {
+            'X-API-KEY': apiKey,
+            'Accept': 'application/json',
+          },
+        });
+        const delChatData = await delChatRes.json();
+        console.log(`[delete_chat] Response ${delChatRes.status}:`, JSON.stringify(delChatData));
+        if (!delChatRes.ok) {
+          return new Response(
+            JSON.stringify({ success: false, error: delChatData.message || 'Impossible de supprimer la conversation' }),
+            { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+        return new Response(
+          JSON.stringify({ success: true, ...delChatData }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
       case 'get_account_details': {
         // Get full details for an account, including proxy info
         const { account_id } = params;
