@@ -61,18 +61,7 @@ export const AgentMessageBubble: React.FC<AgentMessageBubbleProps> = ({ message,
     if (openIdx !== -1) rawContent = rawContent.slice(0, openIdx);
   }
 
-  const cleanContent = rawContent
-    // Strip AI-style markdown formatting
-    .replace(/^#{1,6}\s+/gm, '')                          // headings
-    .replace(/\*{1,3}([^*]+)\*{1,3}/g, '$1')              // bold/italic
-    .replace(/~~([^~]+)~~/g, '$1')                         // strikethrough
-    .replace(/^[-*•]\s+/gm, '')                            // list bullets
-    .replace(/^\d+\.\s+/gm, '')                            // numbered lists
-    .replace(/`([^`]+)`/g, '$1')                           // inline code
-    .replace(/^>\s+/gm, '')                                // blockquotes
-    .replace(/---+/g, '')                                  // horizontal rules
-    .replace(/\n{3,}/g, '\n\n')                            // collapse extra newlines
-    .trim();
+  const cleanContent = rawContent.replace(/\n{3,}/g, '\n\n').trim();
 
   const searchPlan = message.metadata?.search_plan as Record<string, unknown> | undefined;
 
