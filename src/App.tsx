@@ -110,6 +110,7 @@ const AppContent = () => {
           <Route path="*" element={<NotFound />} />
         </Routes>
       </Suspense>
+      <AgentFloatingButton />
       <SessionExpiredDialog 
         open={sessionExpired} 
         onOpenChange={handleSessionExpiredClose} 
