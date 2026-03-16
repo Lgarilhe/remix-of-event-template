@@ -271,6 +271,15 @@ export default function Outreach() {
             </div>
           )}
 
+          <div className={cn("mt-0 min-w-0", activeTab !== 'invitations' && 'hidden')}>
+            <InvitationsPanel
+              accounts={accounts}
+              selectedAccount={selectedAccount}
+              onAccountChange={setSelectedAccount}
+              organizationId={organizationId}
+            />
+          </div>
+
           <div className={cn("mt-0", activeTab !== 'sequences' && 'hidden')}>
             <div className="bg-background border border-foreground p-3 sm:p-6">
               <SequencesList
