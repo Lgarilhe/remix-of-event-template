@@ -94,9 +94,11 @@ export const AgentMessageBubble: React.FC<AgentMessageBubbleProps> = ({ message,
   }
 
   // ── Assistant message ──
-  const { candidates, contentWithout: finalContent } = !isUser && !isStatus
+  const { candidates, contentWithout: afterCandidates } = !isUser && !isStatus
     ? extractCandidates(cleanContent)
     : { candidates: [], contentWithout: cleanContent };
+
+  const { summary, remaining: finalContent } = extractSummary(afterCandidates);
 
   // Detect calibration step pattern: "➡️ 3/5 — Expérience" or "✅ 2/5 — Compétences**" etc.
   const stepMatch = finalContent.match(/^[^\w]*(\d+)\/(\d+)\s*[—–\-]\s*(.+?)[\n\r]/);
