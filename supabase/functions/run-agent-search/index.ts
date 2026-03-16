@@ -586,7 +586,7 @@ Deno.serve(async (req) => {
         cacheHits++;
         scoredProfiles.push({ profile, score: cached, fromCache: true });
         const rec = cached.recommendation;
-        if (rec === "go" || rec === "Go") {
+        if (isGoRecommendation(rec)) {
           goProfiles.push({ profile, score: cached });
         }
       } else {
