@@ -12,26 +12,25 @@ function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15
   return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timeout));
 }
 
-let NOTION_API_KEY = Deno.env.get("NOTION_API_KEY");
+// No global integration credentials — always resolved from organization_integrations
+let NOTION_API_KEY: string | undefined;
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-async function resolveOrgCredentials(orgId: string | null) {
-  if (!orgId) return;
-  try {
-    const { data } = await supabase
-      .from('organization_integrations')
-      .select('notion_api_key, notion_connected')
-      .eq('organization_id', orgId)
-      .single();
-    if (data?.notion_connected && data.notion_api_key) {
-      NOTION_API_KEY = data.notion_api_key;
-      console.log('[update-candidate-stage] Using org-specific Notion credentials');
-    }
-  } catch (e) {
-    console.warn('[update-candidate-stage] Failed to load org credentials:', e);
+async function resolveOrgCredentials(orgId: string) {
+  const { data } = await supabase
+    .from('organization_integrations')
+    .select('notion_api_key, notion_connected')
+    .eq('organization_id', orgId)
+    .single();
+
+  if (!data?.notion_connected || !data.notion_api_key) {
+    throw new Error('Intégration Notion non configurée pour votre organisation. Rendez-vous dans Settings > Intégrations.');
   }
+
+  NOTION_API_KEY = data.notion_api_key;
+  console.log('[update-candidate-stage] Using org-specific Notion credentials');
 }
 
 Deno.serve(async (req) => {
