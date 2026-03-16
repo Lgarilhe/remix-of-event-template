@@ -925,6 +925,11 @@ async function callLLM(
   // Build education text
   const educationText = (profile.education || []).map((e, i) => `  ${i + 1}. ${e}`).join("\n") || "Non renseignée";
 
+  const hasDescriptions = (profile.workExperience || []).some(w => w.description && w.description.length > 30);
+  const dataWarning = !hasDescriptions
+    ? `\n⚠️ DONNÉES INCOMPLÈTES: Les descriptions d'expérience sont absentes. Évalue sur les titres, entreprises, et skills déclarés. NE PÉNALISE PAS le candidat pour manque de détails — ajuste ton score de confiance plutôt que le score technique.\n`
+    : "";
+
   const prompt = sanitizeText(
     `Tu es un recruteur expert senior. Évalue la correspondance COMPLÈTE de ce candidat avec le poste.
 
@@ -952,7 +957,7 @@ ${job.bodyContent ? "Détails: " + job.bodyContent.substring(0, 400) : ""}
 === CANDIDAT ===
 ${profile.name} — ${profile.headline || profile.currentRole || "?"}
 ${profile.location ? "📍 " + profile.location : ""}
-${profile.yearsOfExperience !== undefined ? "XP: " + profile.yearsOfExperience + " ans" : ""}
+${dataWarning}${profile.yearsOfExperience !== undefined ? "XP: " + profile.yearsOfExperience + " ans" : ""}
 Skills déclarés: ${(profile.skills || []).join(", ") || "Non renseignés"}
 ${profile.summary ? "À propos: " + (profile.summary || "").substring(0, 400) : ""}
 
