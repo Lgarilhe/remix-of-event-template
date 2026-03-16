@@ -89,9 +89,9 @@ export const AnimatedOrb: React.FC<AnimatedOrbProps> = ({
       ctx.arc(cx, cy, outerR, 0, Math.PI * 2);
       ctx.fill();
 
-      // Eye shape — almond/lemon shape for more character
-      const eyeW = w * 0.78;
-      const eyeH = w * 0.34;
+      // Eye shape — fills most of the canvas
+      const eyeW = w * 0.92;
+      const eyeH = w * 0.44;
       const squeeze = 1 - blinkY * 0.95;
 
       ctx.save();
@@ -112,7 +112,7 @@ export const AnimatedOrb: React.FC<AnimatedOrbProps> = ({
       ctx.fill();
 
       // Eye border — gradient stroke
-      ctx.lineWidth = 2.5 * dpr;
+      ctx.lineWidth = 3 * dpr;
       const strokeGrad = ctx.createLinearGradient(-hw, 0, hw, 0);
       strokeGrad.addColorStop(0, `rgba(${SKALR_COLORS[1][0]},${SKALR_COLORS[1][1]},${SKALR_COLORS[1][2]},0.9)`);
       strokeGrad.addColorStop(0.5, `rgba(${SKALR_COLORS[0][0]},${SKALR_COLORS[0][1]},${SKALR_COLORS[0][2]},1)`);
@@ -122,7 +122,7 @@ export const AnimatedOrb: React.FC<AnimatedOrbProps> = ({
       ctx.clip();
 
       // Iris — larger, more vivid
-      const irisR = eyeH * 0.72;
+      const irisR = eyeH * 0.82;
       const breath = (Math.sin(t * 1.5 * speed) + 1) / 2;
       const irisGrad = ctx.createRadialGradient(lookX, lookY, 0, lookX, lookY, irisR);
       irisGrad.addColorStop(0, `rgba(${SKALR_COLORS[3][0]},${SKALR_COLORS[3][1]},${SKALR_COLORS[3][2]},1)`);
