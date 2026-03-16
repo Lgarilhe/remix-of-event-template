@@ -130,7 +130,16 @@ async function resolveUnipileCredentials(organizationId?: string): Promise<{ api
     }
   }
   
-  // No global fallback to avoid cross-tenant data leaks
+  // Unipile is a platform-level integration (one account shared by all orgs).
+  // Fall back to env vars for orgs that haven't configured org-specific credentials.
+  const envApiKey = Deno.env.get('UNIPILE_API_KEY');
+  const envDsn = Deno.env.get('UNIPILE_DSN');
+  if (envApiKey && envDsn) {
+    const dsn = envDsn.startsWith('http') ? envDsn.replace(/^https?:\/\//, '') : envDsn;
+    console.log(`[unipile-search] Using platform env var credentials (org ${organizationId} has no org-specific config)`);
+    return { apiKey: envApiKey, dsn };
+  }
+
   return null;
 }
 
