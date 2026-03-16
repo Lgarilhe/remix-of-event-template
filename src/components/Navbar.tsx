@@ -259,10 +259,15 @@ export const Navbar: React.FC = () => {
                 <Link
                   to="/outreach" 
                   onClick={() => setIsMobileMenuOpen(false)}
-                  className="flex-1 flex items-center justify-center bg-background text-foreground text-[17px] font-medium uppercase border-b border-foreground tracking-[-0.34px] animate-fade-in"
+                  className="flex-1 flex items-center justify-center gap-2 bg-background text-foreground text-[17px] font-medium uppercase border-b border-foreground tracking-[-0.34px] animate-fade-in"
                   style={{ animationDelay: '0.3s', animationFillMode: 'both' }}
                 >
                   OUTREACH
+                  {unreadMsgCount > 0 && (
+                    <span className="min-w-[20px] h-5 flex items-center justify-center px-1.5 text-[10px] font-bold bg-destructive text-destructive-foreground rounded-full">
+                      {unreadMsgCount > 99 ? '99+' : unreadMsgCount}
+                    </span>
+                  )}
                 </Link>
                 <Link
                   to="/prospection" 
