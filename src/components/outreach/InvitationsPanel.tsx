@@ -477,7 +477,7 @@ export const InvitationsPanel: React.FC<InvitationsPanelProps> = ({
               )}
             </div>
           )}
-        </ScrollArea>
+        </div>
       </CardContent>
 
       <AlertDialog open={!!bulkConfirm} onOpenChange={() => setBulkConfirm(null)}>
