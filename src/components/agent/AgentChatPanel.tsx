@@ -91,6 +91,8 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({ onClose }) => {
 
   const activeJobs = (jobs || []).filter(j => !['Archivé', 'Fermé', 'Perdu'].includes(j.status));
 
+  const [activeTab, setActiveTab] = useState<'new' | 'history'>('new');
+
   // ── List view ──
   if (showList) {
     return (
@@ -118,8 +120,47 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({ onClose }) => {
             )}
           </div>
         </div>
-        <AgentJobSelector jobs={activeJobs} selectedJob={selectedJob} onSelectJob={setSelectedJob} onLaunch={() => handleNewConversation(selectedJob)} />
-        <AgentConversationsList onSelect={handleSelectConversation} listConversations={listConversations} />
+
+        {/* Tabs */}
+        <div className="flex border-b-2 border-foreground/10 shrink-0">
+          <button
+            onClick={() => setActiveTab('new')}
+            className={cn(
+              "flex-1 py-3 text-[10px] font-bold uppercase tracking-[0.18em] transition-all duration-150 relative",
+              activeTab === 'new'
+                ? "text-foreground"
+                : "text-muted-foreground/50 hover:text-muted-foreground"
+            )}
+          >
+            Nouveau
+            {activeTab === 'new' && (
+              <span className="absolute bottom-0 left-0 right-0 h-[2px] bg-foreground" />
+            )}
+          </button>
+          <button
+            onClick={() => setActiveTab('history')}
+            className={cn(
+              "flex-1 py-3 text-[10px] font-bold uppercase tracking-[0.18em] transition-all duration-150 relative",
+              activeTab === 'history'
+                ? "text-foreground"
+                : "text-muted-foreground/50 hover:text-muted-foreground"
+            )}
+          >
+            Historique
+            {activeTab === 'history' && (
+              <span className="absolute bottom-0 left-0 right-0 h-[2px] bg-foreground" />
+            )}
+          </button>
+        </div>
+
+        {/* Tab content */}
+        <div className="flex-1 overflow-hidden flex flex-col">
+          {activeTab === 'new' ? (
+            <AgentJobSelector jobs={activeJobs} selectedJob={selectedJob} onSelectJob={setSelectedJob} onLaunch={() => handleNewConversation(selectedJob)} />
+          ) : (
+            <AgentConversationsList onSelect={handleSelectConversation} listConversations={listConversations} />
+          )}
+        </div>
       </div>
     );
   }
