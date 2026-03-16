@@ -4,6 +4,7 @@ import { Brain, ChevronDown, Search, BarChart3, Send, Activity } from 'lucide-re
 import { motion, AnimatePresence } from 'framer-motion';
 import { AgentMessage } from '@/hooks/useAgentChat';
 import { AnimatedOrb } from '@/components/ui/AnimatedOrb';
+import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
 
 interface AgentMessageBubbleProps {
