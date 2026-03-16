@@ -477,8 +477,6 @@ Deno.serve(async (req) => {
 
       case 'list_recruiter_contracts': {
         // List Recruiter contracts available for the account
-        // Unfortunately, LinkedIn doesn't expose contracts via standard Voyager API
-        // We'll try to get account details which may contain contract info
         const { account_id } = params;
         
         if (!account_id) {
@@ -488,7 +486,6 @@ Deno.serve(async (req) => {
           );
         }
 
-        // Get full account details which may contain contract information
         const accountResponse = await fetchWithTimeout(`${baseUrl}/accounts/${account_id}`, {
           headers: {
             'X-API-KEY': apiKey,
@@ -511,12 +508,10 @@ Deno.serve(async (req) => {
         const accountData = await accountResponse.json();
         console.log('Account details:', JSON.stringify(accountData).slice(0, 2000));
 
-        // Extract any contract/seat information from connection_params
         const connectionParams = accountData.connection_params || {};
         const imParams = connectionParams.im || {};
         const premiumFeatures = imParams.premiumFeatures || [];
         
-        // Check for recruiter seats/contracts in the raw data
         const recruiterInfo = {
           has_recruiter: premiumFeatures.some((f: string) => 
             f.toLowerCase().includes('recruiter')
@@ -528,8 +523,6 @@ Deno.serve(async (req) => {
           raw_connection_params: connectionParams,
         };
 
-        // The Unipile API doesn't currently expose multiple Recruiter contracts
-        // This would need to be requested from Unipile support as a feature
         return new Response(
           JSON.stringify({ 
             success: true, 
@@ -541,8 +534,118 @@ Deno.serve(async (req) => {
               type: accountData.type,
               status: accountData.sources?.[0]?.status || 'UNKNOWN',
             },
-            // Contracts would go here if supported
             contracts: [],
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      case 'update_proxy': {
+        // Update proxy configuration for an account via PATCH /api/v1/accounts/{id}
+        const { account_id, proxy_country, proxy_ip } = params;
+
+        if (!account_id) {
+          throw new HttpError(400, 'Account ID requis');
+        }
+
+        if (!proxy_country && !proxy_ip) {
+          throw new HttpError(400, 'Veuillez fournir un code pays (proxy_country) ou une adresse IP (proxy_ip)');
+        }
+
+        const proxyBody: Record<string, unknown> = {};
+        if (proxy_country) {
+          // Validate ISO 3166-1 alpha-2
+          if (typeof proxy_country !== 'string' || proxy_country.length !== 2) {
+            throw new HttpError(400, 'Le code pays doit être au format ISO 3166-1 alpha-2 (ex: FR, US, DE)');
+          }
+          proxyBody.country = proxy_country.toUpperCase();
+        }
+        if (proxy_ip) {
+          // Basic IPv4 validation
+          const ipRegex = /^(\d{1,3}\.){3}\d{1,3}$/;
+          if (!ipRegex.test(proxy_ip)) {
+            throw new HttpError(400, 'Adresse IP invalide (format IPv4 attendu)');
+          }
+          proxyBody.ip = proxy_ip;
+        }
+
+        console.log(`[update_proxy] Patching account ${account_id} with proxy:`, JSON.stringify(proxyBody));
+
+        const patchResponse = await fetchWithTimeout(`${baseUrl}/accounts/${account_id}`, {
+          method: 'PATCH',
+          headers: {
+            'X-API-KEY': apiKey,
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+          },
+          body: JSON.stringify({ proxy: proxyBody }),
+        });
+
+        const patchData = await patchResponse.json();
+        console.log(`[update_proxy] Response ${patchResponse.status}:`, JSON.stringify(patchData));
+
+        if (!patchResponse.ok) {
+          const errorMsg = patchData.message || patchData.error || 'Erreur de configuration du proxy';
+          return new Response(
+            JSON.stringify({ success: false, error: errorMsg, status: patchResponse.status }),
+            { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
+        // Update cache in member_linkedin_accounts
+        const country = proxyBody.country || proxy_country?.toUpperCase() || null;
+        await adminClient
+          .from('member_linkedin_accounts')
+          .update({ proxy_country: country, proxy_updated_at: new Date().toISOString() })
+          .eq('linkedin_account_id', account_id)
+          .eq('organization_id', organizationId);
+
+        return new Response(
+          JSON.stringify({ 
+            success: true, 
+            account_id: patchData.account_id || account_id,
+            proxy_country: country,
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      case 'get_account_details': {
+        // Get full details for an account, including proxy info
+        const { account_id } = params;
+
+        if (!account_id) {
+          throw new HttpError(400, 'Account ID requis');
+        }
+
+        const detailResponse = await fetchWithTimeout(`${baseUrl}/accounts/${account_id}`, {
+          headers: {
+            'X-API-KEY': apiKey,
+            'Accept': 'application/json',
+          },
+        });
+
+        if (!detailResponse.ok) {
+          const errorData = await detailResponse.json();
+          return new Response(
+            JSON.stringify({ success: false, error: errorData.message || 'Compte introuvable' }),
+            { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
+        const detailData = await detailResponse.json();
+
+        return new Response(
+          JSON.stringify({ 
+            success: true,
+            account: {
+              id: detailData.id,
+              name: detailData.name,
+              type: detailData.type,
+              status: detailData.sources?.[0]?.status || 'UNKNOWN',
+              proxy: detailData.proxy || null,
+              connection_params: detailData.connection_params || null,
+            },
           }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
