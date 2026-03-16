@@ -293,7 +293,7 @@ const SkalrLanding = () => {
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between gap-2 mb-1">
-                        <h3 className="text-base font-bold text-foreground uppercase tracking-wide">{feature.title}</h3>
+                        <h3 className="text-base font-bold text-foreground uppercase tracking-wide font-sans">{feature.title}</h3>
                         <span className="text-[10px] text-muted-foreground font-mono">{feature.num}</span>
                       </div>
                       <p className="text-sm text-muted-foreground leading-relaxed">{feature.description}</p>
