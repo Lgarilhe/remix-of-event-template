@@ -1,8 +1,7 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ChevronDown, Brain, Sparkles } from 'lucide-react';
+import { ChevronDown, Sparkles, Check, Loader2 } from 'lucide-react';
 import { ThinkingStep } from '@/hooks/useAgentChat';
-import { AnimatedOrb } from '@/components/ui/AnimatedOrb';
 import { cn } from '@/lib/utils';
 
 interface AgentThinkingDisplayProps {
@@ -14,7 +13,7 @@ interface AgentThinkingDisplayProps {
 export const AgentThinkingDisplay: React.FC<AgentThinkingDisplayProps> = ({
   steps, isThinking, thinkingContent,
 }) => {
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(true);
 
   if (steps.length === 0 && !isThinking) return null;
 
@@ -23,24 +22,29 @@ export const AgentThinkingDisplay: React.FC<AgentThinkingDisplayProps> = ({
 
   return (
     <div className="animate-fade-in">
-      <div className="border border-foreground/10 bg-muted/20 overflow-hidden">
-        {/* Header — always visible */}
+      <div
+        className={cn(
+          "border border-brutal-accent/20 overflow-hidden transition-shadow duration-300",
+          isThinking && "shadow-[0_0_20px_-4px_hsl(var(--brutal-accent)/0.25)]"
+        )}
+      >
+        {/* Header */}
         <button
           onClick={() => setExpanded(!expanded)}
-          className="w-full flex items-center gap-2.5 px-3 py-2.5 text-left hover:bg-muted/30 transition-colors"
+          className="w-full flex items-center gap-2.5 px-3.5 py-3 text-left hover:bg-brutal-accent/5 transition-colors"
         >
           {isThinking ? (
-            <AnimatedOrb size={22} speed={3}>
-              <Sparkles className="w-2.5 h-2.5 text-foreground/60" />
-            </AnimatedOrb>
+            <div className="h-5 w-5 flex items-center justify-center">
+              <Sparkles className="w-3.5 h-3.5 text-brutal-accent animate-pulse" />
+            </div>
           ) : (
-            <div className="h-[22px] w-[22px] flex items-center justify-center border border-foreground/15">
-              <Brain className="w-3 h-3 text-muted-foreground" />
+            <div className="h-5 w-5 flex items-center justify-center">
+              <Check className="w-3.5 h-3.5 text-brutal-accent" />
             </div>
           )}
 
           <span className={cn(
-            "text-xs font-medium flex-1 min-w-0 truncate",
+            "text-xs font-semibold flex-1 min-w-0 truncate uppercase tracking-wider",
             isThinking ? "text-foreground" : "text-muted-foreground"
           )}>
             {isThinking
@@ -49,9 +53,9 @@ export const AgentThinkingDisplay: React.FC<AgentThinkingDisplayProps> = ({
             }
           </span>
 
-          {doneCount > 0 && !isThinking && (
-            <span className="text-[10px] text-muted-foreground/60 shrink-0 tabular-nums">
-              {doneCount} étape{doneCount > 1 ? 's' : ''}
+          {doneCount > 0 && (
+            <span className="text-[10px] text-muted-foreground/60 shrink-0 tabular-nums font-mono">
+              {doneCount}/{steps.length}
             </span>
           )}
 
@@ -60,6 +64,18 @@ export const AgentThinkingDisplay: React.FC<AgentThinkingDisplayProps> = ({
             expanded && "rotate-180"
           )} />
         </button>
+
+        {/* Progress bar */}
+        {isThinking && steps.length > 0 && (
+          <div className="h-[2px] bg-foreground/5">
+            <motion.div
+              className="h-full bg-brutal-accent/60"
+              initial={{ width: '0%' }}
+              animate={{ width: `${(doneCount / Math.max(steps.length, 1)) * 100}%` }}
+              transition={{ duration: 0.4, ease: 'easeOut' }}
+            />
+          </div>
+        )}
 
         {/* Expanded steps */}
         <AnimatePresence>
@@ -71,19 +87,31 @@ export const AgentThinkingDisplay: React.FC<AgentThinkingDisplayProps> = ({
               transition={{ duration: 0.2, ease: 'easeInOut' }}
               className="overflow-hidden"
             >
-              <div className="border-t border-foreground/8 px-3 py-2.5 space-y-0.5 max-h-[200px] overflow-y-auto scrollbar-hide">
+              <div className="border-t border-brutal-accent/10 px-3.5 py-3 space-y-1.5 max-h-[220px] overflow-y-auto scrollbar-hide">
                 {steps.map((step, i) => (
                   <div
                     key={i}
-                    className="flex items-start gap-2 py-0.5"
+                    className={cn(
+                      "flex items-center gap-2.5 py-1 px-2 transition-colors",
+                      step.status === 'active' && "bg-brutal-accent/5"
+                    )}
                   >
-                    <span className={cn(
-                      "mt-[6px] h-1 w-1 shrink-0",
-                      step.status === 'active' ? "bg-brutal-accent" : "bg-foreground/15"
-                    )} />
+                    {step.status === 'done' ? (
+                      <Check className="w-3 h-3 text-brutal-accent shrink-0" />
+                    ) : step.status === 'active' ? (
+                      <Loader2 className="w-3 h-3 text-brutal-accent shrink-0 animate-spin" />
+                    ) : (
+                      <div className="w-3 h-3 flex items-center justify-center shrink-0">
+                        <div className="h-1 w-1 bg-foreground/20" />
+                      </div>
+                    )}
                     <span className={cn(
                       "text-[11px] leading-relaxed font-mono",
-                      step.status === 'active' ? "text-foreground/80" : "text-muted-foreground/60"
+                      step.status === 'active'
+                        ? "text-foreground"
+                        : step.status === 'done'
+                          ? "text-muted-foreground"
+                          : "text-muted-foreground/40"
                     )}>
                       {step.label}
                     </span>
