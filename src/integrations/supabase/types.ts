@@ -1992,6 +1992,8 @@ export type Database = {
           linkedin_account_id: string
           linkedin_account_name: string | null
           organization_id: string
+          proxy_country: string | null
+          proxy_updated_at: string | null
           user_id: string
         }
         Insert: {
@@ -2001,6 +2003,8 @@ export type Database = {
           linkedin_account_id: string
           linkedin_account_name?: string | null
           organization_id: string
+          proxy_country?: string | null
+          proxy_updated_at?: string | null
           user_id: string
         }
         Update: {
@@ -2010,6 +2014,8 @@ export type Database = {
           linkedin_account_id?: string
           linkedin_account_name?: string | null
           organization_id?: string
+          proxy_country?: string | null
+          proxy_updated_at?: string | null
           user_id?: string
         }
         Relationships: [
