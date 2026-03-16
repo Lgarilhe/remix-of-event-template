@@ -327,9 +327,9 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({ onClose }) => {
         )}
 
         {/* Live thinking display */}
-        {(isThinking || thinkingSteps.length > 0) && !streamingContent && (
+        {(isThinking || thinkingPhases.length > 0) && !streamingContent && (
           <AgentThinkingDisplay
-            steps={thinkingSteps}
+            steps={thinkingPhases}
             isThinking={isThinking}
             thinkingContent={thinkingContent}
           />

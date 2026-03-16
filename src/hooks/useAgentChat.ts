@@ -404,7 +404,7 @@ export const useAgentChat = (conversationId: string | null) => {
     sending,
     streamingContent,
     thinkingContent,
-    thinkingSteps,
+    thinkingPhases,
     isThinking,
     conversation,
     sendMessage,
