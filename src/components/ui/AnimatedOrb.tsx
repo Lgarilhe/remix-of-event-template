@@ -89,9 +89,9 @@ export const AnimatedOrb: React.FC<AnimatedOrbProps> = ({
       ctx.arc(cx, cy, outerR, 0, Math.PI * 2);
       ctx.fill();
 
-      // Eye shape — almond/lemon shape for more character
-      const eyeW = w * 0.78;
-      const eyeH = w * 0.34;
+      // Eye shape — fills most of the canvas
+      const eyeW = w * 0.92;
+      const eyeH = w * 0.44;
       const squeeze = 1 - blinkY * 0.95;
 
       ctx.save();
