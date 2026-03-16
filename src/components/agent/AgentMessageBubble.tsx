@@ -210,28 +210,55 @@ function SearchPlanCard({ plan }: { plan: Record<string, unknown> }) {
   const filters = (plan as any).filters || {};
   const stopConditions = (plan as any).stop_conditions || {};
 
+  const normalizeList = (value: unknown): string[] => {
+    if (Array.isArray(value)) {
+      return value
+        .map((item) => {
+          if (typeof item === 'string') return item.trim();
+          if (item == null) return '';
+          return String(item).trim();
+        })
+        .filter(Boolean);
+    }
+
+    if (typeof value === 'string') {
+      return value
+        .split(',')
+        .map((item) => item.trim())
+        .filter(Boolean);
+    }
+
+    return [];
+  };
+
+  const keywords = normalizeList(filters.keywords);
+  const locationKeywords = normalizeList(filters.location_keywords);
+  const titleKeywords = normalizeList(filters.title_keywords);
+  const companyKeywords = normalizeList(filters.company_keywords);
+  const skills = normalizeList(filters.skills);
+
   const criteria: Array<{ label: string; value: string }> = [];
 
-  if ((plan as any).summary) {
-    criteria.push({ label: 'Résumé', value: (plan as any).summary });
+  if (typeof (plan as any).summary === 'string' && (plan as any).summary.trim()) {
+    criteria.push({ label: 'Résumé', value: (plan as any).summary.trim() });
   }
-  if (filters.keywords?.length > 0) {
-    criteria.push({ label: 'Mots-clés', value: filters.keywords.join(', ') });
+  if (keywords.length > 0) {
+    criteria.push({ label: 'Mots-clés', value: keywords.join(', ') });
   }
-  if (filters.location_keywords?.length > 0) {
-    criteria.push({ label: 'Localisation', value: filters.location_keywords.join(', ') });
+  if (locationKeywords.length > 0) {
+    criteria.push({ label: 'Localisation', value: locationKeywords.join(', ') });
   }
   if (filters.calculated_experience_min != null) {
     criteria.push({ label: 'Expérience', value: `${filters.calculated_experience_min}–${filters.calculated_experience_max} ans` });
   }
-  if (filters.title_keywords?.length > 0) {
-    criteria.push({ label: 'Titre', value: filters.title_keywords.join(', ') });
+  if (titleKeywords.length > 0) {
+    criteria.push({ label: 'Titre', value: titleKeywords.join(', ') });
   }
-  if (filters.company_keywords?.length > 0) {
-    criteria.push({ label: 'Entreprises', value: filters.company_keywords.join(', ') });
+  if (companyKeywords.length > 0) {
+    criteria.push({ label: 'Entreprises', value: companyKeywords.join(', ') });
   }
-  if (filters.skills?.length > 0) {
-    criteria.push({ label: 'Compétences', value: filters.skills.join(', ') });
+  if (skills.length > 0) {
+    criteria.push({ label: 'Compétences', value: skills.join(', ') });
   }
 
   return (
@@ -268,8 +295,8 @@ function SearchPlanCard({ plan }: { plan: Record<string, unknown> }) {
 
       {/* Pills */}
       <div className="border-t border-foreground/8 px-3 py-2.5 flex flex-wrap gap-1.5">
-        {filters.location_keywords?.length > 0 && (
-          <PlanPill icon={MapPin} label={filters.location_keywords.join(', ')} />
+        {locationKeywords.length > 0 && (
+          <PlanPill icon={MapPin} label={locationKeywords.join(', ')} />
         )}
         {filters.calculated_experience_min != null && (
           <PlanPill icon={Calendar} label={`${filters.calculated_experience_min}–${filters.calculated_experience_max} ans`} />
