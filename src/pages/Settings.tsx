@@ -7,6 +7,12 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Building2, Users, Crown, Shield, User, Trash2, Plug, Check, Loader2, Pencil, UserCircle, CreditCard, Sparkles } from 'lucide-react';
+import iconBuilding3d from '@/assets/icon-building-3d.png';
+import iconProfile3d from '@/assets/icon-profile-3d.png';
+import iconTeam3d from '@/assets/icon-team-3d.png';
+import iconBilling3d from '@/assets/icon-billing-3d.png';
+import iconCredits3d from '@/assets/icon-credits-3d.png';
+import iconIntegrations3d from '@/assets/icon-integrations-3d.png';
 import { useSearchParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useQuery } from '@tanstack/react-query';
@@ -92,12 +98,12 @@ const Settings = () => {
   });
 
   const tabs = [
-    { value: 'general', label: 'Général', icon: Building2 },
-    { value: 'account', label: 'Mon compte', icon: UserCircle },
-    { value: 'team', label: 'Équipe', icon: Users },
-    ...(isAdmin ? [{ value: 'billing', label: 'Abonnement', icon: CreditCard }] : []),
-    { value: 'credits', label: 'Crédits IA', icon: Sparkles },
-    ...(isAdmin ? [{ value: 'integrations', label: 'Intégrations', icon: Plug }] : []),
+    { value: 'general', label: 'Général', icon3d: iconBuilding3d },
+    { value: 'account', label: 'Mon compte', icon3d: iconProfile3d },
+    { value: 'team', label: 'Équipe', icon3d: iconTeam3d },
+    ...(isAdmin ? [{ value: 'billing', label: 'Abonnement', icon3d: iconBilling3d }] : []),
+    { value: 'credits', label: 'Crédits IA', icon3d: iconCredits3d },
+    ...(isAdmin ? [{ value: 'integrations', label: 'Intégrations', icon3d: iconIntegrations3d }] : []),
   ];
 
   return (
@@ -133,7 +139,7 @@ const Settings = () => {
                       : "text-muted-foreground hover:text-foreground"
                   )}
                 >
-                  <tab.icon className="w-3.5 h-3.5 relative z-10" />
+                  <img src={tab.icon3d} alt="" className="w-5 h-5 object-contain relative z-10" />
                   <span className="relative z-10 hidden sm:inline">{tab.label}</span>
                   {!isActive && (
                     <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
