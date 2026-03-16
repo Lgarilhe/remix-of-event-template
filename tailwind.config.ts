@@ -27,15 +27,14 @@ export default {
 				'Noto Sans',
 				'sans-serif'
 			],
-  			serif: [
-  				'Lora',
-  				'ui-serif',
-  				'Georgia',
-  				'Cambria',
-  				'Times New Roman',
-  				'Times',
-  				'serif'
-  			],
+			serif: [
+				'Instrument Serif',
+				'Georgia',
+				'Cambria',
+				'Times New Roman',
+				'Times',
+				'serif'
+			],
   			mono: [
   				'Space Mono',
   				'ui-monospace',
