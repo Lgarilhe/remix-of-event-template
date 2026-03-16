@@ -140,10 +140,34 @@ function ThinkingCard({ thinking }: { thinking: string }) {
   );
 }
 
-// ── Search Plan Card ──
+// ── Search Plan Card — Timeline style ──
 function SearchPlanCard({ plan }: { plan: Record<string, unknown> }) {
   const filters = (plan as any).filters || {};
   const stopConditions = (plan as any).stop_conditions || {};
+
+  const criteria: Array<{ label: string; value: string }> = [];
+
+  if ((plan as any).summary) {
+    criteria.push({ label: 'Résumé', value: (plan as any).summary });
+  }
+  if (filters.keywords?.length > 0) {
+    criteria.push({ label: 'Mots-clés', value: filters.keywords.join(', ') });
+  }
+  if (filters.location_keywords?.length > 0) {
+    criteria.push({ label: 'Localisation', value: filters.location_keywords.join(', ') });
+  }
+  if (filters.calculated_experience_min != null) {
+    criteria.push({ label: 'Expérience', value: `${filters.calculated_experience_min}–${filters.calculated_experience_max} ans` });
+  }
+  if (filters.title_keywords?.length > 0) {
+    criteria.push({ label: 'Titre', value: filters.title_keywords.join(', ') });
+  }
+  if (filters.company_keywords?.length > 0) {
+    criteria.push({ label: 'Entreprises', value: filters.company_keywords.join(', ') });
+  }
+  if (filters.skills?.length > 0) {
+    criteria.push({ label: 'Compétences', value: filters.skills.join(', ') });
+  }
 
   return (
     <div className="border border-foreground/10 bg-muted/20 overflow-hidden">
@@ -154,24 +178,40 @@ function SearchPlanCard({ plan }: { plan: Record<string, unknown> }) {
         </span>
       </div>
 
-      <div className="border-t border-foreground/8 px-3 py-2.5 space-y-2.5">
-        {(plan as any).summary && (
-          <p className="text-sm leading-relaxed text-foreground/70">
-            {(plan as any).summary}
-          </p>
-        )}
+      {/* Timeline */}
+      {criteria.length > 0 && (
+        <div className="border-t border-foreground/8 px-3 py-3">
+          <div className="relative ml-1">
+            {/* Vertical line */}
+            <div className="absolute left-[3px] top-1 bottom-1 w-[2px] bg-brutal-accent/30" />
 
-        <div className="flex flex-wrap gap-1.5">
-          {filters.location_keywords?.length > 0 && (
-            <PlanPill icon={MapPin} label={filters.location_keywords.join(', ')} />
-          )}
-          {filters.calculated_experience_min != null && (
-            <PlanPill icon={Calendar} label={`${filters.calculated_experience_min}–${filters.calculated_experience_max} ans`} />
-          )}
-          {stopConditions.target_go_profiles && (
-            <PlanPill icon={Target} label={`${stopConditions.target_go_profiles} profils Go`} />
-          )}
+            <div className="space-y-3">
+              {criteria.map((item, i) => (
+                <div key={i} className="flex items-start gap-3 relative">
+                  {/* Node dot */}
+                  <div className="w-2 h-2 rounded-full bg-brutal-accent/60 shrink-0 mt-1 relative z-10" />
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-foreground">{item.label}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">{item.value}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
+      )}
+
+      {/* Pills */}
+      <div className="border-t border-foreground/8 px-3 py-2.5 flex flex-wrap gap-1.5">
+        {filters.location_keywords?.length > 0 && (
+          <PlanPill icon={MapPin} label={filters.location_keywords.join(', ')} />
+        )}
+        {filters.calculated_experience_min != null && (
+          <PlanPill icon={Calendar} label={`${filters.calculated_experience_min}–${filters.calculated_experience_max} ans`} />
+        )}
+        {stopConditions.target_go_profiles && (
+          <PlanPill icon={Target} label={`${stopConditions.target_go_profiles} profils Go`} />
+        )}
       </div>
     </div>
   );
@@ -179,8 +219,8 @@ function SearchPlanCard({ plan }: { plan: Record<string, unknown> }) {
 
 function PlanPill({ icon: Icon, label }: { icon: React.ElementType; label: string }) {
   return (
-    <div className="inline-flex items-center gap-1.5 px-2 py-1 text-[10px] font-medium border border-foreground/15 bg-background text-foreground/70">
-      <Icon className="w-3 h-3" />
+    <div className="inline-flex items-center gap-1.5 px-2 py-1 text-xs font-medium glass-subtle border border-foreground/10 hover:border-brutal-accent/30 text-foreground/70 transition-colors">
+      <Icon className="w-4 h-4" />
       <span>{label}</span>
     </div>
   );
