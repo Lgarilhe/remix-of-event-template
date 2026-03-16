@@ -265,3 +265,38 @@ function PlanPill({ icon: Icon, label }: { icon: React.ElementType; label: strin
     </div>
   );
 }
+
+// ── Candidate Mini Card ──
+const scoreStyles: Record<string, string> = {
+  Go: 'bg-green-500/20 text-green-700',
+  Maybe: 'bg-amber-500/20 text-amber-700',
+  No: 'bg-red-500/20 text-red-700',
+};
+
+function CandidateMiniCard({ candidate }: { candidate: ParsedCandidate }) {
+  const initials = candidate.name
+    .split(/\s+/)
+    .slice(0, 2)
+    .map(w => w[0]?.toUpperCase())
+    .join('');
+
+  return (
+    <div className="border border-foreground/10 p-3 flex items-center gap-3 hover:bg-muted/50 transition-colors">
+      <div className="w-8 h-8 bg-foreground text-background flex items-center justify-center text-xs font-bold shrink-0">
+        {initials}
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-semibold text-foreground truncate">{candidate.name}</p>
+        <p className="text-xs text-muted-foreground truncate">{candidate.title}</p>
+      </div>
+      {candidate.score && (
+        <span className={cn(
+          "text-[10px] font-bold px-2 py-0.5 shrink-0 uppercase tracking-wider",
+          scoreStyles[candidate.score] || ''
+        )}>
+          {candidate.score}
+        </span>
+      )}
+    </div>
+  );
+}
