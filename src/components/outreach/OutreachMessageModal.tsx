@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { emitQuotaAction } from '@/lib/quotaEvents';
 import { LinkedInProfile } from './types';
 import { getYear } from './dateUtils';
 import { Job } from '@/types/jobs';
