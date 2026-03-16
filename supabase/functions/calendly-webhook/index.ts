@@ -71,7 +71,7 @@ async function verifyCalendlySignature(req: Request, body: string): Promise<bool
   return true;
 }
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
   }
