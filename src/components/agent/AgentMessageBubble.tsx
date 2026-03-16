@@ -227,6 +227,96 @@ function ThinkingCard({ thinking }: { thinking: string }) {
   );
 }
 
+// ── Tech keywords for summary tag extraction ──
+const TECH_KEYWORDS = [
+  'Python', 'Kubernetes', 'K8s', 'Terraform', 'Docker', 'AWS', 'GCP', 'Azure',
+  'CI/CD', 'MLflow', 'Airflow', 'React', 'TypeScript', 'Node.js', 'Go', 'Rust',
+  'Java', 'Spring', '.NET', 'PostgreSQL', 'MongoDB', 'Redis', 'Kafka',
+  'Jenkins', 'GitLab', 'Linux', 'Ansible', 'Datadog', 'Grafana', 'Prometheus',
+  'MLOps', 'LLM', 'DevOps', 'DevSecOps', 'SRE', 'Helm', 'ArgoCD',
+  'Elasticsearch', 'Spark', 'Hadoop', 'Flink', 'dbt', 'Snowflake', 'BigQuery',
+  'Vue', 'Angular', 'Next.js', 'NestJS', 'Django', 'FastAPI', 'Flask',
+  'C++', 'Scala', 'Kotlin', 'Swift', 'PHP', 'Laravel', 'Ruby', 'Rails',
+];
+
+// ── Summary Card ──
+function SummaryCard({ items, tags }: { items: string[]; tags: string[] }) {
+  return (
+    <div
+      className="pl-4 py-3 bg-muted/10 mb-3"
+      style={{ borderLeft: '3px solid hsl(var(--skalr-purple))' }}
+    >
+      <p
+        className="text-[10px] font-bold uppercase tracking-[0.12em] mb-2.5"
+        style={{ color: 'hsl(var(--skalr-purple))' }}
+      >
+        Résumé du poste
+      </p>
+      <div className="space-y-1.5">
+        {items.map((item, i) => (
+          <div key={i} className="flex items-start gap-2.5 text-sm text-foreground/70 leading-relaxed">
+            <span
+              className="w-[5px] h-[5px] mt-[7px] shrink-0 opacity-40"
+              style={{ background: 'hsl(var(--skalr-purple))' }}
+            />
+            <span>{item}</span>
+          </div>
+        ))}
+      </div>
+      {tags.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 mt-3">
+          {tags.map((tag, i) => {
+            const isXp = /\d+\+?\s*ans/i.test(tag);
+            return (
+              <span
+                key={i}
+                className={cn(
+                  "text-[10px] font-medium px-2 py-0.5",
+                  isXp
+                    ? "bg-[hsl(var(--skalr-purple)/.12)] text-[hsl(var(--skalr-purple))]"
+                    : "bg-muted text-muted-foreground"
+                )}
+              >
+                {tag}
+              </span>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Extract summary from assistant content ──
+function extractSummary(content: string): { summary: { items: string[]; tags: string[] } | null; remaining: string } {
+  const match = content.match(
+    /(?:\*{0,2})Résumé du poste(?:\*{0,2})\s*[\n:]\s*([\s\S]*?)(?=(?:\n[^\s·•\-])|(?:\n\s*(?:➡️|\d+\/\d+))|\s*$)/i
+  );
+  if (!match) return { summary: null, remaining: content };
+
+  const summaryText = match[1].trim();
+  const items = summaryText
+    .split(/\n/)
+    .map(line => line.replace(/^[·•\-*]\s*/, '').trim())
+    .filter(s => s.length > 5);
+
+  if (items.length === 0) return { summary: null, remaining: content };
+
+  const fullText = items.join(' ');
+  const foundTags: string[] = [];
+  for (const kw of TECH_KEYWORDS) {
+    const escaped = kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    if (new RegExp(`\\b${escaped}\\b`, 'i').test(fullText)) {
+      foundTags.push(kw);
+    }
+  }
+  const xpMatch = fullText.match(/(\d+\+?\s*ans)/i);
+  if (xpMatch) foundTags.push(xpMatch[1]);
+
+  const remaining = content.replace(match[0], '').trim();
+  return { summary: { items, tags: foundTags }, remaining };
+}
+
 // ── Search Plan Card — with auto LinkedIn count estimation ──
 function SearchPlanCard({ plan, conversationId }: { plan: Record<string, unknown>; conversationId: string }) {
   const filters = (plan as any).filters || {};
