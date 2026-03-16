@@ -79,8 +79,8 @@ export const AICreditsSettings = () => {
       {/* Cost Table */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-lg flex items-center gap-2">
-            <TrendingDown className="w-5 h-5" />
+          <CardTitle className="text-sm font-bold uppercase tracking-wider flex items-center gap-2">
+            <TrendingDown className="w-4 h-4" />
             Coût par action
           </CardTitle>
         </CardHeader>
