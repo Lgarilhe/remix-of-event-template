@@ -5,6 +5,7 @@ import { Navbar } from '@/components/Navbar';
 import { SEOHead } from '@/components/SEOHead';
 import { applySubscriptionOverrides } from '@/components/outreach/LinkedInAccountManager';
 import { LinkedInSearch } from '@/components/outreach/LinkedInSearch';
+import { InvitationsPanel } from '@/components/outreach/InvitationsPanel';
 import { SequencesList } from '@/components/outreach/SequencesList';
 import { MessagesInbox } from '@/components/outreach/MessagesInbox';
 import { NurturingDashboard } from '@/components/outreach/NurturingDashboard';
