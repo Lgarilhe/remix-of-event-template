@@ -64,7 +64,8 @@ const NavLogo: React.FC = () => {
   } else if (face === 'happy') {
     mouth = <path d="M4.5 8.8 Q7.5 12 10.5 8.8" stroke="currentColor" strokeWidth="1" strokeLinecap="round" fill="none" />;
   } else {
-    mouth = <path d="M5.5 9.2 Q7.5 10.6 10 9" stroke="currentColor" strokeWidth="1" strokeLinecap="round" fill="none" />;
+    // Smirk: small curve bottom-right, like the original
+    mouth = <path d="M6.2 9.5 Q8.2 10.8 10.2 9" stroke="currentColor" strokeWidth="1" strokeLinecap="round" fill="none" />;
   }
 
   // Eyebrows for surprise
