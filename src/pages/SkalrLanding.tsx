@@ -344,7 +344,7 @@ const SkalrLanding = () => {
                   <div className="w-8 h-8 border-2 border-foreground flex items-center justify-center mb-5 bg-brutal-accent">
                     <span className="text-[11px] font-bold text-foreground">{String(i + 1).padStart(2, '0')}</span>
                   </div>
-                  <h3 className="text-sm font-bold text-foreground uppercase tracking-wide mb-2 font-sans">{value.title}</h3>
+                  <h3 className="text-sm font-bold text-foreground uppercase tracking-wide mb-2">{value.title}</h3>
                   <p className="text-sm text-muted-foreground leading-relaxed">{value.description}</p>
                 </motion.div>
               ))}
