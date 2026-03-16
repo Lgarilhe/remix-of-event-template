@@ -290,14 +290,16 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({ onClose }) => {
             onClick={() => handleSend()}
             disabled={!input.trim() || sending}
             className={cn(
-              "h-7 w-7 flex items-center justify-center shrink-0 transition-colors",
+              "h-7 w-7 flex items-center justify-center shrink-0 transition-all duration-150 active:scale-90",
               input.trim() && !sending
                 ? "bg-foreground text-background hover:bg-brutal-accent"
                 : "bg-muted text-muted-foreground cursor-not-allowed"
             )}
           >
             {sending ? (
-              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              <AnimatedOrb size={24} speed={4}>
+                <Send className="w-2 h-2 text-foreground/60" />
+              </AnimatedOrb>
             ) : (
               <Send className="w-3 h-3" />
             )}
