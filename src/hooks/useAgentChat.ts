@@ -40,7 +40,7 @@ export const useAgentChat = (conversationId: string | null) => {
   const [sending, setSending] = useState(false);
   const [streamingContent, setStreamingContent] = useState('');
   const [thinkingContent, setThinkingContent] = useState('');
-  const [thinkingSteps, setThinkingSteps] = useState<ThinkingPhase[]>([]);
+  const [thinkingPhases, setThinkingPhases] = useState<ThinkingPhase[]>([]);
   const [isThinking, setIsThinking] = useState(false);
   const isStreamingRef = useRef(false);
   const [conversation, setConversation] = useState<AgentConversation | null>(null);
