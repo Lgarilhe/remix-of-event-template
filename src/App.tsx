@@ -9,7 +9,7 @@ import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { OrganizationGuard } from "@/components/OrganizationGuard";
 import { LinkedInAccountsProvider } from "@/contexts/LinkedInAccountsContext";
 import { AgentProvider } from "@/contexts/AgentContext";
-import { AgentDrawer, AgentFloatingButton } from "@/components/agent";
+import { AgentDrawer } from "@/components/agent";
 import { supabase } from "@/integrations/supabase/client";
 import { clearOrgIdCache } from "@/lib/orgContext";
 import Auth from "./pages/Auth";
@@ -108,7 +108,6 @@ const AppContent = () => {
         </Routes>
       </Suspense>
       <AgentDrawer />
-      <AgentFloatingButton />
       <SessionExpiredDialog 
         open={sessionExpired} 
         onOpenChange={handleSessionExpiredClose} 
