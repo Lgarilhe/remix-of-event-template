@@ -67,6 +67,12 @@ All colors MUST be HSL.
     --skalr-cyan: 187 85% 53%;
     --skalr-green: 142 71% 45%;
 
+    /* Landing page editorial tokens */
+    --landing-sky-start: 199 100% 90%;
+    --landing-sky-end: 199 60% 95%;
+    --landing-accent-yellow: 60 100% 50%;
+    --landing-surface: 0 0% 100%;
+
     /* Brutal accent */
     --brutal-accent: 297 100% 73%;
     --chart-1: 41 22.2% 64.6%;
