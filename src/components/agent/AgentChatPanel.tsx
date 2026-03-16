@@ -207,6 +207,22 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({ onClose }) => {
                 </button>
               ))}
             </div>
+            {activeJobs.length > 0 && (
+              <div className="w-full max-w-[360px] space-y-2 mt-1">
+                <p className="text-xs text-muted-foreground">ou lancez sur un poste actif :</p>
+                <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
+                  {activeJobs.map((job) => (
+                    <button
+                      key={job.id}
+                      onClick={() => handleNewConversation(job)}
+                      className="border border-foreground/15 px-3 py-1.5 text-xs hover:bg-foreground hover:text-background transition-colors cursor-pointer truncate max-w-[200px] shrink-0"
+                    >
+                      {job.title}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         ) : (
           messages.map((msg) => (
