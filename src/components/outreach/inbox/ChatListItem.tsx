@@ -22,7 +22,17 @@ import {
   DropdownMenuTrigger,
   DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu';
-import { Tag, X } from 'lucide-react';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { Tag, X, Trash2, Loader2 } from 'lucide-react';
 
 interface ChatListItemProps {
   chat: Chat;
@@ -31,6 +41,8 @@ interface ChatListItemProps {
   category: ChatCategory | null;
   onSetCategory: (chatId: string, accountId: string, category: ChatCategory | null) => void;
   onClick: () => void;
+  onDeleteChat?: (chatId: string) => Promise<boolean>;
+  isDeletingChat?: boolean;
 }
 
 export const ChatListItem: React.FC<ChatListItemProps> = ({
