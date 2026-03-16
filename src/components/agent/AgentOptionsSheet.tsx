@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { cn } from '@/lib/utils';
+import { Rocket, SlidersHorizontal, Eye, Pause, ArrowRight, type LucideIcon } from 'lucide-react';
 
 interface AgentOptionsSheetProps {
   options: string[];
@@ -9,10 +9,23 @@ interface AgentOptionsSheetProps {
   open: boolean;
 }
 
+const optionIconMap: Array<{ test: RegExp; icon: LucideIcon }> = [
+  { test: /lancer|démarrer|go|start/i, icon: Rocket },
+  { test: /modifier|affiner|ajuster|changer/i, icon: SlidersHorizontal },
+  { test: /voir|détail|analyser|consulter/i, icon: Eye },
+  { test: /arrêter|pause|stop/i, icon: Pause },
+];
+
+function getOptionIcon(text: string): LucideIcon {
+  return optionIconMap.find(m => m.test.test(text))?.icon ?? ArrowRight;
+}
+
 export const AgentOptionsSheet: React.FC<AgentOptionsSheetProps> = ({
   options, onSelect, onDismiss, open,
 }) => {
   if (!open || options.length === 0) return null;
+
+  const useGrid = options.length <= 4;
 
   return (
     <AnimatePresence>
@@ -27,22 +40,28 @@ export const AgentOptionsSheet: React.FC<AgentOptionsSheetProps> = ({
           <p className="text-[10px] font-medium uppercase tracking-[0.12em] text-muted-foreground/50 mb-2">
             Choisis une approche
           </p>
-          <div className="flex flex-col gap-1">
-            {options.map((opt, i) => (
-              <motion.button
-                key={i}
-                initial={{ opacity: 0, y: 6 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: i * 0.06, duration: 0.2 }}
-                onClick={() => onSelect(opt)}
-                className="w-full text-left px-3 py-2 text-xs font-medium flex items-center gap-2.5 transition-colors border border-foreground/8 hover:border-foreground/25 hover:bg-muted/30 text-foreground/75"
-              >
-                <span className="h-[18px] w-[18px] flex items-center justify-center text-[9px] font-bold shrink-0 bg-foreground/8 text-foreground/50">
-                  {i + 1}
-                </span>
-                <span>{opt}</span>
-              </motion.button>
-            ))}
+          <div className={useGrid
+            ? "grid grid-cols-1 sm:grid-cols-2 gap-2"
+            : "grid grid-cols-1 gap-2"
+          }>
+            {options.map((opt, i) => {
+              const Icon = getOptionIcon(opt);
+              return (
+                <motion.button
+                  key={i}
+                  initial={{ opacity: 0, y: 6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: i * 0.06, duration: 0.2 }}
+                  onClick={() => onSelect(opt)}
+                  className="w-full text-left glass-subtle border border-foreground/10 p-3 cursor-pointer group transition-all duration-200 hover:border-brutal-accent/40 hover:bg-brutal-accent/5 flex items-center gap-2.5"
+                >
+                  <Icon className="w-4 h-4 text-muted-foreground group-hover:text-brutal-accent transition-colors shrink-0" />
+                  <span className="text-sm font-medium text-foreground group-hover:text-brutal-accent transition-colors">
+                    {opt}
+                  </span>
+                </motion.button>
+              );
+            })}
           </div>
         </motion.div>
       )}
