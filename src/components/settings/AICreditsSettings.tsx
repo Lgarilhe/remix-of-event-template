@@ -101,7 +101,7 @@ export const AICreditsSettings = () => {
       {/* History */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-lg">Historique récent</CardTitle>
+          <CardTitle className="text-sm font-bold uppercase tracking-wider">Historique récent</CardTitle>
         </CardHeader>
         <CardContent>
           {isLoadingHistory ? (

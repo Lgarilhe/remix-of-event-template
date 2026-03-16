@@ -72,10 +72,10 @@ export const BillingSettings = () => {
       {currentPlan && (
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-lg">
-              <Sparkles className="w-5 h-5" />
-              Limites du plan
-            </CardTitle>
+          <CardTitle className="flex items-center gap-2 text-sm font-bold uppercase tracking-wider">
+            <Sparkles className="w-4 h-4" />
+            Limites du plan
+          </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-2 gap-4">
