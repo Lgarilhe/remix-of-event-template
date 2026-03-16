@@ -151,7 +151,7 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
 
   return (
     <div
-      className={`relative bg-background border border-foreground transition-all max-w-full cursor-pointer group hover:shadow-md`}
+      className={`relative bg-background border border-foreground transition-all max-w-full cursor-pointer group shadow-[3px_3px_0px_0px_hsl(var(--brutal-accent))] hover:translate-x-[1px] hover:translate-y-[1px] hover:shadow-[1px_1px_0px_0px_hsl(var(--brutal-accent))]`}
       style={{ wordBreak: 'break-word' }}
       onClick={(e) => {
         if (showScoringOverlay) return;

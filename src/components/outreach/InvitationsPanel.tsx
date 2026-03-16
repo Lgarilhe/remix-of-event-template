@@ -362,8 +362,8 @@ export const InvitationsPanel: React.FC<InvitationsPanelProps> = ({
                     <article
                       key={invitation.id}
                       className={cn(
-                        'group border border-foreground/12 bg-background transition-all duration-200 hover:-translate-y-0.5 hover:border-foreground/25 hover:shadow-md',
-                        isSelected && 'border-foreground bg-brutal-accent/10 shadow-sm',
+                        'group border border-foreground/12 bg-background transition-all duration-200 shadow-[3px_3px_0px_0px_hsl(var(--brutal-accent))] hover:translate-x-[1px] hover:translate-y-[1px] hover:shadow-[1px_1px_0px_0px_hsl(var(--brutal-accent))]',
+                        isSelected && 'border-foreground bg-brutal-accent/10',
                         isItemProcessing && 'opacity-60'
                       )}
                     >

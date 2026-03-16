@@ -188,11 +188,11 @@ export default function Outreach() {
                     key={tab.value}
                     onClick={() => setActiveTab(tab.value)}
                     className={cn(
-                      "relative overflow-hidden flex items-center justify-center gap-1 h-[34px] px-2 sm:px-4 text-[10px] sm:text-xs font-medium uppercase tracking-wider border border-foreground transition-all duration-200 group shrink-0",
+                      "relative overflow-hidden flex items-center justify-center gap-1 h-[34px] px-2 sm:px-4 text-[10px] sm:text-xs font-medium uppercase tracking-wider border border-foreground transition-colors duration-200 group shrink-0",
                       index > 0 && "border-l-0",
                       isActive
-                        ? "bg-brutal-accent text-foreground shadow-[3px_3px_0px_0px_hsl(var(--brutal-accent))]"
-                        : "bg-background text-foreground hover:translate-x-[1px] hover:translate-y-[1px] hover:shadow-[1px_1px_0px_0px_hsl(var(--brutal-accent))]"
+                        ? "bg-brutal-accent text-foreground"
+                        : "bg-background text-foreground"
                     )}
                   >
                     <span className="text-sm shrink-0 relative z-10">{tab.emoji}</span>
