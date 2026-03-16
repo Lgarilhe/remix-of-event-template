@@ -78,8 +78,8 @@ const MessagesInboxInner: React.FC<
 
   return (
     <AttendeePicturesProvider organizationId={inbox.organizationId ?? null}>
-    <PreloadAttendeePictures chats={inbox.chats} />
-    <>
+      <PreloadAttendeePictures chats={inbox.chats} />
+      <>
       {/* Mobile fullscreen message view */}
       {inbox.selectedChat && (
         <div className="fixed inset-0 z-[2100] bg-background flex flex-col min-h-0 overflow-hidden md:hidden">
