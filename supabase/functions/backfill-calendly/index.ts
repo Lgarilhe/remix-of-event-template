@@ -8,7 +8,8 @@ const corsHeaders = {
 
 const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
 const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-let calendlyApiKey = Deno.env.get('CALENDLY_API_KEY')!;
+// No global integration credentials — always resolved from organization_integrations
+let calendlyApiKey: string | undefined;
 const supabase = createClient(supabaseUrl, serviceRoleKey);
 
 function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
@@ -17,21 +18,19 @@ function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15
   return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timeout));
 }
 
-async function resolveOrgCredentials(orgId: string | null) {
-  if (!orgId) return;
-  try {
-    const { data } = await supabase
-      .from('organization_integrations')
-      .select('calendly_api_key, calendly_connected')
-      .eq('organization_id', orgId)
-      .single();
-    if (data?.calendly_connected && data.calendly_api_key) {
-      calendlyApiKey = data.calendly_api_key;
-      console.log('[backfill-calendly] Using org-specific Calendly credentials');
-    }
-  } catch (e) {
-    console.warn('[backfill-calendly] Failed to load org credentials:', e);
+async function resolveOrgCredentials(orgId: string) {
+  const { data } = await supabase
+    .from('organization_integrations')
+    .select('calendly_api_key, calendly_connected')
+    .eq('organization_id', orgId)
+    .single();
+
+  if (!data?.calendly_connected || !data.calendly_api_key) {
+    throw new Error('Intégration Calendly non configurée pour votre organisation. Rendez-vous dans Settings > Intégrations.');
   }
+
+  calendlyApiKey = data.calendly_api_key;
+  console.log('[backfill-calendly] Using org-specific Calendly credentials');
 }
 
 Deno.serve(async (req) => {
