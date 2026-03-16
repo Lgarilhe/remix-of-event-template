@@ -2501,25 +2501,31 @@ export type Database = {
           created_at: string
           created_by: string
           id: string
+          logo_url: string | null
           name: string
           slug: string
           updated_at: string
+          website: string | null
         }
         Insert: {
           created_at?: string
           created_by: string
           id?: string
+          logo_url?: string | null
           name: string
           slug: string
           updated_at?: string
+          website?: string | null
         }
         Update: {
           created_at?: string
           created_by?: string
           id?: string
+          logo_url?: string | null
           name?: string
           slug?: string
           updated_at?: string
+          website?: string | null
         }
         Relationships: []
       }
