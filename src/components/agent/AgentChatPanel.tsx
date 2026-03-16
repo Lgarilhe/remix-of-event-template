@@ -408,9 +408,14 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({ onClose }) => {
             )}
           >
             {sending ? (
-              <AnimatedOrb size={24} speed={4}>
-                <Send className="w-2 h-2 text-foreground/60" />
-              </AnimatedOrb>
+              <div className="h-7 w-7 flex items-center justify-center relative">
+                <div className="h-5 w-5 border border-foreground/30 relative">
+                  <div
+                    className="absolute w-[5px] h-[5px] -top-[2.5px] -left-[2.5px] skalr-gradient-bg animate-[spin_1.5s_linear_infinite]"
+                    style={{ transformOrigin: '12.5px 12.5px' }}
+                  />
+                </div>
+              </div>
             ) : (
               <Send className="w-3 h-3" />
             )}

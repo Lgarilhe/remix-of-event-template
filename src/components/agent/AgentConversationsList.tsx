@@ -32,10 +32,32 @@ export const AgentConversationsList: React.FC<Props> = ({ onSelect, listConversa
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-16">
-        <div className="relative h-5 w-5">
-          <div className="absolute inset-0 border-2 border-foreground border-t-transparent animate-spin" />
-        </div>
+      <div className="flex-1 px-4 py-4 space-y-2">
+        <div className="h-3 w-32 bg-muted/50 mb-3" />
+        {[1, 2, 3, 4].map((i) => (
+          <div
+            key={i}
+            className="border border-foreground/8 p-3 flex items-center gap-3 animate-fade-in"
+            style={{ animationDelay: `${i * 100}ms`, animationFillMode: 'backwards' }}
+          >
+            <div className="w-2 h-2 bg-foreground/10 shrink-0" />
+            <div className="flex-1 space-y-1.5">
+              <div className="h-3.5 bg-muted relative overflow-hidden" style={{ width: `${60 + i * 10}%` }}>
+                <div
+                  className="absolute inset-0 bg-gradient-to-r from-transparent via-foreground/[0.04] to-transparent animate-[shimmer_1.8s_infinite]"
+                  style={{ animationDelay: `${i * 150}ms` }}
+                />
+              </div>
+              <div className="h-2.5 bg-muted/60 relative overflow-hidden" style={{ width: `${40 + i * 8}%` }}>
+                <div
+                  className="absolute inset-0 bg-gradient-to-r from-transparent via-foreground/[0.04] to-transparent animate-[shimmer_1.8s_infinite]"
+                  style={{ animationDelay: `${i * 150 + 100}ms` }}
+                />
+              </div>
+            </div>
+            <div className="w-3 h-3 bg-foreground/5 shrink-0" />
+          </div>
+        ))}
       </div>
     );
   }
