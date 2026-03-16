@@ -36,7 +36,7 @@ export const NotificationDropdown: React.FC = () => {
     <div ref={ref} className="relative">
       <button
         onClick={() => setOpen(!open)}
-        className="relative overflow-hidden bg-background text-foreground h-[34px] w-[34px] flex items-center justify-center text-[11px] font-medium uppercase border-l-0 border border-foreground leading-none"
+        className="relative overflow-hidden bg-background text-foreground h-[34px] w-[34px] flex items-center justify-center text-[11px] font-medium uppercase border border-foreground leading-none"
       >
         <img src={iconBell3d} alt="" className="w-5 h-5 object-contain" />
         {unreadCount > 0 && (
