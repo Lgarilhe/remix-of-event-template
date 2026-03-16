@@ -103,7 +103,7 @@ export const AgentConversationsList: React.FC<Props> = ({ onSelect, listConversa
                   )}
                   <span className="text-foreground/10">·</span>
                   <span className="text-[10px] text-muted-foreground">
-                    {formatDistanceToNow(parseISO(conv.updated_at), { addSuffix: true, locale: fr })}
+                    il y a {formatDistanceToNow(parseISO(conv.updated_at), { locale: fr })}
                   </span>
                 </div>
               </div>
