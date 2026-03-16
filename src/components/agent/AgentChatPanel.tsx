@@ -58,12 +58,12 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({ onClose }) => {
   const {
     messages, loading, sending, streamingContent, conversation,
     sendMessage, createConversation, listConversations,
-    thinkingSteps, isThinking, thinkingContent,
+    thinkingPhases, isThinking, thinkingContent,
   } = useAgentChat(conversationId);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, streamingContent, thinkingSteps]);
+  }, [messages, streamingContent, thinkingPhases]);
 
   const handleNewConversation = useCallback(async (job?: Job | null) => {
     const id = await createConversation(job);
@@ -327,9 +327,9 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({ onClose }) => {
         )}
 
         {/* Live thinking display */}
-        {(isThinking || thinkingSteps.length > 0) && !streamingContent && (
+        {(isThinking || thinkingPhases.length > 0) && !streamingContent && (
           <AgentThinkingDisplay
-            steps={thinkingSteps}
+            steps={thinkingPhases}
             isThinking={isThinking}
             thinkingContent={thinkingContent}
           />

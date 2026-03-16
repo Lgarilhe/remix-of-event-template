@@ -40,7 +40,7 @@ export const useAgentChat = (conversationId: string | null) => {
   const [sending, setSending] = useState(false);
   const [streamingContent, setStreamingContent] = useState('');
   const [thinkingContent, setThinkingContent] = useState('');
-  const [thinkingSteps, setThinkingSteps] = useState<ThinkingPhase[]>([]);
+  const [thinkingPhases, setThinkingPhases] = useState<ThinkingPhase[]>([]);
   const [isThinking, setIsThinking] = useState(false);
   const isStreamingRef = useRef(false);
   const [conversation, setConversation] = useState<AgentConversation | null>(null);
@@ -211,7 +211,7 @@ export const useAgentChat = (conversationId: string | null) => {
     setSending(true);
     setStreamingContent('');
     setThinkingContent('');
-    setThinkingSteps([]);
+    setThinkingPhases([]);
     setIsThinking(false);
 
     // Optimistic user message
@@ -283,7 +283,7 @@ export const useAgentChat = (conversationId: string | null) => {
               if (thinkingText) {
                 accumulatedThinking += thinkingText;
                 setThinkingContent(accumulatedThinking);
-                setThinkingSteps(parseThinkingPhases(accumulatedThinking));
+                setThinkingPhases(parseThinkingPhases(accumulatedThinking));
                 setIsThinking(true);
                 continue;
               }
@@ -335,7 +335,7 @@ export const useAgentChat = (conversationId: string | null) => {
       isStreamingRef.current = false;
       setSending(false);
       setThinkingContent('');
-      setThinkingSteps([]);
+      setThinkingPhases([]);
       abortRef.current = null;
     }
   }, [conversationId, sending, parseThinkingPhases]);
@@ -404,7 +404,7 @@ export const useAgentChat = (conversationId: string | null) => {
     sending,
     streamingContent,
     thinkingContent,
-    thinkingSteps,
+    thinkingPhases,
     isThinking,
     conversation,
     sendMessage,
