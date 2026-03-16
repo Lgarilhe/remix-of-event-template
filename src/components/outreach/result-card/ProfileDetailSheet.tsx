@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { emitQuotaAction } from '@/lib/quotaEvents';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
@@ -178,6 +179,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
         });
         if (cancelled) return;
         if (response?.success && response.profile) {
+          emitQuotaAction('profileVisits', 1, accountId);
           const p = response.profile as Record<string, any>;
           setEnrichedProfile({
             ...profile,

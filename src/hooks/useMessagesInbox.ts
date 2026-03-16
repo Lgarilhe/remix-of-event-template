@@ -2,6 +2,7 @@ import { useCallback, useRef, useEffect, useReducer } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { invokeUnipile } from '@/lib/invokeUnipile';
+import { emitQuotaAction } from '@/lib/quotaEvents';
 import { toast } from 'sonner';
 import { useOrganization } from '@/hooks/useOrganization';
 import { useChatCategories } from './useChatCategories';
@@ -933,6 +934,7 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
       
       setTimeout(() => scrollToBottom(true), 100);
 
+      emitQuotaAction('messagesSent', 1, selectedAccount);
       toast.success('Message envoyé');
     } catch (error) {
       console.error('Error sending message:', error);
@@ -977,6 +979,7 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
       
       setTimeout(() => scrollToBottom(true), 100);
 
+      emitQuotaAction('messagesSent', 1, selectedAccount);
       toast.success('Message envoyé');
     } catch (error) {
       console.error('Error sending message:', error);

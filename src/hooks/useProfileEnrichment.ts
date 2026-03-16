@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { invokeUnipile } from '@/lib/invokeUnipile';
+import { emitQuotaAction } from '@/lib/quotaEvents';
 
 export interface EnrichedProfile {
   name: string;
@@ -99,6 +100,7 @@ export function useProfileEnrichment(): UseProfileEnrichmentResult {
       });
 
       if (!response?.success) throw new Error(response?.error as string || 'Failed to fetch profile');
+      emitQuotaAction('profileVisits', 1, accountId);
 
       const profile = response.profile as Record<string, any>;
       

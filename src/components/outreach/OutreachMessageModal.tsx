@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { emitQuotaAction } from '@/lib/quotaEvents';
 import { LinkedInProfile } from './types';
 import { getYear } from './dateUtils';
 import { Job } from '@/types/jobs';
@@ -246,6 +247,13 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
       });
 
       if (!data?.success) throw new Error(data?.error as string || 'Erreur lors de l\'envoi');
+
+      // Track quota
+      if (!isFirstDegree) {
+        emitQuotaAction('inmailsSent', 1, selectedAccount);
+      } else {
+        emitQuotaAction('messagesSent', 1, selectedAccount);
+      }
 
       setMessageSent(true);
       toast.success(isFirstDegree ? 'Message envoyé !' : 'InMail envoyé !');
