@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
-import { CheckCircle2, MapPin, Calendar, Target, Brain, ChevronDown, Search, BarChart3, Send, Activity } from 'lucide-react';
+import { MapPin, Calendar, Target, Brain, ChevronDown, Search, BarChart3, Send, Activity, Crosshair, Code, Building2, Briefcase, Globe, FileText, type LucideIcon } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { AgentMessage } from '@/hooks/useAgentChat';
 import { AnimatedOrb } from '@/components/ui/AnimatedOrb';
@@ -261,40 +261,52 @@ function SearchPlanCard({ plan }: { plan: Record<string, unknown> }) {
     criteria.push({ label: 'Compétences', value: skills.join(', ') });
   }
 
+  const criteriaIconMap: Array<{ test: RegExp; icon: LucideIcon }> = [
+    { test: /résumé/i, icon: FileText },
+    { test: /mots-clés|keyword/i, icon: Search },
+    { test: /locali|zone|région/i, icon: Globe },
+    { test: /expérience/i, icon: Briefcase },
+    { test: /titre/i, icon: Crosshair },
+    { test: /entreprise|company/i, icon: Building2 },
+    { test: /compétence|skill/i, icon: Code },
+  ];
+
+  const getIcon = (label: string): LucideIcon =>
+    criteriaIconMap.find(m => m.test.test(label))?.icon ?? Target;
+
   return (
-    <div className="border border-foreground/10 bg-muted/20 overflow-hidden">
-      <div className="px-3 py-2.5 flex items-center gap-2">
-        <CheckCircle2 className="w-3.5 h-3.5 text-foreground/60" />
-        <span className="text-[10px] font-bold uppercase tracking-[0.15em] text-foreground/70">
+    <div className="border-2 border-foreground/15 overflow-hidden">
+      <div className="px-3.5 py-3 flex items-center gap-2.5 border-b border-foreground/10">
+        <div className="h-6 w-6 bg-foreground flex items-center justify-center shrink-0">
+          <Search className="w-3 h-3 text-background" />
+        </div>
+        <span className="text-[10px] font-bold uppercase tracking-[0.15em] text-foreground">
           Plan de recherche
         </span>
       </div>
 
-      {/* Timeline */}
+      {/* Criteria list */}
       {criteria.length > 0 && (
-        <div className="border-t border-foreground/8 px-3 py-3">
-          <div className="relative ml-1">
-            {/* Vertical line */}
-            <div className="absolute left-[3px] top-1 bottom-1 w-[2px] bg-brutal-accent/30" />
-
-            <div className="space-y-3">
-              {criteria.map((item, i) => (
-                <div key={i} className="flex items-start gap-3 relative">
-                  {/* Node dot */}
-                  <div className="w-2 h-2 rounded-full bg-brutal-accent/60 shrink-0 mt-1 relative z-10" />
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium text-foreground">{item.label}</p>
-                    <p className="text-xs text-muted-foreground mt-0.5">{item.value}</p>
-                  </div>
+        <div className="px-3.5 py-3 space-y-2.5">
+          {criteria.map((item, i) => {
+            const CriteriaIcon = getIcon(item.label);
+            return (
+              <div key={i} className="flex items-start gap-3">
+                <div className="h-5 w-5 border border-foreground/20 flex items-center justify-center shrink-0 mt-0.5">
+                  <CriteriaIcon className="w-3 h-3 text-foreground/60" />
                 </div>
-              ))}
-            </div>
-          </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-muted-foreground">{item.label}</p>
+                  <p className="text-xs text-foreground/80 mt-0.5 leading-relaxed">{item.value}</p>
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
 
       {/* Pills */}
-      <div className="border-t border-foreground/8 px-3 py-2.5 flex flex-wrap gap-1.5">
+      <div className="border-t border-foreground/10 px-3.5 py-2.5 flex flex-wrap gap-1.5">
         {locationKeywords.length > 0 && (
           <PlanPill icon={MapPin} label={locationKeywords.join(', ')} />
         )}
@@ -311,8 +323,8 @@ function SearchPlanCard({ plan }: { plan: Record<string, unknown> }) {
 
 function PlanPill({ icon: Icon, label }: { icon: React.ElementType; label: string }) {
   return (
-    <div className="inline-flex items-center gap-1.5 px-2 py-1 text-xs font-medium glass-subtle border border-foreground/10 hover:border-brutal-accent/30 text-foreground/70 transition-colors">
-      <Icon className="w-4 h-4" />
+    <div className="inline-flex items-center gap-1.5 px-2 py-1 text-[10px] font-bold uppercase tracking-[0.1em] border-2 border-foreground/10 text-foreground/60">
+      <Icon className="w-3 h-3" />
       <span>{label}</span>
     </div>
   );
