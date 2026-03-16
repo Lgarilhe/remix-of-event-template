@@ -40,19 +40,13 @@ const NavLogo: React.FC = () => {
   const eyeR = { cx: 9, cy: 5.5 };
 
   const leftEye = (
-    <g>
-      <circle cx={eyeL.cx} cy={eyeL.cy} r="1.15" fill="currentColor" />
-      <circle cx={eyeL.cx + lookX * 0.3} cy={eyeL.cy - 0.1} r="0.45" fill="hsl(var(--background))" />
-    </g>
+    <circle cx={eyeL.cx + lookX * 0.3} cy={eyeL.cy} r="1.15" fill="currentColor" />
   );
 
   const rightEye = face === 'wink' ? (
     <path d={`M${eyeR.cx - 1.1} ${eyeR.cy} Q${eyeR.cx} ${eyeR.cy + 1} ${eyeR.cx + 1.1} ${eyeR.cy}`} stroke="currentColor" strokeWidth="0.9" strokeLinecap="round" fill="none" />
   ) : (
-    <g>
-      <circle cx={eyeR.cx} cy={eyeR.cy} r="1.15" fill="currentColor" />
-      <circle cx={eyeR.cx + lookX * 0.3} cy={eyeR.cy - 0.1} r="0.45" fill="hsl(var(--background))" />
-    </g>
+    <circle cx={eyeR.cx + lookX * 0.3} cy={eyeR.cy} r="1.15" fill="currentColor" />
   );
 
   // Mouth
