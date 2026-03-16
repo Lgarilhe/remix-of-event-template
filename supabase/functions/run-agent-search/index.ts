@@ -59,6 +59,12 @@ function buildCandidateKey(profile: any): string {
   return `name:${name}|${company}`;
 }
 
+function isGoRecommendation(recommendation: unknown): boolean {
+  if (typeof recommendation !== "string") return false;
+  const normalized = recommendation.trim().toUpperCase();
+  return normalized === "GO" || normalized === "STRONG_MATCH" || normalized === "GOOD_MATCH";
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -580,7 +586,7 @@ Deno.serve(async (req) => {
         cacheHits++;
         scoredProfiles.push({ profile, score: cached, fromCache: true });
         const rec = cached.recommendation;
-        if (rec === "go" || rec === "Go") {
+        if (isGoRecommendation(rec)) {
           goProfiles.push({ profile, score: cached });
         }
       } else {
@@ -662,7 +668,7 @@ Deno.serve(async (req) => {
             const { profile, score } = result.value;
             scoredProfiles.push({ profile, score, fromCache: false });
             const rec = score?.recommendation;
-            if (rec === "go" || rec === "Go") {
+            if (isGoRecommendation(rec)) {
               goProfiles.push({ profile, score });
             }
           } else {
@@ -715,7 +721,7 @@ Deno.serve(async (req) => {
         const sc = score.score || 0;
         const rec = score.recommendation || "go";
         const summary = score.summary || "";
-        summaryMsg += `**${name}** — ${sc}/100 ${rec === "go" ? "✅" : "⚠️"}\n`;
+        summaryMsg += `**${name}** — ${sc}/100 ${isGoRecommendation(rec) ? "✅" : "⚠️"}\n`;
         summaryMsg += `> ${headline}\n`;
         if (summary) summaryMsg += `> ${summary.slice(0, 120)}…\n`;
         summaryMsg += `\n`;
