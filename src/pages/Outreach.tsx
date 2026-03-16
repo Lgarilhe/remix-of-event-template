@@ -43,6 +43,7 @@ const tabs = [
   { value: 'agent', label: 'Agent', shortLabel: 'Agent', emoji: '🤖' },
   { value: 'search', label: 'Recherche', shortLabel: 'Recherche', emoji: '🔍' },
   { value: 'messages', label: 'Messages', shortLabel: 'Msg', emoji: '💬' },
+  { value: 'invitations', label: 'Invitations', shortLabel: 'Invit.', emoji: '🤝' },
   { value: 'sequences', label: 'Séquences', shortLabel: 'Séq.', emoji: '🔗' },
   { value: 'nurturing', label: 'Nurturing', shortLabel: 'Nurt.', emoji: '✨' },
 ] as const;
