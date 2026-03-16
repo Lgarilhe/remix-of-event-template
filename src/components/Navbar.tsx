@@ -75,7 +75,7 @@ export const Navbar: React.FC = () => {
       </div>
 
       {/* Desktop Navigation */}
-      <div className="hidden md:flex items-center h-[34px]">
+      <div className="hidden md:flex items-center h-[34px] flex-1">
         {user ? (
           <>
             <Link
@@ -113,6 +113,9 @@ export const Navbar: React.FC = () => {
               <span className="relative z-10">SETTINGS</span>
               <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out"></span>
             </Link>
+            {/* Spacer */}
+            <div className="flex-1" />
+            {/* Right group: notifications + sign out */}
             <NotificationDropdown />
             <button 
               onClick={async () => {
@@ -125,13 +128,16 @@ export const Navbar: React.FC = () => {
             </button>
           </>
         ) : (
-          <button 
-            onClick={() => setIsAuthOpen(true)}
-            className="relative overflow-hidden glass text-foreground h-[34px] px-3 flex items-center text-[11px] font-medium uppercase border border-l-0 border-foreground leading-none group"
-          >
-            <span className="relative z-10">SIGN IN</span>
-            <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out"></span>
-          </button>
+          <>
+            <div className="flex-1" />
+            <button 
+              onClick={() => setIsAuthOpen(true)}
+              className="relative overflow-hidden glass text-foreground h-[34px] px-3 flex items-center text-[11px] font-medium uppercase border border-l-0 border-foreground leading-none group"
+            >
+              <span className="relative z-10">SIGN IN</span>
+              <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out"></span>
+            </button>
+          </>
         )}
       </div>
 
