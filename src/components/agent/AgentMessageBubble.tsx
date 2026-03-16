@@ -116,6 +116,9 @@ export const AgentMessageBubble: React.FC<AgentMessageBubbleProps> = ({ message,
       {/* Thinking card */}
       {thinking && <ThinkingCard thinking={thinking} />}
 
+      {/* Summary card */}
+      {summary && <SummaryCard items={summary.items} tags={summary.tags} />}
+
       {/* Calibration step tag */}
       {stepCurrent != null && stepTotal != null && stepLabel && (
         <div className="flex items-center gap-2 mb-2">
