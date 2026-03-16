@@ -172,6 +172,18 @@ export const useUnipileQuota = (accountId?: string | null): UseUnipileQuotaRetur
     }
   }, [quotas.lastReset]);
 
+  // Listen for global quota events from other parts of the app
+  useEffect(() => {
+    return onQuotaAction((event) => {
+      // Only handle events for this account (or events without a specific account)
+      if (event.accountId && accountId && event.accountId !== accountId) return;
+      setQuotas(prev => ({
+        ...prev,
+        [event.type]: prev[event.type] + event.count,
+      }));
+    });
+  }, [accountId]);
+
   const getLimitForType = useCallback((type: keyof Omit<QuotaState, 'lastReset'>): number => {
     return getLimitForApiMode(type, apiMode);
   }, [apiMode]);
