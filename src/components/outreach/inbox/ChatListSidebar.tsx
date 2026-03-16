@@ -64,6 +64,8 @@ export const ChatListSidebar: React.FC<ChatListSidebarProps> = ({
   loadingAllChats = false,
   onLoadMoreChats,
   onLoadAllChats,
+  onDeleteChat,
+  isDeletingChat,
 }) => {
   const [filtersExpanded, setFiltersExpanded] = useState(false);
 
