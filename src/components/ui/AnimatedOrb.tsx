@@ -100,9 +100,13 @@ export const AnimatedOrb: React.FC<AnimatedOrbProps> = ({
 
       ctx.beginPath();
       ctx.ellipse(0, 0, eyeW / 2, eyeH / 2, 0, 0, Math.PI * 2);
-      ctx.strokeStyle = `rgba(${SKALR_COLORS[0][0]},${SKALR_COLORS[0][1]},${SKALR_COLORS[0][2]},0.7)`;
-      ctx.lineWidth = 1.5 * dpr;
+      ctx.strokeStyle = `rgba(${SKALR_COLORS[0][0]},${SKALR_COLORS[0][1]},${SKALR_COLORS[0][2]},0.85)`;
+      ctx.lineWidth = 2 * dpr;
       ctx.stroke();
+
+      // Fill the eye white area
+      ctx.fillStyle = isDark ? 'rgba(20,20,25,0.9)' : 'rgba(255,255,255,0.95)';
+      ctx.fill();
       ctx.clip();
 
       // Iris
