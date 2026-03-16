@@ -804,7 +804,8 @@ Deno.serve(async (req) => {
       }
 
       case 'handle_invitation_received': {
-        const { account_id, invitation_id, action: invAction, shared_secret, provider } = params;
+        const { account_id, invitation_id, invitation_action: invAction, action: legacyAction, shared_secret, provider } = params;
+        const finalAction = invAction || legacyAction;
         if (!account_id || !invitation_id || !invAction || !shared_secret) {
           throw new HttpError(400, 'account_id, invitation_id, action et shared_secret requis');
         }
