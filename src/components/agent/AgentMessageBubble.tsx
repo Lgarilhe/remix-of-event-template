@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
-import { MapPin, Calendar, Target, Brain, ChevronDown, Search, BarChart3, Send, Activity, Crosshair, Code, Building2, Briefcase, Globe, FileText, type LucideIcon } from 'lucide-react';
+import { Brain, ChevronDown, Search, BarChart3, Send, Activity } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { AgentMessage } from '@/hooks/useAgentChat';
 import { AnimatedOrb } from '@/components/ui/AnimatedOrb';
@@ -261,25 +261,9 @@ function SearchPlanCard({ plan }: { plan: Record<string, unknown> }) {
     criteria.push({ label: 'Compétences', value: skills.join(', ') });
   }
 
-  const criteriaIconMap: Array<{ test: RegExp; icon: LucideIcon }> = [
-    { test: /résumé/i, icon: FileText },
-    { test: /mots-clés|keyword/i, icon: Search },
-    { test: /locali|zone|région/i, icon: Globe },
-    { test: /expérience/i, icon: Briefcase },
-    { test: /titre/i, icon: Crosshair },
-    { test: /entreprise|company/i, icon: Building2 },
-    { test: /compétence|skill/i, icon: Code },
-  ];
-
-  const getIcon = (label: string): LucideIcon =>
-    criteriaIconMap.find(m => m.test.test(label))?.icon ?? Target;
-
   return (
     <div className="border-2 border-foreground/15 overflow-hidden">
       <div className="px-3.5 py-3 flex items-center gap-2.5 border-b border-foreground/10">
-        <div className="h-6 w-6 bg-foreground flex items-center justify-center shrink-0">
-          <Search className="w-3 h-3 text-background" />
-        </div>
         <span className="text-[10px] font-bold uppercase tracking-[0.15em] text-foreground">
           Plan de recherche
         </span>
@@ -288,44 +272,38 @@ function SearchPlanCard({ plan }: { plan: Record<string, unknown> }) {
       {/* Criteria list */}
       {criteria.length > 0 && (
         <div className="px-3.5 py-3 space-y-2.5">
-          {criteria.map((item, i) => {
-            const CriteriaIcon = getIcon(item.label);
-            return (
-              <div key={i} className="flex items-start gap-3">
-                <div className="h-5 w-5 border border-foreground/20 flex items-center justify-center shrink-0 mt-0.5">
-                  <CriteriaIcon className="w-3 h-3 text-foreground/60" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-muted-foreground">{item.label}</p>
-                  <p className="text-xs text-foreground/80 mt-0.5 leading-relaxed">{item.value}</p>
-                </div>
+          {criteria.map((item, i) => (
+            <div key={i} className="flex items-start gap-3">
+              <span className="h-1.5 w-1.5 bg-foreground/30 shrink-0 mt-[7px]" />
+              <div className="min-w-0 flex-1">
+                <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-muted-foreground">{item.label}</p>
+                <p className="text-xs text-foreground/80 mt-0.5 leading-relaxed">{item.value}</p>
               </div>
-            );
-          })}
+            </div>
+          ))}
         </div>
       )}
 
       {/* Pills */}
-      <div className="border-t border-foreground/10 px-3.5 py-2.5 flex flex-wrap gap-1.5">
-        {locationKeywords.length > 0 && (
-          <PlanPill icon={MapPin} label={locationKeywords.join(', ')} />
-        )}
-        {filters.calculated_experience_min != null && (
-          <PlanPill icon={Calendar} label={`${filters.calculated_experience_min}–${filters.calculated_experience_max} ans`} />
-        )}
-        {stopConditions.target_go_profiles && (
-          <PlanPill icon={Target} label={`${stopConditions.target_go_profiles} profils Go`} />
-        )}
-      </div>
-    </div>
-  );
-}
-
-function PlanPill({ icon: Icon, label }: { icon: React.ElementType; label: string }) {
-  return (
-    <div className="inline-flex items-center gap-1.5 px-2 py-1 text-[10px] font-bold uppercase tracking-[0.1em] border-2 border-foreground/10 text-foreground/60">
-      <Icon className="w-3 h-3" />
-      <span>{label}</span>
+      {(locationKeywords.length > 0 || filters.calculated_experience_min != null || stopConditions.target_go_profiles) && (
+        <div className="border-t border-foreground/10 px-3.5 py-2.5 flex flex-wrap gap-1.5">
+          {locationKeywords.length > 0 && (
+            <span className="px-2 py-1 text-[10px] font-bold uppercase tracking-[0.1em] border border-foreground/10 text-foreground/60">
+              {locationKeywords.join(', ')}
+            </span>
+          )}
+          {filters.calculated_experience_min != null && (
+            <span className="px-2 py-1 text-[10px] font-bold uppercase tracking-[0.1em] border border-foreground/10 text-foreground/60">
+              {filters.calculated_experience_min}–{filters.calculated_experience_max} ans
+            </span>
+          )}
+          {stopConditions.target_go_profiles && (
+            <span className="px-2 py-1 text-[10px] font-bold uppercase tracking-[0.1em] border border-foreground/10 text-foreground/60">
+              {stopConditions.target_go_profiles} profils Go
+            </span>
+          )}
+        </div>
+      )}
     </div>
   );
 }
