@@ -721,7 +721,7 @@ Deno.serve(async (req) => {
         const sc = score.score || 0;
         const rec = score.recommendation || "go";
         const summary = score.summary || "";
-        summaryMsg += `**${name}** — ${sc}/100 ${rec === "go" ? "✅" : "⚠️"}\n`;
+        summaryMsg += `**${name}** — ${sc}/100 ${isGoRecommendation(rec) ? "✅" : "⚠️"}\n`;
         summaryMsg += `> ${headline}\n`;
         if (summary) summaryMsg += `> ${summary.slice(0, 120)}…\n`;
         summaryMsg += `\n`;
