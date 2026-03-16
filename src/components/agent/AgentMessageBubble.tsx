@@ -50,10 +50,17 @@ export const AgentMessageBubble: React.FC<AgentMessageBubbleProps> = ({ message,
   const isStatus = message.role === 'status';
   const thinking = message.metadata?.thinking as string | undefined;
 
-  const cleanContent = message.content
-    .replace(/\[SEARCH_PLAN\][\s\S]*?(\[\/SEARCH_PLAN\]|$)/g, '')
-    .replace(/\[AGENT_ACTION\][\s\S]*?(\[\/AGENT_ACTION\]|$)/g, '')
-    .replace(/\[OPTIONS\][\s\S]*?(\[\/OPTIONS\]|$)/g, '')
+  // Strip system tags — for streaming, cut everything from an unclosed tag onward
+  let rawContent = message.content;
+  for (const tag of ['SEARCH_PLAN', 'AGENT_ACTION', 'OPTIONS']) {
+    // Remove complete tags
+    rawContent = rawContent.replace(new RegExp(`\\[${tag}\\][\\s\\S]*?\\[\\/${tag}\\]`, 'g'), '');
+    // If an opening tag remains (streaming, not yet closed), hide everything from it
+    const openIdx = rawContent.indexOf(`[${tag}]`);
+    if (openIdx !== -1) rawContent = rawContent.slice(0, openIdx);
+  }
+
+  const cleanContent = rawContent
     // Strip AI-style markdown formatting
     .replace(/^#{1,6}\s+/gm, '')                          // headings
     .replace(/\*{1,3}([^*]+)\*{1,3}/g, '$1')              // bold/italic
