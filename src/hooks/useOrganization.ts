@@ -7,6 +7,8 @@ export interface Organization {
   id: string;
   name: string;
   slug: string;
+  website: string | null;
+  logo_url: string | null;
   created_by: string;
   created_at: string;
   updated_at: string;
