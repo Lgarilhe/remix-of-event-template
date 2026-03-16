@@ -57,8 +57,7 @@ export const AnimatedOrb: React.FC<AnimatedOrbProps> = ({
     function frame() {
       if (!ctx) return;
 
-      ctx.fillStyle = `rgb(${bg[0]},${bg[1]},${bg[2]})`;
-      ctx.fillRect(0, 0, w, h);
+      ctx.clearRect(0, 0, w, h);
 
       nextLook--;
       if (nextLook <= 0) {
