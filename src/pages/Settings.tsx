@@ -192,6 +192,20 @@ const Settings = () => {
                     <label className="text-sm text-muted-foreground">Identifiant</label>
                     <p className="text-foreground font-mono text-sm">{organization?.slug}</p>
                   </div>
+                  <div className="grid grid-cols-2 gap-4 pt-4 border-t border-foreground/10">
+                    <div>
+                      <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Plan</label>
+                      <p className="text-sm font-semibold text-foreground mt-0.5">
+                        {(organization as any)?.plan || 'Free'}
+                      </p>
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Membres</label>
+                      <p className="text-sm font-semibold text-foreground mt-0.5">
+                        {members.length}
+                      </p>
+                    </div>
+                  </div>
                 </CardContent>
               </Card>
             )}
