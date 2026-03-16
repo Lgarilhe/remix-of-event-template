@@ -179,7 +179,7 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({ onClose }) => {
             </div>
           </div>
         ) : messages.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-16 gap-5">
+          <div className="flex flex-col items-center justify-center py-10 gap-6 px-2">
             <AnimatedOrb size={56} speed={8}>
               <Bot className="w-6 h-6 text-muted-foreground" />
             </AnimatedOrb>
@@ -188,6 +188,24 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({ onClose }) => {
               <p className="text-sm text-muted-foreground">
                 Votre copilot de sourcing IA
               </p>
+            </div>
+            <div className="grid grid-cols-2 gap-3 w-full max-w-[360px]">
+              {[
+                { icon: Target, title: 'Sourcer un profil', desc: 'Décrivez le poste et laissez l\'agent chercher', prompt: 'Je cherche un profil pour un poste à pourvoir.' },
+                { icon: Search, title: 'Affiner une recherche', desc: 'Optimisez vos filtres LinkedIn Recruiter', prompt: 'Aide-moi à affiner mes filtres de recherche LinkedIn.' },
+                { icon: BarChart3, title: 'Analyser un pipe', desc: 'Obtenez des insights sur votre pipeline', prompt: 'Analyse mon pipeline de candidats et donne-moi des recommandations.' },
+                { icon: Sparkles, title: 'Rédiger un message', desc: 'Générez un InMail personnalisé', prompt: 'Aide-moi à rédiger un message d\'approche personnalisé.' },
+              ].map((starter) => (
+                <button
+                  key={starter.title}
+                  onClick={() => handleSend(starter.prompt)}
+                  className="border border-foreground/10 hover:border-brutal-accent/50 p-4 transition-all duration-200 hover:bg-brutal-accent/5 glass-subtle cursor-pointer group text-left"
+                >
+                  <starter.icon className="w-5 h-5 text-muted-foreground group-hover:text-brutal-accent transition-colors" />
+                  <p className="text-sm font-semibold text-foreground mt-2">{starter.title}</p>
+                  <p className="text-xs text-muted-foreground mt-1 leading-relaxed">{starter.desc}</p>
+                </button>
+              ))}
             </div>
           </div>
         ) : (
