@@ -6,6 +6,7 @@ import { AgentMessage } from '@/hooks/useAgentChat';
 import { AnimatedOrb } from '@/components/ui/AnimatedOrb';
 import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
+import { isThinkingLineUseful } from './filterThinking';
 
 interface AgentMessageBubbleProps {
   message: AgentMessage;
