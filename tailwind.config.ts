@@ -153,10 +153,22 @@ export default {
   			},
   			'slide-in-right': {
   				'0%': {
-  					transform: 'translateX(100%)'
+  					transform: 'translateX(30px)',
+  					opacity: '0'
   				},
   				'100%': {
-  					transform: 'translateX(0)'
+  					transform: 'translateX(0)',
+  					opacity: '1'
+  				}
+  			},
+  			'slide-in-left': {
+  				'0%': {
+  					transform: 'translateX(-30px)',
+  					opacity: '0'
+  				},
+  				'100%': {
+  					transform: 'translateX(0)',
+  					opacity: '1'
   				}
   			},
   			'scroll-left': {
