@@ -51,17 +51,16 @@ export const AgentOptionsSheet: React.FC<AgentOptionsSheetProps> = ({
           animate={{ y: 0, opacity: 1 }}
           exit={{ y: 8, opacity: 0 }}
           transition={{ type: 'spring', damping: 26, stiffness: 300 }}
-          className="shrink-0 border-t border-foreground/8 px-4 py-3 z-10 bg-muted/10"
+          className="shrink-0 border-t-2 border-foreground px-4 py-3 z-10 bg-background"
         >
-          <p className="text-xs font-medium text-muted-foreground mb-2">
+          <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-muted-foreground mb-2">
             Actions suggérées
           </p>
           <div className={useGrid
-            ? "grid grid-cols-1 sm:grid-cols-2 gap-2"
-            : "grid grid-cols-1 gap-2"
+            ? "grid grid-cols-1 sm:grid-cols-2 gap-1.5"
+            : "grid grid-cols-1 gap-1.5"
           }>
             {options.map((opt, i) => {
-              const Icon = getOptionIcon(opt);
               return (
                 <motion.button
                   key={i}
@@ -69,13 +68,13 @@ export const AgentOptionsSheet: React.FC<AgentOptionsSheetProps> = ({
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: i * 0.06, duration: 0.2 }}
                   onClick={() => onSelect(opt)}
-                  className="w-full text-left glass-subtle border border-foreground/10 p-3 cursor-pointer group transition-all duration-200 hover:border-brutal-accent/40 hover:bg-brutal-accent/5 flex items-center gap-2.5 relative"
+                  className="w-full text-left border border-foreground/15 px-3 py-2.5 cursor-pointer group transition-all duration-150 hover:border-foreground hover:shadow-[3px_3px_0_0_hsl(var(--brutal-accent)/0.4)] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none flex items-start gap-2.5 relative bg-background"
                 >
-                  <Icon className="w-4 h-4 text-muted-foreground group-hover:text-brutal-accent transition-colors shrink-0" />
-                  <span className="text-sm font-medium text-foreground group-hover:text-brutal-accent transition-colors flex-1">
+                  <ArrowRight className="w-3.5 h-3.5 text-muted-foreground group-hover:text-brutal-accent transition-colors shrink-0 mt-0.5" />
+                  <span className="text-sm text-foreground/80 group-hover:text-foreground transition-colors flex-1 leading-snug">
                     {opt}
                   </span>
-                  <span className="text-[10px] text-muted-foreground/30 shrink-0">
+                  <span className="text-[10px] text-muted-foreground/30 font-mono shrink-0 mt-0.5">
                     ⌘{i + 1}
                   </span>
                 </motion.button>

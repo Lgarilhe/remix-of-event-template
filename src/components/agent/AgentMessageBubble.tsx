@@ -91,45 +91,41 @@ export const AgentMessageBubble: React.FC<AgentMessageBubbleProps> = ({ message,
     ? extractCandidates(cleanContent)
     : { candidates: [], contentWithout: cleanContent };
 
-  // Detect calibration step pattern: "➡️ 3/5 — Expérience" or "✅ 2/5 — Compétences" etc.
+  // Detect calibration step pattern: "➡️ 3/5 — Expérience" or "✅ 2/5 — Compétences**" etc.
   const stepMatch = finalContent.match(/^[^\w]*(\d+)\/(\d+)\s*[—–\-]\s*(.+?)[\n\r]/);
   const stepCurrent = stepMatch ? parseInt(stepMatch[1]) : null;
   const stepTotal = stepMatch ? parseInt(stepMatch[2]) : null;
-  const stepLabel = stepMatch ? stepMatch[3].trim() : null;
+  const stepLabel = stepMatch ? stepMatch[3].trim().replace(/\*+/g, '') : null;
   const contentAfterStep = stepMatch
     ? finalContent.slice(finalContent.indexOf('\n', stepMatch.index || 0) + 1).trim()
     : finalContent;
 
+  const displayContent = stepCurrent != null ? contentAfterStep : finalContent;
 
   return (
-    <div
-      className="space-y-2 animate-fade-in pl-4 bg-muted/5 py-2"
-      style={{ borderLeft: '2px solid', borderImage: 'linear-gradient(to bottom, hsl(271 81% 56%), hsl(330 81% 60%)) 1' }}
-    >
-      {/* Thinking card for saved messages */}
-      {thinking && <ThinkingCard thinking={thinking} />}
-
-      {/* Calibration step — inline pill */}
+    <div className="animate-fade-in space-y-0">
+      {/* Calibration step tag */}
       {stepCurrent != null && stepTotal != null && stepLabel && (
-        <div className="flex items-center gap-2 mb-1">
-          <span className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.12em] text-muted-foreground">
-            <span className="text-brutal-accent tabular-nums">{stepCurrent}/{stepTotal}</span>
-            <span className="text-foreground/30">·</span>
-            <span>{stepLabel}</span>
+        <div className="flex items-center gap-2 mb-2">
+          <span className="inline-flex items-center gap-1 bg-foreground text-background px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.12em]">
+            {stepCurrent}/{stepTotal}
+          </span>
+          <span className="text-xs font-bold uppercase tracking-wider text-foreground">
+            {stepLabel}
           </span>
         </div>
       )}
 
-      {(stepCurrent != null ? contentAfterStep : finalContent) && (
-        <div className="text-sm leading-relaxed">
-          <div className="prose prose-sm max-w-none [&_p]:my-1.5 [&_ul]:my-2 [&_ol]:my-2 [&_li]:my-0.5 [&_h1]:text-base [&_h2]:text-sm [&_h3]:text-sm [&_h1]:font-bold [&_h2]:font-bold [&_h3]:font-semibold [&_h1]:mt-3 [&_h1]:mb-1.5 [&_h2]:mt-3 [&_h2]:mb-1.5 [&_h3]:mt-2 [&_h3]:mb-1 [&_hr]:my-3 [&_code]:text-xs [&_code]:bg-muted [&_code]:px-1.5 [&_code]:py-0.5 [&_li]:marker:text-foreground/50 text-sm text-foreground/80 [&_strong]:text-foreground">
-            <ReactMarkdown>{stepCurrent != null ? contentAfterStep : finalContent}</ReactMarkdown>
+      {displayContent && (
+        <div className="text-sm leading-relaxed text-foreground/80">
+          <div className="prose prose-sm max-w-none [&_p]:my-1.5 [&_ul]:my-2 [&_ol]:my-2 [&_li]:my-0.5 [&_h1]:text-base [&_h2]:text-sm [&_h3]:text-sm [&_h1]:font-bold [&_h2]:font-bold [&_h3]:font-semibold [&_h1]:mt-3 [&_h1]:mb-1.5 [&_h2]:mt-3 [&_h2]:mb-1.5 [&_h3]:mt-2 [&_h3]:mb-1 [&_hr]:my-3 [&_code]:text-xs [&_code]:bg-muted [&_code]:px-1.5 [&_code]:py-0.5 [&_li]:marker:text-foreground/50 text-sm [&_strong]:text-foreground">
+            <ReactMarkdown>{displayContent}</ReactMarkdown>
           </div>
         </div>
       )}
 
       {candidates.length > 0 && (
-        <div className="space-y-1.5">
+        <div className="space-y-1.5 mt-2">
           {candidates.map((c, i) => (
             <CandidateMiniCard key={i} candidate={c} />
           ))}
@@ -139,7 +135,7 @@ export const AgentMessageBubble: React.FC<AgentMessageBubbleProps> = ({ message,
       {searchPlan && <SearchPlanCard plan={searchPlan} />}
 
       {isStreaming && (
-        <span className="inline-block w-0.5 h-4 bg-foreground animate-pulse" />
+        <span className="inline-block w-0.5 h-4 bg-foreground animate-pulse mt-1" />
       )}
     </div>
   );
