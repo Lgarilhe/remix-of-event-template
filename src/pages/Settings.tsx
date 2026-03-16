@@ -165,7 +165,7 @@ const Settings = () => {
                     />
                   )}
 
-                  <div className="border-t border-foreground/10 pt-3">
+                  <div className="border-t border-foreground/10 pt-3 space-y-3">
                   <div>
                     <label className="text-sm text-muted-foreground">Nom</label>
                     {editingName ? (
