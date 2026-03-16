@@ -6,6 +6,40 @@ import { supabase } from '@/integrations/supabase/client';
 import { User } from '@supabase/supabase-js';
 import { AuthSheet } from './AuthSheet';
 import { NotificationDropdown } from './NotificationDropdown';
+
+
+const NavLogo: React.FC = () => {
+  const [isWinking, setIsWinking] = useState(false);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setIsWinking(true);
+      setTimeout(() => setIsWinking(false), 300);
+    }, 4000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Right eye: normal pill vs wink (flat line)
+  const rightEye = isWinking
+    ? <line x1="8.55" y1="5.34" x2="10.55" y2="5.34" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+    : <ellipse cx="9.55" cy="5.34" rx="0.65" ry="0.75" fill="currentColor" />;
+
+  return (
+    <div className="bg-foreground text-background h-[34px] w-[34px] border border-foreground flex items-center justify-center">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 14 14" className="w-4 h-4">
+        {/* Face circle */}
+        <circle cx="7" cy="7" r="6.5" fill="none" stroke="currentColor" strokeWidth="1.1" />
+        {/* Left eye — always open */}
+        <ellipse cx="4.45" cy="5.34" rx="0.65" ry="0.75" fill="currentColor" />
+        {/* Right eye — winks */}
+        {rightEye}
+        {/* Smirk mouth */}
+        <path d="M4.8 9.2 Q7 10.8 9.5 8.8" stroke="currentColor" strokeWidth="1" strokeLinecap="round" fill="none" />
+      </svg>
+    </div>
+  );
+};
+
 export const Navbar: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
   const [isAuthOpen, setIsAuthOpen] = useState(false);
