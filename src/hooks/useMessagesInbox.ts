@@ -1489,13 +1489,7 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
           // Filter out optimistic messages (numeric-only IDs from Date.now()) — they are now in the fresh data
           const secondaryMsgs = prev.filter(m => !existingIds.has(m.id) && !/^\d+$/.test(m.id));
           if (secondaryMsgs.length === 0) {
-            // No secondary messages — check if anything actually changed
-            if (freshMessages.length === prev.length) {
-              const lastFresh = freshMessages[freshMessages.length - 1];
-              const lastPrev = prev[prev.length - 1];
-              if (lastFresh?.id === lastPrev?.id) return prev; // No change
-            }
-            return freshMessages;
+            return areMessagesEquivalent(prev, freshMessages) ? prev : freshMessages;
           }
           // Merge and re-sort
           const combined = [...freshMessages, ...secondaryMsgs];
@@ -1504,7 +1498,7 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
             const tB = new Date(b.timestamp || '').getTime() || 0;
             return tA - tB;
           });
-          return combined;
+          return areMessagesEquivalent(prev, combined) ? prev : combined;
         });
       } catch {
         // Silently ignore polling errors
