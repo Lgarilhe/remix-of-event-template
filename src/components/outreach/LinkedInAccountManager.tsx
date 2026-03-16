@@ -384,6 +384,15 @@ export const LinkedInAccountManager: React.FC<LinkedInAccountManagerProps> = ({
                           </TooltipProvider>
                         </div>
                       )}
+                      {/* Proxy configuration */}
+                      {account.status === 'OK' && (
+                        <ProxyConfigPanel
+                          accountId={account.id}
+                          accountName={account.name || account.identifier || account.id}
+                          currentCountry={proxyCache[account.id] ?? getMappingForAccount(account.id)?.proxy_country ?? null}
+                          onUpdated={(country) => setProxyCache(prev => ({ ...prev, [account.id]: country }))}
+                        />
+                      )}
                     </div>
                   </div>
                   <div className="flex items-center gap-1">
