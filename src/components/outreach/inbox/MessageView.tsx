@@ -99,6 +99,10 @@ export const MessageView: React.FC<MessageViewProps> = ({
   onEnrollInSequence,
   onScheduleCall,
   calendlyLink,
+  onAddReaction,
+  onDeleteMessage,
+  isReacting,
+  isDeleting,
 }) => {
   const [localTone, setLocalTone] = useState<AITone>(selectedTone);
   const currentTone = onToneChange ? selectedTone : localTone;
