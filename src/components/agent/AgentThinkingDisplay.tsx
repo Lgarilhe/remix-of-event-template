@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Sparkles, Check, FileSearch, Filter, Search, BarChart3, type LucideIcon } from 'lucide-react';
 import { ThinkingStep } from '@/hooks/useAgentChat';
 import { cn } from '@/lib/utils';
+import { filterThinkingLines } from './filterThinking';
 
 interface AgentThinkingDisplayProps {
   steps: ThinkingStep[];
