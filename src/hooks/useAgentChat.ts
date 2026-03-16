@@ -335,7 +335,7 @@ export const useAgentChat = (conversationId: string | null) => {
       isStreamingRef.current = false;
       setSending(false);
       setThinkingContent('');
-      setThinkingSteps([]);
+      setThinkingPhases([]);
       abortRef.current = null;
     }
   }, [conversationId, sending, parseThinkingPhases]);
