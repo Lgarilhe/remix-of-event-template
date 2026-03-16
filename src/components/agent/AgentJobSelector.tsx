@@ -28,7 +28,7 @@ export const AgentJobSelector: React.FC<AgentJobSelectorProps> = ({
         ) : (
           jobs.map(job => {
             const isSelected = selectedJob?.id === job.id;
-            const location = job.city || (job as any).location;
+            const location = job.location;
             return (
               <button
                 key={job.id}
