@@ -323,8 +323,8 @@ function SearchPlanCard({ plan }: { plan: Record<string, unknown> }) {
 
 function PlanPill({ icon: Icon, label }: { icon: React.ElementType; label: string }) {
   return (
-    <div className="inline-flex items-center gap-1.5 px-2 py-1 text-xs font-medium glass-subtle border border-foreground/10 hover:border-brutal-accent/30 text-foreground/70 transition-colors">
-      <Icon className="w-4 h-4" />
+    <div className="inline-flex items-center gap-1.5 px-2 py-1 text-[10px] font-bold uppercase tracking-[0.1em] border-2 border-foreground/10 text-foreground/60">
+      <Icon className="w-3 h-3" />
       <span>{label}</span>
     </div>
   );
