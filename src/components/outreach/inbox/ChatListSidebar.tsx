@@ -35,6 +35,8 @@ interface ChatListSidebarProps {
   loadingAllChats?: boolean;
   onLoadMoreChats?: () => void;
   onLoadAllChats?: () => void;
+  onDeleteChat?: (chatId: string) => Promise<boolean>;
+  isDeletingChat?: boolean;
 }
 
 export const ChatListSidebar: React.FC<ChatListSidebarProps> = ({
