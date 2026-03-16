@@ -79,10 +79,11 @@ export const AnimatedOrb: React.FC<AnimatedOrbProps> = ({
       const blinkY = blink ? Math.sin(blinkT * Math.PI) : 0;
 
       // Ambient glow
-      const outerR = w * 0.38;
-      const grad = ctx.createRadialGradient(cx, cy, outerR * 0.3, cx, cy, outerR);
-      grad.addColorStop(0, `rgba(${SKALR_COLORS[0][0]},${SKALR_COLORS[0][1]},${SKALR_COLORS[0][2]},0.08)`);
-      grad.addColorStop(1, `rgba(${SKALR_COLORS[0][0]},${SKALR_COLORS[0][1]},${SKALR_COLORS[0][2]},0)`);
+      const outerR = w * 0.42;
+      const grad = ctx.createRadialGradient(cx, cy, outerR * 0.2, cx, cy, outerR);
+      grad.addColorStop(0, `rgba(${SKALR_COLORS[0][0]},${SKALR_COLORS[0][1]},${SKALR_COLORS[0][2]},0.15)`);
+      grad.addColorStop(0.6, `rgba(${SKALR_COLORS[3][0]},${SKALR_COLORS[3][1]},${SKALR_COLORS[3][2]},0.06)`);
+      grad.addColorStop(1, 'rgba(0,0,0,0)');
       ctx.fillStyle = grad;
       ctx.beginPath();
       ctx.arc(cx, cy, outerR, 0, Math.PI * 2);
