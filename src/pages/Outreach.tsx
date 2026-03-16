@@ -56,7 +56,7 @@ export default function Outreach() {
   const [loading, setLoading] = useState(true);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   
-  const { isAdmin, isOwner } = useOrganization();
+  const { isAdmin, isOwner, organizationId } = useOrganization();
   const { mappings, getUserLinkedAccountId } = useMemberLinkedInAccounts();
   
   const validTabs = tabs.map(t => t.value) as string[];
