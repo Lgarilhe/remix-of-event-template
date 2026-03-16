@@ -108,7 +108,6 @@ const AppContent = () => {
         </Routes>
       </Suspense>
       <AgentDrawer />
-      <AgentFloatingButton />
       <SessionExpiredDialog 
         open={sessionExpired} 
         onOpenChange={handleSessionExpiredClose} 
