@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { cn } from '@/lib/utils';
+import { AnimatedOrb } from './AnimatedOrb';
 
 const LOADING_MESSAGES = [
   'Chargement en cours…',
@@ -32,13 +33,9 @@ const MESSAGE_SETS: Record<string, string[]> = {
 
 interface BrutalLoaderProps {
   className?: string;
-  /** Pick a set of rotating messages: 'default' | 'search' | 'sequences' */
   variant?: 'default' | 'search' | 'sequences';
-  /** Override the rotating messages */
   messages?: string[];
-  /** Number of skeleton rows to show */
   rows?: number;
-  /** Compact mode — smaller */
   compact?: boolean;
 }
 
@@ -67,12 +64,10 @@ export const BrutalLoader: React.FC<BrutalLoaderProps> = ({
   if (compact) {
     return (
       <div className={cn('flex items-center gap-3 py-4', className)}>
-        <div className="relative h-5 w-5">
-          <div className="absolute inset-0 border-2 border-foreground border-t-transparent animate-spin" />
-        </div>
+        <AnimatedOrb size={24} speed={4} />
         <span
           className={cn(
-            'text-xs text-muted-foreground uppercase tracking-wider transition-opacity duration-200',
+            'text-[11px] text-muted-foreground tracking-wider transition-opacity duration-300 ease-out',
             fade ? 'opacity-100' : 'opacity-0'
           )}
         >
@@ -84,41 +79,60 @@ export const BrutalLoader: React.FC<BrutalLoaderProps> = ({
 
   return (
     <div className={cn('flex flex-col items-center justify-center py-12', className)}>
-      {/* Animated square spinner */}
-      <div className="relative mb-6">
-        <div className="h-12 w-12 border-2 border-foreground relative">
-          {/* Scanning line */}
-          <div className="absolute inset-x-0 h-[2px] bg-brutal-accent animate-[scan_1.5s_ease-in-out_infinite]" />
-          {/* Corner accents */}
-          <div className="absolute -top-1 -left-1 w-2 h-2 bg-foreground" />
-          <div className="absolute -top-1 -right-1 w-2 h-2 bg-foreground" />
-          <div className="absolute -bottom-1 -left-1 w-2 h-2 bg-foreground" />
-          <div className="absolute -bottom-1 -right-1 w-2 h-2 bg-foreground" />
-        </div>
+      {/* Animated eye orb as spinner */}
+      <div className="relative mb-5">
+        <AnimatedOrb size={48} speed={5} />
+        {/* Pulsing ring around the orb */}
+        <div className="absolute inset-[-6px] rounded-full border border-brutal-accent/20 animate-[pulse_2.5s_ease-in-out_infinite]" />
       </div>
 
       {/* Rotating text */}
       <p
         className={cn(
-          'text-xs text-muted-foreground uppercase tracking-[0.15em] font-medium transition-opacity duration-200 mb-8',
+          'text-[11px] text-muted-foreground/70 uppercase tracking-[0.14em] font-medium transition-opacity duration-300 ease-out mb-8',
           fade ? 'opacity-100' : 'opacity-0'
         )}
       >
         {pool[msgIndex]}
       </p>
 
-      {/* Skeleton rows */}
-      <div className="w-full max-w-md space-y-2.5">
+      {/* Skeleton rows with staggered entrance + gradient shimmer */}
+      <div className="w-full max-w-md space-y-2">
         {Array.from({ length: rows }).map((_, i) => (
           <div
             key={i}
-            className="h-10 border border-foreground/10 bg-muted relative overflow-hidden"
-            style={{ animationDelay: `${i * 150}ms` }}
+            className="h-11 border border-foreground/[0.06] bg-muted/40 relative overflow-hidden animate-fade-in"
+            style={{
+              animationDelay: `${i * 120}ms`,
+              animationFillMode: 'backwards',
+            }}
           >
+            {/* Gradient shimmer sweep */}
             <div
-              className="absolute inset-0 bg-gradient-to-r from-transparent via-foreground/[0.04] to-transparent animate-[shimmer_1.8s_infinite]"
-              style={{ animationDelay: `${i * 200}ms` }}
+              className="absolute inset-0 animate-[shimmer_2s_ease-in-out_infinite]"
+              style={{
+                animationDelay: `${i * 250}ms`,
+                background:
+                  'linear-gradient(90deg, transparent 0%, hsl(var(--brutal-accent) / 0.04) 40%, hsl(var(--brutal-accent) / 0.08) 50%, hsl(var(--brutal-accent) / 0.04) 60%, transparent 100%)',
+              }}
             />
+            {/* Faux content blocks */}
+            <div className="flex items-center gap-3 px-4 h-full">
+              <div
+                className="w-7 h-7 bg-foreground/[0.04] shrink-0"
+                style={{ animationDelay: `${i * 100}ms` }}
+              />
+              <div className="flex-1 space-y-1.5">
+                <div
+                  className="h-2 bg-foreground/[0.06]"
+                  style={{ width: `${60 + (i % 3) * 15}%` }}
+                />
+                <div
+                  className="h-1.5 bg-foreground/[0.04]"
+                  style={{ width: `${35 + (i % 2) * 20}%` }}
+                />
+              </div>
+            </div>
           </div>
         ))}
       </div>
