@@ -274,7 +274,7 @@ export const ProjectsList: React.FC<ProjectsListProps> = ({ onResumeSearch }) =>
             return (
               <div
                 key={project.key}
-                className="bg-background border border-foreground p-4 sm:p-5 hover:bg-brutal-accent/5 transition-all cursor-pointer"
+                className="bg-background border border-foreground p-4 sm:p-5 shadow-[3px_3px_0px_0px_hsl(var(--brutal-accent))] hover:translate-x-[1px] hover:translate-y-[1px] hover:shadow-[1px_1px_0px_0px_hsl(var(--brutal-accent))] transition-all cursor-pointer"
                 onClick={() => setSelectedProjectKey(project.key)}
               >
                 <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
