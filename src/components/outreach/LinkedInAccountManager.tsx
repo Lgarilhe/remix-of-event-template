@@ -13,6 +13,8 @@ import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { TooltipProvider, Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 import { WebhookManager } from './WebhookManager';
+import { ProxyConfigPanel } from './ProxyConfigPanel';
+import { useMemberLinkedInAccounts } from '@/hooks/useMemberLinkedInAccounts';
 
 // Helper to get/set subscription overrides in localStorage
 const OVERRIDES_KEY = 'linkedin_subscription_overrides';
@@ -60,6 +62,17 @@ export const LinkedInAccountManager: React.FC<LinkedInAccountManagerProps> = ({
   const [connecting, setConnecting] = useState(false);
   const [disconnecting, setDisconnecting] = useState<string | null>(null);
   const [reconnectingAccount, setReconnectingAccount] = useState<LinkedInAccount | null>(null);
+  const [proxyCache, setProxyCache] = useState<Record<string, string | null>>({});
+  const { mappings, getMappingForAccount } = useMemberLinkedInAccounts();
+
+  // Initialize proxy cache from mappings
+  useEffect(() => {
+    const cache: Record<string, string | null> = {};
+    mappings.forEach(m => {
+      cache[m.linkedin_account_id] = m.proxy_country;
+    });
+    setProxyCache(cache);
+  }, [mappings]);
   
   // Signature settings
   const [signatureName, setSignatureName] = useState(() => {
@@ -370,6 +383,15 @@ export const LinkedInAccountManager: React.FC<LinkedInAccountManagerProps> = ({
                             </Tooltip>
                           </TooltipProvider>
                         </div>
+                      )}
+                      {/* Proxy configuration */}
+                      {account.status === 'OK' && (
+                        <ProxyConfigPanel
+                          accountId={account.id}
+                          accountName={account.name || account.identifier || account.id}
+                          currentCountry={proxyCache[account.id] ?? getMappingForAccount(account.id)?.proxy_country ?? null}
+                          onUpdated={(country) => setProxyCache(prev => ({ ...prev, [account.id]: country }))}
+                        />
                       )}
                     </div>
                   </div>

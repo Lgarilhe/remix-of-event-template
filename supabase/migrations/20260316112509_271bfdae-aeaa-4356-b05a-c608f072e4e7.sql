@@ -1,0 +1,3 @@
+ALTER TABLE public.member_linkedin_accounts
+  ADD COLUMN IF NOT EXISTS proxy_country TEXT DEFAULT NULL,
+  ADD COLUMN IF NOT EXISTS proxy_updated_at TIMESTAMPTZ DEFAULT NULL;
