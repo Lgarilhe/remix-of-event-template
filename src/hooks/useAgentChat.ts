@@ -338,7 +338,7 @@ export const useAgentChat = (conversationId: string | null) => {
       setThinkingSteps([]);
       abortRef.current = null;
     }
-  }, [conversationId, sending, parseThinkingSteps]);
+  }, [conversationId, sending, parseThinkingPhases]);
 
   const triggerSearch = useCallback(async (convId: string) => {
     try {
