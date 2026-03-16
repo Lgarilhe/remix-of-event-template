@@ -75,15 +75,15 @@ export const ChatListSidebar: React.FC<ChatListSidebarProps> = ({
   const waitingCandidateCount = chats.filter(c => c.last_message?.is_sender === true).length;
   const waitingMeCount = chats.filter(c => c.last_message?.is_sender === false).length;
 
+  // Count categories from the full DB map (not just loaded chats) for accurate counters
   const categoryCounts = {
     interested: 0,
     not_interested: 0,
     to_recontact: 0,
     no_response: 0,
   };
-  chats.forEach(c => {
-    const cat = categoriesMap.get(c.id);
-    if (cat && cat in categoryCounts) categoryCounts[cat as ChatCategory]++;
+  categoriesMap.forEach((cat) => {
+    if (cat in categoryCounts) categoryCounts[cat as ChatCategory]++;
   });
 
   // Count active filters
