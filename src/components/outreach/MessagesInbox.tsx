@@ -147,6 +147,8 @@ const MessagesInboxInner: React.FC<
           loadingAllChats={inbox.loadingAllChats}
           onLoadMoreChats={inbox.loadMoreChats}
           onLoadAllChats={inbox.loadAllChats}
+          onDeleteChat={handleDeleteChat}
+          isDeletingChat={isDeleting}
         />
 
         {/* Desktop Message View */}
