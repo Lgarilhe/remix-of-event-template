@@ -772,8 +772,9 @@ Deno.serve(async (req) => {
       const sorted = goProfiles
         .filter(p => p.score?.score != null)
         .sort((a, b) => (b.score.score || 0) - (a.score.score || 0));
+      const diversifiedGo = diversifyResults(sorted, 3);
 
-      for (const { profile, score } of sorted.slice(0, 10)) {
+      for (const { profile, score } of diversifiedGo.slice(0, 10)) {
         const name = profile.name || "Inconnu";
         const headline = profile.headline || "";
         const sc = score.score || 0;
