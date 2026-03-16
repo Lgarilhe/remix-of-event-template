@@ -542,34 +542,89 @@ Deno.serve(async (req) => {
 
       case 'update_proxy': {
         // Update proxy configuration for an account via PATCH /api/v1/accounts/{id}
-        const { account_id, proxy_country, proxy_ip } = params;
+        // Supports 3 modes: country, ip, custom
+        const {
+          account_id,
+          proxy_mode = 'country',
+          proxy_country,
+          proxy_ip,
+          proxy_protocol,
+          proxy_host,
+          proxy_port,
+          proxy_username,
+          proxy_password,
+        } = params;
 
         if (!account_id) {
           throw new HttpError(400, 'Account ID requis');
         }
 
-        if (!proxy_country && !proxy_ip) {
-          throw new HttpError(400, 'Veuillez fournir un code pays (proxy_country) ou une adresse IP (proxy_ip)');
+        // Build the PATCH body according to Unipile spec
+        let patchBody: Record<string, unknown> = {};
+        let dbUpdates: Record<string, unknown> = {
+          proxy_updated_at: new Date().toISOString(),
+        };
+
+        switch (proxy_mode) {
+          case 'country': {
+            if (!proxy_country || typeof proxy_country !== 'string' || proxy_country.length !== 2) {
+              throw new HttpError(400, 'Le code pays doit être au format ISO 3166-1 alpha-2 (ex: FR, US, DE)');
+            }
+            const country = proxy_country.toUpperCase();
+            patchBody = { country };
+            dbUpdates = {
+              ...dbUpdates,
+              proxy_mode: 'country',
+              proxy_country: country,
+              proxy_host: null,
+              proxy_port: null,
+              proxy_protocol: null,
+            };
+            break;
+          }
+          case 'ip': {
+            const ipRegex = /^(\d{1,3}\.){3}\d{1,3}$/;
+            if (!proxy_ip || !ipRegex.test(proxy_ip)) {
+              throw new HttpError(400, 'Adresse IP invalide (format IPv4 attendu)');
+            }
+            patchBody = { ip: proxy_ip };
+            dbUpdates = {
+              ...dbUpdates,
+              proxy_mode: 'ip',
+              proxy_country: proxy_ip,
+              proxy_host: null,
+              proxy_port: null,
+              proxy_protocol: null,
+            };
+            break;
+          }
+          case 'custom': {
+            if (!proxy_host || !proxy_port || !proxy_protocol) {
+              throw new HttpError(400, 'Host, port et protocole requis pour le mode custom');
+            }
+            const proxyObj: Record<string, unknown> = {
+              protocol: proxy_protocol,
+              host: proxy_host,
+              port: Number(proxy_port),
+            };
+            if (proxy_username) proxyObj.username = proxy_username;
+            if (proxy_password) proxyObj.password = proxy_password;
+            patchBody = { proxy: proxyObj };
+            dbUpdates = {
+              ...dbUpdates,
+              proxy_mode: 'custom',
+              proxy_country: null,
+              proxy_host: proxy_host,
+              proxy_port: Number(proxy_port),
+              proxy_protocol: proxy_protocol,
+            };
+            break;
+          }
+          default:
+            throw new HttpError(400, 'Mode proxy invalide. Valeurs acceptées : country, ip, custom');
         }
 
-        const proxyBody: Record<string, unknown> = {};
-        if (proxy_country) {
-          // Validate ISO 3166-1 alpha-2
-          if (typeof proxy_country !== 'string' || proxy_country.length !== 2) {
-            throw new HttpError(400, 'Le code pays doit être au format ISO 3166-1 alpha-2 (ex: FR, US, DE)');
-          }
-          proxyBody.country = proxy_country.toUpperCase();
-        }
-        if (proxy_ip) {
-          // Basic IPv4 validation
-          const ipRegex = /^(\d{1,3}\.){3}\d{1,3}$/;
-          if (!ipRegex.test(proxy_ip)) {
-            throw new HttpError(400, 'Adresse IP invalide (format IPv4 attendu)');
-          }
-          proxyBody.ip = proxy_ip;
-        }
-
-        console.log(`[update_proxy] Patching account ${account_id} with proxy:`, JSON.stringify(proxyBody));
+        console.log(`[update_proxy] Patching account ${account_id} (mode: ${proxy_mode}) with body:`, JSON.stringify(patchBody));
 
         const patchResponse = await fetchWithTimeout(`${baseUrl}/accounts/${account_id}`, {
           method: 'PATCH',
@@ -578,7 +633,7 @@ Deno.serve(async (req) => {
             'Content-Type': 'application/json',
             'Accept': 'application/json',
           },
-          body: JSON.stringify({ proxy: proxyBody }),
+          body: JSON.stringify(patchBody),
         });
 
         const patchData = await patchResponse.json();
@@ -586,17 +641,31 @@ Deno.serve(async (req) => {
 
         if (!patchResponse.ok) {
           const errorMsg = patchData.message || patchData.error || 'Erreur de configuration du proxy';
+          // Track error in DB
+          await adminClient
+            .from('member_linkedin_accounts')
+            .update({
+              proxy_last_error: errorMsg,
+              proxy_is_active: false,
+              proxy_updated_at: new Date().toISOString(),
+            })
+            .eq('linkedin_account_id', account_id)
+            .eq('organization_id', organizationId);
+
           return new Response(
             JSON.stringify({ success: false, error: errorMsg, status: patchResponse.status }),
             { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
           );
         }
 
-        // Update cache in member_linkedin_accounts
-        const country = proxyBody.country || proxy_country?.toUpperCase() || null;
+        // Success: update DB with config + clear error
         await adminClient
           .from('member_linkedin_accounts')
-          .update({ proxy_country: country, proxy_updated_at: new Date().toISOString() })
+          .update({
+            ...dbUpdates,
+            proxy_is_active: true,
+            proxy_last_error: null,
+          })
           .eq('linkedin_account_id', account_id)
           .eq('organization_id', organizationId);
 
@@ -604,7 +673,7 @@ Deno.serve(async (req) => {
           JSON.stringify({ 
             success: true, 
             account_id: patchData.account_id || account_id,
-            proxy_country: country,
+            proxy_mode,
           }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );

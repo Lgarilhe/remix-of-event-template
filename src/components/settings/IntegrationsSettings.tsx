@@ -120,13 +120,13 @@ const LinkedInHostedAuthCard = ({
   const { accounts: linkedInAccounts, loading: loadingAccounts, reload: loadAccounts } = useLinkedInAccounts();
   const { organization } = useOrganization();
   const { mappings, getMappingForAccount } = useMemberLinkedInAccounts();
-  const [proxyCache, setProxyCache] = useState<Record<string, string | null>>({});
+  const [proxyCache, setProxyCache] = useState<Record<string, { country: string | null; mode: string | null }>>({});
 
   // Initialize proxy cache from mappings
   useEffect(() => {
-    const cache: Record<string, string | null> = {};
+    const cache: Record<string, { country: string | null; mode: string | null }> = {};
     mappings.forEach(m => {
-      cache[m.linkedin_account_id] = m.proxy_country;
+      cache[m.linkedin_account_id] = { country: m.proxy_country, mode: m.proxy_mode ?? null };
     });
     setProxyCache(cache);
   }, [mappings]);
@@ -234,14 +234,24 @@ const LinkedInHostedAuthCard = ({
                       </div>
                     </div>
                   </div>
-                  {account.status === 'OK' && (
-                    <ProxyConfigPanel
-                      accountId={account.id}
-                      accountName={account.name || account.id}
-                      currentCountry={proxyCache[account.id] ?? getMappingForAccount(account.id)?.proxy_country ?? null}
-                      onUpdated={(country) => setProxyCache(prev => ({ ...prev, [account.id]: country }))}
-                    />
-                  )}
+                  {account.status === 'OK' && (() => {
+                    const mapping = getMappingForAccount(account.id);
+                    const cached = proxyCache[account.id];
+                    return (
+                      <ProxyConfigPanel
+                        accountId={account.id}
+                        accountName={account.name || account.id}
+                        currentCountry={cached?.country ?? mapping?.proxy_country ?? null}
+                        currentMode={cached?.mode ?? mapping?.proxy_mode ?? null}
+                        currentHost={mapping?.proxy_host ?? null}
+                        currentPort={mapping?.proxy_port ?? null}
+                        currentProtocol={mapping?.proxy_protocol ?? null}
+                        proxyIsActive={mapping?.proxy_is_active ?? null}
+                        proxyLastError={mapping?.proxy_last_error ?? null}
+                        onUpdated={(country, mode) => setProxyCache(prev => ({ ...prev, [account.id]: { country, mode } }))}
+                      />
+                    );
+                  })()}
                 </div>
               ))}
             </div>

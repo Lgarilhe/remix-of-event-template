@@ -1993,6 +1993,12 @@ export type Database = {
           linkedin_account_name: string | null
           organization_id: string
           proxy_country: string | null
+          proxy_host: string | null
+          proxy_is_active: boolean | null
+          proxy_last_error: string | null
+          proxy_mode: string | null
+          proxy_port: number | null
+          proxy_protocol: string | null
           proxy_updated_at: string | null
           user_id: string
         }
@@ -2004,6 +2010,12 @@ export type Database = {
           linkedin_account_name?: string | null
           organization_id: string
           proxy_country?: string | null
+          proxy_host?: string | null
+          proxy_is_active?: boolean | null
+          proxy_last_error?: string | null
+          proxy_mode?: string | null
+          proxy_port?: number | null
+          proxy_protocol?: string | null
           proxy_updated_at?: string | null
           user_id: string
         }
@@ -2015,6 +2027,12 @@ export type Database = {
           linkedin_account_name?: string | null
           organization_id?: string
           proxy_country?: string | null
+          proxy_host?: string | null
+          proxy_is_active?: boolean | null
+          proxy_last_error?: string | null
+          proxy_mode?: string | null
+          proxy_port?: number | null
+          proxy_protocol?: string | null
           proxy_updated_at?: string | null
           user_id?: string
         }
