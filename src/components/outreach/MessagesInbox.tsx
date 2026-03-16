@@ -184,6 +184,10 @@ const MessagesInboxInner: React.FC<
             onEnrollInSequence={inbox.handleEnrollInSequence}
             onScheduleCall={inbox.handleScheduleCall}
             calendlyLink={inbox.calendlyLink}
+            onAddReaction={addReaction}
+            onDeleteMessage={handleDeleteMessage}
+            isReacting={isReacting}
+            isDeleting={isDeleting}
           />
         </div>
 
