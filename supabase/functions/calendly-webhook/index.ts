@@ -397,9 +397,33 @@ Deno.serve(async (req) => {
     }
 
     // Try to update Notion candidate & shortlist status
-    const notionKey = Deno.env.get('NOTION_API_KEY');
-    const CANDIDATS_DATABASE_ID = Deno.env.get('NOTION_CANDIDATS_DB_ID');
-    const SHORTLIST_DATABASE_ID = Deno.env.get('NOTION_SHORTLIST_DB_ID');
+    // Resolve Notion credentials from the org of the user who created the candidate entry
+    let notionKey: string | null = null;
+    let CANDIDATS_DATABASE_ID: string | null = null;
+    let SHORTLIST_DATABASE_ID: string | null = null;
+
+    if (createdBy) {
+      // Find the org of the user who created the candidate entry
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('active_organization_id')
+        .eq('user_id', createdBy)
+        .single();
+
+      if (profile?.active_organization_id) {
+        const { data: integrationData } = await supabase
+          .from('organization_integrations')
+          .select('notion_api_key, notion_candidats_db_id, notion_shortlist_db_id, notion_connected')
+          .eq('organization_id', profile.active_organization_id)
+          .single();
+
+        if (integrationData?.notion_connected && integrationData.notion_api_key) {
+          notionKey = integrationData.notion_api_key;
+          CANDIDATS_DATABASE_ID = integrationData.notion_candidats_db_id || null;
+          SHORTLIST_DATABASE_ID = integrationData.notion_shortlist_db_id || null;
+        }
+      }
+    }
 
     if (notionKey && CANDIDATS_DATABASE_ID && SHORTLIST_DATABASE_ID) {
       try {

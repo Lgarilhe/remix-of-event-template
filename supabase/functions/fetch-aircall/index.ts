@@ -23,9 +23,6 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
-    let AIRCALL_API_ID = Deno.env.get('AIRCALL_API_ID');
-    let AIRCALL_API_TOKEN = Deno.env.get('AIRCALL_API_TOKEN');
-
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
@@ -49,26 +46,25 @@ Deno.serve(async (req) => {
         return new Response(JSON.stringify({ error: 'Forbidden' }), { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
       }
     }
-    if (orgId) {
-      try {
-        const { data } = await supabase
-          .from('organization_integrations')
-          .select('aircall_api_id, aircall_api_token, aircall_connected')
-          .eq('organization_id', orgId)
-          .single();
-        if (data?.aircall_connected) {
-          if (data.aircall_api_id) AIRCALL_API_ID = data.aircall_api_id;
-          if (data.aircall_api_token) AIRCALL_API_TOKEN = data.aircall_api_token;
-          console.log('[fetch-aircall] Using org-specific Aircall credentials');
-        }
-      } catch (e) {
-        console.warn('[fetch-aircall] Failed to load org credentials:', e);
-      }
+
+    if (!orgId) {
+      throw new Error('organization_id est requis');
     }
 
-    if (!AIRCALL_API_ID || !AIRCALL_API_TOKEN) {
-      throw new Error('Missing AIRCALL_API_ID or AIRCALL_API_TOKEN');
+    // No global fallback — always resolve from organization_integrations
+    const { data: integrationData } = await supabase
+      .from('organization_integrations')
+      .select('aircall_api_id, aircall_api_token, aircall_connected')
+      .eq('organization_id', orgId)
+      .single();
+
+    if (!integrationData?.aircall_connected || !integrationData.aircall_api_id || !integrationData.aircall_api_token) {
+      throw new Error('Intégration Aircall non configurée pour votre organisation. Rendez-vous dans Settings > Intégrations.');
     }
+
+    const AIRCALL_API_ID = integrationData.aircall_api_id;
+    const AIRCALL_API_TOKEN = integrationData.aircall_api_token;
+    console.log('[fetch-aircall] Using org-specific Aircall credentials');
 
     const basicAuth = btoa(`${AIRCALL_API_ID}:${AIRCALL_API_TOKEN}`);
     const headers = { 'Authorization': `Basic ${basicAuth}`, 'Content-Type': 'application/json' };

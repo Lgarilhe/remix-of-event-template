@@ -6,10 +6,11 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 };
 
-let NOTION_API_KEY = Deno.env.get("NOTION_API_KEY");
+// No global integration credentials — always resolved from organization_integrations
+let NOTION_API_KEY: string | undefined;
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-let POSTES_DATABASE_ID = Deno.env.get("NOTION_POSTES_DB_ID")!;
+let POSTES_DATABASE_ID: string | undefined;
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
 function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
@@ -35,21 +36,20 @@ async function fetchWithRetry(url: string, options: RequestInit = {}, maxRetries
   return fetchWithTimeout(url, options);
 }
 
-async function resolveOrgCredentials(orgId: string | null) {
-  if (!orgId) return;
-  try {
-    const { data } = await supabase
-      .from('organization_integrations')
-      .select('notion_api_key, notion_postes_db_id, notion_connected')
-      .eq('organization_id', orgId)
-      .single();
-    if (!data?.notion_connected) return;
-    if (data.notion_api_key) NOTION_API_KEY = data.notion_api_key;
-    if (data.notion_postes_db_id) POSTES_DATABASE_ID = data.notion_postes_db_id;
-    console.log('[fetch-notion-schema] Using org-specific Notion credentials');
-  } catch (e) {
-    console.warn('[fetch-notion-schema] Failed to load org credentials:', e);
+async function resolveOrgCredentials(orgId: string) {
+  const { data } = await supabase
+    .from('organization_integrations')
+    .select('notion_api_key, notion_postes_db_id, notion_connected')
+    .eq('organization_id', orgId)
+    .single();
+
+  if (!data?.notion_connected || !data.notion_api_key) {
+    throw new Error('Intégration Notion non configurée pour votre organisation. Rendez-vous dans Settings > Intégrations.');
   }
+
+  NOTION_API_KEY = data.notion_api_key;
+  if (data.notion_postes_db_id) POSTES_DATABASE_ID = data.notion_postes_db_id;
+  console.log('[fetch-notion-schema] Using org-specific Notion credentials');
 }
 
 const CACHE_KEY = "notion:schema:postes:v1";
@@ -93,9 +93,10 @@ Deno.serve(async (req) => {
         return new Response(JSON.stringify({ error: 'Forbidden' }), { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
       }
     }
+    if (!orgId) {
+      throw new Error('organization_id est requis');
+    }
     await resolveOrgCredentials(orgId);
-
-    if (!NOTION_API_KEY) throw new Error('NOTION_API_KEY not configured');
 
     // Check cache first
     const { data: cached } = await supabase

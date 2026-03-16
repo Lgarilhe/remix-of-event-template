@@ -6,7 +6,8 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-let calendlyApiKey = Deno.env.get('CALENDLY_API_KEY');
+// No global integration credentials — always resolved from organization_integrations
+let calendlyApiKey: string | undefined;
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
@@ -17,21 +18,19 @@ function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15
   return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timeout));
 }
 
-async function resolveOrgCredentials(orgId: string | null) {
-  if (!orgId) return;
-  try {
-    const { data } = await supabase
-      .from('organization_integrations')
-      .select('calendly_api_key, calendly_connected')
-      .eq('organization_id', orgId)
-      .single();
-    if (data?.calendly_connected && data.calendly_api_key) {
-      calendlyApiKey = data.calendly_api_key;
-      console.log('[setup-calendly-webhook] Using org-specific Calendly credentials');
-    }
-  } catch (e) {
-    console.warn('[setup-calendly-webhook] Failed to load org credentials:', e);
+async function resolveOrgCredentials(orgId: string) {
+  const { data } = await supabase
+    .from('organization_integrations')
+    .select('calendly_api_key, calendly_connected')
+    .eq('organization_id', orgId)
+    .single();
+
+  if (!data?.calendly_connected || !data.calendly_api_key) {
+    throw new Error('Intégration Calendly non configurée pour votre organisation. Rendez-vous dans Settings > Intégrations.');
   }
+
+  calendlyApiKey = data.calendly_api_key;
+  console.log('[setup-calendly-webhook] Using org-specific Calendly credentials');
 }
 
 Deno.serve(async (req) => {
@@ -43,11 +42,10 @@ Deno.serve(async (req) => {
     let body: any = {};
     try { body = await req.json(); } catch {}
 
-    await resolveOrgCredentials(body?.organization_id || null);
-
-    if (!calendlyApiKey) {
-      throw new Error('CALENDLY_API_KEY not configured');
+    if (!body?.organization_id) {
+      throw new Error('organization_id est requis');
     }
+    await resolveOrgCredentials(body.organization_id);
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
     const webhookUrl = `${supabaseUrl}/functions/v1/calendly-webhook`;

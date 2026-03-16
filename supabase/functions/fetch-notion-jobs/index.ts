@@ -9,12 +9,13 @@ const corsHeaders = {
 };
 
 // Default credentials (env vars) — used as fallback when no org-specific credentials exist
-let NOTION_API_KEY = Deno.env.get("NOTION_API_KEY");
+// No global integration credentials — always resolved from organization_integrations
+let NOTION_API_KEY: string | undefined;
 const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-let POSTES_DATABASE_ID = Deno.env.get("NOTION_POSTES_DB_ID")!;
-let SHORTLIST_DATABASE_ID = Deno.env.get("NOTION_SHORTLIST_DB_ID")!;
+let POSTES_DATABASE_ID: string | undefined;
+let SHORTLIST_DATABASE_ID: string | undefined;
 
 function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
   const controller = new AbortController();
@@ -40,29 +41,27 @@ async function fetchWithRetry(url: string, options: RequestInit = {}, maxRetries
 }
 
 console.log('[fetch-notion-jobs] boot', {
-  hasNotionKey: Boolean(NOTION_API_KEY),
   hasLovableKey: Boolean(LOVABLE_API_KEY),
   hasSupabaseUrl: Boolean(SUPABASE_URL),
   hasServiceRole: Boolean(SUPABASE_SERVICE_ROLE_KEY),
 });
 
-// Resolve per-organization Notion credentials (falls back to env vars)
-async function resolveOrgCredentials(orgId: string | null) {
-  if (!orgId) return;
-  try {
-    const { data, error } = await supabase
-      .from('organization_integrations')
-      .select('notion_api_key, notion_postes_db_id, notion_shortlist_db_id, notion_connected')
-      .eq('organization_id', orgId)
-      .single();
-    if (error || !data || !data.notion_connected) return;
-    if (data.notion_api_key) NOTION_API_KEY = data.notion_api_key;
-    if (data.notion_postes_db_id) POSTES_DATABASE_ID = data.notion_postes_db_id;
-    if (data.notion_shortlist_db_id) SHORTLIST_DATABASE_ID = data.notion_shortlist_db_id;
-    console.log('[fetch-notion-jobs] Using org-specific Notion credentials for org:', orgId);
-  } catch (e) {
-    console.warn('[fetch-notion-jobs] Failed to load org credentials, using env vars:', e);
+// Resolve per-organization Notion credentials (no global fallback)
+async function resolveOrgCredentials(orgId: string) {
+  const { data, error } = await supabase
+    .from('organization_integrations')
+    .select('notion_api_key, notion_postes_db_id, notion_shortlist_db_id, notion_connected')
+    .eq('organization_id', orgId)
+    .single();
+
+  if (error || !data?.notion_connected || !data.notion_api_key) {
+    throw new Error('Intégration Notion non configurée pour votre organisation. Rendez-vous dans Settings > Intégrations.');
   }
+
+  NOTION_API_KEY = data.notion_api_key;
+  if (data.notion_postes_db_id) POSTES_DATABASE_ID = data.notion_postes_db_id;
+  if (data.notion_shortlist_db_id) SHORTLIST_DATABASE_ID = data.notion_shortlist_db_id;
+  console.log('[fetch-notion-jobs] Using org-specific Notion credentials for org:', orgId);
 }
 
 // Cache expiry for skills: 24 hours
@@ -753,17 +752,14 @@ Deno.serve(async (req) => {
     }
 
     const organizationId = body?.organization_id || null;
-    if (organizationId) {
-      const { data: membership } = await supabase.from('organization_members').select('id').eq('user_id', user.id).eq('organization_id', organizationId).maybeSingle();
-      if (!membership) {
-        return new Response(JSON.stringify({ error: 'Forbidden' }), { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-      }
-      await resolveOrgCredentials(organizationId);
+    if (!organizationId) {
+      throw new Error('organization_id est requis');
     }
-
-    if (!NOTION_API_KEY) {
-      throw new Error('NOTION_API_KEY is not configured');
+    const { data: membership } = await supabase.from('organization_members').select('id').eq('user_id', user.id).eq('organization_id', organizationId).maybeSingle();
+    if (!membership) {
+      return new Response(JSON.stringify({ error: 'Forbidden' }), { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
+    await resolveOrgCredentials(organizationId);
 
     // Parse pagination parameters from query string or body
     const url = new URL(req.url);
