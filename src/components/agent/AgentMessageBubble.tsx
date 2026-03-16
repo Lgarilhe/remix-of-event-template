@@ -90,7 +90,10 @@ export const AgentMessageBubble: React.FC<AgentMessageBubbleProps> = ({ message,
     : { candidates: [], contentWithout: cleanContent };
 
   return (
-    <div className="space-y-2 animate-fade-in">
+    <div
+      className="space-y-2 animate-fade-in pl-4 bg-muted/5 py-2"
+      style={{ borderLeft: '2px solid', borderImage: 'linear-gradient(to bottom, hsl(271 81% 56%), hsl(330 81% 60%)) 1' }}
+    >
       {/* Thinking card for saved messages */}
       {thinking && <ThinkingCard thinking={thinking} />}
 
