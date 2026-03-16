@@ -168,7 +168,7 @@ export default function Outreach() {
                   <div className="h-9 w-9 sm:h-10 sm:w-10 bg-foreground text-background flex items-center justify-center border border-foreground">
                     <Search className="w-4 h-4 sm:w-5 sm:h-5" />
                   </div>
-                  <h1 className="text-xl sm:text-2xl font-bold text-foreground tracking-tight uppercase">Outreach</h1>
+                  <h1 className="text-xl sm:text-2xl font-bold text-foreground tracking-tight uppercase font-sans">Outreach</h1>
                 </div>
                 <p className="text-xs sm:text-sm text-muted-foreground hidden sm:block ml-[44px] sm:ml-[52px]">
                   Sourcing, séquences & suivi candidats
