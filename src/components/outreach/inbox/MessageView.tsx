@@ -6,6 +6,16 @@ import { ToneSelector, AITone } from './ToneSelector';
 import { InlineAIPanel } from './InlineAIPanel';
 import { ActivityEventCard } from './ActivityEventCard';
 import { useProfileActivity, ActivityEvent } from '@/hooks/useProfileActivity';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { 
   ChevronLeft,
   User,
@@ -16,6 +26,7 @@ import {
   Check,
   Zap,
   CalendarPlus,
+  Trash2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Chat, Message, SequenceEnrollmentInfo, JobData } from '@/hooks/useMessagesInbox';
@@ -30,6 +41,8 @@ import {
   getAttendeeProfileId,
   formatMessageTime,
 } from '@/hooks/useMessagesInboxHelpers';
+
+const REACTION_EMOJIS = ['👍', '❤️', '🔥', '👏', '😂', '😮'];
 
 interface MessageViewProps {
   selectedChat: Chat | null;
@@ -59,6 +72,10 @@ interface MessageViewProps {
   onEnrollInSequence: () => void;
   onScheduleCall: () => void;
   calendlyLink?: string | null;
+  onAddReaction?: (messageId: string, reaction: string) => Promise<boolean>;
+  onDeleteMessage?: (messageId: string) => Promise<boolean>;
+  isReacting?: boolean;
+  isDeleting?: boolean;
 }
 
 export const MessageView: React.FC<MessageViewProps> = ({
