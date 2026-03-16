@@ -126,16 +126,11 @@ async function resolveUnipileCredentials(organizationId?: string): Promise<{ api
         return { apiKey: data.unipile_api_key, dsn };
       }
     } catch (e) {
-      console.warn('[unipile-search] Failed to resolve org credentials, falling back to env vars:', e);
+      console.warn('[unipile-search] Failed to resolve org credentials:', e);
     }
   }
   
-  // Fallback to global env vars
-  const apiKey = Deno.env.get('UNIPILE_API_KEY');
-  const dsn = Deno.env.get('UNIPILE_DSN');
-  if (apiKey && dsn) {
-    return { apiKey, dsn };
-  }
+  // No global fallback to avoid cross-tenant data leaks
   return null;
 }
 
