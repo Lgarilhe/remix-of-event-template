@@ -156,6 +156,31 @@ function mergeChatsByCandidate(chats: Chat[]): Chat[] {
   return merged;
 }
 
+
+function areMessagesEquivalent(a: Message[], b: Message[]): boolean {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+
+  for (let i = 0; i < a.length; i += 1) {
+    const left = a[i];
+    const right = b[i];
+
+    if (
+      left.id !== right.id ||
+      left.timestamp !== right.timestamp ||
+      left.is_sender !== right.is_sender ||
+      left.read !== right.read ||
+      left.seen !== right.seen ||
+      left.delivered !== right.delivered ||
+      getMessageText(left) !== getMessageText(right)
+    ) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
 interface UseMessagesInboxOptions {
   selectedAccount: string | null;
   onUnreadCountChange?: (count: number) => void;
@@ -1464,13 +1489,7 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
           // Filter out optimistic messages (numeric-only IDs from Date.now()) — they are now in the fresh data
           const secondaryMsgs = prev.filter(m => !existingIds.has(m.id) && !/^\d+$/.test(m.id));
           if (secondaryMsgs.length === 0) {
-            // No secondary messages — check if anything actually changed
-            if (freshMessages.length === prev.length) {
-              const lastFresh = freshMessages[freshMessages.length - 1];
-              const lastPrev = prev[prev.length - 1];
-              if (lastFresh?.id === lastPrev?.id) return prev; // No change
-            }
-            return freshMessages;
+            return areMessagesEquivalent(prev, freshMessages) ? prev : freshMessages;
           }
           // Merge and re-sort
           const combined = [...freshMessages, ...secondaryMsgs];
@@ -1479,7 +1498,7 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
             const tB = new Date(b.timestamp || '').getTime() || 0;
             return tA - tB;
           });
-          return combined;
+          return areMessagesEquivalent(prev, combined) ? prev : combined;
         });
       } catch {
         // Silently ignore polling errors
