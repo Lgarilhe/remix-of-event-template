@@ -135,7 +135,7 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({ onClose }) => {
   const isActive = conversation?.status === 'running' || conversation?.status === 'calibrating';
 
   return (
-    <div className="flex flex-col h-full bg-background relative">
+    <div className="flex flex-col h-full bg-background relative animate-slide-in-right">
       {/* Chat header */}
       <div className="relative overflow-hidden flex items-center gap-3 px-4 py-3 border-b-2 border-foreground shrink-0">
         <div className="absolute inset-0 skalr-gradient-bg opacity-10" />
