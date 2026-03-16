@@ -220,6 +220,45 @@ function ThinkingCard({ thinking }: { thinking: string }) {
   );
 }
 
+// ── Step Card ──
+function StepCard({ current, total, title, question }: {
+  current: number; total: number; title: string; question: string;
+}) {
+  return (
+    <div className="border border-foreground/10 p-4 mb-2">
+      <div className="flex items-center gap-3 mb-3">
+        <div className="w-7 h-7 flex items-center justify-center text-xs font-semibold text-white shrink-0 skalr-gradient-bg">
+          {current}
+        </div>
+        <div>
+          <p className="text-[10px] font-medium uppercase tracking-[0.1em] text-muted-foreground">
+            Étape {current} sur {total}
+          </p>
+          <p className="text-sm font-semibold text-foreground">{title}</p>
+        </div>
+      </div>
+      {question && (
+        <p className="text-sm text-foreground/70 leading-relaxed">{question}</p>
+      )}
+      <div className="flex gap-1 mt-3">
+        {Array.from({ length: total }).map((_, i) => (
+          <div
+            key={i}
+            className={cn(
+              "h-[3px] flex-1",
+              i < current - 1
+                ? "bg-foreground/25"
+                : i === current - 1
+                  ? "skalr-gradient-bg"
+                  : "bg-foreground/8"
+            )}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ── Tech keywords for summary tag extraction ──
 const TECH_KEYWORDS = [
   'Python', 'Kubernetes', 'K8s', 'Terraform', 'Docker', 'AWS', 'GCP', 'Azure',
