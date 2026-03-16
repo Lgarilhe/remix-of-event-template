@@ -150,6 +150,19 @@ export const MessageView: React.FC<MessageViewProps> = ({
     return items;
   }, [messages, activityEvents]);
 
+  // Move hooks that were after the early return to before it
+  const { getPicture, fetchPicture } = useAttendeePicturesContext();
+  const attendeeId = selectedChat?.attendees?.[0]?.id;
+  const cachedPicture = attendeeId ? getPicture(attendeeId) : null;
+  const staticAvatar = selectedChat ? getChatAvatar(selectedChat) : null;
+  const avatar = staticAvatar || cachedPicture || undefined;
+
+  useEffect(() => {
+    if (!staticAvatar && attendeeId && !getPicture(attendeeId)) {
+      fetchPicture(attendeeId);
+    }
+  }, [attendeeId, staticAvatar, fetchPicture, getPicture]);
+
   if (!selectedChat) {
     return (
       <div className="flex-1 flex items-center justify-center text-muted-foreground">
