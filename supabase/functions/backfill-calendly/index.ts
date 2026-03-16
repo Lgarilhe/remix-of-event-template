@@ -63,9 +63,10 @@ Deno.serve(async (req) => {
         return new Response(JSON.stringify({ error: 'Forbidden' }), { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
       }
     }
+    if (!orgId) {
+      throw new Error('organization_id est requis');
+    }
     await resolveOrgCredentials(orgId);
-
-    if (!calendlyApiKey) throw new Error('CALENDLY_API_KEY not configured');
 
     // Step 1: Get current user org
     const meRes = await fetchWithTimeout('https://api.calendly.com/users/me', {

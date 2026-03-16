@@ -433,10 +433,11 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Resolve org-specific credentials
-    await resolveOrgAirtableCredentials(body?.organization_id || null);
-
-    if (!AIRTABLE_API_KEY) throw new Error('AIRTABLE_API_KEY is not configured');
+    // Resolve org-specific credentials (mandatory)
+    if (!body?.organization_id) {
+      throw new Error('organization_id est requis');
+    }
+    await resolveOrgAirtableCredentials(body.organization_id);
 
     const action = body.action || 'sync_all';
     const tables = body.tables || Object.keys(TABLE_MAP);

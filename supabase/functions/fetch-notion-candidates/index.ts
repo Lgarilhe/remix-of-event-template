@@ -305,11 +305,10 @@ Deno.serve(async (req) => {
         return new Response(JSON.stringify({ error: 'Forbidden' }), { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
       }
     }
-    await resolveOrgNotionCredentials(orgId);
-
-    if (!NOTION_API_KEY) {
-      throw new Error('NOTION_API_KEY is not configured');
+    if (!orgId) {
+      throw new Error('organization_id est requis');
     }
+    await resolveOrgNotionCredentials(orgId);
 
     const type = url.searchParams.get('type') || 'shortlist';
     const forceRefresh = url.searchParams.get('refresh') === 'true';

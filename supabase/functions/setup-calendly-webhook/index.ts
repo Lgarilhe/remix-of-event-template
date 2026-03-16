@@ -42,11 +42,10 @@ Deno.serve(async (req) => {
     let body: any = {};
     try { body = await req.json(); } catch {}
 
-    await resolveOrgCredentials(body?.organization_id || null);
-
-    if (!calendlyApiKey) {
-      throw new Error('CALENDLY_API_KEY not configured');
+    if (!body?.organization_id) {
+      throw new Error('organization_id est requis');
     }
+    await resolveOrgCredentials(body.organization_id);
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
     const webhookUrl = `${supabaseUrl}/functions/v1/calendly-webhook`;

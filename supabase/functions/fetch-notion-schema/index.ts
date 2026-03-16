@@ -93,9 +93,10 @@ Deno.serve(async (req) => {
         return new Response(JSON.stringify({ error: 'Forbidden' }), { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
       }
     }
+    if (!orgId) {
+      throw new Error('organization_id est requis');
+    }
     await resolveOrgCredentials(orgId);
-
-    if (!NOTION_API_KEY) throw new Error('NOTION_API_KEY not configured');
 
     // Check cache first
     const { data: cached } = await supabase

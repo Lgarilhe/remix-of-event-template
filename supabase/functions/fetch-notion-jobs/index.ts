@@ -752,17 +752,14 @@ Deno.serve(async (req) => {
     }
 
     const organizationId = body?.organization_id || null;
-    if (organizationId) {
-      const { data: membership } = await supabase.from('organization_members').select('id').eq('user_id', user.id).eq('organization_id', organizationId).maybeSingle();
-      if (!membership) {
-        return new Response(JSON.stringify({ error: 'Forbidden' }), { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-      }
-      await resolveOrgCredentials(organizationId);
+    if (!organizationId) {
+      throw new Error('organization_id est requis');
     }
-
-    if (!NOTION_API_KEY) {
-      throw new Error('NOTION_API_KEY is not configured');
+    const { data: membership } = await supabase.from('organization_members').select('id').eq('user_id', user.id).eq('organization_id', organizationId).maybeSingle();
+    if (!membership) {
+      return new Response(JSON.stringify({ error: 'Forbidden' }), { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
+    await resolveOrgCredentials(organizationId);
 
     // Parse pagination parameters from query string or body
     const url = new URL(req.url);

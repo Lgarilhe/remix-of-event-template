@@ -139,11 +139,10 @@ Deno.serve(async (req) => {
       }
     }
 
-    await resolveOrgCredentials(organization_id || null);
-
-    if (!NOTION_API_KEY) {
-      throw new Error('NOTION_API_KEY is not configured');
+    if (!organization_id) {
+      throw new Error('organization_id est requis');
     }
+    await resolveOrgCredentials(organization_id);
 
     if (!pageId || !updates || typeof updates !== 'object') {
       throw new Error('Missing pageId or updates');
