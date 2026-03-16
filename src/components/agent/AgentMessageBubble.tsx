@@ -17,6 +17,34 @@ export function extractOptions(content: string): string[] {
   try { return JSON.parse(match[1]); } catch { return []; }
 }
 
+interface ParsedCandidate {
+  name: string;
+  title: string;
+  score?: 'Go' | 'Maybe' | 'No';
+}
+
+function extractCandidates(content: string): { candidates: ParsedCandidate[]; contentWithout: string } {
+  // Match patterns like: - **Name** — Title (Go/Maybe/No)  or  - **Name** - Title [Go]
+  const candidateRegex = /^[-*]\s+\*{0,2}([A-ZÀ-ÿ][a-zà-ÿ]+(?:\s+[A-ZÀ-ÿ][a-zà-ÿ]+)+)\*{0,2}\s*[—–\-|:]\s*(.+?)(?:\s*[\[(](Go|Maybe|No|go|maybe|no)[\])])?$/gm;
+  const candidates: ParsedCandidate[] = [];
+  let contentWithout = content;
+
+  const matches = [...content.matchAll(candidateRegex)];
+  if (matches.length < 2) return { candidates: [], contentWithout: content };
+
+  for (const m of matches) {
+    const score = m[3] ? (m[3].charAt(0).toUpperCase() + m[3].slice(1).toLowerCase()) as 'Go' | 'Maybe' | 'No' : undefined;
+    candidates.push({
+      name: m[1].trim(),
+      title: m[2].trim().replace(/[\[(](Go|Maybe|No|go|maybe|no)[\])]/, '').trim(),
+      score,
+    });
+    contentWithout = contentWithout.replace(m[0], '');
+  }
+
+  return { candidates, contentWithout: contentWithout.trim() };
+}
+
 export const AgentMessageBubble: React.FC<AgentMessageBubbleProps> = ({ message, isStreaming }) => {
   const isUser = message.role === 'user';
   const isStatus = message.role === 'status';
