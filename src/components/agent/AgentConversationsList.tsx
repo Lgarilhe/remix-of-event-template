@@ -57,7 +57,7 @@ export const AgentConversationsList: React.FC<Props> = ({ onSelect, listConversa
   return (
     <div className="flex-1 overflow-y-auto scrollbar-hide">
       <div className="px-4 pt-4 pb-2">
-        <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-muted-foreground">
+        <p className="text-xs font-display font-black uppercase tracking-[0.15em] text-muted-foreground">
           Conversations récentes
         </p>
       </div>
