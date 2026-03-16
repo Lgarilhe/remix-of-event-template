@@ -1304,7 +1304,7 @@ async function handleGetChats(
       
       const [attendeeResult, lastMsgResult] = await Promise.all(promises) as [Record<string, unknown> | null, { is_sender: boolean; text?: string; timestamp?: string } | null];
       
-      // Build attendees
+      // Build attendees — ensure each attendee has its `id` field
       let attendees = providedAttendees;
       if (attendees.length === 0 && attendeeProviderId) {
         if (attendeeCache.has(attendeeProviderId)) {
@@ -1312,6 +1312,19 @@ async function handleGetChats(
         } else if (attendeeResult) {
           attendeeCache.set(attendeeProviderId, attendeeResult);
           attendees = [attendeeResult];
+        }
+      }
+      // If attendees were already provided but don't have an `id` field,
+      // and we fetched attendee data, merge in the id
+      if (attendees.length > 0 && !attendees[0].id && attendeeResult?.id) {
+        attendees = [{ ...attendees[0], id: attendeeResult.id }];
+      }
+      // If we still don't have attendee id but have attendee_provider_id, set it as id fallback
+      if (attendees.length > 0 && !attendees[0].id && attendeeProviderId) {
+        // Try to get from cache
+        const cached = attendeeCache.get(attendeeProviderId);
+        if (cached?.id) {
+          attendees = [{ ...attendees[0], id: cached.id }];
         }
       }
       
