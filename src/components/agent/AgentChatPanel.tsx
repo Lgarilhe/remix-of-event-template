@@ -137,14 +137,18 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({ onClose }) => {
   return (
     <div className="flex flex-col h-full bg-background relative">
       {/* Chat header */}
-      <div className="flex items-center gap-3 px-4 py-3 border-b-2 border-foreground shrink-0">
+      <div className="relative overflow-hidden flex items-center gap-3 px-4 py-3 border-b-2 border-foreground shrink-0">
+        <div className="absolute inset-0 skalr-gradient-bg opacity-10" />
         <button
           onClick={() => setShowList(true)}
-          className="h-8 w-8 flex items-center justify-center border border-foreground hover:bg-brutal-accent/10 transition-colors"
+          className="relative z-10 h-8 w-8 flex items-center justify-center border border-foreground hover:bg-brutal-accent/10 transition-colors"
         >
           <ArrowLeft className="w-4 h-4 text-foreground" />
         </button>
-        <div className="flex-1 min-w-0">
+        <AnimatedOrb size={28} speed={4}>
+          <Bot className="w-3 h-3 text-foreground/70" />
+        </AnimatedOrb>
+        <div className="flex-1 min-w-0 relative z-10">
           <h3 className="text-sm font-bold uppercase tracking-wider truncate text-foreground">
             {conversation?.job_title || 'Agent'}
           </h3>
