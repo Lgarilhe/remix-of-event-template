@@ -1288,7 +1288,9 @@ async function handleGetChats(
       const promises: Promise<unknown>[] = [];
       
       // Attendee fetch (if needed)
-      let needsAttendeeFetch = providedAttendees.length === 0 && attendeeProviderId && !attendeeCache.has(attendeeProviderId);
+      // Fetch attendee info if we don't have attendees, or if existing attendees lack an `id` field
+      let needsAttendeeFetch = attendeeProviderId && !attendeeCache.has(attendeeProviderId) && 
+        (providedAttendees.length === 0 || (providedAttendees.length > 0 && !providedAttendees[0].id));
       if (needsAttendeeFetch) {
         promises.push(
           fetchWithTimeout(`${baseUrl}/chat_attendees/${encodeURIComponent(attendeeProviderId!)}`, {
