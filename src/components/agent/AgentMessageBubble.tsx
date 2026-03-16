@@ -51,9 +51,9 @@ export const AgentMessageBubble: React.FC<AgentMessageBubbleProps> = ({ message,
   const thinking = message.metadata?.thinking as string | undefined;
 
   const cleanContent = message.content
-    .replace(/\[SEARCH_PLAN\][\s\S]*?\[\/SEARCH_PLAN\]/g, '')
-    .replace(/\[AGENT_ACTION\][\s\S]*?\[\/AGENT_ACTION\]/g, '')
-    .replace(/\[OPTIONS\][\s\S]*?\[\/OPTIONS\]/g, '')
+    .replace(/\[SEARCH_PLAN\][\s\S]*?(\[\/SEARCH_PLAN\]|$)/g, '')
+    .replace(/\[AGENT_ACTION\][\s\S]*?(\[\/AGENT_ACTION\]|$)/g, '')
+    .replace(/\[OPTIONS\][\s\S]*?(\[\/OPTIONS\]|$)/g, '')
     .trim();
 
   const searchPlan = message.metadata?.search_plan as Record<string, unknown> | undefined;
