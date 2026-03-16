@@ -6,6 +6,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { User } from '@supabase/supabase-js';
 import { AuthSheet } from './AuthSheet';
 import { NotificationDropdown } from './NotificationDropdown';
+import { useUnreadMessageNotifications } from '@/hooks/useUnreadMessageNotifications';
 
 
 type FaceState = 'idle' | 'wink' | 'surprise' | 'happy' | 'look-left' | 'look-right';
@@ -101,6 +102,7 @@ export const Navbar: React.FC = () => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(false);
   const navigate = useNavigate();
+  const unreadMsgCount = useUnreadMessageNotifications();
   const [pendingRoute, setPendingRoute] = useState<string | null>(null);
   const lastScrollY = useRef(0);
 
@@ -173,6 +175,11 @@ export const Navbar: React.FC = () => {
               className="relative overflow-hidden glass text-foreground h-[34px] px-3 flex items-center text-[11px] font-medium uppercase border-l-0 border border-foreground leading-none group"
             >
               <span className="relative z-10">OUTREACH</span>
+              {unreadMsgCount > 0 && (
+                <span className="relative z-10 ml-1 min-w-[16px] h-4 flex items-center justify-center px-1 text-[9px] font-bold bg-destructive text-destructive-foreground rounded-full">
+                  {unreadMsgCount > 99 ? '99+' : unreadMsgCount}
+                </span>
+              )}
               <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out"></span>
             </Link>
             <Link
@@ -252,10 +259,15 @@ export const Navbar: React.FC = () => {
                 <Link
                   to="/outreach" 
                   onClick={() => setIsMobileMenuOpen(false)}
-                  className="flex-1 flex items-center justify-center bg-background text-foreground text-[17px] font-medium uppercase border-b border-foreground tracking-[-0.34px] animate-fade-in"
+                  className="flex-1 flex items-center justify-center gap-2 bg-background text-foreground text-[17px] font-medium uppercase border-b border-foreground tracking-[-0.34px] animate-fade-in"
                   style={{ animationDelay: '0.3s', animationFillMode: 'both' }}
                 >
                   OUTREACH
+                  {unreadMsgCount > 0 && (
+                    <span className="min-w-[20px] h-5 flex items-center justify-center px-1.5 text-[10px] font-bold bg-destructive text-destructive-foreground rounded-full">
+                      {unreadMsgCount > 99 ? '99+' : unreadMsgCount}
+                    </span>
+                  )}
                 </Link>
                 <Link
                   to="/prospection" 
