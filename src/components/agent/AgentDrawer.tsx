@@ -25,13 +25,13 @@ const AgentFAB: React.FC = () => {
   return (
     <button
       onClick={toggleAgent}
-      className="fixed bottom-6 right-6 z-50 group animate-[scale-in_0.35s_cubic-bezier(0.34,1.56,0.64,1)]"
+      onTouchEnd={(e) => { e.preventDefault(); toggleAgent(); }}
+      className="fixed bottom-6 right-6 z-[1900] group animate-[scale-in_0.35s_cubic-bezier(0.34,1.56,0.64,1)] touch-manipulation"
       aria-label="Ouvrir l'agent IA"
+      style={{ WebkitTapHighlightColor: 'transparent' }}
     >
-      <div className="relative">
-        <AnimatedOrb size={52} speed={6}>
-          <Bot className="w-5 h-5 text-foreground group-hover:scale-110 transition-transform" />
-        </AnimatedOrb>
+      <div className="relative pointer-events-none">
+        <AnimatedOrb size={52} speed={6} />
         {/* Brutal shadow */}
         <div className="absolute inset-0 -z-10 translate-x-[3px] translate-y-[3px] rounded-full bg-brutal-accent/40" />
         {/* Notification dot */}
