@@ -146,8 +146,8 @@ const Settings = () => {
             {activeTab === 'general' && (
               <Card>
                 <CardHeader>
-                  <CardTitle className="flex items-center gap-2 text-lg">
-                    <Building2 className="w-5 h-5" />
+                  <CardTitle className="flex items-center gap-2 text-sm font-bold uppercase tracking-wider">
+                    <Building2 className="w-4 h-4" />
                     Organisation
                   </CardTitle>
                 </CardHeader>
@@ -203,10 +203,10 @@ const Settings = () => {
               <>
                 <Card>
                   <CardHeader>
-                    <CardTitle className="flex items-center gap-2 text-lg">
-                      <Users className="w-5 h-5" />
+                    <CardTitle className="flex items-center gap-2 text-sm font-bold uppercase tracking-wider">
+                      <Users className="w-4 h-4" />
                       Équipe
-                      <Badge variant="secondary" className="ml-auto">{members.length} membre{members.length > 1 ? 's' : ''}</Badge>
+                      <Badge variant="secondary" className="ml-auto text-[10px]">{members.length} membre{members.length > 1 ? 's' : ''}</Badge>
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
@@ -219,7 +219,7 @@ const Settings = () => {
                         {members.map((member) => {
                           const RoleIcon = roleIcons[member.role as keyof typeof roleIcons] || User;
                           return (
-                            <div key={member.id} className="flex items-center justify-between py-3 border-b border-border last:border-0">
+                            <div key={member.id} className="flex items-center justify-between py-3 border-b border-foreground/10 last:border-0">
                               <div className="flex items-center gap-3">
                                 <div className="w-8 h-8 bg-muted rounded-full flex items-center justify-center">
                                   <RoleIcon className="w-4 h-4 text-muted-foreground" />

@@ -30,8 +30,8 @@ export const AICreditsSettings = () => {
       {/* Balance Card */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-lg">
-            <Sparkles className="w-5 h-5" />
+          <CardTitle className="flex items-center gap-2 text-sm font-bold uppercase tracking-wider">
+            <Sparkles className="w-4 h-4" />
             Crédits IA
           </CardTitle>
         </CardHeader>
@@ -79,8 +79,8 @@ export const AICreditsSettings = () => {
       {/* Cost Table */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-lg flex items-center gap-2">
-            <TrendingDown className="w-5 h-5" />
+          <CardTitle className="text-sm font-bold uppercase tracking-wider flex items-center gap-2">
+            <TrendingDown className="w-4 h-4" />
             Coût par action
           </CardTitle>
         </CardHeader>
@@ -101,7 +101,7 @@ export const AICreditsSettings = () => {
       {/* History */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-lg">Historique récent</CardTitle>
+          <CardTitle className="text-sm font-bold uppercase tracking-wider">Historique récent</CardTitle>
         </CardHeader>
         <CardContent>
           {isLoadingHistory ? (
