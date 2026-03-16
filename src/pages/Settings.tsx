@@ -92,12 +92,12 @@ const Settings = () => {
   });
 
   const tabs = [
-    { value: 'general', label: 'Général', icon: Building2 },
-    { value: 'account', label: 'Mon compte', icon: UserCircle },
-    { value: 'team', label: 'Équipe', icon: Users },
-    ...(isAdmin ? [{ value: 'billing', label: 'Abonnement', icon: CreditCard }] : []),
-    { value: 'credits', label: 'Crédits IA', icon: Sparkles },
-    ...(isAdmin ? [{ value: 'integrations', label: 'Intégrations', icon: Plug }] : []),
+    { value: 'general', label: 'Général', icon3d: iconBuilding3d },
+    { value: 'account', label: 'Mon compte', icon3d: iconProfile3d },
+    { value: 'team', label: 'Équipe', icon3d: iconTeam3d },
+    ...(isAdmin ? [{ value: 'billing', label: 'Abonnement', icon3d: iconBilling3d }] : []),
+    { value: 'credits', label: 'Crédits IA', icon3d: iconCredits3d },
+    ...(isAdmin ? [{ value: 'integrations', label: 'Intégrations', icon3d: iconIntegrations3d }] : []),
   ];
 
   return (
