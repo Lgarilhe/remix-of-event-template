@@ -272,7 +272,12 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({ onClose }) => {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Écrivez votre message…"
+            placeholder={
+              !conversation ? "Décrivez le profil que vous cherchez…"
+                : conversation.status === 'calibrating' ? "Affinez les critères…"
+                : conversation.status === 'running' ? "Posez une question sur les résultats…"
+                : "Écrivez votre message…"
+            }
             rows={1}
             className="flex-1 resize-none text-sm bg-transparent text-foreground placeholder:text-muted-foreground/40 focus:outline-none min-h-[24px] max-h-[120px]"
             onInput={(e) => {
