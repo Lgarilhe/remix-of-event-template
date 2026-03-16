@@ -59,6 +59,12 @@ function buildCandidateKey(profile: any): string {
   return `name:${name}|${company}`;
 }
 
+function isGoRecommendation(recommendation: unknown): boolean {
+  if (typeof recommendation !== "string") return false;
+  const normalized = recommendation.trim().toUpperCase();
+  return normalized === "GO" || normalized === "STRONG_MATCH" || normalized === "GOOD_MATCH";
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
