@@ -6,6 +6,7 @@ import { AgentMessage } from '@/hooks/useAgentChat';
 import { AnimatedOrb } from '@/components/ui/AnimatedOrb';
 import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
+import { isThinkingLineUseful } from './filterThinking';
 
 interface AgentMessageBubbleProps {
   message: AgentMessage;
@@ -171,11 +172,14 @@ function ThinkingCard({ thinking }: { thinking: string }) {
     .replace(/^>\s+/gm, '')
     .trim();
 
-  const lines = thinking.split('\n').filter(l => l.trim() && l.trim().length > 5);
-  const displayLines = lines.slice(0, 12).map(l => {
-    const cleaned = stripMd(l);
-    return cleaned.length > 120 ? cleaned.slice(0, 117) + '…' : cleaned;
-  }).filter(Boolean);
+  const displayLines = thinking.split('\n')
+    .filter(l => isThinkingLineUseful(l))
+    .slice(0, 12)
+    .map(l => {
+      const cleaned = stripMd(l);
+      return cleaned.length > 120 ? cleaned.slice(0, 117) + '…' : cleaned;
+    })
+    .filter(Boolean);
 
   if (displayLines.length === 0) return null;
 

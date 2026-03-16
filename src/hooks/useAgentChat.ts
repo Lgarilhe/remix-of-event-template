@@ -3,6 +3,7 @@ import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { useOrganization } from './useOrganization';
 import { Job } from '@/types/jobs';
+import { isThinkingLineUseful } from '@/components/agent/filterThinking';
 
 export interface AgentMessage {
   id: string;
@@ -122,20 +123,22 @@ export const useAgentChat = (conversationId: string | null) => {
     };
   }, [conversationId]);
 
-  // Parse thinking content into steps
+  // Parse thinking content into steps — only keep human-readable lines
   const parseThinkingSteps = useCallback((thinking: string): ThinkingStep[] => {
     if (!thinking) return [];
     
-    // Split thinking into logical chunks (by sentences or paragraphs)
     const lines = thinking.split('\n').filter(l => l.trim());
     const steps: ThinkingStep[] = [];
     
     for (const line of lines) {
-      const trimmed = line.trim();
-      if (!trimmed || trimmed.length < 5) continue;
+      if (!isThinkingLineUseful(line)) continue;
       
-      // Detect step-like patterns
-      let label = trimmed;
+      let label = line.trim()
+        .replace(/\*{1,3}([^*]+)\*{1,3}/g, '$1')
+        .replace(/`([^`]+)`/g, '$1')
+        .replace(/^[-·•]\s*/, '')
+        .replace(/^\d+\.\s*/, '');
+      if (label.length < 10) continue;
       if (label.length > 80) label = label.slice(0, 77) + '…';
       
       steps.push({ label, status: 'done' });
@@ -146,7 +149,7 @@ export const useAgentChat = (conversationId: string | null) => {
       steps[steps.length - 1].status = 'active';
     }
     
-    return steps.slice(-8); // Keep last 8 steps visible
+    return steps.slice(-8);
   }, []);
 
   // Send message with streaming
