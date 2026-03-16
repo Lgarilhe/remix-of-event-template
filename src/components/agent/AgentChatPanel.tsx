@@ -58,7 +58,7 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({ onClose }) => {
   const {
     messages, loading, sending, streamingContent, conversation,
     sendMessage, createConversation, listConversations,
-    thinkingSteps, isThinking, thinkingContent,
+    thinkingPhases, isThinking, thinkingContent,
   } = useAgentChat(conversationId);
 
   useEffect(() => {
