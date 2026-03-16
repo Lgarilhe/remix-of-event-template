@@ -66,13 +66,14 @@ export const AgentThinkingDisplay: React.FC<AgentThinkingDisplayProps> = ({
         </button>
 
         {/* Progress bar */}
-        {isThinking && steps.length > 0 && (
-          <div className="h-[2px] bg-foreground/5">
-            <motion.div
-              className="h-full bg-brutal-accent/60"
-              initial={{ width: '0%' }}
-              animate={{ width: `${(doneCount / Math.max(steps.length, 1)) * 100}%` }}
-              transition={{ duration: 0.4, ease: 'easeOut' }}
+        {steps.length > 0 && (
+          <div className="h-[2px] bg-foreground/5 overflow-hidden">
+            <div
+              className={cn(
+                "h-full skalr-gradient-bg transition-all duration-500 ease-out",
+                isThinking && "animate-[shimmer_1.5s_ease-in-out_infinite]"
+              )}
+              style={{ width: `${(doneCount / Math.max(steps.length, 1)) * 100}%` }}
             />
           </div>
         )}
