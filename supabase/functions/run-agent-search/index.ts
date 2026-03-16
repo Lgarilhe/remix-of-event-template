@@ -296,7 +296,12 @@ Deno.serve(async (req) => {
         };
       });
     const companyNames = companyEntries.map(c => c.name);
-    const pastCompanyNames: string[] = (filters.past_company_keywords || []).map((c: any) => typeof c === "string" ? c : (c.keywords || c));
+    const pastCompanyEntries: Array<{ name: string; priority: string }> = 
+      (filters.past_company_keywords || []).map((c: any) => {
+        if (typeof c === "string") return { name: c, priority: "MUST_HAVE" };
+        return { name: c.keywords || c.name || String(c), priority: c.priority || "MUST_HAVE" };
+      });
+    const pastCompanyNames = pastCompanyEntries.map(c => c.name);
     const skillNames: string[] = (filters.skills_filter || []).map((s: any) => typeof s === "string" ? s : (s.keywords || s));
 
     const [locationIds, industryIds, schoolIds, functionIds, groupIds, companyIds, pastCompanyIds, skillIds] = await Promise.all([
@@ -388,9 +393,9 @@ Deno.serve(async (req) => {
 
         // Past company (resolved IDs from past_company_keywords)
         if (resolvedPastCompanyIds.length > 0) {
-          searchBody.past_company = resolvedPastCompanyIds.map((id: string) => ({
+          searchBody.past_company = resolvedPastCompanyIds.map((id: string, i: number) => ({
             id,
-            priority: "MUST_HAVE",
+            priority: pastCompanyEntries[i]?.priority || "MUST_HAVE",
           }));
         }
 
