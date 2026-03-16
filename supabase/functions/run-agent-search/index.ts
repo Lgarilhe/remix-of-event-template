@@ -393,9 +393,9 @@ Deno.serve(async (req) => {
 
         // Past company (resolved IDs from past_company_keywords)
         if (resolvedPastCompanyIds.length > 0) {
-          searchBody.past_company = resolvedPastCompanyIds.map((id: string) => ({
+          searchBody.past_company = resolvedPastCompanyIds.map((id: string, i: number) => ({
             id,
-            priority: "MUST_HAVE",
+            priority: pastCompanyEntries[i]?.priority || "MUST_HAVE",
           }));
         }
 
