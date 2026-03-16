@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useOrganizationIntegrations } from '@/hooks/useOrganizationIntegrations';
 import { useOrganization } from '@/hooks/useOrganization';
+import { useMemberLinkedInAccounts } from '@/hooks/useMemberLinkedInAccounts';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import {
   Eye,
@@ -19,6 +20,7 @@ import {
   Linkedin,
 } from 'lucide-react';
 import { WebhookManager } from '@/components/outreach/WebhookManager';
+import { ProxyConfigPanel } from '@/components/outreach/ProxyConfigPanel';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
