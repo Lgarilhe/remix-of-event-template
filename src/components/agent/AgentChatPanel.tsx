@@ -265,8 +265,8 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({ onClose }) => {
       />
 
       {/* Input bar */}
-      <div className="shrink-0 border-t border-foreground/10 px-4 py-3 z-10">
-        <div className="flex items-end gap-2 border border-foreground/20 focus-within:border-foreground/50 transition-colors px-3 py-2">
+      <div className="shrink-0 glass border-t border-foreground/10 px-4 py-3 z-10">
+        <div className="flex items-end gap-2 border border-foreground/20 focus-within:border-foreground/50 focus-within:shadow-[0_0_16px_-4px_hsl(var(--brutal-accent)/0.2)] transition-all duration-200 px-3 py-2">
           <textarea
             ref={inputRef}
             value={input}
