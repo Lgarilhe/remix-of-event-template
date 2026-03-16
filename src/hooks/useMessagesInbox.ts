@@ -20,6 +20,7 @@ import {
 
 // Types
 export interface ChatAttendee {
+  id?: string; // Unipile attendee ID (needed for fetching profile picture)
   name?: string;
   display_name?: string;
   profile_picture_url?: string;

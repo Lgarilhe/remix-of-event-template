@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { LinkedInAccount } from '@/pages/Outreach';
 import { MessageSquare } from 'lucide-react';
 import { useMessagesInbox } from '@/hooks/useMessagesInbox';
@@ -6,10 +6,11 @@ import { useMessageActions } from '@/hooks/useMessageActions';
 import { ChatListSidebar } from './inbox/ChatListSidebar';
 import { MessageView } from './inbox/MessageView';
 import { AddToPipelineModal } from './AddToPipelineModal';
-import { getCurrentCandidateProfile } from '@/hooks/useMessagesInboxHelpers';
+import { getCurrentCandidateProfile, getChatAvatar } from '@/hooks/useMessagesInboxHelpers';
 import { Button } from '@/components/ui/button';
 import { GitBranch, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { AttendeePicturesProvider, useAttendeePicturesContext } from '@/contexts/AttendeePicturesContext';
 
 interface MessagesInboxProps {
   accounts: LinkedInAccount[];
@@ -76,7 +77,9 @@ const MessagesInboxInner: React.FC<
   };
 
   return (
-    <>
+    <AttendeePicturesProvider organizationId={inbox.organizationId ?? null}>
+      <PreloadAttendeePictures chats={inbox.chats} />
+      <>
       {/* Mobile fullscreen message view */}
       {inbox.selectedChat && (
         <div className="fixed inset-0 z-[2100] bg-background flex flex-col min-h-0 overflow-hidden md:hidden">
@@ -237,6 +240,24 @@ const MessagesInboxInner: React.FC<
           />
         )}
       </div>
-    </>
+      </>
+    </AttendeePicturesProvider>
   );
+};
+
+/** Preloads attendee pictures for visible chats that lack a static avatar */
+const PreloadAttendeePictures: React.FC<{ chats: import('@/hooks/useMessagesInbox').Chat[] }> = ({ chats }) => {
+  const { preloadPictures } = useAttendeePicturesContext();
+
+  useEffect(() => {
+    const ids = chats
+      .filter((c) => !getChatAvatar(c) && c.attendees?.[0]?.id)
+      .map((c) => c.attendees![0]!.id!)
+      .slice(0, 20);
+    if (ids.length > 0) {
+      preloadPictures(ids);
+    }
+  }, [chats, preloadPictures]);
+
+  return null;
 };
