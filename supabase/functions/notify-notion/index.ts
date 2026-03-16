@@ -6,8 +6,9 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const NOTION_API_KEY = Deno.env.get("NOTION_API_KEY");
-const NOTION_DATABASE_ID = Deno.env.get("NOTION_LEADS_DB_ID") || "8eeb02fc-1c6b-4bf3-9877-c8a2acc2e604";
+// No global integration credentials — resolved from organization_integrations when org_id provided
+let NOTION_API_KEY: string | undefined;
+let NOTION_DATABASE_ID: string | undefined;
 
 function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
   const controller = new AbortController();
