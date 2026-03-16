@@ -127,7 +127,7 @@ const TreatedCandidateCard: React.FC<{
   };
 
   return (
-    <div className="bg-white border border-border rounded-lg p-3 hover:border-primary/20 transition-colors">
+    <div className="bg-background border border-foreground p-3 shadow-[3px_3px_0px_0px_hsl(var(--brutal-accent))] hover:translate-x-[1px] hover:translate-y-[1px] hover:shadow-[1px_1px_0px_0px_hsl(var(--brutal-accent))] transition-all">
       <div className="flex items-start justify-between gap-2">
         <div className="flex-1 min-w-0">
           {/* Name + LinkedIn link */}
