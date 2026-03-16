@@ -69,7 +69,11 @@ export const AgentConversationsList: React.FC<Props> = ({ onSelect, listConversa
             <button
               key={conv.id}
               onClick={() => onSelect(conv)}
-              className="w-full text-left px-3 py-2.5 transition-colors group flex items-center gap-3 border border-foreground/10 hover:border-foreground/30 hover:bg-muted/50"
+              className={cn(
+                "w-full text-left px-3 py-2.5 transition-colors group flex items-center gap-3 border border-foreground/10 hover:border-foreground/30 hover:bg-muted/50",
+                conv.status === 'running' && "border-l-2 border-l-brutal-accent",
+                conv.status === 'completed' && "border-l-2 border-l-green-500/50"
+              )}
             >
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium truncate text-foreground/80 group-hover:text-foreground transition-colors">
