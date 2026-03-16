@@ -212,11 +212,6 @@ export default function Outreach() {
               <ProjectsList onResumeSearch={handleResumeSearch} />
             </div>
           </div>
-          <div className={cn("mt-0 min-w-0", activeTab !== 'agent' && 'hidden')}>
-            <div className="bg-background border border-foreground overflow-hidden" style={{ height: 'calc(100vh - 180px)' }}>
-              <AgentChatPanel />
-            </div>
-          </div>
 
 
           <div className={cn("mt-0 min-w-0", activeTab !== 'search' && 'hidden')}>
