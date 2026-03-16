@@ -95,7 +95,7 @@ export default function Prospection() {
               <div className="h-8 w-8 bg-foreground text-background flex items-center justify-center shrink-0">
                 <Crosshair className="w-4 h-4" />
               </div>
-              <h1 className="text-lg font-bold text-foreground uppercase tracking-tight font-sans">Prospection</h1>
+              <h1 className="text-lg font-bold text-foreground uppercase tracking-tight">Prospection</h1>
             </div>
 
             {/* Separator — desktop only */}

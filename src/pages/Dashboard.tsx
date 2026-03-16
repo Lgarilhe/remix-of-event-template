@@ -27,7 +27,7 @@ export default function Dashboard() {
               <div className="h-8 w-8 flex items-center justify-center shrink-0">
                 <img src={iconDashboard3d} alt="" className="w-8 h-8 object-contain" />
               </div>
-              <h1 className="text-xl sm:text-2xl font-bold text-foreground uppercase tracking-tight font-sans">Dashboard</h1>
+              <h1 className="text-xl sm:text-2xl font-bold text-foreground uppercase tracking-tight">Dashboard</h1>
               {isFromCache && !isFetching && (
                 <span className="text-[9px] text-muted-foreground border border-border px-1.5 py-0.5 uppercase tracking-wider font-medium hidden sm:inline">
                   Cache

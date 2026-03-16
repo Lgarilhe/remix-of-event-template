@@ -43,7 +43,7 @@ export const EmptyState = ({
       )}>
         {icon}
       </div>
-      <h2 className="text-base sm:text-lg font-semibold text-foreground mb-2 uppercase tracking-wide font-sans">
+      <h2 className="text-base sm:text-lg font-semibold text-foreground mb-2 uppercase tracking-wide">
         {title}
       </h2>
       <p className="text-muted-foreground text-xs sm:text-sm mb-6 max-w-md mx-auto leading-relaxed">

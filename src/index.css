@@ -166,11 +166,6 @@ All colors MUST be HSL.
     font-family: 'Instrument Serif', Georgia, 'Times New Roman', serif;
   }
 
-  /* Brutal uppercase headings: revert to sans-serif */
-  .font-sans h1, .font-sans h2, .font-sans h3,
-  h1.font-sans, h2.font-sans, h3.font-sans {
-    font-family: inherit;
-  }
 
   #root {
     width: 100%;
