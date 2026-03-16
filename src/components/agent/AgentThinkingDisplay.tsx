@@ -139,24 +139,40 @@ export const AgentThinkingDisplay: React.FC<AgentThinkingDisplayProps> = ({
           </div>
         )}
 
-        {/* Streaming thinking content — strip markdown noise */}
+        {/* Streaming thinking — show only human-readable lines, hide technical noise */}
         {thinkingContent && (() => {
-          const cleaned = thinkingContent
-            .replace(/^#{1,6}\s+/gm, '')        // strip heading markers
-            .replace(/\*{1,3}([^*]+)\*{1,3}/g, '$1') // strip bold/italic
-            .replace(/\[OPTIONS\][\s\S]*?(\[\/OPTIONS\]|$)/g, '')
-            .replace(/\[SEARCH_PLAN\][\s\S]*?(\[\/SEARCH_PLAN\]|$)/g, '')
-            .replace(/\[AGENT_ACTION\][\s\S]*?(\[\/AGENT_ACTION\]|$)/g, '')
-            .replace(/^[-*]\s+/gm, '· ')        // normalize list markers
-            .replace(/`([^`]+)`/g, '$1')         // strip inline code
-            .trim();
-          if (!cleaned) return null;
+          const lines = thinkingContent.split('\n').filter(line => {
+            const trimmed = line.trim();
+            if (!trimmed || trimmed.length < 10) return false;
+            if (/^[\[{]/.test(trimmed)) return false;
+            if (/^[→⇒>]\s/.test(trimmed)) return false;
+            if (/^\|/.test(trimmed)) return false;
+            if (/^```/.test(trimmed)) return false;
+            if (/\{.*:.*\}/.test(trimmed)) return false;
+            if (/"keywords"|"priority"|"scope"|"MUST_HAVE"|"DOESNT_HAVE"/i.test(trimmed)) return false;
+            if (/COMPANY_KEYWORDS|SEARCH_PLAN|AGENT_ACTION|location_keywords|skills_filter|calculated_experience/i.test(trimmed)) return false;
+            if (/NOT\s*\(.*OR.*\)/i.test(trimmed)) return false;
+            if (/^\s*-\s*\*{2}[a-z_]+\*{2}/i.test(trimmed)) return false;
+            return true;
+          });
+
+          const display = lines.slice(-3);
+          if (display.length === 0) return null;
+
           return (
-            <div className="border-t border-brutal-accent/10 px-3.5 py-3 max-h-[120px] overflow-y-auto scrollbar-hide">
-              <p className="font-mono text-[11px] text-muted-foreground/50 leading-relaxed whitespace-pre-wrap">
-                {cleaned}
-                <span className="inline-block w-[2px] h-3 bg-brutal-accent/50 ml-0.5 animate-pulse align-middle" />
-              </p>
+            <div className="border-t border-brutal-accent/10 px-3.5 py-2.5">
+              {display.map((line, i) => {
+                const cleaned = line.trim()
+                  .replace(/\*{1,3}([^*]+)\*{1,3}/g, '$1')
+                  .replace(/`([^`]+)`/g, '$1')
+                  .replace(/^[-·•]\s*/, '');
+                return (
+                  <p key={i} className="text-[11px] text-muted-foreground/40 leading-relaxed truncate">
+                    {cleaned}
+                  </p>
+                );
+              })}
+              <span className="inline-block w-[2px] h-3 bg-brutal-accent/40 animate-pulse align-middle mt-0.5" />
             </div>
           );
         })()}
