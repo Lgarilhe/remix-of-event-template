@@ -11,6 +11,8 @@ export interface MemberLinkedInMapping {
   linkedin_account_name: string | null;
   linked_at: string;
   linked_by: string;
+  proxy_country: string | null;
+  proxy_updated_at: string | null;
 }
 
 export function useMemberLinkedInAccounts() {
