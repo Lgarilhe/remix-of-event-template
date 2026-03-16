@@ -539,11 +539,29 @@ Deno.serve(async (req) => {
     let filteredProfiles = allProfiles;
     if (filters.calculated_experience_min != null || filters.calculated_experience_max != null) {
       filteredProfiles = allProfiles.filter((p: any) => {
-        const firstExp = p.work_experience?.[p.work_experience.length - 1];
-        if (!firstExp?.start_date) return true;
-        const years = (Date.now() - new Date(firstExp.start_date).getTime()) / (365.25 * 24 * 3600 * 1000);
-        if (filters.calculated_experience_min && years < filters.calculated_experience_min) return false;
-        if (filters.calculated_experience_max && years > filters.calculated_experience_max) return false;
+        const experiences = p.work_experience || [];
+        if (experiences.length === 0) return true;
+
+        // Trouver la date de début la plus ancienne parmi toutes les expériences
+        let earliestStart: number | null = null;
+        for (const exp of experiences) {
+          let startMs: number | null = null;
+          if (exp.start?.year) {
+            startMs = new Date(exp.start.year, (exp.start.month || 1) - 1).getTime();
+          } else if (exp.start_date) {
+            const parsed = new Date(exp.start_date).getTime();
+            if (!isNaN(parsed)) startMs = parsed;
+          }
+          if (startMs !== null && (earliestStart === null || startMs < earliestStart)) {
+            earliestStart = startMs;
+          }
+        }
+
+        if (earliestStart === null) return true; // Pas de dates exploitables → on laisse passer
+
+        const years = (Date.now() - earliestStart) / (365.25 * 24 * 3600 * 1000);
+        if (filters.calculated_experience_min != null && years < filters.calculated_experience_min) return false;
+        if (filters.calculated_experience_max != null && years > filters.calculated_experience_max) return false;
         return true;
       });
     }
