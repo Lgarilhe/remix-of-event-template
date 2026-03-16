@@ -89,6 +89,7 @@ const NavLogo: React.FC = () => {
         {eyebrows}
         {leftEye}
         {rightEye}
+        <circle cx="7" cy="7.6" r="0.35" fill="currentColor" />
         {mouth}
       </svg>
     </div>
