@@ -162,6 +162,10 @@ All colors MUST be HSL.
     overflow-x: auto;
   }
 
+  h1, h2, h3 {
+    @apply font-serif;
+  }
+
   #root {
     width: 100%;
     min-width: 0;
