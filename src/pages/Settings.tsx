@@ -131,169 +131,164 @@ const Settings = () => {
             })}
           </div>
 
-          {/* General Tab */}
-          <TabsContent value="general">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-lg">
-                  <Building2 className="w-5 h-5" />
-                  Organisation
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <div>
-                  <label className="text-sm text-muted-foreground">Nom</label>
-                  {editingName ? (
-                    <div className="flex items-center gap-2 mt-1">
-                      <Input
-                        value={newName}
-                        onChange={e => setNewName(e.target.value)}
-                        className="h-9 text-sm max-w-xs"
-                        autoFocus
-                        onKeyDown={e => e.key === 'Enter' && handleSaveName()}
-                      />
-                      <Button size="sm" className="h-9 gap-1" onClick={handleSaveName} disabled={savingName || !newName.trim()}>
-                        {savingName ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
-                        Sauver
-                      </Button>
-                      <Button size="sm" variant="ghost" className="h-9" onClick={() => setEditingName(false)}>
-                        Annuler
-                      </Button>
-                    </div>
-                  ) : (
-                    <div className="flex items-center gap-2">
-                      <p className="text-foreground font-medium">{organization?.name}</p>
-                      {isOwner && (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7 text-muted-foreground"
-                          onClick={() => { setNewName(organization?.name || ''); setEditingName(true); }}
-                        >
-                          <Pencil className="w-3.5 h-3.5" />
+          {/* Tab content */}
+          <div className="max-w-3xl space-y-6">
+            {activeTab === 'general' && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-lg">
+                    <Building2 className="w-5 h-5" />
+                    Organisation
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div>
+                    <label className="text-sm text-muted-foreground">Nom</label>
+                    {editingName ? (
+                      <div className="flex items-center gap-2 mt-1">
+                        <Input
+                          value={newName}
+                          onChange={e => setNewName(e.target.value)}
+                          className="h-9 text-sm max-w-xs"
+                          autoFocus
+                          onKeyDown={e => e.key === 'Enter' && handleSaveName()}
+                        />
+                        <Button size="sm" className="h-9 gap-1" onClick={handleSaveName} disabled={savingName || !newName.trim()}>
+                          {savingName ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+                          Sauver
                         </Button>
-                      )}
-                    </div>
-                  )}
-                </div>
-                <div>
-                  <label className="text-sm text-muted-foreground">Identifiant</label>
-                  <p className="text-foreground font-mono text-sm">{organization?.slug}</p>
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* Account Tab */}
-          <TabsContent value="account">
-            <MyLinkedInAccount />
-          </TabsContent>
-
-          {/* Team Tab */}
-          <TabsContent value="team">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-lg">
-                  <Users className="w-5 h-5" />
-                  Équipe
-                  <Badge variant="secondary" className="ml-auto">{members.length} membre{members.length > 1 ? 's' : ''}</Badge>
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                {isLoading ? (
-                  <div className="flex justify-center py-8">
-                    <div className="w-5 h-5 border-2 border-foreground/20 border-t-foreground rounded-full animate-spin" />
+                        <Button size="sm" variant="ghost" className="h-9" onClick={() => setEditingName(false)}>
+                          Annuler
+                        </Button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <p className="text-foreground font-medium">{organization?.name}</p>
+                        {isOwner && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 text-muted-foreground"
+                            onClick={() => { setNewName(organization?.name || ''); setEditingName(true); }}
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                          </Button>
+                        )}
+                      </div>
+                    )}
                   </div>
-                ) : (
-                  <div className="space-y-3">
-                    {members.map((member) => {
-                      const RoleIcon = roleIcons[member.role as keyof typeof roleIcons] || User;
-                      return (
-                        <div key={member.id} className="flex items-center justify-between py-3 border-b border-border last:border-0">
-                          <div className="flex items-center gap-3">
-                            <div className="w-8 h-8 bg-muted rounded-full flex items-center justify-center">
-                              <RoleIcon className="w-4 h-4 text-muted-foreground" />
-                            </div>
-                            <div>
-                              <p className="text-sm font-medium text-foreground">{getDisplayName(member.user_id)}</p>
-                              <p className="text-xs text-muted-foreground">{roleLabels[member.role as keyof typeof roleLabels]}</p>
-                            </div>
-                          </div>
-
-                          {isOwner && member.role !== 'owner' && (
-                            <div className="flex items-center gap-2">
-                              <Select
-                                value={member.role}
-                                onValueChange={(value) => updateRole({ memberId: member.id, role: value })}
-                              >
-                                <SelectTrigger className="w-28 h-8 text-xs">
-                                  <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="admin">Admin</SelectItem>
-                                  <SelectItem value="member">Membre</SelectItem>
-                                </SelectContent>
-                              </Select>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-8 w-8 text-destructive hover:text-destructive"
-                                onClick={() => removeMember(member.id)}
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </Button>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
+                  <div>
+                    <label className="text-sm text-muted-foreground">Identifiant</label>
+                    <p className="text-foreground font-mono text-sm">{organization?.slug}</p>
                   </div>
-                )}
+                </CardContent>
+              </Card>
+            )}
 
-                <PendingInvitations
-                  invitations={pendingInvitations}
-                  onCancel={cancelInvitation}
-                  canManage={isAdmin}
-                />
+            {activeTab === 'account' && (
+              <MyLinkedInAccount />
+            )}
+
+            {activeTab === 'team' && (
+              <>
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2 text-lg">
+                      <Users className="w-5 h-5" />
+                      Équipe
+                      <Badge variant="secondary" className="ml-auto">{members.length} membre{members.length > 1 ? 's' : ''}</Badge>
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    {isLoading ? (
+                      <div className="flex justify-center py-8">
+                        <div className="w-5 h-5 border-2 border-foreground/20 border-t-foreground rounded-full animate-spin" />
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        {members.map((member) => {
+                          const RoleIcon = roleIcons[member.role as keyof typeof roleIcons] || User;
+                          return (
+                            <div key={member.id} className="flex items-center justify-between py-3 border-b border-border last:border-0">
+                              <div className="flex items-center gap-3">
+                                <div className="w-8 h-8 bg-muted rounded-full flex items-center justify-center">
+                                  <RoleIcon className="w-4 h-4 text-muted-foreground" />
+                                </div>
+                                <div>
+                                  <p className="text-sm font-medium text-foreground">{getDisplayName(member.user_id)}</p>
+                                  <p className="text-xs text-muted-foreground">{roleLabels[member.role as keyof typeof roleLabels]}</p>
+                                </div>
+                              </div>
+
+                              {isOwner && member.role !== 'owner' && (
+                                <div className="flex items-center gap-2">
+                                  <Select
+                                    value={member.role}
+                                    onValueChange={(value) => updateRole({ memberId: member.id, role: value })}
+                                  >
+                                    <SelectTrigger className="w-28 h-8 text-xs">
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="admin">Admin</SelectItem>
+                                      <SelectItem value="member">Membre</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-8 w-8 text-destructive hover:text-destructive"
+                                    onClick={() => removeMember(member.id)}
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </Button>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    <PendingInvitations
+                      invitations={pendingInvitations}
+                      onCancel={cancelInvitation}
+                      canManage={isAdmin}
+                    />
+
+                    {isAdmin && (
+                      <InviteMemberForm
+                        onInvite={(email, role) => inviteMember({ email, role })}
+                        isLoading={isInviting}
+                      />
+                    )}
+                  </CardContent>
+                </Card>
 
                 {isAdmin && (
-                  <InviteMemberForm
-                    onInvite={(email, role) => inviteMember({ email, role })}
-                    isLoading={isInviting}
+                  <TeamManagement
+                    members={members}
+                    getDisplayName={getDisplayName}
+                    isAdmin={isAdmin}
                   />
                 )}
-              </CardContent>
-            </Card>
-
-            {isAdmin && (
-              <TeamManagement
-                members={members}
-                getDisplayName={getDisplayName}
-                isAdmin={isAdmin}
-              />
+              </>
             )}
-          </TabsContent>
 
-          {/* Billing Tab */}
-          {isAdmin && (
-            <TabsContent value="billing">
+            {activeTab === 'billing' && isAdmin && (
               <BillingSettings />
-            </TabsContent>
-          )}
+            )}
 
-          {/* Credits Tab */}
-          <TabsContent value="credits">
-            <AICreditsSettings />
-          </TabsContent>
+            {activeTab === 'credits' && (
+              <AICreditsSettings />
+            )}
 
-          {/* Integrations Tab */}
-          {isAdmin && (
-            <TabsContent value="integrations">
+            {activeTab === 'integrations' && isAdmin && (
               <IntegrationsSettings />
-            </TabsContent>
-          )}
-        </Tabs>
-      </div>
+            )}
+          </div>
+        </div>
+      </main>
     </div>
   );
 };
