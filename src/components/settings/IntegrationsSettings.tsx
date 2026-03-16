@@ -245,7 +245,6 @@ const LinkedInHostedAuthCard = ({
                 </div>
               ))}
             </div>
-            </div>
           ) : (
             <p className="text-sm text-muted-foreground text-center py-2">
               Aucun compte LinkedIn connecté.
