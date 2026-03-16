@@ -179,14 +179,14 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({ onClose }) => {
             </div>
           </div>
         ) : messages.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-16 gap-4">
-            <AnimatedOrb size={48} speed={8}>
-              <Bot className="w-5 h-5 text-muted-foreground" />
+          <div className="flex flex-col items-center justify-center py-16 gap-5">
+            <AnimatedOrb size={56} speed={8}>
+              <Bot className="w-6 h-6 text-muted-foreground" />
             </AnimatedOrb>
             <div className="text-center space-y-1.5">
-              <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Prêt à sourcer</p>
-              <p className="text-xs max-w-[240px] leading-relaxed text-muted-foreground/70">
-                Décrivez le profil recherché pour lancer la conversation avec l'agent
+              <h2 className="text-2xl font-black font-display text-foreground">Skalr Agent</h2>
+              <p className="text-sm text-muted-foreground">
+                Votre copilot de sourcing IA
               </p>
             </div>
           </div>
