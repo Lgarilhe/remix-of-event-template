@@ -27,6 +27,12 @@ export default {
 				'Noto Sans',
 				'sans-serif'
 			],
+			display: [
+				'Outfit',
+				'ui-sans-serif',
+				'system-ui',
+				'sans-serif'
+			],
 			serif: [
 				'Instrument Serif',
 				'Georgia',

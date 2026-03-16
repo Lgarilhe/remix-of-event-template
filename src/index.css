@@ -163,7 +163,8 @@ All colors MUST be HSL.
   }
 
   h1, h2, h3 {
-    font-family: 'Instrument Serif', Georgia, 'Times New Roman', serif;
+    font-family: 'Outfit', ui-sans-serif, system-ui, sans-serif;
+    font-weight: 900;
   }
 
 
