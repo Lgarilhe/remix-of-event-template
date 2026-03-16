@@ -294,11 +294,11 @@ export const JobSelector: React.FC<JobSelectorProps> = ({ selectedJob, onJobChan
                 </div>
               </div>
 
-              <div className="max-h-[300px] overflow-y-auto">
+              <div className="max-h-[300px] overflow-y-auto py-1">
                 <button
                   type="button"
                   className={cn(
-                    "relative flex w-full items-center rounded-sm py-2 pl-8 pr-2 text-sm text-left hover:bg-accent hover:text-accent-foreground",
+                    "relative flex w-full items-center py-2 pl-8 pr-3 text-sm text-left hover:bg-accent hover:text-accent-foreground",
                     !selectedJob && "bg-accent"
                   )}
                   onClick={() => {
@@ -308,7 +308,7 @@ export const JobSelector: React.FC<JobSelectorProps> = ({ selectedJob, onJobChan
                   }}
                 >
                   {!selectedJob && <Check className="absolute left-2 h-4 w-4" />}
-                  <span className="text-muted-foreground">Pas de scoring job</span>
+                  <span className="text-muted-foreground italic">Pas de scoring job</span>
                 </button>
 
                 {filteredJobs.length === 0 && searchQuery && (
@@ -322,7 +322,7 @@ export const JobSelector: React.FC<JobSelectorProps> = ({ selectedJob, onJobChan
                     key={job.id}
                     type="button"
                     className={cn(
-                      "relative flex w-full items-center rounded-sm py-2 pl-8 pr-2 text-sm text-left hover:bg-accent hover:text-accent-foreground",
+                      "relative flex w-full items-start py-2.5 pl-8 pr-3 text-sm text-left hover:bg-accent hover:text-accent-foreground group",
                       selectedJob?.id === job.id && "bg-accent"
                     )}
                     onClick={() => {
@@ -331,17 +331,22 @@ export const JobSelector: React.FC<JobSelectorProps> = ({ selectedJob, onJobChan
                       setSearchQuery('');
                     }}
                   >
-                    {selectedJob?.id === job.id && <Check className="absolute left-2 h-4 w-4" />}
-                    <div className="flex items-center gap-2 min-w-0">
-                      <span className="font-medium truncate max-w-[200px]">{job.title}</span>
-                      {job.client?.name && (
-                        <span className="text-xs text-muted-foreground whitespace-nowrap flex-shrink-0">@ {job.client.name}</span>
-                      )}
-                      {job.skills?.length > 0 && (
-                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-secondary text-secondary-foreground whitespace-nowrap flex-shrink-0">
-                          {job.skills.length} skills
-                        </span>
-                      )}
+                    {selectedJob?.id === job.id && <Check className="absolute left-2 top-3 h-4 w-4" />}
+                    <div className="flex flex-col gap-0.5 min-w-0 w-full">
+                      <div className="flex items-baseline gap-1.5">
+                        <span className="font-medium truncate">{job.title}</span>
+                      </div>
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                        {job.client?.name && (
+                          <span className="truncate">{job.client.name}</span>
+                        )}
+                        {job.skills?.length > 0 && (
+                          <>
+                            {job.client?.name && <span>·</span>}
+                            <span className="whitespace-nowrap">{job.skills.length} compétence{job.skills.length > 1 ? 's' : ''}</span>
+                          </>
+                        )}
+                      </div>
                     </div>
                   </button>
                 ))}
