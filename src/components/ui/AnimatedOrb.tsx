@@ -110,7 +110,7 @@ export const AnimatedOrb: React.FC<AnimatedOrbProps> = ({
       ctx.clip();
 
       // Iris
-      const irisR = eyeH * 0.52;
+      const irisR = eyeH * 0.58;
       const breath = (Math.sin(t * 1.5 * speed) + 1) / 2;
       const irisGrad = ctx.createRadialGradient(lookX, lookY, 0, lookX, lookY, irisR);
       irisGrad.addColorStop(0, `rgba(${SKALR_COLORS[3][0]},${SKALR_COLORS[3][1]},${SKALR_COLORS[3][2]},${0.9 + breath * 0.1})`);
