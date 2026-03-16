@@ -198,6 +198,14 @@ All colors MUST be HSL.
   .skalr-card-glow:hover {
     box-shadow: 0 20px 80px -20px hsl(271 81% 56% / 0.3);
   }
+
+  .landing-sky-gradient {
+    background: linear-gradient(180deg, hsl(var(--landing-sky-start)) 0%, hsl(var(--landing-sky-end)) 60%, hsl(0 0% 100%) 100%);
+  }
+
+  .font-editorial {
+    font-family: 'Instrument Serif', Georgia, 'Times New Roman', serif;
+  }
 }
 
 @layer utilities {
