@@ -77,7 +77,7 @@ async function resolveUnipileCredentials(organizationId?: string): Promise<{ api
   return null;
 }
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
   }

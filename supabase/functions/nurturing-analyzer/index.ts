@@ -134,7 +134,7 @@ const CADENCE_BY_STAGE: Record<string, { minDays: number; maxDays: number; prior
   'default': { minDays: 7, maxDays: 10, priority: 50 },
 };
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }

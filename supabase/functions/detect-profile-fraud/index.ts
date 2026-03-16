@@ -11,7 +11,7 @@ function sanitizeString(val: unknown, maxLen = 5000): string {
   return val.slice(0, maxLen).replace(/<script[^>]*>.*?<\/script>/gi, '');
 }
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
