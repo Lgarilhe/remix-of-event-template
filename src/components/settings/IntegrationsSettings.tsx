@@ -156,12 +156,12 @@ const LinkedInHostedAuthCard = ({
   };
 
   return (
-    <Card className="border-foreground/10">
+    <Card>
       <button
         className="w-full text-left"
         onClick={() => setExpanded(!expanded)}
       >
-        <CardHeader className="py-4">
+        <CardHeader className="py-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="w-12 h-12 flex items-center justify-center rounded-lg overflow-hidden">
