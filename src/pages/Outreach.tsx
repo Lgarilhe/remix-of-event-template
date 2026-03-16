@@ -12,7 +12,7 @@ import { NurturingDashboard } from '@/components/outreach/NurturingDashboard';
 import { InMailQueueStatus } from '@/components/outreach/InMailQueueStatus';
 import { ProjectsList } from '@/components/outreach/projects';
 import { AgentChatPanel } from '@/components/agent';
-import { Search, Users, Settings, Bot } from 'lucide-react';
+import { Search, Users, Settings, Bot, UserPlus } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { OutreachSearchProvider } from '@/contexts/OutreachSearchContext';
