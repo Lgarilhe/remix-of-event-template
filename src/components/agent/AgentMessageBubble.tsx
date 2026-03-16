@@ -172,7 +172,7 @@ function ThinkingCard({ thinking }: { thinking: string }) {
     .replace(/^>\s+/gm, '')
     .trim();
 
-  const lines = thinking.split('\n')
+  const displayLines = thinking.split('\n')
     .filter(l => isThinkingLineUseful(l))
     .slice(0, 12)
     .map(l => {
