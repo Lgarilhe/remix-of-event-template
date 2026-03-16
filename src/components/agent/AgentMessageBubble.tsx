@@ -234,7 +234,9 @@ function StepCard({ current, total, title, question }: {
         </div>
       </div>
       {question && (
-        <p className="text-sm text-foreground/70 leading-relaxed">{question}</p>
+        <div className="text-sm text-foreground/70 leading-relaxed prose prose-sm max-w-none [&_p]:my-0 [&_strong]:text-foreground/80">
+          <ReactMarkdown>{question.replace(/^\*{0,2}➡️?\s*\d+\/\d+\s*[—–\-]\s*.+?\*{0,2}\s*/i, '').trim()}</ReactMarkdown>
+        </div>
       )}
       <div className="flex gap-1 mt-3">
         {Array.from({ length: total }).map((_, i) => (
