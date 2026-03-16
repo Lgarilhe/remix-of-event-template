@@ -426,6 +426,7 @@ Deno.serve(async (req) => {
     }
 
     if (notionKey && CANDIDATS_DATABASE_ID && SHORTLIST_DATABASE_ID) {
+      try {
         const notionHeaders = {
           'Authorization': `Bearer ${notionKey}`,
           'Notion-Version': '2022-06-28',
