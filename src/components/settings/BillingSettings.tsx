@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { CreditCard, ArrowUpRight, Calendar, Sparkles } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
+import { BrutalLoader } from '@/components/ui/brutal-loader';
 
 export const BillingSettings = () => {
   const navigate = useNavigate();
@@ -14,7 +15,7 @@ export const BillingSettings = () => {
   if (isLoading) {
     return (
       <div className="flex justify-center py-12">
-        <div className="w-5 h-5 border-2 border-foreground/20 border-t-foreground rounded-full animate-spin" />
+        <BrutalLoader compact />
       </div>
     );
   }

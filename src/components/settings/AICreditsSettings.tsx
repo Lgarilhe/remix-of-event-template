@@ -8,6 +8,7 @@ import { Sparkles, TrendingDown, Clock, ArrowUpRight } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
+import { BrutalLoader } from '@/components/ui/brutal-loader';
 
 export const AICreditsSettings = () => {
   const navigate = useNavigate();
@@ -17,7 +18,7 @@ export const AICreditsSettings = () => {
   if (isLoading) {
     return (
       <div className="flex justify-center py-12">
-        <div className="w-5 h-5 border-2 border-foreground/20 border-t-foreground rounded-full animate-spin" />
+        <BrutalLoader compact />
       </div>
     );
   }
@@ -106,7 +107,7 @@ export const AICreditsSettings = () => {
         <CardContent>
           {isLoadingHistory ? (
             <div className="flex justify-center py-4">
-              <div className="w-4 h-4 border-2 border-foreground/20 border-t-foreground rounded-full animate-spin" />
+              <BrutalLoader compact />
             </div>
           ) : history.length === 0 ? (
             <p className="text-sm text-muted-foreground text-center py-4">Aucune utilisation pour le moment</p>
