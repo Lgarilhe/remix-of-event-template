@@ -95,15 +95,15 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({ onClose }) => {
   if (showList) {
     return (
       <div className="flex flex-col h-full bg-background animate-slide-in-left">
-        <div className="px-4 py-3 border-b-2 border-foreground">
-          <div className="flex items-center justify-between">
+        {/* Header */}
+        <div className="relative overflow-hidden px-5 py-4 border-b-2 border-foreground">
+          <div className="absolute inset-0 skalr-gradient-bg opacity-5" />
+          <div className="relative flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <AnimatedOrb size={36}>
-                <Bot className="w-4 h-4 text-foreground" />
-              </AnimatedOrb>
+              <AnimatedOrb size={32} />
               <div>
-                <h2 className="text-sm font-bold uppercase tracking-wider text-foreground">Agent IA</h2>
-                <p className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                <h2 className="text-sm font-display font-black uppercase tracking-wider text-foreground">Agent IA</h2>
+                <p className="text-[10px] uppercase tracking-[0.15em] text-muted-foreground mt-0.5">
                   Sourcing automatisé
                 </p>
               </div>
@@ -111,7 +111,7 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({ onClose }) => {
             {onClose && (
               <button
                 onClick={onClose}
-                className="text-xs uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors"
+                className="text-[10px] font-bold uppercase tracking-[0.15em] text-muted-foreground hover:text-foreground border border-foreground/15 px-2.5 py-1 hover:border-foreground transition-all duration-150"
               >
                 Fermer
               </button>
