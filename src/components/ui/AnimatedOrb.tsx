@@ -90,8 +90,8 @@ export const AnimatedOrb: React.FC<AnimatedOrbProps> = ({
       ctx.fill();
 
       // Eye shape
-      const eyeW = w * 0.52;
-      const eyeH = w * 0.22;
+      const eyeW = w * 0.62;
+      const eyeH = w * 0.28;
       const squeeze = 1 - blinkY * 0.95;
 
       ctx.save();
