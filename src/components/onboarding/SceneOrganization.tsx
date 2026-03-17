@@ -341,7 +341,7 @@ export const SceneOrganization: React.FC<Props> = ({ onComplete, onBack }) => {
                   }
                 }}
                 className="w-12 h-12 border border-foreground/10 bg-background object-contain"
-                onError={(e) => { (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${encodeURIComponent(company.name)}&background=random&size=48`; }}
+                
               />
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
