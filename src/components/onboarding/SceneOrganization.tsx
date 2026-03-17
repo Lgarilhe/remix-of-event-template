@@ -105,7 +105,7 @@ export const SceneOrganization: React.FC<Props> = ({ onComplete, onBack }) => {
   const [bubbles, setBubbles] = useState<AgentBubble[]>([]);
   const [company, setCompany] = useState<CompanyData | null>(null);
   const [disambiguationCandidates, setDisambiguationCandidates] = useState<ApolloCandidate[]>([]);
-  const [activeTab, setActiveTab] = useState<'overview' | 'roles' | 'market'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'insights' | 'roles'>('overview');
   const [selectedRoles, setSelectedRoles] = useState<Set<number>>(new Set());
   const [isCreating, setIsCreating] = useState(false);
   // debounceRef removed — search is now explicit via button/Enter
