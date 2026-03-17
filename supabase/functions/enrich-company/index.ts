@@ -387,7 +387,7 @@ Deno.serve(async (req) => {
             const hits = searchData.data || [];
             for (const hit of hits) {
               const url = hit.url || '';
-              if (/carri[eè]re|career|jobs?[\/.]|recrutement|join|join-us|joinus|talent|hiring|offres|emploi|emplois|poste|postes|nous-rejoindre|rejoignez-nous|welcome.*jungle/i.test(url)) {
+              if (/carri[eè]re|career|jobs?[\/.]|recrutement|recrute|join|join-us|joinus|talent|hiring|offres|emploi|emplois|poste|postes|nous-rejoindre|rejoignez-nous|welcome.*jungle/i.test(url)) {
                 result.careersUrl = url;
                 console.log('[enrich-company] Found careers page via search:', url);
                 break;
