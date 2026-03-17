@@ -212,6 +212,11 @@ All colors MUST be HSL.
   .font-editorial {
     font-family: 'Instrument Serif', Georgia, 'Times New Roman', serif;
   }
+
+  @keyframes gradientShift {
+    0%, 100% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+  }
 }
 
 @layer utilities {
