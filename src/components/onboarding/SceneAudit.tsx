@@ -1,0 +1,433 @@
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { ArrowLeft, ArrowRight, Check, ChevronDown, ChevronUp, Globe, Briefcase, Star, MessageSquare, Linkedin, Share2, FileText, Cpu } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import analyticsIcon from '@/assets/icon-analytics-3d.png';
+import skalrLogo from '@/assets/skalr-logo-concept-3.png';
+
+interface Props {
+  onNext: () => void;
+  onBack: () => void;
+}
+
+interface ScanSource {
+  id: string;
+  label: string;
+  icon: React.ElementType;
+  done: boolean;
+}
+
+interface Category {
+  id: string;
+  label: string;
+  icon: React.ElementType;
+  score: number;
+  maxScore: number;
+  color: string;
+  summary: string;
+  findings: string[];
+}
+
+interface AgentBubble {
+  id: number;
+  text: string;
+}
+
+/* ─── Fake data ─── */
+const SCAN_SOURCES: ScanSource[] = [
+  { id: 'website', label: 'Site web', icon: Globe, done: false },
+  { id: 'careers', label: 'Page carrière', icon: Briefcase, done: false },
+  { id: 'wttj', label: 'Welcome to the Jungle', icon: Star, done: false },
+  { id: 'glassdoor', label: 'Glassdoor', icon: MessageSquare, done: false },
+  { id: 'linkedin', label: 'Page LinkedIn', icon: Linkedin, done: false },
+  { id: 'social', label: 'Réseaux sociaux', icon: Share2, done: false },
+  { id: 'ads', label: 'Qualité des annonces', icon: FileText, done: false },
+  { id: 'ats', label: 'Détection ATS', icon: Cpu, done: false },
+];
+
+const AGENT_MESSAGES = [
+  "Analyse de votre site web en cours...",
+  "Je cherche votre page carrière et vos offres...",
+  "Scan de votre profil Welcome to the Jungle...",
+  "Vérification de votre page Glassdoor...",
+  "Analyse de votre page LinkedIn entreprise...",
+  "Évaluation de votre présence sur les réseaux...",
+  "Évaluation de la qualité de vos annonces...",
+  "Détection de votre ATS...",
+  "Calcul du score final... 🎯",
+];
+
+const CATEGORIES: Category[] = [
+  {
+    id: 'website', label: 'Site web & page carrière', icon: Globe,
+    score: 3, maxScore: 5, color: 'hsl(var(--skalr-blue))',
+    summary: 'Page carrière existante mais basique',
+    findings: [
+      'Page carrière présente mais sans contenus immersifs (vidéos, témoignages)',
+      'Temps de chargement correct (1.8s)',
+      'Pas de section "culture" ou "valeurs" dédiée',
+      'Formulaire de candidature fonctionnel',
+    ],
+  },
+  {
+    id: 'wttj', label: 'Welcome to the Jungle', icon: Star,
+    score: 4, maxScore: 5, color: 'hsl(var(--skalr-green))',
+    summary: 'Profil bien renseigné avec photos',
+    findings: [
+      'Profil WTTJ complet avec photos d\'équipe',
+      '12 offres actives publiées',
+      'Score de complétion : 85%',
+      'Manque quelques témoignages collaborateurs',
+    ],
+  },
+  {
+    id: 'glassdoor', label: 'Glassdoor', icon: MessageSquare,
+    score: 2, maxScore: 5, color: 'hsl(var(--skalr-pink))',
+    summary: 'Peu d\'avis, note moyenne',
+    findings: [
+      'Seulement 8 avis sur Glassdoor',
+      'Note moyenne : 3.2/5',
+      'Points positifs récurrents : mission, flexibilité',
+      'Points négatifs : communication interne, processus',
+      'Aucune réponse de l\'employeur aux avis',
+    ],
+  },
+  {
+    id: 'linkedin', label: 'Page LinkedIn', icon: Linkedin,
+    score: 4, maxScore: 5, color: 'hsl(var(--skalr-purple))',
+    summary: 'Page active avec du contenu régulier',
+    findings: [
+      '2.4K abonnés',
+      'Publication régulière (2-3x/semaine)',
+      'Bon engagement sur les posts techniques',
+      'Banner et description à jour',
+    ],
+  },
+  {
+    id: 'social', label: 'Réseaux sociaux', icon: Share2,
+    score: 2, maxScore: 5, color: 'hsl(var(--skalr-cyan))',
+    summary: 'Présence limitée hors LinkedIn',
+    findings: [
+      'Pas de compte Twitter/X entreprise actif',
+      'Pas de chaîne YouTube',
+      'Présence Instagram inexistante',
+      'Opportunité manquée pour toucher les profils tech',
+    ],
+  },
+  {
+    id: 'ads', label: 'Qualité des annonces', icon: FileText,
+    score: 3, maxScore: 5, color: 'hsl(var(--skalr-blue))',
+    summary: 'Annonces correctes, perfectibles',
+    findings: [
+      'Structure des annonces claire (contexte, missions, profil)',
+      'Fourchettes de salaire absentes sur 60% des offres',
+      'Langage parfois trop corporate',
+      'Pas de mention du process de recrutement',
+    ],
+  },
+  {
+    id: 'ats', label: 'Détection ATS', icon: Cpu,
+    score: 3, maxScore: 5, color: 'hsl(var(--skalr-purple))',
+    summary: 'ATS détecté : Lever',
+    findings: [
+      'ATS utilisé : Lever',
+      'Formulaire de candidature en 2 étapes',
+      'Upload CV fonctionnel',
+      'Pas de parsing automatique détecté',
+    ],
+  },
+];
+
+const QUICK_WINS = [
+  'Ajouter les fourchettes de salaire sur toutes les annonces',
+  'Répondre aux avis Glassdoor (surtout les négatifs)',
+  'Ajouter 3-4 témoignages collaborateurs sur la page carrière',
+  'Créer un compte Twitter/X pour partager la culture tech',
+];
+
+const OVERALL_SCORE = 62;
+
+/* ─── Component ─── */
+export const SceneAudit: React.FC<Props> = ({ onNext, onBack }) => {
+  const [phase, setPhase] = useState<'scanning' | 'results'>('scanning');
+  const [sources, setSources] = useState<ScanSource[]>(SCAN_SOURCES.map(s => ({ ...s, done: false })));
+  const [bubbles, setBubbles] = useState<AgentBubble[]>([]);
+  const [expandedCat, setExpandedCat] = useState<string | null>(null);
+  const bubblesEndRef = useRef<HTMLDivElement>(null);
+  const hasStarted = useRef(false);
+
+  useEffect(() => {
+    bubblesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [bubbles]);
+
+  // Auto-start scan
+  useEffect(() => {
+    if (hasStarted.current) return;
+    hasStarted.current = true;
+
+    SCAN_SOURCES.forEach((_, i) => {
+      setTimeout(() => {
+        setSources(prev => prev.map((s, j) => (j <= i ? { ...s, done: true } : s)));
+      }, 600 + i * 550);
+    });
+
+    AGENT_MESSAGES.forEach((msg, i) => {
+      setTimeout(() => {
+        setBubbles(prev => [...prev, { id: i, text: msg }]);
+      }, 500 + i * 600);
+    });
+
+    const totalTime = 500 + AGENT_MESSAGES.length * 600 + 800;
+    setTimeout(() => setPhase('results'), totalTime);
+  }, []);
+
+  const circumference = 2 * Math.PI * 42;
+  const scoreOffset = circumference - (OVERALL_SCORE / 100) * circumference;
+  const improvementCount = CATEGORIES.filter(c => c.score <= 3).length;
+
+  return (
+    <div className="w-full max-w-2xl mx-auto flex flex-col gap-5">
+      {/* Header */}
+      <div className="text-center space-y-2">
+        <span className="skalr-gradient-text text-[11px] uppercase tracking-[0.2em] font-semibold" style={{ fontFamily: "'Space Mono', monospace" }}>
+          02 — Marque employeur
+        </span>
+        <h2 className="font-editorial italic text-3xl md:text-4xl">Votre image employeur</h2>
+        <p className="text-muted-foreground text-sm">On analyse votre présence en ligne pour identifier vos forces et axes d'amélioration.</p>
+      </div>
+
+      <AnimatePresence mode="wait">
+        {/* ─── Scanning phase ─── */}
+        {phase === 'scanning' && (
+          <motion.div
+            key="scanning"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            className="grid grid-cols-[200px_1fr] gap-4 min-h-[280px]"
+          >
+            {/* Sources list */}
+            <div className="space-y-1.5">
+              {sources.map((s, i) => {
+                const Icon = s.icon;
+                return (
+                  <motion.div
+                    key={s.id}
+                    initial={{ opacity: 0, x: -10 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: i * 0.06 }}
+                    className="flex items-center gap-2"
+                  >
+                    <div
+                      className={`w-6 h-6 flex items-center justify-center text-[10px] font-bold border transition-all duration-300 ${
+                        s.done ? 'border-transparent text-foreground' : 'border-foreground/20 text-muted-foreground'
+                      }`}
+                      style={s.done ? { background: 'hsl(var(--brutal-accent))' } : {}}
+                    >
+                      {s.done ? <Check className="w-3 h-3" /> : String(i + 1).padStart(2, '0')}
+                    </div>
+                    <span className={`text-xs transition-colors ${s.done ? 'text-foreground font-medium' : 'text-muted-foreground'}`}>
+                      {s.label}
+                    </span>
+                  </motion.div>
+                );
+              })}
+            </div>
+
+            {/* Agent bubbles */}
+            <div className="flex flex-col gap-2 max-h-[300px] overflow-y-auto no-scrollbar pr-1">
+              {bubbles.map((b) => (
+                <motion.div
+                  key={b.id}
+                  initial={{ opacity: 0, y: 8, scale: 0.95 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  className="bg-muted/60 border border-foreground/5 px-3 py-2 text-xs text-foreground/80 rounded-sm"
+                >
+                  {b.text}
+                </motion.div>
+              ))}
+              <div ref={bubblesEndRef} />
+            </div>
+          </motion.div>
+        )}
+
+        {/* ─── Results phase ─── */}
+        {phase === 'results' && (
+          <motion.div
+            key="results"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5 }}
+            className="space-y-5"
+          >
+            {/* Score card */}
+            <div
+              className="border-2 border-foreground/80 p-5 flex items-center gap-6"
+              style={{ boxShadow: '4px 4px 0px 0px hsl(var(--brutal-accent))' }}
+            >
+              <img src={analyticsIcon} alt="" className="w-14 h-14 shrink-0" />
+
+              {/* Score ring */}
+              <div className="relative w-24 h-24 shrink-0">
+                <svg width="96" height="96" viewBox="0 0 96 96" className="rotate-[-90deg]">
+                  <defs>
+                    <linearGradient id="audit-score-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+                      <stop offset="0%" stopColor="hsl(var(--skalr-purple))" />
+                      <stop offset="100%" stopColor="hsl(var(--skalr-pink))" />
+                    </linearGradient>
+                  </defs>
+                  <circle cx="48" cy="48" r="42" fill="none" stroke="hsl(var(--foreground) / 0.08)" strokeWidth="5" />
+                  <motion.circle
+                    cx="48" cy="48" r="42" fill="none"
+                    stroke="url(#audit-score-grad)"
+                    strokeWidth="5" strokeLinecap="round"
+                    strokeDasharray={circumference}
+                    initial={{ strokeDashoffset: circumference }}
+                    animate={{ strokeDashoffset: scoreOffset }}
+                    transition={{ duration: 1.2, ease: 'easeOut', delay: 0.3 }}
+                  />
+                </svg>
+                <div className="absolute inset-0 flex flex-col items-center justify-center">
+                  <motion.span
+                    className="text-2xl font-bold"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ delay: 0.8 }}
+                  >
+                    {OVERALL_SCORE}
+                  </motion.span>
+                  <span className="text-[10px] text-muted-foreground">/100</span>
+                </div>
+              </div>
+
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 mb-1">
+                  <h3 className="font-semibold text-lg">Score Marque Employeur</h3>
+                  <span
+                    className="text-[9px] uppercase tracking-wider font-bold px-2 py-0.5 border border-foreground"
+                    style={{ background: OVERALL_SCORE >= 70 ? 'hsl(var(--skalr-green))' : 'hsl(var(--landing-accent-yellow))' }}
+                  >
+                    {OVERALL_SCORE >= 70 ? 'Bon' : 'À améliorer'}
+                  </span>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {improvementCount} axes d'amélioration détectés sur {CATEGORIES.length} catégories analysées.
+                </p>
+              </div>
+            </div>
+
+            {/* Categories */}
+            <div className="space-y-2">
+              {CATEGORIES.map((cat) => {
+                const Icon = cat.icon;
+                const isExpanded = expandedCat === cat.id;
+                const pct = (cat.score / cat.maxScore) * 100;
+                return (
+                  <div key={cat.id} className="border border-foreground/10 overflow-hidden">
+                    <button
+                      onClick={() => setExpandedCat(isExpanded ? null : cat.id)}
+                      className="w-full flex items-center gap-3 p-3 text-left hover:bg-muted/30 transition-colors"
+                    >
+                      <Icon className="w-4 h-4 shrink-0 text-muted-foreground" />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-sm font-medium truncate">{cat.label}</span>
+                          <span className="text-xs font-bold ml-2 shrink-0" style={{ color: cat.color }}>
+                            {cat.score}/{cat.maxScore}
+                          </span>
+                        </div>
+                        <div className="w-full h-1.5 bg-foreground/5 overflow-hidden">
+                          <motion.div
+                            className="h-full"
+                            style={{ background: cat.color }}
+                            initial={{ width: 0 }}
+                            animate={{ width: `${pct}%` }}
+                            transition={{ duration: 0.6, delay: 0.2 }}
+                          />
+                        </div>
+                        <p className="text-[11px] text-muted-foreground mt-1 truncate">{cat.summary}</p>
+                      </div>
+                      {isExpanded ? <ChevronUp className="w-4 h-4 shrink-0 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 shrink-0 text-muted-foreground" />}
+                    </button>
+                    <AnimatePresence>
+                      {isExpanded && (
+                        <motion.div
+                          initial={{ height: 0, opacity: 0 }}
+                          animate={{ height: 'auto', opacity: 1 }}
+                          exit={{ height: 0, opacity: 0 }}
+                          transition={{ duration: 0.2 }}
+                          className="overflow-hidden"
+                        >
+                          <div className="px-3 pb-3 pt-0 space-y-1.5 border-t border-foreground/5 mt-0 pt-2">
+                            {cat.findings.map((f, i) => (
+                              <div key={i} className="flex items-start gap-2 text-xs text-foreground/70">
+                                <div className="w-1 h-1 mt-1.5 bg-foreground/30 shrink-0" />
+                                {f}
+                              </div>
+                            ))}
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Quick wins */}
+            <div className="border border-foreground/10 p-4 space-y-3">
+              <div className="flex items-center gap-2">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Actions prioritaires</h4>
+                <span
+                  className="text-[9px] uppercase tracking-wider font-bold px-2 py-0.5 border border-foreground"
+                  style={{ background: 'hsl(var(--landing-accent-yellow))' }}
+                >
+                  Quick wins
+                </span>
+              </div>
+              {QUICK_WINS.map((action, i) => (
+                <div key={i} className="flex items-start gap-2.5 text-sm text-foreground/80">
+                  <div className="w-2 h-2 mt-1.5 shrink-0 rounded-full" style={{ background: 'hsl(var(--skalr-green))' }} />
+                  {action}
+                </div>
+              ))}
+            </div>
+
+            {/* Skalr × Konekt card */}
+            <div
+              className="border-2 border-foreground/15 p-4 flex items-start gap-4"
+              style={{
+                background: 'linear-gradient(135deg, hsl(var(--skalr-purple) / 0.04), hsl(var(--skalr-pink) / 0.04))',
+              }}
+            >
+              <div className="flex items-center gap-1.5 shrink-0">
+                <img src={skalrLogo} alt="Skalr" className="h-7 w-auto" />
+                <span className="text-xs font-semibold" style={{ fontFamily: "'Space Mono', monospace" }}>× Konekt</span>
+              </div>
+              <p className="text-xs text-foreground/70 leading-relaxed">
+                <strong className="text-foreground">{improvementCount} axes d'amélioration identifiés.</strong>{' '}
+                L'accompagnement Skalr travaille ces piliers en profondeur — nos clients constatent en moyenne{' '}
+                <span className="font-semibold text-foreground">-30% de time-to-hire</span> et{' '}
+                <span className="font-semibold text-foreground">×2 candidatures qualifiées</span>.
+              </p>
+            </div>
+
+            {/* Navigation */}
+            <div className="flex items-center justify-between pt-1">
+              <Button variant="outline" onClick={onBack} className="gap-2 border-2 border-foreground/20 text-sm">
+                <ArrowLeft className="w-4 h-4" /> Retour
+              </Button>
+              <Button
+                onClick={onNext}
+                className="gap-2 border-2 border-foreground bg-foreground text-background hover:bg-foreground/90 text-sm px-6"
+                style={{ boxShadow: '3px 3px 0px 0px hsl(var(--brutal-accent))' }}
+              >
+                Continuer <ArrowRight className="w-4 h-4" />
+              </Button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+};
