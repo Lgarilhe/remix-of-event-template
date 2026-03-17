@@ -26,6 +26,15 @@ interface AgentBubble {
   text: string;
 }
 
+interface CompanyCandidate {
+  name: string;
+  domain: string | null;
+  description: string | null;
+  logoUrl: string | null;
+  location: string | null;
+  source: string;
+}
+
 interface CompanyData {
   name: string;
   domain: string | null;
@@ -63,67 +72,87 @@ const AGENT_MESSAGES = [
 /* ─── Component ─── */
 export const SceneOrganization: React.FC<Props> = ({ onComplete, onBack }) => {
   const [query, setQuery] = useState('');
-  const [phase, setPhase] = useState<'idle' | 'scanning' | 'results'>('idle');
+  const [phase, setPhase] = useState<'idle' | 'searching' | 'choosing' | 'scanning' | 'results'>('idle');
+  const [candidates, setCandidates] = useState<CompanyCandidate[]>([]);
   const [sources, setSources] = useState<Source[]>(SCAN_SOURCES);
   const [bubbles, setBubbles] = useState<AgentBubble[]>([]);
   const [company, setCompany] = useState<CompanyData | null>(null);
   const [activeTab, setActiveTab] = useState<'overview' | 'roles' | 'market'>('overview');
   const [selectedRoles, setSelectedRoles] = useState<Set<number>>(new Set());
   const [isCreating, setIsCreating] = useState(false);
-  // debounceRef removed — search is now explicit via button/Enter
   const bubblesEndRef = useRef<HTMLDivElement>(null);
   const { createOrganization } = useOrganization();
 
-  // Auto-scroll bubbles
   useEffect(() => {
     bubblesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [bubbles]);
 
-  const startScan = useCallback(async (name: string) => {
+  // Step 1: Search for candidate companies
+  const handleSearch = useCallback(async () => {
+    const name = query.trim();
+    if (name.length < 2) return;
+    setPhase('searching');
+    setCandidates([]);
+
+    try {
+      const { data, error } = await invokeEdgeFunction<{ candidates: CompanyCandidate[] }>('enrich-company', {
+        company_name: name,
+        mode: 'search',
+      });
+
+      if (error || !data?.success || !data.candidates?.length) {
+        // No candidates found — go straight to enrichment with just the name
+        startEnrichment(name, null);
+        return;
+      }
+
+      // If only 1 candidate, auto-select it
+      if (data.candidates.length === 1) {
+        const c = data.candidates[0];
+        startEnrichment(c.name, c.domain);
+        return;
+      }
+
+      setCandidates(data.candidates);
+      setPhase('choosing');
+    } catch {
+      // Fallback: enrich with just the name
+      startEnrichment(name, null);
+    }
+  }, [query]);
+
+  // Step 2: Enrich the selected company
+  const startEnrichment = useCallback(async (name: string, domain: string | null) => {
     setPhase('scanning');
     setSources(SCAN_SOURCES.map((s) => ({ ...s, done: false })));
     setBubbles([]);
     setCompany(null);
 
-    // Animate sources completing one by one
+    // Animate sources
     SCAN_SOURCES.forEach((_, i) => {
       setTimeout(() => {
         setSources((prev) => prev.map((s, j) => (j <= i ? { ...s, done: true } : s)));
       }, 800 + i * 700);
     });
 
-    // Typewriter agent messages
     AGENT_MESSAGES.forEach((msg, i) => {
       setTimeout(() => {
         setBubbles((prev) => [...prev, { id: i, text: msg }]);
       }, 600 + i * 800);
     });
 
-    // Call the real enrichment API
     try {
-      const { data, error } = await invokeEdgeFunction<{ company: CompanyData }>('enrich-company', {
-        company_name: name,
-      });
+      const body: Record<string, unknown> = { company_name: name };
+      if (domain) body.domain = domain;
 
-      if (error || !data?.success) {
-        console.error('[SceneOrganization] Enrichment failed:', error || data?.error);
-        toast.error("Impossible d'enrichir cette société. Les données de base seront utilisées.");
-        // Fallback: use just the name
-        const fallback: CompanyData = {
-          name,
-          domain: null, industry: null, size: null, location: null,
-          funding: null, description: null, techStack: [], insights: [],
-          decisionMakers: [], openRoles: [], linkedinUrl: null, websiteUrl: null, logoUrl: null,
-        };
-        const totalAnimTime = 600 + AGENT_MESSAGES.length * 800 + 400;
-        setTimeout(() => {
-          setCompany(fallback);
-          setPhase('results');
-        }, totalAnimTime);
-        return;
-      }
+      const { data, error } = await invokeEdgeFunction<{ company: CompanyData }>('enrich-company', body);
 
-      const enriched = data.company;
+      const enriched = (!error && data?.success && data.company) ? data.company : {
+        name,
+        domain, industry: null, size: null, location: null,
+        funding: null, description: null, techStack: [], insights: [],
+        decisionMakers: [], openRoles: [], linkedinUrl: null, websiteUrl: domain ? `https://${domain}` : null, logoUrl: null,
+      };
 
       // Store for SceneAudit
       try {
@@ -134,7 +163,6 @@ export const SceneOrganization: React.FC<Props> = ({ onComplete, onBack }) => {
         }));
       } catch {}
 
-      // Wait for animations to finish then show results
       const totalAnimTime = 600 + AGENT_MESSAGES.length * 800 + 400;
       setTimeout(() => {
         setCompany(enriched);
@@ -143,15 +171,13 @@ export const SceneOrganization: React.FC<Props> = ({ onComplete, onBack }) => {
     } catch (err) {
       console.error('[SceneOrganization] Error:', err);
       toast.error("Erreur lors de l'enrichissement.");
-      const fallback: CompanyData = {
-        name,
-        domain: null, industry: null, size: null, location: null,
-        funding: null, description: null, techStack: [], insights: [],
-        decisionMakers: [], openRoles: [], linkedinUrl: null, websiteUrl: null, logoUrl: null,
-      };
       const totalAnimTime = 600 + AGENT_MESSAGES.length * 800 + 400;
       setTimeout(() => {
-        setCompany(fallback);
+        setCompany({
+          name, domain, industry: null, size: null, location: null,
+          funding: null, description: null, techStack: [], insights: [],
+          decisionMakers: [], openRoles: [], linkedinUrl: null, websiteUrl: null, logoUrl: null,
+        });
         setPhase('results');
       }, totalAnimTime);
     }
@@ -159,15 +185,8 @@ export const SceneOrganization: React.FC<Props> = ({ onComplete, onBack }) => {
 
   const handleInputChange = (val: string) => {
     setQuery(val);
-    // Reset to idle when clearing input
     if (val.trim().length < 2 && phase !== 'idle') {
       setPhase('idle');
-    }
-  };
-
-  const handleSearch = () => {
-    if (query.trim().length >= 2 && phase !== 'scanning') {
-      startScan(query.trim());
     }
   };
 
@@ -176,6 +195,10 @@ export const SceneOrganization: React.FC<Props> = ({ onComplete, onBack }) => {
       e.preventDefault();
       handleSearch();
     }
+  };
+
+  const selectCandidate = (c: CompanyCandidate) => {
+    startEnrichment(c.name, c.domain);
   };
 
   const toggleRole = (idx: number) => {
@@ -238,16 +261,78 @@ export const SceneOrganization: React.FC<Props> = ({ onComplete, onBack }) => {
         </div>
         <Button
           onClick={handleSearch}
-          disabled={query.trim().length < 2 || phase === 'scanning'}
+          disabled={query.trim().length < 2 || phase === 'searching' || phase === 'scanning'}
           className="h-11 px-5 border-2 border-foreground bg-foreground text-background hover:bg-foreground/90 text-sm shrink-0"
           style={{ boxShadow: '3px 3px 0px 0px hsl(var(--brutal-accent))' }}
         >
-          {phase === 'scanning' ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Rechercher'}
+          {phase === 'searching' ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Rechercher'}
         </Button>
       </div>
 
-      {/* Scanning phase */}
       <AnimatePresence mode="wait">
+        {/* Choosing phase — user picks the right company */}
+        {phase === 'choosing' && candidates.length > 0 && (
+          <motion.div
+            key="choosing"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            className="space-y-2"
+          >
+            <p className="text-sm text-muted-foreground">Plusieurs résultats trouvés. Sélectionnez votre société :</p>
+            <div className="space-y-2">
+              {candidates.map((c, i) => (
+                <motion.button
+                  key={i}
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: i * 0.05 }}
+                  onClick={() => selectCandidate(c)}
+                  className="w-full flex items-center gap-3 p-3 border-2 border-foreground/15 hover:border-foreground/50 hover:shadow-[3px_3px_0px_0px_hsl(var(--brutal-accent))] transition-all text-left group"
+                >
+                  <img
+                    src={c.logoUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(c.name)}&background=random&size=40`}
+                    alt={c.name}
+                    className="w-10 h-10 border border-foreground/10 bg-background object-contain rounded-sm shrink-0"
+                    onError={(e) => {
+                      const img = e.target as HTMLImageElement;
+                      if (c.domain && !img.src.includes('google.com/s2')) {
+                        img.src = `https://www.google.com/s2/favicons?domain=${c.domain}&sz=64`;
+                      } else {
+                        img.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(c.name)}&background=random&size=40`;
+                      }
+                    }}
+                  />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-semibold truncate">{c.name}</span>
+                      {c.domain && (
+                        <span className="text-[10px] text-muted-foreground font-mono truncate">{c.domain}</span>
+                      )}
+                    </div>
+                    {c.description && (
+                      <p className="text-xs text-muted-foreground truncate mt-0.5">{c.description}</p>
+                    )}
+                    {c.location && (
+                      <span className="text-[10px] text-muted-foreground flex items-center gap-1 mt-0.5">
+                        <MapPin className="w-2.5 h-2.5" />{c.location}
+                      </span>
+                    )}
+                  </div>
+                  <ArrowRight className="w-4 h-4 text-muted-foreground group-hover:text-foreground transition-colors shrink-0" />
+                </motion.button>
+              ))}
+            </div>
+            <button
+              onClick={() => startEnrichment(query.trim(), null)}
+              className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2 mt-1"
+            >
+              Aucune ne correspond ? Continuer avec "{query.trim()}"
+            </button>
+          </motion.div>
+        )}
+
+        {/* Scanning phase */}
         {phase === 'scanning' && (
           <motion.div
             key="scanning"
@@ -256,7 +341,6 @@ export const SceneOrganization: React.FC<Props> = ({ onComplete, onBack }) => {
             exit={{ opacity: 0, y: -10 }}
             className="grid grid-cols-[180px_1fr] gap-4 min-h-[200px]"
           >
-            {/* Sources */}
             <div className="space-y-2">
               {sources.map((s, i) => (
                 <motion.div
@@ -283,7 +367,6 @@ export const SceneOrganization: React.FC<Props> = ({ onComplete, onBack }) => {
               ))}
             </div>
 
-            {/* Agent bubbles */}
             <div className="flex flex-col gap-2 max-h-[220px] overflow-y-auto no-scrollbar pr-1">
               {bubbles.map((b) => (
                 <motion.div
@@ -320,7 +403,6 @@ export const SceneOrganization: React.FC<Props> = ({ onComplete, onBack }) => {
                 className="w-14 h-14 border border-foreground/10 bg-background object-contain rounded-sm"
                 onError={(e) => {
                   const img = e.target as HTMLImageElement;
-                  // Try Google favicon as second fallback
                   if (company.domain && !img.src.includes('google.com/s2')) {
                     img.src = `https://www.google.com/s2/favicons?domain=${company.domain}&sz=64`;
                   } else {
@@ -364,7 +446,6 @@ export const SceneOrganization: React.FC<Props> = ({ onComplete, onBack }) => {
               ))}
             </div>
 
-            {/* Tab content */}
             <AnimatePresence mode="wait">
               <motion.div
                 key={activeTab}
@@ -409,12 +490,10 @@ export const SceneOrganization: React.FC<Props> = ({ onComplete, onBack }) => {
 /* ─── Tab: Overview ─── */
 const TabOverview: React.FC<{ company: CompanyData }> = ({ company }) => (
   <div className="space-y-4">
-    {/* Description */}
     {company.description && (
       <p className="text-sm text-foreground/80">{company.description}</p>
     )}
 
-    {/* Insights */}
     {company.insights.length > 0 && (
       <div className="border border-foreground/10 p-4 space-y-2">
         <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Ce qu'on a trouvé</h4>
@@ -424,7 +503,6 @@ const TabOverview: React.FC<{ company: CompanyData }> = ({ company }) => (
       </div>
     )}
 
-    {/* Tech stack */}
     {company.techStack.length > 0 && (
       <div>
         <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2">Stack technique</h4>
@@ -438,7 +516,6 @@ const TabOverview: React.FC<{ company: CompanyData }> = ({ company }) => (
       </div>
     )}
 
-    {/* Decision makers */}
     {company.decisionMakers.length > 0 && (
       <div>
         <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2">Décideurs clés</h4>
