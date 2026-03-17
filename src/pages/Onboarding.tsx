@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { AnimatePresence, motion } from 'framer-motion';
@@ -26,12 +26,11 @@ export interface OnboardingCompanyData {
 }
 
 const Onboarding = () => {
-  const [step, setStep] = useState<number | null>(null); // null = not initialized
+  const [step, setStep] = useState(0); // Always start at Welcome
   const [direction, setDirection] = useState(1);
   const [orgCreated, setOrgCreated] = useState(false);
   const [completedSet, setCompletedSet] = useState<Set<number>>(new Set());
   const [companyData, setCompanyData] = useState<OnboardingCompanyData | null>(null);
-  const initialized = useRef(false);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { organization, organizationId } = useOrganization();
@@ -45,26 +44,13 @@ const Onboarding = () => {
     });
   }, []);
 
-  // #7 Fix: Determine initial step on mount — skip org step if org exists
+  // If org gets created/detected while on step 1, advance past it
   useEffect(() => {
-    if (initialized.current) return;
-    initialized.current = true;
-    if (organization) {
-      setOrgCreated(true);
-      markCompleted(1);
-      setStep(0); // Start at welcome, but org step will be auto-skipped
-    } else {
-      setStep(0);
-    }
-  }, [organization, markCompleted]);
-
-  // If org gets created/detected while on step 1, advance
-  useEffect(() => {
-    if (step === null) return;
     if (organization && !orgCreated) {
       setOrgCreated(true);
       markCompleted(1);
       if (step === 1) {
+        setDirection(1);
         setStep(2);
       }
     }
@@ -73,10 +59,7 @@ const Onboarding = () => {
   const goNext = useCallback(() => {
     setDirection(1);
     setStep((s) => {
-      if (s === null) return 0;
-      // #7: Skip org step if already done
-      let next = s + 1;
-      if (next === 1 && orgCreated) next = 2;
+      let next = (s ?? 0) + 1;
       if (next >= STEP_COUNT) {
         queryClient.invalidateQueries({ queryKey: ['active-organization'] });
         navigate('/outreach', { replace: true });
@@ -84,7 +67,7 @@ const Onboarding = () => {
       }
       return next;
     });
-  }, [navigate, queryClient, orgCreated]);
+  }, [navigate, queryClient]);
 
   const completeAndNext = useCallback((stepIndex: number) => {
     markCompleted(stepIndex);
@@ -93,14 +76,8 @@ const Onboarding = () => {
 
   const goBack = useCallback(() => {
     setDirection(-1);
-    setStep((s) => {
-      if (s === null || s <= 0) return 0;
-      // #7/#8: Skip org step backwards if already done
-      let prev = s - 1;
-      if (prev === 1 && orgCreated) prev = 0;
-      return prev;
-    });
-  }, [orgCreated]);
+    setStep((s) => Math.max(0, (s ?? 0) - 1));
+  }, []);
 
   const handleOrgCreated = useCallback((data: OnboardingCompanyData) => {
     setOrgCreated(true);
@@ -135,9 +112,6 @@ const Onboarding = () => {
       scale: 0.97,
     }),
   };
-
-  // Don't render until initialized
-  if (step === null) return null;
 
   return (
     <OnboardingLayout
