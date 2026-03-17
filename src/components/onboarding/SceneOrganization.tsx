@@ -136,6 +136,7 @@ export const SceneOrganization: React.FC<Props> = ({ onComplete, onBack }) => {
     try {
       const { data, error } = await invokeEdgeFunction<{ company: CompanyData }>('enrich-company', {
         company_name: name,
+        country: 'France',
       });
 
       if (error || !data?.success) {
