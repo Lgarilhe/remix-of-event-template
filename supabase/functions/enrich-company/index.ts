@@ -1,5 +1,6 @@
 /**
- * Company Enrichment Edge Function — v3
+ * Company Enrichment Edge Function — v4
+ * Uses Perplexity for web search (replaces Firecrawl) + direct fetch for page scraping.
  * Parallelized architecture: Apollo org → domain resolution (sequential),
  * then EVERYTHING else in a single Promise.allSettled block.
  * AI insights only if >8s remaining.
@@ -61,6 +62,42 @@ function formatFollowers(n: number): string {
   return String(n);
 }
 
+/* ── Perplexity search helper ── */
+async function perplexitySearch(apiKey: string, query: string, timeoutMs = 10000): Promise<{ content: string; citations: string[] }> {
+  const res = await fetchWithTimeout('https://api.perplexity.ai/chat/completions', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: 'sonar',
+      messages: [
+        { role: 'system', content: 'Be precise and concise. Answer in French when relevant.' },
+        { role: 'user', content: query },
+      ],
+    }),
+  }, timeoutMs);
+
+  if (!res.ok) {
+    const errText = await readResponseTextWithTimeout(res, 3000).catch(() => '');
+    throw new Error(`Perplexity ${res.status}: ${errText.slice(0, 200)}`);
+  }
+
+  const data = await parseJsonResponse(res);
+  return {
+    content: data.choices?.[0]?.message?.content || '',
+    citations: data.citations || [],
+  };
+}
+
+/* ── Direct page fetch as text (replaces Firecrawl scrape) ── */
+async function fetchPageText(url: string, timeoutMs = 6000): Promise<string> {
+  const res = await fetchWithTimeout(url, {
+    headers: { 'User-Agent': 'Mozilla/5.0 (compatible; SkalrBot/1.0)' },
+    redirect: 'follow',
+  }, timeoutMs);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return readResponseTextWithTimeout(res, 5000);
+}
+
 function extractJobsFromCareersMarkdown(markdown: string, careersUrl: string): Array<{ title: string; location: string; source: string; url?: string }> {
   if (!markdown) return [];
 
@@ -95,11 +132,45 @@ function extractJobsFromCareersMarkdown(markdown: string, careersUrl: string): A
   return jobs;
 }
 
+/* ── Extract jobs from raw HTML (for ATS pages like Taleez, Lever) ── */
+function extractJobsFromHtml(html: string, careersUrl: string): Array<{ title: string; location: string; source: string; url?: string }> {
+  const jobs: Array<{ title: string; location: string; source: string; url?: string }> = [];
+  
+  // Match <a> tags with href containing job-like URLs and text content
+  const linkRegex = /<a[^>]+href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
+  let match;
+  while ((match = linkRegex.exec(html)) !== null) {
+    const [, href, rawText] = match;
+    const text = rawText.replace(/<[^>]+>/g, '').trim();
+    
+    // Filter: must look like a job title (3+ words or 10+ chars) and not a nav link
+    if (text.length < 8 || text.length > 120) continue;
+    if (/postuler|voir|connexion|accueil|menu|nav|footer|cookie|privacy/i.test(text)) continue;
+    
+    // The href should be a job detail page
+    const hrefLower = href.toLowerCase();
+    if (hrefLower.includes('/job') || hrefLower.includes('/offre') || hrefLower.includes('/position') || hrefLower.includes('/offer')) {
+      const fullUrl = href.startsWith('http') ? href : new URL(href, careersUrl).href;
+      jobs.push({ title: text, location: '', source: 'Site carrière', url: fullUrl });
+    }
+  }
+
+  // Also try <h2>/<h3> inside job listing patterns
+  const headingRegex = /<(?:h[23]|div[^>]+class="[^"]*(?:job|offer|position)[^"]*")[^>]*>([\s\S]*?)<\/(?:h[23]|div)>/gi;
+  while ((match = headingRegex.exec(html)) !== null) {
+    const text = match[1].replace(/<[^>]+>/g, '').trim();
+    if (text.length >= 8 && text.length <= 120 && !jobs.some(j => j.title === text)) {
+      jobs.push({ title: text, location: '', source: 'Site carrière', url: careersUrl });
+    }
+  }
+
+  return jobs;
+}
+
 function buildSignals(apolloOrg: any, result: any): Array<{ type: string; label: string; color: string }> {
   const signals: Array<{ type: string; label: string; color: string }> = [];
   if (!apolloOrg) return signals;
 
-  // Recent funding
   if (apolloOrg.latest_funding_stage) {
     const fundingDate = apolloOrg.latest_funding_date || apolloOrg.last_funding_date;
     const monthsAgo = fundingDate ? Math.floor((Date.now() - new Date(fundingDate).getTime()) / (30.44 * 86400000)) : null;
@@ -110,7 +181,6 @@ function buildSignals(apolloOrg: any, result: any): Array<{ type: string; label:
     }
   }
 
-  // Headcount
   const employees = apolloOrg.estimated_num_employees;
   if (employees && employees > 50) {
     signals.push({ type: 'headcount', label: `${employees} employés`, color: 'blue' });
@@ -118,7 +188,6 @@ function buildSignals(apolloOrg: any, result: any): Array<{ type: string; label:
     signals.push({ type: 'headcount', label: `${employees} employés`, color: 'gray' });
   }
 
-  // Job postings
   const jobCount = apolloOrg.job_postings_count || result.openRoles?.length || 0;
   if (jobCount > 5) {
     signals.push({ type: 'jobs', label: `${jobCount} postes ouverts`, color: 'purple' });
@@ -126,13 +195,11 @@ function buildSignals(apolloOrg: any, result: any): Array<{ type: string; label:
     signals.push({ type: 'jobs', label: `${jobCount} postes ouverts`, color: 'orange' });
   }
 
-  // LinkedIn followers
   const followers = apolloOrg.linkedin_follower_count;
   if (followers && followers > 1000) {
     signals.push({ type: 'linkedin', label: `${formatFollowers(followers)} followers LinkedIn`, color: 'cyan' });
   }
 
-  // Revenue
   if (apolloOrg.annual_revenue_printed) {
     signals.push({ type: 'revenue', label: `CA ${apolloOrg.annual_revenue_printed}`, color: 'emerald' });
   }
@@ -169,7 +236,7 @@ Deno.serve(async (req) => {
     }
 
     const APOLLO_API_KEY = Deno.env.get('APOLLO_API_KEY');
-    const FIRECRAWL_API_KEY = Deno.env.get('FIRECRAWL_API_KEY');
+    const PERPLEXITY_API_KEY = Deno.env.get('PERPLEXITY_API_KEY');
     const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
 
     const result: Record<string, any> = {
@@ -188,7 +255,6 @@ Deno.serve(async (req) => {
       websiteUrl: null,
       logoUrl: null,
       careersUrl: null,
-      // New fields
       foundedYear: null,
       linkedinFollowers: null,
       annualRevenue: null,
@@ -248,7 +314,6 @@ Deno.serve(async (req) => {
       result.websiteUrl = apolloOrg.website_url || (result.domain ? `https://${result.domain}` : null);
       result.logoUrl = apolloOrg.logo_url || apolloOrg.logo || apolloOrg.organization_logo_url || null;
       result.techStack = (apolloOrg.technology_names || []).slice(0, 12);
-      // Extra Apollo fields
       result.foundedYear = apolloOrg.founded_year || null;
       result.linkedinFollowers = apolloOrg.linkedin_follower_count || null;
       result.annualRevenue = apolloOrg.annual_revenue_printed || null;
@@ -256,66 +321,46 @@ Deno.serve(async (req) => {
       result.jobPostingsCount = apolloOrg.job_postings_count || null;
     }
 
-    // Firecrawl Web Search Fallback (if no domain from Apollo)
-    if (!result.domain && FIRECRAWL_API_KEY) {
+    // Perplexity Web Search Fallback (if no domain from Apollo)
+    if (!result.domain && PERPLEXITY_API_KEY) {
       try {
-        console.log('[enrich] Firecrawl web search fallback for:', company_name);
-        const companyNameLower = company_name.trim().toLowerCase();
-        const companySlug = companyNameLower.replace(/[^a-z0-9]+/g, '');
-        const searchQueries = [
-          `"${company_name.trim()}" site officiel France`,
-          `${company_name.trim()} entreprise France`,
-        ];
+        console.log('[enrich] Perplexity domain search for:', company_name);
+        const { content, citations } = await perplexitySearch(
+          PERPLEXITY_API_KEY,
+          `Quel est le site web officiel (domaine) de l'entreprise "${company_name.trim()}" en France ? Donne uniquement le domaine principal (ex: exemple.com). Si tu connais aussi le secteur d'activité, la taille, et une courte description, ajoute-les.`,
+        );
 
-        for (const query of searchQueries) {
-          const searchRes = await fetchWithTimeout('https://api.firecrawl.dev/v1/search', {
-            method: 'POST',
-            headers: { Authorization: `Bearer ${FIRECRAWL_API_KEY}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              query,
-              limit: 5,
-              country: 'FR',
-              lang: 'fr',
-            }),
-          });
+        // Extract domain from Perplexity answer or citations
+        const domainFromCitations = citations.find((url: string) => {
+          const lower = url.toLowerCase();
+          return !(/linkedin\.com|facebook\.com|twitter\.com|instagram\.com|welcometothejungle\.com|wikipedia\.org/.test(lower));
+        });
 
-          if (!searchRes.ok) {
-            console.warn(`[enrich] Firecrawl web search failed (${query}): ${searchRes.status}`);
-            continue;
+        // Try to extract domain from answer text
+        const domainMatch = content.match(/(?:^|\s)([\w-]+\.(?:com|fr|io|co|net|org|eu|tech|dev|app|ai))/i);
+        if (domainMatch) {
+          result.domain = domainMatch[1].toLowerCase();
+          result.websiteUrl = `https://${result.domain}`;
+          console.log('[enrich] Perplexity found domain:', result.domain);
+        } else if (domainFromCitations) {
+          const dm = domainFromCitations.match(/^https?:\/\/(?:www\.)?([^\/]+)/);
+          if (dm) {
+            result.domain = dm[1];
+            result.websiteUrl = domainFromCitations;
+            console.log('[enrich] Perplexity citation domain:', result.domain);
           }
+        }
 
-          const searchData = await parseJsonResponse(searchRes);
-          const results = Array.isArray(searchData.data) ? searchData.data : [];
-          console.log(`[enrich] Firecrawl web candidates (${query}): ${results.length}`);
-
-          const official = results.find((r: any) => {
-            const url = String(r.url || '');
-            const urlLower = url.toLowerCase();
-            const titleLower = String(r.title || '').toLowerCase();
-            const descLower = String(r.description || '').toLowerCase();
-            if (!url.startsWith('http')) return false;
-            if (/linkedin\.com|welcometothejungle\.com|facebook\.com|instagram\.com|x\.com|twitter\.com/.test(urlLower)) return false;
-            return urlLower.includes(companySlug) || titleLower.includes(companyNameLower) || descLower.includes(companyNameLower);
-          }) || results[0];
-
-          if (!official?.url) continue;
-
-          const domainMatch = String(official.url).match(/^https?:\/\/(?:www\.)?([^\/]+)/);
-          if (domainMatch) {
-            result.domain = domainMatch[1];
-            result.websiteUrl = official.url;
-          }
-          if (official.description && !result.description) {
-            result.description = official.description;
-          }
-          break;
+        // Extract description from Perplexity if we have none
+        if (!result.description && content.length > 50) {
+          result.description = content.slice(0, 400).replace(/\n/g, ' ').trim();
         }
       } catch (e) {
-        console.warn('[enrich] Firecrawl search fallback failed:', e);
+        console.warn('[enrich] Perplexity domain search failed:', e);
       }
     }
 
-    // Logo fallback: Apollo → Google Favicons (NO Clearbit HEAD check)
+    // Logo fallback: Apollo → Google Favicons
     if (!result.logoUrl && result.domain) {
       result.logoUrl = `https://www.google.com/s2/favicons?domain=${result.domain}&sz=128`;
     }
@@ -353,144 +398,151 @@ Deno.serve(async (req) => {
       })());
     }
 
-    // ── Task B: Homepage scrape → careers detection → AI job extraction ──
-    if (FIRECRAWL_API_KEY) {
-      parallelTasks.push((async () => {
-        let careersUrl: string | null = null;
+    // ── Task B: Careers page detection + job extraction (direct fetch, no Firecrawl) ──
+    parallelTasks.push((async () => {
+      let careersUrl: string | null = null;
+      
+      // Step 1: Try to detect careers page from the website
+      if (result.domain) {
         try {
-          if (result.domain) {
-            // Scrape homepage for careers link
-            const scrapeRes = await fetchWithTimeout('https://api.firecrawl.dev/v1/scrape', {
-              method: 'POST',
-              headers: { Authorization: `Bearer ${FIRECRAWL_API_KEY}`, 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                url: `https://${result.domain}`,
-                formats: ['markdown', 'links'],
-                onlyMainContent: true,
-              }),
-            });
-            if (scrapeRes.ok) {
-              const scrapeData = await parseJsonResponse(scrapeRes);
-              const md = scrapeData.data?.markdown || scrapeData.markdown || '';
-              const links = scrapeData.data?.links || scrapeData.links || [];
+          const homepageHtml = await fetchPageText(`https://${result.domain}`, 6000);
+          
+          // Look for careers links in the HTML
+          const ATS_DOMAINS = /taleez\.com|lever\.co|greenhouse\.io|workable\.com|recruitee\.com|smartrecruiters\.com|breezy\.hr|ashbyhq\.com|jobs\.lever\.co|teamtailor\.com|welcomekit\.co|flatchr\.io|jobaffinity\.fr/i;
+          const CAREER_KEYWORDS = /carri[eè]re|career|jobs?[\/\-]|recrutement|join[\-\/]|talent[\-\/]|nous[\-]rejoindre|hiring|openings|rejoignez|postuler|offres[\-\/]|emploi/i;
+          
+          const hrefRegex = /href=["']([^"']+)["']/gi;
+          let hrefMatch;
+          while ((hrefMatch = hrefRegex.exec(homepageHtml)) !== null) {
+            const href = hrefMatch[1];
+            if (CAREER_KEYWORDS.test(href) || ATS_DOMAINS.test(href)) {
+              careersUrl = href.startsWith('http') ? href : `https://${result.domain}${href.startsWith('/') ? '' : '/'}${href}`;
+              break;
+            }
+          }
 
-              if (!result.description && md.length > 50) {
-                result.description = md.slice(0, 300).replace(/\n/g, ' ').trim();
-              }
+          if (!result.description && homepageHtml.length > 200) {
+            // Extract meta description
+            const metaDesc = homepageHtml.match(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)["']/i);
+            if (metaDesc) {
+              result.description = metaDesc[1].slice(0, 300);
+            }
+          }
+        } catch (e) {
+          console.warn('[enrich] Homepage fetch failed:', e);
+        }
+      }
 
-              const ATS_DOMAINS = /taleez\.com|lever\.co|greenhouse\.io|workable\.com|recruitee\.com|smartrecruiters\.com|breezy\.hr|ashbyhq\.com|jobs\.lever\.co|teamtailor\.com|welcomekit\.co|flatchr\.io|jobaffinity\.fr/i;
-              const CAREER_KEYWORDS = /carri[eè]re|career|jobs?[\/\-]|recrutement|join[\-\/]|talent[\-\/]|nous[\-]rejoindre|hiring|openings|rejoignez|postuler|offres[\-\/]|emploi/i;
-              const careersLink = links.find((l: string) => CAREER_KEYWORDS.test(l) || ATS_DOMAINS.test(l));
-              if (careersLink) {
-                careersUrl = careersLink.startsWith('http')
-                  ? careersLink
-                  : `https://${result.domain}${careersLink.startsWith('/') ? '' : '/'}${careersLink}`;
+      // Step 2: ATS probe fallback
+      if (!careersUrl && result.name) {
+        const slug = result.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+        const atsProbes = [
+          `https://${slug}.taleez.com`,
+          `https://${slug}.welcomekit.co`,
+          `https://jobs.lever.co/${slug}`,
+          `https://boards.greenhouse.io/${slug}`,
+          `https://${slug}.recruitee.com`,
+          `https://apply.workable.com/${slug}`,
+          `https://${slug}.teamtailor.com`,
+        ];
+        for (const probeUrl of atsProbes) {
+          try {
+            const probeRes = await fetchWithTimeout(probeUrl, { method: 'HEAD', redirect: 'follow' }, 4000);
+            if (probeRes.ok) {
+              careersUrl = probeUrl;
+              break;
+            }
+          } catch {}
+        }
+      }
+
+      if (careersUrl) {
+        result.careersUrl = careersUrl;
+        console.log('[enrich] Careers page found:', careersUrl);
+
+        // Step 3: Fetch careers page and extract jobs
+        try {
+          const careersHtml = await fetchPageText(careersUrl, 8000);
+          
+          // Try HTML-based extraction first
+          const htmlJobs = extractJobsFromHtml(careersHtml, careersUrl);
+          if (htmlJobs.length > 0) {
+            htmlJobs.forEach((job) => jobSources.push(job));
+            console.log(`[enrich] Careers HTML parser: ${htmlJobs.length} jobs`);
+          }
+
+          // Also try markdown-style extraction (some ATS pages have markdown-like structure)
+          const parsedJobs = extractJobsFromCareersMarkdown(careersHtml, careersUrl);
+          if (parsedJobs.length > 0) {
+            parsedJobs.forEach((job) => jobSources.push(job));
+            console.log(`[enrich] Careers MD parser: ${parsedJobs.length} jobs`);
+          }
+
+          // If no jobs found from parsing, try AI extraction
+          if (htmlJobs.length === 0 && parsedJobs.length === 0 && careersHtml.length > 200 && LOVABLE_API_KEY) {
+            // Strip HTML tags for AI analysis, keep text
+            const textContent = careersHtml
+              .replace(/<script[\s\S]*?<\/script>/gi, '')
+              .replace(/<style[\s\S]*?<\/style>/gi, '')
+              .replace(/<[^>]+>/g, ' ')
+              .replace(/\s{2,}/g, ' ')
+              .trim()
+              .slice(0, 8000);
+
+            if (textContent.length > 100) {
+              const extractRes = await fetchWithTimeout('https://ai.gateway.lovable.dev/v1/chat/completions', {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  model: 'google/gemini-2.5-flash-lite',
+                  messages: [
+                    { role: 'system', content: 'Extract job listings. Return ONLY via tool call.' },
+                    { role: 'user', content: `Extract all job positions from this careers page text. Return title, location, department for each.\n\n${textContent}` },
+                  ],
+                  tools: [{
+                    type: 'function',
+                    function: {
+                      name: 'return_jobs',
+                      parameters: {
+                        type: 'object',
+                        properties: {
+                          jobs: { type: 'array', items: {
+                            type: 'object',
+                            properties: {
+                              title: { type: 'string' },
+                              location: { type: 'string' },
+                              department: { type: 'string' },
+                            },
+                            required: ['title'],
+                            additionalProperties: false,
+                          }},
+                        },
+                        required: ['jobs'],
+                        additionalProperties: false,
+                      },
+                    },
+                  }],
+                  tool_choice: { type: 'function', function: { name: 'return_jobs' } },
+                }),
+              }, 15000);
+              if (extractRes.ok) {
+                const extractData = await parseJsonResponse(extractRes);
+                const toolCall = extractData.choices?.[0]?.message?.tool_calls?.[0];
+                if (toolCall) {
+                  const parsed = JSON.parse(toolCall.function.arguments);
+                  (parsed.jobs || []).forEach((j: any) => {
+                    if (j.title) jobSources.push({ title: j.title, location: j.location || '', source: 'Site carrière', department: j.department, url: careersUrl || undefined });
+                  });
+                  console.log(`[enrich] Careers page AI: ${(parsed.jobs || []).length} jobs`);
+                }
               }
             }
           }
         } catch (e) {
-          console.warn('[enrich] Homepage scrape failed:', e);
+          console.warn('[enrich] Careers job extraction failed:', e);
         }
-
-        // ATS probe fallback
-        if (!careersUrl && result.name) {
-          const slug = result.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-          const atsProbes = [
-            `https://${slug}.taleez.com`,
-            `https://${slug}.welcomekit.co`,
-            `https://jobs.lever.co/${slug}`,
-            `https://boards.greenhouse.io/${slug}`,
-            `https://${slug}.recruitee.com`,
-            `https://apply.workable.com/${slug}`,
-            `https://${slug}.teamtailor.com`,
-          ];
-          for (const probeUrl of atsProbes) {
-            try {
-              const probeRes = await fetchWithTimeout(probeUrl, { method: 'HEAD', redirect: 'follow' }, 4000);
-              if (probeRes.ok) {
-                careersUrl = probeUrl;
-                break;
-              }
-            } catch {}
-          }
-        }
-
-        if (careersUrl) {
-          result.careersUrl = careersUrl;
-          console.log('[enrich] Careers page found:', careersUrl);
-
-          // Scrape careers page as markdown then AI extract
-          try {
-            const careersRes = await fetchWithTimeout('https://api.firecrawl.dev/v1/scrape', {
-              method: 'POST',
-              headers: { Authorization: `Bearer ${FIRECRAWL_API_KEY}`, 'Content-Type': 'application/json' },
-              body: JSON.stringify({ url: careersUrl, formats: ['markdown'], onlyMainContent: true }),
-            });
-            if (careersRes.ok) {
-              const careersData = await parseJsonResponse(careersRes);
-              const careersMd = (careersData.data?.markdown || careersData.markdown || '').slice(0, 12000);
-
-              const parsedJobs = extractJobsFromCareersMarkdown(careersMd, careersUrl);
-              if (parsedJobs.length > 0) {
-                parsedJobs.forEach((job) => jobSources.push(job));
-                console.log(`[enrich] Careers page parser: ${parsedJobs.length} jobs`);
-              }
-
-              if (parsedJobs.length === 0 && careersMd.length > 100 && LOVABLE_API_KEY) {
-                const extractRes = await fetchWithTimeout('https://ai.gateway.lovable.dev/v1/chat/completions', {
-                  method: 'POST',
-                  headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
-                    model: 'google/gemini-2.5-flash-lite',
-                    messages: [
-                      { role: 'system', content: 'Extract job listings. Return ONLY via tool call.' },
-                      { role: 'user', content: `Extract all job positions from this careers page. Return title, location, department for each.\n\n${careersMd}` },
-                    ],
-                    tools: [{
-                      type: 'function',
-                      function: {
-                        name: 'return_jobs',
-                        parameters: {
-                          type: 'object',
-                          properties: {
-                            jobs: { type: 'array', items: {
-                              type: 'object',
-                              properties: {
-                                title: { type: 'string' },
-                                location: { type: 'string' },
-                                department: { type: 'string' },
-                              },
-                              required: ['title'],
-                              additionalProperties: false,
-                            }},
-                          },
-                          required: ['jobs'],
-                          additionalProperties: false,
-                        },
-                      },
-                    }],
-                    tool_choice: { type: 'function', function: { name: 'return_jobs' } },
-                  }),
-                }, 15000);
-                if (extractRes.ok) {
-                  const extractData = await parseJsonResponse(extractRes);
-                  const toolCall = extractData.choices?.[0]?.message?.tool_calls?.[0];
-                  if (toolCall) {
-                    const parsed = JSON.parse(toolCall.function.arguments);
-                    (parsed.jobs || []).forEach((j: any) => {
-                      if (j.title) jobSources.push({ title: j.title, location: j.location || '', source: 'Site carrière', department: j.department, url: careersUrl || undefined });
-                    });
-                    console.log(`[enrich] Careers page AI: ${(parsed.jobs || []).length} jobs`);
-                  }
-                }
-              }
-            }
-          } catch (e) {
-            console.warn('[enrich] Careers job extraction failed:', e);
-          }
-        }
-      })());
-    }
+      }
+    })());
 
     // ── Task C: Apollo Job Postings (primary source) ──
     let apolloJobsFound = false;
@@ -528,107 +580,81 @@ Deno.serve(async (req) => {
 
     parallelTasks.push(apolloJobsPromise);
 
-    // Run all parallel tasks (including Apollo jobs)
+    // Run all parallel tasks
     await Promise.allSettled(parallelTasks);
 
-    // ── Task D: WTTJ + LinkedIn as FALLBACK only if Apollo returned 0 jobs ──
-    const companyNameLower = company_name.trim().toLowerCase();
-    const NON_LATIN_RE = /[\u4e00-\u9fff\u3040-\u309f\u30a0-\u30ff\uac00-\ud7af\u0400-\u04ff]/;
+    // ── Task D: Perplexity job search fallback if Apollo returned 0 jobs ──
+    if (!apolloJobsFound && PERPLEXITY_API_KEY && jobSources.length === 0) {
+      try {
+        console.log('[enrich] Perplexity job search fallback');
+        const { content, citations } = await perplexitySearch(
+          PERPLEXITY_API_KEY,
+          `Liste les postes ouverts / offres d'emploi actuelles chez "${company_name.trim()}" en France. Pour chaque poste, donne le titre exact et la ville si disponible. Ne liste que les vrais postes individuels, pas de résumés.`,
+          12000,
+        );
 
-    if (!apolloJobsFound && FIRECRAWL_API_KEY) {
-      const fallbackTasks: Promise<void>[] = [];
-
-      // WTTJ fallback
-      fallbackTasks.push((async () => {
-        try {
-          const wttjRes = await fetchWithTimeout('https://api.firecrawl.dev/v1/search', {
+        // Extract job titles from Perplexity answer
+        if (content && LOVABLE_API_KEY) {
+          const extractRes = await fetchWithTimeout('https://ai.gateway.lovable.dev/v1/chat/completions', {
             method: 'POST',
-            headers: { Authorization: `Bearer ${FIRECRAWL_API_KEY}`, 'Content-Type': 'application/json' },
+            headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              query: `"${company_name.trim()}" site:welcometothejungle.com/fr/companies`,
-              limit: 8,
-              country: 'FR',
-              lang: 'fr',
+              model: 'google/gemini-2.5-flash-lite',
+              messages: [
+                { role: 'system', content: 'Extract structured job listings from the text. Return ONLY via tool call.' },
+                { role: 'user', content: `Extract all job positions mentioned in this text about ${company_name}. Return title, location, and source URL if available.\n\n${content}` },
+              ],
+              tools: [{
+                type: 'function',
+                function: {
+                  name: 'return_jobs',
+                  parameters: {
+                    type: 'object',
+                    properties: {
+                      jobs: { type: 'array', items: {
+                        type: 'object',
+                        properties: {
+                          title: { type: 'string' },
+                          location: { type: 'string' },
+                          source: { type: 'string' },
+                        },
+                        required: ['title'],
+                        additionalProperties: false,
+                      }},
+                    },
+                    required: ['jobs'],
+                    additionalProperties: false,
+                  },
+                },
+              }],
+              tool_choice: { type: 'function', function: { name: 'return_jobs' } },
             }),
-          });
-          if (wttjRes.ok) {
-            const wttjData = await parseJsonResponse(wttjRes);
-            let accepted = 0;
-            for (const r of (wttjData.data || [])) {
-              const url = r.url || '';
-              // Must be a WTTJ job page (contains /jobs/) not a company page
-              if (!url.includes('welcometothejungle.com')) continue;
-              if (!url.includes('/jobs/')) continue;
-              // Title must not be a raw URL
-              let title = (r.title || '').replace(/ \|.*$/, '').replace(/ - Welcome.*$/, '').replace(/ - Bienvenue.*$/, '').trim();
-              if (!title || title.length < 4 || title.startsWith('http')) continue;
-              // Verify the company name appears in the URL path (WTTJ URLs contain company slug)
-              const urlLower = url.toLowerCase();
-              const slug = companyNameLower.replace(/[^a-z0-9]+/g, '');
-              if (!urlLower.includes(slug) && !urlLower.includes(companyNameLower.replace(/\s+/g, '-'))) continue;
-              jobSources.push({ title, location: '', source: 'WTTJ', url: url || undefined });
-              accepted++;
-            }
-            console.log(`[enrich] WTTJ fallback: ${accepted} accepted`);
-          }
-        } catch (e) {
-          console.warn('[enrich] WTTJ failed:', e);
-        }
-      })());
+          }, 10000);
 
-      // LinkedIn fallback
-      fallbackTasks.push((async () => {
-        try {
-          const liRes = await fetchWithTimeout('https://api.firecrawl.dev/v1/search', {
-            method: 'POST',
-            headers: { Authorization: `Bearer ${FIRECRAWL_API_KEY}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              query: `"${company_name.trim()}" site:linkedin.com/jobs/view`,
-              limit: 8,
-              country: 'FR',
-              lang: 'fr',
-            }),
-          });
-          if (liRes.ok) {
-            const liData = await parseJsonResponse(liRes);
-            let accepted = 0;
-            for (const r of (liData.data || [])) {
-              const url = r.url || '';
-              if (!url.includes('linkedin.com/jobs/view/')) continue;
-              let title = (r.title || '')
-                .replace(/ \|.*$/, '')
-                .replace(/ - LinkedIn.*$/i, '')
-                .replace(/ at .*$/, '')
-                .replace(/ hiring .*$/i, '')
-                .trim();
-              // Skip aggregated listing pages
-              if (/^\d+\s+\w+\s+jobs?\s+/i.test(title)) continue;
-              if (/^\d+\s+offres?\s/i.test(title)) continue;
-              if (/\bjobs?\b/i.test(title) && title.split(' ').length <= 4) continue;
-              // Skip non-Latin scripts (Chinese, Japanese, Korean, Cyrillic, German patterns)
-              if (NON_LATIN_RE.test(title)) continue;
-              if (/\b(sucht|angebot|bewerben)\b/i.test(title)) continue;
-              // Skip titles that are URLs
-              if (!title || title.length < 4 || title.startsWith('http')) continue;
-              // Verify company name appears in title or description
-              const titleLower = title.toLowerCase();
-              const descLower = (r.description || '').toLowerCase();
-              if (!titleLower.includes(companyNameLower) && !descLower.includes(companyNameLower)) continue;
-              // Clean up: remove company name prefix patterns like "Gandi recrute pour des postes de"
-              title = title
-                .replace(new RegExp(`^${company_name.trim()}\\s+(recrute pour des postes de|is hiring|recrutement)\\s*`, 'i'), '')
-                .trim();
-              jobSources.push({ title, location: '', source: 'LinkedIn', url: url || undefined });
-              accepted++;
+          if (extractRes.ok) {
+            const extractData = await parseJsonResponse(extractRes);
+            const toolCall = extractData.choices?.[0]?.message?.tool_calls?.[0];
+            if (toolCall) {
+              const parsed = JSON.parse(toolCall.function.arguments);
+              let added = 0;
+              (parsed.jobs || []).forEach((j: any) => {
+                if (j.title) {
+                  // Try to find matching citation URL
+                  const matchingCitation = citations.find((c: string) => 
+                    c.includes('linkedin.com/jobs') || c.includes('welcometothejungle.com') || c.includes('indeed.') || c.includes(result.domain || '__none__')
+                  );
+                  const source = j.source?.includes('LinkedIn') ? 'LinkedIn' : j.source?.includes('WTTJ') || j.source?.includes('Welcome') ? 'WTTJ' : 'Web';
+                  jobSources.push({ title: j.title, location: j.location || '', source, url: matchingCitation || undefined });
+                  added++;
+                }
+              });
+              console.log(`[enrich] Perplexity job fallback: ${added} jobs`);
             }
-            console.log(`[enrich] LinkedIn fallback: ${accepted} accepted`);
           }
-        } catch (e) {
-          console.warn('[enrich] LinkedIn jobs failed:', e);
         }
-      })());
-
-      await Promise.allSettled(fallbackTasks);
+      } catch (e) {
+        console.warn('[enrich] Perplexity job search failed:', e);
+      }
     }
 
     // Dedupe jobs
@@ -651,7 +677,7 @@ Deno.serve(async (req) => {
     // PHASE 3 — AI Insights (only if >8s remaining)
     // ═══════════════════════════════════════════════════════
     const elapsed = Date.now() - startTime;
-    const timeRemaining = 55000 - elapsed; // Supabase edge function limit ~60s
+    const timeRemaining = 55000 - elapsed;
 
     if (LOVABLE_API_KEY && timeRemaining > 8000 && (result.description || result.industry)) {
       try {
