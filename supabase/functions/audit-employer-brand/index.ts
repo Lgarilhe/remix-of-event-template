@@ -238,7 +238,7 @@ Deno.serve(async (req) => {
           method: 'POST',
           headers: { Authorization: `Bearer ${FIRECRAWL_API_KEY}`, 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            query: `${company_name} offre emploi recrutement`,
+            query: `${company_name} ${domain || ''} offre emploi recrutement`.replace(/\s+/g, ' ').trim(),
             limit: 3,
             scrapeOptions: { formats: ['markdown'] },
           }),
