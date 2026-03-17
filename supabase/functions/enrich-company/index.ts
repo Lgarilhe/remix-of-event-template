@@ -291,8 +291,39 @@ Deno.serve(async (req) => {
         console.warn('[enrich-company] Firecrawl scrape failed:', e);
       }
 
-      // 3b. If no careers link found on homepage, probe common direct paths first
+      // 3b. Use Firecrawl Map to discover careers URLs across the site
       if (!result.careersUrl) {
+        try {
+          console.log('[enrich-company] Mapping site for careers URLs:', result.domain);
+          const mapRes = await fetch('https://api.firecrawl.dev/v1/map', {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${FIRECRAWL_API_KEY}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              url: `https://${result.domain}`,
+              search: 'careers jobs recrutement recrute rejoindre offres emploi',
+              limit: 50,
+              includeSubdomains: false,
+            }),
+          });
+          if (mapRes.ok) {
+            const mapData = await mapRes.json();
+            const mapLinks = mapData.links || [];
+            const mapped = mapLinks.find((l: string) =>
+              /carri[eè]re|career|jobs?[\/.]|recrutement|recrute|join[-_]?us|talent|hiring|offres|emploi|poste|nous-rejoindre|rejoignez/i.test(l)
+            );
+            if (mapped) {
+              result.careersUrl = mapped;
+              console.log('[enrich-company] Found careers page via map:', mapped);
+            }
+          }
+        } catch (e) {
+          console.warn('[enrich-company] Firecrawl map failed:', e);
+        }
+      }
+
+      // 3c. If still not found, probe common direct paths
+      if (!result.careersUrl) {
+        const slug = result.name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
         const candidateCareerUrls = [
           `https://${result.domain}/careers`,
           `https://${result.domain}/career`,
@@ -306,6 +337,10 @@ Deno.serve(async (req) => {
           `https://${result.domain}/rejoignez-nous`,
           `https://${result.domain}/offres-emploi`,
           `https://${result.domain}/emplois`,
+          `https://${result.domain}/fr/${slug}-recrute`,
+          `https://${result.domain}/fr/recrutement`,
+          `https://${result.domain}/fr/carrieres`,
+          `https://${result.domain}/en/careers`,
         ];
 
         for (const url of candidateCareerUrls) {
@@ -323,7 +358,7 @@ Deno.serve(async (req) => {
             if (probeRes.ok) {
               const probeData = await probeRes.json();
               const probeMd = (probeData.data?.markdown || probeData.markdown || '').toLowerCase();
-              if (probeMd.length > 80 && /job|jobs|carri[eè]re|recrutement|emploi|poste|offre/.test(probeMd)) {
+              if (probeMd.length > 80 && /job|jobs|carri[eè]re|recrutement|recrute|emploi|poste|offre/.test(probeMd)) {
                 result.careersUrl = url;
                 console.log('[enrich-company] Found careers page via direct path probe:', url);
                 break;
