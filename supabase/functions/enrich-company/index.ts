@@ -66,7 +66,7 @@ function formatFollowers(n: number): string {
 /* ── Perplexity search helper ── */
 async function perplexitySearch(apiKey: string, query: string, options?: { timeoutMs?: number; domainFilter?: string[]; model?: string }): Promise<{ content: string; citations: string[] }> {
   const body: any = {
-    model: 'sonar',
+    model: options?.model || 'sonar',
     messages: [
       { role: 'system', content: 'Be precise and concise. Answer in French when relevant.' },
       { role: 'user', content: query },
