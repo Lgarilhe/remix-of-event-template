@@ -477,6 +477,7 @@ Deno.serve(async (req) => {
                 .trim();
               if (/^\d+\s+\w+\s+jobs?\s+in\s+/i.test(title)) continue;
               if (/^\d+\s+offres?\s/i.test(title)) continue;
+              if (/^\d+\s+\S+\s+jobs?\b/i.test(title)) continue;
               if (/\bjobs?\b/i.test(title) && title.split(' ').length <= 4) continue;
               if (title && title.length > 3) {
                 jobSources.push({ title, location: '', source: 'LinkedIn' });
