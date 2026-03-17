@@ -9,7 +9,7 @@ import { SceneWelcome } from '@/components/onboarding/SceneWelcome';
 import { SceneOrganization } from '@/components/onboarding/SceneOrganization';
 import { SceneAudit } from '@/components/onboarding/SceneAudit';
 import { SceneProfile } from '@/components/onboarding/SceneProfile';
-import { OnboardingStepLinkedIn } from '@/components/onboarding/OnboardingStepLinkedIn';
+import { SceneIntegrations } from '@/components/onboarding/SceneIntegrations';
 import { OnboardingStepInvite } from '@/components/onboarding/OnboardingStepInvite';
 
 const STEP_COUNT = 7;
