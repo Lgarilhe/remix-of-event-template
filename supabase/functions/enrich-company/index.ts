@@ -50,6 +50,73 @@ function smartCapitalize(name: string): string {
   return name;
 }
 
+/** Simple Levenshtein distance for short strings */
+function levenshtein(a: string, b: string): number {
+  const m = a.length, n = b.length;
+  if (m === 0) return n;
+  if (n === 0) return m;
+  const dp: number[][] = Array.from({ length: m + 1 }, (_, i) => {
+    const row = new Array(n + 1).fill(0);
+    row[0] = i;
+    return row;
+  });
+  for (let j = 1; j <= n; j++) dp[0][j] = j;
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      dp[i][j] = a[i - 1] === b[j - 1]
+        ? dp[i - 1][j - 1]
+        : 1 + Math.min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1]);
+    }
+  }
+  return dp[m][n];
+}
+
+/** Score an Apollo org candidate against the searched company name */
+function scoreApolloOrgMatch(candidate: any, searchName: string, preferredCountry?: string): number {
+  const candidateName = normalizeTextToken(candidate.name || candidate.organization_name || '');
+  const searchToken = normalizeTextToken(searchName);
+  if (!candidateName || !searchToken) return 0;
+
+  let score = 0;
+
+  // Name similarity
+  if (candidateName === searchToken) {
+    score += 100;
+  } else if (candidateName.includes(searchToken) || searchToken.includes(candidateName)) {
+    score += 60;
+  } else if (levenshtein(candidateName, searchToken) <= 2) {
+    score += 40;
+  } else {
+    return 0; // No meaningful match
+  }
+
+  const country = (candidate.country || '').toLowerCase();
+
+  // Country bonus/malus
+  if (preferredCountry) {
+    const prefLower = preferredCountry.toLowerCase();
+    if (country === prefLower || country === 'france' && prefLower === 'fr' || country === 'fr' && prefLower === 'france') {
+      score += 30;
+    }
+  } else {
+    // Default: bonus for France (product is FR-focused)
+    if (['france', 'fr'].includes(country)) score += 20;
+  }
+
+  // Malus for US when no explicit country preference (ambiguity risk)
+  if (!preferredCountry && ['united states', 'us', 'usa'].includes(country)) {
+    score -= 15;
+  }
+
+  // Bonus if domain exists (more trustworthy)
+  if (candidate.primary_domain) score += 10;
+
+  // Bonus for employee count (real company)
+  if (candidate.estimated_num_employees && candidate.estimated_num_employees > 5) score += 5;
+
+  return score;
+}
+
 function formatFunding(amount: number): string {
   if (amount >= 1_000_000_000) return `${(amount / 1_000_000_000).toFixed(1)}B€`;
   if (amount >= 1_000_000) return `${(amount / 1_000_000).toFixed(0)}M€`;
@@ -384,7 +451,7 @@ Deno.serve(async (req) => {
       });
     }
 
-    const { company_name } = await req.json();
+    const { company_name, country } = await req.json();
     if (!company_name || company_name.trim().length < 2) {
       return new Response(JSON.stringify({ success: false, error: 'company_name required' }), {
         status: 400,
@@ -450,11 +517,20 @@ Deno.serve(async (req) => {
           'https://api.apollo.io/v1/mixed_companies/api_search',
         ];
 
+        const apolloSearchPayload: Record<string, any> = {
+          q_organization_name: company_name.trim(),
+          per_page: 5,
+        };
+        // If country hint provided, add location filter
+        if (country) {
+          apolloSearchPayload.organization_locations = [country];
+        }
+
         for (const endpoint of orgEndpoints) {
           const orgRes = await fetchWithTimeout(endpoint, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'X-Api-Key': APOLLO_API_KEY },
-            body: JSON.stringify({ q_organization_name: company_name.trim(), per_page: 1 }),
+            body: JSON.stringify(apolloSearchPayload),
           });
 
           if (!orgRes.ok) {
@@ -466,8 +542,22 @@ Deno.serve(async (req) => {
           const list = Array.isArray(orgData.organizations || orgData.accounts || orgData.results || orgData.data || [])
             ? (orgData.organizations || orgData.accounts || orgData.results || orgData.data || [])
             : [];
-          apolloOrg = list[0] || null;
-          if (apolloOrg) break;
+
+          if (list.length > 0) {
+            // Score all candidates and pick the best match above threshold
+            const MATCH_THRESHOLD = 40;
+            const scored = list
+              .map((org: any) => ({ org, score: scoreApolloOrgMatch(org, company_name.trim(), country) }))
+              .filter((s: any) => s.score >= MATCH_THRESHOLD)
+              .sort((a: any, b: any) => b.score - a.score);
+
+            console.log('[enrich] Apollo org scores:', scored.map((s: any) => ({
+              name: s.org.name, country: s.org.country, score: s.score,
+            })));
+
+            apolloOrg = scored[0]?.org || null;
+            if (apolloOrg) break;
+          }
         }
       } catch (e) {
         console.warn('[enrich] Apollo org failed:', e);
