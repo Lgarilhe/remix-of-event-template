@@ -104,8 +104,8 @@ Deno.serve(async (req) => {
           method: 'POST',
           headers: { Authorization: `Bearer ${FIRECRAWL_API_KEY}`, 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            query: `${company_name.trim()} company website`,
-            limit: 3,
+            query: `"${company_name.trim()}" site officiel`,
+            limit: 5,
             scrapeOptions: { formats: ['markdown'] },
           }),
         });
@@ -115,8 +115,24 @@ Deno.serve(async (req) => {
           console.log('[enrich-company] Firecrawl search returned', results.length, 'results');
 
           if (results.length > 0) {
-            // Extract domain from the first result URL
-            const firstUrl = results[0].url || '';
+            // Score results to pick best match: prefer domains containing the company name
+            const nameLower = company_name.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+            let bestResult = results[0];
+            for (const r of results) {
+              const url = r.url || '';
+              const domainMatch = url.match(/^https?:\/\/(?:www\.)?([^\/]+)/);
+              if (domainMatch) {
+                const domain = domainMatch[1].toLowerCase().replace(/[^a-z0-9.]/g, '');
+                // If domain contains the company name (e.g. aconstruct.eu contains "aconstruct")
+                if (domain.includes(nameLower)) {
+                  bestResult = r;
+                  console.log('[enrich-company] Best domain match:', domain, 'for query:', nameLower);
+                  break;
+                }
+              }
+            }
+
+            const firstUrl = bestResult.url || '';
             const domainMatch = firstUrl.match(/^https?:\/\/(?:www\.)?([^\/]+)/);
             if (domainMatch) {
               result.domain = domainMatch[1];
@@ -124,18 +140,14 @@ Deno.serve(async (req) => {
               console.log('[enrich-company] Found domain via search:', result.domain);
             }
 
-            // Do NOT override result.name — keep the user's original input
-
-            if (results[0].description && !result.description) {
-              result.description = results[0].description;
+            if (bestResult.description && !result.description) {
+              result.description = bestResult.description;
+            }
+            if (!result.description && bestResult.markdown) {
+              result.description = bestResult.markdown.slice(0, 300).replace(/\n/g, ' ').replace(/[#*_\[\]]/g, '').trim();
             }
 
-            // Extract description from markdown if available
-            if (!result.description && results[0].markdown) {
-              result.description = results[0].markdown.slice(0, 300).replace(/\n/g, ' ').replace(/[#*_\[\]]/g, '').trim();
-            }
-
-            // Look for LinkedIn URL in results
+            // Look for LinkedIn URL in all results
             for (const r of results) {
               if (r.url?.includes('linkedin.com/company/')) {
                 result.linkedinUrl = r.url;
