@@ -408,6 +408,17 @@ export const SceneOrganization: React.FC<Props> = ({ onComplete, onBack }) => {
   );
 };
 
+/* ─── Signal color map ─── */
+const SIGNAL_COLORS: Record<string, string> = {
+  green: 'bg-emerald-100 text-emerald-800 border-emerald-300',
+  blue: 'bg-blue-100 text-blue-800 border-blue-300',
+  purple: 'bg-purple-100 text-purple-800 border-purple-300',
+  orange: 'bg-orange-100 text-orange-800 border-orange-300',
+  cyan: 'bg-cyan-100 text-cyan-800 border-cyan-300',
+  emerald: 'bg-emerald-100 text-emerald-800 border-emerald-300',
+  gray: 'bg-muted text-muted-foreground border-foreground/15',
+};
+
 /* ─── Tab: Overview ─── */
 const TabOverview: React.FC<{ company: CompanyData }> = ({ company }) => (
   <div className="space-y-4">
@@ -416,10 +427,24 @@ const TabOverview: React.FC<{ company: CompanyData }> = ({ company }) => (
       <p className="text-sm text-foreground/80">{company.description}</p>
     )}
 
+    {/* Signals */}
+    {company.signals && company.signals.length > 0 && (
+      <div className="flex flex-wrap gap-1.5">
+        {company.signals.map((signal, i) => (
+          <span
+            key={i}
+            className={`text-[11px] px-2.5 py-1 border font-semibold rounded-sm ${SIGNAL_COLORS[signal.color] || SIGNAL_COLORS.gray}`}
+          >
+            {signal.label}
+          </span>
+        ))}
+      </div>
+    )}
+
     {/* Insights */}
     {company.insights.length > 0 && (
       <div className="border border-foreground/10 p-4 space-y-2">
-        <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Ce qu'on a trouvé</h4>
+        <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Insights recruteur</h4>
         {company.insights.map((insight, i) => (
           <p key={i} className="text-sm text-foreground/80">{insight}</p>
         ))}
