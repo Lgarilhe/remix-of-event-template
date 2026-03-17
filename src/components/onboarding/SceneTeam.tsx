@@ -148,7 +148,11 @@ export const SceneTeam: React.FC<Props> = ({ organizationId, onFinish, onBack })
     }
   };
 
-  const totalInvites = selected.size + invitedEmails.length;
+  const invitableFromScan = profiles.filter(
+    (p) => selected.has(p.id) && p.email && !invitedEmails.includes(p.email.toLowerCase())
+  ).length;
+  const totalInvites = invitableFromScan + invitedEmails.length;
+  const selectedWithoutEmail = selected.size - invitableFromScan;
 
   const [isSending, setIsSending] = useState(false);
 
