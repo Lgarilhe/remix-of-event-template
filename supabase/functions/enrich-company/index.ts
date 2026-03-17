@@ -281,7 +281,7 @@ Deno.serve(async (req) => {
 
           // Try to find careers page in homepage links (EN + FR variants)
           const careersLink = links.find((l: string) =>
-            /carri[eè]re|career|jobs?[\/\.]|recrutement|join|join-us|joinus|talent|hiring|offres|emploi|emplois|poste|postes|nous-rejoindre|nous_rejoindre|nousrejoindre|rejoignez-nous|rejoignez_nous|rejoigneznous|welcome-to-the-jungle|wttj/i.test(l)
+            /carri[eè]re|career|jobs?[\/\.]|recrutement|recrute|join|join-us|joinus|talent|hiring|offres|emploi|emplois|poste|postes|nous-rejoindre|nous_rejoindre|nousrejoindre|rejoignez-nous|rejoignez_nous|rejoigneznous|welcome-to-the-jungle|wttj/i.test(l)
           );
           if (careersLink) {
             result.careersUrl = careersLink;
