@@ -477,7 +477,7 @@ Chaque insight doit commencer par un emoji et faire 1-2 phrases max. Exemples : 
         });
 
         if (aiRes.ok) {
-          const aiData = await aiRes.json();
+          const aiData = await parseJsonResponse(aiRes);
           const toolCall = aiData.choices?.[0]?.message?.tool_calls?.[0];
           if (toolCall) {
             const parsed = JSON.parse(toolCall.function.arguments);
