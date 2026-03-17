@@ -461,7 +461,7 @@ Deno.serve(async (req) => {
       });
     }
 
-    const { company_name, country } = await req.json();
+    const { company_name, country, force_refresh } = await req.json();
     if (!company_name || company_name.trim().length < 2) {
       return new Response(JSON.stringify({ success: false, error: 'company_name required' }), {
         status: 400,
@@ -469,20 +469,25 @@ Deno.serve(async (req) => {
       });
     }
 
-    // In-DB cache: return cached result if enriched within last 24h
+    // In-DB cache: return cached result if enriched within last 24h (unless force_refresh)
     const cacheKey = company_name.trim().toLowerCase().replace(/\s+/g, ' ');
-    const { data: cached } = await serviceClient
-      .from('enrichment_cache')
-      .select('result')
-      .eq('cache_key', cacheKey)
-      .gt('created_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString())
-      .maybeSingle();
+    if (!force_refresh) {
+      const { data: cached } = await serviceClient
+        .from('enrichment_cache')
+        .select('result')
+        .eq('cache_key', cacheKey)
+        .gt('created_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString())
+        .maybeSingle();
 
-    if (cached?.result) {
-      console.log(`[enrich] Cache hit for "${cacheKey}"`);
-      return new Response(JSON.stringify({ success: true, company: cached.result, cached: true }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+      if (cached?.result) {
+        console.log(`[enrich] Cache hit for "${cacheKey}"`);
+        return new Response(JSON.stringify({ success: true, company: cached.result, cached: true }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+    } else {
+      console.log(`[enrich] Force refresh for "${cacheKey}" — skipping cache`);
+    }
     }
 
     const APOLLO_API_KEY = Deno.env.get('APOLLO_API_KEY');
