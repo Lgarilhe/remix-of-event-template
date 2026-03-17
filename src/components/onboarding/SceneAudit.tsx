@@ -93,6 +93,7 @@ export const SceneAudit: React.FC<Props> = ({ companyData, onNext, onBack }) => 
   useEffect(() => {
     if (hasStarted.current) return;
     hasStarted.current = true;
+    isMounted.current = true;
 
     // Animate sources and messages
     SCAN_SOURCES.forEach((_, i) => {
