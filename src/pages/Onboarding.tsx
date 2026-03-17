@@ -44,17 +44,14 @@ const Onboarding = () => {
     });
   }, []);
 
-  // If org gets created/detected while on step 1, advance past it
+  // If org gets created/detected while on step 1, mark it but DON'T auto-advance
+  // (advancing is handled by handleOrgCreated which also sets companyData)
   useEffect(() => {
     if (organization && !orgCreated) {
       setOrgCreated(true);
       markCompleted(1);
-      if (step === 1) {
-        setDirection(1);
-        setStep(2);
-      }
     }
-  }, [organization, orgCreated, step, markCompleted]);
+  }, [organization, orgCreated, markCompleted]);
 
   const goNext = useCallback(() => {
     setDirection(1);
