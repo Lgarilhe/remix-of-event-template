@@ -258,7 +258,7 @@ Deno.serve(async (req) => {
     // ═══════════════════════════════════════════════════════
     // PHASE 2 — Everything in parallel
     // ═══════════════════════════════════════════════════════
-    const jobSources: Array<{ title: string; location: string; source: string; department?: string }> = [];
+    const jobSources: Array<{ title: string; location: string; source: string; department?: string; url?: string }> = [];
     const parallelTasks: Promise<void>[] = [];
 
     // ── Task A: Apollo People Search ──
@@ -440,6 +440,7 @@ Deno.serve(async (req) => {
                 location: [job.city, job.state, job.country].filter(Boolean).join(', '),
                 source: 'Apollo',
                 department: job.department || undefined,
+                url: job.url || job.linkedin_url || undefined,
               });
             }
           }
@@ -491,7 +492,7 @@ Deno.serve(async (req) => {
               const urlLower = url.toLowerCase();
               const slug = companyNameLower.replace(/[^a-z0-9]+/g, '');
               if (!urlLower.includes(slug) && !urlLower.includes(companyNameLower.replace(/\s+/g, '-'))) continue;
-              jobSources.push({ title, location: '', source: 'WTTJ' });
+              jobSources.push({ title, location: '', source: 'WTTJ', url: url || undefined });
               accepted++;
             }
             console.log(`[enrich] WTTJ fallback: ${accepted} accepted`);
@@ -543,7 +544,7 @@ Deno.serve(async (req) => {
               title = title
                 .replace(new RegExp(`^${company_name.trim()}\\s+(recrute pour des postes de|is hiring|recrutement)\\s*`, 'i'), '')
                 .trim();
-              jobSources.push({ title, location: '', source: 'LinkedIn' });
+              jobSources.push({ title, location: '', source: 'LinkedIn', url: url || undefined });
               accepted++;
             }
             console.log(`[enrich] LinkedIn fallback: ${accepted} accepted`);
@@ -562,7 +563,7 @@ Deno.serve(async (req) => {
       const key = job.title.toLowerCase().replace(/[^a-z0-9]/g, '');
       if (!seenTitles.has(key)) {
         seenTitles.add(key);
-        result.openRoles.push({ title: job.title, location: job.location, source: job.source, department: job.department });
+        result.openRoles.push({ title: job.title, location: job.location, source: job.source, department: job.department, url: job.url });
       }
     }
     result.openRoles = result.openRoles.slice(0, 15);

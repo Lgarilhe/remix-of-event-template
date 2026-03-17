@@ -41,7 +41,7 @@ interface CompanyData {
   techStack: string[];
   insights: string[];
   decisionMakers: { name: string; role: string; linkedinUrl?: string | null }[];
-  openRoles: { title: string; location: string; source: string; department?: string }[];
+  openRoles: { title: string; location: string; source: string; department?: string; url?: string }[];
   linkedinUrl: string | null;
   websiteUrl: string | null;
   logoUrl: string | null;
@@ -537,7 +537,19 @@ const TabRoles: React.FC<{
           />
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
-              <span className="text-sm font-medium truncate">{role.title}</span>
+              {role.url ? (
+                <a
+                  href={role.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={(e) => e.stopPropagation()}
+                  className="text-sm font-medium truncate underline decoration-foreground/30 hover:decoration-foreground transition-colors"
+                >
+                  {role.title}
+                </a>
+              ) : (
+                <span className="text-sm font-medium truncate">{role.title}</span>
+              )}
               <SourceBadge source={role.source} />
             </div>
             {role.location && (
