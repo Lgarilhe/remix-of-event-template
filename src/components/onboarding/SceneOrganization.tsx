@@ -488,6 +488,25 @@ export const SceneOrganization: React.FC<Props> = ({ onComplete, onBack }) => {
                   >
                     Enrichi
                   </span>
+                  {(company.suborganizations?.length || 0) > 0 && (
+                    <span className="text-[9px] uppercase tracking-wider font-bold px-2 py-0.5 border border-foreground/30 bg-muted flex items-center gap-1">
+                      <GitBranch className="w-3 h-3" />
+                      {company.suborganizations!.length} filiale{company.suborganizations!.length > 1 ? 's' : ''}
+                    </span>
+                  )}
+                  {company.intentStrength != null && (
+                    <span
+                      className="text-[9px] uppercase tracking-wider font-bold px-2 py-0.5 border flex items-center gap-1"
+                      style={{
+                        borderColor: company.intentStrength > 50 ? 'hsl(142, 71%, 45%)' : 'hsl(32, 95%, 44%)',
+                        backgroundColor: company.intentStrength > 50 ? 'hsl(142, 71%, 45%, 0.12)' : 'hsl(32, 95%, 44%, 0.12)',
+                        color: company.intentStrength > 50 ? 'hsl(142, 71%, 45%)' : 'hsl(32, 95%, 44%)',
+                      }}
+                    >
+                      <Signal className="w-3 h-3" />
+                      {company.intentStrength > 50 ? "Signal d'achat détecté" : 'Signal faible'}
+                    </span>
+                  )}
                 </div>
                 {company.industry && <p className="text-xs text-muted-foreground mt-0.5">{company.industry}</p>}
                 <div className="flex items-center gap-3 mt-2 text-xs text-muted-foreground flex-wrap">
@@ -496,7 +515,6 @@ export const SceneOrganization: React.FC<Props> = ({ onComplete, onBack }) => {
                   {company.funding && <span className="flex items-center gap-1"><TrendingUp className="w-3 h-3" />{company.funding}</span>}
                 </div>
               </div>
-            </div>
 
             {/* Tabs */}
             <div className="flex gap-0 border-b-2 border-foreground/10">
