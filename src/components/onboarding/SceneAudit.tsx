@@ -173,6 +173,7 @@ export const SceneAudit: React.FC<Props> = ({ companyData, onNext, onBack }) => 
       const elapsed = Date.now() - startTime;
       const delay = Math.max(0, MIN_ANIM_TIME - elapsed);
       setTimeout(() => {
+        if (!isMounted.current) return;
         if (apiResult.current) {
           setOverallScore(apiResult.current.score);
           setCategories(apiResult.current.categories);
@@ -184,7 +185,10 @@ export const SceneAudit: React.FC<Props> = ({ companyData, onNext, onBack }) => 
       }, delay);
     }, 200);
 
-    return () => clearInterval(pollInterval);
+    return () => {
+      isMounted.current = false;
+      clearInterval(pollInterval);
+    };
   }, [companyData]);
 
   const circumference = 2 * Math.PI * 42;
