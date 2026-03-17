@@ -19,6 +19,7 @@ interface ScorecardTabProps {
   candidate: ATSCandidate;
   enrichedProfile: EnrichedProfile | null;
   onOpenProfile?: () => void;
+  autoStartCoaching?: boolean;
 }
 
 interface Criterion {
