@@ -429,7 +429,7 @@ Deno.serve(async (req) => {
         });
         if (jobsRes.ok) {
           const jobsData = await parseJsonResponse(jobsRes);
-          const postings = jobsData.job_postings || jobsData.data || jobsData || [];
+          const postings = jobsData.organization_job_postings || jobsData.job_postings || jobsData.data || [];
           const jobsList = Array.isArray(postings) ? postings : [];
           for (const job of jobsList) {
             const title = job.title || job.name;
