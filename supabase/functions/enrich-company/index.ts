@@ -171,7 +171,7 @@ Deno.serve(async (req) => {
     if (APOLLO_API_KEY) {
       try {
         console.log('[enrich] Apollo org search:', company_name);
-        const orgRes = await fetchWithTimeout('https://api.apollo.io/v1/mixed_companies/api_search', {
+        const orgRes = await fetchWithTimeout('https://api.apollo.io/api/v1/mixed_companies/search', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'X-Api-Key': APOLLO_API_KEY },
           body: JSON.stringify({ q_organization_name: company_name.trim(), per_page: 1 }),
