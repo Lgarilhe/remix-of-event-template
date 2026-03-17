@@ -360,25 +360,26 @@ export const SceneTeam: React.FC<Props> = ({ organizationId, onFinish, onBack })
       </div>
 
       {/* Navigation */}
-      <div className="flex items-center justify-between pt-2">
-        <Button variant="outline" onClick={onBack} className="gap-2 border-2 border-foreground/20 text-sm">
-          <ArrowLeft className="w-4 h-4" /> Retour
-        </Button>
-        <Button
-          onClick={handleFinish}
-          disabled={isSending}
-          className="gap-2 border-2 border-foreground bg-foreground text-background hover:bg-foreground/90 text-sm px-6"
-          style={{ boxShadow: '3px 3px 0px 0px hsl(var(--brutal-accent))' }}
-        >
-          {isSending ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowRight className="w-4 h-4" />}
-          {isSending ? 'Envoi...' : totalInvites > 0 ? `Inviter ${totalInvites} & terminer` : 'Passer'}
-        </Button>
+      <div className="flex flex-col items-end gap-1 pt-2">
+        <div className="flex items-center justify-between w-full">
+          <Button variant="outline" onClick={onBack} className="gap-2 border-2 border-foreground/20 text-sm">
+            <ArrowLeft className="w-4 h-4" /> Retour
+          </Button>
+          <Button
+            onClick={handleFinish}
+            disabled={isSending}
+            className="gap-2 border-2 border-foreground bg-foreground text-background hover:bg-foreground/90 text-sm px-6"
+            style={{ boxShadow: '3px 3px 0px 0px hsl(var(--brutal-accent))' }}
+          >
+            {isSending ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowRight className="w-4 h-4" />}
+            {isSending ? 'Envoi...' : totalInvites > 0 ? `Inviter ${totalInvites} & terminer` : 'Passer'}
+          </Button>
+        </div>
         {selectedWithoutEmail > 0 && (
-          <p className="text-[11px] text-destructive mt-1 text-right">
+          <p className="text-[11px] text-destructive">
             {selectedWithoutEmail} profil{selectedWithoutEmail > 1 ? 's' : ''} sans email — non invitable{selectedWithoutEmail > 1 ? 's' : ''}
           </p>
         )}
-        </Button>
       </div>
     </div>
   );
