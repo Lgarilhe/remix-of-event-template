@@ -334,6 +334,12 @@ export const SceneOrganization: React.FC<Props> = ({ onComplete, onBack }) => {
               <img
                 src={company.logoUrl || (company.domain ? `https://logo.clearbit.com/${company.domain}` : `https://ui-avatars.com/api/?name=${encodeURIComponent(company.name)}&background=random&size=48`)}
                 alt={company.name}
+                onError={(e) => {
+                  const img = e.target as HTMLImageElement;
+                  if (company.domain && !img.src.includes('ui-avatars')) {
+                    img.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(company.name)}&background=6366f1&color=fff&size=48`;
+                  }
+                }}
                 className="w-12 h-12 border border-foreground/10 bg-background object-contain"
                 onError={(e) => { (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${encodeURIComponent(company.name)}&background=random&size=48`; }}
               />
