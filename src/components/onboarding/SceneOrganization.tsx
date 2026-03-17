@@ -209,7 +209,12 @@ export const SceneOrganization: React.FC<Props> = ({ onComplete, onBack }) => {
     if (!company) return;
     setIsCreating(true);
     try {
-      await createOrganization({ name: company.name, slug: generateSlug(company.name) });
+      await createOrganization({
+        name: company.name,
+        slug: generateSlug(company.name),
+        website: company.websiteUrl || (company.domain ? `https://${company.domain}` : null),
+        logoUrl: company.logoUrl || (company.domain ? `https://logo.clearbit.com/${company.domain}` : null),
+      });
       onComplete();
     } catch (err: any) {
       const msg = err?.message || '';
