@@ -628,6 +628,44 @@ Deno.serve(async (req) => {
       result.domain = normalizeDomain(result.websiteUrl);
     }
 
+    // ── Cross-validate Apollo domain against company name ──
+    if (result.domain && apolloOrg) {
+      const apolloDomainToken = domainLabel(apolloOrg.primary_domain);
+      const companyToken = normalizeTextToken(company_name.trim());
+
+      // If Apollo's domain doesn't relate to the searched company name at all,
+      // it's likely a wrong entity match — try Perplexity as a second opinion
+      if (apolloDomainToken && companyToken
+        && !apolloDomainToken.includes(companyToken) && !companyToken.includes(apolloDomainToken)) {
+        console.warn(`[enrich] Apollo domain mismatch: "${apolloOrg.primary_domain}" vs search "${company_name}" — verifying with Perplexity`);
+
+        if (PERPLEXITY_API_KEY) {
+          try {
+            const { content, citations } = await perplexitySearch(
+              PERPLEXITY_API_KEY,
+              `Quel est le site web officiel de l'entreprise "${company_name.trim()}" en France ? Donne uniquement le domaine officiel.`,
+              { timeoutMs: 8000 },
+            );
+            const contentDomains = extractCandidateDomains(content);
+            const citationDomains = citations.map((url: string) => normalizeDomain(url)).filter(Boolean) as string[];
+            const perplexityDomain = pickPreferredDomain(company_name.trim(), [...contentDomains, ...citationDomains]);
+
+            if (perplexityDomain && perplexityDomain !== result.domain) {
+              const perplexityToken = domainLabel(perplexityDomain);
+              // If Perplexity's domain matches the company name better, use it
+              if (perplexityToken.includes(companyToken) || companyToken.includes(perplexityToken)) {
+                console.log(`[enrich] Overriding Apollo domain "${result.domain}" with Perplexity "${perplexityDomain}"`);
+                result.domain = perplexityDomain;
+                result.websiteUrl = `https://${perplexityDomain}`;
+              }
+            }
+          } catch (e) {
+            console.warn('[enrich] Cross-validation Perplexity failed:', e);
+          }
+        }
+      }
+    }
+
     if (!result.logoUrl && result.domain) {
       result.logoUrl = `https://logo.clearbit.com/${result.domain}`;
     }
