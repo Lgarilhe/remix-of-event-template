@@ -70,13 +70,32 @@ export const useOrganization = () => {
 
   // Create organization mutation
   const createOrgMutation = useMutation({
-    mutationFn: async ({ name, slug }: { name: string; slug: string }) => {
+    mutationFn: async ({
+      name,
+      slug,
+      website,
+      logoUrl,
+    }: {
+      name: string;
+      slug: string;
+      website?: string | null;
+      logoUrl?: string | null;
+    }) => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
+      const normalizedWebsite = website?.trim() || null;
+      const normalizedLogoUrl = logoUrl?.trim() || null;
+
       const { data: org, error } = await supabase
         .from('organizations')
-        .insert({ name, slug, created_by: user.id })
+        .insert({
+          name,
+          slug,
+          created_by: user.id,
+          website: normalizedWebsite,
+          logo_url: normalizedLogoUrl,
+        })
         .select()
         .single();
 
