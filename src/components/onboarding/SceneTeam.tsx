@@ -293,6 +293,11 @@ export const SceneTeam: React.FC<Props> = ({ organizationId, onFinish, onBack })
                 <span className="text-sm font-medium">{p.name}</span>
                 <span className="text-[11px] text-muted-foreground block truncate">{p.role}</span>
               </div>
+              {!p.email && selected.has(p.id) && (
+                <span className="text-[9px] px-1.5 py-0.5 bg-destructive/10 text-destructive font-medium shrink-0">
+                  Pas d'email
+                </span>
+              )}
               <img
                 src={p.source === 'linkedin' ? linkedinLogo : undefined}
                 alt={p.source}
