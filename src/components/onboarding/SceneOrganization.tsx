@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { useOrganization } from '@/hooks/useOrganization';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
+import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import searchIcon from '@/assets/icon-search-3d.png';
 import linkedinLogo from '@/assets/linkedin-logo.png';
