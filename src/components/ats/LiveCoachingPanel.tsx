@@ -95,7 +95,9 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
   const [report, setReport] = useState<CallReport | null>(null);
   const [callStopped, setCallStopped] = useState(false);
   const [loadingIntro, setLoadingIntro] = useState(false);
+  const [elapsedDisplay, setElapsedDisplay] = useState('00:00');
   const introLockedRef = useRef(true); // Lock nextTopic during intro phase
+  const timerIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const socketRef = useRef<WebSocket | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -383,6 +385,12 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
       dgSocket.onclose = () => console.log('Deepgram socket closed');
 
       setIsRecording(true);
+      timerIntervalRef.current = setInterval(() => {
+        const secs = Math.round((Date.now() - callStartRef.current) / 1000);
+        const m = String(Math.floor(secs / 60)).padStart(2, '0');
+        const s = String(secs % 60).padStart(2, '0');
+        setElapsedDisplay(`${m}:${s}`);
+      }, 1000);
       toast.success('Coaching live démarré — parlez naturellement');
     } catch (err: any) {
       console.error('Start recording error:', err);
@@ -399,6 +407,7 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
       mediaRecorderRef.current.stop();
       mediaRecorderRef.current.stream.getTracks().forEach(t => t.stop());
     }
+    if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
     setIsRecording(false);
     setCallStopped(true);
 
@@ -484,6 +493,11 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
             {isRecording ? `Live — ${coveredCount}/${criteria.length} critères` : callStopped ? 'Session terminée' : 'Coach Live'}
           </span>
           {isAnalyzing && <Loader2 className="w-3 h-3 animate-spin text-muted-foreground" />}
+          {isRecording && (
+            <span className="text-[11px] tabular-nums text-muted-foreground font-medium ml-1">
+              {elapsedDisplay}
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-1">
           {!isRecording && !callStopped && (
