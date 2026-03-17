@@ -550,7 +550,7 @@ Deno.serve(async (req) => {
           });
 
           if (!orgRes.ok) {
-            console.warn(`[enrich] Apollo ${endpoint}: ${orgRes.status}`);
+            console.warn(`[enrich] Apollo org search: ${orgRes.status}`);
             continue;
           }
 
