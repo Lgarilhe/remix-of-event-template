@@ -145,7 +145,7 @@ Deno.serve(async (req) => {
           }),
         });
         if (searchRes.ok) {
-          const searchData = await searchRes.json();
+          const searchData = await parseJsonResponse(searchRes);
           const results = searchData.data || [];
           console.log('[enrich-company] Firecrawl search returned', results.length, 'results');
 
