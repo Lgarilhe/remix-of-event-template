@@ -72,7 +72,7 @@ function levenshtein(a: string, b: string): number {
 }
 
 /** Score an Apollo org candidate against the searched company name */
-function scoreApolloOrgMatch(candidate: any, searchName: string, preferredCountry?: string): number {
+function scoreApolloOrgMatch(candidate: any, searchName: string, _preferredCountry?: string): number {
   const candidateName = normalizeTextToken(candidate.name || candidate.organization_name || '');
   const searchToken = normalizeTextToken(searchName);
   if (!candidateName || !searchToken) return 0;
@@ -84,35 +84,25 @@ function scoreApolloOrgMatch(candidate: any, searchName: string, preferredCountr
     score += 100;
   } else if (candidateName.includes(searchToken) || searchToken.includes(candidateName)) {
     score += 60;
-  } else if (levenshtein(candidateName, searchToken) <= 2) {
-    score += 40;
   } else {
-    return 0; // No meaningful match
+    return 0; // No meaningful match at all
   }
 
-  const country = (candidate.country || '').toLowerCase();
+  const country = (candidate.country || candidate.hq_country || '').toLowerCase();
 
   // Country bonus/malus
-  if (preferredCountry) {
-    const prefLower = preferredCountry.toLowerCase();
-    if (country === prefLower || country === 'france' && prefLower === 'fr' || country === 'fr' && prefLower === 'france') {
-      score += 30;
-    }
-  } else {
-    // Default: bonus for France (product is FR-focused)
-    if (['france', 'fr'].includes(country)) score += 20;
+  if (['france', 'fr'].includes(country)) {
+    score += 30;
   }
-
-  // Malus for US when no explicit country preference (ambiguity risk)
-  if (!preferredCountry && ['united states', 'us', 'usa'].includes(country)) {
-    score -= 15;
+  if (['united states', 'us', 'usa'].includes(country)) {
+    score -= 20;
   }
 
   // Bonus if domain exists (more trustworthy)
   if (candidate.primary_domain) score += 10;
 
-  // Bonus for employee count (real company)
-  if (candidate.estimated_num_employees && candidate.estimated_num_employees > 5) score += 5;
+  // Reject below threshold
+  if (score < 40) return 0;
 
   return score;
 }
@@ -245,11 +235,11 @@ function isLikelyJobTitle(title: string): boolean {
   const lower = cleaned.toLowerCase();
 
   // Reject conjugated FR verbs (sentence indicators, not job titles)
-  if (/\b(sont|veulent|recherche|recrute|propose|offre|rejoi(?:gnez|ndre)|postulez|découvrez)\b/.test(lower)) return false;
+  if (/\b(est|sont|veulent|recherche|recrute|propose|offre|rejoi(?:gnez|ndre)|postulez|découvrez|contribuer|innover)\b/.test(lower)) return false;
 
   // Reject marketing/navigation patterns
   const bannedPatterns = [
-    /culture\s+d['']entreprise/,
+    /culture\s+d[''']entreprise/,
     /nos\s+valeurs/,
     /en\s+savoir\s+plus/,
     /voir\s+(?:toutes?\s+)?(?:les|nos)\s+offres/,
@@ -260,14 +250,10 @@ function isLikelyJobTitle(title: string): boolean {
     /qui\s+sommes/,
     /notre\s+histoire/,
     /postuler\s+maintenant/,
-    /offres?\s+d['']emploi/,
+    /offres?\s+d[''']emploi/,
     /diversité/,
     /mobilité\s+interne/,
     /parité/,
-    /cloud\s+souverain/,
-    /talents\s+qui\s+veulent/,
-    /recherche\s+des\s+talents/,
-    /profils\s+est\s+valorisée/,
   ];
   if (bannedPatterns.some((p) => p.test(lower))) return false;
 
@@ -516,6 +502,12 @@ Deno.serve(async (req) => {
       keywords: [],
       jobPostingsCount: null,
       signals: [],
+      departmentalHeadcount: null,
+      fundingEvents: [],
+      intentStrength: null,
+      suborganizations: [],
+      numSuborganizations: null,
+      newsArticles: [],
     };
 
     // ═══════════════════════════════════════════════════════
@@ -529,12 +521,9 @@ Deno.serve(async (req) => {
 
         const apolloSearchPayload: Record<string, any> = {
           q_organization_name: company_name.trim(),
-          per_page: 10,
+          per_page: 5,
+          organization_locations: country ? [country] : ['France'],
         };
-        // If country hint provided, add location filter
-        if (country) {
-          apolloSearchPayload.organization_locations = [country];
-        }
 
         // Try with location filter first, then without if no results
         const searchAttempts = [
@@ -1096,6 +1085,79 @@ Deno.serve(async (req) => {
         }
       }
     })());
+
+    // ── Task E: Apollo Organization Enrichment ──
+    if (APOLLO_API_KEY && result.domain) {
+      parallelTasks.push((async () => {
+        try {
+          console.log('[enrich] Apollo org enrichment for domain:', result.domain);
+          const enrichRes = await fetchWithTimeout(`https://api.apollo.io/api/v1/organizations/enrich?domain=${encodeURIComponent(result.domain)}`, {
+            method: 'GET',
+            headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache', 'X-Api-Key': APOLLO_API_KEY },
+          });
+
+          if (enrichRes.ok) {
+            const enrichData = await parseJsonResponse(enrichRes);
+            const org = enrichData.organization || enrichData;
+
+            if (org.departmental_head_count) {
+              result.departmentalHeadcount = org.departmental_head_count;
+            }
+            if (org.funding_events?.length) {
+              result.fundingEvents = org.funding_events.map((ev: any) => ({
+                date: ev.date || ev.announced_date || null,
+                amount: ev.amount || ev.money_raised?.amount || null,
+                type: ev.funding_type || ev.type || null,
+                investors: ev.investors?.map((inv: any) => inv.name || inv) || [],
+              }));
+            }
+            if (org.technology_names?.length && org.technology_names.length > (result.techStack?.length || 0)) {
+              result.techStack = org.technology_names.slice(0, 20);
+            }
+            if (org.intent_strength !== undefined && org.intent_strength !== null) {
+              result.intentStrength = org.intent_strength;
+            }
+            if (org.suborganizations?.length) {
+              result.suborganizations = org.suborganizations.map((s: any) => s.name || s);
+            }
+            if (org.num_suborganizations !== undefined) {
+              result.numSuborganizations = org.num_suborganizations;
+            }
+            console.log('[enrich] Apollo org enrichment: OK');
+          }
+        } catch (e) {
+          console.warn('[enrich] Apollo org enrichment failed:', e);
+        }
+      })());
+    }
+
+    // ── Task F: Apollo News Articles ──
+    if (APOLLO_API_KEY && apolloOrgId) {
+      parallelTasks.push((async () => {
+        try {
+          console.log('[enrich] Apollo news articles for org:', apolloOrgId);
+          const newsRes = await fetchWithTimeout('https://api.apollo.io/api/v1/news_articles/search', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache', 'X-Api-Key': APOLLO_API_KEY },
+            body: JSON.stringify({ organization_ids: [apolloOrgId], per_page: 5, page: 1 }),
+          });
+
+          if (newsRes.ok) {
+            const newsData = await parseJsonResponse(newsRes);
+            const articles = newsData.news_articles || newsData.articles || newsData.data || [];
+            result.newsArticles = (Array.isArray(articles) ? articles : []).slice(0, 5).map((a: any) => ({
+              title: a.title || a.headline || null,
+              url: a.url || a.link || null,
+              published_at: a.published_at || a.published_date || a.date || null,
+              source: a.source || a.publisher || null,
+            }));
+            console.log(`[enrich] Apollo news: ${result.newsArticles.length} articles`);
+          }
+        } catch (e) {
+          console.warn('[enrich] Apollo news articles failed:', e);
+        }
+      })());
+    }
 
     await Promise.allSettled(parallelTasks);
 
