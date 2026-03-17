@@ -10,7 +10,8 @@ import { toast } from 'sonner';
 import searchIcon from '@/assets/icon-search-3d.png';
 import linkedinLogo from '@/assets/linkedin-logo.png';
 
-const WTTJ_ICON = 'https://www.welcometothejungle.com/favicon.ico';
+const WTTJ_LOGO = 'https://www.welcometothejungle.com/assets/images/logos/wttj.svg';
+const WTTJ_FALLBACK = 'https://cdn.welcometothejungle.com/wttj-front/production/assets/images/logos/wttj.svg';
 
 /* ─── Types ─── */
 interface Props {
