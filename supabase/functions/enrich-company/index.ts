@@ -658,9 +658,25 @@ Deno.serve(async (req) => {
               const perplexityToken = domainLabel(perplexityDomain);
               // If Perplexity's domain matches the company name better, use it
               if (perplexityToken.includes(companyToken) || companyToken.includes(perplexityToken)) {
-                console.log(`[enrich] Overriding Apollo domain "${result.domain}" with Perplexity "${perplexityDomain}"`);
+                console.log(`[enrich] Overriding Apollo domain "${result.domain}" with Perplexity "${perplexityDomain}" — purging wrong Apollo data`);
                 result.domain = perplexityDomain;
                 result.websiteUrl = `https://${perplexityDomain}`;
+                // Purge all Apollo-sourced data since it belongs to the wrong company
+                result.officialName = null;
+                result.industry = null;
+                result.size = null;
+                result.location = null;
+                result.funding = null;
+                result.description = null;
+                result.linkedinUrl = null;
+                result.logoUrl = null;
+                result.techStack = [];
+                result.foundedYear = null;
+                result.linkedinFollowers = null;
+                result.annualRevenue = null;
+                result.keywords = [];
+                result.jobPostingsCount = null;
+                apolloOrg = null; // prevent downstream Apollo usage (people, jobs)
               }
             }
           } catch (e) {
