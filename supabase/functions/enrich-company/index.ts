@@ -3,7 +3,7 @@
  * Combines Apollo (company data) + Firecrawl (website scraping + web search fallback) to enrich company info.
  */
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.75.1';
+import { createClient } from 'npm:@supabase/supabase-js@2.75.1';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
