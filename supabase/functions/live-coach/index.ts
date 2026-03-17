@@ -47,22 +47,18 @@ Deno.serve(async (req) => {
     if (body.action === 'generate_intro') {
       const { candidate_name, candidate_headline, candidate_profile_summary, job_title, job_context, criteria } = body;
       
-      const introPrompt = `Tu es un coach de recrutement. Génère une introduction d'appel personnalisée et chaleureuse.
+      const introPrompt = `Tu es un coach de recrutement. Génère des bullet-points pour l'intro d'appel.
 
 CANDIDAT : ${candidate_name}
 HEADLINE : ${candidate_headline || 'N/A'}
-RÉSUMÉ PROFIL : ${candidate_profile_summary || 'N/A'}
 POSTE : ${job_title}
-CONTEXTE : ${job_context}
-CRITÈRES À ÉVALUER : ${JSON.stringify(criteria)}
 
-Génère une intro de 3-4 phrases que le recruteur peut dire mot pour mot au début de l'appel :
-- Commence par une accroche personnalisée basée sur le parcours/headline du candidat (pas générique)
-- Mentionne brièvement pourquoi tu l'appelles (le poste)
-- Donne le cadre de l'échange (durée ~30min, objectif : se connaître mutuellement)
-- Termine par une question ouverte pour lancer la conversation
+Retourne EXACTEMENT 3 bullet-points ultra-courts (max 8 mots chacun) :
+1. Accroche perso (basée sur le parcours du candidat)
+2. Pourquoi on appelle (le poste, 5 mots max)
+3. Question d'ouverture
 
-Sois naturel, humain, pas corporate. Tutoie si le contexte s'y prête (tech/startup).`;
+Format : juste les 3 lignes avec "•" devant, rien d'autre. Pas de phrase complète, pas de guillemets.`;
 
       const introController = new AbortController();
       const introTimeout = setTimeout(() => introController.abort(), 15000);
@@ -76,7 +72,7 @@ Sois naturel, humain, pas corporate. Tutoie si le contexte s'y prête (tech/star
           },
           body: JSON.stringify({
             model: "google/gemini-3-flash-preview",
-            max_tokens: 300,
+            max_tokens: 150,
             messages: [
               { role: "user", content: introPrompt },
             ],
@@ -159,14 +155,11 @@ SECTION "resolved_signals" :
 - Un signal est résolu quand la question a été posée ET le candidat a donné une réponse substantielle
 - Si aucun signal résolu, retourne []
 
-SECTION "next_topic" — PROACTIVITÉ :
-- Analyse quels critères n'ont PAS encore été couverts et le contexte de la conversation
-- Suggère LE prochain sujet à aborder avec :
-  • "topic" : le nom du critère ou sujet à aborder ensuite
-  • "transition" : une phrase de transition naturelle que le recruteur peut utiliser mot pour mot pour enchaîner
-  • "why" : pourquoi aborder ce sujet maintenant (1 phrase max)
-- Choisis le sujet le plus pertinent en fonction du flow naturel de la conversation (pas forcément le premier critère non couvert)
-- Si tous les critères sont couverts, suggère de passer aux questions du candidat ou de conclure
+SECTION "next_topic" — PROACTIVITÉ ULTRA-CONCISE :
+- "topic" : nom du critère (3-5 mots max)
+- "transition" : question de transition en 1 phrase courte (max 12 mots), pas un paragraphe
+- "why" : pourquoi maintenant (5 mots max)
+- Choisis le sujet le plus naturel par rapport au flow de la conversation
 
 IMPORTANT : Sois CONCIS et RAPIDE.`;
 

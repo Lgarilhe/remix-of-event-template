@@ -519,18 +519,14 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
       {/* Dashboard: Checklist + Dig Deeper */}
       {(isRecording || callStopped) && !report && (
         <div className="flex-1 min-h-0 overflow-y-auto p-3 space-y-3">
-          {/* Next Topic / Intro — proactive guidance (top for mobile visibility) */}
+          {/* Next Topic / Intro — compact bullet-point format */}
           {nextTopic && isRecording && (
-            <div className="border border-blue-300 bg-blue-50 dark:bg-blue-950/30 dark:border-blue-800 px-3 py-2.5 animate-in fade-in slide-in-from-top-1 duration-300">
-              <div className="flex items-center gap-1.5 mb-1.5">
-                <ArrowRight className="w-3 h-3 text-blue-600 dark:text-blue-400" />
-                <p className="text-[10px] font-bold uppercase tracking-wider text-blue-700 dark:text-blue-300">Prochain sujet → {nextTopic.topic}</p>
-              </div>
-              <p className="text-[11px] font-medium text-blue-900 dark:text-blue-100 italic whitespace-pre-line">
-                "{nextTopic.transition}"
-              </p>
-              <div className="flex items-center justify-between mt-1">
-                <p className="text-[9px] text-blue-600 dark:text-blue-400">{nextTopic.why}</p>
+            <div className="border border-blue-300 bg-blue-50 dark:bg-blue-950/30 dark:border-blue-800 px-3 py-2 animate-in fade-in slide-in-from-top-1 duration-300">
+              <div className="flex items-center justify-between mb-1">
+                <div className="flex items-center gap-1.5">
+                  <ArrowRight className="w-3 h-3 text-blue-600 dark:text-blue-400" />
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-blue-700 dark:text-blue-300">{nextTopic.topic}</p>
+                </div>
                 <button
                   onClick={() => { navigator.clipboard.writeText(nextTopic.transition); toast.success('Copié !'); }}
                   className="text-[9px] text-blue-500 hover:text-blue-700 flex items-center gap-0.5"
@@ -538,12 +534,15 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
                   <Copy className="w-2.5 h-2.5" />
                 </button>
               </div>
+              <p className="text-[10px] text-blue-900 dark:text-blue-100 whitespace-pre-line leading-relaxed">
+                {nextTopic.transition}
+              </p>
             </div>
           )}
           {loadingIntro && !nextTopic && (
-            <div className="border border-blue-200 bg-blue-50/50 dark:bg-blue-950/20 px-3 py-2.5 flex items-center gap-2">
+            <div className="border border-blue-200 bg-blue-50/50 dark:bg-blue-950/20 px-3 py-2 flex items-center gap-2">
               <Loader2 className="w-3 h-3 animate-spin text-blue-500" />
-              <p className="text-[10px] text-blue-600 dark:text-blue-400">Préparation de votre introduction…</p>
+              <p className="text-[10px] text-blue-600 dark:text-blue-400">Préparation intro…</p>
             </div>
           )}
           {/* Criteria checklist */}
