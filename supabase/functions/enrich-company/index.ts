@@ -64,7 +64,7 @@ function formatFollowers(n: number): string {
 }
 
 /* ── Perplexity search helper ── */
-async function perplexitySearch(apiKey: string, query: string, options?: { timeoutMs?: number; domainFilter?: string[] }): Promise<{ content: string; citations: string[] }> {
+async function perplexitySearch(apiKey: string, query: string, options?: { timeoutMs?: number; domainFilter?: string[]; model?: string }): Promise<{ content: string; citations: string[] }> {
   const body: any = {
     model: 'sonar',
     messages: [
