@@ -29,12 +29,83 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
-    const { company_name } = await req.json();
+    const { company_name, mode, domain: forceD } = await req.json();
     if (!company_name || company_name.trim().length < 2) {
       return new Response(JSON.stringify({ success: false, error: 'company_name required' }), {
         status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
+
+    // ── MODE: search — return candidate companies for the user to pick ──
+    if (mode === 'search') {
+      const APOLLO_KEY = Deno.env.get('APOLLO_API_KEY');
+      const FC_KEY = Deno.env.get('FIRECRAWL_API_KEY');
+      const candidates: { name: string; domain: string | null; description: string | null; logoUrl: string | null; location: string | null; source: string }[] = [];
+
+      // Apollo search (up to 5)
+      if (APOLLO_KEY) {
+        try {
+          const orgRes = await fetch('https://api.apollo.io/v1/mixed_companies/api_search', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-Api-Key': APOLLO_KEY },
+            body: JSON.stringify({ q_organization_name: company_name.trim(), per_page: 5 }),
+          });
+          if (orgRes.ok) {
+            const orgData = await orgRes.json();
+            const orgs = orgData.organizations || orgData.accounts || [];
+            for (const o of orgs.slice(0, 5)) {
+              const domain = o.primary_domain || o.website_url?.replace(/^https?:\/\//, '').replace(/\/.*/, '') || null;
+              candidates.push({
+                name: o.name || company_name.trim(),
+                domain,
+                description: o.short_description || o.seo_description || null,
+                logoUrl: o.logo_url || (domain ? `https://logo.clearbit.com/${domain}` : null),
+                location: [o.city, o.country].filter(Boolean).join(', ') || null,
+                source: 'apollo',
+              });
+            }
+          }
+        } catch (e) { console.warn('[search] Apollo failed:', e); }
+      }
+
+      // Firecrawl web search
+      if (FC_KEY) {
+        try {
+          const searchRes = await fetch('https://api.firecrawl.dev/v1/search', {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${FC_KEY}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ query: `"${company_name.trim()}" site officiel`, limit: 5 }),
+          });
+          if (searchRes.ok) {
+            const searchData = await searchRes.json();
+            for (const r of (searchData.data || []).slice(0, 5)) {
+              const url = r.url || '';
+              if (url.includes('linkedin.com') || url.includes('facebook.com') || url.includes('twitter.com')) continue;
+              const dm = url.match(/^https?:\/\/(?:www\.)?([^\/]+)/);
+              const domain = dm ? dm[1] : null;
+              // Skip if we already have this domain from Apollo
+              if (domain && candidates.some(c => c.domain === domain)) continue;
+              candidates.push({
+                name: r.title?.replace(/ [-–|].*$/, '').trim() || company_name.trim(),
+                domain,
+                description: r.description || null,
+                logoUrl: domain ? `https://logo.clearbit.com/${domain}` : null,
+                location: null,
+                source: 'web',
+              });
+            }
+          }
+        } catch (e) { console.warn('[search] Firecrawl failed:', e); }
+      }
+
+      console.log('[enrich-company] Search mode: found', candidates.length, 'candidates');
+      return new Response(JSON.stringify({ success: true, candidates }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // ── MODE: enrich (default) — if a domain was provided, use it directly ──
+    const forceDomain = typeof forceD === 'string' && forceD.length > 2 ? forceD.trim() : null;
 
     const APOLLO_API_KEY = Deno.env.get('APOLLO_API_KEY');
     const FIRECRAWL_API_KEY = Deno.env.get('FIRECRAWL_API_KEY');
