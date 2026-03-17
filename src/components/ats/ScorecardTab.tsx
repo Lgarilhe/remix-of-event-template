@@ -465,7 +465,7 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
                 return (
                   <div className="flex gap-4 mt-2">
                     {cats.map(cat => {
-                      const catCriteria = activeEval.criteria.filter(c => c.cat === cat && activeEval.ratings[c.id] != null);
+                      const catCriteria = activeEval.criteria.filter(c => c.category === cat && activeEval.ratings[c.id] != null);
                       if (catCriteria.length === 0) return null;
                       const avg = catCriteria.reduce((s, c) => s + activeEval.ratings[c.id], 0) / catCriteria.length;
                       const conf = catConf[cat];
