@@ -235,11 +235,11 @@ function isLikelyJobTitle(title: string): boolean {
   const lower = cleaned.toLowerCase();
 
   // Reject conjugated FR verbs (sentence indicators, not job titles)
-  if (/\b(sont|veulent|recherche|recrute|propose|offre|rejoi(?:gnez|ndre)|postulez|découvrez)\b/.test(lower)) return false;
+  if (/\b(est|sont|veulent|recherche|recrute|propose|offre|rejoi(?:gnez|ndre)|postulez|découvrez|contribuer|innover)\b/.test(lower)) return false;
 
   // Reject marketing/navigation patterns
   const bannedPatterns = [
-    /culture\s+d['']entreprise/,
+    /culture\s+d[''']entreprise/,
     /nos\s+valeurs/,
     /en\s+savoir\s+plus/,
     /voir\s+(?:toutes?\s+)?(?:les|nos)\s+offres/,
@@ -250,14 +250,10 @@ function isLikelyJobTitle(title: string): boolean {
     /qui\s+sommes/,
     /notre\s+histoire/,
     /postuler\s+maintenant/,
-    /offres?\s+d['']emploi/,
+    /offres?\s+d[''']emploi/,
     /diversité/,
     /mobilité\s+interne/,
     /parité/,
-    /cloud\s+souverain/,
-    /talents\s+qui\s+veulent/,
-    /recherche\s+des\s+talents/,
-    /profils\s+est\s+valorisée/,
   ];
   if (bannedPatterns.some((p) => p.test(lower))) return false;
 
