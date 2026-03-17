@@ -296,7 +296,7 @@ Deno.serve(async (req) => {
               }),
             });
             if (careersRes.ok) {
-              const careersData = await careersRes.json();
+              const careersData = await parseJsonResponse(careersRes);
               const careersMd = (careersData.data?.markdown || careersData.markdown || '').slice(0, 4000);
               if (careersMd.length > 100 && LOVABLE_API_KEY) {
                 // Use AI to extract structured job data from markdown
