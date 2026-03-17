@@ -449,10 +449,7 @@ export const SceneOrganization: React.FC<Props> = ({ onComplete }) => {
             </AnimatePresence>
 
             {/* Navigation */}
-            <div className="flex items-center justify-between pt-2">
-              <Button variant="outline" onClick={onBack} className="gap-2 border-2 border-foreground/20 text-sm">
-                <ArrowLeft className="w-4 h-4" /> Retour
-              </Button>
+            <div className="flex items-center justify-end pt-2">
               <Button
                 onClick={handleContinue}
                 disabled={isCreating}
