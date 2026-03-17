@@ -523,7 +523,7 @@ Deno.serve(async (req) => {
     // ═══════════════════════════════════════════════════════
     let apolloOrg: any = null;
 
-    if (APOLLO_API_KEY) {
+    if (APOLLO_API_KEY && selected_apollo_id !== '__none__') {
       try {
         console.log('[enrich] Apollo org search:', company_name);
         const orgEndpoints = [
