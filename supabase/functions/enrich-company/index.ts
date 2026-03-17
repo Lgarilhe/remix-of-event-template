@@ -517,11 +517,20 @@ Deno.serve(async (req) => {
           'https://api.apollo.io/v1/mixed_companies/api_search',
         ];
 
+        const apolloSearchPayload: Record<string, any> = {
+          q_organization_name: company_name.trim(),
+          per_page: 5,
+        };
+        // If country hint provided, add location filter
+        if (country) {
+          apolloSearchPayload.organization_locations = [country];
+        }
+
         for (const endpoint of orgEndpoints) {
           const orgRes = await fetchWithTimeout(endpoint, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'X-Api-Key': APOLLO_API_KEY },
-            body: JSON.stringify({ q_organization_name: company_name.trim(), per_page: 1 }),
+            body: JSON.stringify(apolloSearchPayload),
           });
 
           if (!orgRes.ok) {
@@ -533,8 +542,22 @@ Deno.serve(async (req) => {
           const list = Array.isArray(orgData.organizations || orgData.accounts || orgData.results || orgData.data || [])
             ? (orgData.organizations || orgData.accounts || orgData.results || orgData.data || [])
             : [];
-          apolloOrg = list[0] || null;
-          if (apolloOrg) break;
+
+          if (list.length > 0) {
+            // Score all candidates and pick the best match above threshold
+            const MATCH_THRESHOLD = 40;
+            const scored = list
+              .map((org: any) => ({ org, score: scoreApolloOrgMatch(org, company_name.trim(), country) }))
+              .filter((s: any) => s.score >= MATCH_THRESHOLD)
+              .sort((a: any, b: any) => b.score - a.score);
+
+            console.log('[enrich] Apollo org scores:', scored.map((s: any) => ({
+              name: s.org.name, country: s.org.country, score: s.score,
+            })));
+
+            apolloOrg = scored[0]?.org || null;
+            if (apolloOrg) break;
+          }
         }
       } catch (e) {
         console.warn('[enrich] Apollo org failed:', e);
