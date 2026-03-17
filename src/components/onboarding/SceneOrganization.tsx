@@ -128,6 +128,7 @@ export const SceneOrganization: React.FC<Props> = ({ onComplete, onBack }) => {
     setSources(SCAN_SOURCES.map((s) => ({ ...s, done: false })));
     setBubbles([]);
     setCompany(null);
+    setDisambiguationCandidates([]);
 
     // Animate sources completing one by one
     SCAN_SOURCES.forEach((_, i) => {
@@ -145,9 +146,10 @@ export const SceneOrganization: React.FC<Props> = ({ onComplete, onBack }) => {
 
     // Call the real enrichment API
     try {
-      const { data, error } = await invokeEdgeFunction<{ company: CompanyData }>('enrich-company', {
+      const { data, error } = await invokeEdgeFunction<{ company: CompanyData; disambiguate?: boolean; candidates?: ApolloCandidate[] }>('enrich-company', {
         company_name: name,
         country: 'France',
+        ...(selectedApolloId ? { selected_apollo_id: selectedApolloId } : {}),
       });
 
       if (error || !data?.success) {
@@ -163,10 +165,14 @@ export const SceneOrganization: React.FC<Props> = ({ onComplete, onBack }) => {
         return;
       }
 
+      // Handle disambiguation
+      if (data.disambiguate && data.candidates?.length) {
+        setDisambiguationCandidates(data.candidates);
+        setPhase('disambiguate');
+        return;
+      }
+
       const enriched = data.company;
-
-      // No more sessionStorage — data is passed via callback
-
       finishScan(enriched);
     } catch (err) {
       console.error('[SceneOrganization] Error:', err);
@@ -180,6 +186,10 @@ export const SceneOrganization: React.FC<Props> = ({ onComplete, onBack }) => {
       });
     }
   }, []);
+
+  const selectCandidate = useCallback((apolloId: string) => {
+    startScan(query.trim(), apolloId);
+  }, [query, startScan]);
 
   const handleInputChange = (val: string) => {
     setQuery(val);
