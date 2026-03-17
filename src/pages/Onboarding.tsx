@@ -59,10 +59,7 @@ const Onboarding = () => {
   const goNext = useCallback(() => {
     setDirection(1);
     setStep((s) => {
-      if (s === null) return 0;
-      // #7: Skip org step if already done
-      let next = s + 1;
-      if (next === 1 && orgCreated) next = 2;
+      let next = (s ?? 0) + 1;
       if (next >= STEP_COUNT) {
         queryClient.invalidateQueries({ queryKey: ['active-organization'] });
         navigate('/outreach', { replace: true });
@@ -70,7 +67,7 @@ const Onboarding = () => {
       }
       return next;
     });
-  }, [navigate, queryClient, orgCreated]);
+  }, [navigate, queryClient]);
 
   const completeAndNext = useCallback((stepIndex: number) => {
     markCompleted(stepIndex);
@@ -79,14 +76,8 @@ const Onboarding = () => {
 
   const goBack = useCallback(() => {
     setDirection(-1);
-    setStep((s) => {
-      if (s === null || s <= 0) return 0;
-      // #7/#8: Skip org step backwards if already done
-      let prev = s - 1;
-      if (prev === 1 && orgCreated) prev = 0;
-      return prev;
-    });
-  }, [orgCreated]);
+    setStep((s) => Math.max(0, (s ?? 0) - 1));
+  }, []);
 
   const handleOrgCreated = useCallback((data: OnboardingCompanyData) => {
     setOrgCreated(true);
