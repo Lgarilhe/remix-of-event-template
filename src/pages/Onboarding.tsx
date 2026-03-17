@@ -103,7 +103,7 @@ const Onboarding = () => {
             className="w-full"
           >
             {step === 0 && <SceneWelcome onNext={goNext} />}
-            {step === 1 && <OnboardingStepOrg onComplete={handleOrgCreated} />}
+            {step === 1 && <SceneOrganization onComplete={handleOrgCreated} onBack={goBack} />}
             {step === 2 && <OnboardingStepProfile onNext={goNext} onBack={goBack} />}
             {step === 3 && <OnboardingStepLinkedIn onNext={goNext} onBack={goBack} />}
             {step === 4 && (
