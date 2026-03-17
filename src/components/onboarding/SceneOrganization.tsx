@@ -19,6 +19,7 @@ import type { OnboardingCompanyData } from '@/pages/Onboarding';
 /* ─── Types ─── */
 interface Props {
   onComplete: (companyData: OnboardingCompanyData) => void;
+  onBack?: () => void;
 }
 
 interface Source {

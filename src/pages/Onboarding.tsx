@@ -131,7 +131,7 @@ const Onboarding = () => {
             className="w-full"
           >
             {step === 0 && <SceneWelcome onNext={() => completeAndNext(0)} />}
-            {step === 1 && <SceneOrganization onComplete={handleOrgCreated} />}
+            {step === 1 && <SceneOrganization onComplete={handleOrgCreated} onBack={goBack} />}
             {step === 2 && <SceneAudit companyData={companyData} onNext={() => completeAndNext(2)} onBack={goBack} />}
             {step === 3 && <SceneProfile onNext={() => completeAndNext(3)} onBack={goBack} />}
             {step === 4 && <SceneIntegrations onNext={() => completeAndNext(4)} onBack={goBack} />}
