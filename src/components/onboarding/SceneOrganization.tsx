@@ -101,7 +101,7 @@ export const SceneOrganization: React.FC<Props> = ({ onComplete }) => {
 
   const startScan = useCallback(async (name: string) => {
     const scanStartedAt = Date.now();
-    const totalAnimTime = 600 + AGENT_MESSAGES.length * 800 + 400;
+    const MIN_ANIM_TIME = 2000; // Show scan for at least 2s
 
     const finishScan = (nextCompany: CompanyData) => {
       const elapsed = Date.now() - scanStartedAt;
