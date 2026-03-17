@@ -118,6 +118,7 @@ export const SceneAudit: React.FC<Props> = ({ onNext, onBack }) => {
       const companyName = companyInfo?.name || '';
       const domain = companyInfo?.domain || null;
       const linkedinUrl = companyInfo?.linkedinUrl || null;
+      const careersUrl = companyInfo?.careersUrl || null;
 
       if (!companyName) {
         // No company — skip to results with empty data
@@ -136,6 +137,7 @@ export const SceneAudit: React.FC<Props> = ({ onNext, onBack }) => {
           company_name: companyName,
           domain,
           linkedin_url: linkedinUrl,
+          careers_url: careersUrl,
         });
 
         if (error || !data?.success) {

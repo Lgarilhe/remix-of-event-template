@@ -1,6 +1,12 @@
 /**
  * Employer Brand Audit Edge Function
  * Scrapes company web presence via Firecrawl, then scores via AI.
+ *
+ * Fixes applied:
+ * - fetchWithTimeout (15s) to prevent Supabase function timeout
+ * - Glassdoor via Firecrawl search (direct URL scraping blocked by captcha)
+ * - WTTJ via Firecrawl search fallback if slug-based URL returns 404
+ * - careers_url param accepted from enrich-company (instead of hardcoded /careers)
  */
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.75.1';
@@ -9,6 +15,13 @@ const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 };
+
+// Timeout wrapper — Firecrawl can be slow, 15s prevents Supabase edge function timeout (30s)
+function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timer));
+}
 
 interface ScrapedSource {
   id: string;
@@ -37,7 +50,7 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
-    const { company_name, domain, linkedin_url } = await req.json();
+    const { company_name, domain, linkedin_url, careers_url } = await req.json();
     if (!company_name) {
       return new Response(JSON.stringify({ success: false, error: 'company_name required' }), {
         status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -55,38 +68,35 @@ Deno.serve(async (req) => {
 
     const scrapedSources: ScrapedSource[] = [];
 
-    // Build URLs to scrape
+    // Build URLs to scrape (direct scrape — reliable sources only)
     const urlsToScrape: { id: string; label: string; url: string }[] = [];
 
     if (domain) {
       urlsToScrape.push({ id: 'website', label: 'Site web', url: `https://${domain}` });
+    }
+
+    // Use careers_url from enrich-company if available, otherwise try common paths
+    if (careers_url) {
+      urlsToScrape.push({ id: 'careers', label: 'Page carrière', url: careers_url });
+    } else if (domain) {
+      // Try the most common career page paths
       urlsToScrape.push({ id: 'careers', label: 'Page carrière', url: `https://${domain}/careers` });
     }
 
-    // Glassdoor search
-    urlsToScrape.push({
-      id: 'glassdoor', label: 'Glassdoor',
-      url: `https://www.glassdoor.fr/Avis/${encodeURIComponent(company_name)}-Avis-E0.htm`,
-    });
-
-    // WTTJ
-    const slug = company_name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
-    urlsToScrape.push({
-      id: 'wttj', label: 'Welcome to the Jungle',
-      url: `https://www.welcometothejungle.com/fr/companies/${slug}`,
-    });
-
-    // LinkedIn company page
+    // LinkedIn company page (direct scrape works via Firecrawl)
     if (linkedin_url) {
       urlsToScrape.push({ id: 'linkedin', label: 'Page LinkedIn', url: linkedin_url });
     }
+
+    // NOTE: Glassdoor and WTTJ are handled via Firecrawl SEARCH below (not direct URL scrape)
+    // because Glassdoor blocks scraping with captchas, and WTTJ slugs are unpredictable.
 
     // ── Scrape all sources in parallel via Firecrawl ──
     if (FIRECRAWL_API_KEY) {
       const scrapePromises = urlsToScrape.map(async (src) => {
         try {
           console.log(`[audit] Scraping ${src.id}: ${src.url}`);
-          const res = await fetch('https://api.firecrawl.dev/v1/scrape', {
+          const res = await fetchWithTimeout('https://api.firecrawl.dev/v1/scrape', {
             method: 'POST',
             headers: { Authorization: `Bearer ${FIRECRAWL_API_KEY}`, 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -124,10 +134,80 @@ Deno.serve(async (req) => {
       }
     }
 
+    // ── Glassdoor via search (direct scraping blocked by captcha) ──
+    if (FIRECRAWL_API_KEY) {
+      try {
+        console.log('[audit] Searching Glassdoor for:', company_name);
+        const gdRes = await fetchWithTimeout('https://api.firecrawl.dev/v1/search', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${FIRECRAWL_API_KEY}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            query: `${company_name} avis glassdoor.fr`,
+            limit: 3,
+            scrapeOptions: { formats: ['markdown'] },
+          }),
+        });
+        if (gdRes.ok) {
+          const gdData = await gdRes.json();
+          const gdResults = gdData.data || [];
+          const gdContent = gdResults
+            .filter((r: any) => (r.url || '').includes('glassdoor'))
+            .map((r: any) => (r.markdown || r.description || '').slice(0, 1500))
+            .join('\n---\n');
+          const gdUrl = gdResults.find((r: any) => (r.url || '').includes('glassdoor'))?.url || '';
+          scrapedSources.push({
+            id: 'glassdoor', label: 'Glassdoor', url: gdUrl,
+            content: gdContent || 'Aucun résultat Glassdoor trouvé.',
+            status: gdContent ? 'success' : 'not_found',
+          });
+        } else {
+          scrapedSources.push({ id: 'glassdoor', label: 'Glassdoor', url: '', content: null, status: 'error' });
+        }
+      } catch (e) {
+        console.warn('[audit] Glassdoor search failed:', e);
+        scrapedSources.push({ id: 'glassdoor', label: 'Glassdoor', url: '', content: null, status: 'error' });
+      }
+    }
+
+    // ── WTTJ via search (slug unpredictable) ──
+    if (FIRECRAWL_API_KEY) {
+      try {
+        console.log('[audit] Searching WTTJ for:', company_name);
+        const wttjRes = await fetchWithTimeout('https://api.firecrawl.dev/v1/search', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${FIRECRAWL_API_KEY}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            query: `${company_name} site:welcometothejungle.com`,
+            limit: 3,
+            scrapeOptions: { formats: ['markdown'] },
+          }),
+        });
+        if (wttjRes.ok) {
+          const wttjData = await wttjRes.json();
+          const wttjResults = wttjData.data || [];
+          const wttjContent = wttjResults
+            .filter((r: any) => (r.url || '').includes('welcometothejungle'))
+            .map((r: any) => (r.markdown || r.description || '').slice(0, 1500))
+            .join('\n---\n');
+          const wttjUrl = wttjResults.find((r: any) => (r.url || '').includes('welcometothejungle'))?.url || '';
+          scrapedSources.push({
+            id: 'wttj', label: 'Welcome to the Jungle', url: wttjUrl,
+            content: wttjContent || 'Aucune page WTTJ trouvée.',
+            status: wttjContent ? 'success' : 'not_found',
+          });
+        } else {
+          scrapedSources.push({ id: 'wttj', label: 'Welcome to the Jungle', url: '', content: null, status: 'error' });
+        }
+      } catch (e) {
+        console.warn('[audit] WTTJ search failed:', e);
+        scrapedSources.push({ id: 'wttj', label: 'Welcome to the Jungle', url: '', content: null, status: 'error' });
+      }
+    }
+
     // ── Firecrawl search for social media presence ──
     if (FIRECRAWL_API_KEY) {
       try {
-        const searchRes = await fetch('https://api.firecrawl.dev/v1/search', {
+        const searchRes = await fetchWithTimeout('https://api.firecrawl.dev/v1/search', {
           method: 'POST',
           headers: { Authorization: `Bearer ${FIRECRAWL_API_KEY}`, 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -154,7 +234,7 @@ Deno.serve(async (req) => {
     // ── Firecrawl search for job ads quality ──
     if (FIRECRAWL_API_KEY) {
       try {
-        const adsRes = await fetch('https://api.firecrawl.dev/v1/search', {
+        const adsRes = await fetchWithTimeout('https://api.firecrawl.dev/v1/search', {
           method: 'POST',
           headers: { Authorization: `Bearer ${FIRECRAWL_API_KEY}`, 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -208,7 +288,7 @@ ${sourcesSummary}`;
 
     console.log('[audit] Calling AI for analysis...');
 
-    const aiRes = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+    const aiRes = await fetchWithTimeout('https://ai.gateway.lovable.dev/v1/chat/completions', {
       method: 'POST',
       headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -251,7 +331,7 @@ ${sourcesSummary}`;
         }],
         tool_choice: { type: 'function', function: { name: 'return_audit' } },
       }),
-    });
+    }, 25000); // 25s timeout for AI (longer than default 15s)
 
     if (!aiRes.ok) {
       const errText = await aiRes.text();
