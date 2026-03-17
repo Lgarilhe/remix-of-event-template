@@ -99,7 +99,7 @@ Deno.serve(async (req) => {
           body: JSON.stringify({ q_organization_name: company_name.trim(), per_page: 1 }),
         });
         if (orgRes.ok) {
-          const orgData = await orgRes.json();
+          const orgData = await parseJsonResponse(orgRes);
           console.log('[enrich-company] Apollo response keys:', Object.keys(orgData));
           apolloOrg = orgData.organizations?.[0] || orgData.accounts?.[0] || null;
           if (!apolloOrg) {
