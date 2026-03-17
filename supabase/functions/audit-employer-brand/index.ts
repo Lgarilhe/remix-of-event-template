@@ -130,57 +130,75 @@ Deno.serve(async (req) => {
     // ═══════════════════════════════════════════════════════
     const tasks: Promise<void>[] = [];
 
-    // ── 1. Website (direct fetch) ──
+    // ── 1. Website (direct fetch → Perplexity fallback on 403/timeout) ──
     if (domain) {
       tasks.push((async () => {
-        try {
-          const text = await fetchPageAsText(`https://${domain}`);
-          scrapedSources.push({
-            id: 'website', label: 'Site web', url: `https://${domain}`,
-            content: text.length > 50 ? text : null,
-            status: text.length > 50 ? 'success' : 'not_found',
-          });
-        } catch (e) {
-          console.warn('[audit] Website fetch failed:', e);
+        let text: string | null = null;
+        try { text = await fetchPageAsText(`https://${domain}`); } catch (e) { console.warn('[audit] Website direct fetch failed:', e); }
+
+        if (text && text.length > 50) {
+          scrapedSources.push({ id: 'website', label: 'Site web', url: `https://${domain}`, content: text, status: 'success' });
+        } else if (PERPLEXITY_API_KEY) {
+          try {
+            console.log('[audit] Website Perplexity fallback');
+            const content = await perplexitySearch(PERPLEXITY_API_KEY,
+              `Décris le site web de "${company_name}" (${domain}). Proposition de valeur employeur, page carrière, témoignages, valeurs affichées ?`,
+              { domainFilter: [domain], timeoutMs: 10000 });
+            scrapedSources.push({ id: 'website', label: 'Site web', url: `https://${domain}`,
+              content: content?.length > 50 ? content : null, status: content?.length > 50 ? 'success' : 'not_found' });
+          } catch (e2) {
+            scrapedSources.push({ id: 'website', label: 'Site web', url: `https://${domain}`, content: null, status: 'error' });
+          }
+        } else {
           scrapedSources.push({ id: 'website', label: 'Site web', url: `https://${domain}`, content: null, status: 'error' });
         }
       })());
     }
 
-    // ── 2. Careers page (direct fetch) ──
+    // ── 2. Careers page (direct fetch → Perplexity fallback) ──
     const careerUrl = careers_url || (domain ? `https://${domain}/careers` : null);
     if (careerUrl) {
       tasks.push((async () => {
-        try {
-          const text = await fetchPageAsText(careerUrl);
-          scrapedSources.push({
-            id: 'careers', label: 'Page carrière', url: careerUrl,
-            content: text.length > 50 ? text : null,
-            status: text.length > 50 ? 'success' : 'not_found',
-          });
-        } catch (e) {
-          console.warn('[audit] Careers fetch failed:', e);
+        let text: string | null = null;
+        try { text = await fetchPageAsText(careerUrl); } catch (e) { console.warn('[audit] Careers direct fetch failed:', e); }
+
+        if (text && text.length > 50) {
+          scrapedSources.push({ id: 'careers', label: 'Page carrière', url: careerUrl, content: text, status: 'success' });
+        } else if (PERPLEXITY_API_KEY) {
+          try {
+            console.log('[audit] Careers Perplexity fallback');
+            const content = await perplexitySearch(PERPLEXITY_API_KEY,
+              `Décris la page carrière / recrutement de "${company_name}" (${domain}). Postes ouverts, avantages, culture, témoignages employés ?`,
+              { domainFilter: domain ? [domain] : undefined, timeoutMs: 10000 });
+            scrapedSources.push({ id: 'careers', label: 'Page carrière', url: careerUrl,
+              content: content?.length > 50 ? content : null, status: content?.length > 50 ? 'success' : 'not_found' });
+          } catch (e2) {
+            scrapedSources.push({ id: 'careers', label: 'Page carrière', url: careerUrl, content: null, status: 'error' });
+          }
+        } else {
           scrapedSources.push({ id: 'careers', label: 'Page carrière', url: careerUrl, content: null, status: 'error' });
         }
       })());
     }
 
-    // ── 3. LinkedIn company page (direct fetch) ──
-    if (linkedin_url) {
-      tasks.push((async () => {
-        try {
-          const text = await fetchPageAsText(linkedin_url);
-          scrapedSources.push({
-            id: 'linkedin', label: 'Page LinkedIn', url: linkedin_url,
-            content: text.length > 50 ? text : null,
-            status: text.length > 50 ? 'success' : 'not_found',
-          });
-        } catch (e) {
-          console.warn('[audit] LinkedIn fetch failed:', e);
-          scrapedSources.push({ id: 'linkedin', label: 'Page LinkedIn', url: linkedin_url, content: null, status: 'error' });
-        }
-      })());
-    }
+    // ── 3. LinkedIn (always via Perplexity — direct fetch blocked by auth wall) ──
+    tasks.push((async () => {
+      if (!PERPLEXITY_API_KEY) {
+        if (linkedin_url) scrapedSources.push({ id: 'linkedin', label: 'Page LinkedIn', url: linkedin_url || '', content: null, status: 'error' });
+        return;
+      }
+      try {
+        console.log('[audit] LinkedIn Perplexity search');
+        const content = await perplexitySearch(PERPLEXITY_API_KEY,
+          `Décris la page LinkedIn de "${company_name}"${linkedin_url ? ` (${linkedin_url})` : ''}. Followers, fréquence de publication, type de contenu, engagement, nombre d'employés, marque employeur visible.`,
+          { domainFilter: ['linkedin.com'], timeoutMs: 10000 });
+        scrapedSources.push({ id: 'linkedin', label: 'Page LinkedIn', url: linkedin_url || '',
+          content: content?.length > 50 ? content : null, status: content?.length > 50 ? 'success' : 'not_found' });
+      } catch (e) {
+        console.warn('[audit] LinkedIn search failed:', e);
+        scrapedSources.push({ id: 'linkedin', label: 'Page LinkedIn', url: linkedin_url || '', content: null, status: 'error' });
+      }
+    })());
 
     // ── 4. Glassdoor via Perplexity (search_domain_filter) ──
     if (PERPLEXITY_API_KEY) {
