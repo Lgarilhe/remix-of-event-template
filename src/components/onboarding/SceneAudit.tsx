@@ -69,7 +69,7 @@ const AGENT_MESSAGES = [
 ];
 
 /* ─── Component ─── */
-export const SceneAudit: React.FC<Props> = ({ onNext, onBack }) => {
+export const SceneAudit: React.FC<Props> = ({ companyData, onNext, onBack }) => {
   const [phase, setPhase] = useState<'scanning' | 'results' | 'error'>('scanning');
   const [sources, setSources] = useState<ScanSource[]>(SCAN_SOURCES.map(s => ({ ...s, done: false })));
   const [bubbles, setBubbles] = useState<AgentBubble[]>([]);
