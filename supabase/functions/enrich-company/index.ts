@@ -583,7 +583,7 @@ Deno.serve(async (req) => {
 
     if (apolloOrg) {
       const apolloDomain = normalizeDomain(apolloOrg.primary_domain) || normalizeDomain(apolloOrg.website_url);
-      result.name = apolloOrg.name || apolloOrg.organization_name || result.name;
+      result.officialName = apolloOrg.name || apolloOrg.organization_name || null;
       result.domain = apolloDomain;
       result.industry = [apolloOrg.industry, apolloOrg.industry_tag].filter(Boolean).join(' · ') || null;
       result.size = apolloOrg.estimated_num_employees ? String(apolloOrg.estimated_num_employees) : null;
