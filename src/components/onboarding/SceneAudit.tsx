@@ -98,6 +98,7 @@ export const SceneAudit: React.FC<Props> = ({ companyData, onNext, onBack }) => 
     // Animate sources and messages
     SCAN_SOURCES.forEach((_, i) => {
       setTimeout(() => {
+        if (!isMounted.current) return;
         setSources(prev => prev.map((s, j) => (j <= i ? { ...s, done: true } : s)));
       }, 600 + i * 550);
     });
