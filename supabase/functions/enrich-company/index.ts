@@ -492,7 +492,7 @@ Deno.serve(async (req) => {
               const urlLower = url.toLowerCase();
               const slug = companyNameLower.replace(/[^a-z0-9]+/g, '');
               if (!urlLower.includes(slug) && !urlLower.includes(companyNameLower.replace(/\s+/g, '-'))) continue;
-              jobSources.push({ title, location: '', source: 'WTTJ' });
+              jobSources.push({ title, location: '', source: 'WTTJ', url: url || undefined });
               accepted++;
             }
             console.log(`[enrich] WTTJ fallback: ${accepted} accepted`);
