@@ -1,10 +1,10 @@
 import { useEffect, useState, useMemo, useRef } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { ScorecardTab } from '@/components/ats/ScorecardTab';
 import { ATSCandidate } from '@/hooks/useATSData';
 import { EnrichedProfile } from '@/hooks/useProfileEnrichment';
-import { ArrowLeft, Maximize2, User, ChevronUp, ChevronDown, ExternalLink, MapPin, Building2, Briefcase, GraduationCap, Wrench, X } from 'lucide-react';
+import { ArrowLeft, User, ChevronUp, ChevronDown, ExternalLink, MapPin, Building2, Briefcase, GraduationCap, Wrench, X } from 'lucide-react';
 import { JobDetailDrawer } from '@/components/ats/JobDetailDrawer';
 import iconProfile3d from '@/assets/icon-profile-3d.png';
 import iconJob3d from '@/assets/icon-job-3d.png';
@@ -13,6 +13,8 @@ import { cn } from '@/lib/utils';
 
 export default function ScorecardFullPage() {
   const { candidateId } = useParams<{ candidateId: string }>();
+  const [searchParams] = useSearchParams();
+  const autoCoaching = searchParams.get('coaching') === '1';
   const navigate = useNavigate();
   const [candidate, setCandidate] = useState<ATSCandidate | null>(null);
   const [loading, setLoading] = useState(true);
@@ -167,10 +169,15 @@ export default function ScorecardFullPage() {
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-1 shrink-0">
-            <Maximize2 className="w-3.5 h-3.5 text-muted-foreground" />
-            <span className="text-[9px] text-muted-foreground uppercase tracking-wider font-medium hidden sm:inline">Plein écran</span>
-          </div>
+          {autoCoaching && (
+            <div className="flex items-center gap-1.5 shrink-0">
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500" />
+              </span>
+              <span className="text-[9px] text-red-500 uppercase tracking-wider font-bold hidden sm:inline">Coaching Live</span>
+            </div>
+          )}
         </div>
       </div>
 
@@ -180,6 +187,7 @@ export default function ScorecardFullPage() {
           candidate={candidate}
           enrichedProfile={enrichedProfile}
           onOpenProfile={() => setProfileOpen(true)}
+          autoStartCoaching={autoCoaching}
         />
       </div>
 

@@ -5,7 +5,7 @@ import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { invokeWithCredits } from '@/lib/invokeWithCredits';
 import { ATSCandidate } from '@/hooks/useATSData';
 import { EnrichedProfile } from '@/hooks/useProfileEnrichment';
-import { Loader2, Sparkles, Star, RotateCcw, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Pencil, Check, Plus, Trash2, AlertTriangle, MessageSquare, Copy, Mic, Maximize2 } from 'lucide-react';
+import { Loader2, Sparkles, Star, RotateCcw, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Pencil, Check, Plus, Trash2, AlertTriangle, MessageSquare, Copy, Mic } from 'lucide-react';
 import { Textarea } from '@/components/ui/textarea';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
@@ -19,6 +19,7 @@ interface ScorecardTabProps {
   candidate: ATSCandidate;
   enrichedProfile: EnrichedProfile | null;
   onOpenProfile?: () => void;
+  autoStartCoaching?: boolean;
 }
 
 interface Criterion {
@@ -71,7 +72,7 @@ const CATEGORY_CONFIG: Record<string, { label: string; color: string; dotColor: 
   motivation: { label: 'Motiv.', color: 'border-emerald-400 bg-emerald-50 text-emerald-700', dotColor: 'bg-emerald-400' },
 };
 
-export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedProfile, onOpenProfile }) => {
+export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedProfile, onOpenProfile, autoStartCoaching }) => {
   const navigate = useNavigate();
   const [evaluations, setEvaluations] = useState<EvaluationData[]>([]);
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
@@ -125,6 +126,13 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
     };
     load();
   }, [candidate.candidateId]);
+
+  // Auto-start coaching when prop is set (fullscreen mode)
+  useEffect(() => {
+    if (autoStartCoaching && !loading && evaluations.length > 0 && activeIndex !== null) {
+      setShowCoaching(true);
+    }
+  }, [autoStartCoaching, loading, evaluations.length, activeIndex]);
 
   // Generate criteria via AI
   const handleGenerate = useCallback(async () => {
@@ -426,7 +434,7 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
           </div>
           <div className="flex gap-0 self-end sm:self-auto">
             <button onClick={async () => {
-                // Auto-save before navigating to full page
+                // Auto-save before navigating to fullscreen coaching
                 if (activeEval) {
                   try {
                     const { data: { user } } = await supabase.auth.getUser();
@@ -456,15 +464,9 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
                     }
                   } catch (e) { console.warn('Auto-save before fullscreen failed:', e); }
                 }
-                navigate(`/ats/scorecard/${candidate.candidateId}`);
+                navigate(`/ats/scorecard/${candidate.candidateId}?coaching=1`);
               }}
-              className="relative overflow-hidden h-[30px] px-2 sm:px-3 flex items-center gap-1.5 border border-foreground text-foreground text-[10px] font-medium uppercase tracking-wider group">
-              <Maximize2 className="w-3 h-3 relative z-10" />
-              <span className="relative z-10 hidden sm:inline">Plein écran</span>
-              <span className="absolute inset-0 bg-foreground/5 translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
-            </button>
-            <button onClick={() => setShowCoaching(true)} disabled={showCoaching}
-              className="relative overflow-hidden h-[30px] px-2 sm:px-3 flex items-center gap-1.5 border border-red-500 text-red-500 text-[10px] font-medium uppercase tracking-wider group disabled:opacity-50 -ml-px">
+              className="relative overflow-hidden h-[30px] px-2 sm:px-3 flex items-center gap-1.5 border border-red-500 text-red-500 text-[10px] font-medium uppercase tracking-wider group -ml-px">
               <Mic className="w-3 h-3 relative z-10" />
               <span className="relative z-10 hidden sm:inline">Coaching Live</span>
               <span className="absolute inset-0 bg-red-50 translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
@@ -483,7 +485,7 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
           </div>
         </div>
 
-        {/* Live Coaching Panel */}
+        {/* Live Coaching Panel — only in fullscreen mode */}
         {showCoaching && activeEval && (
           <LiveCoachingPanel
             candidateId={candidate.candidateId}
@@ -499,7 +501,6 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
             criteria={activeEval.criteria}
             scorecardId={activeEval.id}
             onCriteriaUpdate={(updates) => {
-              // Auto-navigate to the most recently covered criterion
               if (!coachingAutoNav || !activeEval) return;
               const coveredIds = Object.entries(updates)
                 .filter(([, u]) => u.covered)
