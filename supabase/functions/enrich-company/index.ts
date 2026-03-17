@@ -391,3 +391,24 @@ function formatFunding(amount: number): string {
   if (amount >= 1_000) return `${(amount / 1_000).toFixed(0)}K€`;
   return `${amount}€`;
 }
+
+function extractRoles(jobs: any): { title: string; location: string; source: string }[] {
+  if (Array.isArray(jobs)) {
+    return jobs.slice(0, 15).map((j: any) => ({
+      title: j.title || j.name || j.role || 'Poste',
+      location: j.location || j.city || '',
+      source: 'Site carrière',
+    }));
+  }
+  if (jobs && typeof jobs === 'object') {
+    const arr = Object.values(jobs).find(v => Array.isArray(v)) as any[];
+    if (arr) {
+      return arr.slice(0, 15).map((j: any) => ({
+        title: j.title || j.name || j.role || 'Poste',
+        location: j.location || j.city || '',
+        source: 'Site carrière',
+      }));
+    }
+  }
+  return [];
+}
