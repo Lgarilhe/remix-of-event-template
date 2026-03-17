@@ -998,10 +998,10 @@ Deno.serve(async (req) => {
     if (!apolloJobsFound && PERPLEXITY_API_KEY && filteredCurrentJobs.length < 5 && authoritativeCount === 0) {
       try {
         console.log('[enrich] Perplexity job search fallback (current jobs:', filteredCurrentJobs.length, ')');
-        const domainHint = result.domain ? ` (site: ${result.domain})` : '';
+        const domainHint = result.domain ? ` (site officiel: ${result.domain})` : '';
         const { content, citations } = await perplexitySearch(
           PERPLEXITY_API_KEY,
-          `Liste uniquement les vrais postes ouverts en recrutement interne chez l'entreprise "${company_name.trim()}"${domainHint}. Ignore les articles, agrégateurs, descriptions marketing et pages qui ne sont pas des offres. Pour chaque poste, donne le titre exact et la ville.`,
+          `Liste UNIQUEMENT les postes ouverts actuellement publiés sur le site officiel${result.domain ? ' ' + result.domain : ''} OU sur la page LinkedIn/WTTJ officielle de "${company_name.trim()}"${domainHint}. Ignore complètement les offres sur les agrégateurs (Indeed, Glassdoor, Monster, Jobteaser, etc.) car elles peuvent être obsolètes ou concerner une autre entreprise homonyme. Pour chaque poste, donne le titre exact et la ville.`,
           {
             timeoutMs: 15000,
             domainFilter: result.domain ? [result.domain, 'welcometothejungle.com', 'linkedin.com'] : ['welcometothejungle.com', 'linkedin.com'],
@@ -1056,10 +1056,10 @@ Deno.serve(async (req) => {
                     c.includes('linkedin.com/jobs') || c.includes('welcometothejungle.com') || c.includes(result.domain || '__none__')
                   );
                   const source = j.source?.includes('LinkedIn')
-                    ? 'LinkedIn'
+                    ? 'LinkedIn (non vérifié)'
                     : j.source?.includes('WTTJ') || j.source?.includes('Welcome')
-                      ? 'WTTJ'
-                      : 'Web';
+                      ? 'WTTJ (non vérifié)'
+                      : 'Web (non vérifié)';
                   jobSources.push({ title: j.title, location: j.location || '', source, url: matchingCitation || undefined });
                 }
               });
