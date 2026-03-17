@@ -487,6 +487,109 @@ Deno.serve(async (req) => {
     }
     delete result._careersMd;
 
+    // ── 5. WTTJ (Welcome to the Jungle) job search ──
+    if (FIRECRAWL_API_KEY) {
+      try {
+        console.log('[enrich-company] Searching WTTJ for:', result.name);
+        const wttjSearch = await fetch('https://api.firecrawl.dev/v1/search', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${FIRECRAWL_API_KEY}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            query: `"${result.name}" site:welcometothejungle.com`,
+            limit: 3,
+            scrapeOptions: { formats: ['markdown'] },
+          }),
+        });
+        if (wttjSearch.ok) {
+          const wttjData = await wttjSearch.json();
+          const hits = wttjData.data || [];
+          // Find the company page on WTTJ
+          const companyPage = hits.find((h: any) => h.url && /welcometothejungle\.com\/.*\/companies\//.test(h.url));
+          if (companyPage) {
+            const wttjMd = companyPage.markdown || '';
+            if (wttjMd.length > 100 && LOVABLE_API_KEY) {
+              try {
+                const aiRes = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+                  method: 'POST',
+                  headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    model: 'google/gemini-2.5-flash-lite',
+                    messages: [
+                      { role: 'system', content: 'Extract job listings from this WTTJ page. Return ONLY valid JSON.' },
+                      { role: 'user', content: `Extract all open job positions from this Welcome to the Jungle page. Return a JSON array of objects with fields: title, location.\n\n${wttjMd.slice(0, 4000)}` },
+                    ],
+                    tools: [{
+                      type: 'function',
+                      function: {
+                        name: 'return_jobs',
+                        description: 'Return extracted job positions',
+                        parameters: {
+                          type: 'object',
+                          properties: { jobs: { type: 'array', items: { type: 'object', properties: { title: { type: 'string' }, location: { type: 'string' } } } } },
+                          required: ['jobs'],
+                          additionalProperties: false,
+                        },
+                      },
+                    }],
+                    tool_choice: { type: 'function', function: { name: 'return_jobs' } },
+                  }),
+                });
+                if (aiRes.ok) {
+                  const aiData = await aiRes.json();
+                  const toolCall = aiData.choices?.[0]?.message?.tool_calls?.[0];
+                  if (toolCall) {
+                    const parsed = JSON.parse(toolCall.function.arguments);
+                    const wttjRoles = (parsed.jobs || []).slice(0, 10).map((j: any) => ({
+                      title: j.title || 'Poste',
+                      location: j.location || '',
+                      source: 'WTTJ',
+                    }));
+                    // Merge, avoiding duplicates by title
+                    const existingTitles = new Set(result.openRoles.map((r: any) => r.title.toLowerCase()));
+                    for (const role of wttjRoles) {
+                      if (!existingTitles.has(role.title.toLowerCase())) {
+                        result.openRoles.push(role);
+                        existingTitles.add(role.title.toLowerCase());
+                      }
+                    }
+                    console.log('[enrich-company] WTTJ: added', wttjRoles.length, 'roles');
+                  }
+                }
+              } catch (e) { console.warn('[enrich-company] WTTJ AI parse failed:', e); }
+            }
+          }
+        }
+      } catch (e) { console.warn('[enrich-company] WTTJ search failed:', e); }
+    }
+
+    // ── 6. LinkedIn Jobs search ──
+    if (FIRECRAWL_API_KEY) {
+      try {
+        console.log('[enrich-company] Searching LinkedIn Jobs for:', result.name);
+        const liSearch = await fetch('https://api.firecrawl.dev/v1/search', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${FIRECRAWL_API_KEY}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            query: `"${result.name}" site:linkedin.com/jobs`,
+            limit: 5,
+          }),
+        });
+        if (liSearch.ok) {
+          const liData = await liSearch.json();
+          const hits = liData.data || [];
+          const existingTitles = new Set(result.openRoles.map((r: any) => r.title.toLowerCase()));
+          for (const hit of hits) {
+            const title = hit.title?.replace(/ [-–|].*$/, '').replace(/ at .*$/i, '').replace(/ chez .*$/i, '').trim();
+            if (title && title.length > 3 && !existingTitles.has(title.toLowerCase())) {
+              result.openRoles.push({ title, location: '', source: 'LinkedIn' });
+              existingTitles.add(title.toLowerCase());
+            }
+          }
+          console.log('[enrich-company] LinkedIn Jobs: total roles now', result.openRoles.length);
+        }
+      } catch (e) { console.warn('[enrich-company] LinkedIn jobs search failed:', e); }
+    }
+
     // ── 4. Generate insights with AI ──
     if (LOVABLE_API_KEY && (result.description || result.industry)) {
       try {
