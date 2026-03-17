@@ -104,6 +104,65 @@ async function fetchPageText(url: string, timeoutMs = 6000): Promise<string> {
   return readResponseTextWithTimeout(res, 5000);
 }
 
+async function scrapeWithFirecrawl(url: string, timeoutMs = 15000): Promise<string> {
+  const apiKey = Deno.env.get('FIRECRAWL_API_KEY');
+  if (!apiKey) throw new Error('FIRECRAWL_API_KEY missing');
+
+  const res = await fetchWithTimeout('https://api.firecrawl.dev/v1/scrape', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      url,
+      formats: ['markdown'],
+      onlyMainContent: true,
+      waitFor: 5000,
+    }),
+  }, timeoutMs);
+
+  if (!res.ok) {
+    const errText = await readResponseTextWithTimeout(res, 4000).catch(() => '');
+    throw new Error(`Firecrawl ${res.status}: ${errText.slice(0, 200)}`);
+  }
+
+  const data = await parseJsonResponse<any>(res, 8000);
+  const content = data?.data?.markdown || data?.markdown || data?.data?.html || '';
+  if (!content) throw new Error('Firecrawl empty response');
+  return String(content);
+}
+
+function toPlainText(input: string): string {
+  return input
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<nav[\s\S]*?<\/nav>/gi, ' ')
+    .replace(/<footer[\s\S]*?<\/footer>/gi, ' ')
+    .replace(/<header[\s\S]*?<\/header>/gi, ' ')
+    .replace(/!\[[^\]]*\]\([^)]+\)/g, ' ')
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '$1 $2')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;|&#160;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/&[a-z]+;/gi, ' ')
+    .replace(/&#\d+;/gi, ' ')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+}
+
+function looksLikeCookieWall(input: string): boolean {
+  const lower = input.toLowerCase();
+  return lower.includes('axeptio') || lower.includes('blah blah blah cookie') || lower.includes('cookie policy') || lower.includes('gestion des cookies');
+}
+
+function extractLeverBoardUrl(input: string): string | null {
+  const match = input.match(/https?:\/\/jobs\.lever\.co\/([a-z0-9-]+)(?:\/[a-f0-9-]+)?/i);
+  return match ? `https://jobs.lever.co/${match[1]}/` : null;
+}
+
 function buildSignals(apolloOrg: any, result: any): Array<{ type: string; label: string; color: string }> {
   const signals: Array<{ type: string; label: string; color: string }> = [];
   if (!apolloOrg) return signals;
