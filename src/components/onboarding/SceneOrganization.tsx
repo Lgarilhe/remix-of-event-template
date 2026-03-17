@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { useOrganization } from '@/hooks/useOrganization';
+import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { toast } from 'sonner';
 import searchIcon from '@/assets/icon-search-3d.png';
 
@@ -27,68 +28,20 @@ interface AgentBubble {
 
 interface CompanyData {
   name: string;
-  domain: string;
-  industry: string;
-  size: string;
-  location: string;
-  funding: string;
-  description: string;
+  domain: string | null;
+  industry: string | null;
+  size: string | null;
+  location: string | null;
+  funding: string | null;
+  description: string | null;
   techStack: string[];
   insights: string[];
-  decisionMakers: { name: string; role: string }[];
+  decisionMakers: { name: string; role: string; linkedinUrl?: string | null }[];
   openRoles: { title: string; location: string; source: string }[];
-  market: {
-    totalFrance: number;
-    idf: number;
-    remote: number;
-    activelyLooking: number;
-    competitors: { name: string; domain: string }[];
-    seniority: { junior: number; mid: number; senior: number; staff: number };
-  };
+  linkedinUrl: string | null;
+  websiteUrl: string | null;
+  logoUrl: string | null;
 }
-
-/* ─── Fake data ─── */
-const FAKE_COMPANY: CompanyData = {
-  name: 'Numspot',
-  domain: 'numspot.com',
-  industry: 'Cloud souverain · SaaS',
-  size: '50-200',
-  location: 'Paris, France',
-  funding: 'Série A · 25M€',
-  description: 'Cloud souverain français dédié aux organisations publiques et entreprises sensibles.',
-  techStack: ['Kubernetes', 'Go', 'Terraform', 'OpenStack', 'Python', 'React', 'PostgreSQL'],
-  insights: [
-    '🔥 Marché du cloud souverain en forte croissance (+34% YoY)',
-    '⚡ Profils DevOps/SRE très demandés — délai moyen de recrutement : 67 jours',
-    '📈 L\'entreprise a doublé ses effectifs en 12 mois',
-    '🎯 Concurrence directe avec OVHcloud, Scaleway et Outscale',
-  ],
-  decisionMakers: [
-    { name: 'Alain Issarni', role: 'CEO' },
-    { name: 'Sophie Viger', role: 'VP Engineering' },
-    { name: 'Marc Dufour', role: 'DRH' },
-  ],
-  openRoles: [
-    { title: 'Lead DevOps Engineer', location: 'Paris', source: 'LinkedIn' },
-    { title: 'Product Manager Cloud', location: 'Paris', source: 'WTTJ' },
-    { title: 'Ingénieur SRE', location: 'Remote', source: 'LinkedIn' },
-    { title: 'Développeur Go Senior', location: 'Paris', source: 'Site carrière' },
-    { title: 'Data Engineer', location: 'Lyon', source: 'WTTJ' },
-  ],
-  market: {
-    totalFrance: 12400,
-    idf: 7800,
-    remote: 3200,
-    activelyLooking: 1850,
-    competitors: [
-      { name: 'OVHcloud', domain: 'ovhcloud.com' },
-      { name: 'Scaleway', domain: 'scaleway.com' },
-      { name: 'Outscale', domain: 'outscale.com' },
-      { name: 'Clever Cloud', domain: 'clever-cloud.com' },
-    ],
-    seniority: { junior: 15, mid: 40, senior: 32, staff: 13 },
-  },
-};
 
 const SCAN_SOURCES: Source[] = [
   { id: 'apollo', label: 'Apollo', done: false },
@@ -100,10 +53,10 @@ const SCAN_SOURCES: Source[] = [
 
 const AGENT_MESSAGES = [
   "Je recherche des infos sur cette société...",
-  "J'ai trouvé le domaine et les données Apollo 🎯",
-  "Analyse du profil LinkedIn entreprise...",
-  "Scan des offres d'emploi en cours...",
-  "Récupération des données marché...",
+  "Enrichissement via Apollo 🎯",
+  "Scraping du site web en cours...",
+  "Recherche des décideurs clés...",
+  "Analyse des postes ouverts...",
   "Enrichissement terminé ! Voici ce que j'ai trouvé 👇",
 ];
 
@@ -126,7 +79,7 @@ export const SceneOrganization: React.FC<Props> = ({ onComplete, onBack }) => {
     bubblesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [bubbles]);
 
-  const startScan = useCallback((name: string) => {
+  const startScan = useCallback(async (name: string) => {
     setPhase('scanning');
     setSources(SCAN_SOURCES.map((s) => ({ ...s, done: false })));
     setBubbles([]);
@@ -146,18 +99,69 @@ export const SceneOrganization: React.FC<Props> = ({ onComplete, onBack }) => {
       }, 600 + i * 800);
     });
 
-    // Show results
-    setTimeout(() => {
-      setCompany({ ...FAKE_COMPANY, name });
-      setPhase('results');
-    }, 600 + AGENT_MESSAGES.length * 800 + 400);
+    // Call the real enrichment API
+    try {
+      const { data, error } = await invokeEdgeFunction<{ company: CompanyData }>('enrich-company', {
+        company_name: name,
+      });
+
+      if (error || !data?.success) {
+        console.error('[SceneOrganization] Enrichment failed:', error || data?.error);
+        toast.error("Impossible d'enrichir cette société. Les données de base seront utilisées.");
+        // Fallback: use just the name
+        const fallback: CompanyData = {
+          name,
+          domain: null, industry: null, size: null, location: null,
+          funding: null, description: null, techStack: [], insights: [],
+          decisionMakers: [], openRoles: [], linkedinUrl: null, websiteUrl: null, logoUrl: null,
+        };
+        const totalAnimTime = 600 + AGENT_MESSAGES.length * 800 + 400;
+        setTimeout(() => {
+          setCompany(fallback);
+          setPhase('results');
+        }, totalAnimTime);
+        return;
+      }
+
+      const enriched = data.company;
+
+      // Store for SceneAudit
+      try {
+        sessionStorage.setItem('onboarding_company', JSON.stringify({
+          name: enriched.name,
+          domain: enriched.domain,
+          linkedinUrl: enriched.linkedinUrl,
+        }));
+      } catch {}
+
+      // Wait for animations to finish then show results
+      const totalAnimTime = 600 + AGENT_MESSAGES.length * 800 + 400;
+      setTimeout(() => {
+        setCompany(enriched);
+        setPhase('results');
+      }, totalAnimTime);
+    } catch (err) {
+      console.error('[SceneOrganization] Error:', err);
+      toast.error("Erreur lors de l'enrichissement.");
+      const fallback: CompanyData = {
+        name,
+        domain: null, industry: null, size: null, location: null,
+        funding: null, description: null, techStack: [], insights: [],
+        decisionMakers: [], openRoles: [], linkedinUrl: null, websiteUrl: null, logoUrl: null,
+      };
+      const totalAnimTime = 600 + AGENT_MESSAGES.length * 800 + 400;
+      setTimeout(() => {
+        setCompany(fallback);
+        setPhase('results');
+      }, totalAnimTime);
+    }
   }, []);
 
   const handleInputChange = (val: string) => {
     setQuery(val);
     if (debounceRef.current) clearTimeout(debounceRef.current);
     if (val.trim().length >= 3) {
-      debounceRef.current = setTimeout(() => startScan(val.trim()), 600);
+      debounceRef.current = setTimeout(() => startScan(val.trim()), 800);
     } else {
       setPhase('idle');
     }
@@ -195,7 +199,6 @@ export const SceneOrganization: React.FC<Props> = ({ onComplete, onBack }) => {
   const tabs = [
     { key: 'overview' as const, label: 'Aperçu' },
     { key: 'roles' as const, label: `Postes ouverts (${company?.openRoles.length ?? 0})` },
-    { key: 'market' as const, label: 'Marché' },
   ];
 
   return (
@@ -293,10 +296,10 @@ export const SceneOrganization: React.FC<Props> = ({ onComplete, onBack }) => {
               style={{ boxShadow: '4px 4px 0px 0px hsl(var(--brutal-accent))' }}
             >
               <img
-                src={`https://logo.clearbit.com/${company.domain}`}
+                src={company.logoUrl || (company.domain ? `https://logo.clearbit.com/${company.domain}` : `https://ui-avatars.com/api/?name=${encodeURIComponent(company.name)}&background=random&size=48`)}
                 alt={company.name}
                 className="w-12 h-12 border border-foreground/10 bg-background object-contain"
-                onError={(e) => { (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${company.name}&background=random&size=48`; }}
+                onError={(e) => { (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${encodeURIComponent(company.name)}&background=random&size=48`; }}
               />
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
@@ -308,11 +311,11 @@ export const SceneOrganization: React.FC<Props> = ({ onComplete, onBack }) => {
                     Enrichi
                   </span>
                 </div>
-                <p className="text-xs text-muted-foreground mt-0.5">{company.industry}</p>
+                {company.industry && <p className="text-xs text-muted-foreground mt-0.5">{company.industry}</p>}
                 <div className="flex items-center gap-3 mt-2 text-xs text-muted-foreground flex-wrap">
-                  <span className="flex items-center gap-1"><Users className="w-3 h-3" />{company.size}</span>
-                  <span className="flex items-center gap-1"><MapPin className="w-3 h-3" />{company.location}</span>
-                  <span className="flex items-center gap-1"><TrendingUp className="w-3 h-3" />{company.funding}</span>
+                  {company.size && <span className="flex items-center gap-1"><Users className="w-3 h-3" />{company.size}</span>}
+                  {company.location && <span className="flex items-center gap-1"><MapPin className="w-3 h-3" />{company.location}</span>}
+                  {company.funding && <span className="flex items-center gap-1"><TrendingUp className="w-3 h-3" />{company.funding}</span>}
                 </div>
               </div>
             </div>
@@ -351,7 +354,6 @@ export const SceneOrganization: React.FC<Props> = ({ onComplete, onBack }) => {
                     onToggle={toggleRole}
                   />
                 )}
-                {activeTab === 'market' && <TabMarket market={company.market} />}
               </motion.div>
             </AnimatePresence>
 
@@ -380,45 +382,56 @@ export const SceneOrganization: React.FC<Props> = ({ onComplete, onBack }) => {
 /* ─── Tab: Overview ─── */
 const TabOverview: React.FC<{ company: CompanyData }> = ({ company }) => (
   <div className="space-y-4">
+    {/* Description */}
+    {company.description && (
+      <p className="text-sm text-foreground/80">{company.description}</p>
+    )}
+
     {/* Insights */}
-    <div className="border border-foreground/10 p-4 space-y-2">
-      <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Ce qu'on a trouvé</h4>
-      {company.insights.map((insight, i) => (
-        <p key={i} className="text-sm text-foreground/80">{insight}</p>
-      ))}
-    </div>
+    {company.insights.length > 0 && (
+      <div className="border border-foreground/10 p-4 space-y-2">
+        <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Ce qu'on a trouvé</h4>
+        {company.insights.map((insight, i) => (
+          <p key={i} className="text-sm text-foreground/80">{insight}</p>
+        ))}
+      </div>
+    )}
 
     {/* Tech stack */}
-    <div>
-      <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2">Stack technique</h4>
-      <div className="flex flex-wrap gap-1.5">
-        {company.techStack.map((tech) => (
-          <span key={tech} className="text-[11px] px-2 py-0.5 border border-foreground/15 bg-muted/50 font-medium">
-            {tech}
-          </span>
-        ))}
+    {company.techStack.length > 0 && (
+      <div>
+        <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2">Stack technique</h4>
+        <div className="flex flex-wrap gap-1.5">
+          {company.techStack.map((tech) => (
+            <span key={tech} className="text-[11px] px-2 py-0.5 border border-foreground/15 bg-muted/50 font-medium">
+              {tech}
+            </span>
+          ))}
+        </div>
       </div>
-    </div>
+    )}
 
     {/* Decision makers */}
-    <div>
-      <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2">Décideurs clés</h4>
-      <div className="space-y-2">
-        {company.decisionMakers.map((dm) => (
-          <div key={dm.name} className="flex items-center gap-3">
-            <img
-              src={`https://ui-avatars.com/api/?name=${encodeURIComponent(dm.name)}&background=random&size=32&font-size=0.4`}
-              alt={dm.name}
-              className="w-8 h-8 border border-foreground/10"
-            />
-            <div>
-              <span className="text-sm font-medium">{dm.name}</span>
-              <span className="text-xs text-muted-foreground ml-2">{dm.role}</span>
+    {company.decisionMakers.length > 0 && (
+      <div>
+        <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2">Décideurs clés</h4>
+        <div className="space-y-2">
+          {company.decisionMakers.map((dm) => (
+            <div key={dm.name} className="flex items-center gap-3">
+              <img
+                src={`https://ui-avatars.com/api/?name=${encodeURIComponent(dm.name)}&background=random&size=32&font-size=0.4`}
+                alt={dm.name}
+                className="w-8 h-8 border border-foreground/10"
+              />
+              <div>
+                <span className="text-sm font-medium">{dm.name}</span>
+                <span className="text-xs text-muted-foreground ml-2">{dm.role}</span>
+              </div>
             </div>
-          </div>
-        ))}
+          ))}
+        </div>
       </div>
-    </div>
+    )}
   </div>
 );
 
@@ -429,6 +442,11 @@ const TabRoles: React.FC<{
   onToggle: (idx: number) => void;
 }> = ({ roles, selected, onToggle }) => (
   <div className="space-y-3">
+    {roles.length === 0 && (
+      <p className="text-sm text-muted-foreground text-center py-4">
+        Aucun poste ouvert détecté. Vous pourrez en créer manuellement plus tard.
+      </p>
+    )}
     {roles.map((role, i) => (
       <label
         key={i}
@@ -443,87 +461,18 @@ const TabRoles: React.FC<{
             <span className="text-sm font-medium truncate">{role.title}</span>
             <span className="text-[10px] px-1.5 py-0.5 bg-muted text-muted-foreground font-mono">{role.source}</span>
           </div>
-          <span className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
-            <MapPin className="w-3 h-3" />{role.location}
-          </span>
+          {role.location && (
+            <span className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
+              <MapPin className="w-3 h-3" />{role.location}
+            </span>
+          )}
         </div>
       </label>
     ))}
-    <p className="text-xs text-muted-foreground italic pt-1">
-      Les postes sélectionnés seront créés comme missions dans votre espace.
-    </p>
+    {roles.length > 0 && (
+      <p className="text-xs text-muted-foreground italic pt-1">
+        Les postes sélectionnés seront créés comme missions dans votre espace.
+      </p>
+    )}
   </div>
 );
-
-/* ─── Tab: Market ─── */
-const TabMarket: React.FC<{ market: CompanyData['market'] }> = ({ market }) => {
-  const kpis = [
-    { label: 'Total France', value: market.totalFrance.toLocaleString('fr-FR'), color: 'hsl(var(--skalr-purple))' },
-    { label: 'Île-de-France', value: market.idf.toLocaleString('fr-FR'), color: 'hsl(var(--skalr-blue))' },
-    { label: 'Remote', value: market.remote.toLocaleString('fr-FR'), color: 'hsl(var(--skalr-cyan))' },
-    { label: 'En recherche active', value: market.activelyLooking.toLocaleString('fr-FR'), color: 'hsl(var(--skalr-green))' },
-  ];
-
-  const seniorityTotal = market.seniority.junior + market.seniority.mid + market.seniority.senior + market.seniority.staff;
-  const senioritySegments = [
-    { label: 'Junior', pct: market.seniority.junior, color: 'hsl(var(--skalr-cyan))' },
-    { label: 'Mid', pct: market.seniority.mid, color: 'hsl(var(--skalr-blue))' },
-    { label: 'Senior', pct: market.seniority.senior, color: 'hsl(var(--skalr-purple))' },
-    { label: 'Staff+', pct: market.seniority.staff, color: 'hsl(var(--skalr-pink))' },
-  ];
-
-  return (
-    <div className="space-y-5">
-      {/* KPIs */}
-      <div className="grid grid-cols-2 gap-3">
-        {kpis.map((k) => (
-          <div key={k.label} className="border border-foreground/10 p-3 text-center">
-            <div className="text-2xl font-bold" style={{ color: k.color }}>{k.value}</div>
-            <div className="text-[11px] text-muted-foreground uppercase tracking-wider mt-1">{k.label}</div>
-          </div>
-        ))}
-      </div>
-
-      {/* Competitors */}
-      <div>
-        <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2">
-          Entreprises qui recrutent les mêmes profils
-        </h4>
-        <div className="flex flex-wrap gap-3">
-          {market.competitors.map((c) => (
-            <div key={c.name} className="flex items-center gap-2 border border-foreground/10 px-3 py-2">
-              <img
-                src={`https://logo.clearbit.com/${c.domain}`}
-                alt={c.name}
-                className="w-5 h-5 object-contain"
-                onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-              />
-              <span className="text-sm font-medium">{c.name}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Seniority bar */}
-      <div>
-        <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2">Répartition séniorité</h4>
-        <div className="flex h-3 w-full overflow-hidden border border-foreground/10">
-          {senioritySegments.map((seg) => (
-            <div
-              key={seg.label}
-              style={{ width: `${seg.pct}%`, background: seg.color }}
-              className="h-full transition-all"
-            />
-          ))}
-        </div>
-        <div className="flex justify-between mt-1.5">
-          {senioritySegments.map((seg) => (
-            <span key={seg.label} className="text-[10px] text-muted-foreground">
-              {seg.label} {seg.pct}%
-            </span>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-};
