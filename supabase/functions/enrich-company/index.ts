@@ -440,6 +440,7 @@ Deno.serve(async (req) => {
                 location: [job.city, job.state, job.country].filter(Boolean).join(', '),
                 source: 'Apollo',
                 department: job.department || undefined,
+                url: job.url || job.linkedin_url || undefined,
               });
             }
           }
