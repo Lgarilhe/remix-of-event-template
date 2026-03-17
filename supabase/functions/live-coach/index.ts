@@ -72,7 +72,7 @@ Format : juste les 3 lignes avec "•" devant, rien d'autre. Pas de phrase compl
           },
           body: JSON.stringify({
             model: "google/gemini-3-flash-preview",
-            max_tokens: 300,
+            max_tokens: 150,
             messages: [
               { role: "user", content: introPrompt },
             ],
