@@ -85,6 +85,18 @@ export const SceneOrganization: React.FC<Props> = ({ onComplete, onBack }) => {
   }, [bubbles]);
 
   const startScan = useCallback(async (name: string) => {
+    const scanStartedAt = Date.now();
+    const totalAnimTime = 600 + AGENT_MESSAGES.length * 800 + 400;
+
+    const finishScan = (nextCompany: CompanyData) => {
+      const elapsed = Date.now() - scanStartedAt;
+      const remaining = Math.max(0, totalAnimTime - elapsed);
+      setTimeout(() => {
+        setCompany(nextCompany);
+        setPhase('results');
+      }, remaining);
+    };
+
     setPhase('scanning');
     setSources(SCAN_SOURCES.map((s) => ({ ...s, done: false })));
     setBubbles([]);
@@ -113,25 +125,18 @@ export const SceneOrganization: React.FC<Props> = ({ onComplete, onBack }) => {
       if (error || !data?.success) {
         console.error('[SceneOrganization] Enrichment failed:', error || data?.error);
         toast.error("Impossible d'enrichir cette société. Les données de base seront utilisées.");
-        // Fallback: use just the name
-        const fallback: CompanyData = {
+        finishScan({
           name,
           domain: null, industry: null, size: null, location: null,
           funding: null, description: null, techStack: [], insights: [],
           decisionMakers: [], openRoles: [], linkedinUrl: null, websiteUrl: null, logoUrl: null,
           careersUrl: null,
-        };
-        const totalAnimTime = 600 + AGENT_MESSAGES.length * 800 + 400;
-        setTimeout(() => {
-          setCompany(fallback);
-          setPhase('results');
-        }, totalAnimTime);
+        });
         return;
       }
 
       const enriched = data.company;
 
-      // Store for SceneAudit
       try {
         sessionStorage.setItem('onboarding_company', JSON.stringify({
           name: enriched.name,
@@ -141,27 +146,17 @@ export const SceneOrganization: React.FC<Props> = ({ onComplete, onBack }) => {
         }));
       } catch {}
 
-      // Wait for animations to finish then show results
-      const totalAnimTime = 600 + AGENT_MESSAGES.length * 800 + 400;
-      setTimeout(() => {
-        setCompany(enriched);
-        setPhase('results');
-      }, totalAnimTime);
+      finishScan(enriched);
     } catch (err) {
       console.error('[SceneOrganization] Error:', err);
       toast.error("Erreur lors de l'enrichissement.");
-      const fallback: CompanyData = {
+      finishScan({
         name,
         domain: null, industry: null, size: null, location: null,
         funding: null, description: null, techStack: [], insights: [],
         decisionMakers: [], openRoles: [], linkedinUrl: null, websiteUrl: null, logoUrl: null,
         careersUrl: null,
-      };
-      const totalAnimTime = 600 + AGENT_MESSAGES.length * 800 + 400;
-      setTimeout(() => {
-        setCompany(fallback);
-        setPhase('results');
-      }, totalAnimTime);
+      });
     }
   }, []);
 
