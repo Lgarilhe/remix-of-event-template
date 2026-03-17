@@ -187,6 +187,7 @@ export default function ScorecardFullPage() {
           candidate={candidate}
           enrichedProfile={enrichedProfile}
           onOpenProfile={() => setProfileOpen(true)}
+          autoStartCoaching={autoCoaching}
         />
       </div>
 
