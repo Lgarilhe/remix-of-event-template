@@ -205,7 +205,7 @@ export const SceneAudit: React.FC<Props> = ({ onNext, onBack }) => {
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -10 }}
-            className="grid grid-cols-[200px_1fr] gap-4 min-h-[280px]"
+            className="flex flex-col sm:grid sm:grid-cols-[200px_1fr] gap-4 min-h-[200px] sm:min-h-[280px]"
           >
             {/* Sources list */}
             <div className="space-y-1.5">
