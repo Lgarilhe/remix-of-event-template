@@ -461,44 +461,79 @@ const TabOverview: React.FC<{ company: CompanyData }> = ({ company }) => (
   </div>
 );
 
+/* ─── Dedupe helper ─── */
+function dedupeRoles(roles: CompanyData['openRoles']) {
+  const seen = new Map<string, number>();
+  return roles.filter((role, i) => {
+    const key = role.title.toLowerCase().replace(/[\s\-–—()\/,]+/g, ' ').trim();
+    if (seen.has(key)) return false;
+    seen.set(key, i);
+    return true;
+  });
+}
+
+/* ─── Source badge with logo ─── */
+const SourceBadge: React.FC<{ source: string }> = ({ source }) => {
+  const lower = source.toLowerCase();
+  const isLinkedIn = lower.includes('linkedin');
+  const isWTTJ = lower.includes('wttj') || lower.includes('welcome');
+
+  return (
+    <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 bg-muted text-muted-foreground font-mono shrink-0">
+      {isLinkedIn && <img src={linkedinLogo} alt="LinkedIn" className="w-3 h-3 object-contain" />}
+      {isWTTJ && <img src={WTTJ_ICON} alt="WTTJ" className="w-3 h-3 object-contain" />}
+      {source}
+    </span>
+  );
+};
+
 /* ─── Tab: Open Roles ─── */
 const TabRoles: React.FC<{
   roles: CompanyData['openRoles'];
   selected: Set<number>;
   onToggle: (idx: number) => void;
-}> = ({ roles, selected, onToggle }) => (
-  <div className="space-y-3">
-    {roles.length === 0 && (
-      <p className="text-sm text-muted-foreground text-center py-4">
-        Aucun poste ouvert détecté. Vous pourrez en créer manuellement plus tard.
-      </p>
-    )}
-    {roles.map((role, i) => (
-      <label
-        key={i}
-        className="flex items-center gap-3 p-3 border border-foreground/10 hover:border-foreground/25 transition-colors cursor-pointer"
-      >
-        <Checkbox
-          checked={selected.has(i)}
-          onCheckedChange={() => onToggle(i)}
-        />
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-medium truncate">{role.title}</span>
-            <span className="text-[10px] px-1.5 py-0.5 bg-muted text-muted-foreground font-mono">{role.source}</span>
+}> = ({ roles, selected, onToggle }) => {
+  const uniqueRoles = dedupeRoles(roles);
+
+  return (
+    <div className="space-y-3">
+      {uniqueRoles.length === 0 && (
+        <p className="text-sm text-muted-foreground text-center py-4">
+          Aucun poste ouvert détecté. Vous pourrez en créer manuellement plus tard.
+        </p>
+      )}
+      {uniqueRoles.length < roles.length && (
+        <p className="text-[10px] text-muted-foreground">
+          {roles.length - uniqueRoles.length} doublon{roles.length - uniqueRoles.length > 1 ? 's' : ''} masqué{roles.length - uniqueRoles.length > 1 ? 's' : ''}
+        </p>
+      )}
+      {uniqueRoles.map((role, i) => (
+        <label
+          key={i}
+          className="flex items-center gap-3 p-3 border border-foreground/10 hover:border-foreground/25 transition-colors cursor-pointer"
+        >
+          <Checkbox
+            checked={selected.has(i)}
+            onCheckedChange={() => onToggle(i)}
+          />
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-medium truncate">{role.title}</span>
+              <SourceBadge source={role.source} />
+            </div>
+            {role.location && (
+              <span className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
+                <MapPin className="w-3 h-3" />{role.location}
+              </span>
+            )}
           </div>
-          {role.location && (
-            <span className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
-              <MapPin className="w-3 h-3" />{role.location}
-            </span>
-          )}
-        </div>
-      </label>
-    ))}
-    {roles.length > 0 && (
-      <p className="text-xs text-muted-foreground italic pt-1">
-        Les postes sélectionnés seront créés comme missions dans votre espace.
-      </p>
-    )}
-  </div>
-);
+        </label>
+      ))}
+      {uniqueRoles.length > 0 && (
+        <p className="text-xs text-muted-foreground italic pt-1">
+          Les postes sélectionnés seront créés comme missions dans votre espace.
+        </p>
+      )}
+    </div>
+  );
+};
