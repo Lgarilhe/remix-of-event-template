@@ -215,7 +215,7 @@ Deno.serve(async (req) => {
           method: 'POST',
           headers: { Authorization: `Bearer ${FIRECRAWL_API_KEY}`, 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            query: `${company_name.trim()} company website`,
+            query: `${company_name.trim()} ${company_name.trim()}.com OR ${company_name.trim()}.fr site officiel`,
             limit: 3,
             scrapeOptions: { formats: ['markdown'] },
           }),
@@ -426,7 +426,7 @@ Deno.serve(async (req) => {
             method: 'POST',
             headers: { Authorization: `Bearer ${FIRECRAWL_API_KEY}`, 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              query: `${company_name.trim()} jobs site:welcometothejungle.com`,
+              query: `${company_name.trim()} ${result.domain || ''} jobs site:welcometothejungle.com`.replace(/\s+/g, ' ').trim(),
               limit: 5,
             }),
           });
@@ -457,7 +457,7 @@ Deno.serve(async (req) => {
             method: 'POST',
             headers: { Authorization: `Bearer ${FIRECRAWL_API_KEY}`, 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              query: `${company_name.trim()} jobs site:linkedin.com/jobs`,
+              query: `${company_name.trim()} ${result.domain || ''} jobs site:linkedin.com/jobs`.replace(/\s+/g, ' ').trim(),
               limit: 5,
             }),
           });
@@ -477,6 +477,7 @@ Deno.serve(async (req) => {
                 .trim();
               if (/^\d+\s+\w+\s+jobs?\s+in\s+/i.test(title)) continue;
               if (/^\d+\s+offres?\s/i.test(title)) continue;
+              if (/^\d+\s+\S+\s+jobs?\b/i.test(title)) continue;
               if (/\bjobs?\b/i.test(title) && title.split(' ').length <= 4) continue;
               if (title && title.length > 3) {
                 jobSources.push({ title, location: '', source: 'LinkedIn' });
