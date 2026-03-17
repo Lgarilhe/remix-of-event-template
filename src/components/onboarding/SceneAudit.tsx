@@ -4,9 +4,10 @@ import { ArrowLeft, ArrowRight, Check, ChevronDown, ChevronUp, Globe, Briefcase,
 import { Button } from '@/components/ui/button';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import analyticsIcon from '@/assets/icon-analytics-3d.png';
-import skalrLogo from '@/assets/skalr-logo-concept-3.png';
+import type { OnboardingCompanyData } from '@/pages/Onboarding';
 
 interface Props {
+  companyData: OnboardingCompanyData | null;
   onNext: () => void;
   onBack: () => void;
 }
