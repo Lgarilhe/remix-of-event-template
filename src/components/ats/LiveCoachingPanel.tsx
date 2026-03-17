@@ -407,6 +407,7 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
       mediaRecorderRef.current.stop();
       mediaRecorderRef.current.stream.getTracks().forEach(t => t.stop());
     }
+    if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
     setIsRecording(false);
     setCallStopped(true);
 
