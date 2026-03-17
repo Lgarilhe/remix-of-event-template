@@ -341,10 +341,20 @@ export const SceneOrganization: React.FC<Props> = ({ onComplete, onBack }) => {
                 alt={company.name}
                 onError={(e) => {
                   const img = e.target as HTMLImageElement;
-                  if (company.domain && !img.src.includes('ui-avatars')) {
+                  const currentSrc = img.currentSrc || img.src;
+                  if (company.domain && !currentSrc.includes('google.com/s2/favicons')) {
+                    if (!currentSrc.includes('logo.clearbit.com')) {
+                      img.src = `https://www.google.com/s2/favicons?domain=${company.domain}&sz=128`;
+                      return;
+                    }
+                    img.src = `https://www.google.com/s2/favicons?domain=${company.domain}&sz=128`;
+                    return;
+                  }
+                  if (!currentSrc.includes('ui-avatars')) {
                     img.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(company.name)}&background=6366f1&color=fff&size=48`;
                   }
                 }}
+                referrerPolicy="no-referrer"
                 className="w-12 h-12 border border-foreground/10 bg-background object-contain"
                 
               />
