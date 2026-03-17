@@ -64,9 +64,9 @@ function formatFollowers(n: number): string {
 }
 
 /* ── Perplexity search helper ── */
-async function perplexitySearch(apiKey: string, query: string, options?: { timeoutMs?: number; domainFilter?: string[] }): Promise<{ content: string; citations: string[] }> {
+async function perplexitySearch(apiKey: string, query: string, options?: { timeoutMs?: number; domainFilter?: string[]; model?: string }): Promise<{ content: string; citations: string[] }> {
   const body: any = {
-    model: 'sonar',
+    model: options?.model || 'sonar',
     messages: [
       { role: 'system', content: 'Be precise and concise. Answer in French when relevant.' },
       { role: 'user', content: query },
@@ -307,16 +307,28 @@ Deno.serve(async (req) => {
         try {
           const homepageHtml = await fetchPageText(`https://${result.domain}`, 6000);
           const ATS_DOMAINS = /taleez\.com|lever\.co|greenhouse\.io|workable\.com|recruitee\.com|smartrecruiters\.com|breezy\.hr|ashbyhq\.com|jobs\.lever\.co|teamtailor\.com|welcomekit\.co|flatchr\.io|jobaffinity\.fr/i;
-          const CAREER_KEYWORDS = /carri[eè]re|career|jobs?[\/\-]|recrutement|join[\-\/]|talent[\-\/]|nous[\-]rejoindre|hiring|openings|rejoignez|postuler|offres[\-\/]|emploi/i;
+          // Match career-related paths as standalone segments (not substrings of product names)
+          // e.g. /careers, /jobs, /recrutement, /join-us — but NOT /serverless-jobs, /print-jobs
+          const CAREER_PATH_REGEX = /(?:^|\/)(carri[eè]res?|careers?|jobs|recrutement|join(?:-us)?|talent|nous-rejoindre|hiring|openings|rejoignez|postuler|offres-emploi|emploi)(?:\/|$|#|\?)/i;
 
           const hrefRegex = /href=["']([^"']+)["']/gi;
           let hrefMatch;
+          const candidateUrls: string[] = [];
           while ((hrefMatch = hrefRegex.exec(homepageHtml)) !== null) {
             const href = hrefMatch[1];
-            if (CAREER_KEYWORDS.test(href) || ATS_DOMAINS.test(href)) {
+            if (ATS_DOMAINS.test(href)) {
               careersUrl = href.startsWith('http') ? href : `https://${result.domain}${href.startsWith('/') ? '' : '/'}${href}`;
               break;
             }
+            // For career keywords, check against the path only (not query params or full URL)
+            const pathOnly = href.replace(/^https?:\/\/[^\/]+/, '').split('?')[0].split('#')[0];
+            if (CAREER_PATH_REGEX.test(pathOnly)) {
+              candidateUrls.push(href);
+            }
+          }
+          if (!careersUrl && candidateUrls.length > 0) {
+            const best = candidateUrls[0];
+            careersUrl = best.startsWith('http') ? best : `https://${result.domain}${best.startsWith('/') ? '' : '/'}${best}`;
           }
 
           if (!result.description && homepageHtml.length > 200) {
@@ -454,19 +466,109 @@ Retourne UNIQUEMENT via tool call.` },
       } catch (e) { console.warn('[enrich] Apollo job postings failed:', e); }
     })());
 
+    // ── Task D: WTTJ direct fetch ──
+    parallelTasks.push((async () => {
+      const slug = result.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+      const wttjSlugs = [slug];
+      // Also try domain-based slug (e.g. scaleway.com → scaleway)
+      if (result.domain) {
+        const domainSlug = result.domain.replace(/\..*$/, '').toLowerCase();
+        if (domainSlug !== slug) wttjSlugs.push(domainSlug);
+      }
+      for (const s of wttjSlugs) {
+        try {
+          const wttjUrl = `https://www.welcometothejungle.com/fr/companies/${s}/jobs`;
+          const wttjHtml = await fetchPageText(wttjUrl, 8000);
+          if (wttjHtml.includes('job-') || wttjHtml.includes('data-testid')) {
+            // Extract job titles from WTTJ HTML using common patterns
+            // WTTJ uses structured data or <a> tags with job titles
+            const jobTitleRegex = /<(?:h[2-4]|a|span|div)[^>]*class="[^"]*(?:job|offer|position)[^"]*"[^>]*>([^<]{5,80})<\//gi;
+            const altRegex = /"name"\s*:\s*"([^"]{5,80})"/g;
+            const foundTitles = new Set<string>();
+            let m;
+            while ((m = jobTitleRegex.exec(wttjHtml)) !== null) foundTitles.add(m[1].trim());
+            while ((m = altRegex.exec(wttjHtml)) !== null) foundTitles.add(m[1].trim());
+
+            // Also try via Lovable AI if we have enough HTML
+            if (LOVABLE_API_KEY && wttjHtml.length > 500) {
+              const textContent = wttjHtml
+                .replace(/<script[\s\S]*?<\/script>/gi, '')
+                .replace(/<style[\s\S]*?<\/style>/gi, '')
+                .replace(/<[^>]+>/g, ' ')
+                .replace(/&[a-z]+;/gi, ' ')
+                .replace(/\s{2,}/g, ' ')
+                .trim()
+                .slice(0, 12000);
+
+              const extractRes = await fetchWithTimeout('https://ai.gateway.lovable.dev/v1/chat/completions', {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  model: 'google/gemini-2.5-flash-lite',
+                  messages: [
+                    { role: 'system', content: 'Tu extrais TOUS les intitulés de postes / offres d\'emploi de cette page WTTJ. Retourne UNIQUEMENT via tool call.' },
+                    { role: 'user', content: `Extrais TOUS les postes ouverts listés sur cette page Welcome to the Jungle pour "${result.name}". Retourne title et location pour chaque poste.\n\n${textContent}` },
+                  ],
+                  tools: [{
+                    type: 'function',
+                    function: {
+                      name: 'return_jobs',
+                      parameters: {
+                        type: 'object',
+                        properties: {
+                          jobs: { type: 'array', items: {
+                            type: 'object',
+                            properties: { title: { type: 'string' }, location: { type: 'string' } },
+                            required: ['title'], additionalProperties: false,
+                          }},
+                        },
+                        required: ['jobs'], additionalProperties: false,
+                      },
+                    },
+                  }],
+                  tool_choice: { type: 'function', function: { name: 'return_jobs' } },
+                }),
+              }, 12000);
+
+              if (extractRes.ok) {
+                const extractData = await parseJsonResponse(extractRes);
+                const toolCall = extractData.choices?.[0]?.message?.tool_calls?.[0];
+                if (toolCall) {
+                  const parsed = JSON.parse(toolCall.function.arguments);
+                  (parsed.jobs || []).forEach((j: any) => {
+                    if (j.title) {
+                      jobSources.push({ title: j.title, location: j.location || '', source: 'WTTJ', url: wttjUrl });
+                    }
+                  });
+                  console.log(`[enrich] WTTJ AI extraction: ${(parsed.jobs || []).length} jobs from ${wttjUrl}`);
+                }
+              }
+            }
+
+            if (foundTitles.size > 0) {
+              console.log(`[enrich] WTTJ regex extraction: ${foundTitles.size} titles from ${wttjUrl}`);
+              for (const title of foundTitles) {
+                jobSources.push({ title, location: '', source: 'WTTJ', url: wttjUrl });
+              }
+            }
+            result.wttjUrl = wttjUrl;
+            break; // Found WTTJ page, stop trying slugs
+          }
+        } catch (e) { /* WTTJ page not found for this slug, try next */ }
+      }
+    })());
+
     await Promise.allSettled(parallelTasks);
 
-    // ── Task D: Perplexity job search fallback ──
-    if (!apolloJobsFound && PERPLEXITY_API_KEY && jobSources.length === 0) {
+    // ── Perplexity job search fallback (fewer than 5 jobs from other sources) ──
+    if (!apolloJobsFound && PERPLEXITY_API_KEY && jobSources.length < 5) {
       try {
-        console.log('[enrich] Perplexity job search fallback');
-        // IMPORTANT: Use domain + "recrutement interne" to avoid marketplace confusion
-        // (e.g. leboncoin is a job board — we want jobs AT the company, not ON the platform)
+        console.log('[enrich] Perplexity job search fallback (current jobs:', jobSources.length, ')');
         const domainHint = result.domain ? ` (site: ${result.domain})` : '';
         const { content, citations } = await perplexitySearch(
           PERPLEXITY_API_KEY,
-          `Quels sont les postes ouverts en recrutement INTERNE chez l'entreprise "${company_name.trim()}"${domainHint} ? Je cherche les offres d'emploi pour travailler DANS cette entreprise (pas les annonces publiées par d'autres sur leur plateforme). Cherche sur leur page carrière, Welcome to the Jungle, et LinkedIn Jobs. Pour chaque poste, donne le titre exact et la ville.`,
-          { timeoutMs: 12000, domainFilter: result.domain ? [result.domain, 'welcometothejungle.com', 'linkedin.com'] : ['welcometothejungle.com', 'linkedin.com'] },
+          `Liste TOUS les postes ouverts en recrutement INTERNE chez l'entreprise "${company_name.trim()}"${domainHint}. Je cherche les offres d'emploi pour travailler DANS cette entreprise (pas les annonces publiées par d'autres sur leur plateforme). Cherche sur leur page carrière, Welcome to the Jungle, et LinkedIn Jobs. Pour chaque poste, donne le titre exact et la ville. Liste le MAXIMUM de postes possible, pas seulement quelques-uns.`,
+          { timeoutMs: 15000, domainFilter: result.domain ? [result.domain, 'welcometothejungle.com', 'linkedin.com'] : ['welcometothejungle.com', 'linkedin.com'] },
         );
 
         if (content && LOVABLE_API_KEY) {
@@ -474,10 +576,10 @@ Retourne UNIQUEMENT via tool call.` },
             method: 'POST',
             headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              model: 'google/gemini-2.5-flash-lite',
+              model: 'google/gemini-2.5-flash',
               messages: [
-                { role: 'system', content: 'Extract structured job listings. Return ONLY via tool call.' },
-                { role: 'user', content: `Extract all job positions for ${company_name}:\n\n${content}` },
+                { role: 'system', content: 'Extract ALL structured job listings from the text. Return ONLY via tool call. Do not skip any jobs.' },
+                { role: 'user', content: `Extract ALL job positions for ${company_name}:\n\n${content}` },
               ],
               tools: [{
                 type: 'function',
@@ -521,7 +623,7 @@ Retourne UNIQUEMENT via tool call.` },
       } catch (e) { console.warn('[enrich] Perplexity job search failed:', e); }
     }
 
-    // Dedupe jobs
+    // Dedupe jobs (prioritize source order: WTTJ > Apollo > Site carrière > Web)
     const seenTitles = new Set<string>();
     for (const job of jobSources) {
       const key = job.title.toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -530,7 +632,7 @@ Retourne UNIQUEMENT via tool call.` },
         result.openRoles.push({ title: job.title, location: job.location, source: job.source, department: job.department, url: job.url });
       }
     }
-    result.openRoles = result.openRoles.slice(0, 15);
+    result.openRoles = result.openRoles.slice(0, 50);
 
     // Build signals
     result.signals = buildSignals(apolloOrg, result);
