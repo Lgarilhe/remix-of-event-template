@@ -155,14 +155,11 @@ SECTION "resolved_signals" :
 - Un signal est résolu quand la question a été posée ET le candidat a donné une réponse substantielle
 - Si aucun signal résolu, retourne []
 
-SECTION "next_topic" — PROACTIVITÉ :
-- Analyse quels critères n'ont PAS encore été couverts et le contexte de la conversation
-- Suggère LE prochain sujet à aborder avec :
-  • "topic" : le nom du critère ou sujet à aborder ensuite
-  • "transition" : une phrase de transition naturelle que le recruteur peut utiliser mot pour mot pour enchaîner
-  • "why" : pourquoi aborder ce sujet maintenant (1 phrase max)
-- Choisis le sujet le plus pertinent en fonction du flow naturel de la conversation (pas forcément le premier critère non couvert)
-- Si tous les critères sont couverts, suggère de passer aux questions du candidat ou de conclure
+SECTION "next_topic" — PROACTIVITÉ ULTRA-CONCISE :
+- "topic" : nom du critère (3-5 mots max)
+- "transition" : question de transition en 1 phrase courte (max 12 mots), pas un paragraphe
+- "why" : pourquoi maintenant (5 mots max)
+- Choisis le sujet le plus naturel par rapport au flow de la conversation
 
 IMPORTANT : Sois CONCIS et RAPIDE.`;
 
