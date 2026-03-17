@@ -648,7 +648,7 @@ Retourne UNIQUEMENT via tool call.` },
         const { content, citations } = await perplexitySearch(
           PERPLEXITY_API_KEY,
           `Liste TOUS les postes ouverts en recrutement INTERNE chez l'entreprise "${company_name.trim()}"${domainHint}. Je cherche les offres d'emploi pour travailler DANS cette entreprise (pas les annonces publiées par d'autres sur leur plateforme). Cherche sur leur page carrière, Welcome to the Jungle, et LinkedIn Jobs. Pour chaque poste, donne le titre exact et la ville. Liste le MAXIMUM de postes possible, pas seulement quelques-uns.`,
-          { timeoutMs: 15000, domainFilter: result.domain ? [result.domain, 'welcometothejungle.com', 'linkedin.com'] : ['welcometothejungle.com', 'linkedin.com'] },
+          { timeoutMs: 15000, domainFilter: result.domain ? [result.domain, 'welcometothejungle.com', 'linkedin.com'] : ['welcometothejungle.com', 'linkedin.com'], model: 'sonar-pro' },
         );
 
         if (content && LOVABLE_API_KEY) {
