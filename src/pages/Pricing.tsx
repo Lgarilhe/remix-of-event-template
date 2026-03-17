@@ -105,15 +105,15 @@ const Pricing = () => {
 
         {/* Hero */}
         <div className="text-center mb-10 sm:mb-14">
-          <div className="inline-flex items-center gap-2 px-3 py-1.5 border-2 border-foreground/10 bg-muted/50 mb-5 animate-fade-in">
-            <span className="w-2 h-2 bg-[hsl(var(--brutal-accent))] shrink-0" />
-            <span className="text-[10px] uppercase tracking-[0.16em] font-bold text-foreground/70">
+          <div className="inline-flex items-center gap-1.5 px-3.5 py-1 border border-foreground/10 mb-6 animate-fade-in">
+            <span className="w-1.5 h-1.5 bg-brutal-accent shrink-0" />
+            <span className="text-[11px] font-bold uppercase tracking-[0.12em] text-muted-foreground">
               Tarifs transparents
             </span>
           </div>
 
           <h1
-            className="font-display text-3xl sm:text-4xl md:text-5xl font-extrabold leading-tight mb-4 animate-fade-in"
+            className="font-display text-3xl sm:text-4xl md:text-5xl font-black leading-tight mb-4 animate-fade-in"
             style={{ animationDelay: '100ms' }}
           >
             Le bon plan pour
