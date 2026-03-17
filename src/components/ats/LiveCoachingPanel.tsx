@@ -214,9 +214,19 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
     try {
       // CRITICAL: getUserMedia MUST be called directly in the click handler
       // before any other async operation to preserve the user gesture chain
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: { echoCancellation: true, noiseSuppression: true, sampleRate: 16000 },
-      });
+      let stream: MediaStream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+          },
+        });
+      } catch (primaryError) {
+        console.warn('Primary microphone constraints failed, retrying with basic audio:', primaryError);
+        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      }
 
       // Create session in DB
       const { data: { user } } = await supabase.auth.getUser();
