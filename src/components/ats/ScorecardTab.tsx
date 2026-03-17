@@ -72,7 +72,7 @@ const CATEGORY_CONFIG: Record<string, { label: string; color: string; dotColor: 
   motivation: { label: 'Motiv.', color: 'border-emerald-400 bg-emerald-50 text-emerald-700', dotColor: 'bg-emerald-400' },
 };
 
-export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedProfile, onOpenProfile }) => {
+export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedProfile, onOpenProfile, autoStartCoaching }) => {
   const navigate = useNavigate();
   const [evaluations, setEvaluations] = useState<EvaluationData[]>([]);
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
