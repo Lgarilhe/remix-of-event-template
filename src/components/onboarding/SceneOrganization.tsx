@@ -230,13 +230,13 @@ export const SceneOrganization: React.FC<Props> = ({ onComplete, onBack }) => {
   ];
 
   return (
-    <div className="w-full max-w-2xl mx-auto flex flex-col gap-5">
+    <div className="w-full max-w-2xl mx-auto flex flex-col gap-4 sm:gap-5">
       {/* Header */}
       <div className="text-center space-y-2">
         <span className="skalr-gradient-text text-[11px] uppercase tracking-[0.2em] font-semibold" style={{ fontFamily: "'Space Mono', monospace" }}>
           01 — Votre société
         </span>
-        <h2 className="font-editorial italic text-3xl md:text-4xl">Parlez-nous de vous</h2>
+        <h2 className="font-editorial italic text-2xl sm:text-3xl md:text-4xl">Parlez-nous de vous</h2>
         <p className="text-muted-foreground text-sm">Entrez le nom de votre société, on récupère tout automatiquement.</p>
       </div>
 
