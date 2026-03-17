@@ -253,7 +253,7 @@ Deno.serve(async (req) => {
           }),
         });
         if (scrapeRes.ok) {
-          const scrapeData = await scrapeRes.json();
+          const scrapeData = await parseJsonResponse(scrapeRes);
           const md = scrapeData.data?.markdown || scrapeData.markdown || '';
           const links = scrapeData.data?.links || scrapeData.links || [];
 
