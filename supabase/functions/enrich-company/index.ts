@@ -369,10 +369,41 @@ Deno.serve(async (req) => {
       });
     }
 
+    // Rate limiting: 5 enrichments per minute per user
+    const serviceClient = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
+    const { data: allowed } = await serviceClient.rpc('check_rate_limit', {
+      p_user_id: user.id,
+      p_action: 'enrich_company',
+      p_max_requests: 5,
+      p_window_seconds: 60,
+    });
+    if (allowed === false) {
+      return new Response(JSON.stringify({ success: false, error: 'Trop de requêtes. Réessayez dans quelques secondes.' }), {
+        status: 429,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
     const { company_name } = await req.json();
     if (!company_name || company_name.trim().length < 2) {
       return new Response(JSON.stringify({ success: false, error: 'company_name required' }), {
         status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // In-DB cache: return cached result if enriched within last 24h
+    const cacheKey = company_name.trim().toLowerCase().replace(/\s+/g, ' ');
+    const { data: cached } = await serviceClient
+      .from('enrichment_cache')
+      .select('result')
+      .eq('cache_key', cacheKey)
+      .gt('created_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString())
+      .maybeSingle();
+
+    if (cached?.result) {
+      console.log(`[enrich] Cache hit for "${cacheKey}"`);
+      return new Response(JSON.stringify({ success: true, company: cached.result, cached: true }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
