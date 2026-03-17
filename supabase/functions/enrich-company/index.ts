@@ -196,9 +196,9 @@ Deno.serve(async (req) => {
             result.description = md.slice(0, 300).replace(/\n/g, ' ').trim();
           }
 
-          // Try to find careers page in homepage links
+          // Try to find careers page in homepage links (EN + FR variants)
           const careersLink = links.find((l: string) =>
-            /carri[eè]re|career|jobs?[\/\.]|recrutement|join|talent|hiring|welcome-to-the-jungle|wttj/i.test(l)
+            /carri[eè]re|career|jobs?[\/\.]|recrutement|join|join-us|joinus|talent|hiring|offres|emploi|emplois|poste|postes|nous-rejoindre|nous_rejoindre|nousrejoindre|rejoignez-nous|rejoignez_nous|rejoigneznous|welcome-to-the-jungle|wttj/i.test(l)
           );
           if (careersLink) {
             result.careersUrl = careersLink;
@@ -208,7 +208,51 @@ Deno.serve(async (req) => {
         console.warn('[enrich-company] Firecrawl scrape failed:', e);
       }
 
-      // 3b. If no careers link found on homepage, search for it via Firecrawl Search
+      // 3b. If no careers link found on homepage, probe common direct paths first
+      if (!result.careersUrl) {
+        const candidateCareerUrls = [
+          `https://${result.domain}/careers`,
+          `https://${result.domain}/career`,
+          `https://${result.domain}/jobs`,
+          `https://${result.domain}/join-us`,
+          `https://${result.domain}/joinus`,
+          `https://${result.domain}/join`,
+          `https://${result.domain}/talent`,
+          `https://${result.domain}/recrutement`,
+          `https://${result.domain}/nous-rejoindre`,
+          `https://${result.domain}/rejoignez-nous`,
+          `https://${result.domain}/offres-emploi`,
+          `https://${result.domain}/emplois`,
+        ];
+
+        for (const url of candidateCareerUrls) {
+          try {
+            const probeRes = await fetch('https://api.firecrawl.dev/v1/scrape', {
+              method: 'POST',
+              headers: { Authorization: `Bearer ${FIRECRAWL_API_KEY}`, 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                url,
+                formats: ['markdown'],
+                onlyMainContent: true,
+              }),
+            });
+
+            if (probeRes.ok) {
+              const probeData = await probeRes.json();
+              const probeMd = (probeData.data?.markdown || probeData.markdown || '').toLowerCase();
+              if (probeMd.length > 80 && /job|jobs|carri[eè]re|recrutement|emploi|poste|offre/.test(probeMd)) {
+                result.careersUrl = url;
+                console.log('[enrich-company] Found careers page via direct path probe:', url);
+                break;
+              }
+            }
+          } catch (e) {
+            console.warn('[enrich-company] Careers path probe failed:', url, e);
+          }
+        }
+      }
+
+      // 3c. If still not found, search for it via Firecrawl Search
       if (!result.careersUrl && FIRECRAWL_API_KEY) {
         try {
           console.log('[enrich-company] Searching for careers page:', result.name);
@@ -216,17 +260,16 @@ Deno.serve(async (req) => {
             method: 'POST',
             headers: { Authorization: `Bearer ${FIRECRAWL_API_KEY}`, 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              query: `${result.name} careers jobs offres emploi site:${result.domain} OR site:welcometothejungle.com OR site:linkedin.com/company`,
-              limit: 5,
+              query: `${result.name} careers jobs offres emploi recrutement nous rejoindre site:${result.domain} OR site:welcometothejungle.com OR site:linkedin.com/company`,
+              limit: 8,
             }),
           });
           if (searchRes.ok) {
             const searchData = await searchRes.json();
             const hits = searchData.data || [];
-            // Pick the best careers URL
             for (const hit of hits) {
               const url = hit.url || '';
-              if (/carri[eè]re|career|jobs?[\/.]|recrutement|join|talent|hiring|offres|welcome.*jungle/i.test(url)) {
+              if (/carri[eè]re|career|jobs?[\/.]|recrutement|join|join-us|joinus|talent|hiring|offres|emploi|emplois|poste|postes|nous-rejoindre|rejoignez-nous|welcome.*jungle/i.test(url)) {
                 result.careersUrl = url;
                 console.log('[enrich-company] Found careers page via search:', url);
                 break;
