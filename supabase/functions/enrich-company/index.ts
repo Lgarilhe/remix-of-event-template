@@ -456,6 +456,9 @@ Deno.serve(async (req) => {
     await Promise.allSettled(parallelTasks);
 
     // ── Task D: WTTJ + LinkedIn as FALLBACK only if Apollo returned 0 jobs ──
+    const companyNameLower = company_name.trim().toLowerCase();
+    const NON_LATIN_RE = /[\u4e00-\u9fff\u3040-\u309f\u30a0-\u30ff\uac00-\ud7af\u0400-\u04ff]/;
+
     if (!apolloJobsFound && FIRECRAWL_API_KEY) {
       const fallbackTasks: Promise<void>[] = [];
 
@@ -466,24 +469,31 @@ Deno.serve(async (req) => {
             method: 'POST',
             headers: { Authorization: `Bearer ${FIRECRAWL_API_KEY}`, 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              query: `"${company_name.trim()}" inurl:companies site:welcometothejungle.com/fr`.replace(/\s+/g, ' ').trim(),
-              limit: 5,
+              query: `"${company_name.trim()}" site:welcometothejungle.com/fr/companies`,
+              limit: 8,
               country: 'FR',
               lang: 'fr',
             }),
           });
           if (wttjRes.ok) {
             const wttjData = await parseJsonResponse(wttjRes);
-            const wttjResults = (wttjData.data || []).filter((r: any) =>
-              (r.url || '').includes('welcometothejungle.com') && (r.url || '').includes('/jobs/')
-            );
-            for (const r of wttjResults) {
-              const title = (r.title || '').replace(/ \|.*$/, '').replace(/ - Welcome.*$/, '').trim();
-              if (title && title.length > 3) {
-                jobSources.push({ title, location: '', source: 'WTTJ' });
-              }
+            let accepted = 0;
+            for (const r of (wttjData.data || [])) {
+              const url = r.url || '';
+              // Must be a WTTJ job page (contains /jobs/) not a company page
+              if (!url.includes('welcometothejungle.com')) continue;
+              if (!url.includes('/jobs/')) continue;
+              // Title must not be a raw URL
+              let title = (r.title || '').replace(/ \|.*$/, '').replace(/ - Welcome.*$/, '').replace(/ - Bienvenue.*$/, '').trim();
+              if (!title || title.length < 4 || title.startsWith('http')) continue;
+              // Verify the company name appears in the URL path (WTTJ URLs contain company slug)
+              const urlLower = url.toLowerCase();
+              const slug = companyNameLower.replace(/[^a-z0-9]+/g, '');
+              if (!urlLower.includes(slug) && !urlLower.includes(companyNameLower.replace(/\s+/g, '-'))) continue;
+              jobSources.push({ title, location: '', source: 'WTTJ' });
+              accepted++;
             }
-            console.log(`[enrich] WTTJ fallback: ${wttjResults.length} results`);
+            console.log(`[enrich] WTTJ fallback: ${accepted} accepted`);
           }
         } catch (e) {
           console.warn('[enrich] WTTJ failed:', e);
@@ -497,35 +507,45 @@ Deno.serve(async (req) => {
             method: 'POST',
             headers: { Authorization: `Bearer ${FIRECRAWL_API_KEY}`, 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              query: `"${company_name.trim()}" site:linkedin.com/jobs/view`.replace(/\s+/g, ' ').trim(),
-              limit: 5,
+              query: `"${company_name.trim()}" site:linkedin.com/jobs/view`,
+              limit: 8,
               country: 'FR',
               lang: 'fr',
             }),
           });
           if (liRes.ok) {
             const liData = await parseJsonResponse(liRes);
-            const liResults = (liData.data || []).filter((r: any) => {
+            let accepted = 0;
+            for (const r of (liData.data || [])) {
               const url = r.url || '';
-              return url.includes('linkedin.com/jobs/view/') ||
-                (url.includes('linkedin.com/jobs/') && !url.includes('/search') && !url.includes('/collections'));
-            });
-            for (const r of liResults) {
+              if (!url.includes('linkedin.com/jobs/view/')) continue;
               let title = (r.title || '')
                 .replace(/ \|.*$/, '')
                 .replace(/ - LinkedIn.*$/i, '')
                 .replace(/ at .*$/, '')
                 .replace(/ hiring .*$/i, '')
                 .trim();
-              if (/^\d+\s+\w+\s+jobs?\s+in\s+/i.test(title)) continue;
+              // Skip aggregated listing pages
+              if (/^\d+\s+\w+\s+jobs?\s+/i.test(title)) continue;
               if (/^\d+\s+offres?\s/i.test(title)) continue;
-              if (/^\d+\s+\S+\s+jobs?\b/i.test(title)) continue;
               if (/\bjobs?\b/i.test(title) && title.split(' ').length <= 4) continue;
-              if (title && title.length > 3) {
-                jobSources.push({ title, location: '', source: 'LinkedIn' });
-              }
+              // Skip non-Latin scripts (Chinese, Japanese, Korean, Cyrillic, German patterns)
+              if (NON_LATIN_RE.test(title)) continue;
+              if (/\b(sucht|angebot|bewerben)\b/i.test(title)) continue;
+              // Skip titles that are URLs
+              if (!title || title.length < 4 || title.startsWith('http')) continue;
+              // Verify company name appears in title or description
+              const titleLower = title.toLowerCase();
+              const descLower = (r.description || '').toLowerCase();
+              if (!titleLower.includes(companyNameLower) && !descLower.includes(companyNameLower)) continue;
+              // Clean up: remove company name prefix patterns like "Gandi recrute pour des postes de"
+              title = title
+                .replace(new RegExp(`^${company_name.trim()}\\s+(recrute pour des postes de|is hiring|recrutement)\\s*`, 'i'), '')
+                .trim();
+              jobSources.push({ title, location: '', source: 'LinkedIn' });
+              accepted++;
             }
-            console.log(`[enrich] LinkedIn fallback: ${liResults.length} results`);
+            console.log(`[enrich] LinkedIn fallback: ${accepted} accepted`);
           }
         } catch (e) {
           console.warn('[enrich] LinkedIn jobs failed:', e);
