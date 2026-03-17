@@ -171,7 +171,7 @@ Deno.serve(async (req) => {
     if (APOLLO_API_KEY) {
       try {
         console.log('[enrich] Apollo org search:', company_name);
-        const orgRes = await fetchWithTimeout('https://api.apollo.io/api/v1/mixed_companies/search', {
+        const orgRes = await fetchWithTimeout('https://api.apollo.io/v1/mixed_companies/api_search', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'X-Api-Key': APOLLO_API_KEY },
           body: JSON.stringify({ q_organization_name: company_name.trim(), per_page: 1 }),
@@ -429,7 +429,7 @@ Deno.serve(async (req) => {
         });
         if (jobsRes.ok) {
           const jobsData = await parseJsonResponse(jobsRes);
-          const postings = jobsData.job_postings || jobsData.data || jobsData || [];
+          const postings = jobsData.organization_job_postings || jobsData.job_postings || jobsData.data || [];
           const jobsList = Array.isArray(postings) ? postings : [];
           for (const job of jobsList) {
             const title = job.title || job.name;
