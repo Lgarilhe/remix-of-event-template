@@ -331,7 +331,7 @@ ${sourcesSummary}`;
         }],
         tool_choice: { type: 'function', function: { name: 'return_audit' } },
       }),
-    }, 25000); // 25s timeout for AI (longer than default 15s)
+    }, 20000); // 20s timeout for AI
 
     if (!aiRes.ok) {
       const errText = await aiRes.text();
