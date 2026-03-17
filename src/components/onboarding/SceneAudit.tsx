@@ -79,6 +79,7 @@ export const SceneAudit: React.FC<Props> = ({ companyData, onNext, onBack }) => 
   const [quickWins, setQuickWins] = useState<string[]>([]);
   const bubblesEndRef = useRef<HTMLDivElement>(null);
   const hasStarted = useRef(false);
+  const isMounted = useRef(true);
 
   useEffect(() => {
     bubblesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
