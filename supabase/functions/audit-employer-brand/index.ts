@@ -142,7 +142,7 @@ Deno.serve(async (req) => {
           method: 'POST',
           headers: { Authorization: `Bearer ${FIRECRAWL_API_KEY}`, 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            query: `${company_name} avis glassdoor.fr`,
+            query: `${company_name} ${domain || ''} avis site:glassdoor.fr`.replace(/\s+/g, ' ').trim(),
             limit: 3,
             scrapeOptions: { formats: ['markdown'] },
           }),
@@ -177,7 +177,7 @@ Deno.serve(async (req) => {
           method: 'POST',
           headers: { Authorization: `Bearer ${FIRECRAWL_API_KEY}`, 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            query: `${company_name} site:welcometothejungle.com`,
+            query: `${company_name} ${domain || ''} site:welcometothejungle.com`.replace(/\s+/g, ' ').trim(),
             limit: 3,
             scrapeOptions: { formats: ['markdown'] },
           }),
@@ -211,7 +211,7 @@ Deno.serve(async (req) => {
           method: 'POST',
           headers: { Authorization: `Bearer ${FIRECRAWL_API_KEY}`, 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            query: `${company_name} site:twitter.com OR site:instagram.com OR site:youtube.com`,
+            query: `${company_name} ${domain || ''} entreprise site:twitter.com OR site:instagram.com OR site:youtube.com`.replace(/\s+/g, ' ').trim(),
             limit: 5,
           }),
         });
@@ -238,7 +238,7 @@ Deno.serve(async (req) => {
           method: 'POST',
           headers: { Authorization: `Bearer ${FIRECRAWL_API_KEY}`, 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            query: `${company_name} offre emploi recrutement`,
+            query: `${company_name} ${domain || ''} offre emploi recrutement`.replace(/\s+/g, ' ').trim(),
             limit: 3,
             scrapeOptions: { formats: ['markdown'] },
           }),
