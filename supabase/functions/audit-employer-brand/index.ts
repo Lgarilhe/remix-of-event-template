@@ -211,7 +211,7 @@ Deno.serve(async (req) => {
           method: 'POST',
           headers: { Authorization: `Bearer ${FIRECRAWL_API_KEY}`, 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            query: `${company_name} site:twitter.com OR site:instagram.com OR site:youtube.com`,
+            query: `${company_name} ${domain || ''} entreprise site:twitter.com OR site:instagram.com OR site:youtube.com`.replace(/\s+/g, ' ').trim(),
             limit: 5,
           }),
         });
