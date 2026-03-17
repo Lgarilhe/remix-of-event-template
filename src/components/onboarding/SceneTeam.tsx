@@ -148,7 +148,11 @@ export const SceneTeam: React.FC<Props> = ({ organizationId, onFinish, onBack })
     }
   };
 
-  const totalInvites = selected.size + invitedEmails.length;
+  const invitableFromScan = profiles.filter(
+    (p) => selected.has(p.id) && p.email && !invitedEmails.includes(p.email.toLowerCase())
+  ).length;
+  const totalInvites = invitableFromScan + invitedEmails.length;
+  const selectedWithoutEmail = selected.size - invitableFromScan;
 
   const [isSending, setIsSending] = useState(false);
 
@@ -289,6 +293,11 @@ export const SceneTeam: React.FC<Props> = ({ organizationId, onFinish, onBack })
                 <span className="text-sm font-medium">{p.name}</span>
                 <span className="text-[11px] text-muted-foreground block truncate">{p.role}</span>
               </div>
+              {!p.email && selected.has(p.id) && (
+                <span className="text-[9px] px-1.5 py-0.5 bg-destructive/10 text-destructive font-medium shrink-0">
+                  Pas d'email
+                </span>
+              )}
               <img
                 src={p.source === 'linkedin' ? linkedinLogo : undefined}
                 alt={p.source}
@@ -351,19 +360,26 @@ export const SceneTeam: React.FC<Props> = ({ organizationId, onFinish, onBack })
       </div>
 
       {/* Navigation */}
-      <div className="flex items-center justify-between pt-2">
-        <Button variant="outline" onClick={onBack} className="gap-2 border-2 border-foreground/20 text-sm">
-          <ArrowLeft className="w-4 h-4" /> Retour
-        </Button>
-        <Button
-          onClick={handleFinish}
-          disabled={isSending}
-          className="gap-2 border-2 border-foreground bg-foreground text-background hover:bg-foreground/90 text-sm px-6"
-          style={{ boxShadow: '3px 3px 0px 0px hsl(var(--brutal-accent))' }}
-        >
-          {isSending ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowRight className="w-4 h-4" />}
-          {isSending ? 'Envoi...' : totalInvites > 0 ? `Inviter ${totalInvites} & terminer` : 'Passer'}
-        </Button>
+      <div className="flex flex-col items-end gap-1 pt-2">
+        <div className="flex items-center justify-between w-full">
+          <Button variant="outline" onClick={onBack} className="gap-2 border-2 border-foreground/20 text-sm">
+            <ArrowLeft className="w-4 h-4" /> Retour
+          </Button>
+          <Button
+            onClick={handleFinish}
+            disabled={isSending}
+            className="gap-2 border-2 border-foreground bg-foreground text-background hover:bg-foreground/90 text-sm px-6"
+            style={{ boxShadow: '3px 3px 0px 0px hsl(var(--brutal-accent))' }}
+          >
+            {isSending ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowRight className="w-4 h-4" />}
+            {isSending ? 'Envoi...' : totalInvites > 0 ? `Inviter ${totalInvites} & terminer` : 'Passer'}
+          </Button>
+        </div>
+        {selectedWithoutEmail > 0 && (
+          <p className="text-[11px] text-destructive">
+            {selectedWithoutEmail} profil{selectedWithoutEmail > 1 ? 's' : ''} sans email — non invitable{selectedWithoutEmail > 1 ? 's' : ''}
+          </p>
+        )}
       </div>
     </div>
   );
