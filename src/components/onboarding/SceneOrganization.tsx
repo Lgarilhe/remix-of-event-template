@@ -209,12 +209,46 @@ export const SceneOrganization: React.FC<Props> = ({ onComplete, onBack }) => {
     if (!company) return;
     setIsCreating(true);
     try {
-      await createOrganization({
+      const org = await createOrganization({
         name: company.name,
         slug: generateSlug(company.name),
         website: company.websiteUrl || (company.domain ? `https://${company.domain}` : null),
         logoUrl: company.logoUrl || (company.domain ? `https://logo.clearbit.com/${company.domain}` : null),
       });
+
+      // Create sourcing projects for selected roles
+      if (selectedRoles.size > 0 && org?.id) {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          const uniqueRoles = dedupeRoles(company.openRoles);
+          const projectsToCreate = Array.from(selectedRoles)
+            .filter((idx) => idx < uniqueRoles.length)
+            .map((idx) => {
+              const role = uniqueRoles[idx];
+              return {
+                name: role.title,
+                job_title: role.title,
+                client_name: company.name,
+                description: role.location ? `📍 ${role.location}` : null,
+                organization_id: org.id,
+                created_by: user.id,
+                filters_snapshot: {},
+                status: 'active',
+              };
+            });
+
+          if (projectsToCreate.length > 0) {
+            const { error: projError } = await supabase
+              .from('sourcing_projects')
+              .insert(projectsToCreate as any);
+            if (projError) {
+              console.error('[Onboarding] Failed to create projects:', projError);
+              // Non-blocking: org is created, just log the error
+            }
+          }
+        }
+      }
+
       onComplete();
     } catch (err: any) {
       const msg = err?.message || '';
