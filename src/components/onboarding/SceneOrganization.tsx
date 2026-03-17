@@ -10,7 +10,8 @@ import { toast } from 'sonner';
 import searchIcon from '@/assets/icon-search-3d.png';
 import linkedinLogo from '@/assets/linkedin-logo.png';
 
-const WTTJ_ICON = 'https://www.welcometothejungle.com/favicon.ico';
+const WTTJ_LOGO = 'https://www.welcometothejungle.com/assets/images/logos/wttj.svg';
+const WTTJ_FALLBACK = 'https://cdn.welcometothejungle.com/wttj-front/production/assets/images/logos/wttj.svg';
 
 /* ─── Types ─── */
 interface Props {
@@ -482,7 +483,7 @@ const SourceBadge: React.FC<{ source: string }> = ({ source }) => {
   return (
     <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 bg-muted text-muted-foreground font-mono shrink-0">
       {isLinkedIn && <img src={linkedinLogo} alt="LinkedIn" className="w-3 h-3 object-contain" />}
-      {isWTTJ && <img src={WTTJ_ICON} alt="WTTJ" className="w-3 h-3 object-contain" />}
+      {isWTTJ && <img src={WTTJ_LOGO} alt="WTTJ" className="w-3 h-3 object-contain" onError={(e) => { (e.target as HTMLImageElement).src = WTTJ_FALLBACK; }} />}
       {source}
     </span>
   );
