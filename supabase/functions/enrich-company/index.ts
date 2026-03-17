@@ -526,25 +526,27 @@ Deno.serve(async (req) => {
     if (APOLLO_API_KEY && selected_apollo_id !== '__none__') {
       try {
         console.log('[enrich] Apollo org search:', company_name);
-        const orgEndpoints = [
-          'https://api.apollo.io/api/v1/mixed_companies/search',
-          'https://api.apollo.io/v1/mixed_companies/api_search',
-        ];
 
         const apolloSearchPayload: Record<string, any> = {
           q_organization_name: company_name.trim(),
-          per_page: 5,
+          per_page: 10,
         };
         // If country hint provided, add location filter
         if (country) {
           apolloSearchPayload.organization_locations = [country];
         }
 
-        for (const endpoint of orgEndpoints) {
-          const orgRes = await fetchWithTimeout(endpoint, {
+        // Try with location filter first, then without if no results
+        const searchAttempts = [
+          apolloSearchPayload,
+          ...(country ? [{ ...apolloSearchPayload, organization_locations: undefined }] : []),
+        ];
+
+        for (const payload of searchAttempts) {
+          const orgRes = await fetchWithTimeout('https://api.apollo.io/api/v1/mixed_companies/search', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'X-Api-Key': APOLLO_API_KEY },
-            body: JSON.stringify(apolloSearchPayload),
+            headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache', 'X-Api-Key': APOLLO_API_KEY },
+            body: JSON.stringify(payload),
           });
 
           if (!orgRes.ok) {
