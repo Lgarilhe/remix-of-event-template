@@ -1,6 +1,6 @@
 /**
  * Company Enrichment Edge Function
- * Combines Apollo (company data) + Firecrawl (website scraping) to enrich company info.
+ * Combines Apollo (company data) + Firecrawl (website scraping + web search fallback) to enrich company info.
  */
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.75.1';
@@ -68,7 +68,13 @@ Deno.serve(async (req) => {
         });
         if (orgRes.ok) {
           const orgData = await orgRes.json();
+          console.log('[enrich-company] Apollo response keys:', Object.keys(orgData));
           apolloOrg = orgData.organizations?.[0] || orgData.accounts?.[0] || null;
+          if (!apolloOrg) {
+            console.log('[enrich-company] Apollo returned no organizations/accounts');
+          }
+        } else {
+          console.warn('[enrich-company] Apollo returned status:', orgRes.status);
         }
       } catch (e) {
         console.warn('[enrich-company] Apollo org search failed:', e);
@@ -88,6 +94,61 @@ Deno.serve(async (req) => {
       result.websiteUrl = apolloOrg.website_url || (result.domain ? `https://${result.domain}` : null);
       result.logoUrl = apolloOrg.logo_url || null;
       result.techStack = (apolloOrg.technology_names || []).slice(0, 12);
+    }
+
+    // ── 1b. Firecrawl Web Search Fallback (if Apollo found nothing) ──
+    if (!result.domain && FIRECRAWL_API_KEY) {
+      try {
+        console.log('[enrich-company] Apollo empty → Firecrawl web search fallback for:', company_name);
+        const searchRes = await fetch('https://api.firecrawl.dev/v1/search', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${FIRECRAWL_API_KEY}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            query: `${company_name.trim()} company website`,
+            limit: 3,
+            scrapeOptions: { formats: ['markdown'] },
+          }),
+        });
+        if (searchRes.ok) {
+          const searchData = await searchRes.json();
+          const results = searchData.data || [];
+          console.log('[enrich-company] Firecrawl search returned', results.length, 'results');
+
+          if (results.length > 0) {
+            // Extract domain from the first result URL
+            const firstUrl = results[0].url || '';
+            const domainMatch = firstUrl.match(/^https?:\/\/(?:www\.)?([^\/]+)/);
+            if (domainMatch) {
+              result.domain = domainMatch[1];
+              result.websiteUrl = firstUrl;
+              console.log('[enrich-company] Found domain via search:', result.domain);
+            }
+
+            // Use title and description from search results
+            if (results[0].title) {
+              result.name = results[0].title.split(' - ')[0].split(' | ')[0].trim() || result.name;
+            }
+            if (results[0].description && !result.description) {
+              result.description = results[0].description;
+            }
+
+            // Extract description from markdown if available
+            if (!result.description && results[0].markdown) {
+              result.description = results[0].markdown.slice(0, 300).replace(/\n/g, ' ').replace(/[#*_\[\]]/g, '').trim();
+            }
+
+            // Look for LinkedIn URL in results
+            for (const r of results) {
+              if (r.url?.includes('linkedin.com/company/')) {
+                result.linkedinUrl = r.url;
+                break;
+              }
+            }
+          }
+        }
+      } catch (e) {
+        console.warn('[enrich-company] Firecrawl search fallback failed:', e);
+      }
     }
 
     // ── 2. Apollo People Search (Decision Makers) ──
@@ -171,7 +232,6 @@ Deno.serve(async (req) => {
                 source: 'Site carrière',
               }));
             } else if (jobs && typeof jobs === 'object') {
-              // Sometimes returned as { positions: [...] } or similar
               const arr = Object.values(jobs).find(v => Array.isArray(v)) as any[];
               if (arr) {
                 result.openRoles = arr.slice(0, 10).map((j: any) => ({
@@ -235,7 +295,7 @@ Deno.serve(async (req) => {
       }
     }
 
-    console.log('[enrich-company] Done. Domain:', result.domain, 'Roles:', result.openRoles.length);
+    console.log('[enrich-company] Done. Domain:', result.domain, 'Roles:', result.openRoles.length, 'Insights:', result.insights.length);
 
     return new Response(JSON.stringify({ success: true, company: result }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
