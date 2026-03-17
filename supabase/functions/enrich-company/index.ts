@@ -18,6 +18,28 @@ function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15
   return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timer));
 }
 
+async function readResponseTextWithTimeout(response: Response, timeoutMs = 5000): Promise<string> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+
+  try {
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => {
+        void response.body?.cancel().catch(() => undefined);
+        reject(new Error('Response body timeout'));
+      }, timeoutMs);
+    });
+
+    return await Promise.race([response.text(), timeoutPromise]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+async function parseJsonResponse<T = any>(response: Response, timeoutMs = 5000): Promise<T> {
+  const text = await readResponseTextWithTimeout(response, timeoutMs);
+  return JSON.parse(text) as T;
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -77,7 +99,7 @@ Deno.serve(async (req) => {
           body: JSON.stringify({ q_organization_name: company_name.trim(), per_page: 1 }),
         });
         if (orgRes.ok) {
-          const orgData = await orgRes.json();
+          const orgData = await parseJsonResponse(orgRes);
           console.log('[enrich-company] Apollo response keys:', Object.keys(orgData));
           apolloOrg = orgData.organizations?.[0] || orgData.accounts?.[0] || null;
           if (!apolloOrg) {
@@ -123,7 +145,7 @@ Deno.serve(async (req) => {
           }),
         });
         if (searchRes.ok) {
-          const searchData = await searchRes.json();
+          const searchData = await parseJsonResponse(searchRes);
           const results = searchData.data || [];
           console.log('[enrich-company] Firecrawl search returned', results.length, 'results');
 
@@ -195,7 +217,7 @@ Deno.serve(async (req) => {
           }),
         });
         if (peopleRes.ok) {
-          const peopleData = await peopleRes.json();
+          const peopleData = await parseJsonResponse(peopleRes);
           result.decisionMakers = (peopleData.people || []).slice(0, 5).map((p: any) => ({
             name: p.name || `${p.first_name || ''} ${p.last_name || ''}`.trim(),
             role: p.title || '',
@@ -231,7 +253,7 @@ Deno.serve(async (req) => {
           }),
         });
         if (scrapeRes.ok) {
-          const scrapeData = await scrapeRes.json();
+          const scrapeData = await parseJsonResponse(scrapeRes);
           const md = scrapeData.data?.markdown || scrapeData.markdown || '';
           const links = scrapeData.data?.links || scrapeData.links || [];
 
@@ -274,7 +296,7 @@ Deno.serve(async (req) => {
               }),
             });
             if (careersRes.ok) {
-              const careersData = await careersRes.json();
+              const careersData = await parseJsonResponse(careersRes);
               const careersMd = (careersData.data?.markdown || careersData.markdown || '').slice(0, 4000);
               if (careersMd.length > 100 && LOVABLE_API_KEY) {
                 // Use AI to extract structured job data from markdown
@@ -314,7 +336,7 @@ Deno.serve(async (req) => {
                   }),
                 }, 20000);
                 if (extractRes.ok) {
-                  const extractData = await extractRes.json();
+                  const extractData = await parseJsonResponse(extractRes);
                   const toolCall = extractData.choices?.[0]?.message?.tool_calls?.[0];
                   if (toolCall) {
                     const parsed = JSON.parse(toolCall.function.arguments);
@@ -346,7 +368,7 @@ Deno.serve(async (req) => {
             }),
           });
           if (wttjRes.ok) {
-            const wttjData = await wttjRes.json();
+            const wttjData = await parseJsonResponse(wttjRes);
             const wttjResults = (wttjData.data || []).filter((r: any) =>
               (r.url || '').includes('welcometothejungle.com') && (r.url || '').includes('/jobs/')
             );
@@ -377,7 +399,7 @@ Deno.serve(async (req) => {
             }),
           });
           if (liRes.ok) {
-            const liData = await liRes.json();
+            const liData = await parseJsonResponse(liRes);
             const liResults = (liData.data || []).filter((r: any) =>
               (r.url || '').includes('linkedin.com/jobs/')
             );
@@ -455,7 +477,7 @@ Chaque insight doit commencer par un emoji et faire 1-2 phrases max. Exemples : 
         });
 
         if (aiRes.ok) {
-          const aiData = await aiRes.json();
+          const aiData = await parseJsonResponse(aiRes);
           const toolCall = aiData.choices?.[0]?.message?.tool_calls?.[0];
           if (toolCall) {
             const parsed = JSON.parse(toolCall.function.arguments);

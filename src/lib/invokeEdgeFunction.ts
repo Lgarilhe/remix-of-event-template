@@ -49,14 +49,19 @@ export async function invokeEdgeFunction<T = Record<string, unknown>>(
 
   try {
     // Timeout wrapper
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
-
-    const { data, error } = await supabase.functions.invoke(functionName, {
-      body: enrichedBody,
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error('timeout')), TIMEOUT_MS);
     });
 
-    clearTimeout(timer);
+    const { data, error } = await Promise.race([
+      supabase.functions.invoke(functionName, {
+        body: enrichedBody,
+      }),
+      timeoutPromise,
+    ]);
+
+    if (timer) clearTimeout(timer);
 
     if (error) {
       const friendlyMsg = humanizeError(error);
