@@ -535,7 +535,7 @@ Deno.serve(async (req) => {
           const orgRes = await fetchWithTimeout('https://api.apollo.io/api/v1/mixed_companies/search', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache', 'X-Api-Key': APOLLO_API_KEY },
-            body: JSON.stringify(payload),
+            body: JSON.stringify({ ...payload, api_key: APOLLO_API_KEY }),
           });
 
           if (!orgRes.ok) {
@@ -733,7 +733,7 @@ Deno.serve(async (req) => {
           const peopleRes = await fetchWithTimeout('https://api.apollo.io/api/v1/mixed_people/api_search', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'X-Api-Key': APOLLO_API_KEY },
-            body: JSON.stringify(peopleBody),
+            body: JSON.stringify({ ...peopleBody, api_key: APOLLO_API_KEY }),
           });
 
           if (peopleRes.ok) {
@@ -1091,7 +1091,7 @@ Deno.serve(async (req) => {
       parallelTasks.push((async () => {
         try {
           console.log('[enrich] Apollo org enrichment for domain:', result.domain);
-          const enrichRes = await fetchWithTimeout(`https://api.apollo.io/api/v1/organizations/enrich?domain=${encodeURIComponent(result.domain)}`, {
+          const enrichRes = await fetchWithTimeout(`https://api.apollo.io/api/v1/organizations/enrich?domain=${encodeURIComponent(result.domain)}&api_key=${APOLLO_API_KEY}`, {
             method: 'GET',
             headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache', 'X-Api-Key': APOLLO_API_KEY },
           });
@@ -1139,7 +1139,7 @@ Deno.serve(async (req) => {
           const newsRes = await fetchWithTimeout('https://api.apollo.io/api/v1/news_articles/search', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache', 'X-Api-Key': APOLLO_API_KEY },
-            body: JSON.stringify({ organization_ids: [apolloOrgId], per_page: 5, page: 1 }),
+            body: JSON.stringify({ organization_ids: [apolloOrgId], per_page: 5, page: 1, api_key: APOLLO_API_KEY }),
           });
 
           if (newsRes.ok) {
