@@ -411,7 +411,13 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
       toast.success('Coaching live démarré — parlez naturellement');
     } catch (err: any) {
       console.error('Start recording error:', err);
-      toast.error(err?.message || 'Erreur au démarrage');
+      if (err?.name === 'NotAllowedError') {
+        toast.error('Accès au microphone refusé. Vérifiez les permissions du navigateur.');
+      } else if (err?.name === 'NotFoundError' || err?.message?.toLowerCase?.().includes('device not found')) {
+        toast.error('Aucun microphone détecté. Vérifiez le périphérique audio sélectionné.');
+      } else {
+        toast.error(err?.message || 'Erreur au démarrage');
+      }
     }
   }, [candidateId, jobId, scorecardId, criteria, jobContext, analyzeWithCoach]);
 
