@@ -632,19 +632,19 @@ Deno.serve(async (req) => {
     if (APOLLO_API_KEY) {
       parallelTasks.push((async () => {
         try {
+          const peopleBody: Record<string, any> = {
+            person_titles: ['CEO', 'CTO', 'DRH', 'VP Engineering', 'VP People', 'Head of HR', 'Head of Engineering', 'Directeur Technique', 'Directeur RH'],
+            per_page: 5,
+          };
+          if (apolloOrgId) {
+            peopleBody.organization_ids = [apolloOrgId];
+          } else {
+            peopleBody.q_organization_name = company_name.trim();
+          }
+
           const peopleRes = await fetchWithTimeout('https://api.apollo.io/api/v1/mixed_people/api_search', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'X-Api-Key': APOLLO_API_KEY },
-            const peopleBody: Record<string, any> = {
-              person_titles: ['CEO', 'CTO', 'DRH', 'VP Engineering', 'VP People', 'Head of HR', 'Head of Engineering', 'Directeur Technique', 'Directeur RH'],
-              per_page: 5,
-            };
-            // Use org ID for precision; fall back to name-based search
-            if (apolloOrgId) {
-              peopleBody.organization_ids = [apolloOrgId];
-            } else {
-              peopleBody.q_organization_name = company_name.trim();
-            }
             body: JSON.stringify(peopleBody),
           });
 
