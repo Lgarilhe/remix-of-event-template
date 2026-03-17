@@ -84,16 +84,9 @@ export const SceneAudit: React.FC<Props> = ({ companyData, onNext, onBack }) => 
     bubblesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [bubbles]);
 
-  // Get company info from org context (stored during SceneOrganization)
-  const getCompanyInfo = useCallback(async () => {
-    try {
-      const stored = sessionStorage.getItem('onboarding_company');
-      if (stored) {
-        return JSON.parse(stored);
-      }
-    } catch {}
-    return null;
-  }, []);
+  // #9: Track API completion to end animation early
+  const apiDone = useRef(false);
+  const apiResult = useRef<{ score: number; categories: Category[]; quickWins: string[] } | null>(null);
 
   // Auto-start scan
   useEffect(() => {
