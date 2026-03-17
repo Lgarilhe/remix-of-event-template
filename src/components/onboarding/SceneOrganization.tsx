@@ -427,13 +427,6 @@ function formatFollowers(n: number | null | undefined): string {
 const TabOverview: React.FC<{ company: CompanyData }> = ({ company }) => {
   const rolesCount = dedupeRoles(company.openRoles).length || company.jobPostingsCount || 0;
 
-  const kpis = [
-    { icon: Users, label: 'Employés', value: company.size || '–' },
-    { icon: Calendar, label: 'Fondée en', value: company.foundedYear ? String(company.foundedYear) : '–' },
-    { icon: Briefcase, label: 'Postes ouverts', value: rolesCount > 0 ? String(rolesCount) : '–' },
-    { icon: Linkedin, label: 'Followers', value: formatFollowers(company.linkedinFollowers) },
-  ];
-
   const INSIGHT_CONFIG: Record<string, { icon: typeof Target; accent: string }> = {
     difficulty: { icon: Target, accent: 'hsl(0, 72%, 51%)' },
     salary: { icon: DollarSign, accent: 'hsl(142, 71%, 45%)' },
@@ -445,16 +438,6 @@ const TabOverview: React.FC<{ company: CompanyData }> = ({ company }) => {
 
   return (
     <div className="space-y-4">
-      {/* KPI Grid */}
-      <div className="grid grid-cols-4 gap-2">
-        {kpis.map((kpi) => (
-          <div key={kpi.label} className="border border-foreground/10 p-3 text-center space-y-1">
-            <kpi.icon className="w-4 h-4 mx-auto text-muted-foreground" />
-            <p className="text-lg font-bold text-foreground">{kpi.value}</p>
-            <p className="text-[10px] text-muted-foreground uppercase tracking-wider">{kpi.label}</p>
-          </div>
-        ))}
-      </div>
 
       {/* Structured AI Recruitment Insights */}
       {structuredInsights.length > 0 ? (
