@@ -852,7 +852,7 @@ Deno.serve(async (req) => {
                   },
                   {
                     role: 'user',
-                    content: `Extrais TOUS les postes ouverts de la page carrière de "${result.name}". Retourne title, location, department pour CHAQUE poste.\n\n${textContent}`,
+                    content: `Extrais les postes ouverts de la page carrière de "${result.name}". Ne retourne QUE les postes appartenant directement à cette entreprise, pas ceux de partenaires ou filiales. Retourne title, location, department pour CHAQUE poste.\n\n${textContent}`,
                   },
                 ],
                 tools: [{
