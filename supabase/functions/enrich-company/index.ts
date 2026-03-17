@@ -124,10 +124,8 @@ Deno.serve(async (req) => {
               console.log('[enrich-company] Found domain via search:', result.domain);
             }
 
-            // Use title and description from search results
-            if (results[0].title) {
-              result.name = results[0].title.split(' - ')[0].split(' | ')[0].trim() || result.name;
-            }
+            // Do NOT override result.name — keep the user's original input
+
             if (results[0].description && !result.description) {
               result.description = results[0].description;
             }
