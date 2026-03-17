@@ -408,16 +408,6 @@ export const SceneOrganization: React.FC<Props> = ({ onComplete, onBack }) => {
   );
 };
 
-/* ─── Signal color map ─── */
-const SIGNAL_COLORS: Record<string, string> = {
-  green: 'bg-green-100 text-green-700 border-green-300',
-  blue: 'bg-blue-100 text-blue-700 border-blue-300',
-  purple: 'bg-purple-100 text-purple-700 border-purple-300',
-  cyan: 'bg-cyan-100 text-cyan-700 border-cyan-300',
-  orange: 'bg-orange-100 text-orange-700 border-orange-300',
-  emerald: 'bg-emerald-100 text-emerald-700 border-emerald-300',
-  gray: 'bg-muted text-muted-foreground border-foreground/15',
-};
 
 function formatFollowers(n: number | null | undefined): string {
   if (!n) return '–';
