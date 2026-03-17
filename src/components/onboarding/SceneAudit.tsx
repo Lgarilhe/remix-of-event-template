@@ -295,7 +295,7 @@ export const SceneAudit: React.FC<Props> = ({ onNext, onBack }) => {
               <img src={analyticsIcon} alt="" className="w-10 h-10 sm:w-14 sm:h-14 shrink-0" />
 
               {/* Score ring */}
-              <div className="relative w-24 h-24 shrink-0">
+              <div className="relative w-20 h-20 sm:w-24 sm:h-24 shrink-0">
                 <svg width="96" height="96" viewBox="0 0 96 96" className="rotate-[-90deg]">
                   <defs>
                     <linearGradient id="audit-score-grad" x1="0%" y1="0%" x2="100%" y2="100%">

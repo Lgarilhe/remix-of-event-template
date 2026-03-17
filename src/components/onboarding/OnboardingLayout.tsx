@@ -128,7 +128,7 @@ export const OnboardingLayout: React.FC<OnboardingLayoutProps> = ({
       </div>
 
       {/* Content area */}
-      <div className="flex-1 flex flex-col items-center justify-center px-4 relative z-10">
+      <div className="flex-1 flex flex-col items-center justify-center px-3 sm:px-4 relative z-10 overflow-x-hidden">
         {children}
       </div>
 
