@@ -105,21 +105,15 @@ const Onboarding = () => {
           >
             {step === 0 && <SceneWelcome onNext={goNext} />}
             {step === 1 && <SceneOrganization onComplete={handleOrgCreated} onBack={goBack} />}
-            {step === 2 && <OnboardingStepProfile onNext={goNext} onBack={goBack} />}
-            {step === 3 && <OnboardingStepLinkedIn onNext={goNext} onBack={goBack} />}
-            {step === 4 && (
+            {step === 2 && <SceneAudit onNext={goNext} onBack={goBack} />}
+            {step === 3 && <OnboardingStepProfile onNext={goNext} onBack={goBack} />}
+            {step === 4 && <OnboardingStepLinkedIn onNext={goNext} onBack={goBack} />}
+            {step === 5 && (
               <OnboardingStepInvite
                 organizationId={organizationId}
                 onFinish={goNext}
                 onBack={goBack}
               />
-            )}
-            {/* Steps 5 & 6 are placeholders for future scenes */}
-            {step === 5 && (
-              <div className="text-center py-16">
-                <p className="text-muted-foreground">Étape 6 — bientôt disponible</p>
-                <button onClick={goNext} className="mt-4 underline text-sm">Suivant →</button>
-              </div>
             )}
             {step === 6 && (
               <div className="text-center py-16">
