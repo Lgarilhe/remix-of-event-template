@@ -1225,13 +1225,8 @@ Deno.serve(async (req) => {
           if (newsRes.ok) {
             const newsData = await parseJsonResponse(newsRes);
             const articles = newsData.news_articles || newsData.articles || newsData.data || [];
-            result.newsArticles = (Array.isArray(articles) ? articles : []).slice(0, 5).map((a: any) => ({
-              title: a.title || a.headline || null,
-              url: a.url || a.link || null,
-              published_at: a.published_at || a.published_date || a.date || null,
-              source: a.source || a.publisher || null,
-            }));
-            console.log(`[enrich] Apollo news: ${result.newsArticles.length} articles`);
+            result.newsArticles = selectRecentNewsArticles(articles, { maxAgeMonths: 15, includeUndated: false });
+            console.log(`[enrich] Apollo news: ${result.newsArticles.length} recent articles`);
           }
         } catch (e) {
           console.warn('[enrich] Apollo news articles failed:', e);
