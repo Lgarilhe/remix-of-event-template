@@ -493,6 +493,11 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
             {isRecording ? `Live — ${coveredCount}/${criteria.length} critères` : callStopped ? 'Session terminée' : 'Coach Live'}
           </span>
           {isAnalyzing && <Loader2 className="w-3 h-3 animate-spin text-muted-foreground" />}
+          {isRecording && (
+            <span className="text-[11px] tabular-nums text-muted-foreground font-medium ml-1">
+              {elapsedDisplay}
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-1">
           {!isRecording && !callStopped && (
