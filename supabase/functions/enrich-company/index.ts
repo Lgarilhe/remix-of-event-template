@@ -147,6 +147,83 @@ function normalizeDomain(input: string | null | undefined): string | null {
   }
 }
 
+const RECENT_NEWS_MAX_AGE_MONTHS = 15;
+
+function parseLooseNewsDate(value: unknown): number | null {
+  if (!value) return null;
+  const raw = String(value).trim();
+  if (!raw) return null;
+
+  const direct = Date.parse(raw);
+  if (!Number.isNaN(direct)) return direct;
+
+  const normalized = raw.toLowerCase();
+  const monthMap: Record<string, string> = {
+    janvier: '01',
+    'février': '02',
+    fevrier: '02',
+    mars: '03',
+    avril: '04',
+    mai: '05',
+    juin: '06',
+    juillet: '07',
+    'août': '08',
+    aout: '08',
+    septembre: '09',
+    octobre: '10',
+    novembre: '11',
+    'décembre': '12',
+    decembre: '12',
+  };
+
+  const frMatch = normalized.match(/\b(janvier|février|fevrier|mars|avril|mai|juin|juillet|août|aout|septembre|octobre|novembre|décembre|decembre)\s+(20\d{2})\b/i);
+  if (frMatch) {
+    const month = monthMap[frMatch[1].toLowerCase()];
+    const parsed = Date.parse(`${frMatch[2]}-${month}-01`);
+    return Number.isNaN(parsed) ? null : parsed;
+  }
+
+  const yearMonthMatch = normalized.match(/\b(20\d{2})[-/](\d{1,2})\b/);
+  if (yearMonthMatch) {
+    const parsed = Date.parse(`${yearMonthMatch[1]}-${yearMonthMatch[2].padStart(2, '0')}-01`);
+    return Number.isNaN(parsed) ? null : parsed;
+  }
+
+  const yearMatch = normalized.match(/\b(20\d{2})\b/);
+  if (yearMatch) {
+    const parsed = Date.parse(`${yearMatch[1]}-01-01`);
+    return Number.isNaN(parsed) ? null : parsed;
+  }
+
+  return null;
+}
+
+function normalizeNewsArticles(rawArticles: any[]): Array<{ title: string | null; url: string | null; published_at: string | null; source: string | null; _ts: number | null }> {
+  return (Array.isArray(rawArticles) ? rawArticles : [])
+    .map((a: any) => ({
+      title: a.title || a.headline || null,
+      url: a.url || a.link || null,
+      published_at: a.published_at || a.published_date || a.date || null,
+      source: a.source || a.publisher || null,
+      _ts: parseLooseNewsDate(a.published_at || a.published_date || a.date || null),
+    }))
+    .filter((article) => article.title)
+    .sort((a, b) => (b._ts ?? 0) - (a._ts ?? 0) || String(a.title).localeCompare(String(b.title)));
+}
+
+function selectRecentNewsArticles(rawArticles: any[], options: { maxAgeMonths?: number; includeUndated?: boolean } = {}): Array<{ title: string | null; url: string | null; published_at: string | null; source: string | null }> {
+  const maxAgeMonths = options.maxAgeMonths ?? RECENT_NEWS_MAX_AGE_MONTHS;
+  const includeUndated = options.includeUndated ?? false;
+  const cutoff = Date.now() - maxAgeMonths * 30.44 * 24 * 60 * 60 * 1000;
+  const normalized = normalizeNewsArticles(rawArticles);
+  const recent = normalized.filter((article) => article._ts !== null && article._ts >= cutoff);
+  const undated = includeUndated ? normalized.filter((article) => article._ts === null) : [];
+
+  return [...recent, ...undated]
+    .slice(0, 5)
+    .map(({ _ts, ...article }) => article);
+}
+
 function domainLabel(domain: string | null | undefined): string {
   return normalizeDomain(domain)?.split('.')[0] || '';
 }

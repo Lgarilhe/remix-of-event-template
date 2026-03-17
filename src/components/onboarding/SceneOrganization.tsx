@@ -155,6 +155,7 @@ export const SceneOrganization: React.FC<Props> = ({ onComplete, onBack }) => {
       const { data, error } = await invokeEdgeFunction<{ company: CompanyData; disambiguate?: boolean; candidates?: ApolloCandidate[] }>('enrich-company', {
         company_name: name,
         country: 'France',
+        force_refresh: true,
         ...(selectedApolloId ? { selected_apollo_id: selectedApolloId } : {}),
       });
 
