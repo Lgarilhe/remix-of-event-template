@@ -423,20 +423,16 @@ export const SceneAudit: React.FC<Props> = ({ companyData, onNext, onBack }) => 
               </div>
             )}
 
-            {/* Skalr × Konekt card */}
+            {/* Konekt insight card */}
             <div
-              className="border-2 border-foreground/15 p-4 flex items-start gap-4"
+              className="border-2 border-foreground/15 p-4"
               style={{
                 background: 'linear-gradient(135deg, hsl(var(--skalr-purple) / 0.04), hsl(var(--skalr-pink) / 0.04))',
               }}
             >
-              <div className="flex items-center gap-1.5 shrink-0">
-                <img src={skalrLogo} alt="Skalr" className="h-7 w-auto" />
-                <span className="text-xs font-semibold" style={{ fontFamily: "'Space Mono', monospace" }}>× Konekt</span>
-              </div>
               <p className="text-xs text-foreground/70 leading-relaxed">
                 <strong className="text-foreground">{improvementCount} axes d'amélioration identifiés.</strong>{' '}
-                L'accompagnement Skalr travaille ces piliers en profondeur — nos clients constatent en moyenne{' '}
+                Konekt vous aide à travailler ces piliers en profondeur pour atteindre en moyenne{' '}
                 <span className="font-semibold text-foreground">-30% de time-to-hire</span> et{' '}
                 <span className="font-semibold text-foreground">×2 candidatures qualifiées</span>.
               </p>
