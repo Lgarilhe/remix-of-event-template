@@ -281,7 +281,12 @@ export const SceneOrganization: React.FC<Props> = ({ onComplete, onBack }) => {
       </div>
 
       {/* Search input */}
-      <div className="relative flex gap-2">
+      <div className="flex gap-2">
+        {onBack && (
+          <Button variant="outline" size="icon" onClick={onBack} className="h-11 w-11 border-2 border-foreground/20 shrink-0">
+            <ArrowLeft className="w-4 h-4" />
+          </Button>
+        )}
         <div className="relative flex-1">
           <img src={searchIcon} alt="" className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 pointer-events-none" />
           <Input
