@@ -238,7 +238,7 @@ Deno.serve(async (req) => {
     const result: Record<string, any> = {
       name: smartCapitalize(company_name.trim()),
       domain: null, industry: null, size: null, location: null,
-      funding: null, description: null, techStack: [], insights: [],
+      funding: null, description: null, techStack: [], insights: [], structuredInsights: [],
       decisionMakers: [], openRoles: [], linkedinUrl: null,
       websiteUrl: null, logoUrl: null, careersUrl: null,
       foundedYear: null, linkedinFollowers: null, annualRevenue: null,
