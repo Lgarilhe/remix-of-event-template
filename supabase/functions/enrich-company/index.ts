@@ -502,6 +502,12 @@ Deno.serve(async (req) => {
       keywords: [],
       jobPostingsCount: null,
       signals: [],
+      departmentalHeadcount: null,
+      fundingEvents: [],
+      intentStrength: null,
+      suborganizations: [],
+      numSuborganizations: null,
+      newsArticles: [],
     };
 
     // ═══════════════════════════════════════════════════════
