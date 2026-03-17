@@ -1091,7 +1091,7 @@ Deno.serve(async (req) => {
       parallelTasks.push((async () => {
         try {
           console.log('[enrich] Apollo org enrichment for domain:', result.domain);
-          const enrichRes = await fetchWithTimeout(`https://api.apollo.io/api/v1/organizations/enrich?domain=${encodeURIComponent(result.domain)}`, {
+          const enrichRes = await fetchWithTimeout(`https://api.apollo.io/api/v1/organizations/enrich?domain=${encodeURIComponent(result.domain)}&api_key=${APOLLO_API_KEY}`, {
             method: 'GET',
             headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache', 'X-Api-Key': APOLLO_API_KEY },
           });
