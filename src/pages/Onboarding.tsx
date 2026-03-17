@@ -10,7 +10,7 @@ import { SceneOrganization } from '@/components/onboarding/SceneOrganization';
 import { SceneAudit } from '@/components/onboarding/SceneAudit';
 import { SceneProfile } from '@/components/onboarding/SceneProfile';
 import { SceneIntegrations } from '@/components/onboarding/SceneIntegrations';
-import { OnboardingStepInvite } from '@/components/onboarding/OnboardingStepInvite';
+import { SceneTeam } from '@/components/onboarding/SceneTeam';
 
 const STEP_COUNT = 7;
 
@@ -109,7 +109,7 @@ const Onboarding = () => {
             {step === 3 && <SceneProfile onNext={goNext} onBack={goBack} />}
             {step === 4 && <SceneIntegrations onNext={goNext} onBack={goBack} />}
             {step === 5 && (
-              <OnboardingStepInvite
+              <SceneTeam
                 organizationId={organizationId}
                 onFinish={goNext}
                 onBack={goBack}
