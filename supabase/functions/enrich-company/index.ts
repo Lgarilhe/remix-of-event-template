@@ -1003,9 +1003,6 @@ Deno.serve(async (req) => {
                 { role: 'system', content: `Tu extrais UNIQUEMENT les vrais postes publi\u00e9s directement par "${result.name}" sur Welcome to the Jungle. EXCLUS les offres de partenaires, filiales ou soci\u00e9t\u00e9s tierces. Ignore slogans, culture et marketing. Retourne uniquement via tool call.` },
                 { role: 'user', content: `Extrais les postes ouverts sur cette page WTTJ pour "${result.name}". Ne retourne QUE les postes appartenant \u00e0 cette entreprise. Retourne title et location pour chaque poste.\n\n${textContent}` },
               ],
-                { role: 'system', content: 'Tu extrais UNIQUEMENT les vrais intitulés de postes d’une page Welcome to the Jungle. Ignore les slogans, descriptions de culture et paragraphes marketing. Retourne uniquement via tool call.' },
-                { role: 'user', content: `Extrais TOUS les postes ouverts listés sur cette page Welcome to the Jungle pour "${result.name}". Retourne title et location pour chaque poste.\n\n${textContent}` },
-              ],
               tools: [{
                 type: 'function',
                 function: {
