@@ -58,10 +58,7 @@ export const OnboardingLayout: React.FC<OnboardingLayoutProps> = ({
       <div className="sticky top-0 z-20 flex items-center justify-between px-3 sm:px-6 py-3 backdrop-blur-sm bg-background/60">
         {/* Left: Logo + Konekt */}
         <div className="flex items-center gap-2 shrink-0">
-          <img src={skalrLogo} alt="Skalr" className="h-6 sm:h-7 w-auto" />
-          <span className="font-mono text-xs sm:text-sm text-muted-foreground hidden sm:inline" style={{ fontFamily: "'Space Mono', monospace" }}>
-            × Konekt
-          </span>
+          <img src={skalrLogo} alt="Konekt" className="h-6 sm:h-7 w-auto" />
           {orgName && (
             <span className="text-xs text-muted-foreground truncate max-w-[80px] sm:max-w-[140px] hidden sm:inline">{orgName}</span>
           )}

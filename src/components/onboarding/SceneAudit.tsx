@@ -4,9 +4,10 @@ import { ArrowLeft, ArrowRight, Check, ChevronDown, ChevronUp, Globe, Briefcase,
 import { Button } from '@/components/ui/button';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import analyticsIcon from '@/assets/icon-analytics-3d.png';
-import skalrLogo from '@/assets/skalr-logo-concept-3.png';
+import type { OnboardingCompanyData } from '@/pages/Onboarding';
 
 interface Props {
+  companyData: OnboardingCompanyData | null;
   onNext: () => void;
   onBack: () => void;
 }
@@ -68,7 +69,7 @@ const AGENT_MESSAGES = [
 ];
 
 /* ─── Component ─── */
-export const SceneAudit: React.FC<Props> = ({ onNext, onBack }) => {
+export const SceneAudit: React.FC<Props> = ({ companyData, onNext, onBack }) => {
   const [phase, setPhase] = useState<'scanning' | 'results' | 'error'>('scanning');
   const [sources, setSources] = useState<ScanSource[]>(SCAN_SOURCES.map(s => ({ ...s, done: false })));
   const [bubbles, setBubbles] = useState<AgentBubble[]>([]);
@@ -83,16 +84,9 @@ export const SceneAudit: React.FC<Props> = ({ onNext, onBack }) => {
     bubblesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [bubbles]);
 
-  // Get company info from org context (stored during SceneOrganization)
-  const getCompanyInfo = useCallback(async () => {
-    try {
-      const stored = sessionStorage.getItem('onboarding_company');
-      if (stored) {
-        return JSON.parse(stored);
-      }
-    } catch {}
-    return null;
-  }, []);
+  // #9: Track API completion to end animation early
+  const apiDone = useRef(false);
+  const apiResult = useRef<{ score: number; categories: Category[]; quickWins: string[] } | null>(null);
 
   // Auto-start scan
   useEffect(() => {
@@ -112,18 +106,15 @@ export const SceneAudit: React.FC<Props> = ({ onNext, onBack }) => {
       }, 500 + i * 600);
     });
 
-    // Launch real API call
+    // Launch real API call in parallel with animation
     (async () => {
-      const companyInfo = await getCompanyInfo();
-      const companyName = companyInfo?.name || '';
-      const domain = companyInfo?.domain || null;
-      const linkedinUrl = companyInfo?.linkedinUrl || null;
-      const careersUrl = companyInfo?.careersUrl || null;
+      const companyName = companyData?.name || '';
+      const domain = companyData?.domain || null;
+      const linkedinUrl = companyData?.linkedinUrl || null;
+      const careersUrl = companyData?.careersUrl || null;
 
       if (!companyName) {
-        // No company — skip to results with empty data
-        const totalAnimTime = 500 + AGENT_MESSAGES.length * 600 + 800;
-        setTimeout(() => setPhase('error'), totalAnimTime);
+        apiDone.current = true;
         return;
       }
 
@@ -142,12 +133,10 @@ export const SceneAudit: React.FC<Props> = ({ onNext, onBack }) => {
 
         if (error || !data?.success) {
           console.error('[SceneAudit] API error:', error || data?.error);
-          const totalAnimTime = 500 + AGENT_MESSAGES.length * 600 + 800;
-          setTimeout(() => setPhase('error'), totalAnimTime);
+          apiDone.current = true;
           return;
         }
 
-        // Map categories with icons
         const mappedCategories: Category[] = (data.categories || []).map((cat: any) => ({
           id: cat.id,
           label: cat.label,
@@ -159,28 +148,40 @@ export const SceneAudit: React.FC<Props> = ({ onNext, onBack }) => {
           findings: cat.findings || [],
         }));
 
-        setOverallScore(data.overall_score || 0);
-        setCategories(mappedCategories);
-        setQuickWins(data.quick_wins || []);
-
-        // Store audit data for SceneLaunch
-        try {
-          sessionStorage.setItem('onboarding_audit', JSON.stringify({
-            score: data.overall_score,
-            categories: mappedCategories.length,
-          }));
-        } catch {}
-
-        // Wait for animations to finish
-        const totalAnimTime = 500 + AGENT_MESSAGES.length * 600 + 800;
-        setTimeout(() => setPhase('results'), totalAnimTime);
+        apiResult.current = {
+          score: data.overall_score || 0,
+          categories: mappedCategories,
+          quickWins: data.quick_wins || [],
+        };
+        apiDone.current = true;
       } catch (err) {
         console.error('[SceneAudit] Error:', err);
-        const totalAnimTime = 500 + AGENT_MESSAGES.length * 600 + 800;
-        setTimeout(() => setPhase('error'), totalAnimTime);
+        apiDone.current = true;
       }
     })();
-  }, [getCompanyInfo]);
+
+    // #9: Poll for API completion — show results as soon as both API and minimum animation are done
+    const MIN_ANIM_TIME = 2000; // minimum 2s for the scan to feel real
+    const startTime = Date.now();
+    const pollInterval = setInterval(() => {
+      if (!apiDone.current) return;
+      clearInterval(pollInterval);
+      const elapsed = Date.now() - startTime;
+      const delay = Math.max(0, MIN_ANIM_TIME - elapsed);
+      setTimeout(() => {
+        if (apiResult.current) {
+          setOverallScore(apiResult.current.score);
+          setCategories(apiResult.current.categories);
+          setQuickWins(apiResult.current.quickWins);
+          setPhase('results');
+        } else {
+          setPhase('error');
+        }
+      }, delay);
+    }, 200);
+
+    return () => clearInterval(pollInterval);
+  }, [companyData]);
 
   const circumference = 2 * Math.PI * 42;
   const scoreOffset = circumference - (overallScore / 100) * circumference;
@@ -422,20 +423,16 @@ export const SceneAudit: React.FC<Props> = ({ onNext, onBack }) => {
               </div>
             )}
 
-            {/* Skalr × Konekt card */}
+            {/* Konekt insight card */}
             <div
-              className="border-2 border-foreground/15 p-4 flex items-start gap-4"
+              className="border-2 border-foreground/15 p-4"
               style={{
                 background: 'linear-gradient(135deg, hsl(var(--skalr-purple) / 0.04), hsl(var(--skalr-pink) / 0.04))',
               }}
             >
-              <div className="flex items-center gap-1.5 shrink-0">
-                <img src={skalrLogo} alt="Skalr" className="h-7 w-auto" />
-                <span className="text-xs font-semibold" style={{ fontFamily: "'Space Mono', monospace" }}>× Konekt</span>
-              </div>
               <p className="text-xs text-foreground/70 leading-relaxed">
                 <strong className="text-foreground">{improvementCount} axes d'amélioration identifiés.</strong>{' '}
-                L'accompagnement Skalr travaille ces piliers en profondeur — nos clients constatent en moyenne{' '}
+                Konekt vous aide à travailler ces piliers en profondeur pour atteindre en moyenne{' '}
                 <span className="font-semibold text-foreground">-30% de time-to-hire</span> et{' '}
                 <span className="font-semibold text-foreground">×2 candidatures qualifiées</span>.
               </p>

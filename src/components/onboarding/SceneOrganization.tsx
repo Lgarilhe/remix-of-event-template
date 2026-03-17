@@ -14,10 +14,11 @@ import linkedinLogo from '@/assets/linkedin-logo.png';
 const WTTJ_LOGO = 'https://www.welcometothejungle.com/assets/images/logos/wttj.svg';
 const WTTJ_FALLBACK = 'https://cdn.welcometothejungle.com/wttj-front/production/assets/images/logos/wttj.svg';
 
+import type { OnboardingCompanyData } from '@/pages/Onboarding';
+
 /* ─── Types ─── */
 interface Props {
-  onComplete: () => void;
-  onBack: () => void;
+  onComplete: (companyData: OnboardingCompanyData) => void;
 }
 
 interface Source {
@@ -80,7 +81,7 @@ const AGENT_MESSAGES = [
 ];
 
 /* ─── Component ─── */
-export const SceneOrganization: React.FC<Props> = ({ onComplete, onBack }) => {
+export const SceneOrganization: React.FC<Props> = ({ onComplete }) => {
   const [query, setQuery] = useState('');
   const [phase, setPhase] = useState<'idle' | 'scanning' | 'results'>('idle');
   const [sources, setSources] = useState<Source[]>(SCAN_SOURCES);
@@ -100,11 +101,11 @@ export const SceneOrganization: React.FC<Props> = ({ onComplete, onBack }) => {
 
   const startScan = useCallback(async (name: string) => {
     const scanStartedAt = Date.now();
-    const totalAnimTime = 600 + AGENT_MESSAGES.length * 800 + 400;
+    const MIN_ANIM_TIME = 2000; // Show scan for at least 2s
 
     const finishScan = (nextCompany: CompanyData) => {
       const elapsed = Date.now() - scanStartedAt;
-      const remaining = Math.max(0, totalAnimTime - elapsed);
+      const remaining = Math.max(0, MIN_ANIM_TIME - elapsed);
       setTimeout(() => {
         setCompany(nextCompany);
         setPhase('results');
@@ -151,14 +152,7 @@ export const SceneOrganization: React.FC<Props> = ({ onComplete, onBack }) => {
 
       const enriched = data.company;
 
-      try {
-        sessionStorage.setItem('onboarding_company', JSON.stringify({
-          name: enriched.name,
-          domain: enriched.domain,
-          linkedinUrl: enriched.linkedinUrl,
-          careersUrl: enriched.careersUrl || null,
-        }));
-      } catch {}
+      // No more sessionStorage — data is passed via callback
 
       finishScan(enriched);
     } catch (err) {
@@ -250,7 +244,12 @@ export const SceneOrganization: React.FC<Props> = ({ onComplete, onBack }) => {
         }
       }
 
-      onComplete();
+      onComplete({
+        name: company.name,
+        domain: company.domain,
+        linkedinUrl: company.linkedinUrl,
+        careersUrl: company.careersUrl || null,
+      });
     } catch (err: any) {
       const msg = err?.message || '';
       if (msg.includes('duplicate key') || msg.includes('organizations_slug_key')) {
@@ -450,10 +449,7 @@ export const SceneOrganization: React.FC<Props> = ({ onComplete, onBack }) => {
             </AnimatePresence>
 
             {/* Navigation */}
-            <div className="flex items-center justify-between pt-2">
-              <Button variant="outline" onClick={onBack} className="gap-2 border-2 border-foreground/20 text-sm">
-                <ArrowLeft className="w-4 h-4" /> Retour
-              </Button>
+            <div className="flex items-center justify-end pt-2">
               <Button
                 onClick={handleContinue}
                 disabled={isCreating}
