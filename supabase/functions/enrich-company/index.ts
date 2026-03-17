@@ -400,11 +400,25 @@ Deno.serve(async (req) => {
           });
           if (liRes.ok) {
             const liData = await parseJsonResponse(liRes);
-            const liResults = (liData.data || []).filter((r: any) =>
-              (r.url || '').includes('linkedin.com/jobs/')
-            );
+            const liResults = (liData.data || []).filter((r: any) => {
+              const url = r.url || '';
+              // Only keep individual job view pages, not search/collection pages
+              return url.includes('linkedin.com/jobs/view/') || 
+                (url.includes('linkedin.com/jobs/') && !url.includes('/search') && !url.includes('/collections'));
+            });
             for (const r of liResults) {
-              const title = (r.title || '').replace(/ \|.*$/, '').replace(/ - LinkedIn.*$/, '').replace(/ at .*$/, '').trim();
+              let title = (r.title || '')
+                .replace(/ \|.*$/, '')
+                .replace(/ - LinkedIn.*$/i, '')
+                .replace(/ at .*$/, '')
+                .replace(/ hiring .*$/i, '')
+                .trim();
+              // Skip aggregation pages: "141 Gandhi jobs in India (6 new)", "29 Gandhi jobs in Pune City"
+              if (/^\d+\s+\w+\s+jobs?\s+in\s+/i.test(title)) continue;
+              // Skip "X offres d'emploi" style
+              if (/^\d+\s+offres?\s/i.test(title)) continue;
+              // Skip if title still contains "jobs" as standalone word (likely a search page)
+              if (/\bjobs?\b/i.test(title) && title.split(' ').length <= 4) continue;
               if (title && title.length > 3) {
                 jobSources.push({ title, location: '', source: 'LinkedIn' });
               }
