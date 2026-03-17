@@ -80,7 +80,7 @@ Deno.serve(async (req) => {
             const searchData = await searchRes.json();
             for (const r of (searchData.data || []).slice(0, 5)) {
               const url = r.url || '';
-              if (url.includes('linkedin.com') || url.includes('facebook.com') || url.includes('twitter.com')) continue;
+              if (/linkedin\.com|facebook\.com|twitter\.com|instagram\.com|zoominfo\.com|glassdoor\.com|crunchbase\.com|wikipedia\.org|youtube\.com|tiktok\.com|x\.com/i.test(url)) continue;
               const dm = url.match(/^https?:\/\/(?:www\.)?([^\/]+)/);
               const domain = dm ? dm[1] : null;
               // Skip if we already have this domain from Apollo
