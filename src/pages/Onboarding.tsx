@@ -8,7 +8,7 @@ import { OnboardingLayout } from '@/components/onboarding/OnboardingLayout';
 import { SceneWelcome } from '@/components/onboarding/SceneWelcome';
 import { SceneOrganization } from '@/components/onboarding/SceneOrganization';
 import { SceneAudit } from '@/components/onboarding/SceneAudit';
-import { OnboardingStepProfile } from '@/components/onboarding/OnboardingStepProfile';
+import { SceneProfile } from '@/components/onboarding/SceneProfile';
 import { OnboardingStepLinkedIn } from '@/components/onboarding/OnboardingStepLinkedIn';
 import { OnboardingStepInvite } from '@/components/onboarding/OnboardingStepInvite';
 
