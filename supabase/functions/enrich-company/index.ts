@@ -1028,37 +1028,6 @@ Deno.serve(async (req) => {
               tool_choice: { type: 'function', function: { name: 'return_jobs' } },
             }),
           }, 18000);
-                { role: 'system', content: `Tu extrais UNIQUEMENT les vrais postes publi\u00e9s directement par "${result.name}" sur Welcome to the Jungle. EXCLUS les offres de partenaires, filiales ou soci\u00e9t\u00e9s tierces. Ignore slogans, culture et marketing. Retourne uniquement via tool call.` },
-                { role: 'user', content: `Extrais les postes ouverts sur cette page WTTJ pour "${result.name}". Ne retourne QUE les postes appartenant \u00e0 cette entreprise. Retourne title et location pour chaque poste.\n\n${textContent}` },
-              ],
-                { role: 'system', content: 'Tu extrais UNIQUEMENT les vrais intitulés de postes d’une page Welcome to the Jungle. Ignore les slogans, descriptions de culture et paragraphes marketing. Retourne uniquement via tool call.' },
-                { role: 'user', content: `Extrais TOUS les postes ouverts listés sur cette page Welcome to the Jungle pour "${result.name}". Retourne title et location pour chaque poste.\n\n${textContent}` },
-              ],
-              tools: [{
-                type: 'function',
-                function: {
-                  name: 'return_jobs',
-                  parameters: {
-                    type: 'object',
-                    properties: {
-                      jobs: {
-                        type: 'array',
-                        items: {
-                          type: 'object',
-                          properties: { title: { type: 'string' }, location: { type: 'string' } },
-                          required: ['title'],
-                          additionalProperties: false,
-                        },
-                      },
-                    },
-                    required: ['jobs'],
-                    additionalProperties: false,
-                  },
-                },
-              }],
-              tool_choice: { type: 'function', function: { name: 'return_jobs' } },
-            }),
-          }, 18000);
 
           if (extractRes.ok) {
             const extractData = await parseJsonResponse(extractRes);
