@@ -26,12 +26,11 @@ export interface OnboardingCompanyData {
 }
 
 const Onboarding = () => {
-  const [step, setStep] = useState<number | null>(null); // null = not initialized
+  const [step, setStep] = useState(0); // Always start at Welcome
   const [direction, setDirection] = useState(1);
   const [orgCreated, setOrgCreated] = useState(false);
   const [completedSet, setCompletedSet] = useState<Set<number>>(new Set());
   const [companyData, setCompanyData] = useState<OnboardingCompanyData | null>(null);
-  const initialized = useRef(false);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { organization, organizationId } = useOrganization();
@@ -45,26 +44,13 @@ const Onboarding = () => {
     });
   }, []);
 
-  // #7 Fix: Determine initial step on mount — skip org step if org exists
+  // If org gets created/detected while on step 1, advance past it
   useEffect(() => {
-    if (initialized.current) return;
-    initialized.current = true;
-    if (organization) {
-      setOrgCreated(true);
-      markCompleted(1);
-      setStep(0); // Start at welcome, but org step will be auto-skipped
-    } else {
-      setStep(0);
-    }
-  }, [organization, markCompleted]);
-
-  // If org gets created/detected while on step 1, advance
-  useEffect(() => {
-    if (step === null) return;
     if (organization && !orgCreated) {
       setOrgCreated(true);
       markCompleted(1);
       if (step === 1) {
+        setDirection(1);
         setStep(2);
       }
     }
