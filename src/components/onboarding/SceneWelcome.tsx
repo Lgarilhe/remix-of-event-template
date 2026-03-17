@@ -49,7 +49,7 @@ export const SceneWelcome: React.FC<Props> = ({ onNext }) => {
 
       {/* Title */}
       <motion.h1
-        className="font-editorial italic text-4xl md:text-5xl leading-tight"
+        className="font-editorial italic text-3xl sm:text-4xl md:text-5xl leading-tight"
         initial={{ y: 10, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
         transition={{ delay: 0.3, duration: 0.5 }}

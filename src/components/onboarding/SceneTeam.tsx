@@ -285,32 +285,34 @@ export const SceneTeam: React.FC<Props> = ({ organizationId, onFinish, onBack })
         <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
           Invitation par email
         </span>
-        <form onSubmit={handleManualInvite} className="flex gap-2">
+        <form onSubmit={handleManualInvite} className="flex flex-wrap sm:flex-nowrap gap-2">
           <Input
             type="email"
             placeholder="collegue@entreprise.com"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className="flex-1 border-2 border-foreground/15 text-sm h-10"
+            className="flex-1 min-w-0 border-2 border-foreground/15 text-sm h-10"
           />
-          <Select value={role} onValueChange={setRole}>
-            <SelectTrigger className="w-24 text-xs border-2 border-foreground/15 h-10">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="admin">Admin</SelectItem>
-              <SelectItem value="member">Membre</SelectItem>
-            </SelectContent>
-          </Select>
-          <Button
-            type="submit"
-            size="icon"
-            disabled={isInviting || !email.trim()}
-            className="h-10 w-10 border-2 border-foreground bg-foreground text-background hover:bg-foreground/90 shrink-0"
-            style={{ boxShadow: '2px 2px 0px 0px hsl(var(--brutal-accent))' }}
-          >
-            {isInviting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
-          </Button>
+          <div className="flex gap-2 w-full sm:w-auto">
+            <Select value={role} onValueChange={setRole}>
+              <SelectTrigger className="w-24 text-xs border-2 border-foreground/15 h-10">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="admin">Admin</SelectItem>
+                <SelectItem value="member">Membre</SelectItem>
+              </SelectContent>
+            </Select>
+            <Button
+              type="submit"
+              size="icon"
+              disabled={isInviting || !email.trim()}
+              className="h-10 w-10 border-2 border-foreground bg-foreground text-background hover:bg-foreground/90 shrink-0"
+              style={{ boxShadow: '2px 2px 0px 0px hsl(var(--brutal-accent))' }}
+            >
+              {isInviting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+            </Button>
+          </div>
         </form>
 
         {invitedEmails.length > 0 && (

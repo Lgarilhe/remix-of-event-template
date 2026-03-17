@@ -55,32 +55,27 @@ export const OnboardingLayout: React.FC<OnboardingLayoutProps> = ({
       </div>
 
       {/* Top bar */}
-      <div className="sticky top-0 z-20 flex items-center justify-between px-6 py-3 backdrop-blur-sm bg-background/60">
+      <div className="sticky top-0 z-20 flex items-center justify-between px-3 sm:px-6 py-3 backdrop-blur-sm bg-background/60">
         {/* Left: Logo + Konekt */}
-        <div className="flex items-center gap-2.5">
-          <img src={skalrLogo} alt="Skalr" className="h-7 w-auto" />
-          <span className="font-mono text-sm text-muted-foreground" style={{ fontFamily: "'Space Mono', monospace" }}>
+        <div className="flex items-center gap-2 shrink-0">
+          <img src={skalrLogo} alt="Skalr" className="h-6 sm:h-7 w-auto" />
+          <span className="font-mono text-xs sm:text-sm text-muted-foreground hidden sm:inline" style={{ fontFamily: "'Space Mono', monospace" }}>
             × Konekt
           </span>
           {orgName && (
-            <>
-              <span className="text-muted-foreground/40 mx-1">·</span>
-              <span className="text-xs text-muted-foreground truncate max-w-[140px]">{orgName}</span>
-            </>
+            <span className="text-xs text-muted-foreground truncate max-w-[80px] sm:max-w-[140px] hidden sm:inline">{orgName}</span>
           )}
         </div>
 
         {/* Center: Step dots */}
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1 sm:gap-1.5">
           {Array.from({ length: STEP_COUNT }).map((_, i) => (
             <motion.div
               key={i}
               className={`h-1.5 rounded-[1px] transition-all duration-300 ${
                 i === currentStep
-                  ? 'w-6'
-                  : i < currentStep
-                  ? 'w-3'
-                  : 'w-3'
+                  ? 'w-4 sm:w-6'
+                  : 'w-2 sm:w-3'
               }`}
               style={{
                 background:
@@ -97,8 +92,8 @@ export const OnboardingLayout: React.FC<OnboardingLayoutProps> = ({
         </div>
 
         {/* Right: Score ring */}
-        <div className="flex items-center gap-2">
-          <svg width="40" height="40" viewBox="0 0 40 40" className="rotate-[-90deg]">
+        <div className="flex items-center gap-1.5 shrink-0">
+          <svg width="32" height="32" viewBox="0 0 40 40" className="rotate-[-90deg] sm:w-10 sm:h-10">
             <defs>
               <linearGradient id="score-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
                 <stop offset="0%" stopColor="hsl(var(--skalr-purple))" />
@@ -124,7 +119,7 @@ export const OnboardingLayout: React.FC<OnboardingLayoutProps> = ({
             />
           </svg>
           <span
-            className="text-xs font-bold text-foreground/70"
+            className="text-[10px] sm:text-xs font-bold text-foreground/70"
             style={{ fontFamily: "'Space Mono', monospace" }}
           >
             {scorePercent}%
@@ -133,7 +128,7 @@ export const OnboardingLayout: React.FC<OnboardingLayoutProps> = ({
       </div>
 
       {/* Content area */}
-      <div className="flex-1 flex flex-col items-center justify-center px-4 relative z-10">
+      <div className="flex-1 flex flex-col items-center justify-center px-3 sm:px-4 relative z-10 overflow-x-hidden">
         {children}
       </div>
 

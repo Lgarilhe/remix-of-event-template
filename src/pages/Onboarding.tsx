@@ -92,7 +92,7 @@ const Onboarding = () => {
       </div>
 
       {/* Step content */}
-      <div className="w-full max-w-lg relative" style={{ minHeight: 420 }}>
+      <div className="w-full max-w-lg relative px-1" style={{ minHeight: 340 }}>
         <AnimatePresence mode="wait" custom={direction}>
           <motion.div
             key={step}

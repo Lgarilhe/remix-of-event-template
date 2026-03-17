@@ -187,13 +187,13 @@ export const SceneAudit: React.FC<Props> = ({ onNext, onBack }) => {
   const improvementCount = categories.filter(c => c.score <= 3).length;
 
   return (
-    <div className="w-full max-w-2xl mx-auto flex flex-col gap-5">
+    <div className="w-full max-w-2xl mx-auto flex flex-col gap-4 sm:gap-5 px-1">
       {/* Header */}
       <div className="text-center space-y-2">
         <span className="skalr-gradient-text text-[11px] uppercase tracking-[0.2em] font-semibold" style={{ fontFamily: "'Space Mono', monospace" }}>
           02 — Marque employeur
         </span>
-        <h2 className="font-editorial italic text-3xl md:text-4xl">Votre image employeur</h2>
+        <h2 className="font-editorial italic text-2xl sm:text-3xl md:text-4xl">Votre image employeur</h2>
         <p className="text-muted-foreground text-sm">On analyse votre présence en ligne pour identifier vos forces et axes d'amélioration.</p>
       </div>
 
@@ -205,7 +205,7 @@ export const SceneAudit: React.FC<Props> = ({ onNext, onBack }) => {
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -10 }}
-            className="grid grid-cols-[200px_1fr] gap-4 min-h-[280px]"
+            className="flex flex-col sm:grid sm:grid-cols-[200px_1fr] gap-4 min-h-[200px] sm:min-h-[280px]"
           >
             {/* Sources list */}
             <div className="space-y-1.5">
@@ -289,13 +289,13 @@ export const SceneAudit: React.FC<Props> = ({ onNext, onBack }) => {
           >
             {/* Score card */}
             <div
-              className="border-2 border-foreground/80 p-5 flex items-center gap-6"
+              className="border-2 border-foreground/80 p-4 sm:p-5 flex flex-col sm:flex-row items-center gap-4 sm:gap-6"
               style={{ boxShadow: '4px 4px 0px 0px hsl(var(--brutal-accent))' }}
             >
-              <img src={analyticsIcon} alt="" className="w-14 h-14 shrink-0" />
+              <img src={analyticsIcon} alt="" className="w-10 h-10 sm:w-14 sm:h-14 shrink-0" />
 
               {/* Score ring */}
-              <div className="relative w-24 h-24 shrink-0">
+              <div className="relative w-20 h-20 sm:w-24 sm:h-24 shrink-0">
                 <svg width="96" height="96" viewBox="0 0 96 96" className="rotate-[-90deg]">
                   <defs>
                     <linearGradient id="audit-score-grad" x1="0%" y1="0%" x2="100%" y2="100%">
@@ -327,9 +327,9 @@ export const SceneAudit: React.FC<Props> = ({ onNext, onBack }) => {
                 </div>
               </div>
 
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 mb-1">
-                  <h3 className="font-semibold text-lg">Score Marque Employeur</h3>
+              <div className="flex-1 min-w-0 text-center sm:text-left">
+                <div className="flex items-center gap-2 mb-1 justify-center sm:justify-start flex-wrap">
+                  <h3 className="font-semibold text-base sm:text-lg">Score Marque Employeur</h3>
                   <span
                     className="text-[9px] uppercase tracking-wider font-bold px-2 py-0.5 border border-foreground"
                     style={{ background: overallScore >= 70 ? 'hsl(var(--skalr-green))' : 'hsl(var(--landing-accent-yellow))' }}
