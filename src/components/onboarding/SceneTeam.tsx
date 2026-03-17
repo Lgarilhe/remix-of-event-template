@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useLinkedInAccounts } from '@/contexts/LinkedInAccountsContext';
 import { useOrganization, useOrganizationMembers } from '@/hooks/useOrganization';
+import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { toast } from 'sonner';
 
 import teamIcon from '@/assets/icon-team-3d.png';
@@ -23,17 +24,9 @@ interface SuggestedProfile {
   id: string;
   name: string;
   role: string;
+  email?: string;
   source: 'linkedin' | 'apollo';
 }
-
-/* ─── Fake scan results for demo ─── */
-const FAKE_PROFILES: SuggestedProfile[] = [
-  { id: '1', name: 'Marie Laurent', role: 'Talent Acquisition Manager', source: 'linkedin' },
-  { id: '2', name: 'Thomas Bernard', role: 'Recruteur Senior', source: 'linkedin' },
-  { id: '3', name: 'Sophie Petit', role: 'DRH', source: 'apollo' },
-  { id: '4', name: 'Alexandre Moreau', role: 'HR Business Partner', source: 'linkedin' },
-  { id: '5', name: 'Camille Dubois', role: 'Responsable Recrutement', source: 'apollo' },
-];
 
 export const SceneTeam: React.FC<Props> = ({ organizationId, onFinish, onBack }) => {
   const { accounts } = useLinkedInAccounts();
@@ -51,15 +44,82 @@ export const SceneTeam: React.FC<Props> = ({ organizationId, onFinish, onBack })
   const [role, setRole] = useState('member');
   const [invitedEmails, setInvitedEmails] = useState<string[]>([]);
 
-  const startScan = useCallback(() => {
+  const startScan = useCallback(async () => {
     setScanPhase('scanning');
-    // Simulate scan delay
-    setTimeout(() => {
-      setProfiles(FAKE_PROFILES);
-      setScanPhase('results');
-    }, 2800);
-  }, []);
+    const orgName = organization?.name || '';
+    const results: SuggestedProfile[] = [];
 
+    try {
+      // Run Apollo + LinkedIn searches in parallel
+      const searches = [];
+
+      // Apollo search for HR people at the org
+      searches.push(
+        invokeEdgeFunction('apollo-search', {
+          job_company_name: orgName,
+          job_title: 'RH,Recruteur,Recruiter,Talent Acquisition,HR,DRH,Manager',
+          job_title_role: 'human_resources',
+          per_page: 10,
+        }).then(({ data }) => {
+          if (data?.success && Array.isArray((data as any).prospects)) {
+            for (const p of (data as any).prospects) {
+              results.push({
+                id: p.id || crypto.randomUUID(),
+                name: p.full_name || `${p.first_name || ''} ${p.last_name || ''}`.trim(),
+                role: p.job_title || p.headline || '',
+                email: p.emails?.[0] || null,
+                source: 'apollo',
+              });
+            }
+          }
+        }).catch((err) => {
+          console.warn('[SceneTeam] Apollo search failed:', err);
+        })
+      );
+
+      // LinkedIn search if connected
+      if (hasLinkedIn && accounts[0]) {
+        searches.push(
+          invokeEdgeFunction('unipile-search', {
+            action: 'search',
+            account_id: accounts[0].id,
+            keywords: `${orgName} RH Recruteur Manager`,
+            limit: 10,
+          }).then(({ data }) => {
+            if (data?.success && Array.isArray((data as any).results)) {
+              for (const p of (data as any).results) {
+                // Avoid duplicates by name
+                const name = p.full_name || p.name || '';
+                if (name && !results.some(r => r.name.toLowerCase() === name.toLowerCase())) {
+                  results.push({
+                    id: p.id || p.profile_id || crypto.randomUUID(),
+                    name,
+                    role: p.headline || p.job_title || '',
+                    source: 'linkedin',
+                  });
+                }
+              }
+            }
+          }).catch((err) => {
+            console.warn('[SceneTeam] LinkedIn search failed:', err);
+          })
+        );
+      }
+
+      await Promise.allSettled(searches);
+
+      if (results.length === 0) {
+        toast.info('Aucun profil RH trouvé pour votre organisation. Invitez manuellement par email.');
+      }
+
+      setProfiles(results.slice(0, 15));
+      setScanPhase('results');
+    } catch (err) {
+      console.error('[SceneTeam] Scan error:', err);
+      toast.error('Erreur lors du scan. Réessayez ou invitez manuellement.');
+      setScanPhase('idle');
+    }
+  }, [organization, hasLinkedIn, accounts]);
   const toggleProfile = (id: string) => {
     setSelected((prev) => {
       const next = new Set(prev);
