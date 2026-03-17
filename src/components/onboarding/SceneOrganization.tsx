@@ -94,10 +94,11 @@ const AGENT_MESSAGES = [
 /* ─── Component ─── */
 export const SceneOrganization: React.FC<Props> = ({ onComplete, onBack }) => {
   const [query, setQuery] = useState('');
-  const [phase, setPhase] = useState<'idle' | 'scanning' | 'results'>('idle');
+  const [phase, setPhase] = useState<'idle' | 'scanning' | 'disambiguate' | 'results'>('idle');
   const [sources, setSources] = useState<Source[]>(SCAN_SOURCES);
   const [bubbles, setBubbles] = useState<AgentBubble[]>([]);
   const [company, setCompany] = useState<CompanyData | null>(null);
+  const [disambiguationCandidates, setDisambiguationCandidates] = useState<ApolloCandidate[]>([]);
   const [activeTab, setActiveTab] = useState<'overview' | 'roles' | 'market'>('overview');
   const [selectedRoles, setSelectedRoles] = useState<Set<number>>(new Set());
   const [isCreating, setIsCreating] = useState(false);
