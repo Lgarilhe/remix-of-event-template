@@ -122,9 +122,6 @@ const Onboarding = () => {
     }),
   };
 
-  // Don't render until initialized
-  if (step === null) return null;
-
   return (
     <OnboardingLayout
       currentStep={step}
