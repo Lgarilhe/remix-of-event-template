@@ -535,9 +535,6 @@ Deno.serve(async (req) => {
       await Promise.allSettled(fallbackTasks);
     }
 
-    // Run all parallel tasks
-    await Promise.allSettled(parallelTasks);
-
     // Dedupe jobs
     const seenTitles = new Set<string>();
     for (const job of jobSources) {
