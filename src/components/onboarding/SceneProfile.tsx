@@ -67,6 +67,7 @@ export const SceneProfile: React.FC<Props> = ({ onNext, onBack }) => {
           user_id: user.id,
           display_name: displayName.trim() || null,
           job_title: jobTitle.trim() || null,
+          specializations: Array.from(selectedSpecs),
         } as any,
         { onConflict: 'user_id' }
       );
