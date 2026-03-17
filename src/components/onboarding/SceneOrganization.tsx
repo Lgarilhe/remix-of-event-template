@@ -463,7 +463,7 @@ const TabOverview: React.FC<{ company: CompanyData }> = ({ company }) => {
             <Sparkles className="w-3.5 h-3.5" />
             Analyse recrutement
           </h4>
-          <div className="grid grid-cols-2 gap-2">
+          <div className="space-y-2">
             {structuredInsights.map((insight, i) => {
               const config = INSIGHT_CONFIG[insight.key] || { icon: Sparkles, accent: 'hsl(var(--skalr-purple))' };
               const Icon = config.icon;
@@ -473,22 +473,22 @@ const TabOverview: React.FC<{ company: CompanyData }> = ({ company }) => {
                   initial={{ opacity: 0, y: 8 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: i * 0.08 }}
-                  className="border border-foreground/10 p-3 space-y-1.5 hover:border-foreground/20 transition-colors"
+                  className="border border-foreground/10 p-3 hover:border-foreground/20 transition-colors flex gap-2.5"
                 >
-                  <div className="flex items-center gap-1.5">
-                    <div
-                      className="w-5 h-5 flex items-center justify-center shrink-0"
-                      style={{ backgroundColor: config.accent + '15' }}
-                    >
-                      <Icon className="w-3 h-3" style={{ color: config.accent }} />
-                    </div>
-                    <span className="text-[11px] font-bold text-foreground uppercase tracking-wide leading-tight truncate">
-                      {insight.title}
-                    </span>
+                  <div
+                    className="w-6 h-6 flex items-center justify-center shrink-0 mt-0.5"
+                    style={{ backgroundColor: config.accent + '15' }}
+                  >
+                    <Icon className="w-3.5 h-3.5" style={{ color: config.accent }} />
                   </div>
-                  <p className="text-[11px] text-muted-foreground leading-relaxed line-clamp-3">
-                    {insight.body}
-                  </p>
+                  <div className="min-w-0">
+                    <p className="text-[11px] font-bold text-foreground uppercase tracking-wide leading-snug mb-0.5">
+                      {insight.title}
+                    </p>
+                    <p className="text-[11px] text-muted-foreground leading-relaxed">
+                      {insight.body}
+                    </p>
+                  </div>
                 </motion.div>
               );
             })}
