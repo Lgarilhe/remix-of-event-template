@@ -62,6 +62,12 @@ interface CompanyData {
   keywords?: string[];
   jobPostingsCount?: number | null;
   signals?: Array<{ type: string; label: string; color: string }>;
+  departmentalHeadcount?: Record<string, number>;
+  fundingEvents?: Array<{ date: string; type: string; amount?: number; investors?: string[] }>;
+  newsArticles?: Array<{ title: string; url: string; published_at: string; source: string }>;
+  suborganizations?: string[];
+  numSuborganizations?: number;
+  intentStrength?: number | null;
 }
 
 interface ApolloCandidate {
