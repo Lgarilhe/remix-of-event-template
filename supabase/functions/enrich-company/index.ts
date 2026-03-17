@@ -560,17 +560,15 @@ Retourne UNIQUEMENT via tool call.` },
 
     await Promise.allSettled(parallelTasks);
 
-    // ── Task D: Perplexity job search fallback ──
-    if (!apolloJobsFound && PERPLEXITY_API_KEY && jobSources.length === 0) {
+    // ── Perplexity job search fallback (fewer than 5 jobs from other sources) ──
+    if (!apolloJobsFound && PERPLEXITY_API_KEY && jobSources.length < 5) {
       try {
-        console.log('[enrich] Perplexity job search fallback');
-        // IMPORTANT: Use domain + "recrutement interne" to avoid marketplace confusion
-        // (e.g. leboncoin is a job board — we want jobs AT the company, not ON the platform)
+        console.log('[enrich] Perplexity job search fallback (current jobs:', jobSources.length, ')');
         const domainHint = result.domain ? ` (site: ${result.domain})` : '';
         const { content, citations } = await perplexitySearch(
           PERPLEXITY_API_KEY,
-          `Quels sont les postes ouverts en recrutement INTERNE chez l'entreprise "${company_name.trim()}"${domainHint} ? Je cherche les offres d'emploi pour travailler DANS cette entreprise (pas les annonces publiées par d'autres sur leur plateforme). Cherche sur leur page carrière, Welcome to the Jungle, et LinkedIn Jobs. Pour chaque poste, donne le titre exact et la ville.`,
-          { timeoutMs: 12000, domainFilter: result.domain ? [result.domain, 'welcometothejungle.com', 'linkedin.com'] : ['welcometothejungle.com', 'linkedin.com'] },
+          `Liste TOUS les postes ouverts en recrutement INTERNE chez l'entreprise "${company_name.trim()}"${domainHint}. Je cherche les offres d'emploi pour travailler DANS cette entreprise (pas les annonces publiées par d'autres sur leur plateforme). Cherche sur leur page carrière, Welcome to the Jungle, et LinkedIn Jobs. Pour chaque poste, donne le titre exact et la ville. Liste le MAXIMUM de postes possible, pas seulement quelques-uns.`,
+          { timeoutMs: 15000, domainFilter: result.domain ? [result.domain, 'welcometothejungle.com', 'linkedin.com'] : ['welcometothejungle.com', 'linkedin.com'] },
         );
 
         if (content && LOVABLE_API_KEY) {
@@ -578,10 +576,10 @@ Retourne UNIQUEMENT via tool call.` },
             method: 'POST',
             headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              model: 'google/gemini-2.5-flash-lite',
+              model: 'google/gemini-2.5-flash',
               messages: [
-                { role: 'system', content: 'Extract structured job listings. Return ONLY via tool call.' },
-                { role: 'user', content: `Extract all job positions for ${company_name}:\n\n${content}` },
+                { role: 'system', content: 'Extract ALL structured job listings from the text. Return ONLY via tool call. Do not skip any jobs.' },
+                { role: 'user', content: `Extract ALL job positions for ${company_name}:\n\n${content}` },
               ],
               tools: [{
                 type: 'function',
@@ -625,7 +623,7 @@ Retourne UNIQUEMENT via tool call.` },
       } catch (e) { console.warn('[enrich] Perplexity job search failed:', e); }
     }
 
-    // Dedupe jobs
+    // Dedupe jobs (prioritize source order: WTTJ > Apollo > Site carrière > Web)
     const seenTitles = new Set<string>();
     for (const job of jobSources) {
       const key = job.title.toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -634,7 +632,7 @@ Retourne UNIQUEMENT via tool call.` },
         result.openRoles.push({ title: job.title, location: job.location, source: job.source, department: job.department, url: job.url });
       }
     }
-    result.openRoles = result.openRoles.slice(0, 15);
+    result.openRoles = result.openRoles.slice(0, 50);
 
     // Build signals
     result.signals = buildSignals(apolloOrg, result);
