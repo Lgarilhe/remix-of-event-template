@@ -1,0 +1,323 @@
+import React, { useState, useCallback } from 'react';
+import { motion } from 'framer-motion';
+import { ArrowLeft, ArrowRight, Check, Loader2, ExternalLink, RefreshCw } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { useLinkedInAccounts } from '@/contexts/LinkedInAccountsContext';
+import { useOrganization } from '@/hooks/useOrganization';
+import { useOrganizationIntegrations } from '@/hooks/useOrganizationIntegrations';
+import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
+import { toast } from 'sonner';
+
+import integrationsIcon from '@/assets/icon-integrations-3d.png';
+import linkedinLogo from '@/assets/linkedin-logo.png';
+import notionLogo from '@/assets/notion-logo.png';
+import calendlyLogo from '@/assets/calendly-logo.png';
+import airtableLogo from '@/assets/airtable-logo.svg';
+import aircallLogo from '@/assets/aircall-logo.png';
+
+interface Props {
+  onNext: () => void;
+  onBack: () => void;
+}
+
+interface IntegrationDef {
+  id: string;
+  name: string;
+  description: string;
+  logo: string;
+  essential?: boolean;
+  hostedAuth?: boolean;
+  fields?: { key: string; label: string; placeholder: string; secret?: boolean }[];
+  connectedKey?: string;
+}
+
+const INTEGRATIONS: IntegrationDef[] = [
+  {
+    id: 'linkedin',
+    name: 'LinkedIn',
+    description: 'Sourcing, messages et InMails directement depuis la plateforme.',
+    logo: linkedinLogo,
+    essential: true,
+    hostedAuth: true,
+  },
+  {
+    id: 'notion',
+    name: 'Notion',
+    description: 'Synchronisation des postes, candidats et shortlists.',
+    logo: notionLogo,
+    connectedKey: 'notion_connected',
+    fields: [
+      { key: 'notion_api_key', label: 'Clé API', placeholder: 'ntn_...', secret: true },
+      { key: 'notion_postes_db_id', label: 'ID base Postes', placeholder: 'xxxxxxxx-xxxx-...' },
+      { key: 'notion_candidats_db_id', label: 'ID base Candidats', placeholder: 'xxxxxxxx-xxxx-...' },
+      { key: 'notion_shortlist_db_id', label: 'ID base Shortlist', placeholder: 'xxxxxxxx-xxxx-...' },
+    ],
+  },
+  {
+    id: 'calendly',
+    name: 'Calendly',
+    description: 'Synchronisation automatique des rendez-vous.',
+    logo: calendlyLogo,
+    connectedKey: 'calendly_connected',
+    fields: [
+      { key: 'calendly_api_key', label: 'Clé API', placeholder: 'eyJ...', secret: true },
+    ],
+  },
+  {
+    id: 'airtable',
+    name: 'Airtable',
+    description: 'Données candidats, placements et KPIs.',
+    logo: airtableLogo,
+    connectedKey: 'airtable_connected',
+    fields: [
+      { key: 'airtable_api_key', label: 'Clé API', placeholder: 'pat...', secret: true },
+      { key: 'airtable_base_id', label: 'ID Base', placeholder: 'app...' },
+    ],
+  },
+  {
+    id: 'aircall',
+    name: 'Aircall',
+    description: 'Suivi des appels et matching candidats.',
+    logo: aircallLogo,
+    connectedKey: 'aircall_connected',
+    fields: [
+      { key: 'aircall_api_id', label: 'API ID', placeholder: 'xxx...' },
+      { key: 'aircall_api_token', label: 'API Token', placeholder: 'xxx...', secret: true },
+    ],
+  },
+];
+
+export const SceneIntegrations: React.FC<Props> = ({ onNext, onBack }) => {
+  const { accounts, loading: linkedInLoading, reload: reloadLinkedIn } = useLinkedInAccounts();
+  const { organization } = useOrganization();
+  const { integrations, updateIntegrations } = useOrganizationIntegrations();
+
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [fieldValues, setFieldValues] = useState<Record<string, string>>({});
+  const [connectingId, setConnectingId] = useState<string | null>(null);
+  const [connectedIds, setConnectedIds] = useState<Set<string>>(new Set());
+  const [refreshingLinkedIn, setRefreshingLinkedIn] = useState(false);
+
+  const linkedInConnected = accounts.length > 0;
+
+  // Check how many are connected
+  const totalConnected = (() => {
+    let count = linkedInConnected ? 1 : 0;
+    if (integrations) {
+      if (integrations.notion_connected) count++;
+      if (integrations.calendly_connected) count++;
+      if (integrations.airtable_connected) count++;
+      if (integrations.aircall_connected) count++;
+    }
+    count += connectedIds.size;
+    return count;
+  })();
+
+  const isConnected = (def: IntegrationDef) => {
+    if (def.id === 'linkedin') return linkedInConnected;
+    if (connectedIds.has(def.id)) return true;
+    if (integrations && def.connectedKey) {
+      return !!(integrations as any)[def.connectedKey];
+    }
+    return false;
+  };
+
+  const handleLinkedInConnect = async () => {
+    setConnectingId('linkedin');
+    try {
+      const currentUrl = window.location.href;
+      const { data } = await invokeEdgeFunction('unipile-accounts', {
+        action: 'hosted_auth_link',
+        success_redirect_url: currentUrl,
+        failure_redirect_url: currentUrl,
+        org_name: organization?.name || undefined,
+      });
+      if (data?.success && (data as any).url) {
+        window.open((data as any).url, '_blank', 'noopener,noreferrer');
+        toast.info('Fenêtre de connexion LinkedIn ouverte. Revenez ici après connexion.');
+      } else {
+        throw new Error((data as any)?.error || 'Erreur');
+      }
+    } catch (e: any) {
+      toast.error(e.message || 'Erreur lors de la connexion');
+    } finally {
+      setConnectingId(null);
+    }
+  };
+
+  const handleRefreshLinkedIn = useCallback(async () => {
+    setRefreshingLinkedIn(true);
+    try { await reloadLinkedIn(); } finally { setRefreshingLinkedIn(false); }
+  }, [reloadLinkedIn]);
+
+  const handleFieldSave = async (def: IntegrationDef) => {
+    if (!def.fields || !def.connectedKey) return;
+    setConnectingId(def.id);
+    try {
+      const updates: Record<string, any> = { [def.connectedKey]: true };
+      def.fields.forEach((f) => {
+        const val = fieldValues[f.key];
+        if (val) updates[f.key] = val;
+      });
+      await updateIntegrations(updates);
+      setConnectedIds((prev) => new Set(prev).add(def.id));
+      setExpandedId(null);
+      toast.success(`${def.name} connecté !`);
+    } catch {
+      toast.error(`Erreur lors de la connexion de ${def.name}`);
+    } finally {
+      setConnectingId(null);
+    }
+  };
+
+  return (
+    <div className="w-full max-w-lg mx-auto flex flex-col gap-5">
+      {/* Header */}
+      <div className="text-center space-y-2">
+        <span
+          className="skalr-gradient-text text-[11px] uppercase tracking-[0.2em] font-semibold"
+          style={{ fontFamily: "'Space Mono', monospace" }}
+        >
+          04 — Vos outils
+        </span>
+        <h2 className="font-editorial italic text-3xl md:text-4xl">Connectez vos outils</h2>
+        <p className="text-muted-foreground text-sm">
+          Un clic pour tout brancher. Vous pourrez reconfigurer à tout moment dans les paramètres.
+        </p>
+      </div>
+
+      <motion.img
+        src={integrationsIcon}
+        alt=""
+        className="mx-auto w-16 h-16 drop-shadow-md"
+        initial={{ y: 10, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        transition={{ duration: 0.4 }}
+      />
+
+      {/* Integration cards */}
+      <div className="space-y-3">
+        {INTEGRATIONS.map((def, i) => {
+          const connected = isConnected(def);
+          const isExpanded = expandedId === def.id;
+          const isLoading = connectingId === def.id;
+
+          return (
+            <motion.div
+              key={def.id}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: i * 0.08 }}
+              className="border-2 border-foreground/10 overflow-hidden"
+            >
+              <div className="flex items-center gap-3 p-3">
+                <img src={def.logo} alt={def.name} className="w-8 h-8 object-contain shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-semibold">{def.name}</span>
+                    {def.essential && (
+                      <span
+                        className="text-[9px] uppercase tracking-wider font-bold px-1.5 py-0.5 border border-foreground"
+                        style={{ background: 'hsl(var(--landing-accent-yellow))' }}
+                      >
+                        Essentiel
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-muted-foreground truncate">{def.description}</p>
+                </div>
+
+                {connected ? (
+                  <div className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider shrink-0"
+                    style={{ color: 'hsl(var(--skalr-green))' }}
+                  >
+                    <Check className="w-3.5 h-3.5" /> Connecté
+                  </div>
+                ) : def.hostedAuth ? (
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <Button
+                      size="sm"
+                      onClick={handleLinkedInConnect}
+                      disabled={isLoading}
+                      className="text-[11px] uppercase tracking-wider font-bold border-2 border-foreground bg-foreground text-background hover:bg-foreground/90 h-8 px-3"
+                      style={{ boxShadow: '2px 2px 0px 0px hsl(var(--brutal-accent))' }}
+                    >
+                      {isLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ExternalLink className="w-3.5 h-3.5 mr-1" />}
+                      Connecter
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={handleRefreshLinkedIn}
+                      disabled={refreshingLinkedIn || linkedInLoading}
+                      className="h-8 w-8 p-0"
+                    >
+                      <RefreshCw className={`w-3.5 h-3.5 ${(refreshingLinkedIn || linkedInLoading) ? 'animate-spin' : ''}`} />
+                    </Button>
+                  </div>
+                ) : (
+                  <Button
+                    size="sm"
+                    onClick={() => setExpandedId(isExpanded ? null : def.id)}
+                    className="text-[11px] uppercase tracking-wider font-bold border-2 border-foreground bg-foreground text-background hover:bg-foreground/90 h-8 px-3 shrink-0"
+                    style={{ boxShadow: '2px 2px 0px 0px hsl(var(--brutal-accent))' }}
+                  >
+                    Connecter
+                  </Button>
+                )}
+              </div>
+
+              {/* Expanded fields */}
+              {isExpanded && def.fields && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: 'auto', opacity: 1 }}
+                  className="border-t border-foreground/10 p-3 space-y-3 bg-muted/20"
+                >
+                  {def.fields.map((f) => (
+                    <div key={f.key} className="space-y-1">
+                      <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{f.label}</label>
+                      <Input
+                        type={f.secret ? 'password' : 'text'}
+                        placeholder={f.placeholder}
+                        value={fieldValues[f.key] || ''}
+                        onChange={(e) => setFieldValues((prev) => ({ ...prev, [f.key]: e.target.value }))}
+                        className="border-2 border-foreground/15 text-xs h-9"
+                      />
+                    </div>
+                  ))}
+                  <Button
+                    size="sm"
+                    onClick={() => handleFieldSave(def)}
+                    disabled={isLoading}
+                    className="w-full text-[11px] uppercase tracking-wider font-bold border-2 border-foreground bg-foreground text-background hover:bg-foreground/90 h-8"
+                    style={{ boxShadow: '2px 2px 0px 0px hsl(var(--brutal-accent))' }}
+                  >
+                    {isLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : <Check className="w-3.5 h-3.5 mr-1" />}
+                    Enregistrer
+                  </Button>
+                </motion.div>
+              )}
+            </motion.div>
+          );
+        })}
+      </div>
+
+      {/* Navigation */}
+      <div className="flex items-center justify-between pt-2">
+        <Button variant="outline" onClick={onBack} className="gap-2 border-2 border-foreground/20 text-sm">
+          <ArrowLeft className="w-4 h-4" /> Retour
+        </Button>
+        <Button
+          onClick={onNext}
+          className="gap-2 border-2 border-foreground bg-foreground text-background hover:bg-foreground/90 text-sm px-6"
+          style={{ boxShadow: '3px 3px 0px 0px hsl(var(--brutal-accent))' }}
+        >
+          <ArrowRight className="w-4 h-4" />
+          {totalConnected > 0 ? 'Continuer' : 'Passer'}
+        </Button>
+      </div>
+    </div>
+  );
+};
