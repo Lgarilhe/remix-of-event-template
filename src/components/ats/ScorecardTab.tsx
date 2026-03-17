@@ -127,6 +127,13 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
     load();
   }, [candidate.candidateId]);
 
+  // Auto-start coaching when prop is set (fullscreen mode)
+  useEffect(() => {
+    if (autoStartCoaching && !loading && evaluations.length > 0 && activeIndex !== null) {
+      setShowCoaching(true);
+    }
+  }, [autoStartCoaching, loading, evaluations.length, activeIndex]);
+
   // Generate criteria via AI
   const handleGenerate = useCallback(async () => {
     setGenerating(true);
