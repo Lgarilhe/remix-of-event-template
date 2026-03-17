@@ -369,10 +369,41 @@ Deno.serve(async (req) => {
       });
     }
 
+    // Rate limiting: 5 enrichments per minute per user
+    const serviceClient = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
+    const { data: allowed } = await serviceClient.rpc('check_rate_limit', {
+      p_user_id: user.id,
+      p_action: 'enrich_company',
+      p_max_requests: 5,
+      p_window_seconds: 60,
+    });
+    if (allowed === false) {
+      return new Response(JSON.stringify({ success: false, error: 'Trop de requêtes. Réessayez dans quelques secondes.' }), {
+        status: 429,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
     const { company_name } = await req.json();
     if (!company_name || company_name.trim().length < 2) {
       return new Response(JSON.stringify({ success: false, error: 'company_name required' }), {
         status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // In-DB cache: return cached result if enriched within last 24h
+    const cacheKey = company_name.trim().toLowerCase().replace(/\s+/g, ' ');
+    const { data: cached } = await serviceClient
+      .from('enrichment_cache')
+      .select('result')
+      .eq('cache_key', cacheKey)
+      .gt('created_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString())
+      .maybeSingle();
+
+    if (cached?.result) {
+      console.log(`[enrich] Cache hit for "${cacheKey}"`);
+      return new Response(JSON.stringify({ success: true, company: cached.result, cached: true }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
@@ -1047,6 +1078,12 @@ NE PAS décrire l'entreprise. Être direct, actionnable, utile pour un cabinet d
     }
 
     console.log(`[enrich] Done in ${Date.now() - startTime}ms. Domain: ${result.domain}, Jobs: ${result.openRoles.length}, Insights: ${result.insights.length}`);
+
+    // Cache result for 24h
+    await serviceClient.from('enrichment_cache').upsert(
+      { cache_key: cacheKey, result, created_at: new Date().toISOString() },
+      { onConflict: 'cache_key' }
+    ).then(() => console.log('[enrich] Cached')).catch((e: any) => console.warn('[enrich] Cache write failed:', e));
 
     return new Response(JSON.stringify({ success: true, company: result }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
