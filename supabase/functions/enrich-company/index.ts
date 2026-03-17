@@ -788,7 +788,14 @@ NE PAS décrire l'entreprise. Être direct, actionnable, utile pour un cabinet d
           const toolCall = aiData.choices?.[0]?.message?.tool_calls?.[0];
           if (toolCall) {
             const parsed = JSON.parse(toolCall.function.arguments);
-            result.insights = parsed.insights || [];
+            // Support both structured and flat formats
+            if (parsed.structured_insights?.length) {
+              result.structuredInsights = parsed.structured_insights;
+              // Also keep flat insights as fallback for older clients
+              result.insights = parsed.structured_insights.map((i: any) => `${i.title}: ${i.body}`);
+            } else if (parsed.insights?.length) {
+              result.insights = parsed.insights;
+            }
           }
         }
       } catch (e) { console.warn('[enrich] AI insights failed:', e); }
