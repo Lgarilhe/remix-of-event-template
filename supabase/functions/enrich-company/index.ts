@@ -98,7 +98,8 @@ async function fetchPageText(url: string, timeoutMs = 6000): Promise<string> {
   return readResponseTextWithTimeout(res, 5000);
 }
 
-function extractJobsFromCareersMarkdown(markdown: string, careersUrl: string): Array<{ title: string; location: string; source: string; url?: string }> {
+
+
   if (!markdown) return [];
 
   const lines = markdown
