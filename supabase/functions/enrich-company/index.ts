@@ -215,7 +215,7 @@ Deno.serve(async (req) => {
           method: 'POST',
           headers: { Authorization: `Bearer ${FIRECRAWL_API_KEY}`, 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            query: `${company_name.trim()} company website`,
+            query: `${company_name.trim()} ${company_name.trim()}.com OR ${company_name.trim()}.fr site officiel`,
             limit: 3,
             scrapeOptions: { formats: ['markdown'] },
           }),
