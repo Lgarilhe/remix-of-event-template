@@ -418,22 +418,51 @@ Deno.serve(async (req) => {
         result.careersUrl = careersUrl;
         console.log('[enrich] Careers page found:', careersUrl);
 
-        // Step 3: Fetch careers page and extract jobs via AI
         try {
-          const careersHtml = await fetchPageText(careersUrl, 8000);
-          const textContent = careersHtml
-            .replace(/<script[\s\S]*?<\/script>/gi, '')
-            .replace(/<style[\s\S]*?<\/style>/gi, '')
-            .replace(/<nav[\s\S]*?<\/nav>/gi, '')
-            .replace(/<footer[\s\S]*?<\/footer>/gi, '')
-            .replace(/<header[\s\S]*?<\/header>/gi, '')
-            .replace(/<[^>]+>/g, ' ')
-            .replace(/&[a-z]+;/gi, ' ')
-            .replace(/&#\d+;/gi, ' ')
-            .replace(/\s{2,}/g, ' ')
-            .trim()
-            .slice(0, 10000);
+          let careersRaw = '';
+          try {
+            careersRaw = await fetchPageText(careersUrl, 10000);
+          } catch (e) {
+            console.warn('[enrich] Careers direct fetch failed:', e);
+          }
 
+          if (!careersRaw || careersRaw.length < 1000 || looksLikeCookieWall(careersRaw)) {
+            try {
+              careersRaw = await scrapeWithFirecrawl(careersUrl, 15000);
+              console.log('[enrich] Careers Firecrawl fallback used');
+            } catch (e) {
+              console.warn('[enrich] Careers Firecrawl failed:', e);
+            }
+          }
+
+          const leverBoardUrl = extractLeverBoardUrl(`${careersUrl}\n${careersRaw}`);
+          let extractionRaw = careersRaw;
+          if (leverBoardUrl) {
+            console.log('[enrich] Lever board found:', leverBoardUrl);
+            result.careersUrl = leverBoardUrl;
+
+            let leverRaw = '';
+            try {
+              leverRaw = await fetchPageText(leverBoardUrl, 10000);
+            } catch (e) {
+              console.warn('[enrich] Lever direct fetch failed:', e);
+            }
+
+            if (!leverRaw || leverRaw.length < 2000) {
+              try {
+                leverRaw = await scrapeWithFirecrawl(leverBoardUrl, 15000);
+                console.log('[enrich] Lever Firecrawl fallback used');
+              } catch (e) {
+                console.warn('[enrich] Lever Firecrawl failed:', e);
+              }
+            }
+
+            if (leverRaw) {
+              extractionRaw = `${careersRaw}\n\n${leverRaw}`;
+            }
+          }
+
+          const textContent = toPlainText(extractionRaw).slice(0, 40000);
           if (textContent.length > 100 && LOVABLE_API_KEY) {
             const extractRes = await fetchWithTimeout('https://ai.gateway.lovable.dev/v1/chat/completions', {
               method: 'POST',
@@ -441,11 +470,11 @@ Deno.serve(async (req) => {
               body: JSON.stringify({
                 model: 'google/gemini-2.5-flash',
                 messages: [
-                  { role: 'system', content: `Tu extrais UNIQUEMENT les vraies offres d'emploi / postes ouverts d'une page carrière.
-IGNORE complètement : les noms de produits, services, solutions, sections de navigation, titres de pages, slogans marketing, témoignages.
-Un vrai poste a généralement un intitulé de métier (ex: "Développeur Full Stack", "Chef de projet", "Account Manager").
+                  { role: 'system', content: `Tu extrais TOUTES les vraies offres d'emploi / postes ouverts.
+IGNORE complètement : les noms de produits, services, sections de navigation, slogans marketing, témoignages.
+N'oublie AUCUN poste présent dans le contenu.
 Retourne UNIQUEMENT via tool call.` },
-                  { role: 'user', content: `Extrais les vrais postes ouverts de cette page carrière de "${result.name}". Retourne title, location, department pour chaque VRAI poste.\n\n${textContent}` },
+                  { role: 'user', content: `Extrais TOUS les postes ouverts de la page carrière de "${result.name}". Retourne title, location, department pour CHAQUE poste.\n\n${textContent}` },
                 ],
                 tools: [{
                   type: 'function',
@@ -472,14 +501,14 @@ Retourne UNIQUEMENT via tool call.` },
                 }],
                 tool_choice: { type: 'function', function: { name: 'return_jobs' } },
               }),
-            }, 15000);
+            }, 18000);
             if (extractRes.ok) {
               const extractData = await parseJsonResponse(extractRes);
               const toolCall = extractData.choices?.[0]?.message?.tool_calls?.[0];
               if (toolCall) {
                 const parsed = JSON.parse(toolCall.function.arguments);
                 (parsed.jobs || []).forEach((j: any) => {
-                  if (j.title) jobSources.push({ title: j.title, location: j.location || '', source: 'Site carrière', department: j.department, url: careersUrl || undefined });
+                  if (j.title) jobSources.push({ title: j.title, location: j.location || '', source: 'Site carrière', department: j.department, url: result.careersUrl || undefined });
                 });
                 console.log(`[enrich] Careers AI: ${(parsed.jobs || []).length} jobs`);
               }
