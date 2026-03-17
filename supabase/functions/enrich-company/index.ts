@@ -49,7 +49,8 @@ Deno.serve(async (req) => {
     const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
 
     const result: Record<string, any> = {
-      name: company_name.trim(),
+      // Smart capitalization: "numspot" → "Numspot", "OVHcloud" stays "OVHcloud"
+      name: smartCapitalize(company_name.trim()),
       domain: null,
       industry: null,
       size: null,
@@ -162,10 +163,23 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Logo fallback chain: Apollo → Clearbit (free, reliable for most companies)
+    // Logo fallback chain: Apollo → Clearbit (validate) → Google Favicons
     if (!result.logoUrl && result.domain) {
-      result.logoUrl = `https://logo.clearbit.com/${result.domain}`;
-      console.log('[enrich-company] Using Clearbit logo fallback:', result.logoUrl);
+      // Try Clearbit first — it's the best quality but doesn't have all companies
+      const clearbitUrl = `https://logo.clearbit.com/${result.domain}`;
+      try {
+        const logoCheck = await fetchWithTimeout(clearbitUrl, { method: 'HEAD' }, 5000);
+        if (logoCheck.ok) {
+          result.logoUrl = clearbitUrl;
+          console.log('[enrich-company] Using Clearbit logo:', clearbitUrl);
+        }
+      } catch {}
+
+      // Fallback: Google Favicons (works for virtually every website, 128px)
+      if (!result.logoUrl) {
+        result.logoUrl = `https://www.google.com/s2/favicons?domain=${result.domain}&sz=128`;
+        console.log('[enrich-company] Using Google Favicons fallback for:', result.domain);
+      }
     }
 
     // ── 2. Apollo People Search (Decision Makers) ──
@@ -400,7 +414,17 @@ Deno.serve(async (req) => {
     // ── 4. Generate insights with AI ──
     if (LOVABLE_API_KEY && (result.description || result.industry)) {
       try {
-        const prompt = `Given this company data, generate 3-4 short actionable insights for a recruiter in French. Company: ${result.name}. Industry: ${result.industry || 'unknown'}. Size: ${result.size || 'unknown'}. Funding: ${result.funding || 'unknown'}. Tech stack: ${result.techStack.join(', ') || 'unknown'}. Description: ${(result.description || '').slice(0, 500)}. Open roles: ${result.openRoles.length}. Return a JSON array of strings, each starting with an emoji. Example: ["🔥 Marché en forte croissance", "⚡ Profils DevOps très demandés"]`;
+        const prompt = `Tu es un analyste marché du recrutement tech en France. Génère 3-4 insights courts et actionnables pour un recruteur, EN FRANÇAIS UNIQUEMENT.
+
+Entreprise : ${result.name}
+Industrie : ${result.industry || 'inconnue'}
+Taille : ${result.size || 'inconnue'} employés
+Funding : ${result.funding || 'inconnu'}
+Stack technique : ${result.techStack.join(', ') || 'inconnue'}
+Description : ${(result.description || '').slice(0, 500)}
+Nombre de postes ouverts : ${result.openRoles.length}
+
+Chaque insight doit commencer par un emoji et faire 1-2 phrases max. Exemples : "🔥 Marché en forte croissance dans le cloud souverain", "⚡ Profils DevOps K8s très demandés et rares en France"`;
 
         const aiRes = await fetchWithTimeout('https://ai.gateway.lovable.dev/v1/chat/completions', {
           method: 'POST',
@@ -408,7 +432,7 @@ Deno.serve(async (req) => {
           body: JSON.stringify({
             model: 'google/gemini-2.5-flash-lite',
             messages: [
-              { role: 'system', content: 'You are a recruitment market analyst. Return ONLY valid JSON arrays of strings.' },
+              { role: 'system', content: 'Tu es un expert recrutement tech français. Réponds UNIQUEMENT en français via le tool call.' },
               { role: 'user', content: prompt },
             ],
             tools: [{
@@ -461,4 +485,17 @@ function formatFunding(amount: number): string {
   if (amount >= 1_000_000) return `${(amount / 1_000_000).toFixed(0)}M€`;
   if (amount >= 1_000) return `${(amount / 1_000).toFixed(0)}K€`;
   return `${amount}€`;
+}
+
+/**
+ * Smart capitalize: "numspot" → "Numspot", but preserves mixed case like "OVHcloud" or "McKinsey"
+ */
+function smartCapitalize(name: string): string {
+  if (!name) return name;
+  // If user typed all lowercase, capitalize first letter of each word
+  if (name === name.toLowerCase()) {
+    return name.replace(/\b\w/g, (c) => c.toUpperCase());
+  }
+  // Otherwise preserve the user's casing (they typed "OVHcloud", "McKinsey", etc.)
+  return name;
 }
