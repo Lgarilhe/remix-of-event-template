@@ -160,7 +160,7 @@ export const SceneIntegrations: React.FC<Props> = ({ onNext, onBack }) => {
         const val = fieldValues[f.key];
         if (val) updates[f.key] = val;
       });
-      await updateIntegrations(updates);
+      await updateIntegration(updates);
       setConnectedIds((prev) => new Set(prev).add(def.id));
       setExpandedId(null);
       toast.success(`${def.name} connecté !`);
