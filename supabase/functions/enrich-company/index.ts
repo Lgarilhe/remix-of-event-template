@@ -258,7 +258,7 @@ Deno.serve(async (req) => {
     // ═══════════════════════════════════════════════════════
     // PHASE 2 — Everything in parallel
     // ═══════════════════════════════════════════════════════
-    const jobSources: Array<{ title: string; location: string; source: string; department?: string }> = [];
+    const jobSources: Array<{ title: string; location: string; source: string; department?: string; url?: string }> = [];
     const parallelTasks: Promise<void>[] = [];
 
     // ── Task A: Apollo People Search ──
