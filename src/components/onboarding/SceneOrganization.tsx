@@ -435,7 +435,7 @@ export const SceneOrganization: React.FC<Props> = ({ onComplete, onBack }) => {
               Aucune ne correspond — continuer sans Apollo
             </button>
           </motion.div>
-        }
+        )}
 
         {/* Results phase */}
         {phase === 'results' && company && (
