@@ -1139,7 +1139,7 @@ Deno.serve(async (req) => {
           const newsRes = await fetchWithTimeout('https://api.apollo.io/api/v1/news_articles/search', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache', 'X-Api-Key': APOLLO_API_KEY },
-            body: JSON.stringify({ organization_ids: [apolloOrgId], per_page: 5, page: 1 }),
+            body: JSON.stringify({ organization_ids: [apolloOrgId], per_page: 5, page: 1, api_key: APOLLO_API_KEY }),
           });
 
           if (newsRes.ok) {
