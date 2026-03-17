@@ -437,7 +437,7 @@ Deno.serve(async (req) => {
                   if (toolCall) {
                     const parsed = JSON.parse(toolCall.function.arguments);
                     (parsed.jobs || []).forEach((j: any) => {
-                      if (j.title) jobSources.push({ title: j.title, location: j.location || '', source: 'Site carrière', department: j.department });
+                      if (j.title) jobSources.push({ title: j.title, location: j.location || '', source: 'Site carrière', department: j.department, url: careersUrl || undefined });
                     });
                     console.log(`[enrich] Careers page: ${(parsed.jobs || []).length} jobs`);
                   }
