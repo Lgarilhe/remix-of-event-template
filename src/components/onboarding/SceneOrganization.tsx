@@ -70,7 +70,7 @@ export const SceneOrganization: React.FC<Props> = ({ onComplete, onBack }) => {
   const [activeTab, setActiveTab] = useState<'overview' | 'roles' | 'market'>('overview');
   const [selectedRoles, setSelectedRoles] = useState<Set<number>>(new Set());
   const [isCreating, setIsCreating] = useState(false);
-  const debounceRef = useRef<ReturnType<typeof setTimeout>>();
+  // debounceRef removed — search is now explicit via button/Enter
   const bubblesEndRef = useRef<HTMLDivElement>(null);
   const { createOrganization } = useOrganization();
 
@@ -159,11 +159,22 @@ export const SceneOrganization: React.FC<Props> = ({ onComplete, onBack }) => {
 
   const handleInputChange = (val: string) => {
     setQuery(val);
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    if (val.trim().length >= 3) {
-      debounceRef.current = setTimeout(() => startScan(val.trim()), 800);
-    } else {
+    // Reset to idle when clearing input
+    if (val.trim().length < 2 && phase !== 'idle') {
       setPhase('idle');
+    }
+  };
+
+  const handleSearch = () => {
+    if (query.trim().length >= 2 && phase !== 'scanning') {
+      startScan(query.trim());
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      handleSearch();
     }
   };
 
@@ -213,18 +224,26 @@ export const SceneOrganization: React.FC<Props> = ({ onComplete, onBack }) => {
       </div>
 
       {/* Search input */}
-      <div className="relative">
-        <img src={searchIcon} alt="" className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 pointer-events-none" />
-        <Input
-          value={query}
-          onChange={(e) => handleInputChange(e.target.value)}
-          placeholder="Le nom de votre société..."
-          autoFocus
-          className="pl-11 pr-10 border-2 border-foreground/20 focus:border-foreground focus:shadow-[3px_3px_0px_0px_hsl(var(--brutal-accent))] transition-shadow text-sm h-11"
-        />
-        {phase === 'scanning' && (
-          <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 animate-spin" style={{ color: 'hsl(var(--skalr-pink))' }} />
-        )}
+      <div className="relative flex gap-2">
+        <div className="relative flex-1">
+          <img src={searchIcon} alt="" className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 pointer-events-none" />
+          <Input
+            value={query}
+            onChange={(e) => handleInputChange(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder="Le nom de votre société..."
+            autoFocus
+            className="pl-11 pr-4 border-2 border-foreground/20 focus:border-foreground focus:shadow-[3px_3px_0px_0px_hsl(var(--brutal-accent))] transition-shadow text-sm h-11"
+          />
+        </div>
+        <Button
+          onClick={handleSearch}
+          disabled={query.trim().length < 2 || phase === 'scanning'}
+          className="h-11 px-5 border-2 border-foreground bg-foreground text-background hover:bg-foreground/90 text-sm shrink-0"
+          style={{ boxShadow: '3px 3px 0px 0px hsl(var(--brutal-accent))' }}
+        >
+          {phase === 'scanning' ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Rechercher'}
+        </Button>
       </div>
 
       {/* Scanning phase */}
