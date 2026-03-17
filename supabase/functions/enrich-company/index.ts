@@ -1093,7 +1093,7 @@ Deno.serve(async (req) => {
 
     const seenTitles = new Set<string>();
     for (const job of sortedJobs) {
-      const key = normalizeJobTitle(job.title);
+      const key = `${normalizeJobTitle(job.title)}||${(job.location || '').toLowerCase().trim()}`;
       if (!key || seenTitles.has(key)) continue;
       seenTitles.add(key);
       result.openRoles.push({
