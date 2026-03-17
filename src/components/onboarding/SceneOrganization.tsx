@@ -271,7 +271,7 @@ export const SceneOrganization: React.FC<Props> = ({ onComplete, onBack }) => {
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -10 }}
-            className="grid grid-cols-[180px_1fr] gap-4 min-h-[200px]"
+            className="flex flex-col sm:grid sm:grid-cols-[180px_1fr] gap-4 min-h-[200px]"
           >
             {/* Sources */}
             <div className="space-y-2">
