@@ -460,10 +460,13 @@ Retourne UNIQUEMENT via tool call.` },
     if (!apolloJobsFound && PERPLEXITY_API_KEY && jobSources.length === 0) {
       try {
         console.log('[enrich] Perplexity job search fallback');
+        // IMPORTANT: Use domain + "recrutement interne" to avoid marketplace confusion
+        // (e.g. leboncoin is a job board — we want jobs AT the company, not ON the platform)
+        const domainHint = result.domain ? ` (site: ${result.domain})` : '';
         const { content, citations } = await perplexitySearch(
           PERPLEXITY_API_KEY,
-          `Liste les postes ouverts / offres d'emploi actuelles chez "${company_name.trim()}" en France. Pour chaque poste, donne le titre exact et la ville si disponible.`,
-          { timeoutMs: 12000 },
+          `Quels sont les postes ouverts en recrutement INTERNE chez l'entreprise "${company_name.trim()}"${domainHint} ? Je cherche les offres d'emploi pour travailler DANS cette entreprise (pas les annonces publiées par d'autres sur leur plateforme). Cherche sur leur page carrière, Welcome to the Jungle, et LinkedIn Jobs. Pour chaque poste, donne le titre exact et la ville.`,
+          { timeoutMs: 12000, domainFilter: result.domain ? [result.domain, 'welcometothejungle.com', 'linkedin.com'] : ['welcometothejungle.com', 'linkedin.com'] },
         );
 
         if (content && LOVABLE_API_KEY) {
