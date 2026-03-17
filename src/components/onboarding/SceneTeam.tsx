@@ -373,6 +373,12 @@ export const SceneTeam: React.FC<Props> = ({ organizationId, onFinish, onBack })
           {isSending ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowRight className="w-4 h-4" />}
           {isSending ? 'Envoi...' : totalInvites > 0 ? `Inviter ${totalInvites} & terminer` : 'Passer'}
         </Button>
+        {selectedWithoutEmail > 0 && (
+          <p className="text-[11px] text-destructive mt-1 text-right">
+            {selectedWithoutEmail} profil{selectedWithoutEmail > 1 ? 's' : ''} sans email — non invitable{selectedWithoutEmail > 1 ? 's' : ''}
+          </p>
+        )}
+        </Button>
       </div>
     </div>
   );
