@@ -111,7 +111,7 @@ export const SceneOrganization: React.FC<Props> = ({ onComplete, onBack }) => {
     bubblesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [bubbles]);
 
-  const startScan = useCallback(async (name: string) => {
+  const startScan = useCallback(async (name: string, selectedApolloId?: string) => {
     const scanStartedAt = Date.now();
     const MIN_ANIM_TIME = 2000; // Show scan for at least 2s
 
