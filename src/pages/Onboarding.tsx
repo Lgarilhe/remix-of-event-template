@@ -11,6 +11,7 @@ import { SceneAudit } from '@/components/onboarding/SceneAudit';
 import { SceneProfile } from '@/components/onboarding/SceneProfile';
 import { SceneIntegrations } from '@/components/onboarding/SceneIntegrations';
 import { SceneTeam } from '@/components/onboarding/SceneTeam';
+import { SceneLaunch } from '@/components/onboarding/SceneLaunch';
 
 const STEP_COUNT = 7;
 
@@ -116,10 +117,11 @@ const Onboarding = () => {
               />
             )}
             {step === 6 && (
-              <div className="text-center py-16">
-                <p className="text-muted-foreground">Étape 7 — bientôt disponible</p>
-                <button onClick={handleFinish} className="mt-4 underline text-sm">Terminer →</button>
-              </div>
+              <SceneLaunch
+                completedSteps={completedSteps}
+                totalSteps={STEP_COUNT}
+                onFinish={handleFinish}
+              />
             )}
           </motion.div>
         </AnimatePresence>
