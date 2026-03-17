@@ -924,6 +924,16 @@ Deno.serve(async (req) => {
           const textContent = toPlainText(wttjRaw).slice(0, 40000);
           if (!textContent || textContent.length < 200 || !LOVABLE_API_KEY) continue;
 
+          // Validate that the WTTJ page belongs to the correct company
+          const companyToken = normalizeTextToken(result.name);
+          const pagePreview = normalizeTextToken(textContent.slice(0, 1500));
+          const pageContainsCompany = pagePreview.includes(companyToken)
+            || normalizeTextToken(wttjRaw.slice(0, 3000)).includes(companyToken);
+          if (!pageContainsCompany) {
+            console.warn(`[enrich] WTTJ page mismatch for slug "${s}" — company "${result.name}" not found in page content, skipping`);
+            continue;
+          }
+
           const extractRes = await fetchWithTimeout('https://ai.gateway.lovable.dev/v1/chat/completions', {
             method: 'POST',
             headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, 'Content-Type': 'application/json' },
