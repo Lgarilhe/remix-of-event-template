@@ -150,8 +150,31 @@ export const SceneTeam: React.FC<Props> = ({ organizationId, onFinish, onBack })
 
   const totalInvites = selected.size + invitedEmails.length;
 
+  const [isSending, setIsSending] = useState(false);
+
   const handleFinish = async () => {
-    // In production, would send invites for selected profiles too
+    // Send invitations for selected scanned profiles that have an email
+    const profilesToInvite = profiles.filter(
+      (p) => selected.has(p.id) && p.email && !invitedEmails.includes(p.email.toLowerCase())
+    );
+
+    if (profilesToInvite.length > 0) {
+      setIsSending(true);
+      let sentCount = 0;
+      for (const p of profilesToInvite) {
+        try {
+          await inviteMember({ email: p.email!.toLowerCase(), role: 'member' });
+          sentCount++;
+        } catch (err) {
+          console.warn(`[SceneTeam] Failed to invite ${p.email}:`, err);
+        }
+      }
+      if (sentCount > 0) {
+        toast.success(`${sentCount} invitation${sentCount > 1 ? 's' : ''} envoyée${sentCount > 1 ? 's' : ''}`);
+      }
+      setIsSending(false);
+    }
+
     onFinish();
   };
 
