@@ -563,7 +563,7 @@ Deno.serve(async (req) => {
       const key = job.title.toLowerCase().replace(/[^a-z0-9]/g, '');
       if (!seenTitles.has(key)) {
         seenTitles.add(key);
-        result.openRoles.push({ title: job.title, location: job.location, source: job.source, department: job.department });
+        result.openRoles.push({ title: job.title, location: job.location, source: job.source, department: job.department, url: job.url });
       }
     }
     result.openRoles = result.openRoles.slice(0, 15);
