@@ -238,7 +238,7 @@ Deno.serve(async (req) => {
     const result: Record<string, any> = {
       name: smartCapitalize(company_name.trim()),
       domain: null, industry: null, size: null, location: null,
-      funding: null, description: null, techStack: [], insights: [],
+      funding: null, description: null, techStack: [], insights: [], structuredInsights: [],
       decisionMakers: [], openRoles: [], linkedinUrl: null,
       websiteUrl: null, logoUrl: null, careersUrl: null,
       foundedYear: null, linkedinFollowers: null, annualRevenue: null,
@@ -737,13 +737,14 @@ Postes ouverts : ${result.openRoles.length}
 Followers LinkedIn : ${result.linkedinFollowers || 'inconnu'}
 CA : ${result.annualRevenue || 'inconnu'}
 
-Génère EXACTEMENT 4 insights ciblés recruteur :
-1. 🎯 Difficulté de recrutement — profils rares ? Quels profils durs à sourcer ?
-2. 💰 Positionnement salaire — au-dessus/en-dessous du marché ?
-3. 🏢 Attractivité employeur — qu'est-ce qui attire les candidats ?
-4. ⚡ Timing & stratégie — quand approcher ? Quels signaux exploiter ?
+Génère EXACTEMENT 4 insights structurés pour un recruteur/décideur :
+1. key="difficulty" — Tension recrutement : quels profils sont rares/difficiles à sourcer pour cette boîte ?
+2. key="salary" — Positionnement salaire : au-dessus/en-dessous du marché pour les rôles clés ?
+3. key="attractivity" — Marque employeur : qu'est-ce qui attire (ou repousse) les candidats ?
+4. key="timing" — Timing & signaux : meilleur moment pour approcher ? Signaux de croissance ou restructuration ?
 
-NE PAS décrire l'entreprise. Chaque insight = 1-2 phrases percutantes.`;
+Chaque insight = un objet { key, title (5-8 mots max), body (1-2 phrases percutantes) }.
+NE PAS décrire l'entreprise. Être direct, actionnable, utile pour un cabinet de recrutement.`;
 
         const aiRes = await fetchWithTimeout('https://ai.gateway.lovable.dev/v1/chat/completions', {
           method: 'POST',
@@ -760,8 +761,21 @@ NE PAS décrire l'entreprise. Chaque insight = 1-2 phrases percutantes.`;
                 name: 'return_insights',
                 parameters: {
                   type: 'object',
-                  properties: { insights: { type: 'array', items: { type: 'string' } } },
-                  required: ['insights'], additionalProperties: false,
+                  properties: {
+                    structured_insights: {
+                      type: 'array',
+                      items: {
+                        type: 'object',
+                        properties: {
+                          key: { type: 'string', enum: ['difficulty', 'salary', 'attractivity', 'timing'] },
+                          title: { type: 'string' },
+                          body: { type: 'string' },
+                        },
+                        required: ['key', 'title', 'body'],
+                      },
+                    },
+                  },
+                  required: ['structured_insights'], additionalProperties: false,
                 },
               },
             }],
@@ -774,7 +788,14 @@ NE PAS décrire l'entreprise. Chaque insight = 1-2 phrases percutantes.`;
           const toolCall = aiData.choices?.[0]?.message?.tool_calls?.[0];
           if (toolCall) {
             const parsed = JSON.parse(toolCall.function.arguments);
-            result.insights = parsed.insights || [];
+            // Support both structured and flat formats
+            if (parsed.structured_insights?.length) {
+              result.structuredInsights = parsed.structured_insights;
+              // Also keep flat insights as fallback for older clients
+              result.insights = parsed.structured_insights.map((i: any) => `${i.title}: ${i.body}`);
+            } else if (parsed.insights?.length) {
+              result.insights = parsed.insights;
+            }
           }
         }
       } catch (e) { console.warn('[enrich] AI insights failed:', e); }

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft, ArrowRight, Check, Loader2, MapPin, Users, TrendingUp, Building2, Briefcase, Globe, Calendar, Linkedin, Sparkles } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Check, Loader2, MapPin, Users, TrendingUp, Building2, Briefcase, Globe, Calendar, Linkedin, Sparkles, Target, DollarSign, Heart, Zap } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -30,6 +30,12 @@ interface AgentBubble {
   text: string;
 }
 
+interface StructuredInsight {
+  key: 'difficulty' | 'salary' | 'attractivity' | 'timing';
+  title: string;
+  body: string;
+}
+
 interface CompanyData {
   name: string;
   domain: string | null;
@@ -40,6 +46,7 @@ interface CompanyData {
   description: string | null;
   techStack: string[];
   insights: string[];
+  structuredInsights?: StructuredInsight[];
   decisionMakers: { name: string; role: string; linkedinUrl?: string | null }[];
   openRoles: { title: string; location: string; source: string; department?: string; url?: string }[];
   linkedinUrl: string | null;
@@ -427,6 +434,15 @@ const TabOverview: React.FC<{ company: CompanyData }> = ({ company }) => {
     { icon: Linkedin, label: 'Followers', value: formatFollowers(company.linkedinFollowers) },
   ];
 
+  const INSIGHT_CONFIG: Record<string, { icon: typeof Target; accent: string }> = {
+    difficulty: { icon: Target, accent: 'hsl(0, 72%, 51%)' },
+    salary: { icon: DollarSign, accent: 'hsl(142, 71%, 45%)' },
+    attractivity: { icon: Heart, accent: 'hsl(var(--skalr-purple))' },
+    timing: { icon: Zap, accent: 'hsl(45, 93%, 47%)' },
+  };
+
+  const structuredInsights = company.structuredInsights || [];
+
   return (
     <div className="space-y-4">
       {/* KPI Grid */}
@@ -440,15 +456,53 @@ const TabOverview: React.FC<{ company: CompanyData }> = ({ company }) => {
         ))}
       </div>
 
-      {/* AI Market Insights */}
-      {company.insights.length > 0 && (
+      {/* Structured AI Recruitment Insights */}
+      {structuredInsights.length > 0 ? (
+        <div className="space-y-2">
+          <h4 className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider" style={{ color: 'hsl(var(--skalr-purple))' }}>
+            <Sparkles className="w-3.5 h-3.5" />
+            Analyse recrutement
+          </h4>
+          <div className="grid grid-cols-2 gap-2">
+            {structuredInsights.map((insight, i) => {
+              const config = INSIGHT_CONFIG[insight.key] || { icon: Sparkles, accent: 'hsl(var(--skalr-purple))' };
+              const Icon = config.icon;
+              return (
+                <motion.div
+                  key={insight.key}
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: i * 0.08 }}
+                  className="border border-foreground/10 p-3 space-y-1.5 hover:border-foreground/20 transition-colors"
+                >
+                  <div className="flex items-center gap-1.5">
+                    <div
+                      className="w-5 h-5 flex items-center justify-center shrink-0"
+                      style={{ backgroundColor: config.accent + '15' }}
+                    >
+                      <Icon className="w-3 h-3" style={{ color: config.accent }} />
+                    </div>
+                    <span className="text-[11px] font-bold text-foreground uppercase tracking-wide leading-tight truncate">
+                      {insight.title}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground leading-relaxed line-clamp-3">
+                    {insight.body}
+                  </p>
+                </motion.div>
+              );
+            })}
+          </div>
+        </div>
+      ) : company.insights.length > 0 ? (
+        /* Fallback: flat insights */
         <div
           className="border border-foreground/10 p-4 space-y-3"
           style={{ borderLeftWidth: '3px', borderLeftColor: 'hsl(var(--skalr-purple))' }}
         >
           <h4 className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider" style={{ color: 'hsl(var(--skalr-purple))' }}>
             <Sparkles className="w-3.5 h-3.5" />
-            Analyse marché recrutement
+            Analyse recrutement
           </h4>
           <div className="space-y-2.5">
             {company.insights.map((insight, i) => (
@@ -456,7 +510,7 @@ const TabOverview: React.FC<{ company: CompanyData }> = ({ company }) => {
             ))}
           </div>
         </div>
-      )}
+      ) : null}
 
       {/* Links */}
       {(company.websiteUrl || company.careersUrl) && (
