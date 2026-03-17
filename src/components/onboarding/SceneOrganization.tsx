@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft, ArrowRight, Check, Loader2, MapPin, Users, TrendingUp, Building2, Briefcase, Globe, Calendar, Linkedin, Sparkles, Target, DollarSign, Heart, Zap } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Check, Loader2, MapPin, Users, TrendingUp, Building2, Briefcase, Globe, Calendar, Linkedin, Sparkles, Target, DollarSign, Heart, Zap, Newspaper, ExternalLink, GitBranch, Signal } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -62,6 +62,12 @@ interface CompanyData {
   keywords?: string[];
   jobPostingsCount?: number | null;
   signals?: Array<{ type: string; label: string; color: string }>;
+  departmentalHeadcount?: Record<string, number>;
+  fundingEvents?: Array<{ date: string; type: string; amount?: number; investors?: string[] }>;
+  newsArticles?: Array<{ title: string; url: string; published_at: string; source: string }>;
+  suborganizations?: string[];
+  numSuborganizations?: number;
+  intentStrength?: number | null;
 }
 
 interface ApolloCandidate {
@@ -99,7 +105,7 @@ export const SceneOrganization: React.FC<Props> = ({ onComplete, onBack }) => {
   const [bubbles, setBubbles] = useState<AgentBubble[]>([]);
   const [company, setCompany] = useState<CompanyData | null>(null);
   const [disambiguationCandidates, setDisambiguationCandidates] = useState<ApolloCandidate[]>([]);
-  const [activeTab, setActiveTab] = useState<'overview' | 'roles' | 'market'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'insights' | 'roles'>('overview');
   const [selectedRoles, setSelectedRoles] = useState<Set<number>>(new Set());
   const [isCreating, setIsCreating] = useState(false);
   // debounceRef removed — search is now explicit via button/Enter
@@ -286,8 +292,14 @@ export const SceneOrganization: React.FC<Props> = ({ onComplete, onBack }) => {
   };
 
   const uniqueRolesCount = company ? dedupeRoles(company.openRoles).length : 0;
+  const hasInsightsData = company && (
+    (company.departmentalHeadcount && Object.values(company.departmentalHeadcount).filter(v => v != null).length >= 3) ||
+    (company.fundingEvents && company.fundingEvents.length > 0) ||
+    (company.newsArticles && company.newsArticles.length > 0)
+  );
   const tabs = [
     { key: 'overview' as const, label: 'Aperçu' },
+    ...(hasInsightsData ? [{ key: 'insights' as const, label: 'Insights' }] : []),
     { key: 'roles' as const, label: `Postes ouverts (${uniqueRolesCount})` },
   ];
 
@@ -482,6 +494,25 @@ export const SceneOrganization: React.FC<Props> = ({ onComplete, onBack }) => {
                   >
                     Enrichi
                   </span>
+                  {(company.suborganizations?.length || 0) > 0 && (
+                    <span className="text-[9px] uppercase tracking-wider font-bold px-2 py-0.5 border border-foreground/30 bg-muted flex items-center gap-1">
+                      <GitBranch className="w-3 h-3" />
+                      {company.suborganizations!.length} filiale{company.suborganizations!.length > 1 ? 's' : ''}
+                    </span>
+                  )}
+                  {company.intentStrength != null && (
+                    <span
+                      className="text-[9px] uppercase tracking-wider font-bold px-2 py-0.5 border flex items-center gap-1"
+                      style={{
+                        borderColor: company.intentStrength > 50 ? 'hsl(142, 71%, 45%)' : 'hsl(32, 95%, 44%)',
+                        backgroundColor: company.intentStrength > 50 ? 'hsl(142, 71%, 45%, 0.12)' : 'hsl(32, 95%, 44%, 0.12)',
+                        color: company.intentStrength > 50 ? 'hsl(142, 71%, 45%)' : 'hsl(32, 95%, 44%)',
+                      }}
+                    >
+                      <Signal className="w-3 h-3" />
+                      {company.intentStrength > 50 ? "Signal d'achat détecté" : 'Signal faible'}
+                    </span>
+                  )}
                 </div>
                 {company.industry && <p className="text-xs text-muted-foreground mt-0.5">{company.industry}</p>}
                 <div className="flex items-center gap-3 mt-2 text-xs text-muted-foreground flex-wrap">
@@ -519,6 +550,7 @@ export const SceneOrganization: React.FC<Props> = ({ onComplete, onBack }) => {
                 transition={{ duration: 0.2 }}
               >
                 {activeTab === 'overview' && <TabOverview company={company} />}
+                {activeTab === 'insights' && <TabInsights company={company} />}
                 {activeTab === 'roles' && (
                   <TabRoles
                     roles={company.openRoles}
@@ -645,6 +677,163 @@ const TabOverview: React.FC<{ company: CompanyData }> = ({ company }) => {
               </Button>
             </a>
           )}
+        </div>
+      )}
+    </div>
+  );
+};
+
+/* ─── Helper: format funding amount ─── */
+function formatAmount(amount?: number): string {
+  if (!amount) return '';
+  if (amount >= 1_000_000_000) return `${(amount / 1_000_000_000).toFixed(1)}B$`;
+  if (amount >= 1_000_000) return `${(amount / 1_000_000).toFixed(0)}M$`;
+  if (amount >= 1_000) return `${(amount / 1_000).toFixed(0)}K$`;
+  return `${amount}$`;
+}
+
+/* ─── Helper: relative date ─── */
+function relativeDate(dateStr: string): string {
+  try {
+    const d = new Date(dateStr);
+    const now = new Date();
+    const diffDays = Math.floor((now.getTime() - d.getTime()) / 86400000);
+    if (diffDays < 1) return "Aujourd'hui";
+    if (diffDays < 7) return `Il y a ${diffDays}j`;
+    if (diffDays < 30) return `Il y a ${Math.floor(diffDays / 7)} sem.`;
+    if (diffDays < 365) return `Il y a ${Math.floor(diffDays / 30)} mois`;
+    return `Il y a ${Math.floor(diffDays / 365)} an${Math.floor(diffDays / 365) > 1 ? 's' : ''}`;
+  } catch {
+    return dateStr;
+  }
+}
+
+/* ─── Helper: format month ─── */
+function formatMonthYear(dateStr: string): string {
+  try {
+    const d = new Date(dateStr);
+    return d.toLocaleDateString('fr-FR', { month: 'short', year: 'numeric' });
+  } catch {
+    return dateStr;
+  }
+}
+
+/* ─── Tab: Insights ─── */
+const TabInsights: React.FC<{ company: CompanyData }> = ({ company }) => {
+  // Headcount by department
+  const headcountEntries = company.departmentalHeadcount
+    ? Object.entries(company.departmentalHeadcount)
+        .filter(([, v]) => v != null && v > 0)
+        .sort(([, a], [, b]) => b - a)
+        .slice(0, 6)
+    : [];
+  const maxHeadcount = headcountEntries.length > 0 ? headcountEntries[0][1] : 0;
+
+  const fundingEvents = (company.fundingEvents || []).slice(0, 4);
+  const newsArticles = (company.newsArticles || []).slice(0, 3);
+
+  return (
+    <div className="space-y-5">
+      {/* Headcount by department */}
+      {headcountEntries.length >= 3 && (
+        <div className="space-y-2.5">
+          <h4 className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-foreground">
+            <Users className="w-3.5 h-3.5" />
+            Répartition des équipes
+          </h4>
+          <div className="space-y-2 border-2 border-foreground/10 p-3" style={{ boxShadow: '2px 2px 0px 0px hsl(var(--brutal-accent) / 0.3)' }}>
+            {headcountEntries.map(([dept, count]) => (
+              <div key={dept} className="space-y-0.5">
+                <div className="flex items-center justify-between text-[11px]">
+                  <span className="font-medium capitalize">{dept.replace(/_/g, ' ')}</span>
+                  <span className="font-bold tabular-nums">{count}</span>
+                </div>
+                <div className="h-2 bg-muted border border-foreground/5 overflow-hidden">
+                  <motion.div
+                    initial={{ width: 0 }}
+                    animate={{ width: `${(count / maxHeadcount) * 100}%` }}
+                    transition={{ duration: 0.6, delay: 0.1 }}
+                    className="h-full"
+                    style={{ backgroundColor: 'hsl(var(--brutal-accent))' }}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Funding timeline */}
+      {fundingEvents.length > 0 && (
+        <div className="space-y-2.5">
+          <h4 className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-foreground">
+            <TrendingUp className="w-3.5 h-3.5" />
+            Historique de levées
+          </h4>
+          <div className="border-2 border-foreground/10 p-3 space-y-0" style={{ boxShadow: '2px 2px 0px 0px hsl(var(--brutal-accent) / 0.3)' }}>
+            {fundingEvents.map((ev, i) => (
+              <div key={i} className="flex gap-3 relative">
+                {/* Vertical line */}
+                {i < fundingEvents.length - 1 && (
+                  <div className="absolute left-[7px] top-5 bottom-0 w-[2px] bg-foreground/10" />
+                )}
+                {/* Dot */}
+                <div className="w-4 h-4 mt-0.5 shrink-0 border-2 border-foreground/40 bg-background z-10" style={{ borderRadius: 0 }} />
+                <div className="pb-3 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {ev.type && (
+                      <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 border border-foreground/20 bg-muted">
+                        {ev.type}
+                      </span>
+                    )}
+                    {ev.amount && (
+                      <span className="text-[11px] font-bold text-foreground">{formatAmount(ev.amount)}</span>
+                    )}
+                  </div>
+                  {ev.date && (
+                    <p className="text-[10px] text-muted-foreground mt-0.5">{formatMonthYear(ev.date)}</p>
+                  )}
+                  {ev.investors && ev.investors.length > 0 && (
+                    <p className="text-[10px] text-muted-foreground mt-0.5 truncate">
+                      {ev.investors.join(', ')}
+                    </p>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* News */}
+      {newsArticles.length > 0 && (
+        <div className="space-y-2.5">
+          <h4 className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-foreground">
+            <Newspaper className="w-3.5 h-3.5" />
+            Actualités
+          </h4>
+          <div className="space-y-1.5">
+            {newsArticles.map((article, i) => (
+              <a
+                key={i}
+                href={article.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-start gap-2 p-2 border border-foreground/10 hover:border-foreground/25 transition-colors group"
+              >
+                <ExternalLink className="w-3 h-3 mt-0.5 shrink-0 text-muted-foreground group-hover:text-foreground transition-colors" />
+                <div className="min-w-0 flex-1">
+                  <p className="text-[11px] font-medium text-foreground leading-snug line-clamp-2 group-hover:underline">
+                    {article.title}
+                  </p>
+                  <div className="flex items-center gap-2 text-[10px] text-muted-foreground mt-0.5">
+                    {article.source && <span>{article.source}</span>}
+                    {article.published_at && <span>· {relativeDate(article.published_at)}</span>}
+                  </div>
+                </div>
+              </a>
+            ))}
+          </div>
         </div>
       )}
     </div>
