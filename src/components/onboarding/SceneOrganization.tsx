@@ -30,6 +30,12 @@ interface AgentBubble {
   text: string;
 }
 
+interface StructuredInsight {
+  key: 'difficulty' | 'salary' | 'attractivity' | 'timing';
+  title: string;
+  body: string;
+}
+
 interface CompanyData {
   name: string;
   domain: string | null;
@@ -40,6 +46,7 @@ interface CompanyData {
   description: string | null;
   techStack: string[];
   insights: string[];
+  structuredInsights?: StructuredInsight[];
   decisionMakers: { name: string; role: string; linkedinUrl?: string | null }[];
   openRoles: { title: string; location: string; source: string; department?: string; url?: string }[];
   linkedinUrl: string | null;
