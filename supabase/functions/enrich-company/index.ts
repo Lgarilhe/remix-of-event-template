@@ -848,7 +848,7 @@ Deno.serve(async (req) => {
                 messages: [
                   {
                     role: 'system',
-                    content: `Tu extrais TOUTES les vraies offres d'emploi / postes ouverts. Ignore complètement les slogans marketing, la culture d'entreprise, les témoignages et les phrases descriptives. Retourne UNIQUEMENT via tool call.`,
+                    content: `Tu extrais UNIQUEMENT les vraies offres d'emploi / postes ouverts publiés directement par l'entreprise "${result.name}". EXCLUS les offres de partenaires, filiales, clients ou toute autre entreprise tierce. Si le titre ou la description mentionne clairement une autre société, ignore cette offre. Ignore aussi les slogans marketing, la culture d'entreprise, les témoignages et les phrases descriptives. Retourne UNIQUEMENT via tool call.`,
                   },
                   {
                     role: 'user',
