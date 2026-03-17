@@ -315,10 +315,18 @@ export const SceneOrganization: React.FC<Props> = ({ onComplete, onBack }) => {
               style={{ boxShadow: '4px 4px 0px 0px hsl(var(--brutal-accent))' }}
             >
               <img
-                src={company.logoUrl || (company.domain ? `https://logo.clearbit.com/${company.domain}` : `https://ui-avatars.com/api/?name=${encodeURIComponent(company.name)}&background=random&size=48`)}
+                src={company.logoUrl || (company.domain ? `https://logo.clearbit.com/${company.domain}` : `https://ui-avatars.com/api/?name=${encodeURIComponent(company.name)}&background=random&size=64`)}
                 alt={company.name}
-                className="w-12 h-12 border border-foreground/10 bg-background object-contain"
-                onError={(e) => { (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${encodeURIComponent(company.name)}&background=random&size=48`; }}
+                className="w-14 h-14 border border-foreground/10 bg-background object-contain rounded-sm"
+                onError={(e) => {
+                  const img = e.target as HTMLImageElement;
+                  // Try Google favicon as second fallback
+                  if (company.domain && !img.src.includes('google.com/s2')) {
+                    img.src = `https://www.google.com/s2/favicons?domain=${company.domain}&sz=64`;
+                  } else {
+                    img.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(company.name)}&background=random&size=64`;
+                  }
+                }}
               />
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
