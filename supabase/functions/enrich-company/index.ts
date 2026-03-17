@@ -307,16 +307,28 @@ Deno.serve(async (req) => {
         try {
           const homepageHtml = await fetchPageText(`https://${result.domain}`, 6000);
           const ATS_DOMAINS = /taleez\.com|lever\.co|greenhouse\.io|workable\.com|recruitee\.com|smartrecruiters\.com|breezy\.hr|ashbyhq\.com|jobs\.lever\.co|teamtailor\.com|welcomekit\.co|flatchr\.io|jobaffinity\.fr/i;
-          const CAREER_KEYWORDS = /carri[eè]re|career|jobs?[\/\-]|recrutement|join[\-\/]|talent[\-\/]|nous[\-]rejoindre|hiring|openings|rejoignez|postuler|offres[\-\/]|emploi/i;
+          // Match career-related paths as standalone segments (not substrings of product names)
+          // e.g. /careers, /jobs, /recrutement, /join-us — but NOT /serverless-jobs, /print-jobs
+          const CAREER_PATH_REGEX = /(?:^|\/)(carri[eè]res?|careers?|jobs|recrutement|join(?:-us)?|talent|nous-rejoindre|hiring|openings|rejoignez|postuler|offres-emploi|emploi)(?:\/|$|#|\?)/i;
 
           const hrefRegex = /href=["']([^"']+)["']/gi;
           let hrefMatch;
+          const candidateUrls: string[] = [];
           while ((hrefMatch = hrefRegex.exec(homepageHtml)) !== null) {
             const href = hrefMatch[1];
-            if (CAREER_KEYWORDS.test(href) || ATS_DOMAINS.test(href)) {
+            if (ATS_DOMAINS.test(href)) {
               careersUrl = href.startsWith('http') ? href : `https://${result.domain}${href.startsWith('/') ? '' : '/'}${href}`;
               break;
             }
+            // For career keywords, check against the path only (not query params or full URL)
+            const pathOnly = href.replace(/^https?:\/\/[^\/]+/, '').split('?')[0].split('#')[0];
+            if (CAREER_PATH_REGEX.test(pathOnly)) {
+              candidateUrls.push(href);
+            }
+          }
+          if (!careersUrl && candidateUrls.length > 0) {
+            const best = candidateUrls[0];
+            careersUrl = best.startsWith('http') ? best : `https://${result.domain}${best.startsWith('/') ? '' : '/'}${best}`;
           }
 
           if (!result.description && homepageHtml.length > 200) {
