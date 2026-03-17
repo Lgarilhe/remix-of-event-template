@@ -521,6 +521,7 @@ export const SceneOrganization: React.FC<Props> = ({ onComplete, onBack }) => {
                   {company.funding && <span className="flex items-center gap-1"><TrendingUp className="w-3 h-3" />{company.funding}</span>}
                 </div>
               </div>
+            </div>
 
             {/* Tabs */}
             <div className="flex gap-0 border-b-2 border-foreground/10">
