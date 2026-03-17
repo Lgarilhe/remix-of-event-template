@@ -420,10 +420,11 @@ Deno.serve(async (req) => {
 
     // ── Task C: Apollo Job Postings (primary source) ──
     let apolloJobsFound = false;
-    const apolloJobsPromise = (APOLLO_API_KEY && apolloOrg?.id) ? (async () => {
+    const apolloOrgId = apolloOrg?.organization_id || apolloOrg?.id || apolloOrg?._id || null;
+    const apolloJobsPromise = (APOLLO_API_KEY && apolloOrgId) ? (async () => {
       try {
-        console.log('[enrich] Apollo job postings for org:', apolloOrg.id);
-        const jobsRes = await fetchWithTimeout(`https://api.apollo.io/api/v1/organizations/${apolloOrg.id}/job_postings`, {
+        console.log('[enrich] Apollo job postings for org:', apolloOrgId);
+        const jobsRes = await fetchWithTimeout(`https://api.apollo.io/api/v1/organizations/${apolloOrgId}/job_postings`, {
           method: 'GET',
           headers: { 'Content-Type': 'application/json', 'X-Api-Key': APOLLO_API_KEY },
         });
@@ -448,7 +449,7 @@ Deno.serve(async (req) => {
       } catch (e) {
         console.warn('[enrich] Apollo job postings failed:', e);
       }
-    })() : Promise.resolve();
+    })() : Promise.resolve(console.log('[enrich] Apollo job postings skipped: missing organization_id'));
 
     parallelTasks.push(apolloJobsPromise);
 
