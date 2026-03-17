@@ -320,36 +320,38 @@ Deno.serve(async (req) => {
     }
 
     // ── Task B: Homepage scrape → careers detection → AI job extraction ──
-    if (FIRECRAWL_API_KEY && result.domain) {
+    if (FIRECRAWL_API_KEY) {
       parallelTasks.push((async () => {
         let careersUrl: string | null = null;
         try {
-          // Scrape homepage for careers link
-          const scrapeRes = await fetchWithTimeout('https://api.firecrawl.dev/v1/scrape', {
-            method: 'POST',
-            headers: { Authorization: `Bearer ${FIRECRAWL_API_KEY}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              url: `https://${result.domain}`,
-              formats: ['markdown', 'links'],
-              onlyMainContent: true,
-            }),
-          });
-          if (scrapeRes.ok) {
-            const scrapeData = await parseJsonResponse(scrapeRes);
-            const md = scrapeData.data?.markdown || scrapeData.markdown || '';
-            const links = scrapeData.data?.links || scrapeData.links || [];
+          if (result.domain) {
+            // Scrape homepage for careers link
+            const scrapeRes = await fetchWithTimeout('https://api.firecrawl.dev/v1/scrape', {
+              method: 'POST',
+              headers: { Authorization: `Bearer ${FIRECRAWL_API_KEY}`, 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                url: `https://${result.domain}`,
+                formats: ['markdown', 'links'],
+                onlyMainContent: true,
+              }),
+            });
+            if (scrapeRes.ok) {
+              const scrapeData = await parseJsonResponse(scrapeRes);
+              const md = scrapeData.data?.markdown || scrapeData.markdown || '';
+              const links = scrapeData.data?.links || scrapeData.links || [];
 
-            if (!result.description && md.length > 50) {
-              result.description = md.slice(0, 300).replace(/\n/g, ' ').trim();
-            }
+              if (!result.description && md.length > 50) {
+                result.description = md.slice(0, 300).replace(/\n/g, ' ').trim();
+              }
 
-            const ATS_DOMAINS = /taleez\.com|lever\.co|greenhouse\.io|workable\.com|recruitee\.com|smartrecruiters\.com|breezy\.hr|ashbyhq\.com|jobs\.lever\.co|teamtailor\.com|welcomekit\.co|flatchr\.io|jobaffinity\.fr/i;
-            const CAREER_KEYWORDS = /carri[eè]re|career|jobs?[\/\-]|recrutement|join[\-\/]|talent[\-\/]|nous[\-]rejoindre|hiring|openings|rejoignez|postuler|offres[\-\/]|emploi/i;
-            const careersLink = links.find((l: string) => CAREER_KEYWORDS.test(l) || ATS_DOMAINS.test(l));
-            if (careersLink) {
-              careersUrl = careersLink.startsWith('http')
-                ? careersLink
-                : `https://${result.domain}${careersLink.startsWith('/') ? '' : '/'}${careersLink}`;
+              const ATS_DOMAINS = /taleez\.com|lever\.co|greenhouse\.io|workable\.com|recruitee\.com|smartrecruiters\.com|breezy\.hr|ashbyhq\.com|jobs\.lever\.co|teamtailor\.com|welcomekit\.co|flatchr\.io|jobaffinity\.fr/i;
+              const CAREER_KEYWORDS = /carri[eè]re|career|jobs?[\/\-]|recrutement|join[\-\/]|talent[\-\/]|nous[\-]rejoindre|hiring|openings|rejoignez|postuler|offres[\-\/]|emploi/i;
+              const careersLink = links.find((l: string) => CAREER_KEYWORDS.test(l) || ATS_DOMAINS.test(l));
+              if (careersLink) {
+                careersUrl = careersLink.startsWith('http')
+                  ? careersLink
+                  : `https://${result.domain}${careersLink.startsWith('/') ? '' : '/'}${careersLink}`;
+              }
             }
           }
         } catch (e) {
