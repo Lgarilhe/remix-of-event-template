@@ -95,7 +95,9 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
   const [report, setReport] = useState<CallReport | null>(null);
   const [callStopped, setCallStopped] = useState(false);
   const [loadingIntro, setLoadingIntro] = useState(false);
+  const [elapsedDisplay, setElapsedDisplay] = useState('00:00');
   const introLockedRef = useRef(true); // Lock nextTopic during intro phase
+  const timerIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const socketRef = useRef<WebSocket | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
