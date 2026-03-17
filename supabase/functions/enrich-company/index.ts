@@ -174,7 +174,7 @@ Deno.serve(async (req) => {
       }
     }
 
-    // ── 3. Firecrawl: Scrape website for more data ──
+    // ── 3. Firecrawl: Scrape website + find careers page ──
     if (FIRECRAWL_API_KEY && result.domain) {
       try {
         console.log('[enrich-company] Firecrawl scraping:', result.domain);
@@ -192,14 +192,13 @@ Deno.serve(async (req) => {
           const md = scrapeData.data?.markdown || scrapeData.markdown || '';
           const links = scrapeData.data?.links || scrapeData.links || [];
 
-          // Extract description if not from Apollo
           if (!result.description && md.length > 50) {
             result.description = md.slice(0, 300).replace(/\n/g, ' ').trim();
           }
 
-          // Try to find careers page
+          // Try to find careers page in homepage links
           const careersLink = links.find((l: string) =>
-            /carri[eè]re|career|job|recrutement|join|talent/i.test(l)
+            /carri[eè]re|career|jobs?[\/\.]|recrutement|join|talent|hiring|welcome-to-the-jungle|wttj/i.test(l)
           );
           if (careersLink) {
             result.careersUrl = careersLink;
@@ -209,35 +208,66 @@ Deno.serve(async (req) => {
         console.warn('[enrich-company] Firecrawl scrape failed:', e);
       }
 
-      // Scrape careers page if found
+      // 3b. If no careers link found on homepage, search for it via Firecrawl Search
+      if (!result.careersUrl && FIRECRAWL_API_KEY) {
+        try {
+          console.log('[enrich-company] Searching for careers page:', result.name);
+          const searchRes = await fetch('https://api.firecrawl.dev/v1/search', {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${FIRECRAWL_API_KEY}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              query: `${result.name} careers jobs offres emploi site:${result.domain} OR site:welcometothejungle.com OR site:linkedin.com/company`,
+              limit: 5,
+            }),
+          });
+          if (searchRes.ok) {
+            const searchData = await searchRes.json();
+            const hits = searchData.data || [];
+            // Pick the best careers URL
+            for (const hit of hits) {
+              const url = hit.url || '';
+              if (/carri[eè]re|career|jobs?[\/.]|recrutement|join|talent|hiring|offres|welcome.*jungle/i.test(url)) {
+                result.careersUrl = url;
+                console.log('[enrich-company] Found careers page via search:', url);
+                break;
+              }
+            }
+          }
+        } catch (e) {
+          console.warn('[enrich-company] Firecrawl careers search failed:', e);
+        }
+      }
+
+      // 3c. Scrape careers page to extract open roles
       if (result.careersUrl) {
         try {
+          console.log('[enrich-company] Scraping careers page:', result.careersUrl);
           const careersRes = await fetch('https://api.firecrawl.dev/v1/scrape', {
             method: 'POST',
             headers: { Authorization: `Bearer ${FIRECRAWL_API_KEY}`, 'Content-Type': 'application/json' },
             body: JSON.stringify({
               url: result.careersUrl,
-              formats: [{ type: 'json', prompt: 'Extract all open job positions with their title, location, and department. Return as array of objects with fields: title, location, department.' }],
+              formats: [
+                'markdown',
+                { type: 'json', prompt: 'Extract all open job positions listed on this page. For each job, extract: title (the job title), location (city or remote), department (if available). Return as a JSON array of objects with fields: title, location, department.' },
+              ],
             }),
           });
           if (careersRes.ok) {
             const careersData = await careersRes.json();
             const jobs = careersData.data?.json || careersData.json;
-            if (Array.isArray(jobs)) {
-              result.openRoles = jobs.slice(0, 10).map((j: any) => ({
-                title: j.title || j.name || 'Poste',
-                location: j.location || j.city || '',
-                source: 'Site carrière',
-              }));
-            } else if (jobs && typeof jobs === 'object') {
-              const arr = Object.values(jobs).find(v => Array.isArray(v)) as any[];
-              if (arr) {
-                result.openRoles = arr.slice(0, 10).map((j: any) => ({
-                  title: j.title || j.name || j.role || 'Poste',
-                  location: j.location || j.city || '',
-                  source: 'Site carrière',
-                }));
+            const extractedRoles = extractRoles(jobs);
+            
+            // If JSON extraction failed, try to parse from markdown
+            if (extractedRoles.length === 0) {
+              const careersMd = careersData.data?.markdown || careersData.markdown || '';
+              if (careersMd.length > 100) {
+                console.log('[enrich-company] JSON extraction empty, will use AI to parse careers markdown');
+                result._careersMd = careersMd.slice(0, 3000);
               }
+            } else {
+              result.openRoles = extractedRoles;
+              console.log('[enrich-company] Extracted', extractedRoles.length, 'roles from careers page');
             }
           }
         } catch (e) {
@@ -245,6 +275,56 @@ Deno.serve(async (req) => {
         }
       }
     }
+
+    // ── 3d. AI fallback to extract roles from careers markdown ──
+    const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
+    if (result.openRoles.length === 0 && result._careersMd && LOVABLE_API_KEY) {
+      try {
+        const aiRes = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            model: 'google/gemini-2.5-flash-lite',
+            messages: [
+              { role: 'system', content: 'Extract job listings from this careers page content. Return ONLY valid JSON.' },
+              { role: 'user', content: `Extract all open job positions from this careers page. Return a JSON array of objects with fields: title, location, department.\n\nContent:\n${result._careersMd}` },
+            ],
+            tools: [{
+              type: 'function',
+              function: {
+                name: 'return_jobs',
+                description: 'Return extracted job positions',
+                parameters: {
+                  type: 'object',
+                  properties: {
+                    jobs: { type: 'array', items: { type: 'object', properties: { title: { type: 'string' }, location: { type: 'string' }, department: { type: 'string' } } } },
+                  },
+                  required: ['jobs'],
+                  additionalProperties: false,
+                },
+              },
+            }],
+            tool_choice: { type: 'function', function: { name: 'return_jobs' } },
+          }),
+        });
+        if (aiRes.ok) {
+          const aiData = await aiRes.json();
+          const toolCall = aiData.choices?.[0]?.message?.tool_calls?.[0];
+          if (toolCall) {
+            const parsed = JSON.parse(toolCall.function.arguments);
+            result.openRoles = (parsed.jobs || []).slice(0, 15).map((j: any) => ({
+              title: j.title || 'Poste',
+              location: j.location || '',
+              source: 'Site carrière',
+            }));
+            console.log('[enrich-company] AI extracted', result.openRoles.length, 'roles from markdown');
+          }
+        }
+      } catch (e) {
+        console.warn('[enrich-company] AI careers extraction failed:', e);
+      }
+    }
+    delete result._careersMd;
 
     // ── 4. Generate insights with AI ──
     const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
