@@ -488,7 +488,6 @@ Deno.serve(async (req) => {
     } else {
       console.log(`[enrich] Force refresh for "${cacheKey}" — skipping cache`);
     }
-    }
 
     const APOLLO_API_KEY = Deno.env.get('APOLLO_API_KEY');
     const PERPLEXITY_API_KEY = Deno.env.get('PERPLEXITY_API_KEY');
@@ -914,7 +913,7 @@ Deno.serve(async (req) => {
 
     // ── Task C: Apollo Job Postings ──
     let apolloJobsFound = false;
-    const apolloOrgId = apolloOrg?.organization_id || apolloOrg?.id || apolloOrg?._id || null;
+    // apolloOrgId already declared in Phase 1
     parallelTasks.push((async () => {
       if (!APOLLO_API_KEY || !apolloOrgId) {
         console.log('[enrich] Apollo job postings skipped: missing org id');
