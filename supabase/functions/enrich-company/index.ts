@@ -112,7 +112,7 @@ Deno.serve(async (req) => {
 
     const result: Record<string, any> = {
       name: company_name.trim(),
-      domain: null,
+      domain: forceDomain || null,
       industry: null,
       size: null,
       location: null,
@@ -123,7 +123,7 @@ Deno.serve(async (req) => {
       decisionMakers: [],
       openRoles: [],
       linkedinUrl: null,
-      websiteUrl: null,
+      websiteUrl: forceDomain ? `https://${forceDomain}` : null,
       logoUrl: null,
     };
 
