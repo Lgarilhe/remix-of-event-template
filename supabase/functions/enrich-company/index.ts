@@ -535,7 +535,7 @@ Deno.serve(async (req) => {
           const orgRes = await fetchWithTimeout('https://api.apollo.io/api/v1/mixed_companies/search', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache', 'X-Api-Key': APOLLO_API_KEY },
-            body: JSON.stringify(payload),
+            body: JSON.stringify({ ...payload, api_key: APOLLO_API_KEY }),
           });
 
           if (!orgRes.ok) {
