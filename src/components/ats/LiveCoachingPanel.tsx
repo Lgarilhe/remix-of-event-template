@@ -385,6 +385,12 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
       dgSocket.onclose = () => console.log('Deepgram socket closed');
 
       setIsRecording(true);
+      timerIntervalRef.current = setInterval(() => {
+        const secs = Math.round((Date.now() - callStartRef.current) / 1000);
+        const m = String(Math.floor(secs / 60)).padStart(2, '0');
+        const s = String(secs % 60).padStart(2, '0');
+        setElapsedDisplay(`${m}:${s}`);
+      }, 1000);
       toast.success('Coaching live démarré — parlez naturellement');
     } catch (err: any) {
       console.error('Start recording error:', err);
