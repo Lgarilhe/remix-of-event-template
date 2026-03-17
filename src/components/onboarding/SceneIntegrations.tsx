@@ -91,7 +91,7 @@ const INTEGRATIONS: IntegrationDef[] = [
 export const SceneIntegrations: React.FC<Props> = ({ onNext, onBack }) => {
   const { accounts, loading: linkedInLoading, reload: reloadLinkedIn } = useLinkedInAccounts();
   const { organization } = useOrganization();
-  const { integrations, updateIntegrations } = useOrganizationIntegrations();
+  const { integrations, updateIntegration } = useOrganizationIntegrations();
 
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [fieldValues, setFieldValues] = useState<Record<string, string>>({});
