@@ -64,6 +64,16 @@ interface CompanyData {
   signals?: Array<{ type: string; label: string; color: string }>;
 }
 
+interface ApolloCandidate {
+  id: string;
+  name: string;
+  domain: string | null;
+  industry: string | null;
+  location: string | null;
+  size: string | null;
+  logoUrl: string | null;
+}
+
 const SCAN_SOURCES: Source[] = [
   { id: 'apollo', label: 'Apollo', done: false },
   { id: 'linkedin', label: 'LinkedIn', done: false },
