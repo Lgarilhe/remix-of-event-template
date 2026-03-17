@@ -61,6 +61,40 @@ function formatFollowers(n: number): string {
   return String(n);
 }
 
+function extractJobsFromCareersMarkdown(markdown: string, careersUrl: string): Array<{ title: string; location: string; source: string; url?: string }> {
+  if (!markdown) return [];
+
+  const lines = markdown
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  const jobs: Array<{ title: string; location: string; source: string; url?: string }> = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const match = line.match(/^\[([^\]]+)\]\((https?:\/\/[^)]+)\)$/);
+    if (!match) continue;
+
+    const [, title, url] = match;
+    if (/postuler|voir les offres|alerte emploi/i.test(title)) continue;
+
+    let location = '';
+    for (let j = i + 1; j <= Math.min(i + 4, lines.length - 1); j++) {
+      const candidate = lines[j];
+      if (/publiée le|postuler|cdi|cdd|stage|alternance|freelance|temps plein|temps partiel/i.test(candidate) && !candidate.includes('  ')) continue;
+      if (candidate.length >= 3 && !candidate.startsWith('[') && !candidate.startsWith('#')) {
+        location = candidate.replace(/\s{2,}/g, ' ').trim();
+        break;
+      }
+    }
+
+    jobs.push({ title: title.trim(), location, source: 'Site carrière', url: url || careersUrl });
+  }
+
+  return jobs;
+}
+
 function buildSignals(apolloOrg: any, result: any): Array<{ type: string; label: string; color: string }> {
   const signals: Array<{ type: string; label: string; color: string }> = [];
   if (!apolloOrg) return signals;
