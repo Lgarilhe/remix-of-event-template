@@ -262,8 +262,11 @@ Deno.serve(async (req) => {
           }
 
           // Find careers page URL from homepage links
+          // Match career-related keywords OR external ATS platforms
+          const ATS_DOMAINS = /taleez\.com|lever\.co|greenhouse\.io|workable\.com|recruitee\.com|smartrecruiters\.com|breezy\.hr|ashbyhq\.com|jobs\.lever\.co|teamtailor\.com|welcomekit\.co|flatchr\.io|jobaffinity\.fr/i;
+          const CAREER_KEYWORDS = /carri[eè]re|career|jobs?[\/\-]|recrutement|join[\-\/]|talent[\-\/]|nous[\-]rejoindre|hiring|openings|rejoignez|postuler|offres[\-\/]|emploi/i;
           const careersLink = links.find((l: string) =>
-            /carri[eè]re|career|jobs?[\/\-]|recrutement|join[\-\/]|talent[\-\/]|nous[\-]rejoindre|hiring|openings/i.test(l)
+            CAREER_KEYWORDS.test(l) || ATS_DOMAINS.test(l)
           );
           if (careersLink) {
             // Handle relative URLs
