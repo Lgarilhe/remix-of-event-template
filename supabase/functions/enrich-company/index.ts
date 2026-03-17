@@ -1285,13 +1285,13 @@ Deno.serve(async (req) => {
         const companyHint = result.domain ? ` (${result.domain})` : '';
         const { content } = await perplexitySearch(
           PERPLEXITY_API_KEY,
-          `Donne-moi des informations factuelles sur l'entreprise "${result.name}"${companyHint} en France :
+          `Donne-moi des informations factuelles et RÉCENTES sur l'entreprise "${result.name}"${companyHint} en France :
 1. Levées de fonds : liste les tours de financement connus (date, type comme Seed/Series A/B/C, montant en euros, investisseurs principaux). S'il n'y a pas eu de levée, dis-le clairement.
-2. Actualités récentes : les 3-5 articles ou événements les plus récents (titre, source, date approximative, URL si possible).
+2. Actualités récentes (2025-2026) : les 5-8 articles ou événements les PLUS RÉCENTS (titre, source, date précise, URL si possible). Privilégie les actualités des 6 derniers mois.
 3. Répartition des équipes : estimation du nombre d'employés par département (engineering, sales, marketing, product, HR, finance, operations, etc.) si disponible.
 4. Nombre de filiales ou entités liées.
 Sois factuel, ne spécule pas. Si une info n'est pas disponible, dis "non disponible".`,
-          { timeoutMs: 12000, model: 'sonar-pro' },
+          { timeoutMs: 12000, model: 'sonar-pro', recencyFilter: 'month' },
         );
 
         if (content) {
