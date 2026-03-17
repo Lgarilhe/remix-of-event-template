@@ -6,7 +6,7 @@ import { useOrganization } from '@/hooks/useOrganization';
 import { InvitationBanner } from '@/components/InvitationBanner';
 import { OnboardingLayout } from '@/components/onboarding/OnboardingLayout';
 import { SceneWelcome } from '@/components/onboarding/SceneWelcome';
-import { OnboardingStepOrg } from '@/components/onboarding/OnboardingStepOrg';
+import { SceneOrganization } from '@/components/onboarding/SceneOrganization';
 import { OnboardingStepProfile } from '@/components/onboarding/OnboardingStepProfile';
 import { OnboardingStepLinkedIn } from '@/components/onboarding/OnboardingStepLinkedIn';
 import { OnboardingStepInvite } from '@/components/onboarding/OnboardingStepInvite';
