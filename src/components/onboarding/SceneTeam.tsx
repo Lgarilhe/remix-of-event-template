@@ -357,11 +357,12 @@ export const SceneTeam: React.FC<Props> = ({ organizationId, onFinish, onBack })
         </Button>
         <Button
           onClick={handleFinish}
+          disabled={isSending}
           className="gap-2 border-2 border-foreground bg-foreground text-background hover:bg-foreground/90 text-sm px-6"
           style={{ boxShadow: '3px 3px 0px 0px hsl(var(--brutal-accent))' }}
         >
-          <ArrowRight className="w-4 h-4" />
-          {totalInvites > 0 ? `Inviter ${totalInvites} & terminer` : 'Passer'}
+          {isSending ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowRight className="w-4 h-4" />}
+          {isSending ? 'Envoi...' : totalInvites > 0 ? `Inviter ${totalInvites} & terminer` : 'Passer'}
         </Button>
       </div>
     </div>
