@@ -72,7 +72,7 @@ function levenshtein(a: string, b: string): number {
 }
 
 /** Score an Apollo org candidate against the searched company name */
-function scoreApolloOrgMatch(candidate: any, searchName: string, preferredCountry?: string): number {
+function scoreApolloOrgMatch(candidate: any, searchName: string, _preferredCountry?: string): number {
   const candidateName = normalizeTextToken(candidate.name || candidate.organization_name || '');
   const searchToken = normalizeTextToken(searchName);
   if (!candidateName || !searchToken) return 0;
@@ -84,35 +84,25 @@ function scoreApolloOrgMatch(candidate: any, searchName: string, preferredCountr
     score += 100;
   } else if (candidateName.includes(searchToken) || searchToken.includes(candidateName)) {
     score += 60;
-  } else if (levenshtein(candidateName, searchToken) <= 2) {
-    score += 40;
   } else {
-    return 0; // No meaningful match
+    return 0; // No meaningful match at all
   }
 
-  const country = (candidate.country || '').toLowerCase();
+  const country = (candidate.country || candidate.hq_country || '').toLowerCase();
 
   // Country bonus/malus
-  if (preferredCountry) {
-    const prefLower = preferredCountry.toLowerCase();
-    if (country === prefLower || country === 'france' && prefLower === 'fr' || country === 'fr' && prefLower === 'france') {
-      score += 30;
-    }
-  } else {
-    // Default: bonus for France (product is FR-focused)
-    if (['france', 'fr'].includes(country)) score += 20;
+  if (['france', 'fr'].includes(country)) {
+    score += 30;
   }
-
-  // Malus for US when no explicit country preference (ambiguity risk)
-  if (!preferredCountry && ['united states', 'us', 'usa'].includes(country)) {
-    score -= 15;
+  if (['united states', 'us', 'usa'].includes(country)) {
+    score -= 20;
   }
 
   // Bonus if domain exists (more trustworthy)
   if (candidate.primary_domain) score += 10;
 
-  // Bonus for employee count (real company)
-  if (candidate.estimated_num_employees && candidate.estimated_num_employees > 5) score += 5;
+  // Reject below threshold
+  if (score < 40) return 0;
 
   return score;
 }
