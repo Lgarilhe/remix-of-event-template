@@ -8,7 +8,7 @@ import { OnboardingLayout } from '@/components/onboarding/OnboardingLayout';
 import { SceneWelcome } from '@/components/onboarding/SceneWelcome';
 import { SceneOrganization } from '@/components/onboarding/SceneOrganization';
 import { SceneAudit } from '@/components/onboarding/SceneAudit';
-import { OnboardingStepProfile } from '@/components/onboarding/OnboardingStepProfile';
+import { SceneProfile } from '@/components/onboarding/SceneProfile';
 import { OnboardingStepLinkedIn } from '@/components/onboarding/OnboardingStepLinkedIn';
 import { OnboardingStepInvite } from '@/components/onboarding/OnboardingStepInvite';
 
@@ -106,7 +106,7 @@ const Onboarding = () => {
             {step === 0 && <SceneWelcome onNext={goNext} />}
             {step === 1 && <SceneOrganization onComplete={handleOrgCreated} onBack={goBack} />}
             {step === 2 && <SceneAudit onNext={goNext} onBack={goBack} />}
-            {step === 3 && <OnboardingStepProfile onNext={goNext} onBack={goBack} />}
+            {step === 3 && <SceneProfile onNext={goNext} onBack={goBack} />}
             {step === 4 && <OnboardingStepLinkedIn onNext={goNext} onBack={goBack} />}
             {step === 5 && (
               <OnboardingStepInvite
