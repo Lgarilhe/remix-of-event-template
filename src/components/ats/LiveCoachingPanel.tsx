@@ -620,6 +620,46 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
             )}
           </div>
 
+          {/* Transcription */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                Transcription
+              </p>
+              <span className="text-[9px] text-muted-foreground tabular-nums">
+                {segments.reduce((acc, s) => acc + s.text.split(' ').length, 0)} mots
+              </span>
+            </div>
+            <div className="max-h-[140px] overflow-y-auto space-y-1 border border-foreground/10 p-2">
+              {segments.length === 0 && (
+                <p className="text-[10px] text-muted-foreground italic">En attente…</p>
+              )}
+              {segments.map((seg, i) => (
+                <div key={i} className={cn(
+                  "pl-2 border-l-2 text-[10px] leading-snug",
+                  seg.speaker === 0 ? "border-blue-400" : "border-emerald-400"
+                )}>
+                  <span className={cn(
+                    "font-bold uppercase tracking-wider text-[8px] block mb-0.5",
+                    seg.speaker === 0 ? "text-blue-500" : "text-emerald-500"
+                  )}>
+                    {speakerLabel(seg.speaker)}
+                  </span>
+                  <span className="text-foreground">{seg.text}</span>
+                </div>
+              ))}
+              {interimText && (
+                <div className={cn(
+                  "pl-2 border-l-2 border-dashed text-[10px] text-muted-foreground italic",
+                  interimSpeaker === 0 ? "border-blue-300" : "border-emerald-300"
+                )}>
+                  {interimText}
+                </div>
+              )}
+              <div ref={transcriptEndRef} />
+            </div>
+          </div>
+
         </div>
       )}
 
