@@ -292,8 +292,14 @@ export const SceneOrganization: React.FC<Props> = ({ onComplete, onBack }) => {
   };
 
   const uniqueRolesCount = company ? dedupeRoles(company.openRoles).length : 0;
+  const hasInsightsData = company && (
+    (company.departmentalHeadcount && Object.values(company.departmentalHeadcount).filter(v => v != null).length >= 3) ||
+    (company.fundingEvents && company.fundingEvents.length > 0) ||
+    (company.newsArticles && company.newsArticles.length > 0)
+  );
   const tabs = [
     { key: 'overview' as const, label: 'Aperçu' },
+    ...(hasInsightsData ? [{ key: 'insights' as const, label: 'Insights' }] : []),
     { key: 'roles' as const, label: `Postes ouverts (${uniqueRolesCount})` },
   ];
 
