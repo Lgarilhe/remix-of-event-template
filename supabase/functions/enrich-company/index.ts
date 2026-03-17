@@ -428,8 +428,15 @@ Deno.serve(async (req) => {
             });
             if (careersRes.ok) {
               const careersData = await parseJsonResponse(careersRes);
-              const careersMd = (careersData.data?.markdown || careersData.markdown || '').slice(0, 4000);
-              if (careersMd.length > 100 && LOVABLE_API_KEY) {
+              const careersMd = (careersData.data?.markdown || careersData.markdown || '').slice(0, 12000);
+
+              const parsedJobs = extractJobsFromCareersMarkdown(careersMd, careersUrl);
+              if (parsedJobs.length > 0) {
+                parsedJobs.forEach((job) => jobSources.push(job));
+                console.log(`[enrich] Careers page parser: ${parsedJobs.length} jobs`);
+              }
+
+              if (parsedJobs.length === 0 && careersMd.length > 100 && LOVABLE_API_KEY) {
                 const extractRes = await fetchWithTimeout('https://ai.gateway.lovable.dev/v1/chat/completions', {
                   method: 'POST',
                   headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, 'Content-Type': 'application/json' },
@@ -473,7 +480,7 @@ Deno.serve(async (req) => {
                     (parsed.jobs || []).forEach((j: any) => {
                       if (j.title) jobSources.push({ title: j.title, location: j.location || '', source: 'Site carrière', department: j.department, url: careersUrl || undefined });
                     });
-                    console.log(`[enrich] Careers page: ${(parsed.jobs || []).length} jobs`);
+                    console.log(`[enrich] Careers page AI: ${(parsed.jobs || []).length} jobs`);
                   }
                 }
               }
