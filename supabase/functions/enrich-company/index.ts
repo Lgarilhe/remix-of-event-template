@@ -171,14 +171,29 @@ Deno.serve(async (req) => {
     if (APOLLO_API_KEY) {
       try {
         console.log('[enrich] Apollo org search:', company_name);
-        const orgRes = await fetchWithTimeout('https://api.apollo.io/v1/mixed_companies/api_search', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'X-Api-Key': APOLLO_API_KEY },
-          body: JSON.stringify({ q_organization_name: company_name.trim(), per_page: 1 }),
-        });
-        if (orgRes.ok) {
+        const orgEndpoints = [
+          'https://api.apollo.io/api/v1/mixed_companies/search',
+          'https://api.apollo.io/v1/mixed_companies/api_search',
+        ];
+
+        for (const endpoint of orgEndpoints) {
+          const orgRes = await fetchWithTimeout(endpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-Api-Key': APOLLO_API_KEY },
+            body: JSON.stringify({ q_organization_name: company_name.trim(), per_page: 1 }),
+          });
+
+          if (!orgRes.ok) {
+            console.warn(`[enrich] Apollo org search failed (${endpoint}): ${orgRes.status}`);
+            continue;
+          }
+
           const orgData = await parseJsonResponse(orgRes);
-          apolloOrg = orgData.organizations?.[0] || orgData.accounts?.[0] || null;
+          const orgResults = orgData.organizations || orgData.accounts || orgData.results || orgData.data || [];
+          const list = Array.isArray(orgResults) ? orgResults : [];
+          console.log(`[enrich] Apollo org candidates (${endpoint}): ${list.length}`);
+          apolloOrg = list[0] || null;
+          if (apolloOrg) break;
         }
       } catch (e) {
         console.warn('[enrich] Apollo org failed:', e);
