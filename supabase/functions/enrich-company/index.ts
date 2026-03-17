@@ -265,7 +265,7 @@ Deno.serve(async (req) => {
     if (APOLLO_API_KEY) {
       parallelTasks.push((async () => {
         try {
-          const peopleRes = await fetchWithTimeout('https://api.apollo.io/v1/mixed_people/api_search', {
+          const peopleRes = await fetchWithTimeout('https://api.apollo.io/api/v1/mixed_people/api_search', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'X-Api-Key': APOLLO_API_KEY },
             body: JSON.stringify({
