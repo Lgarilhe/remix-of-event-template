@@ -483,7 +483,7 @@ const SourceBadge: React.FC<{ source: string }> = ({ source }) => {
   return (
     <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 bg-muted text-muted-foreground font-mono shrink-0">
       {isLinkedIn && <img src={linkedinLogo} alt="LinkedIn" className="w-3 h-3 object-contain" />}
-      {isWTTJ && <img src={WTTJ_ICON} alt="WTTJ" className="w-3 h-3 object-contain" />}
+      {isWTTJ && <img src={WTTJ_LOGO} alt="WTTJ" className="w-3 h-3 object-contain" onError={(e) => { (e.target as HTMLImageElement).src = WTTJ_FALLBACK; }} />}
       {source}
     </span>
   );
