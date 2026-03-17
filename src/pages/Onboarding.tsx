@@ -61,11 +61,6 @@ const Onboarding = () => {
     setStep((s) => Math.min((s ?? 0) + 1, STEP_COUNT - 1));
   }, []);
 
-  // Handle final step navigation as a side-effect (safe in StrictMode)
-  useEffect(() => {
-    if (step === STEP_COUNT - 1) return; // handled by handleFinish
-  }, [step]);
-
 
   const completeAndNext = useCallback((stepIndex: number) => {
     markCompleted(stepIndex);
