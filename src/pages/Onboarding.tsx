@@ -11,6 +11,7 @@ import { SceneAudit } from '@/components/onboarding/SceneAudit';
 import { SceneProfile } from '@/components/onboarding/SceneProfile';
 import { SceneIntegrations } from '@/components/onboarding/SceneIntegrations';
 import { SceneTeam } from '@/components/onboarding/SceneTeam';
+import { SceneLaunch } from '@/components/onboarding/SceneLaunch';
 
 const STEP_COUNT = 7;
 
