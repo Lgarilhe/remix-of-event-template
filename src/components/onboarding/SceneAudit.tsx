@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft, ArrowRight, Check, ChevronDown, ChevronUp, Globe, Briefcase, Star, MessageSquare, Linkedin, Share2, FileText, Cpu } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import analyticsIcon from '@/assets/icon-analytics-3d.png';
 import skalrLogo from '@/assets/skalr-logo-concept-3.png';
 
@@ -33,7 +34,17 @@ interface AgentBubble {
   text: string;
 }
 
-/* ─── Fake data ─── */
+const ICON_MAP: Record<string, React.ElementType> = {
+  website: Globe,
+  careers: Briefcase,
+  wttj: Star,
+  glassdoor: MessageSquare,
+  linkedin: Linkedin,
+  social: Share2,
+  ads: FileText,
+  ats: Cpu,
+};
+
 const SCAN_SOURCES: ScanSource[] = [
   { id: 'website', label: 'Site web', icon: Globe, done: false },
   { id: 'careers', label: 'Page carrière', icon: Briefcase, done: false },
@@ -42,7 +53,6 @@ const SCAN_SOURCES: ScanSource[] = [
   { id: 'linkedin', label: 'Page LinkedIn', icon: Linkedin, done: false },
   { id: 'social', label: 'Réseaux sociaux', icon: Share2, done: false },
   { id: 'ads', label: 'Qualité des annonces', icon: FileText, done: false },
-  { id: 'ats', label: 'Détection ATS', icon: Cpu, done: false },
 ];
 
 const AGENT_MESSAGES = [
@@ -53,106 +63,19 @@ const AGENT_MESSAGES = [
   "Analyse de votre page LinkedIn entreprise...",
   "Évaluation de votre présence sur les réseaux...",
   "Évaluation de la qualité de vos annonces...",
-  "Détection de votre ATS...",
+  "Analyse IA en cours... 🧠",
   "Calcul du score final... 🎯",
 ];
 
-const CATEGORIES: Category[] = [
-  {
-    id: 'website', label: 'Site web & page carrière', icon: Globe,
-    score: 3, maxScore: 5, color: 'hsl(var(--skalr-blue))',
-    summary: 'Page carrière existante mais basique',
-    findings: [
-      'Page carrière présente mais sans contenus immersifs (vidéos, témoignages)',
-      'Temps de chargement correct (1.8s)',
-      'Pas de section "culture" ou "valeurs" dédiée',
-      'Formulaire de candidature fonctionnel',
-    ],
-  },
-  {
-    id: 'wttj', label: 'Welcome to the Jungle', icon: Star,
-    score: 4, maxScore: 5, color: 'hsl(var(--skalr-green))',
-    summary: 'Profil bien renseigné avec photos',
-    findings: [
-      'Profil WTTJ complet avec photos d\'équipe',
-      '12 offres actives publiées',
-      'Score de complétion : 85%',
-      'Manque quelques témoignages collaborateurs',
-    ],
-  },
-  {
-    id: 'glassdoor', label: 'Glassdoor', icon: MessageSquare,
-    score: 2, maxScore: 5, color: 'hsl(var(--skalr-pink))',
-    summary: 'Peu d\'avis, note moyenne',
-    findings: [
-      'Seulement 8 avis sur Glassdoor',
-      'Note moyenne : 3.2/5',
-      'Points positifs récurrents : mission, flexibilité',
-      'Points négatifs : communication interne, processus',
-      'Aucune réponse de l\'employeur aux avis',
-    ],
-  },
-  {
-    id: 'linkedin', label: 'Page LinkedIn', icon: Linkedin,
-    score: 4, maxScore: 5, color: 'hsl(var(--skalr-purple))',
-    summary: 'Page active avec du contenu régulier',
-    findings: [
-      '2.4K abonnés',
-      'Publication régulière (2-3x/semaine)',
-      'Bon engagement sur les posts techniques',
-      'Banner et description à jour',
-    ],
-  },
-  {
-    id: 'social', label: 'Réseaux sociaux', icon: Share2,
-    score: 2, maxScore: 5, color: 'hsl(var(--skalr-cyan))',
-    summary: 'Présence limitée hors LinkedIn',
-    findings: [
-      'Pas de compte Twitter/X entreprise actif',
-      'Pas de chaîne YouTube',
-      'Présence Instagram inexistante',
-      'Opportunité manquée pour toucher les profils tech',
-    ],
-  },
-  {
-    id: 'ads', label: 'Qualité des annonces', icon: FileText,
-    score: 3, maxScore: 5, color: 'hsl(var(--skalr-blue))',
-    summary: 'Annonces correctes, perfectibles',
-    findings: [
-      'Structure des annonces claire (contexte, missions, profil)',
-      'Fourchettes de salaire absentes sur 60% des offres',
-      'Langage parfois trop corporate',
-      'Pas de mention du process de recrutement',
-    ],
-  },
-  {
-    id: 'ats', label: 'Détection ATS', icon: Cpu,
-    score: 3, maxScore: 5, color: 'hsl(var(--skalr-purple))',
-    summary: 'ATS détecté : Lever',
-    findings: [
-      'ATS utilisé : Lever',
-      'Formulaire de candidature en 2 étapes',
-      'Upload CV fonctionnel',
-      'Pas de parsing automatique détecté',
-    ],
-  },
-];
-
-const QUICK_WINS = [
-  'Ajouter les fourchettes de salaire sur toutes les annonces',
-  'Répondre aux avis Glassdoor (surtout les négatifs)',
-  'Ajouter 3-4 témoignages collaborateurs sur la page carrière',
-  'Créer un compte Twitter/X pour partager la culture tech',
-];
-
-const OVERALL_SCORE = 62;
-
 /* ─── Component ─── */
 export const SceneAudit: React.FC<Props> = ({ onNext, onBack }) => {
-  const [phase, setPhase] = useState<'scanning' | 'results'>('scanning');
+  const [phase, setPhase] = useState<'scanning' | 'results' | 'error'>('scanning');
   const [sources, setSources] = useState<ScanSource[]>(SCAN_SOURCES.map(s => ({ ...s, done: false })));
   const [bubbles, setBubbles] = useState<AgentBubble[]>([]);
   const [expandedCat, setExpandedCat] = useState<string | null>(null);
+  const [overallScore, setOverallScore] = useState(0);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [quickWins, setQuickWins] = useState<string[]>([]);
   const bubblesEndRef = useRef<HTMLDivElement>(null);
   const hasStarted = useRef(false);
 
@@ -160,11 +83,23 @@ export const SceneAudit: React.FC<Props> = ({ onNext, onBack }) => {
     bubblesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [bubbles]);
 
+  // Get company info from org context (stored during SceneOrganization)
+  const getCompanyInfo = useCallback(async () => {
+    try {
+      const stored = sessionStorage.getItem('onboarding_company');
+      if (stored) {
+        return JSON.parse(stored);
+      }
+    } catch {}
+    return null;
+  }, []);
+
   // Auto-start scan
   useEffect(() => {
     if (hasStarted.current) return;
     hasStarted.current = true;
 
+    // Animate sources and messages
     SCAN_SOURCES.forEach((_, i) => {
       setTimeout(() => {
         setSources(prev => prev.map((s, j) => (j <= i ? { ...s, done: true } : s)));
@@ -177,13 +112,77 @@ export const SceneAudit: React.FC<Props> = ({ onNext, onBack }) => {
       }, 500 + i * 600);
     });
 
-    const totalTime = 500 + AGENT_MESSAGES.length * 600 + 800;
-    setTimeout(() => setPhase('results'), totalTime);
-  }, []);
+    // Launch real API call
+    (async () => {
+      const companyInfo = await getCompanyInfo();
+      const companyName = companyInfo?.name || '';
+      const domain = companyInfo?.domain || null;
+      const linkedinUrl = companyInfo?.linkedinUrl || null;
+
+      if (!companyName) {
+        // No company — skip to results with empty data
+        const totalAnimTime = 500 + AGENT_MESSAGES.length * 600 + 800;
+        setTimeout(() => setPhase('error'), totalAnimTime);
+        return;
+      }
+
+      try {
+        const { data, error } = await invokeEdgeFunction<{
+          overall_score: number;
+          categories: any[];
+          quick_wins: string[];
+          sources_scraped: any[];
+        }>('audit-employer-brand', {
+          company_name: companyName,
+          domain,
+          linkedin_url: linkedinUrl,
+        });
+
+        if (error || !data?.success) {
+          console.error('[SceneAudit] API error:', error || data?.error);
+          const totalAnimTime = 500 + AGENT_MESSAGES.length * 600 + 800;
+          setTimeout(() => setPhase('error'), totalAnimTime);
+          return;
+        }
+
+        // Map categories with icons
+        const mappedCategories: Category[] = (data.categories || []).map((cat: any) => ({
+          id: cat.id,
+          label: cat.label,
+          icon: ICON_MAP[cat.id] || Globe,
+          score: cat.score,
+          maxScore: cat.maxScore || 5,
+          color: cat.color || 'hsl(var(--skalr-blue))',
+          summary: cat.summary,
+          findings: cat.findings || [],
+        }));
+
+        setOverallScore(data.overall_score || 0);
+        setCategories(mappedCategories);
+        setQuickWins(data.quick_wins || []);
+
+        // Store audit data for SceneLaunch
+        try {
+          sessionStorage.setItem('onboarding_audit', JSON.stringify({
+            score: data.overall_score,
+            categories: mappedCategories.length,
+          }));
+        } catch {}
+
+        // Wait for animations to finish
+        const totalAnimTime = 500 + AGENT_MESSAGES.length * 600 + 800;
+        setTimeout(() => setPhase('results'), totalAnimTime);
+      } catch (err) {
+        console.error('[SceneAudit] Error:', err);
+        const totalAnimTime = 500 + AGENT_MESSAGES.length * 600 + 800;
+        setTimeout(() => setPhase('error'), totalAnimTime);
+      }
+    })();
+  }, [getCompanyInfo]);
 
   const circumference = 2 * Math.PI * 42;
-  const scoreOffset = circumference - (OVERALL_SCORE / 100) * circumference;
-  const improvementCount = CATEGORIES.filter(c => c.score <= 3).length;
+  const scoreOffset = circumference - (overallScore / 100) * circumference;
+  const improvementCount = categories.filter(c => c.score <= 3).length;
 
   return (
     <div className="w-full max-w-2xl mx-auto flex flex-col gap-5">
@@ -251,6 +250,32 @@ export const SceneAudit: React.FC<Props> = ({ onNext, onBack }) => {
           </motion.div>
         )}
 
+        {/* ─── Error phase ─── */}
+        {phase === 'error' && (
+          <motion.div
+            key="error"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="text-center py-8 space-y-3"
+          >
+            <p className="text-sm text-muted-foreground">
+              Impossible d'analyser votre marque employeur pour le moment. Vous pouvez passer cette étape et y revenir plus tard.
+            </p>
+            <div className="flex items-center justify-center gap-3 pt-2">
+              <Button variant="outline" onClick={onBack} className="gap-2 border-2 border-foreground/20 text-sm">
+                <ArrowLeft className="w-4 h-4" /> Retour
+              </Button>
+              <Button
+                onClick={onNext}
+                className="gap-2 border-2 border-foreground bg-foreground text-background hover:bg-foreground/90 text-sm px-6"
+                style={{ boxShadow: '3px 3px 0px 0px hsl(var(--brutal-accent))' }}
+              >
+                <ArrowRight className="w-4 h-4" /> Passer
+              </Button>
+            </div>
+          </motion.div>
+        )}
+
         {/* ─── Results phase ─── */}
         {phase === 'results' && (
           <motion.div
@@ -294,7 +319,7 @@ export const SceneAudit: React.FC<Props> = ({ onNext, onBack }) => {
                     animate={{ opacity: 1 }}
                     transition={{ delay: 0.8 }}
                   >
-                    {OVERALL_SCORE}
+                    {overallScore}
                   </motion.span>
                   <span className="text-[10px] text-muted-foreground">/100</span>
                 </div>
@@ -305,20 +330,20 @@ export const SceneAudit: React.FC<Props> = ({ onNext, onBack }) => {
                   <h3 className="font-semibold text-lg">Score Marque Employeur</h3>
                   <span
                     className="text-[9px] uppercase tracking-wider font-bold px-2 py-0.5 border border-foreground"
-                    style={{ background: OVERALL_SCORE >= 70 ? 'hsl(var(--skalr-green))' : 'hsl(var(--landing-accent-yellow))' }}
+                    style={{ background: overallScore >= 70 ? 'hsl(var(--skalr-green))' : 'hsl(var(--landing-accent-yellow))' }}
                   >
-                    {OVERALL_SCORE >= 70 ? 'Bon' : 'À améliorer'}
+                    {overallScore >= 70 ? 'Bon' : 'À améliorer'}
                   </span>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  {improvementCount} axes d'amélioration détectés sur {CATEGORIES.length} catégories analysées.
+                  {improvementCount} axes d'amélioration détectés sur {categories.length} catégories analysées.
                 </p>
               </div>
             </div>
 
             {/* Categories */}
             <div className="space-y-2">
-              {CATEGORIES.map((cat) => {
+              {categories.map((cat) => {
                 const Icon = cat.icon;
                 const isExpanded = expandedCat === cat.id;
                 const pct = (cat.score / cat.maxScore) * 100;
@@ -375,23 +400,25 @@ export const SceneAudit: React.FC<Props> = ({ onNext, onBack }) => {
             </div>
 
             {/* Quick wins */}
-            <div className="border border-foreground/10 p-4 space-y-3">
-              <div className="flex items-center gap-2">
-                <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Actions prioritaires</h4>
-                <span
-                  className="text-[9px] uppercase tracking-wider font-bold px-2 py-0.5 border border-foreground"
-                  style={{ background: 'hsl(var(--landing-accent-yellow))' }}
-                >
-                  Quick wins
-                </span>
-              </div>
-              {QUICK_WINS.map((action, i) => (
-                <div key={i} className="flex items-start gap-2.5 text-sm text-foreground/80">
-                  <div className="w-2 h-2 mt-1.5 shrink-0 rounded-full" style={{ background: 'hsl(var(--skalr-green))' }} />
-                  {action}
+            {quickWins.length > 0 && (
+              <div className="border border-foreground/10 p-4 space-y-3">
+                <div className="flex items-center gap-2">
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Actions prioritaires</h4>
+                  <span
+                    className="text-[9px] uppercase tracking-wider font-bold px-2 py-0.5 border border-foreground"
+                    style={{ background: 'hsl(var(--landing-accent-yellow))' }}
+                  >
+                    Quick wins
+                  </span>
                 </div>
-              ))}
-            </div>
+                {quickWins.map((action, i) => (
+                  <div key={i} className="flex items-start gap-2.5 text-sm text-foreground/80">
+                    <div className="w-2 h-2 mt-1.5 shrink-0 rounded-full" style={{ background: 'hsl(var(--skalr-green))' }} />
+                    {action}
+                  </div>
+                ))}
+              </div>
+            )}
 
             {/* Skalr × Konekt card */}
             <div
@@ -422,7 +449,7 @@ export const SceneAudit: React.FC<Props> = ({ onNext, onBack }) => {
                 className="gap-2 border-2 border-foreground bg-foreground text-background hover:bg-foreground/90 text-sm px-6"
                 style={{ boxShadow: '3px 3px 0px 0px hsl(var(--brutal-accent))' }}
               >
-                Continuer <ArrowRight className="w-4 h-4" />
+                <ArrowRight className="w-4 h-4" /> Continuer
               </Button>
             </div>
           </motion.div>
