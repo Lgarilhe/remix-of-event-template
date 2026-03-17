@@ -766,10 +766,18 @@ Deno.serve(async (req) => {
 
         for (const probeUrl of atsProbes) {
           try {
-            const probeRes = await fetchWithTimeout(probeUrl, { method: 'HEAD', redirect: 'follow' }, 4000);
+            // Use GET instead of HEAD to verify content belongs to the right company
+            const probeRes = await fetchWithTimeout(probeUrl, { method: 'GET', redirect: 'follow' }, 5000);
             if (probeRes.ok) {
-              careersUrl = probeUrl;
-              break;
+              const probeText = await readResponseTextWithTimeout(probeRes, 3000);
+              const companyToken = normalizeTextToken(result.name);
+              const pageToken = normalizeTextToken(probeText.slice(0, 3000));
+              if (pageToken.includes(companyToken)) {
+                careersUrl = probeUrl;
+                break;
+              } else {
+                console.warn(`[enrich] ATS probe ${probeUrl} returned 200 but company name not found — skipping`);
+              }
             }
           } catch {
             // noop
