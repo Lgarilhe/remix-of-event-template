@@ -214,9 +214,10 @@ export const SceneOrganization: React.FC<Props> = ({ onComplete, onBack }) => {
     }
   };
 
+  const uniqueRolesCount = company ? dedupeRoles(company.openRoles).length : 0;
   const tabs = [
     { key: 'overview' as const, label: 'Aperçu' },
-    { key: 'roles' as const, label: `Postes ouverts (${company?.openRoles.length ?? 0})` },
+    { key: 'roles' as const, label: `Postes ouverts (${uniqueRolesCount})` },
   ];
 
   return (
