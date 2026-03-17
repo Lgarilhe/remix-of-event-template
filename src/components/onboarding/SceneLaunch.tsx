@@ -1,15 +1,16 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { Check, Rocket } from 'lucide-react';
+import { Check, Rocket, Circle } from 'lucide-react';
 import trophyImg from '@/assets/illust-trophy.png';
 
 interface Props {
-  completedSteps: number;
+  completedSet: Set<number>;
   totalSteps: number;
   onFinish: () => void;
 }
 
 const CHECKLIST = [
+  { step: 0, label: 'Bienvenue' },
   { step: 1, label: 'Organisation créée' },
   { step: 2, label: 'Audit configuré' },
   { step: 3, label: 'Profil complété' },
@@ -23,8 +24,8 @@ const ECOSYSTEM = [
   { name: 'Konekt RPO', emoji: '🤝', desc: 'Renfort', active: false },
 ];
 
-export const SceneLaunch: React.FC<Props> = ({ completedSteps, totalSteps, onFinish }) => {
-  const scorePercent = Math.round((completedSteps / totalSteps) * 100);
+export const SceneLaunch: React.FC<Props> = ({ completedSet, totalSteps, onFinish }) => {
+  const scorePercent = Math.round((completedSet.size / totalSteps) * 100);
   const isHighScore = scorePercent >= 60;
   const circumference = 2 * Math.PI * 40;
   const strokeDashoffset = circumference - (scorePercent / 100) * circumference;
@@ -101,7 +102,7 @@ export const SceneLaunch: React.FC<Props> = ({ completedSteps, totalSteps, onFin
         className="flex flex-wrap justify-center gap-2"
       >
         {CHECKLIST.map((item) => {
-          const done = item.step < completedSteps;
+          const done = completedSet.has(item.step);
           return (
             <span
               key={item.step}
@@ -112,7 +113,7 @@ export const SceneLaunch: React.FC<Props> = ({ completedSteps, totalSteps, onFin
               }`}
               style={{ fontFamily: "'Space Mono', monospace" }}
             >
-              {done && <Check className="w-3 h-3" />}
+              {done ? <Check className="w-3 h-3" /> : <Circle className="w-3 h-3" />}
               {item.label}
             </span>
           );

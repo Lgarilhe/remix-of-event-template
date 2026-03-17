@@ -124,22 +124,22 @@ const Onboarding = () => {
             transition={{ duration: 0.4, ease: [0.4, 0, 0.2, 1] }}
             className="w-full"
           >
-            {step === 0 && <SceneWelcome onNext={goNext} />}
+            {step === 0 && <SceneWelcome onNext={() => completeAndNext(0)} />}
             {step === 1 && <SceneOrganization onComplete={handleOrgCreated} onBack={goBack} />}
-            {step === 2 && <SceneAudit onNext={goNext} onBack={goBack} />}
-            {step === 3 && <SceneProfile onNext={goNext} onBack={goBack} />}
-            {step === 4 && <SceneIntegrations onNext={goNext} onBack={goBack} />}
+            {step === 2 && <SceneAudit onNext={() => completeAndNext(2)} onBack={goBack} />}
+            {step === 3 && <SceneProfile onNext={() => completeAndNext(3)} onBack={goBack} />}
+            {step === 4 && <SceneIntegrations onNext={() => completeAndNext(4)} onBack={goBack} />}
             {step === 5 && (
               <SceneTeam
                 organizationId={organizationId}
-                onFinish={goNext}
+                onFinish={() => { markCompleted(5); goNext(); }}
                 onBack={goBack}
               />
             )}
             {step === 6 && (
               <SceneLaunch
-                completedSteps={completedSteps}
-                totalSteps={STEP_COUNT}
+                completedSet={completedSet}
+                totalSteps={TRACKABLE_STEPS.length}
                 onFinish={handleFinish}
               />
             )}
