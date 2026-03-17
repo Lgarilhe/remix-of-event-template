@@ -264,7 +264,7 @@ function isLikelyJobTitle(title: string): boolean {
 }
 
 /* ── Perplexity search helper ── */
-async function perplexitySearch(apiKey: string, query: string, options?: { timeoutMs?: number; domainFilter?: string[]; model?: string }): Promise<{ content: string; citations: string[] }> {
+async function perplexitySearch(apiKey: string, query: string, options?: { timeoutMs?: number; domainFilter?: string[]; model?: string; recencyFilter?: string }): Promise<{ content: string; citations: string[] }> {
   const body: any = {
     model: options?.model || 'sonar',
     messages: [
@@ -275,6 +275,9 @@ async function perplexitySearch(apiKey: string, query: string, options?: { timeo
 
   if (options?.domainFilter?.length) {
     body.search_domain_filter = options.domainFilter;
+  }
+  if (options?.recencyFilter) {
+    body.search_recency_filter = options.recencyFilter;
   }
 
   const res = await fetchWithTimeout('https://api.perplexity.ai/chat/completions', {
