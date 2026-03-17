@@ -82,7 +82,7 @@ const AGENT_MESSAGES = [
 ];
 
 /* ─── Component ─── */
-export const SceneOrganization: React.FC<Props> = ({ onComplete }) => {
+export const SceneOrganization: React.FC<Props> = ({ onComplete, onBack }) => {
   const [query, setQuery] = useState('');
   const [phase, setPhase] = useState<'idle' | 'scanning' | 'results'>('idle');
   const [sources, setSources] = useState<Source[]>(SCAN_SOURCES);
