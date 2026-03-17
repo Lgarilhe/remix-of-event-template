@@ -64,6 +64,16 @@ interface CompanyData {
   signals?: Array<{ type: string; label: string; color: string }>;
 }
 
+interface ApolloCandidate {
+  id: string;
+  name: string;
+  domain: string | null;
+  industry: string | null;
+  location: string | null;
+  size: string | null;
+  logoUrl: string | null;
+}
+
 const SCAN_SOURCES: Source[] = [
   { id: 'apollo', label: 'Apollo', done: false },
   { id: 'linkedin', label: 'LinkedIn', done: false },
@@ -84,10 +94,11 @@ const AGENT_MESSAGES = [
 /* ─── Component ─── */
 export const SceneOrganization: React.FC<Props> = ({ onComplete, onBack }) => {
   const [query, setQuery] = useState('');
-  const [phase, setPhase] = useState<'idle' | 'scanning' | 'results'>('idle');
+  const [phase, setPhase] = useState<'idle' | 'scanning' | 'disambiguate' | 'results'>('idle');
   const [sources, setSources] = useState<Source[]>(SCAN_SOURCES);
   const [bubbles, setBubbles] = useState<AgentBubble[]>([]);
   const [company, setCompany] = useState<CompanyData | null>(null);
+  const [disambiguationCandidates, setDisambiguationCandidates] = useState<ApolloCandidate[]>([]);
   const [activeTab, setActiveTab] = useState<'overview' | 'roles' | 'market'>('overview');
   const [selectedRoles, setSelectedRoles] = useState<Set<number>>(new Set());
   const [isCreating, setIsCreating] = useState(false);
@@ -100,7 +111,7 @@ export const SceneOrganization: React.FC<Props> = ({ onComplete, onBack }) => {
     bubblesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [bubbles]);
 
-  const startScan = useCallback(async (name: string) => {
+  const startScan = useCallback(async (name: string, selectedApolloId?: string) => {
     const scanStartedAt = Date.now();
     const MIN_ANIM_TIME = 2000; // Show scan for at least 2s
 
@@ -117,6 +128,7 @@ export const SceneOrganization: React.FC<Props> = ({ onComplete, onBack }) => {
     setSources(SCAN_SOURCES.map((s) => ({ ...s, done: false })));
     setBubbles([]);
     setCompany(null);
+    setDisambiguationCandidates([]);
 
     // Animate sources completing one by one
     SCAN_SOURCES.forEach((_, i) => {
@@ -134,9 +146,10 @@ export const SceneOrganization: React.FC<Props> = ({ onComplete, onBack }) => {
 
     // Call the real enrichment API
     try {
-      const { data, error } = await invokeEdgeFunction<{ company: CompanyData }>('enrich-company', {
+      const { data, error } = await invokeEdgeFunction<{ company: CompanyData; disambiguate?: boolean; candidates?: ApolloCandidate[] }>('enrich-company', {
         company_name: name,
         country: 'France',
+        ...(selectedApolloId ? { selected_apollo_id: selectedApolloId } : {}),
       });
 
       if (error || !data?.success) {
@@ -152,10 +165,14 @@ export const SceneOrganization: React.FC<Props> = ({ onComplete, onBack }) => {
         return;
       }
 
+      // Handle disambiguation
+      if (data.disambiguate && data.candidates?.length) {
+        setDisambiguationCandidates(data.candidates);
+        setPhase('disambiguate');
+        return;
+      }
+
       const enriched = data.company;
-
-      // No more sessionStorage — data is passed via callback
-
       finishScan(enriched);
     } catch (err) {
       console.error('[SceneOrganization] Error:', err);
@@ -169,6 +186,10 @@ export const SceneOrganization: React.FC<Props> = ({ onComplete, onBack }) => {
       });
     }
   }, []);
+
+  const selectCandidate = useCallback((apolloId: string) => {
+    startScan(query.trim(), apolloId);
+  }, [query, startScan]);
 
   const handleInputChange = (val: string) => {
     setQuery(val);
@@ -360,6 +381,59 @@ export const SceneOrganization: React.FC<Props> = ({ onComplete, onBack }) => {
               ))}
               <div ref={bubblesEndRef} />
             </div>
+          </motion.div>
+        )}
+
+        {/* Disambiguation phase */}
+        {phase === 'disambiguate' && disambiguationCandidates.length > 0 && (
+          <motion.div
+            key="disambiguate"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            className="space-y-3"
+          >
+            <div className="text-center space-y-1">
+              <p className="text-sm font-semibold text-foreground">Plusieurs entreprises trouvées pour "{query}"</p>
+              <p className="text-xs text-muted-foreground">Sélectionnez la bonne pour un enrichissement précis.</p>
+            </div>
+            <div className="space-y-2">
+              {disambiguationCandidates.map((c) => (
+                <motion.button
+                  key={c.id}
+                  initial={{ opacity: 0, x: -10 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  onClick={() => selectCandidate(c.id)}
+                  className="w-full text-left border-2 border-foreground/20 hover:border-foreground p-3 flex items-center gap-3 transition-all hover:shadow-[3px_3px_0px_0px_hsl(var(--brutal-accent))]"
+                >
+                  {c.logoUrl ? (
+                    <img src={c.logoUrl} alt="" className="w-8 h-8 object-contain rounded-sm shrink-0" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                  ) : c.domain ? (
+                    <img src={`https://logo.clearbit.com/${c.domain}`} alt="" className="w-8 h-8 object-contain rounded-sm shrink-0" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                  ) : (
+                    <div className="w-8 h-8 bg-muted flex items-center justify-center rounded-sm shrink-0">
+                      <Building2 className="w-4 h-4 text-muted-foreground" />
+                    </div>
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-bold truncate">{c.name}</p>
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground flex-wrap">
+                      {c.domain && <span className="text-foreground/60">{c.domain}</span>}
+                      {c.industry && <span>· {c.industry}</span>}
+                      {c.location && <span>· {c.location}</span>}
+                      {c.size && <span>· {c.size} emp.</span>}
+                    </div>
+                  </div>
+                  <ArrowRight className="w-4 h-4 text-muted-foreground shrink-0" />
+                </motion.button>
+              ))}
+            </div>
+            <button
+              onClick={() => startScan(query.trim(), '__none__')}
+              className="w-full text-center text-xs text-muted-foreground hover:text-foreground underline underline-offset-2 py-1"
+            >
+              Aucune ne correspond — continuer sans Apollo
+            </button>
           </motion.div>
         )}
 

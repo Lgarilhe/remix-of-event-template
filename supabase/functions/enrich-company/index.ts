@@ -461,7 +461,7 @@ Deno.serve(async (req) => {
       });
     }
 
-    const { company_name, country, force_refresh } = await req.json();
+    const { company_name, country, force_refresh, selected_apollo_id } = await req.json();
     if (!company_name || company_name.trim().length < 2) {
       return new Response(JSON.stringify({ success: false, error: 'company_name required' }), {
         status: 400,
@@ -523,7 +523,7 @@ Deno.serve(async (req) => {
     // ═══════════════════════════════════════════════════════
     let apolloOrg: any = null;
 
-    if (APOLLO_API_KEY) {
+    if (APOLLO_API_KEY && selected_apollo_id !== '__none__') {
       try {
         console.log('[enrich] Apollo org search:', company_name);
         const orgEndpoints = [
@@ -566,8 +566,37 @@ Deno.serve(async (req) => {
               .sort((a: any, b: any) => b.score - a.score);
 
             console.log('[enrich] Apollo org scores:', scored.map((s: any) => ({
-              name: s.org.name, country: s.org.country, score: s.score,
+              name: s.org.name, country: s.org.country, score: s.score, id: s.org.id,
             })));
+
+            // If user already picked a specific Apollo org, use it
+            if (selected_apollo_id) {
+              apolloOrg = scored.find((s: any) => (s.org.id || s.org.organization_id) === selected_apollo_id)?.org || null;
+              if (apolloOrg) {
+                console.log(`[enrich] User selected Apollo org: ${apolloOrg.name} (${selected_apollo_id})`);
+                break;
+              }
+            }
+
+            // If multiple candidates with close scores, return disambiguation list
+            const AMBIGUITY_GAP = 25;
+            const ambiguousCandidates = scored.filter((s: any) => scored[0].score - s.score <= AMBIGUITY_GAP);
+            if (ambiguousCandidates.length > 1 && !selected_apollo_id) {
+              const candidates = ambiguousCandidates.slice(0, 5).map((s: any) => ({
+                id: s.org.id || s.org.organization_id,
+                name: s.org.name || s.org.organization_name,
+                domain: normalizeDomain(s.org.primary_domain) || normalizeDomain(s.org.website_url),
+                industry: s.org.industry || s.org.industry_tag || null,
+                location: [s.org.city, s.org.country].filter(Boolean).join(', ') || null,
+                size: s.org.estimated_num_employees ? String(s.org.estimated_num_employees) : null,
+                logoUrl: s.org.logo_url || s.org.logo || null,
+                score: s.score,
+              }));
+              console.log(`[enrich] Ambiguous match — returning ${candidates.length} candidates for disambiguation`);
+              return new Response(JSON.stringify({ success: true, disambiguate: true, candidates }), {
+                headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+              });
+            }
 
             apolloOrg = scored[0]?.org || null;
             if (apolloOrg) break;
