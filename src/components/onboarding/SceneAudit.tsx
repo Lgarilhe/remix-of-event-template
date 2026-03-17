@@ -105,6 +105,7 @@ export const SceneAudit: React.FC<Props> = ({ companyData, onNext, onBack }) => 
 
     AGENT_MESSAGES.forEach((msg, i) => {
       setTimeout(() => {
+        if (!isMounted.current) return;
         setBubbles(prev => [...prev, { id: i, text: msg }]);
       }, 500 + i * 600);
     });
