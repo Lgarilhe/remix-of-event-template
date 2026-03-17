@@ -91,6 +91,8 @@ Deno.serve(async (req) => {
     }
 
     if (apolloOrg) {
+      // Use Apollo's name for proper casing (user might type "numspot" → Apollo returns "Numspot")
+      result.name = apolloOrg.name || apolloOrg.organization_name || result.name;
       result.domain = apolloOrg.primary_domain || apolloOrg.website_url?.replace(/^https?:\/\//, '').replace(/\/.*/, '') || null;
       result.industry = [apolloOrg.industry, apolloOrg.industry_tag].filter(Boolean).join(' · ') || null;
       result.size = apolloOrg.estimated_num_employees ? String(apolloOrg.estimated_num_employees) : null;
@@ -101,7 +103,8 @@ Deno.serve(async (req) => {
       result.description = apolloOrg.short_description || apolloOrg.seo_description || null;
       result.linkedinUrl = apolloOrg.linkedin_url || null;
       result.websiteUrl = apolloOrg.website_url || (result.domain ? `https://${result.domain}` : null);
-      result.logoUrl = apolloOrg.logo_url || null;
+      // Apollo logo can be in several fields depending on API version
+      result.logoUrl = apolloOrg.logo_url || apolloOrg.logo || apolloOrg.organization_logo_url || null;
       result.techStack = (apolloOrg.technology_names || []).slice(0, 12);
     }
 
@@ -134,9 +137,8 @@ Deno.serve(async (req) => {
             }
 
             // Use title and description from search results
-            if (results[0].title) {
-              result.name = results[0].title.split(' - ')[0].split(' | ')[0].trim() || result.name;
-            }
+            // NOTE: Do NOT override result.name — the user's input is the source of truth.
+            // Web page titles are often taglines, not company names.
             if (results[0].description && !result.description) {
               result.description = results[0].description;
             }
@@ -158,6 +160,12 @@ Deno.serve(async (req) => {
       } catch (e) {
         console.warn('[enrich-company] Firecrawl search fallback failed:', e);
       }
+    }
+
+    // Logo fallback chain: Apollo → Clearbit (free, reliable for most companies)
+    if (!result.logoUrl && result.domain) {
+      result.logoUrl = `https://logo.clearbit.com/${result.domain}`;
+      console.log('[enrich-company] Using Clearbit logo fallback:', result.logoUrl);
     }
 
     // ── 2. Apollo People Search (Decision Makers) ──
