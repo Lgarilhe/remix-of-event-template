@@ -79,6 +79,7 @@ export const SceneAudit: React.FC<Props> = ({ companyData, onNext, onBack }) => 
   const [quickWins, setQuickWins] = useState<string[]>([]);
   const bubblesEndRef = useRef<HTMLDivElement>(null);
   const hasStarted = useRef(false);
+  const isMounted = useRef(true);
 
   useEffect(() => {
     bubblesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -92,16 +93,19 @@ export const SceneAudit: React.FC<Props> = ({ companyData, onNext, onBack }) => 
   useEffect(() => {
     if (hasStarted.current) return;
     hasStarted.current = true;
+    isMounted.current = true;
 
     // Animate sources and messages
     SCAN_SOURCES.forEach((_, i) => {
       setTimeout(() => {
+        if (!isMounted.current) return;
         setSources(prev => prev.map((s, j) => (j <= i ? { ...s, done: true } : s)));
       }, 600 + i * 550);
     });
 
     AGENT_MESSAGES.forEach((msg, i) => {
       setTimeout(() => {
+        if (!isMounted.current) return;
         setBubbles(prev => [...prev, { id: i, text: msg }]);
       }, 500 + i * 600);
     });
@@ -169,6 +173,7 @@ export const SceneAudit: React.FC<Props> = ({ companyData, onNext, onBack }) => 
       const elapsed = Date.now() - startTime;
       const delay = Math.max(0, MIN_ANIM_TIME - elapsed);
       setTimeout(() => {
+        if (!isMounted.current) return;
         if (apiResult.current) {
           setOverallScore(apiResult.current.score);
           setCategories(apiResult.current.categories);
@@ -180,7 +185,10 @@ export const SceneAudit: React.FC<Props> = ({ companyData, onNext, onBack }) => 
       }, delay);
     }, 200);
 
-    return () => clearInterval(pollInterval);
+    return () => {
+      isMounted.current = false;
+      clearInterval(pollInterval);
+    };
   }, [companyData]);
 
   const circumference = 2 * Math.PI * 42;
