@@ -41,7 +41,7 @@ interface CompanyData {
   techStack: string[];
   insights: string[];
   decisionMakers: { name: string; role: string; linkedinUrl?: string | null }[];
-  openRoles: { title: string; location: string; source: string; department?: string }[];
+  openRoles: { title: string; location: string; source: string; department?: string; url?: string }[];
   linkedinUrl: string | null;
   websiteUrl: string | null;
   logoUrl: string | null;
