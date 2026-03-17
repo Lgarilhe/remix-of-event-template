@@ -544,7 +544,7 @@ Deno.serve(async (req) => {
               title = title
                 .replace(new RegExp(`^${company_name.trim()}\\s+(recrute pour des postes de|is hiring|recrutement)\\s*`, 'i'), '')
                 .trim();
-              jobSources.push({ title, location: '', source: 'LinkedIn' });
+              jobSources.push({ title, location: '', source: 'LinkedIn', url: url || undefined });
               accepted++;
             }
             console.log(`[enrich] LinkedIn fallback: ${accepted} accepted`);
