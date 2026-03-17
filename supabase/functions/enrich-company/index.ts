@@ -848,11 +848,11 @@ Deno.serve(async (req) => {
                 messages: [
                   {
                     role: 'system',
-                    content: `Tu extrais TOUTES les vraies offres d'emploi / postes ouverts. Ignore complètement les slogans marketing, la culture d'entreprise, les témoignages et les phrases descriptives. Retourne UNIQUEMENT via tool call.`,
+                    content: `Tu extrais UNIQUEMENT les vraies offres d'emploi / postes ouverts publiés directement par l'entreprise "${result.name}". EXCLUS les offres de partenaires, filiales, clients ou toute autre entreprise tierce. Si le titre ou la description mentionne clairement une autre société, ignore cette offre. Ignore aussi les slogans marketing, la culture d'entreprise, les témoignages et les phrases descriptives. Retourne UNIQUEMENT via tool call.`,
                   },
                   {
                     role: 'user',
-                    content: `Extrais TOUS les postes ouverts de la page carrière de "${result.name}". Retourne title, location, department pour CHAQUE poste.\n\n${textContent}`,
+                    content: `Extrais les postes ouverts de la page carrière de "${result.name}". Ne retourne QUE les postes appartenant directement à cette entreprise, pas ceux de partenaires ou filiales. Retourne title, location, department pour CHAQUE poste.\n\n${textContent}`,
                   },
                 ],
                 tools: [{
@@ -1000,6 +1000,9 @@ Deno.serve(async (req) => {
             body: JSON.stringify({
               model: 'google/gemini-2.5-flash',
               messages: [
+                { role: 'system', content: `Tu extrais UNIQUEMENT les vrais postes publi\u00e9s directement par "${result.name}" sur Welcome to the Jungle. EXCLUS les offres de partenaires, filiales ou soci\u00e9t\u00e9s tierces. Ignore slogans, culture et marketing. Retourne uniquement via tool call.` },
+                { role: 'user', content: `Extrais les postes ouverts sur cette page WTTJ pour "${result.name}". Ne retourne QUE les postes appartenant \u00e0 cette entreprise. Retourne title et location pour chaque poste.\n\n${textContent}` },
+              ],
                 { role: 'system', content: 'Tu extrais UNIQUEMENT les vrais intitulés de postes d’une page Welcome to the Jungle. Ignore les slogans, descriptions de culture et paragraphes marketing. Retourne uniquement via tool call.' },
                 { role: 'user', content: `Extrais TOUS les postes ouverts listés sur cette page Welcome to the Jungle pour "${result.name}". Retourne title et location pour chaque poste.\n\n${textContent}` },
               ],
