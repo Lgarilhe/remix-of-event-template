@@ -13,25 +13,38 @@ import { SceneIntegrations } from '@/components/onboarding/SceneIntegrations';
 import { SceneTeam } from '@/components/onboarding/SceneTeam';
 import { SceneLaunch } from '@/components/onboarding/SceneLaunch';
 
+// Step indices: 0=Welcome, 1=Org, 2=Audit, 3=Profile, 4=Integrations, 5=Team
 const STEP_COUNT = 7;
+const TRACKABLE_STEPS = [0, 1, 2, 3, 4, 5] as const;
 
 const Onboarding = () => {
   const [step, setStep] = useState(0);
   const [direction, setDirection] = useState(1);
   const [orgCreated, setOrgCreated] = useState(false);
+  const [completedSet, setCompletedSet] = useState<Set<number>>(new Set());
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { organization, organizationId } = useOrganization();
 
-  // If org already exists, skip org step
+  const markCompleted = useCallback((stepIndex: number) => {
+    setCompletedSet((prev) => {
+      if (prev.has(stepIndex)) return prev;
+      const next = new Set(prev);
+      next.add(stepIndex);
+      return next;
+    });
+  }, []);
+
+  // If org already exists, mark org step as completed and skip
   useEffect(() => {
     if (organization && !orgCreated) {
       setOrgCreated(true);
+      markCompleted(1);
       if (step === 1) {
         setStep(2);
       }
     }
-  }, [organization, orgCreated, step]);
+  }, [organization, orgCreated, step, markCompleted]);
 
   const goNext = useCallback(() => {
     setDirection(1);
@@ -43,6 +56,12 @@ const Onboarding = () => {
     }
   }, [step, navigate, queryClient]);
 
+  // Convenience: mark current step done then advance
+  const completeAndNext = useCallback((stepIndex: number) => {
+    markCompleted(stepIndex);
+    goNext();
+  }, [markCompleted, goNext]);
+
   const goBack = useCallback(() => {
     setDirection(-1);
     setStep((s) => Math.max(0, s - 1));
@@ -50,17 +69,18 @@ const Onboarding = () => {
 
   const handleOrgCreated = useCallback(() => {
     setOrgCreated(true);
+    markCompleted(1);
     goNext();
-  }, [goNext]);
+  }, [goNext, markCompleted]);
 
   const handleFinish = useCallback(async () => {
+    markCompleted(5);
     await queryClient.invalidateQueries({ queryKey: ['active-organization'] });
     await queryClient.refetchQueries({ queryKey: ['active-organization'] });
     navigate('/outreach', { replace: true });
-  }, [navigate, queryClient]);
+  }, [navigate, queryClient, markCompleted]);
 
-  // Count completed steps for the score ring
-  const completedSteps = step;
+  const completedSteps = completedSet.size;
 
   const variants = {
     enter: (dir: number) => ({
