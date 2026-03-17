@@ -106,7 +106,7 @@ const Onboarding = () => {
             {step === 0 && <SceneWelcome onNext={goNext} />}
             {step === 1 && <SceneOrganization onComplete={handleOrgCreated} onBack={goBack} />}
             {step === 2 && <SceneAudit onNext={goNext} onBack={goBack} />}
-            {step === 3 && <OnboardingStepProfile onNext={goNext} onBack={goBack} />}
+            {step === 3 && <SceneProfile onNext={goNext} onBack={goBack} />}
             {step === 4 && <OnboardingStepLinkedIn onNext={goNext} onBack={goBack} />}
             {step === 5 && (
               <OnboardingStepInvite
