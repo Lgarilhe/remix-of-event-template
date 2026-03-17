@@ -6,7 +6,7 @@ import { useOrganization } from '@/hooks/useOrganization';
 import { InvitationBanner } from '@/components/InvitationBanner';
 import { OnboardingLayout } from '@/components/onboarding/OnboardingLayout';
 import { SceneWelcome } from '@/components/onboarding/SceneWelcome';
-import { OnboardingStepOrg } from '@/components/onboarding/OnboardingStepOrg';
+import { SceneOrganization } from '@/components/onboarding/SceneOrganization';
 import { OnboardingStepProfile } from '@/components/onboarding/OnboardingStepProfile';
 import { OnboardingStepLinkedIn } from '@/components/onboarding/OnboardingStepLinkedIn';
 import { OnboardingStepInvite } from '@/components/onboarding/OnboardingStepInvite';
@@ -103,7 +103,7 @@ const Onboarding = () => {
             className="w-full"
           >
             {step === 0 && <SceneWelcome onNext={goNext} />}
-            {step === 1 && <OnboardingStepOrg onComplete={handleOrgCreated} />}
+            {step === 1 && <SceneOrganization onComplete={handleOrgCreated} onBack={goBack} />}
             {step === 2 && <OnboardingStepProfile onNext={goNext} onBack={goBack} />}
             {step === 3 && <OnboardingStepLinkedIn onNext={goNext} onBack={goBack} />}
             {step === 4 && (
