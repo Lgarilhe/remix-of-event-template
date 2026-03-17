@@ -321,9 +321,9 @@ Deno.serve(async (req) => {
       } catch (e) { console.warn('[enrich] Perplexity domain search failed:', e); }
     }
 
-    // Logo fallback
+    // Logo fallback — prefer Clearbit (higher quality), then Google favicon
     if (!result.logoUrl && result.domain) {
-      result.logoUrl = `https://www.google.com/s2/favicons?domain=${result.domain}&sz=128`;
+      result.logoUrl = `https://logo.clearbit.com/${result.domain}`;
     }
 
     // ═══════════════════════════════════════════════════════
