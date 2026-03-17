@@ -521,12 +521,9 @@ Deno.serve(async (req) => {
 
         const apolloSearchPayload: Record<string, any> = {
           q_organization_name: company_name.trim(),
-          per_page: 10,
+          per_page: 5,
+          organization_locations: country ? [country] : ['France'],
         };
-        // If country hint provided, add location filter
-        if (country) {
-          apolloSearchPayload.organization_locations = [country];
-        }
 
         // Try with location filter first, then without if no results
         const searchAttempts = [
