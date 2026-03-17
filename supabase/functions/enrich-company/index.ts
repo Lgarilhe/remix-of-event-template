@@ -460,83 +460,76 @@ Deno.serve(async (req) => {
         result.careersUrl = careersUrl;
         console.log('[enrich] Careers page found:', careersUrl);
 
-        // Step 3: Fetch careers page and extract jobs
+        // Step 3: Fetch careers page and extract jobs via AI (most reliable)
         try {
           const careersHtml = await fetchPageText(careersUrl, 8000);
           
-          // Try HTML-based extraction first
-          const htmlJobs = extractJobsFromHtml(careersHtml, careersUrl);
-          if (htmlJobs.length > 0) {
-            htmlJobs.forEach((job) => jobSources.push(job));
-            console.log(`[enrich] Careers HTML parser: ${htmlJobs.length} jobs`);
-          }
+          // Strip HTML to plain text for AI analysis
+          const textContent = careersHtml
+            .replace(/<script[\s\S]*?<\/script>/gi, '')
+            .replace(/<style[\s\S]*?<\/style>/gi, '')
+            .replace(/<nav[\s\S]*?<\/nav>/gi, '')
+            .replace(/<footer[\s\S]*?<\/footer>/gi, '')
+            .replace(/<header[\s\S]*?<\/header>/gi, '')
+            .replace(/<[^>]+>/g, ' ')
+            .replace(/&[a-z]+;/gi, ' ')
+            .replace(/&#\d+;/gi, ' ')
+            .replace(/\s{2,}/g, ' ')
+            .trim()
+            .slice(0, 10000);
 
-          // Also try markdown-style extraction (some ATS pages have markdown-like structure)
-          const parsedJobs = extractJobsFromCareersMarkdown(careersHtml, careersUrl);
-          if (parsedJobs.length > 0) {
-            parsedJobs.forEach((job) => jobSources.push(job));
-            console.log(`[enrich] Careers MD parser: ${parsedJobs.length} jobs`);
-          }
-
-          // If no jobs found from parsing, try AI extraction
-          if (htmlJobs.length === 0 && parsedJobs.length === 0 && careersHtml.length > 200 && LOVABLE_API_KEY) {
-            // Strip HTML tags for AI analysis, keep text
-            const textContent = careersHtml
-              .replace(/<script[\s\S]*?<\/script>/gi, '')
-              .replace(/<style[\s\S]*?<\/style>/gi, '')
-              .replace(/<[^>]+>/g, ' ')
-              .replace(/\s{2,}/g, ' ')
-              .trim()
-              .slice(0, 8000);
-
-            if (textContent.length > 100) {
-              const extractRes = await fetchWithTimeout('https://ai.gateway.lovable.dev/v1/chat/completions', {
-                method: 'POST',
-                headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  model: 'google/gemini-2.5-flash-lite',
-                  messages: [
-                    { role: 'system', content: 'Extract job listings. Return ONLY via tool call.' },
-                    { role: 'user', content: `Extract all job positions from this careers page text. Return title, location, department for each.\n\n${textContent}` },
-                  ],
-                  tools: [{
-                    type: 'function',
-                    function: {
-                      name: 'return_jobs',
-                      parameters: {
-                        type: 'object',
-                        properties: {
-                          jobs: { type: 'array', items: {
-                            type: 'object',
-                            properties: {
-                              title: { type: 'string' },
-                              location: { type: 'string' },
-                              department: { type: 'string' },
-                            },
-                            required: ['title'],
-                            additionalProperties: false,
-                          }},
-                        },
-                        required: ['jobs'],
-                        additionalProperties: false,
+          if (textContent.length > 100 && LOVABLE_API_KEY) {
+            const extractRes = await fetchWithTimeout('https://ai.gateway.lovable.dev/v1/chat/completions', {
+              method: 'POST',
+              headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                model: 'google/gemini-2.5-flash',
+                messages: [
+                  { role: 'system', content: `Tu extrais UNIQUEMENT les vraies offres d'emploi / postes ouverts d'une page carrière.
+IGNORE complètement : les noms de produits, services, solutions, sections de navigation, titres de pages, slogans marketing, témoignages.
+Un vrai poste a généralement un intitulé de métier (ex: "Développeur Full Stack", "Chef de projet", "Account Manager").
+Retourne UNIQUEMENT via tool call.` },
+                  { role: 'user', content: `Extrais les vrais postes ouverts (offres d'emploi) de cette page carrière de "${result.name}". Retourne title, location, department pour chaque VRAI poste.\n\n${textContent}` },
+                ],
+                tools: [{
+                  type: 'function',
+                  function: {
+                    name: 'return_jobs',
+                    parameters: {
+                      type: 'object',
+                      properties: {
+                        jobs: { type: 'array', items: {
+                          type: 'object',
+                          properties: {
+                            title: { type: 'string' },
+                            location: { type: 'string' },
+                            department: { type: 'string' },
+                          },
+                          required: ['title'],
+                          additionalProperties: false,
+                        }},
                       },
+                      required: ['jobs'],
+                      additionalProperties: false,
                     },
-                  }],
-                  tool_choice: { type: 'function', function: { name: 'return_jobs' } },
-                }),
-              }, 15000);
-              if (extractRes.ok) {
-                const extractData = await parseJsonResponse(extractRes);
-                const toolCall = extractData.choices?.[0]?.message?.tool_calls?.[0];
-                if (toolCall) {
-                  const parsed = JSON.parse(toolCall.function.arguments);
-                  (parsed.jobs || []).forEach((j: any) => {
-                    if (j.title) jobSources.push({ title: j.title, location: j.location || '', source: 'Site carrière', department: j.department, url: careersUrl || undefined });
-                  });
-                  console.log(`[enrich] Careers page AI: ${(parsed.jobs || []).length} jobs`);
-                }
+                  },
+                }],
+                tool_choice: { type: 'function', function: { name: 'return_jobs' } },
+              }),
+            }, 15000);
+            if (extractRes.ok) {
+              const extractData = await parseJsonResponse(extractRes);
+              const toolCall = extractData.choices?.[0]?.message?.tool_calls?.[0];
+              if (toolCall) {
+                const parsed = JSON.parse(toolCall.function.arguments);
+                (parsed.jobs || []).forEach((j: any) => {
+                  if (j.title) jobSources.push({ title: j.title, location: j.location || '', source: 'Site carrière', department: j.department, url: careersUrl || undefined });
+                });
+                console.log(`[enrich] Careers page AI: ${(parsed.jobs || []).length} jobs`);
               }
             }
+          } else {
+            console.log('[enrich] Careers page too short or no AI key, skipping extraction');
           }
         } catch (e) {
           console.warn('[enrich] Careers job extraction failed:', e);
