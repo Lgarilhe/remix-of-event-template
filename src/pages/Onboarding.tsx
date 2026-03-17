@@ -58,16 +58,9 @@ const Onboarding = () => {
 
   const goNext = useCallback(() => {
     setDirection(1);
-    setStep((s) => {
-      let next = (s ?? 0) + 1;
-      if (next >= STEP_COUNT) {
-        queryClient.invalidateQueries({ queryKey: ['active-organization'] });
-        navigate('/outreach', { replace: true });
-        return s;
-      }
-      return next;
-    });
-  }, [navigate, queryClient]);
+    setStep((s) => Math.min((s ?? 0) + 1, STEP_COUNT - 1));
+  }, []);
+
 
   const completeAndNext = useCallback((stepIndex: number) => {
     markCompleted(stepIndex);
