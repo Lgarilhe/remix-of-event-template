@@ -152,14 +152,7 @@ export const SceneOrganization: React.FC<Props> = ({ onComplete }) => {
 
       const enriched = data.company;
 
-      try {
-        sessionStorage.setItem('onboarding_company', JSON.stringify({
-          name: enriched.name,
-          domain: enriched.domain,
-          linkedinUrl: enriched.linkedinUrl,
-          careersUrl: enriched.careersUrl || null,
-        }));
-      } catch {}
+      // No more sessionStorage — data is passed via callback
 
       finishScan(enriched);
     } catch (err) {
