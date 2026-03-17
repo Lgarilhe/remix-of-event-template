@@ -478,7 +478,51 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
           </div>
         </div>
 
-        {/* Coaching Live is now only available in fullscreen mode */}
+        {/* Live Coaching Panel — only in fullscreen mode */}
+        {showCoaching && activeEval && (
+          <LiveCoachingPanel
+            candidateId={candidate.candidateId}
+            candidateName={candidate.name}
+            candidateHeadline={candidate.headline || ''}
+            candidateProfileSummary={(() => {
+              const p = candidate.linkedinProfileData as any;
+              return p?.summary || p?.about || p?.headline || '';
+            })()}
+            jobId={candidate.jobId || ''}
+            jobTitle={candidate.jobTitle || ''}
+            jobContext={`Poste: ${candidate.jobTitle || 'N/A'}`}
+            criteria={activeEval.criteria}
+            scorecardId={activeEval.id}
+            onCriteriaUpdate={(updates) => {
+              if (!coachingAutoNav || !activeEval) return;
+              const coveredIds = Object.entries(updates)
+                .filter(([, u]) => u.covered)
+                .map(([id]) => id);
+              if (coveredIds.length === 0) return;
+              const latestCovered = coveredIds[coveredIds.length - 1];
+              if (latestCovered !== lastAutoNavCriterionRef.current) {
+                lastAutoNavCriterionRef.current = latestCovered;
+                const idx = activeEval.criteria.findIndex(c => c.id === latestCovered);
+                if (idx !== -1) setCurrentCriterionIdx(idx);
+              }
+            }}
+            onAutoScores={(scores) => {
+              for (const [id, score] of Object.entries(scores)) {
+                handleRate(id, score);
+              }
+            }}
+            onReportGenerated={(report) => {
+              updateActiveEval(ev => ({
+                ...ev,
+                summary: report.summary,
+                recommendation: report.recommendation === 'GO' ? 'strong_yes' : report.recommendation === 'NO_GO' ? 'strong_no' : 'maybe',
+                followUpNotes: report.open_questions?.join('\n• ') || '',
+              }));
+            }}
+            onClose={() => setShowCoaching(false)}
+            onOpenProfile={onOpenProfile}
+          />
+        )}
 
         {/* Mobile category tabs (horizontal scroll) */}
         <div className="flex sm:hidden items-center gap-1.5 overflow-x-auto pb-2 -mx-1 px-1">
