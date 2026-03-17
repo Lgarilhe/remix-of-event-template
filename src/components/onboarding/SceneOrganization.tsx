@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft, ArrowRight, Check, Loader2, MapPin, Users, TrendingUp, Building2, Briefcase, Globe, ExternalLink, Calendar, Linkedin, Sparkles } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Check, Loader2, MapPin, Users, TrendingUp, Building2, Briefcase, Globe, Calendar, Linkedin, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -408,16 +408,6 @@ export const SceneOrganization: React.FC<Props> = ({ onComplete, onBack }) => {
   );
 };
 
-/* ─── Signal color map ─── */
-const SIGNAL_COLORS: Record<string, string> = {
-  green: 'bg-green-100 text-green-700 border-green-300',
-  blue: 'bg-blue-100 text-blue-700 border-blue-300',
-  purple: 'bg-purple-100 text-purple-700 border-purple-300',
-  cyan: 'bg-cyan-100 text-cyan-700 border-cyan-300',
-  orange: 'bg-orange-100 text-orange-700 border-orange-300',
-  emerald: 'bg-emerald-100 text-emerald-700 border-emerald-300',
-  gray: 'bg-muted text-muted-foreground border-foreground/15',
-};
 
 function formatFollowers(n: number | null | undefined): string {
   if (!n) return '–';
@@ -430,112 +420,57 @@ function formatFollowers(n: number | null | undefined): string {
 const TabOverview: React.FC<{ company: CompanyData }> = ({ company }) => {
   const rolesCount = dedupeRoles(company.openRoles).length || company.jobPostingsCount || 0;
 
+  const kpis = [
+    { icon: Users, label: 'Employés', value: company.size || '–' },
+    { icon: Calendar, label: 'Fondée en', value: company.foundedYear ? String(company.foundedYear) : '–' },
+    { icon: Briefcase, label: 'Postes ouverts', value: rolesCount > 0 ? String(rolesCount) : '–' },
+    { icon: Linkedin, label: 'Followers', value: formatFollowers(company.linkedinFollowers) },
+  ];
+
   return (
     <div className="space-y-4">
       {/* KPI Grid */}
       <div className="grid grid-cols-4 gap-2">
-        {[
-          { icon: Users, label: 'Employés', value: company.size || '–', color: 'text-blue-600' },
-          { icon: Calendar, label: 'Fondée en', value: company.foundedYear ? String(company.foundedYear) : '–', color: 'text-foreground/70' },
-          { icon: Briefcase, label: 'Postes ouverts', value: rolesCount > 0 ? String(rolesCount) : '–', color: 'text-purple-600' },
-          { icon: Linkedin, label: 'Followers', value: formatFollowers(company.linkedinFollowers), color: 'text-[#0A66C2]' },
-        ].map((kpi) => (
+        {kpis.map((kpi) => (
           <div key={kpi.label} className="border border-foreground/10 p-3 text-center space-y-1">
-            <kpi.icon className={`w-4 h-4 mx-auto ${kpi.color}`} />
-            <p className={`text-lg font-bold ${kpi.color}`}>{kpi.value}</p>
+            <kpi.icon className="w-4 h-4 mx-auto text-muted-foreground" />
+            <p className="text-lg font-bold text-foreground">{kpi.value}</p>
             <p className="text-[10px] text-muted-foreground uppercase tracking-wider">{kpi.label}</p>
           </div>
         ))}
       </div>
 
-      {/* Signal badges */}
-      {company.signals && company.signals.length > 0 && (
-        <div className="flex flex-wrap gap-1.5">
-          {company.signals.map((signal, i) => (
-            <span
-              key={i}
-              className={`text-[10px] font-semibold px-2 py-1 border rounded-sm ${SIGNAL_COLORS[signal.color] || SIGNAL_COLORS.gray}`}
-            >
-              {signal.label}
-            </span>
-          ))}
-        </div>
-      )}
-
       {/* AI Market Insights */}
       {company.insights.length > 0 && (
-        <div className="border-2 border-foreground/10 p-4 space-y-2" style={{ borderLeftWidth: '3px', borderLeftColor: 'hsl(var(--skalr-purple))' }}>
+        <div
+          className="border border-foreground/10 p-4 space-y-3"
+          style={{ borderLeftWidth: '3px', borderLeftColor: 'hsl(var(--skalr-purple))' }}
+        >
           <h4 className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider" style={{ color: 'hsl(var(--skalr-purple))' }}>
             <Sparkles className="w-3.5 h-3.5" />
             Analyse marché recrutement
           </h4>
-          {company.insights.map((insight, i) => (
-            <p key={i} className="text-sm text-foreground/80 leading-relaxed">{insight}</p>
-          ))}
-        </div>
-      )}
-
-      {/* Tech stack */}
-      {company.techStack.length > 0 && (
-        <div>
-          <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2">Stack technique</h4>
-          <div className="flex flex-wrap gap-1.5">
-            {company.techStack.map((tech) => (
-              <span key={tech} className="text-[11px] px-2 py-0.5 border border-foreground/15 bg-muted/50 font-medium">
-                {tech}
-              </span>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Decision makers */}
-      {company.decisionMakers.length > 0 && (
-        <div>
-          <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2">Décideurs clés</h4>
-          <div className="space-y-2">
-            {company.decisionMakers.map((dm) => (
-              <div key={dm.name} className="group flex items-center gap-3">
-                <img
-                  src={`https://ui-avatars.com/api/?name=${encodeURIComponent(dm.name)}&background=random&size=32&font-size=0.4`}
-                  alt={dm.name}
-                  className="w-8 h-8 border border-foreground/10"
-                />
-                <div className="flex-1 min-w-0">
-                  <span className="text-sm font-medium">{dm.name}</span>
-                  <span className="text-xs text-muted-foreground ml-2">{dm.role}</span>
-                </div>
-                {dm.linkedinUrl && (
-                  <a href={dm.linkedinUrl} target="_blank" rel="noopener noreferrer" className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-foreground">
-                    <ExternalLink className="w-3.5 h-3.5" />
-                  </a>
-                )}
-              </div>
+          <div className="space-y-2.5">
+            {company.insights.map((insight, i) => (
+              <p key={i} className="text-sm text-foreground/80 leading-relaxed">{insight}</p>
             ))}
           </div>
         </div>
       )}
 
       {/* Links */}
-      {(company.websiteUrl || company.linkedinUrl || company.careersUrl) && (
-        <div className="flex flex-wrap gap-3 pt-1">
+      {(company.websiteUrl || company.careersUrl) && (
+        <div className="flex flex-wrap gap-2">
           {company.websiteUrl && (
             <a href={company.websiteUrl} target="_blank" rel="noopener noreferrer">
-              <Button variant="outline" size="sm" className="gap-1.5 text-xs border-foreground/20 h-8">
+              <Button variant="outline" size="sm" className="gap-1.5 text-xs border-foreground/15 h-8">
                 <Globe className="w-3.5 h-3.5" /> Site web
-              </Button>
-            </a>
-          )}
-          {company.linkedinUrl && (
-            <a href={company.linkedinUrl} target="_blank" rel="noopener noreferrer">
-              <Button variant="outline" size="sm" className="gap-1.5 text-xs border-foreground/20 h-8">
-                <Linkedin className="w-3.5 h-3.5" /> LinkedIn
               </Button>
             </a>
           )}
           {company.careersUrl && (
             <a href={company.careersUrl} target="_blank" rel="noopener noreferrer">
-              <Button variant="outline" size="sm" className="gap-1.5 text-xs border-foreground/20 h-8">
+              <Button variant="outline" size="sm" className="gap-1.5 text-xs border-foreground/15 h-8">
                 <Briefcase className="w-3.5 h-3.5" /> Page carrière
               </Button>
             </a>
