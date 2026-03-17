@@ -18,6 +18,28 @@ function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15
   return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timer));
 }
 
+async function readResponseTextWithTimeout(response: Response, timeoutMs = 5000): Promise<string> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+
+  try {
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => {
+        void response.body?.cancel().catch(() => undefined);
+        reject(new Error('Response body timeout'));
+      }, timeoutMs);
+    });
+
+    return await Promise.race([response.text(), timeoutPromise]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+async function parseJsonResponse<T = any>(response: Response, timeoutMs = 5000): Promise<T> {
+  const text = await readResponseTextWithTimeout(response, timeoutMs);
+  return JSON.parse(text) as T;
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
