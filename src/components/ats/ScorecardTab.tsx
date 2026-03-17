@@ -134,6 +134,28 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
     }
   }, [autoStartCoaching, loading, evaluations.length, activeIndex]);
 
+  // Keyboard shortcuts: 1-5 to rate, arrows to navigate criteria
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (activeIndex === null || !activeEval) return;
+      const tag = (e.target as HTMLElement).tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+
+      if (e.key >= '1' && e.key <= '5') {
+        e.preventDefault();
+        const criterion = activeEval.criteria[currentCriterionIdx];
+        if (criterion) handleRate(criterion.id, +e.key);
+      } else if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+        e.preventDefault();
+        setCurrentCriterionIdx(i => Math.min(activeEval.criteria.length - 1, i + 1));
+      } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        setCurrentCriterionIdx(i => Math.max(0, i - 1));
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [activeIndex, activeEval, currentCriterionIdx, handleRate]);
 
   // Generate criteria via AI
   const handleGenerate = useCallback(async () => {
