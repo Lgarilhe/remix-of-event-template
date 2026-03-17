@@ -9,7 +9,7 @@
  * - careers_url param accepted from enrich-company (instead of hardcoded /careers)
  */
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.75.1';
+import { createClient } from 'npm:@supabase/supabase-js@2.75.1';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
