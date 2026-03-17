@@ -235,7 +235,40 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
       const newRatings = { ...ev.ratings, [criterionId]: rating };
       return { ...ev, ratings: newRatings, overallScore: computeOverallScore(newRatings, ev.criteria) };
     });
-  }, [updateActiveEval, computeOverallScore]);
+    // Debounced auto-save
+    if (autoSaveTimeout.current) clearTimeout(autoSaveTimeout.current);
+    autoSaveTimeout.current = setTimeout(async () => {
+      if (activeIndex === null) return;
+      setEvaluations(prev => {
+        const ev = prev[activeIndex];
+        if (!ev) return prev;
+        const save = async () => {
+          const { data: { user } } = await supabase.auth.getUser();
+          if (!user) return;
+          const payload: any = {
+            candidate_id: candidate.candidateId,
+            job_id: candidate.jobId,
+            job_title: candidate.jobTitle,
+            criteria: ev.criteria as any,
+            ratings: ev.ratings as any,
+            comments: ev.comments as any,
+            overall_score: ev.overallScore,
+            created_by: user.id,
+            updated_at: new Date().toISOString(),
+            recommendation: ev.recommendation || null,
+            summary: ev.summary || null,
+            follow_up_notes: ev.followUpNotes || null,
+            interview_stage: ev.interviewStage || null,
+          };
+          if (ev.id) {
+            await supabase.from('candidate_evaluations').update(payload).eq('id', ev.id);
+          }
+        };
+        save().catch(console.warn);
+        return prev;
+      });
+    }, 3000);
+  }, [updateActiveEval, computeOverallScore, activeIndex, candidate]);
 
   // Keyboard shortcuts: 1-5 to rate, arrows to navigate criteria
   useEffect(() => {
