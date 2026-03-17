@@ -214,9 +214,19 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
     try {
       // CRITICAL: getUserMedia MUST be called directly in the click handler
       // before any other async operation to preserve the user gesture chain
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: { echoCancellation: true, noiseSuppression: true, sampleRate: 16000 },
-      });
+      let stream: MediaStream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+          },
+        });
+      } catch (primaryError) {
+        console.warn('Primary microphone constraints failed, retrying with basic audio:', primaryError);
+        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      }
 
       // Create session in DB
       const { data: { user } } = await supabase.auth.getUser();
@@ -401,7 +411,13 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
       toast.success('Coaching live démarré — parlez naturellement');
     } catch (err: any) {
       console.error('Start recording error:', err);
-      toast.error(err?.message || 'Erreur au démarrage');
+      if (err?.name === 'NotAllowedError') {
+        toast.error('Accès au microphone refusé. Vérifiez les permissions du navigateur.');
+      } else if (err?.name === 'NotFoundError' || err?.message?.toLowerCase?.().includes('device not found')) {
+        toast.error('Aucun microphone détecté. Vérifiez le périphérique audio sélectionné.');
+      } else {
+        toast.error(err?.message || 'Erreur au démarrage');
+      }
     }
   }, [candidateId, jobId, scorecardId, criteria, jobContext, analyzeWithCoach]);
 
