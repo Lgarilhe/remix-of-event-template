@@ -549,6 +549,7 @@ export const SceneOrganization: React.FC<Props> = ({ onComplete, onBack }) => {
                 transition={{ duration: 0.2 }}
               >
                 {activeTab === 'overview' && <TabOverview company={company} />}
+                {activeTab === 'insights' && <TabInsights company={company} />}
                 {activeTab === 'roles' && (
                   <TabRoles
                     roles={company.openRoles}
