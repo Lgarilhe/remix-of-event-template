@@ -1,6 +1,7 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
+import { getActiveOrganizationId } from '@/lib/orgContext';
 import { invokeWithCredits } from '@/lib/invokeWithCredits';
 import { Mic, Square, FileText, Copy, CheckCircle2, Loader2, X, Search, CircleDot, AlertTriangle, User, ArrowRight } from 'lucide-react';
 import { toast } from 'sonner';
@@ -215,6 +216,7 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) { toast.error('Non authentifié'); return; }
 
+      const orgId = await getActiveOrganizationId();
       const { data: session, error: sessionError } = await supabase
         .from('call_coaching_sessions')
         .insert({
@@ -222,6 +224,7 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
           job_id: jobId,
           scorecard_id: scorecardId || 'new',
           created_by: user.id,
+          organization_id: orgId || null,
         } as any)
         .select('id')
         .single();
