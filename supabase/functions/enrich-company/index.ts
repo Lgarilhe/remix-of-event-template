@@ -488,7 +488,6 @@ Deno.serve(async (req) => {
     } else {
       console.log(`[enrich] Force refresh for "${cacheKey}" — skipping cache`);
     }
-    }
 
     const APOLLO_API_KEY = Deno.env.get('APOLLO_API_KEY');
     const PERPLEXITY_API_KEY = Deno.env.get('PERPLEXITY_API_KEY');
