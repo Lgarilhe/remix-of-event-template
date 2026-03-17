@@ -237,29 +237,39 @@ function isLikelyJobTitle(title: string): boolean {
   const cleaned = title.replace(/\s+/g, ' ').trim();
   if (!cleaned) return false;
   if (cleaned.length < 3 || cleaned.length > 95) return false;
-  if (/[.!?]{1}/.test(cleaned)) return false;
+
+  // Reject sentences with ! or ? but NOT internal dots (.NET, S.R.E., etc.)
+  if (/[!?]/.test(cleaned)) return false;
+  if (/\.\s*$/.test(cleaned)) return false; // trailing period only
 
   const lower = cleaned.toLowerCase();
-  const bannedSnippets = [
-    'culture d’entreprise',
-    "culture d'entreprise",
-    'diversité',
-    'mobilité interne',
-    'leadership',
-    'communauté',
-    'parité',
-    'talents qui veulent',
-    'recherche des talents',
-    'contribuer',
-    'innover',
-    'profils est valorisée',
-    'opportunités',
-    'candidats',
-    'cloud souverain',
-  ];
 
-  if (bannedSnippets.some((snippet) => lower.includes(snippet))) return false;
-  if (/\best\b|\bsont\b|\bveulent\b|\bvalorisée\b|\baccessible\b/.test(lower)) return false;
+  // Reject conjugated FR verbs (sentence indicators, not job titles)
+  if (/\b(sont|veulent|recherche|recrute|propose|offre|rejoi(?:gnez|ndre)|postulez|découvrez)\b/.test(lower)) return false;
+
+  // Reject marketing/navigation patterns
+  const bannedPatterns = [
+    /culture\s+d['']entreprise/,
+    /nos\s+valeurs/,
+    /en\s+savoir\s+plus/,
+    /voir\s+(?:toutes?\s+)?(?:les|nos)\s+offres/,
+    /lire\s+la\s+suite/,
+    /témoignage/,
+    /portrait\s+de/,
+    /pourquoi\s+nous/,
+    /qui\s+sommes/,
+    /notre\s+histoire/,
+    /postuler\s+maintenant/,
+    /offres?\s+d['']emploi/,
+    /diversité/,
+    /mobilité\s+interne/,
+    /parité/,
+    /cloud\s+souverain/,
+    /talents\s+qui\s+veulent/,
+    /recherche\s+des\s+talents/,
+    /profils\s+est\s+valorisée/,
+  ];
+  if (bannedPatterns.some((p) => p.test(lower))) return false;
 
   const words = cleaned.split(/\s+/);
   if (words.length > 12) return false;
