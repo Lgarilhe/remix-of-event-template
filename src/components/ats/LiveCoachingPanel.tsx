@@ -212,9 +212,15 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
 
   const startRecording = useCallback(async () => {
     try {
+      // CRITICAL: getUserMedia MUST be called directly in the click handler
+      // before any other async operation to preserve the user gesture chain
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: true, noiseSuppression: true, sampleRate: 16000 },
+      });
+
       // Create session in DB
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) { toast.error('Non authentifié'); return; }
+      if (!user) { stream.getTracks().forEach(t => t.stop()); toast.error('Non authentifié'); return; }
 
       const orgId = await getActiveOrganizationId();
       const { data: session, error: sessionError } = await supabase
@@ -229,7 +235,7 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
         .select('id')
         .single();
 
-      if (sessionError) throw sessionError;
+      if (sessionError) { stream.getTracks().forEach(t => t.stop()); throw sessionError; }
       setSessionId(session.id);
 
       // Generate personalized intro as the first nextTopic (non-blocking)
@@ -254,7 +260,7 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
 
       // Get Deepgram key
       const { data: keyData, error: keyError } = await invokeEdgeFunction<{ key?: string }>('deepgram-temp-key');
-      if (keyError || !keyData?.key) throw new Error('Failed to get Deepgram key');
+      if (keyError || !keyData?.key) { stream.getTracks().forEach(t => t.stop()); throw new Error('Failed to get Deepgram key'); }
 
       callStartRef.current = Date.now();
       fullTranscriptRef.current = '';
@@ -280,20 +286,18 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
 
       socketRef.current = dgSocket;
 
-      dgSocket.onopen = async () => {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          audio: { echoCancellation: true, noiseSuppression: true, sampleRate: 16000 },
-        });
+      // Prepare MediaRecorder with the already-acquired stream
+      const mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm;codecs=opus' });
+      mediaRecorderRef.current = mediaRecorder;
 
-        const mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm;codecs=opus' });
-        mediaRecorderRef.current = mediaRecorder;
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0 && dgSocket.readyState === WebSocket.OPEN) {
+          dgSocket.send(event.data);
+        }
+      };
 
-        mediaRecorder.ondataavailable = (event) => {
-          if (event.data.size > 0 && dgSocket.readyState === WebSocket.OPEN) {
-            dgSocket.send(event.data);
-          }
-        };
-
+      dgSocket.onopen = () => {
+        // Stream already acquired, just start recording
         mediaRecorder.start(250);
       };
 
