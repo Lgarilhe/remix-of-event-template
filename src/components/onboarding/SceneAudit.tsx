@@ -106,18 +106,15 @@ export const SceneAudit: React.FC<Props> = ({ companyData, onNext, onBack }) => 
       }, 500 + i * 600);
     });
 
-    // Launch real API call
+    // Launch real API call in parallel with animation
     (async () => {
-      const companyInfo = await getCompanyInfo();
-      const companyName = companyInfo?.name || '';
-      const domain = companyInfo?.domain || null;
-      const linkedinUrl = companyInfo?.linkedinUrl || null;
-      const careersUrl = companyInfo?.careersUrl || null;
+      const companyName = companyData?.name || '';
+      const domain = companyData?.domain || null;
+      const linkedinUrl = companyData?.linkedinUrl || null;
+      const careersUrl = companyData?.careersUrl || null;
 
       if (!companyName) {
-        // No company — skip to results with empty data
-        const totalAnimTime = 500 + AGENT_MESSAGES.length * 600 + 800;
-        setTimeout(() => setPhase('error'), totalAnimTime);
+        apiDone.current = true;
         return;
       }
 
@@ -136,12 +133,10 @@ export const SceneAudit: React.FC<Props> = ({ companyData, onNext, onBack }) => 
 
         if (error || !data?.success) {
           console.error('[SceneAudit] API error:', error || data?.error);
-          const totalAnimTime = 500 + AGENT_MESSAGES.length * 600 + 800;
-          setTimeout(() => setPhase('error'), totalAnimTime);
+          apiDone.current = true;
           return;
         }
 
-        // Map categories with icons
         const mappedCategories: Category[] = (data.categories || []).map((cat: any) => ({
           id: cat.id,
           label: cat.label,
@@ -153,28 +148,40 @@ export const SceneAudit: React.FC<Props> = ({ companyData, onNext, onBack }) => 
           findings: cat.findings || [],
         }));
 
-        setOverallScore(data.overall_score || 0);
-        setCategories(mappedCategories);
-        setQuickWins(data.quick_wins || []);
-
-        // Store audit data for SceneLaunch
-        try {
-          sessionStorage.setItem('onboarding_audit', JSON.stringify({
-            score: data.overall_score,
-            categories: mappedCategories.length,
-          }));
-        } catch {}
-
-        // Wait for animations to finish
-        const totalAnimTime = 500 + AGENT_MESSAGES.length * 600 + 800;
-        setTimeout(() => setPhase('results'), totalAnimTime);
+        apiResult.current = {
+          score: data.overall_score || 0,
+          categories: mappedCategories,
+          quickWins: data.quick_wins || [],
+        };
+        apiDone.current = true;
       } catch (err) {
         console.error('[SceneAudit] Error:', err);
-        const totalAnimTime = 500 + AGENT_MESSAGES.length * 600 + 800;
-        setTimeout(() => setPhase('error'), totalAnimTime);
+        apiDone.current = true;
       }
     })();
-  }, [getCompanyInfo]);
+
+    // #9: Poll for API completion — show results as soon as both API and minimum animation are done
+    const MIN_ANIM_TIME = 2000; // minimum 2s for the scan to feel real
+    const startTime = Date.now();
+    const pollInterval = setInterval(() => {
+      if (!apiDone.current) return;
+      clearInterval(pollInterval);
+      const elapsed = Date.now() - startTime;
+      const delay = Math.max(0, MIN_ANIM_TIME - elapsed);
+      setTimeout(() => {
+        if (apiResult.current) {
+          setOverallScore(apiResult.current.score);
+          setCategories(apiResult.current.categories);
+          setQuickWins(apiResult.current.quickWins);
+          setPhase('results');
+        } else {
+          setPhase('error');
+        }
+      }, delay);
+    }, 200);
+
+    return () => clearInterval(pollInterval);
+  }, [companyData]);
 
   const circumference = 2 * Math.PI * 42;
   const scoreOffset = circumference - (overallScore / 100) * circumference;
