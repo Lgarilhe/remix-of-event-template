@@ -262,8 +262,11 @@ Deno.serve(async (req) => {
           }
 
           // Find careers page URL from homepage links
+          // Match career-related keywords OR external ATS platforms
+          const ATS_DOMAINS = /taleez\.com|lever\.co|greenhouse\.io|workable\.com|recruitee\.com|smartrecruiters\.com|breezy\.hr|ashbyhq\.com|jobs\.lever\.co|teamtailor\.com|welcomekit\.co|flatchr\.io|jobaffinity\.fr/i;
+          const CAREER_KEYWORDS = /carri[eè]re|career|jobs?[\/\-]|recrutement|join[\-\/]|talent[\-\/]|nous[\-]rejoindre|hiring|openings|rejoignez|postuler|offres[\-\/]|emploi/i;
           const careersLink = links.find((l: string) =>
-            /carri[eè]re|career|jobs?[\/\-]|recrutement|join[\-\/]|talent[\-\/]|nous[\-]rejoindre|hiring|openings/i.test(l)
+            CAREER_KEYWORDS.test(l) || ATS_DOMAINS.test(l)
           );
           if (careersLink) {
             // Handle relative URLs
@@ -276,6 +279,31 @@ Deno.serve(async (req) => {
         }
       } catch (e) {
         console.warn('[enrich-company] Homepage scrape failed:', e);
+      }
+
+      // ── 3a-bis. ATS probe fallback (if no careers URL found from homepage) ──
+      if (!careersUrl && result.name) {
+        const slug = result.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+        const atsProbes = [
+          `https://${slug}.taleez.com`,
+          `https://${slug}.welcomekit.co`,
+          `https://jobs.lever.co/${slug}`,
+          `https://boards.greenhouse.io/${slug}`,
+          `https://${slug}.recruitee.com`,
+          `https://apply.workable.com/${slug}`,
+          `https://${slug}.teamtailor.com`,
+        ];
+        for (const probeUrl of atsProbes) {
+          try {
+            const probeRes = await fetchWithTimeout(probeUrl, { method: 'HEAD', redirect: 'follow' }, 5000);
+            if (probeRes.ok) {
+              careersUrl = probeUrl;
+              result.careersUrl = careersUrl;
+              console.log('[enrich-company] Found ATS careers page via probe:', careersUrl);
+              break;
+            }
+          } catch {}
+        }
       }
 
       // ── 3b/c/d. Parallel job searches ──
