@@ -1086,6 +1086,79 @@ Deno.serve(async (req) => {
       }
     })());
 
+    // ── Task E: Apollo Organization Enrichment ──
+    if (APOLLO_API_KEY && result.domain) {
+      parallelTasks.push((async () => {
+        try {
+          console.log('[enrich] Apollo org enrichment for domain:', result.domain);
+          const enrichRes = await fetchWithTimeout(`https://api.apollo.io/api/v1/organizations/enrich?domain=${encodeURIComponent(result.domain)}`, {
+            method: 'GET',
+            headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache', 'X-Api-Key': APOLLO_API_KEY },
+          });
+
+          if (enrichRes.ok) {
+            const enrichData = await parseJsonResponse(enrichRes);
+            const org = enrichData.organization || enrichData;
+
+            if (org.departmental_head_count) {
+              result.departmentalHeadcount = org.departmental_head_count;
+            }
+            if (org.funding_events?.length) {
+              result.fundingEvents = org.funding_events.map((ev: any) => ({
+                date: ev.date || ev.announced_date || null,
+                amount: ev.amount || ev.money_raised?.amount || null,
+                type: ev.funding_type || ev.type || null,
+                investors: ev.investors?.map((inv: any) => inv.name || inv) || [],
+              }));
+            }
+            if (org.technology_names?.length && org.technology_names.length > (result.techStack?.length || 0)) {
+              result.techStack = org.technology_names.slice(0, 20);
+            }
+            if (org.intent_strength !== undefined && org.intent_strength !== null) {
+              result.intentStrength = org.intent_strength;
+            }
+            if (org.suborganizations?.length) {
+              result.suborganizations = org.suborganizations.map((s: any) => s.name || s);
+            }
+            if (org.num_suborganizations !== undefined) {
+              result.numSuborganizations = org.num_suborganizations;
+            }
+            console.log('[enrich] Apollo org enrichment: OK');
+          }
+        } catch (e) {
+          console.warn('[enrich] Apollo org enrichment failed:', e);
+        }
+      })());
+    }
+
+    // ── Task F: Apollo News Articles ──
+    if (APOLLO_API_KEY && apolloOrgId) {
+      parallelTasks.push((async () => {
+        try {
+          console.log('[enrich] Apollo news articles for org:', apolloOrgId);
+          const newsRes = await fetchWithTimeout('https://api.apollo.io/api/v1/news_articles/search', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache', 'X-Api-Key': APOLLO_API_KEY },
+            body: JSON.stringify({ organization_ids: [apolloOrgId], per_page: 5, page: 1 }),
+          });
+
+          if (newsRes.ok) {
+            const newsData = await parseJsonResponse(newsRes);
+            const articles = newsData.news_articles || newsData.articles || newsData.data || [];
+            result.newsArticles = (Array.isArray(articles) ? articles : []).slice(0, 5).map((a: any) => ({
+              title: a.title || a.headline || null,
+              url: a.url || a.link || null,
+              published_at: a.published_at || a.published_date || a.date || null,
+              source: a.source || a.publisher || null,
+            }));
+            console.log(`[enrich] Apollo news: ${result.newsArticles.length} articles`);
+          }
+        } catch (e) {
+          console.warn('[enrich] Apollo news articles failed:', e);
+        }
+      })());
+    }
+
     await Promise.allSettled(parallelTasks);
 
     const filteredCurrentJobs = jobSources.filter((job) => isLikelyJobTitle(job.title));
