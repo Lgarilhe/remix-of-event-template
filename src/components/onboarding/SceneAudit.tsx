@@ -292,7 +292,7 @@ export const SceneAudit: React.FC<Props> = ({ onNext, onBack }) => {
               className="border-2 border-foreground/80 p-4 sm:p-5 flex flex-col sm:flex-row items-center gap-4 sm:gap-6"
               style={{ boxShadow: '4px 4px 0px 0px hsl(var(--brutal-accent))' }}
             >
-              <img src={analyticsIcon} alt="" className="w-14 h-14 shrink-0" />
+              <img src={analyticsIcon} alt="" className="w-10 h-10 sm:w-14 sm:h-14 shrink-0" />
 
               {/* Score ring */}
               <div className="relative w-24 h-24 shrink-0">
