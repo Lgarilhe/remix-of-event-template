@@ -399,7 +399,7 @@ Deno.serve(async (req) => {
             }),
           });
           if (liRes.ok) {
-            const liData = await liRes.json();
+            const liData = await parseJsonResponse(liRes);
             const liResults = (liData.data || []).filter((r: any) =>
               (r.url || '').includes('linkedin.com/jobs/')
             );
