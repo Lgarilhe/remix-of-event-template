@@ -453,6 +453,37 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
                   </span>
                 )}
               </div>
+              {/* Category breakdown bars */}
+              {(() => {
+                const cats = ['technical', 'soft_skill', 'culture_fit', 'motivation'] as const;
+                const catConf = {
+                  technical: { label: 'Tech', color: '#378ADD' },
+                  soft_skill: { label: 'Soft', color: '#EF9F27' },
+                  culture_fit: { label: 'Culture', color: '#7F77DD' },
+                  motivation: { label: 'Motiv.', color: '#639922' },
+                };
+                return (
+                  <div className="flex gap-4 mt-2">
+                    {cats.map(cat => {
+                      const catCriteria = activeEval.criteria.filter(c => c.cat === cat && activeEval.ratings[c.id] != null);
+                      if (catCriteria.length === 0) return null;
+                      const avg = catCriteria.reduce((s, c) => s + activeEval.ratings[c.id], 0) / catCriteria.length;
+                      const conf = catConf[cat];
+                      return (
+                        <div key={cat} className="flex flex-col gap-1 min-w-[50px]">
+                          <div className="flex justify-between items-center">
+                            <span className="text-[8px] font-bold uppercase tracking-wider" style={{ color: conf.color }}>{conf.label}</span>
+                            <span className="text-[8px] tabular-nums text-muted-foreground">{avg.toFixed(1)}</span>
+                          </div>
+                          <div className="h-[3px] bg-foreground/10">
+                            <div className="h-[3px] transition-all duration-500" style={{ width: `${(avg / 5) * 100}%`, background: conf.color }} />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
               <p className="text-[10px] text-muted-foreground">
                 {activeEval.jobTitle || candidate.jobTitle || 'Poste non spécifié'}
               </p>
