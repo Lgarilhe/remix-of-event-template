@@ -41,11 +41,17 @@ interface CompanyData {
   techStack: string[];
   insights: string[];
   decisionMakers: { name: string; role: string; linkedinUrl?: string | null }[];
-  openRoles: { title: string; location: string; source: string }[];
+  openRoles: { title: string; location: string; source: string; department?: string }[];
   linkedinUrl: string | null;
   websiteUrl: string | null;
   logoUrl: string | null;
   careersUrl?: string | null;
+  foundedYear?: number | null;
+  linkedinFollowers?: number | null;
+  annualRevenue?: string | null;
+  keywords?: string[];
+  jobPostingsCount?: number | null;
+  signals?: Array<{ type: string; label: string; color: string }>;
 }
 
 const SCAN_SOURCES: Source[] = [
