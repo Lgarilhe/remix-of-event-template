@@ -14,10 +14,11 @@ import linkedinLogo from '@/assets/linkedin-logo.png';
 const WTTJ_LOGO = 'https://www.welcometothejungle.com/assets/images/logos/wttj.svg';
 const WTTJ_FALLBACK = 'https://cdn.welcometothejungle.com/wttj-front/production/assets/images/logos/wttj.svg';
 
+import type { OnboardingCompanyData } from '@/pages/Onboarding';
+
 /* ─── Types ─── */
 interface Props {
-  onComplete: () => void;
-  onBack: () => void;
+  onComplete: (companyData: OnboardingCompanyData) => void;
 }
 
 interface Source {
