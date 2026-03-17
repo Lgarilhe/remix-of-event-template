@@ -105,7 +105,7 @@ export const SceneOrganization: React.FC<Props> = ({ onComplete }) => {
 
     const finishScan = (nextCompany: CompanyData) => {
       const elapsed = Date.now() - scanStartedAt;
-      const remaining = Math.max(0, totalAnimTime - elapsed);
+      const remaining = Math.max(0, MIN_ANIM_TIME - elapsed);
       setTimeout(() => {
         setCompany(nextCompany);
         setPhase('results');
