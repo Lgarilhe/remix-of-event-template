@@ -85,6 +85,7 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
   const [currentCriterionIdx, setCurrentCriterionIdx] = useState(0);
   const [coachingAutoNav, setCoachingAutoNav] = useState(true);
   const lastAutoNavCriterionRef = React.useRef<string | null>(null);
+  const autoSaveTimeout = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const activeEval = activeIndex !== null ? evaluations[activeIndex] : null;
 
