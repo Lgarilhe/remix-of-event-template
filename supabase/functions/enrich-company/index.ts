@@ -104,6 +104,65 @@ async function fetchPageText(url: string, timeoutMs = 6000): Promise<string> {
   return readResponseTextWithTimeout(res, 5000);
 }
 
+async function scrapeWithFirecrawl(url: string, timeoutMs = 15000): Promise<string> {
+  const apiKey = Deno.env.get('FIRECRAWL_API_KEY');
+  if (!apiKey) throw new Error('FIRECRAWL_API_KEY missing');
+
+  const res = await fetchWithTimeout('https://api.firecrawl.dev/v1/scrape', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      url,
+      formats: ['markdown'],
+      onlyMainContent: true,
+      waitFor: 5000,
+    }),
+  }, timeoutMs);
+
+  if (!res.ok) {
+    const errText = await readResponseTextWithTimeout(res, 4000).catch(() => '');
+    throw new Error(`Firecrawl ${res.status}: ${errText.slice(0, 200)}`);
+  }
+
+  const data = await parseJsonResponse<any>(res, 8000);
+  const content = data?.data?.markdown || data?.markdown || data?.data?.html || '';
+  if (!content) throw new Error('Firecrawl empty response');
+  return String(content);
+}
+
+function toPlainText(input: string): string {
+  return input
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<nav[\s\S]*?<\/nav>/gi, ' ')
+    .replace(/<footer[\s\S]*?<\/footer>/gi, ' ')
+    .replace(/<header[\s\S]*?<\/header>/gi, ' ')
+    .replace(/!\[[^\]]*\]\([^)]+\)/g, ' ')
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '$1 $2')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;|&#160;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/&[a-z]+;/gi, ' ')
+    .replace(/&#\d+;/gi, ' ')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+}
+
+function looksLikeCookieWall(input: string): boolean {
+  const lower = input.toLowerCase();
+  return lower.includes('axeptio') || lower.includes('blah blah blah cookie') || lower.includes('cookie policy') || lower.includes('gestion des cookies');
+}
+
+function extractLeverBoardUrl(input: string): string | null {
+  const match = input.match(/https?:\/\/jobs\.lever\.co\/([a-z0-9-]+)(?:\/[a-f0-9-]+)?/i);
+  return match ? `https://jobs.lever.co/${match[1]}/` : null;
+}
+
 function buildSignals(apolloOrg: any, result: any): Array<{ type: string; label: string; color: string }> {
   const signals: Array<{ type: string; label: string; color: string }> = [];
   if (!apolloOrg) return signals;
@@ -359,22 +418,51 @@ Deno.serve(async (req) => {
         result.careersUrl = careersUrl;
         console.log('[enrich] Careers page found:', careersUrl);
 
-        // Step 3: Fetch careers page and extract jobs via AI
         try {
-          const careersHtml = await fetchPageText(careersUrl, 8000);
-          const textContent = careersHtml
-            .replace(/<script[\s\S]*?<\/script>/gi, '')
-            .replace(/<style[\s\S]*?<\/style>/gi, '')
-            .replace(/<nav[\s\S]*?<\/nav>/gi, '')
-            .replace(/<footer[\s\S]*?<\/footer>/gi, '')
-            .replace(/<header[\s\S]*?<\/header>/gi, '')
-            .replace(/<[^>]+>/g, ' ')
-            .replace(/&[a-z]+;/gi, ' ')
-            .replace(/&#\d+;/gi, ' ')
-            .replace(/\s{2,}/g, ' ')
-            .trim()
-            .slice(0, 10000);
+          let careersRaw = '';
+          try {
+            careersRaw = await fetchPageText(careersUrl, 10000);
+          } catch (e) {
+            console.warn('[enrich] Careers direct fetch failed:', e);
+          }
 
+          if (!careersRaw || careersRaw.length < 1000 || looksLikeCookieWall(careersRaw)) {
+            try {
+              careersRaw = await scrapeWithFirecrawl(careersUrl, 15000);
+              console.log('[enrich] Careers Firecrawl fallback used');
+            } catch (e) {
+              console.warn('[enrich] Careers Firecrawl failed:', e);
+            }
+          }
+
+          const leverBoardUrl = extractLeverBoardUrl(`${careersUrl}\n${careersRaw}`);
+          let extractionRaw = careersRaw;
+          if (leverBoardUrl) {
+            console.log('[enrich] Lever board found:', leverBoardUrl);
+            result.careersUrl = leverBoardUrl;
+
+            let leverRaw = '';
+            try {
+              leverRaw = await fetchPageText(leverBoardUrl, 10000);
+            } catch (e) {
+              console.warn('[enrich] Lever direct fetch failed:', e);
+            }
+
+            if (!leverRaw || leverRaw.length < 2000) {
+              try {
+                leverRaw = await scrapeWithFirecrawl(leverBoardUrl, 15000);
+                console.log('[enrich] Lever Firecrawl fallback used');
+              } catch (e) {
+                console.warn('[enrich] Lever Firecrawl failed:', e);
+              }
+            }
+
+            if (leverRaw) {
+              extractionRaw = `${careersRaw}\n\n${leverRaw}`;
+            }
+          }
+
+          const textContent = toPlainText(extractionRaw).slice(0, 40000);
           if (textContent.length > 100 && LOVABLE_API_KEY) {
             const extractRes = await fetchWithTimeout('https://ai.gateway.lovable.dev/v1/chat/completions', {
               method: 'POST',
@@ -382,11 +470,11 @@ Deno.serve(async (req) => {
               body: JSON.stringify({
                 model: 'google/gemini-2.5-flash',
                 messages: [
-                  { role: 'system', content: `Tu extrais UNIQUEMENT les vraies offres d'emploi / postes ouverts d'une page carrière.
-IGNORE complètement : les noms de produits, services, solutions, sections de navigation, titres de pages, slogans marketing, témoignages.
-Un vrai poste a généralement un intitulé de métier (ex: "Développeur Full Stack", "Chef de projet", "Account Manager").
+                  { role: 'system', content: `Tu extrais TOUTES les vraies offres d'emploi / postes ouverts.
+IGNORE complètement : les noms de produits, services, sections de navigation, slogans marketing, témoignages.
+N'oublie AUCUN poste présent dans le contenu.
 Retourne UNIQUEMENT via tool call.` },
-                  { role: 'user', content: `Extrais les vrais postes ouverts de cette page carrière de "${result.name}". Retourne title, location, department pour chaque VRAI poste.\n\n${textContent}` },
+                  { role: 'user', content: `Extrais TOUS les postes ouverts de la page carrière de "${result.name}". Retourne title, location, department pour CHAQUE poste.\n\n${textContent}` },
                 ],
                 tools: [{
                   type: 'function',
@@ -413,14 +501,14 @@ Retourne UNIQUEMENT via tool call.` },
                 }],
                 tool_choice: { type: 'function', function: { name: 'return_jobs' } },
               }),
-            }, 15000);
+            }, 18000);
             if (extractRes.ok) {
               const extractData = await parseJsonResponse(extractRes);
               const toolCall = extractData.choices?.[0]?.message?.tool_calls?.[0];
               if (toolCall) {
                 const parsed = JSON.parse(toolCall.function.arguments);
                 (parsed.jobs || []).forEach((j: any) => {
-                  if (j.title) jobSources.push({ title: j.title, location: j.location || '', source: 'Site carrière', department: j.department, url: careersUrl || undefined });
+                  if (j.title) jobSources.push({ title: j.title, location: j.location || '', source: 'Site carrière', department: j.department, url: result.careersUrl || undefined });
                 });
                 console.log(`[enrich] Careers AI: ${(parsed.jobs || []).length} jobs`);
               }
@@ -466,95 +554,87 @@ Retourne UNIQUEMENT via tool call.` },
       } catch (e) { console.warn('[enrich] Apollo job postings failed:', e); }
     })());
 
-    // ── Task D: WTTJ direct fetch ──
+    // ── Task D: WTTJ rendered fetch ──
     parallelTasks.push((async () => {
       const slug = result.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
       const wttjSlugs = [slug];
-      // Also try domain-based slug (e.g. scaleway.com → scaleway)
       if (result.domain) {
         const domainSlug = result.domain.replace(/\..*$/, '').toLowerCase();
         if (domainSlug !== slug) wttjSlugs.push(domainSlug);
       }
+
       for (const s of wttjSlugs) {
+        const wttjUrl = `https://www.welcometothejungle.com/fr/companies/${s}/jobs`;
         try {
-          const wttjUrl = `https://www.welcometothejungle.com/fr/companies/${s}/jobs`;
-          const wttjHtml = await fetchPageText(wttjUrl, 8000);
-          if (wttjHtml.includes('job-') || wttjHtml.includes('data-testid')) {
-            // Extract job titles from WTTJ HTML using common patterns
-            // WTTJ uses structured data or <a> tags with job titles
-            const jobTitleRegex = /<(?:h[2-4]|a|span|div)[^>]*class="[^"]*(?:job|offer|position)[^"]*"[^>]*>([^<]{5,80})<\//gi;
-            const altRegex = /"name"\s*:\s*"([^"]{5,80})"/g;
-            const foundTitles = new Set<string>();
-            let m;
-            while ((m = jobTitleRegex.exec(wttjHtml)) !== null) foundTitles.add(m[1].trim());
-            while ((m = altRegex.exec(wttjHtml)) !== null) foundTitles.add(m[1].trim());
-
-            // Also try via Lovable AI if we have enough HTML
-            if (LOVABLE_API_KEY && wttjHtml.length > 500) {
-              const textContent = wttjHtml
-                .replace(/<script[\s\S]*?<\/script>/gi, '')
-                .replace(/<style[\s\S]*?<\/style>/gi, '')
-                .replace(/<[^>]+>/g, ' ')
-                .replace(/&[a-z]+;/gi, ' ')
-                .replace(/\s{2,}/g, ' ')
-                .trim()
-                .slice(0, 12000);
-
-              const extractRes = await fetchWithTimeout('https://ai.gateway.lovable.dev/v1/chat/completions', {
-                method: 'POST',
-                headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  model: 'google/gemini-2.5-flash-lite',
-                  messages: [
-                    { role: 'system', content: 'Tu extrais TOUS les intitulés de postes / offres d\'emploi de cette page WTTJ. Retourne UNIQUEMENT via tool call.' },
-                    { role: 'user', content: `Extrais TOUS les postes ouverts listés sur cette page Welcome to the Jungle pour "${result.name}". Retourne title et location pour chaque poste.\n\n${textContent}` },
-                  ],
-                  tools: [{
-                    type: 'function',
-                    function: {
-                      name: 'return_jobs',
-                      parameters: {
-                        type: 'object',
-                        properties: {
-                          jobs: { type: 'array', items: {
-                            type: 'object',
-                            properties: { title: { type: 'string' }, location: { type: 'string' } },
-                            required: ['title'], additionalProperties: false,
-                          }},
-                        },
-                        required: ['jobs'], additionalProperties: false,
-                      },
-                    },
-                  }],
-                  tool_choice: { type: 'function', function: { name: 'return_jobs' } },
-                }),
-              }, 12000);
-
-              if (extractRes.ok) {
-                const extractData = await parseJsonResponse(extractRes);
-                const toolCall = extractData.choices?.[0]?.message?.tool_calls?.[0];
-                if (toolCall) {
-                  const parsed = JSON.parse(toolCall.function.arguments);
-                  (parsed.jobs || []).forEach((j: any) => {
-                    if (j.title) {
-                      jobSources.push({ title: j.title, location: j.location || '', source: 'WTTJ', url: wttjUrl });
-                    }
-                  });
-                  console.log(`[enrich] WTTJ AI extraction: ${(parsed.jobs || []).length} jobs from ${wttjUrl}`);
-                }
-              }
-            }
-
-            if (foundTitles.size > 0) {
-              console.log(`[enrich] WTTJ regex extraction: ${foundTitles.size} titles from ${wttjUrl}`);
-              for (const title of foundTitles) {
-                jobSources.push({ title, location: '', source: 'WTTJ', url: wttjUrl });
-              }
-            }
-            result.wttjUrl = wttjUrl;
-            break; // Found WTTJ page, stop trying slugs
+          let wttjRaw = '';
+          try {
+            wttjRaw = await fetchPageText(wttjUrl, 8000);
+          } catch (e) {
+            console.warn('[enrich] WTTJ direct fetch failed:', e);
           }
-        } catch (e) { /* WTTJ page not found for this slug, try next */ }
+
+          if (!wttjRaw || wttjRaw.length < 1000 || looksLikeCookieWall(wttjRaw)) {
+            try {
+              wttjRaw = await scrapeWithFirecrawl(wttjUrl, 15000);
+              console.log('[enrich] WTTJ Firecrawl fallback used:', wttjUrl);
+            } catch (e) {
+              console.warn('[enrich] WTTJ Firecrawl failed:', e);
+            }
+          }
+
+          const textContent = toPlainText(wttjRaw).slice(0, 40000);
+          if (!textContent || textContent.length < 200) continue;
+
+          if (LOVABLE_API_KEY) {
+            const extractRes = await fetchWithTimeout('https://ai.gateway.lovable.dev/v1/chat/completions', {
+              method: 'POST',
+              headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                model: 'google/gemini-2.5-flash',
+                messages: [
+                  { role: 'system', content: 'Tu extrais TOUS les intitulés de postes / offres d\'emploi d\'une page Welcome to the Jungle. Retourne UNIQUEMENT via tool call et n\'oublie aucun poste.' },
+                  { role: 'user', content: `Extrais TOUS les postes ouverts listés sur cette page Welcome to the Jungle pour "${result.name}". Retourne title et location pour chaque poste.\n\n${textContent}` },
+                ],
+                tools: [{
+                  type: 'function',
+                  function: {
+                    name: 'return_jobs',
+                    parameters: {
+                      type: 'object',
+                      properties: {
+                        jobs: { type: 'array', items: {
+                          type: 'object',
+                          properties: { title: { type: 'string' }, location: { type: 'string' } },
+                          required: ['title'], additionalProperties: false,
+                        }},
+                      },
+                      required: ['jobs'], additionalProperties: false,
+                    },
+                  },
+                }],
+                tool_choice: { type: 'function', function: { name: 'return_jobs' } },
+              }),
+            }, 18000);
+
+            if (extractRes.ok) {
+              const extractData = await parseJsonResponse(extractRes);
+              const toolCall = extractData.choices?.[0]?.message?.tool_calls?.[0];
+              if (toolCall) {
+                const parsed = JSON.parse(toolCall.function.arguments);
+                (parsed.jobs || []).forEach((j: any) => {
+                  if (j.title) {
+                    jobSources.push({ title: j.title, location: j.location || '', source: 'WTTJ', url: wttjUrl });
+                  }
+                });
+                console.log(`[enrich] WTTJ AI extraction: ${(parsed.jobs || []).length} jobs from ${wttjUrl}`);
+                result.wttjUrl = wttjUrl;
+                if ((parsed.jobs || []).length > 0) break;
+              }
+            }
+          }
+        } catch (e) {
+          console.warn('[enrich] WTTJ extraction failed:', e);
+        }
       }
     })());
 
@@ -568,7 +648,7 @@ Retourne UNIQUEMENT via tool call.` },
         const { content, citations } = await perplexitySearch(
           PERPLEXITY_API_KEY,
           `Liste TOUS les postes ouverts en recrutement INTERNE chez l'entreprise "${company_name.trim()}"${domainHint}. Je cherche les offres d'emploi pour travailler DANS cette entreprise (pas les annonces publiées par d'autres sur leur plateforme). Cherche sur leur page carrière, Welcome to the Jungle, et LinkedIn Jobs. Pour chaque poste, donne le titre exact et la ville. Liste le MAXIMUM de postes possible, pas seulement quelques-uns.`,
-          { timeoutMs: 15000, domainFilter: result.domain ? [result.domain, 'welcometothejungle.com', 'linkedin.com'] : ['welcometothejungle.com', 'linkedin.com'] },
+          { timeoutMs: 15000, domainFilter: result.domain ? [result.domain, 'welcometothejungle.com', 'linkedin.com'] : ['welcometothejungle.com', 'linkedin.com'], model: 'sonar-pro' },
         );
 
         if (content && LOVABLE_API_KEY) {
