@@ -327,9 +327,9 @@ export const SceneAudit: React.FC<Props> = ({ onNext, onBack }) => {
                 </div>
               </div>
 
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 mb-1">
-                  <h3 className="font-semibold text-lg">Score Marque Employeur</h3>
+              <div className="flex-1 min-w-0 text-center sm:text-left">
+                <div className="flex items-center gap-2 mb-1 justify-center sm:justify-start flex-wrap">
+                  <h3 className="font-semibold text-base sm:text-lg">Score Marque Employeur</h3>
                   <span
                     className="text-[9px] uppercase tracking-wider font-bold px-2 py-0.5 border border-foreground"
                     style={{ background: overallScore >= 70 ? 'hsl(var(--skalr-green))' : 'hsl(var(--landing-accent-yellow))' }}

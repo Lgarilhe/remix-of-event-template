@@ -328,7 +328,7 @@ export const SceneOrganization: React.FC<Props> = ({ onComplete, onBack }) => {
           >
             {/* Company card */}
             <div
-              className="border-2 border-foreground/80 p-4 flex items-start gap-4"
+              className="border-2 border-foreground/80 p-3 sm:p-4 flex flex-col sm:flex-row items-start gap-3 sm:gap-4"
               style={{ boxShadow: '4px 4px 0px 0px hsl(var(--brutal-accent))' }}
             >
               <img
