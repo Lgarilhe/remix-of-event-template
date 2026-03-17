@@ -1270,6 +1270,115 @@ Deno.serve(async (req) => {
     result.signals = buildSignals(apolloOrg, result);
     console.log(`[enrich] Jobs: ${result.openRoles.length}, Signals: ${result.signals.length}, elapsed: ${Date.now() - startTime}ms`);
 
+    // ── Perplexity fallback for company insights (funding, news, headcount) ──
+    const needsFundingData = !result.fundingEvents?.length;
+    const needsNewsData = !result.newsArticles?.length;
+    const needsHeadcountData = !result.departmentalHeadcount;
+    const elapsedBeforeFallback = Date.now() - startTime;
+
+    if (PERPLEXITY_API_KEY && LOVABLE_API_KEY && (needsFundingData || needsNewsData || needsHeadcountData) && elapsedBeforeFallback < 40000) {
+      try {
+        console.log('[enrich] Perplexity company insights fallback for:', result.name);
+        const companyHint = result.domain ? ` (${result.domain})` : '';
+        const { content } = await perplexitySearch(
+          PERPLEXITY_API_KEY,
+          `Donne-moi des informations factuelles sur l'entreprise "${result.name}"${companyHint} en France :
+1. Levées de fonds : liste les tours de financement connus (date, type comme Seed/Series A/B/C, montant en euros, investisseurs principaux). S'il n'y a pas eu de levée, dis-le clairement.
+2. Actualités récentes : les 3-5 articles ou événements les plus récents (titre, source, date approximative, URL si possible).
+3. Répartition des équipes : estimation du nombre d'employés par département (engineering, sales, marketing, product, HR, finance, operations, etc.) si disponible.
+4. Nombre de filiales ou entités liées.
+Sois factuel, ne spécule pas. Si une info n'est pas disponible, dis "non disponible".`,
+          { timeoutMs: 12000, model: 'sonar-pro' },
+        );
+
+        if (content) {
+          // Use Lovable AI to extract structured data
+          const extractRes = await fetchWithTimeout('https://ai.gateway.lovable.dev/v1/chat/completions', {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              model: 'google/gemini-2.5-flash',
+              messages: [
+                { role: 'system', content: 'Extract structured company data from the text. Return ONLY via tool call. Use null for unavailable data. Amounts in euros.' },
+                { role: 'user', content: `Extract company insights for ${result.name}:\n\n${content}` },
+              ],
+              tools: [{
+                type: 'function',
+                function: {
+                  name: 'return_company_insights',
+                  parameters: {
+                    type: 'object',
+                    properties: {
+                      funding_events: {
+                        type: 'array',
+                        items: {
+                          type: 'object',
+                          properties: {
+                            date: { type: 'string', description: 'Date like 2024-01 or Juin 2024' },
+                            type: { type: 'string', description: 'Seed, Series A, Series B, etc.' },
+                            amount: { type: 'number', description: 'Amount in euros, null if unknown' },
+                            investors: { type: 'array', items: { type: 'string' } },
+                          },
+                          required: ['type'],
+                        },
+                      },
+                      news_articles: {
+                        type: 'array',
+                        items: {
+                          type: 'object',
+                          properties: {
+                            title: { type: 'string' },
+                            url: { type: 'string' },
+                            published_at: { type: 'string' },
+                            source: { type: 'string' },
+                          },
+                          required: ['title'],
+                        },
+                      },
+                      departmental_headcount: {
+                        type: 'object',
+                        description: 'Department name -> employee count. Use lowercase department names like engineering, sales, marketing, product, hr, finance, operations',
+                        additionalProperties: { type: 'number' },
+                      },
+                      num_suborganizations: { type: 'number', description: 'Number of subsidiaries, null if unknown' },
+                    },
+                    required: ['funding_events', 'news_articles'],
+                    additionalProperties: false,
+                  },
+                },
+              }],
+              tool_choice: { type: 'function', function: { name: 'return_company_insights' } },
+            }),
+          }, 12000);
+
+          if (extractRes.ok) {
+            const extractData = await parseJsonResponse(extractRes);
+            const toolCall = extractData.choices?.[0]?.message?.tool_calls?.[0];
+            if (toolCall) {
+              const parsed = JSON.parse(toolCall.function.arguments);
+              if (needsFundingData && parsed.funding_events?.length) {
+                result.fundingEvents = parsed.funding_events;
+                console.log(`[enrich] Perplexity fallback: ${parsed.funding_events.length} funding events`);
+              }
+              if (needsNewsData && parsed.news_articles?.length) {
+                result.newsArticles = parsed.news_articles.slice(0, 5);
+                console.log(`[enrich] Perplexity fallback: ${result.newsArticles.length} news articles`);
+              }
+              if (needsHeadcountData && parsed.departmental_headcount && Object.keys(parsed.departmental_headcount).length >= 2) {
+                result.departmentalHeadcount = parsed.departmental_headcount;
+                console.log(`[enrich] Perplexity fallback: headcount for ${Object.keys(parsed.departmental_headcount).length} departments`);
+              }
+              if (parsed.num_suborganizations != null && !result.numSuborganizations) {
+                result.numSuborganizations = parsed.num_suborganizations;
+              }
+            }
+          }
+        }
+      } catch (e) {
+        console.warn('[enrich] Perplexity company insights fallback failed:', e);
+      }
+    }
+
     // ═══════════════════════════════════════════════════════
     // PHASE 3 — AI Insights
     // ═══════════════════════════════════════════════════════
