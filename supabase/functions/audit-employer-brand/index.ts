@@ -1,12 +1,11 @@
 /**
- * Employer Brand Audit Edge Function
- * Scrapes company web presence via Firecrawl, then scores via AI.
+ * Employer Brand Audit Edge Function — v2
+ * Architecture:
+ *   - Direct fetch: website & careers page scraping
+ *   - Perplexity Sonar: WTTJ, Glassdoor, social media, job ads (with search_domain_filter)
+ *   - Lovable AI (Gemini): final scoring & analysis
  *
- * Fixes applied:
- * - fetchWithTimeout (15s) to prevent Supabase function timeout
- * - Glassdoor via Firecrawl search (direct URL scraping blocked by captcha)
- * - WTTJ via Firecrawl search fallback if slug-based URL returns 404
- * - careers_url param accepted from enrich-company (instead of hardcoded /careers)
+ * No more Firecrawl dependency.
  */
 
 import { createClient } from 'npm:@supabase/supabase-js@2.75.1';
@@ -16,11 +15,69 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 };
 
-// Timeout wrapper — 8s default, 20s for AI calls
 function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 8000): Promise<Response> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timer));
+}
+
+async function readResponseText(response: Response, timeoutMs = 5000): Promise<string> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => {
+        void response.body?.cancel().catch(() => undefined);
+        reject(new Error('Response body timeout'));
+      }, timeoutMs);
+    });
+    return await Promise.race([response.text(), timeoutPromise]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+/* ── Perplexity search with optional domain filter ── */
+async function perplexitySearch(apiKey: string, query: string, opts?: { domainFilter?: string[]; timeoutMs?: number }): Promise<string> {
+  const body: any = {
+    model: 'sonar',
+    messages: [
+      { role: 'system', content: 'Sois précis et factuel. Réponds en français.' },
+      { role: 'user', content: query },
+    ],
+  };
+  if (opts?.domainFilter?.length) {
+    body.search_domain_filter = opts.domainFilter;
+  }
+
+  const res = await fetchWithTimeout('https://api.perplexity.ai/chat/completions', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  }, opts?.timeoutMs || 10000);
+
+  if (!res.ok) throw new Error(`Perplexity ${res.status}`);
+  const data = JSON.parse(await readResponseText(res));
+  return data.choices?.[0]?.message?.content || '';
+}
+
+/* ── Direct page fetch → cleaned text ── */
+async function fetchPageAsText(url: string, maxChars = 3000): Promise<string> {
+  const res = await fetchWithTimeout(url, {
+    headers: { 'User-Agent': 'Mozilla/5.0 (compatible; SkalrBot/1.0)' },
+    redirect: 'follow',
+  }, 6000);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const html = await readResponseText(res, 5000);
+  return html
+    .replace(/<script[\s\S]*?<\/script>/gi, '')
+    .replace(/<style[\s\S]*?<\/style>/gi, '')
+    .replace(/<nav[\s\S]*?<\/nav>/gi, '')
+    .replace(/<footer[\s\S]*?<\/footer>/gi, '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&[a-z]+;/gi, ' ')
+    .replace(/\s{2,}/g, ' ')
+    .trim()
+    .slice(0, maxChars);
 }
 
 interface ScrapedSource {
@@ -57,7 +114,7 @@ Deno.serve(async (req) => {
       });
     }
 
-    const FIRECRAWL_API_KEY = Deno.env.get('FIRECRAWL_API_KEY');
+    const PERPLEXITY_API_KEY = Deno.env.get('PERPLEXITY_API_KEY');
     const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
 
     if (!LOVABLE_API_KEY) {
@@ -68,210 +125,167 @@ Deno.serve(async (req) => {
 
     const scrapedSources: ScrapedSource[] = [];
 
-    // Build URLs to scrape (direct scrape — reliable sources only)
-    const urlsToScrape: { id: string; label: string; url: string }[] = [];
+    // ═══════════════════════════════════════════════════════
+    // All sources in parallel
+    // ═══════════════════════════════════════════════════════
+    const tasks: Promise<void>[] = [];
 
+    // ── 1. Website (direct fetch) ──
     if (domain) {
-      urlsToScrape.push({ id: 'website', label: 'Site web', url: `https://${domain}` });
-    }
-
-    // Use careers_url from enrich-company if available, otherwise try common paths
-    if (careers_url) {
-      urlsToScrape.push({ id: 'careers', label: 'Page carrière', url: careers_url });
-    } else if (domain) {
-      // Try the most common career page paths
-      urlsToScrape.push({ id: 'careers', label: 'Page carrière', url: `https://${domain}/careers` });
-    }
-
-    // LinkedIn company page (direct scrape works via Firecrawl)
-    if (linkedin_url) {
-      urlsToScrape.push({ id: 'linkedin', label: 'Page LinkedIn', url: linkedin_url });
-    }
-
-    // NOTE: Glassdoor and WTTJ are handled via Firecrawl SEARCH below (not direct URL scrape)
-    // because Glassdoor blocks scraping with captchas, and WTTJ slugs are unpredictable.
-
-    // ── Scrape all sources in parallel via Firecrawl ──
-    if (FIRECRAWL_API_KEY) {
-      const scrapePromises = urlsToScrape.map(async (src) => {
+      tasks.push((async () => {
         try {
-          console.log(`[audit] Scraping ${src.id}: ${src.url}`);
-          const res = await fetchWithTimeout('https://api.firecrawl.dev/v1/scrape', {
-            method: 'POST',
-            headers: { Authorization: `Bearer ${FIRECRAWL_API_KEY}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              url: src.url,
-              formats: ['markdown'],
-              onlyMainContent: true,
-              waitFor: 3000,
-            }),
+          const text = await fetchPageAsText(`https://${domain}`);
+          scrapedSources.push({
+            id: 'website', label: 'Site web', url: `https://${domain}`,
+            content: text.length > 50 ? text : null,
+            status: text.length > 50 ? 'success' : 'not_found',
           });
-
-          if (res.ok) {
-            const data = await res.json();
-            const md = data.data?.markdown || data.markdown || '';
-            scrapedSources.push({
-              id: src.id, label: src.label, url: src.url,
-              content: md.slice(0, 3000), // Limit for AI context
-              status: md.length > 50 ? 'success' : 'not_found',
-            });
-          } else {
-            const errText = await res.text();
-            console.warn(`[audit] Scrape ${src.id} failed:`, res.status, errText);
-            scrapedSources.push({ id: src.id, label: src.label, url: src.url, content: null, status: 'error' });
-          }
         } catch (e) {
-          console.warn(`[audit] Scrape ${src.id} error:`, e);
-          scrapedSources.push({ id: src.id, label: src.label, url: src.url, content: null, status: 'error' });
+          console.warn('[audit] Website fetch failed:', e);
+          scrapedSources.push({ id: 'website', label: 'Site web', url: `https://${domain}`, content: null, status: 'error' });
         }
-      });
-
-      await Promise.allSettled(scrapePromises);
-    } else {
-      // No Firecrawl — mark all as error
-      for (const src of urlsToScrape) {
-        scrapedSources.push({ id: src.id, label: src.label, url: src.url, content: null, status: 'error' });
-      }
+      })());
     }
 
-    // ── Glassdoor via search (direct scraping blocked by captcha) ──
-    if (FIRECRAWL_API_KEY) {
-      try {
-        console.log('[audit] Searching Glassdoor for:', company_name);
-        const gdRes = await fetchWithTimeout('https://api.firecrawl.dev/v1/search', {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${FIRECRAWL_API_KEY}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            query: `${company_name} ${domain || ''} avis site:glassdoor.fr`.replace(/\s+/g, ' ').trim(),
-            limit: 3,
-            scrapeOptions: { formats: ['markdown'] },
-          }),
-        });
-        if (gdRes.ok) {
-          const gdData = await gdRes.json();
-          const gdResults = gdData.data || [];
-          const gdContent = gdResults
-            .filter((r: any) => (r.url || '').includes('glassdoor'))
-            .map((r: any) => (r.markdown || r.description || '').slice(0, 1500))
-            .join('\n---\n');
-          const gdUrl = gdResults.find((r: any) => (r.url || '').includes('glassdoor'))?.url || '';
+    // ── 2. Careers page (direct fetch) ──
+    const careerUrl = careers_url || (domain ? `https://${domain}/careers` : null);
+    if (careerUrl) {
+      tasks.push((async () => {
+        try {
+          const text = await fetchPageAsText(careerUrl);
           scrapedSources.push({
-            id: 'glassdoor', label: 'Glassdoor', url: gdUrl,
-            content: gdContent || 'Aucun résultat Glassdoor trouvé.',
-            status: gdContent ? 'success' : 'not_found',
+            id: 'careers', label: 'Page carrière', url: careerUrl,
+            content: text.length > 50 ? text : null,
+            status: text.length > 50 ? 'success' : 'not_found',
           });
-        } else {
+        } catch (e) {
+          console.warn('[audit] Careers fetch failed:', e);
+          scrapedSources.push({ id: 'careers', label: 'Page carrière', url: careerUrl, content: null, status: 'error' });
+        }
+      })());
+    }
+
+    // ── 3. LinkedIn company page (direct fetch) ──
+    if (linkedin_url) {
+      tasks.push((async () => {
+        try {
+          const text = await fetchPageAsText(linkedin_url);
+          scrapedSources.push({
+            id: 'linkedin', label: 'Page LinkedIn', url: linkedin_url,
+            content: text.length > 50 ? text : null,
+            status: text.length > 50 ? 'success' : 'not_found',
+          });
+        } catch (e) {
+          console.warn('[audit] LinkedIn fetch failed:', e);
+          scrapedSources.push({ id: 'linkedin', label: 'Page LinkedIn', url: linkedin_url, content: null, status: 'error' });
+        }
+      })());
+    }
+
+    // ── 4. Glassdoor via Perplexity (search_domain_filter) ──
+    if (PERPLEXITY_API_KEY) {
+      tasks.push((async () => {
+        try {
+          console.log('[audit] Perplexity Glassdoor search');
+          const content = await perplexitySearch(
+            PERPLEXITY_API_KEY,
+            `Quels sont les avis employés sur "${company_name}" sur Glassdoor ? Note globale, points positifs, points négatifs, note CEO. Donne des chiffres précis si disponibles.`,
+            { domainFilter: ['glassdoor.fr', 'glassdoor.com'], timeoutMs: 12000 },
+          );
+          scrapedSources.push({
+            id: 'glassdoor', label: 'Glassdoor', url: '',
+            content: content || 'Aucun résultat Glassdoor trouvé.',
+            status: content && content.length > 50 ? 'success' : 'not_found',
+          });
+        } catch (e) {
+          console.warn('[audit] Glassdoor search failed:', e);
           scrapedSources.push({ id: 'glassdoor', label: 'Glassdoor', url: '', content: null, status: 'error' });
         }
-      } catch (e) {
-        console.warn('[audit] Glassdoor search failed:', e);
-        scrapedSources.push({ id: 'glassdoor', label: 'Glassdoor', url: '', content: null, status: 'error' });
-      }
+      })());
     }
 
-    // ── WTTJ via search (slug unpredictable) ──
-    if (FIRECRAWL_API_KEY) {
-      try {
-        console.log('[audit] Searching WTTJ for:', company_name);
-        const wttjRes = await fetchWithTimeout('https://api.firecrawl.dev/v1/search', {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${FIRECRAWL_API_KEY}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            query: `${company_name} ${domain || ''} site:welcometothejungle.com`.replace(/\s+/g, ' ').trim(),
-            limit: 3,
-            scrapeOptions: { formats: ['markdown'] },
-          }),
-        });
-        if (wttjRes.ok) {
-          const wttjData = await wttjRes.json();
-          const wttjResults = wttjData.data || [];
-          const wttjContent = wttjResults
-            .filter((r: any) => (r.url || '').includes('welcometothejungle'))
-            .map((r: any) => (r.markdown || r.description || '').slice(0, 1500))
-            .join('\n---\n');
-          const wttjUrl = wttjResults.find((r: any) => (r.url || '').includes('welcometothejungle'))?.url || '';
+    // ── 5. WTTJ via Perplexity (search_domain_filter) ──
+    if (PERPLEXITY_API_KEY) {
+      tasks.push((async () => {
+        try {
+          console.log('[audit] Perplexity WTTJ search');
+          const content = await perplexitySearch(
+            PERPLEXITY_API_KEY,
+            `Décris la page entreprise de "${company_name}" sur Welcome to the Jungle. Culture, offres d'emploi, avis, photos, vidéos. Donne des détails concrets.`,
+            { domainFilter: ['welcometothejungle.com'], timeoutMs: 12000 },
+          );
           scrapedSources.push({
-            id: 'wttj', label: 'Welcome to the Jungle', url: wttjUrl,
-            content: wttjContent || 'Aucune page WTTJ trouvée.',
-            status: wttjContent ? 'success' : 'not_found',
+            id: 'wttj', label: 'Welcome to the Jungle', url: '',
+            content: content || 'Aucune page WTTJ trouvée.',
+            status: content && content.length > 50 ? 'success' : 'not_found',
           });
-        } else {
+        } catch (e) {
+          console.warn('[audit] WTTJ search failed:', e);
           scrapedSources.push({ id: 'wttj', label: 'Welcome to the Jungle', url: '', content: null, status: 'error' });
         }
-      } catch (e) {
-        console.warn('[audit] WTTJ search failed:', e);
-        scrapedSources.push({ id: 'wttj', label: 'Welcome to the Jungle', url: '', content: null, status: 'error' });
-      }
+      })());
     }
 
-    // ── Firecrawl search for social media presence ──
-    if (FIRECRAWL_API_KEY) {
-      try {
-        const searchRes = await fetchWithTimeout('https://api.firecrawl.dev/v1/search', {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${FIRECRAWL_API_KEY}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            query: `${company_name} ${domain || ''} entreprise site:twitter.com OR site:instagram.com OR site:youtube.com`.replace(/\s+/g, ' ').trim(),
-            limit: 5,
-          }),
-        });
-        if (searchRes.ok) {
-          const searchData = await searchRes.json();
-          const socialResults = searchData.data || [];
-          const socialSummary = socialResults.map((r: any) => `${r.title || ''}: ${r.url}`).join('\n');
+    // ── 6. Social media via Perplexity ──
+    if (PERPLEXITY_API_KEY) {
+      tasks.push((async () => {
+        try {
+          const content = await perplexitySearch(
+            PERPLEXITY_API_KEY,
+            `Analyse la présence de "${company_name}" (${domain || ''}) sur les réseaux sociaux : Twitter/X, Instagram, YouTube, TikTok. Nombre de followers, fréquence de publication, type de contenu, engagement.`,
+            { domainFilter: ['twitter.com', 'x.com', 'instagram.com', 'youtube.com', 'tiktok.com'], timeoutMs: 10000 },
+          );
           scrapedSources.push({
             id: 'social', label: 'Réseaux sociaux', url: '',
-            content: socialSummary || 'Aucune présence trouvée sur les réseaux sociaux majeurs.',
-            status: socialSummary ? 'success' : 'not_found',
+            content: content || 'Aucune présence trouvée.',
+            status: content && content.length > 50 ? 'success' : 'not_found',
           });
+        } catch (e) {
+          console.warn('[audit] Social search failed:', e);
+          scrapedSources.push({ id: 'social', label: 'Réseaux sociaux', url: '', content: null, status: 'error' });
         }
-      } catch (e) {
-        console.warn('[audit] Social search failed:', e);
-        scrapedSources.push({ id: 'social', label: 'Réseaux sociaux', url: '', content: null, status: 'error' });
-      }
+      })());
     }
 
-    // ── Firecrawl search for job ads quality ──
-    if (FIRECRAWL_API_KEY) {
-      try {
-        const adsRes = await fetchWithTimeout('https://api.firecrawl.dev/v1/search', {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${FIRECRAWL_API_KEY}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            query: `${company_name} ${domain || ''} offre emploi recrutement`.replace(/\s+/g, ' ').trim(),
-            limit: 3,
-            scrapeOptions: { formats: ['markdown'] },
-          }),
-        });
-        if (adsRes.ok) {
-          const adsData = await adsRes.json();
-          const adContent = (adsData.data || []).map((r: any) => (r.markdown || r.description || '').slice(0, 1000)).join('\n---\n');
+    // ── 7. Job ads quality via Perplexity ──
+    if (PERPLEXITY_API_KEY) {
+      tasks.push((async () => {
+        try {
+          const content = await perplexitySearch(
+            PERPLEXITY_API_KEY,
+            `Analyse la qualité des offres d'emploi publiées par "${company_name}" (${domain || ''}). Sont-elles détaillées ? Mentionnent-elles le salaire, les avantages, la culture ? Compare avec les bonnes pratiques du marché.`,
+            { timeoutMs: 10000 },
+          );
           scrapedSources.push({
             id: 'ads', label: 'Qualité des annonces', url: '',
-            content: adContent || 'Aucune annonce trouvée.',
-            status: adContent ? 'success' : 'not_found',
+            content: content || 'Aucune annonce trouvée.',
+            status: content && content.length > 50 ? 'success' : 'not_found',
           });
+        } catch (e) {
+          console.warn('[audit] Ads search failed:', e);
         }
-      } catch (e) {
-        console.warn('[audit] Ads search failed:', e);
-      }
+      })());
     }
 
-    // ── AI Analysis ──
+    await Promise.allSettled(tasks);
+
+    // ═══════════════════════════════════════════════════════
+    // AI Analysis
+    // ═══════════════════════════════════════════════════════
     const sourcesSummary = scrapedSources.map(s => {
       if (s.status === 'not_found') return `## ${s.label}\nPage non trouvée ou contenu insuffisant.`;
-      if (s.status === 'error') return `## ${s.label}\nImpossible de scraper cette source.`;
+      if (s.status === 'error') return `## ${s.label}\nImpossible de récupérer cette source.`;
       return `## ${s.label}\n${s.content}`;
     }).join('\n\n');
 
-    const aiPrompt = `Tu es un expert en marque employeur. Analyse la présence en ligne de "${company_name}" à partir des données scrapées ci-dessous.
+    const aiPrompt = `Tu es un expert en marque employeur. Analyse la présence en ligne de "${company_name}" à partir des données ci-dessous.
 
 Pour chaque catégorie, donne :
 - Un score sur 5
 - Un résumé court (1 phrase)
 - 3-5 observations concrètes
 
-Les catégories à évaluer :
+Catégories :
 1. website: Site web & page carrière
 2. wttj: Welcome to the Jungle
 3. glassdoor: Glassdoor (avis, note)
@@ -283,7 +297,7 @@ Donne aussi :
 - Un score global sur 100
 - 4 actions prioritaires (quick wins)
 
-DONNÉES SCRAPÉES :
+DONNÉES :
 ${sourcesSummary}`;
 
     console.log('[audit] Calling AI for analysis...');
@@ -331,10 +345,10 @@ ${sourcesSummary}`;
         }],
         tool_choice: { type: 'function', function: { name: 'return_audit' } },
       }),
-    }, 20000); // 20s timeout for AI
+    }, 20000);
 
     if (!aiRes.ok) {
-      const errText = await aiRes.text();
+      const errText = await readResponseText(aiRes, 3000).catch(() => '');
       console.error('[audit] AI error:', aiRes.status, errText);
 
       if (aiRes.status === 429) {
@@ -353,11 +367,10 @@ ${sourcesSummary}`;
       });
     }
 
-    const aiData = await aiRes.json();
+    const aiData = JSON.parse(await readResponseText(aiRes));
     const toolCall = aiData.choices?.[0]?.message?.tool_calls?.[0];
 
     if (!toolCall) {
-      console.error('[audit] No tool call in AI response');
       return new Response(JSON.stringify({ success: false, error: 'AI returned no structured data' }), {
         status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
@@ -365,7 +378,6 @@ ${sourcesSummary}`;
 
     const auditResult = JSON.parse(toolCall.function.arguments);
 
-    // Add icon/color mapping
     const colorMap: Record<string, string> = {
       website: 'hsl(217 91% 60%)',
       wttj: 'hsl(142 71% 45%)',
