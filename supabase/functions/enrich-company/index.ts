@@ -1056,10 +1056,10 @@ Deno.serve(async (req) => {
                     c.includes('linkedin.com/jobs') || c.includes('welcometothejungle.com') || c.includes(result.domain || '__none__')
                   );
                   const source = j.source?.includes('LinkedIn')
-                    ? 'LinkedIn'
+                    ? 'LinkedIn (non vérifié)'
                     : j.source?.includes('WTTJ') || j.source?.includes('Welcome')
-                      ? 'WTTJ'
-                      : 'Web';
+                      ? 'WTTJ (non vérifié)'
+                      : 'Web (non vérifié)';
                   jobSources.push({ title: j.title, location: j.location || '', source, url: matchingCitation || undefined });
                 }
               });
