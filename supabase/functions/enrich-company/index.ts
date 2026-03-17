@@ -61,6 +61,40 @@ function formatFollowers(n: number): string {
   return String(n);
 }
 
+function extractJobsFromCareersMarkdown(markdown: string, careersUrl: string): Array<{ title: string; location: string; source: string; url?: string }> {
+  if (!markdown) return [];
+
+  const lines = markdown
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  const jobs: Array<{ title: string; location: string; source: string; url?: string }> = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const match = line.match(/^\[([^\]]+)\]\((https?:\/\/[^)]+)\)$/);
+    if (!match) continue;
+
+    const [, title, url] = match;
+    if (/postuler|voir les offres|alerte emploi/i.test(title)) continue;
+
+    let location = '';
+    for (let j = i + 1; j <= Math.min(i + 4, lines.length - 1); j++) {
+      const candidate = lines[j];
+      if (/publiée le|postuler|cdi|cdd|stage|alternance|freelance|temps plein|temps partiel/i.test(candidate) && !candidate.includes('  ')) continue;
+      if (candidate.length >= 3 && !candidate.startsWith('[') && !candidate.startsWith('#')) {
+        location = candidate.replace(/\s{2,}/g, ' ').trim();
+        break;
+      }
+    }
+
+    jobs.push({ title: title.trim(), location, source: 'Site carrière', url: url || careersUrl });
+  }
+
+  return jobs;
+}
+
 function buildSignals(apolloOrg: any, result: any): Array<{ type: string; label: string; color: string }> {
   const signals: Array<{ type: string; label: string; color: string }> = [];
   if (!apolloOrg) return signals;
@@ -171,14 +205,29 @@ Deno.serve(async (req) => {
     if (APOLLO_API_KEY) {
       try {
         console.log('[enrich] Apollo org search:', company_name);
-        const orgRes = await fetchWithTimeout('https://api.apollo.io/v1/mixed_companies/api_search', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'X-Api-Key': APOLLO_API_KEY },
-          body: JSON.stringify({ q_organization_name: company_name.trim(), per_page: 1 }),
-        });
-        if (orgRes.ok) {
+        const orgEndpoints = [
+          'https://api.apollo.io/api/v1/mixed_companies/search',
+          'https://api.apollo.io/v1/mixed_companies/api_search',
+        ];
+
+        for (const endpoint of orgEndpoints) {
+          const orgRes = await fetchWithTimeout(endpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-Api-Key': APOLLO_API_KEY },
+            body: JSON.stringify({ q_organization_name: company_name.trim(), per_page: 1 }),
+          });
+
+          if (!orgRes.ok) {
+            console.warn(`[enrich] Apollo org search failed (${endpoint}): ${orgRes.status}`);
+            continue;
+          }
+
           const orgData = await parseJsonResponse(orgRes);
-          apolloOrg = orgData.organizations?.[0] || orgData.accounts?.[0] || null;
+          const orgResults = orgData.organizations || orgData.accounts || orgData.results || orgData.data || [];
+          const list = Array.isArray(orgResults) ? orgResults : [];
+          console.log(`[enrich] Apollo org candidates (${endpoint}): ${list.length}`);
+          apolloOrg = list[0] || null;
+          if (apolloOrg) break;
         }
       } catch (e) {
         console.warn('[enrich] Apollo org failed:', e);
@@ -211,39 +260,55 @@ Deno.serve(async (req) => {
     if (!result.domain && FIRECRAWL_API_KEY) {
       try {
         console.log('[enrich] Firecrawl web search fallback for:', company_name);
-        const searchRes = await fetchWithTimeout('https://api.firecrawl.dev/v1/search', {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${FIRECRAWL_API_KEY}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            query: `${company_name.trim()} ${company_name.trim()}.com OR ${company_name.trim()}.fr site officiel`,
-            limit: 3,
-            scrapeOptions: { formats: ['markdown'] },
-          }),
-        });
-        if (searchRes.ok) {
-          const searchData = await parseJsonResponse(searchRes);
-          const results = searchData.data || [];
-          if (results.length > 0) {
-            const firstUrl = results[0].url || '';
-            const domainMatch = firstUrl.match(/^https?:\/\/(?:www\.)?([^\/]+)/);
-            if (domainMatch) {
-              result.domain = domainMatch[1];
-              result.websiteUrl = firstUrl;
-            }
-            // Do NOT override result.name from web page title
-            if (results[0].description && !result.description) {
-              result.description = results[0].description;
-            }
-            if (!result.description && results[0].markdown) {
-              result.description = results[0].markdown.slice(0, 300).replace(/\n/g, ' ').replace(/[#*_\[\]]/g, '').trim();
-            }
-            for (const r of results) {
-              if (r.url?.includes('linkedin.com/company/')) {
-                result.linkedinUrl = r.url;
-                break;
-              }
-            }
+        const companyNameLower = company_name.trim().toLowerCase();
+        const companySlug = companyNameLower.replace(/[^a-z0-9]+/g, '');
+        const searchQueries = [
+          `"${company_name.trim()}" site officiel France`,
+          `${company_name.trim()} entreprise France`,
+        ];
+
+        for (const query of searchQueries) {
+          const searchRes = await fetchWithTimeout('https://api.firecrawl.dev/v1/search', {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${FIRECRAWL_API_KEY}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              query,
+              limit: 5,
+              country: 'FR',
+              lang: 'fr',
+            }),
+          });
+
+          if (!searchRes.ok) {
+            console.warn(`[enrich] Firecrawl web search failed (${query}): ${searchRes.status}`);
+            continue;
           }
+
+          const searchData = await parseJsonResponse(searchRes);
+          const results = Array.isArray(searchData.data) ? searchData.data : [];
+          console.log(`[enrich] Firecrawl web candidates (${query}): ${results.length}`);
+
+          const official = results.find((r: any) => {
+            const url = String(r.url || '');
+            const urlLower = url.toLowerCase();
+            const titleLower = String(r.title || '').toLowerCase();
+            const descLower = String(r.description || '').toLowerCase();
+            if (!url.startsWith('http')) return false;
+            if (/linkedin\.com|welcometothejungle\.com|facebook\.com|instagram\.com|x\.com|twitter\.com/.test(urlLower)) return false;
+            return urlLower.includes(companySlug) || titleLower.includes(companyNameLower) || descLower.includes(companyNameLower);
+          }) || results[0];
+
+          if (!official?.url) continue;
+
+          const domainMatch = String(official.url).match(/^https?:\/\/(?:www\.)?([^\/]+)/);
+          if (domainMatch) {
+            result.domain = domainMatch[1];
+            result.websiteUrl = official.url;
+          }
+          if (official.description && !result.description) {
+            result.description = official.description;
+          }
+          break;
         }
       } catch (e) {
         console.warn('[enrich] Firecrawl search fallback failed:', e);
@@ -289,36 +354,38 @@ Deno.serve(async (req) => {
     }
 
     // ── Task B: Homepage scrape → careers detection → AI job extraction ──
-    if (FIRECRAWL_API_KEY && result.domain) {
+    if (FIRECRAWL_API_KEY) {
       parallelTasks.push((async () => {
         let careersUrl: string | null = null;
         try {
-          // Scrape homepage for careers link
-          const scrapeRes = await fetchWithTimeout('https://api.firecrawl.dev/v1/scrape', {
-            method: 'POST',
-            headers: { Authorization: `Bearer ${FIRECRAWL_API_KEY}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              url: `https://${result.domain}`,
-              formats: ['markdown', 'links'],
-              onlyMainContent: true,
-            }),
-          });
-          if (scrapeRes.ok) {
-            const scrapeData = await parseJsonResponse(scrapeRes);
-            const md = scrapeData.data?.markdown || scrapeData.markdown || '';
-            const links = scrapeData.data?.links || scrapeData.links || [];
+          if (result.domain) {
+            // Scrape homepage for careers link
+            const scrapeRes = await fetchWithTimeout('https://api.firecrawl.dev/v1/scrape', {
+              method: 'POST',
+              headers: { Authorization: `Bearer ${FIRECRAWL_API_KEY}`, 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                url: `https://${result.domain}`,
+                formats: ['markdown', 'links'],
+                onlyMainContent: true,
+              }),
+            });
+            if (scrapeRes.ok) {
+              const scrapeData = await parseJsonResponse(scrapeRes);
+              const md = scrapeData.data?.markdown || scrapeData.markdown || '';
+              const links = scrapeData.data?.links || scrapeData.links || [];
 
-            if (!result.description && md.length > 50) {
-              result.description = md.slice(0, 300).replace(/\n/g, ' ').trim();
-            }
+              if (!result.description && md.length > 50) {
+                result.description = md.slice(0, 300).replace(/\n/g, ' ').trim();
+              }
 
-            const ATS_DOMAINS = /taleez\.com|lever\.co|greenhouse\.io|workable\.com|recruitee\.com|smartrecruiters\.com|breezy\.hr|ashbyhq\.com|jobs\.lever\.co|teamtailor\.com|welcomekit\.co|flatchr\.io|jobaffinity\.fr/i;
-            const CAREER_KEYWORDS = /carri[eè]re|career|jobs?[\/\-]|recrutement|join[\-\/]|talent[\-\/]|nous[\-]rejoindre|hiring|openings|rejoignez|postuler|offres[\-\/]|emploi/i;
-            const careersLink = links.find((l: string) => CAREER_KEYWORDS.test(l) || ATS_DOMAINS.test(l));
-            if (careersLink) {
-              careersUrl = careersLink.startsWith('http')
-                ? careersLink
-                : `https://${result.domain}${careersLink.startsWith('/') ? '' : '/'}${careersLink}`;
+              const ATS_DOMAINS = /taleez\.com|lever\.co|greenhouse\.io|workable\.com|recruitee\.com|smartrecruiters\.com|breezy\.hr|ashbyhq\.com|jobs\.lever\.co|teamtailor\.com|welcomekit\.co|flatchr\.io|jobaffinity\.fr/i;
+              const CAREER_KEYWORDS = /carri[eè]re|career|jobs?[\/\-]|recrutement|join[\-\/]|talent[\-\/]|nous[\-]rejoindre|hiring|openings|rejoignez|postuler|offres[\-\/]|emploi/i;
+              const careersLink = links.find((l: string) => CAREER_KEYWORDS.test(l) || ATS_DOMAINS.test(l));
+              if (careersLink) {
+                careersUrl = careersLink.startsWith('http')
+                  ? careersLink
+                  : `https://${result.domain}${careersLink.startsWith('/') ? '' : '/'}${careersLink}`;
+              }
             }
           }
         } catch (e) {
@@ -361,8 +428,15 @@ Deno.serve(async (req) => {
             });
             if (careersRes.ok) {
               const careersData = await parseJsonResponse(careersRes);
-              const careersMd = (careersData.data?.markdown || careersData.markdown || '').slice(0, 4000);
-              if (careersMd.length > 100 && LOVABLE_API_KEY) {
+              const careersMd = (careersData.data?.markdown || careersData.markdown || '').slice(0, 12000);
+
+              const parsedJobs = extractJobsFromCareersMarkdown(careersMd, careersUrl);
+              if (parsedJobs.length > 0) {
+                parsedJobs.forEach((job) => jobSources.push(job));
+                console.log(`[enrich] Careers page parser: ${parsedJobs.length} jobs`);
+              }
+
+              if (parsedJobs.length === 0 && careersMd.length > 100 && LOVABLE_API_KEY) {
                 const extractRes = await fetchWithTimeout('https://ai.gateway.lovable.dev/v1/chat/completions', {
                   method: 'POST',
                   headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, 'Content-Type': 'application/json' },
@@ -404,9 +478,9 @@ Deno.serve(async (req) => {
                   if (toolCall) {
                     const parsed = JSON.parse(toolCall.function.arguments);
                     (parsed.jobs || []).forEach((j: any) => {
-                      if (j.title) jobSources.push({ title: j.title, location: j.location || '', source: 'Site carrière', department: j.department });
+                      if (j.title) jobSources.push({ title: j.title, location: j.location || '', source: 'Site carrière', department: j.department, url: careersUrl || undefined });
                     });
-                    console.log(`[enrich] Careers page: ${(parsed.jobs || []).length} jobs`);
+                    console.log(`[enrich] Careers page AI: ${(parsed.jobs || []).length} jobs`);
                   }
                 }
               }
