@@ -336,7 +336,7 @@ Deno.serve(async (req) => {
                   }),
                 }, 20000);
                 if (extractRes.ok) {
-                  const extractData = await extractRes.json();
+                  const extractData = await parseJsonResponse(extractRes);
                   const toolCall = extractData.choices?.[0]?.message?.tool_calls?.[0];
                   if (toolCall) {
                     const parsed = JSON.parse(toolCall.function.arguments);
