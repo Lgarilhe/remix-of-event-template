@@ -216,6 +216,7 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) { toast.error('Non authentifié'); return; }
 
+      const orgId = await getActiveOrganizationId();
       const { data: session, error: sessionError } = await supabase
         .from('call_coaching_sessions')
         .insert({
@@ -223,6 +224,7 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
           job_id: jobId,
           scorecard_id: scorecardId || 'new',
           created_by: user.id,
+          organization_id: orgId || null,
         } as any)
         .select('id')
         .single();
