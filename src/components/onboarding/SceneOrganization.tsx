@@ -304,19 +304,9 @@ export const SceneOrganization: React.FC<Props> = ({ onComplete, onBack }) => {
                     }}
                   />
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-semibold truncate">{c.name}</span>
-                      {c.domain && (
-                        <span className="text-[10px] text-muted-foreground font-mono truncate">{c.domain}</span>
-                      )}
-                    </div>
-                    {c.description && (
-                      <p className="text-xs text-muted-foreground truncate mt-0.5">{c.description}</p>
-                    )}
-                    {c.location && (
-                      <span className="text-[10px] text-muted-foreground flex items-center gap-1 mt-0.5">
-                        <MapPin className="w-2.5 h-2.5" />{c.location}
-                      </span>
+                    <span className="text-sm font-semibold truncate block">{c.name}</span>
+                    {c.domain && (
+                      <span className="text-[10px] text-muted-foreground font-mono truncate block mt-0.5">{c.domain}</span>
                     )}
                   </div>
                   <ArrowRight className="w-4 h-4 text-muted-foreground group-hover:text-foreground transition-colors shrink-0" />
