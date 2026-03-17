@@ -466,6 +466,98 @@ Retourne UNIQUEMENT via tool call.` },
       } catch (e) { console.warn('[enrich] Apollo job postings failed:', e); }
     })());
 
+    // ── Task D: WTTJ direct fetch ──
+    parallelTasks.push((async () => {
+      const slug = result.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+      const wttjSlugs = [slug];
+      // Also try domain-based slug (e.g. scaleway.com → scaleway)
+      if (result.domain) {
+        const domainSlug = result.domain.replace(/\..*$/, '').toLowerCase();
+        if (domainSlug !== slug) wttjSlugs.push(domainSlug);
+      }
+      for (const s of wttjSlugs) {
+        try {
+          const wttjUrl = `https://www.welcometothejungle.com/fr/companies/${s}/jobs`;
+          const wttjHtml = await fetchPageText(wttjUrl, 8000);
+          if (wttjHtml.includes('job-') || wttjHtml.includes('data-testid')) {
+            // Extract job titles from WTTJ HTML using common patterns
+            // WTTJ uses structured data or <a> tags with job titles
+            const jobTitleRegex = /<(?:h[2-4]|a|span|div)[^>]*class="[^"]*(?:job|offer|position)[^"]*"[^>]*>([^<]{5,80})<\//gi;
+            const altRegex = /"name"\s*:\s*"([^"]{5,80})"/g;
+            const foundTitles = new Set<string>();
+            let m;
+            while ((m = jobTitleRegex.exec(wttjHtml)) !== null) foundTitles.add(m[1].trim());
+            while ((m = altRegex.exec(wttjHtml)) !== null) foundTitles.add(m[1].trim());
+
+            // Also try via Lovable AI if we have enough HTML
+            if (LOVABLE_API_KEY && wttjHtml.length > 500) {
+              const textContent = wttjHtml
+                .replace(/<script[\s\S]*?<\/script>/gi, '')
+                .replace(/<style[\s\S]*?<\/style>/gi, '')
+                .replace(/<[^>]+>/g, ' ')
+                .replace(/&[a-z]+;/gi, ' ')
+                .replace(/\s{2,}/g, ' ')
+                .trim()
+                .slice(0, 12000);
+
+              const extractRes = await fetchWithTimeout('https://ai.gateway.lovable.dev/v1/chat/completions', {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  model: 'google/gemini-2.5-flash-lite',
+                  messages: [
+                    { role: 'system', content: 'Tu extrais TOUS les intitulés de postes / offres d\'emploi de cette page WTTJ. Retourne UNIQUEMENT via tool call.' },
+                    { role: 'user', content: `Extrais TOUS les postes ouverts listés sur cette page Welcome to the Jungle pour "${result.name}". Retourne title et location pour chaque poste.\n\n${textContent}` },
+                  ],
+                  tools: [{
+                    type: 'function',
+                    function: {
+                      name: 'return_jobs',
+                      parameters: {
+                        type: 'object',
+                        properties: {
+                          jobs: { type: 'array', items: {
+                            type: 'object',
+                            properties: { title: { type: 'string' }, location: { type: 'string' } },
+                            required: ['title'], additionalProperties: false,
+                          }},
+                        },
+                        required: ['jobs'], additionalProperties: false,
+                      },
+                    },
+                  }],
+                  tool_choice: { type: 'function', function: { name: 'return_jobs' } },
+                }),
+              }, 12000);
+
+              if (extractRes.ok) {
+                const extractData = await parseJsonResponse(extractRes);
+                const toolCall = extractData.choices?.[0]?.message?.tool_calls?.[0];
+                if (toolCall) {
+                  const parsed = JSON.parse(toolCall.function.arguments);
+                  (parsed.jobs || []).forEach((j: any) => {
+                    if (j.title) {
+                      jobSources.push({ title: j.title, location: j.location || '', source: 'WTTJ', url: wttjUrl });
+                    }
+                  });
+                  console.log(`[enrich] WTTJ AI extraction: ${(parsed.jobs || []).length} jobs from ${wttjUrl}`);
+                }
+              }
+            }
+
+            if (foundTitles.size > 0) {
+              console.log(`[enrich] WTTJ regex extraction: ${foundTitles.size} titles from ${wttjUrl}`);
+              for (const title of foundTitles) {
+                jobSources.push({ title, location: '', source: 'WTTJ', url: wttjUrl });
+              }
+            }
+            result.wttjUrl = wttjUrl;
+            break; // Found WTTJ page, stop trying slugs
+          }
+        } catch (e) { /* WTTJ page not found for this slug, try next */ }
+      }
+    })());
+
     await Promise.allSettled(parallelTasks);
 
     // ── Task D: Perplexity job search fallback ──
