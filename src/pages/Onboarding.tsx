@@ -109,7 +109,7 @@ const Onboarding = () => {
             {step === 3 && <SceneProfile onNext={goNext} onBack={goBack} />}
             {step === 4 && <SceneIntegrations onNext={goNext} onBack={goBack} />}
             {step === 5 && (
-              <OnboardingStepInvite
+              <SceneTeam
                 organizationId={organizationId}
                 onFinish={goNext}
                 onBack={goBack}
