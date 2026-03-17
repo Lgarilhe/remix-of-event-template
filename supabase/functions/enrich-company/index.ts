@@ -171,7 +171,7 @@ Deno.serve(async (req) => {
     if (APOLLO_API_KEY) {
       try {
         console.log('[enrich] Apollo org search:', company_name);
-        const orgRes = await fetchWithTimeout('https://api.apollo.io/v1/mixed_companies/api_search', {
+        const orgRes = await fetchWithTimeout('https://api.apollo.io/api/v1/mixed_companies/search', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'X-Api-Key': APOLLO_API_KEY },
           body: JSON.stringify({ q_organization_name: company_name.trim(), per_page: 1 }),
@@ -265,7 +265,7 @@ Deno.serve(async (req) => {
     if (APOLLO_API_KEY) {
       parallelTasks.push((async () => {
         try {
-          const peopleRes = await fetchWithTimeout('https://api.apollo.io/v1/mixed_people/api_search', {
+          const peopleRes = await fetchWithTimeout('https://api.apollo.io/api/v1/mixed_people/api_search', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'X-Api-Key': APOLLO_API_KEY },
             body: JSON.stringify({
@@ -418,16 +418,58 @@ Deno.serve(async (req) => {
       })());
     }
 
-    // ── Task C: WTTJ job search ──
-    if (FIRECRAWL_API_KEY) {
-      parallelTasks.push((async () => {
+    // ── Task C: Apollo Job Postings (primary source) ──
+    let apolloJobsFound = false;
+    const apolloJobsPromise = (APOLLO_API_KEY && apolloOrg?.id) ? (async () => {
+      try {
+        console.log('[enrich] Apollo job postings for org:', apolloOrg.id);
+        const jobsRes = await fetchWithTimeout(`https://api.apollo.io/api/v1/organizations/${apolloOrg.id}/job_postings`, {
+          method: 'GET',
+          headers: { 'Content-Type': 'application/json', 'X-Api-Key': APOLLO_API_KEY },
+        });
+        if (jobsRes.ok) {
+          const jobsData = await parseJsonResponse(jobsRes);
+          const postings = jobsData.job_postings || jobsData.data || jobsData || [];
+          const jobsList = Array.isArray(postings) ? postings : [];
+          for (const job of jobsList) {
+            const title = job.title || job.name;
+            if (title) {
+              jobSources.push({
+                title,
+                location: [job.city, job.state, job.country].filter(Boolean).join(', '),
+                source: 'Apollo',
+                department: job.department || undefined,
+              });
+            }
+          }
+          apolloJobsFound = jobsList.length > 0;
+          console.log(`[enrich] Apollo jobs: ${jobsList.length} postings`);
+        }
+      } catch (e) {
+        console.warn('[enrich] Apollo job postings failed:', e);
+      }
+    })() : Promise.resolve();
+
+    parallelTasks.push(apolloJobsPromise);
+
+    // Run all parallel tasks (including Apollo jobs)
+    await Promise.allSettled(parallelTasks);
+
+    // ── Task D: WTTJ + LinkedIn as FALLBACK only if Apollo returned 0 jobs ──
+    if (!apolloJobsFound && FIRECRAWL_API_KEY) {
+      const fallbackTasks: Promise<void>[] = [];
+
+      // WTTJ fallback
+      fallbackTasks.push((async () => {
         try {
           const wttjRes = await fetchWithTimeout('https://api.firecrawl.dev/v1/search', {
             method: 'POST',
             headers: { Authorization: `Bearer ${FIRECRAWL_API_KEY}`, 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              query: `${company_name.trim()} ${result.domain || ''} jobs site:welcometothejungle.com`.replace(/\s+/g, ' ').trim(),
+              query: `"${company_name.trim()}" inurl:companies site:welcometothejungle.com/fr`.replace(/\s+/g, ' ').trim(),
               limit: 5,
+              country: 'FR',
+              lang: 'fr',
             }),
           });
           if (wttjRes.ok) {
@@ -441,24 +483,24 @@ Deno.serve(async (req) => {
                 jobSources.push({ title, location: '', source: 'WTTJ' });
               }
             }
-            console.log(`[enrich] WTTJ: ${wttjResults.length} results`);
+            console.log(`[enrich] WTTJ fallback: ${wttjResults.length} results`);
           }
         } catch (e) {
           console.warn('[enrich] WTTJ failed:', e);
         }
       })());
-    }
 
-    // ── Task D: LinkedIn Jobs search ──
-    if (FIRECRAWL_API_KEY) {
-      parallelTasks.push((async () => {
+      // LinkedIn fallback
+      fallbackTasks.push((async () => {
         try {
           const liRes = await fetchWithTimeout('https://api.firecrawl.dev/v1/search', {
             method: 'POST',
             headers: { Authorization: `Bearer ${FIRECRAWL_API_KEY}`, 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              query: `${company_name.trim()} ${result.domain || ''} jobs site:linkedin.com/jobs`.replace(/\s+/g, ' ').trim(),
+              query: `"${company_name.trim()}" site:linkedin.com/jobs/view`.replace(/\s+/g, ' ').trim(),
               limit: 5,
+              country: 'FR',
+              lang: 'fr',
             }),
           });
           if (liRes.ok) {
@@ -483,16 +525,15 @@ Deno.serve(async (req) => {
                 jobSources.push({ title, location: '', source: 'LinkedIn' });
               }
             }
-            console.log(`[enrich] LinkedIn: ${liResults.length} results`);
+            console.log(`[enrich] LinkedIn fallback: ${liResults.length} results`);
           }
         } catch (e) {
           console.warn('[enrich] LinkedIn jobs failed:', e);
         }
       })());
-    }
 
-    // Run all parallel tasks
-    await Promise.allSettled(parallelTasks);
+      await Promise.allSettled(fallbackTasks);
+    }
 
     // Dedupe jobs
     const seenTitles = new Set<string>();
