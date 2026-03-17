@@ -13,6 +13,8 @@ import { cn } from '@/lib/utils';
 
 export default function ScorecardFullPage() {
   const { candidateId } = useParams<{ candidateId: string }>();
+  const [searchParams] = useSearchParams();
+  const autoCoaching = searchParams.get('coaching') === '1';
   const navigate = useNavigate();
   const [candidate, setCandidate] = useState<ATSCandidate | null>(null);
   const [loading, setLoading] = useState(true);
