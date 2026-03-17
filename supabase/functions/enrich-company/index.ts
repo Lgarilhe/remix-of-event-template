@@ -217,7 +217,7 @@ Deno.serve(async (req) => {
           }),
         });
         if (peopleRes.ok) {
-          const peopleData = await peopleRes.json();
+          const peopleData = await parseJsonResponse(peopleRes);
           result.decisionMakers = (peopleData.people || []).slice(0, 5).map((p: any) => ({
             name: p.name || `${p.first_name || ''} ${p.last_name || ''}`.trim(),
             role: p.title || '',
