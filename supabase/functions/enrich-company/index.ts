@@ -368,7 +368,7 @@ Deno.serve(async (req) => {
             }),
           });
           if (wttjRes.ok) {
-            const wttjData = await wttjRes.json();
+            const wttjData = await parseJsonResponse(wttjRes);
             const wttjResults = (wttjData.data || []).filter((r: any) =>
               (r.url || '').includes('welcometothejungle.com') && (r.url || '').includes('/jobs/')
             );
