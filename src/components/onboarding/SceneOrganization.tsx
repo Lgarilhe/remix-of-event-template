@@ -244,7 +244,12 @@ export const SceneOrganization: React.FC<Props> = ({ onComplete }) => {
         }
       }
 
-      onComplete();
+      onComplete({
+        name: company.name,
+        domain: company.domain,
+        linkedinUrl: company.linkedinUrl,
+        careersUrl: company.careersUrl || null,
+      });
     } catch (err: any) {
       const msg = err?.message || '';
       if (msg.includes('duplicate key') || msg.includes('organizations_slug_key')) {
