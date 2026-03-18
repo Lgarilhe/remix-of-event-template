@@ -1762,6 +1762,40 @@ function sanitizeSequenceMessage(message: string): string {
     .trim();
 }
 
+// ============ RAG CONTEXT FETCHER ============
+
+async function fetchRAGContext(
+  orgId: string, entityId: string, query: string
+): Promise<{ formatted_context: string; total_chunks: number } | null> {
+  try {
+    const supabaseUrl = Deno.env.get('SUPABASE_URL');
+    const res = await fetchWithTimeout(`${supabaseUrl}/functions/v1/retrieve-context`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${Deno.env.get('SUPABASE_ANON_KEY')}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        organization_id: orgId,
+        entity_type: 'candidate',
+        entity_id: entityId,
+        query,
+        include_related: true,
+        limit: 15,
+      }),
+    }, 12000);
+    if (!res.ok) {
+      console.warn(`[fetchRAGContext] retrieve-context returned ${res.status}`);
+      return null;
+    }
+    const data = await res.json();
+    return { formatted_context: data.formatted_context || '', total_chunks: data.total_chunks || 0 };
+  } catch (err) {
+    console.warn('[fetchRAGContext] Error:', err instanceof Error ? err.message : err);
+    return null;
+  }
+}
+
 // ============ MESSAGE GENERATION ============
 
 // deno-lint-ignore no-explicit-any
@@ -1771,6 +1805,12 @@ async function generatePersonalizedMessage(supabase: any, enrollment: Record<str
     // Fetch profile and posts in parallel
     const profilePromise = fetchWithTimeout(`${UNIPILE_DSN}/api/v1/users/${enrollment.profile_id}?account_id=${enrollment.account_id}`, { headers: { 'X-API-KEY': UNIPILE_API_KEY! } }).then(r => r.ok ? r.json() : null).catch(() => null);
     const postsPromise = fetchRecentPostsForSequence(enrollment.account_id as string, enrollment.profile_id as string);
+    // Fetch RAG context in parallel (uses enrollment.job_title as approximate query)
+    const ragPromise = fetchRAGContext(
+      enrollment.organization_id as string,
+      enrollment.profile_id as string,
+      ((enrollment.job_title as string) || '') + ' ' + ((enrollment.job_skills as string) || '')
+    );
     
     // Fetch Notion job context (full page + body content)
     let jobNotionData: Record<string, string> = {};
@@ -1921,7 +1961,7 @@ async function generatePersonalizedMessage(supabase: any, enrollment: Record<str
       } catch { return null; }
     })();
 
-    let [profile, recentPosts, candidateHistory] = await Promise.all([profilePromise, postsPromise, historyPromise]);
+    let [profile, recentPosts, candidateHistory, ragResult] = await Promise.all([profilePromise, postsPromise, historyPromise, ragPromise]);
 
     // Fallback: if Unipile didn't return experiences, try to get them from the DB snapshot
     const hasExperiences = Array.isArray(profile?.work_experience || profile?.experiences || profile?.positions?.values) && (profile?.work_experience || profile?.experiences || profile?.positions?.values).length > 0;
@@ -2210,6 +2250,31 @@ ${senderIsInHistory ? `- TU ES le consultant → première personne: "on avait �
 === FIN HISTORIQUE ===`;
     })();
 
+    // Evaluate RAG result — use it if it returned meaningful content
+    const ragHasContent = ragResult && ragResult.total_chunks > 0 &&
+      !ragResult.formatted_context.includes('Aucun contexte trouvé');
+    const ragContextBlock = ragHasContent ? ragResult!.formatted_context : '';
+
+    if (ragHasContent) {
+      console.log(`[generatePersonalizedMessage] RAG returned ${ragResult!.total_chunks} chunks — using RAG context`);
+    } else {
+      console.log(`[generatePersonalizedMessage] RAG empty/error — falling back to manual posts+history`);
+    }
+
+    const postureBlock = `=== POSTURE DU RECRUTEUR ===
+Tu es un recruteur tech expérimenté qui connaît aussi bien les compétences techniques
+que les enjeux humains du recrutement.
+
+Tu as une VRAIE connaissance du marché tech et de ses acteurs. Tu ne vends pas un poste,
+tu partages une opportunité avec quelqu'un qui le mérite.
+
+PRINCIPES:
+- Tu OBSERVES des faits, tu ne FLATTES jamais
+- Tu poses des QUESTIONS plutôt que d'affirmer
+- Tu montres que tu as COMPRIS le parcours du candidat, pas que tu l'as lu
+- Tu écris comme un HUMAIN, pas comme un template
+=== FIN POSTURE ===`;
+
     const prompt = `Tu es un recruteur tech senior. Tu écris des messages LinkedIn ULTRA personnalisés et percutants.
 ${engagementBlock}
 
@@ -2234,10 +2299,11 @@ IMPORTANT - ANALYSE LE STYLE D'ÉCRITURE DU CANDIDAT:
 - Son ton est-il corporate, startup, créatif, technique ?
 - ADAPTE TON MESSAGE À SON STYLE pour créer une résonance naturelle` : ''}
 ${expContext ? `- Expériences récentes:\n${expContext}` : ''}
-${postsSection}
-${historySection}
+${ragHasContent ? ragContextBlock : `${postsSection}\n${historySection}`}
 
 ${jobContextBlock}
+
+${postureBlock}
 
 TYPE DE MESSAGE: ${msgType}
 ${toneInstructions}
