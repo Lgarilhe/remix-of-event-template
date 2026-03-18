@@ -825,6 +825,7 @@ Deno.serve(async (req) => {
                 result.keywords = [];
                 result.jobPostingsCount = null;
                 apolloOrg = null; // prevent downstream Apollo usage (people, jobs)
+                apolloOrgId = null; // reset org ID to prevent stale references in parallel tasks
               }
             }
           } catch (e) {

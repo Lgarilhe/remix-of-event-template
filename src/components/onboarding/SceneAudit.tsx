@@ -78,48 +78,50 @@ export const SceneAudit: React.FC<Props> = ({ companyData, onNext, onBack }) => 
   const [categories, setCategories] = useState<Category[]>([]);
   const [quickWins, setQuickWins] = useState<string[]>([]);
   const bubblesEndRef = useRef<HTMLDivElement>(null);
-  const isMounted = useRef(true);
 
   useEffect(() => {
     bubblesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [bubbles]);
 
-  // #9: Track API completion to end animation early
-  const apiDone = useRef(false);
-  const apiResult = useRef<{ score: number; categories: Category[]; quickWins: string[] } | null>(null);
-
-  // Auto-start scan — reset refs on each mount
+  // Auto-start scan with proper AbortController for StrictMode compatibility
   useEffect(() => {
-    isMounted.current = true;
-    apiDone.current = false;
-    apiResult.current = null;
+    const abortController = new AbortController();
+    const { signal } = abortController;
+
+    // Reset state on each mount
+    setPhase('scanning');
+    setSources(SCAN_SOURCES.map(s => ({ ...s, done: false })));
+    setBubbles([]);
 
     // Animate sources and messages
+    const timers: ReturnType<typeof setTimeout>[] = [];
+
     SCAN_SOURCES.forEach((_, i) => {
-      setTimeout(() => {
-        if (!isMounted.current) return;
+      timers.push(setTimeout(() => {
+        if (signal.aborted) return;
         setSources(prev => prev.map((s, j) => (j <= i ? { ...s, done: true } : s)));
-      }, 600 + i * 550);
+      }, 600 + i * 550));
     });
 
     AGENT_MESSAGES.forEach((msg, i) => {
-      setTimeout(() => {
-        if (!isMounted.current) return;
+      timers.push(setTimeout(() => {
+        if (signal.aborted) return;
         setBubbles(prev => [...prev, { id: i, text: msg }]);
-      }, 500 + i * 600);
+      }, 500 + i * 600));
     });
 
     // Launch real API call in parallel with animation
-    (async () => {
+    const MIN_ANIM_TIME = 2000;
+    const MAX_WAIT_TIME = 60000;
+    const startTime = Date.now();
+
+    const runAudit = async () => {
       const companyName = companyData?.name || '';
       const domain = companyData?.domain || null;
       const linkedinUrl = companyData?.linkedinUrl || null;
       const careersUrl = companyData?.careersUrl || null;
 
-      if (!companyName) {
-        apiDone.current = true;
-        return;
-      }
+      if (!companyName) return null;
 
       try {
         const { data, error } = await invokeEdgeFunction<{
@@ -134,10 +136,11 @@ export const SceneAudit: React.FC<Props> = ({ companyData, onNext, onBack }) => 
           careers_url: careersUrl,
         });
 
+        if (signal.aborted) return null;
+
         if (error || !data?.success) {
           console.error('[SceneAudit] API error:', error || data?.error);
-          apiDone.current = true;
-          return;
+          return null;
         }
 
         const mappedCategories: Category[] = (data.categories || []).map((cat: any) => ({
@@ -151,51 +154,56 @@ export const SceneAudit: React.FC<Props> = ({ companyData, onNext, onBack }) => 
           findings: cat.findings || [],
         }));
 
-        apiResult.current = {
+        return {
           score: data.overall_score || 0,
           categories: mappedCategories,
           quickWins: data.quick_wins || [],
         };
-        apiDone.current = true;
       } catch (err) {
         console.error('[SceneAudit] Error:', err);
-        apiDone.current = true;
+        return null;
       }
-    })();
+    };
 
-    // #9: Poll for API completion — show results as soon as both API and minimum animation are done
-    const MIN_ANIM_TIME = 2000; // minimum 2s for the scan to feel real
-    const MAX_WAIT_TIME = 60000; // max 60s before showing error
-    const startTime = Date.now();
+    const auditPromise = runAudit();
+
+    // Poll for completion
     const pollInterval = setInterval(() => {
-      const elapsed = Date.now() - startTime;
-      if (elapsed > MAX_WAIT_TIME && !apiDone.current) {
-        // Timeout — show error
+      if (signal.aborted) {
         clearInterval(pollInterval);
-        if (isMounted.current) {
-          setPhase('error');
-        }
         return;
       }
-      if (!apiDone.current) return;
+      const elapsed = Date.now() - startTime;
+      if (elapsed > MAX_WAIT_TIME) {
+        clearInterval(pollInterval);
+        if (!signal.aborted) setPhase('error');
+      }
+    }, 500);
+
+    // Wait for API result and minimum animation time
+    auditPromise.then((apiResult) => {
       clearInterval(pollInterval);
+      if (signal.aborted) return;
+      const elapsed = Date.now() - startTime;
       const delay = Math.max(0, MIN_ANIM_TIME - elapsed);
-      setTimeout(() => {
-        if (!isMounted.current) return;
-        if (apiResult.current) {
-          setOverallScore(apiResult.current.score);
-          setCategories(apiResult.current.categories);
-          setQuickWins(apiResult.current.quickWins);
+      const t = setTimeout(() => {
+        if (signal.aborted) return;
+        if (apiResult) {
+          setOverallScore(apiResult.score);
+          setCategories(apiResult.categories);
+          setQuickWins(apiResult.quickWins);
           setPhase('results');
         } else {
           setPhase('error');
         }
       }, delay);
-    }, 200);
+      timers.push(t);
+    });
 
     return () => {
-      isMounted.current = false;
+      abortController.abort();
       clearInterval(pollInterval);
+      timers.forEach(clearTimeout);
     };
   }, [companyData]);
 
