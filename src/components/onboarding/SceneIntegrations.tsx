@@ -184,37 +184,6 @@ export const SceneIntegrations: React.FC<Props> = ({ onNext, onBack }) => {
                 )}
               </div>
 
-              {/* Expanded fields */}
-              {isExpanded && def.fields && (
-                <motion.div
-                  initial={{ height: 0, opacity: 0 }}
-                  animate={{ height: 'auto', opacity: 1 }}
-                  className="border-t border-foreground/10 p-3 space-y-3 bg-muted/20"
-                >
-                  {def.fields.map((f) => (
-                    <div key={f.key} className="space-y-1">
-                      <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{f.label}</label>
-                      <Input
-                        type={f.secret ? 'password' : 'text'}
-                        placeholder={f.placeholder}
-                        value={fieldValues[f.key] || ''}
-                        onChange={(e) => setFieldValues((prev) => ({ ...prev, [f.key]: e.target.value }))}
-                        className="border-2 border-foreground/15 text-xs h-9"
-                      />
-                    </div>
-                  ))}
-                  <Button
-                    size="sm"
-                    onClick={() => handleFieldSave(def)}
-                    disabled={isLoading}
-                    className="w-full text-[11px] uppercase tracking-wider font-bold border-2 border-foreground bg-foreground text-background hover:bg-foreground/90 h-8"
-                    style={{ boxShadow: '2px 2px 0px 0px hsl(var(--brutal-accent))' }}
-                  >
-                    {isLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : <Check className="w-3.5 h-3.5 mr-1" />}
-                    Enregistrer
-                  </Button>
-                </motion.div>
-              )}
             </motion.div>
           );
         })}
