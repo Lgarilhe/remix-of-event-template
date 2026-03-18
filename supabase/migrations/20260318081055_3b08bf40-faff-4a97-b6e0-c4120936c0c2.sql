@@ -1,0 +1,1 @@
+DELETE FROM enrichment_cache WHERE cache_key = 'numspot';
