@@ -42,7 +42,6 @@ const INTEGRATIONS: IntegrationDef[] = [
 export const SceneIntegrations: React.FC<Props> = ({ onNext, onBack }) => {
   const { accounts, loading: linkedInLoading, reload: reloadLinkedIn } = useLinkedInAccounts();
   const { organization } = useOrganization();
-  const { integrations, updateIntegration } = useOrganizationIntegrations();
 
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [fieldValues, setFieldValues] = useState<Record<string, string>>({});
@@ -51,19 +50,7 @@ export const SceneIntegrations: React.FC<Props> = ({ onNext, onBack }) => {
   const [refreshingLinkedIn, setRefreshingLinkedIn] = useState(false);
 
   const linkedInConnected = accounts.length > 0;
-
-  // Check how many are connected
-  const totalConnected = (() => {
-    let count = linkedInConnected ? 1 : 0;
-    if (integrations) {
-      if (integrations.notion_connected) count++;
-      if (integrations.calendly_connected) count++;
-      if (integrations.airtable_connected) count++;
-      if (integrations.aircall_connected) count++;
-    }
-    count += connectedIds.size;
-    return count;
-  })();
+  const totalConnected = linkedInConnected ? 1 : 0;
 
   const isConnected = (def: IntegrationDef) => {
     if (def.id === 'linkedin') return linkedInConnected;
