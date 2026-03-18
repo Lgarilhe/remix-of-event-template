@@ -26,6 +26,7 @@ import { MyLinkedInAccount } from '@/components/settings/MyLinkedInAccount';
 import { BillingSettings } from '@/components/settings/BillingSettings';
 import { AICreditsSettings } from '@/components/settings/AICreditsSettings';
 import { OrgLogoEditor } from '@/components/settings/OrgLogoEditor';
+import { ConnectorSettings } from '@/components/settings/ConnectorSettings';
 import { toast } from 'sonner';
 import { BrutalLoader } from '@/components/ui/brutal-loader';
 import iconSettings3d from '@/assets/icon-settings-3d.png';
