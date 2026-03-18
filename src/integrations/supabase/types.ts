@@ -2115,6 +2115,7 @@ export type Database = {
           chat_id: string
           created_at: string
           id: string
+          organization_id: string | null
           recipient_name: string | null
           updated_at: string
         }
@@ -2124,6 +2125,7 @@ export type Database = {
           chat_id: string
           created_at?: string
           id?: string
+          organization_id?: string | null
           recipient_name?: string | null
           updated_at?: string
         }
@@ -2133,10 +2135,19 @@ export type Database = {
           chat_id?: string
           created_at?: string
           id?: string
+          organization_id?: string | null
           recipient_name?: string | null
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "message_analysis_cache_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       notifications: {
         Row: {
