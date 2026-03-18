@@ -15,6 +15,21 @@ const corsHeaders = {
 
 const DEFAULT_TIMEOUT = 8000;
 const AUTHORITATIVE_SOURCES = new Set(['Apollo', 'Site carrière']);
+const ATS_HOST_HINTS = [
+  'teamtailor.com',
+  'jobs.',
+  'jobs.lever.co',
+  'apply.workable.com',
+  'greenhouse.io',
+  'recruitee.com',
+  'welcomekit.co',
+  'smartrecruiters.com',
+  'ashbyhq.com',
+  'breezy.hr',
+  'taleez.com',
+  'flatchr.io',
+  'jobaffinity.fr',
+];
 
 function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = DEFAULT_TIMEOUT): Promise<Response> {
   const controller = new AbortController();
@@ -437,6 +452,39 @@ function toPlainText(input: string): string {
 function looksLikeCookieWall(input: string): boolean {
   const lower = input.toLowerCase();
   return lower.includes('axeptio') || lower.includes('blah blah blah cookie') || lower.includes('cookie policy') || lower.includes('gestion des cookies');
+}
+
+function extractUrls(input: string): string[] {
+  return Array.from(new Set(
+    (input.match(/https?:\/\/[^\s"'<>]+/gi) || [])
+      .map((url) => url.replace(/[),.;]+$/g, ''))
+      .filter(Boolean)
+  ));
+}
+
+function isAtsCareerUrl(url: string): boolean {
+  const normalized = normalizeDomain(url);
+  if (!normalized) return false;
+  const lowerUrl = url.toLowerCase();
+  return ATS_HOST_HINTS.some((hint) => normalized.includes(hint) || lowerUrl.includes(hint));
+}
+
+function extractExternalAtsUrl(input: string): string | null {
+  const candidates = extractUrls(input)
+    .filter((url) => isAtsCareerUrl(url))
+    .map((url) => {
+      const lower = url.toLowerCase();
+      let score = 0;
+      if (lower.includes('#jobs') || lower.includes('/jobs')) score += 30;
+      if (lower.includes('teamtailor')) score += 20;
+      if (lower.includes('lever.co')) score += 20;
+      if (lower.includes('workable')) score += 15;
+      if (lower.includes('greenhouse')) score += 15;
+      return { url, score };
+    })
+    .sort((a, b) => b.score - a.score || a.url.length - b.url.length);
+
+  return candidates[0]?.url || null;
 }
 
 function extractLeverBoardUrl(input: string): string | null {
@@ -926,10 +974,35 @@ Deno.serve(async (req) => {
             }
           }
 
-          const leverBoardUrl = extractLeverBoardUrl(`${careersUrl}\n${careersRaw}`);
           let extractionRaw = careersRaw;
+          const externalAtsUrl = extractExternalAtsUrl(`${careersUrl}\n${careersRaw}`);
+          if (externalAtsUrl && externalAtsUrl !== careersUrl) {
+            console.log('[enrich] External ATS board found:', externalAtsUrl);
+            result.careersUrl = externalAtsUrl;
 
-          if (leverBoardUrl) {
+            let externalAtsRaw = '';
+            try {
+              externalAtsRaw = await fetchPageText(externalAtsUrl, 10000);
+            } catch (e) {
+              console.warn('[enrich] External ATS direct fetch failed:', e);
+            }
+
+            if (!externalAtsRaw || externalAtsRaw.length < 1500 || looksLikeCookieWall(externalAtsRaw)) {
+              try {
+                externalAtsRaw = await scrapeWithFirecrawl(externalAtsUrl, 15000);
+                console.log('[enrich] External ATS Firecrawl fallback used');
+              } catch (e) {
+                console.warn('[enrich] External ATS Firecrawl failed:', e);
+              }
+            }
+
+            if (externalAtsRaw) {
+              extractionRaw = `${careersRaw}\n\n${externalAtsRaw}`;
+            }
+          }
+
+          const leverBoardUrl = extractLeverBoardUrl(`${result.careersUrl || careersUrl}\n${extractionRaw}`);
+          if (leverBoardUrl && leverBoardUrl !== result.careersUrl) {
             console.log('[enrich] Lever board found:', leverBoardUrl);
             result.careersUrl = leverBoardUrl;
 
@@ -950,11 +1023,90 @@ Deno.serve(async (req) => {
             }
 
             if (leverRaw) {
-              extractionRaw = `${careersRaw}\n\n${leverRaw}`;
+              extractionRaw = `${extractionRaw}\n\n${leverRaw}`;
             }
           }
 
           const textContent = toPlainText(extractionRaw).slice(0, 40000);
+          if (textContent.length > 100 && LOVABLE_API_KEY && (!result.industry || !result.description || !result.foundedYear || !result.fundingEvents?.length)) {
+            try {
+              const profileRes = await fetchWithTimeout('https://ai.gateway.lovable.dev/v1/chat/completions', {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  model: 'google/gemini-2.5-flash',
+                  messages: [
+                    {
+                      role: 'system',
+                      content: `Tu extrais des informations FACTUELLES sur l'entreprise "${result.name}" depuis son site officiel / ATS officiel. Aucune spéculation. Si une donnée est absente, retourne null ou un tableau vide. Retourne UNIQUEMENT via tool call.`,
+                    },
+                    {
+                      role: 'user',
+                      content: `Extrais le profil officiel de l'entreprise "${result.name}" depuis ce contenu : industrie, description courte, année de création, localisation du siège si explicitement mentionnée, mots-clés produit/stack, et éventuelles levées de fonds mentionnées.\n\n${textContent.slice(0, 16000)}`,
+                    },
+                  ],
+                  tools: [{
+                    type: 'function',
+                    function: {
+                      name: 'return_company_profile',
+                      parameters: {
+                        type: 'object',
+                        properties: {
+                          industry: { type: 'string' },
+                          description: { type: 'string' },
+                          founded_year: { type: 'number' },
+                          headquarters_location: { type: 'string' },
+                          keywords: { type: 'array', items: { type: 'string' } },
+                          funding_events: {
+                            type: 'array',
+                            items: {
+                              type: 'object',
+                              properties: {
+                                date: { type: 'string' },
+                                type: { type: 'string' },
+                                amount: { type: 'number' },
+                                investors: { type: 'array', items: { type: 'string' } },
+                              },
+                              required: ['type'],
+                              additionalProperties: false,
+                            },
+                          },
+                        },
+                        required: ['funding_events', 'keywords'],
+                        additionalProperties: false,
+                      },
+                    },
+                  }],
+                  tool_choice: { type: 'function', function: { name: 'return_company_profile' } },
+                }),
+              }, 12000);
+
+              if (profileRes.ok) {
+                const profileData = await parseJsonResponse(profileRes);
+                const toolCall = profileData.choices?.[0]?.message?.tool_calls?.[0];
+                if (toolCall) {
+                  const parsed = JSON.parse(toolCall.function.arguments);
+                  if (!result.industry && parsed.industry) result.industry = parsed.industry;
+                  if (!result.description && parsed.description) result.description = String(parsed.description).slice(0, 320);
+                  if (!result.foundedYear && parsed.founded_year) result.foundedYear = parsed.founded_year;
+                  if (!result.location && parsed.headquarters_location) result.location = parsed.headquarters_location;
+                  if ((!result.keywords || result.keywords.length === 0) && parsed.keywords?.length) {
+                    result.keywords = parsed.keywords.slice(0, 10);
+                  }
+                  if ((!result.fundingEvents || result.fundingEvents.length === 0) && parsed.funding_events?.length) {
+                    result.fundingEvents = parsed.funding_events;
+                    const latestFunding = parsed.funding_events[0];
+                    if (!result.funding && latestFunding?.type) {
+                      result.funding = `${latestFunding.type}${latestFunding.amount ? ` · ${formatFunding(latestFunding.amount)}` : ''}`;
+                    }
+                  }
+                }
+              }
+            } catch (e) {
+              console.warn('[enrich] Official site profile extraction failed:', e);
+            }
+          }
+
           if (textContent.length > 100 && LOVABLE_API_KEY) {
             const extractRes = await fetchWithTimeout('https://ai.gateway.lovable.dev/v1/chat/completions', {
               method: 'POST',
