@@ -54,11 +54,7 @@ export const SceneIntegrations: React.FC<Props> = ({ onNext, onBack }) => {
 
   const isConnected = (def: IntegrationDef) => {
     if (def.id === 'linkedin') return linkedInConnected;
-    if (connectedIds.has(def.id)) return true;
-    if (integrations && def.connectedKey) {
-      return !!(integrations as any)[def.connectedKey];
-    }
-    return false;
+    return connectedIds.has(def.id);
   };
 
   const handleLinkedInConnect = async () => {
