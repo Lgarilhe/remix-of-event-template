@@ -78,7 +78,6 @@ export const SceneAudit: React.FC<Props> = ({ companyData, onNext, onBack }) => 
   const [categories, setCategories] = useState<Category[]>([]);
   const [quickWins, setQuickWins] = useState<string[]>([]);
   const bubblesEndRef = useRef<HTMLDivElement>(null);
-  const hasStarted = useRef(false);
   const isMounted = useRef(true);
 
   useEffect(() => {
@@ -89,11 +88,11 @@ export const SceneAudit: React.FC<Props> = ({ companyData, onNext, onBack }) => 
   const apiDone = useRef(false);
   const apiResult = useRef<{ score: number; categories: Category[]; quickWins: string[] } | null>(null);
 
-  // Auto-start scan
+  // Auto-start scan — reset refs on each mount
   useEffect(() => {
-    if (hasStarted.current) return;
-    hasStarted.current = true;
     isMounted.current = true;
+    apiDone.current = false;
+    apiResult.current = null;
 
     // Animate sources and messages
     SCAN_SOURCES.forEach((_, i) => {
