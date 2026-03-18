@@ -147,6 +147,83 @@ function normalizeDomain(input: string | null | undefined): string | null {
   }
 }
 
+const RECENT_NEWS_MAX_AGE_MONTHS = 15;
+
+function parseLooseNewsDate(value: unknown): number | null {
+  if (!value) return null;
+  const raw = String(value).trim();
+  if (!raw) return null;
+
+  const direct = Date.parse(raw);
+  if (!Number.isNaN(direct)) return direct;
+
+  const normalized = raw.toLowerCase();
+  const monthMap: Record<string, string> = {
+    janvier: '01',
+    'février': '02',
+    fevrier: '02',
+    mars: '03',
+    avril: '04',
+    mai: '05',
+    juin: '06',
+    juillet: '07',
+    'août': '08',
+    aout: '08',
+    septembre: '09',
+    octobre: '10',
+    novembre: '11',
+    'décembre': '12',
+    decembre: '12',
+  };
+
+  const frMatch = normalized.match(/\b(janvier|février|fevrier|mars|avril|mai|juin|juillet|août|aout|septembre|octobre|novembre|décembre|decembre)\s+(20\d{2})\b/i);
+  if (frMatch) {
+    const month = monthMap[frMatch[1].toLowerCase()];
+    const parsed = Date.parse(`${frMatch[2]}-${month}-01`);
+    return Number.isNaN(parsed) ? null : parsed;
+  }
+
+  const yearMonthMatch = normalized.match(/\b(20\d{2})[-/](\d{1,2})\b/);
+  if (yearMonthMatch) {
+    const parsed = Date.parse(`${yearMonthMatch[1]}-${yearMonthMatch[2].padStart(2, '0')}-01`);
+    return Number.isNaN(parsed) ? null : parsed;
+  }
+
+  const yearMatch = normalized.match(/\b(20\d{2})\b/);
+  if (yearMatch) {
+    const parsed = Date.parse(`${yearMatch[1]}-01-01`);
+    return Number.isNaN(parsed) ? null : parsed;
+  }
+
+  return null;
+}
+
+function normalizeNewsArticles(rawArticles: any[]): Array<{ title: string | null; url: string | null; published_at: string | null; source: string | null; _ts: number | null }> {
+  return (Array.isArray(rawArticles) ? rawArticles : [])
+    .map((a: any) => ({
+      title: a.title || a.headline || null,
+      url: a.url || a.link || null,
+      published_at: a.published_at || a.published_date || a.date || null,
+      source: a.source || a.publisher || null,
+      _ts: parseLooseNewsDate(a.published_at || a.published_date || a.date || null),
+    }))
+    .filter((article) => article.title)
+    .sort((a, b) => (b._ts ?? 0) - (a._ts ?? 0) || String(a.title).localeCompare(String(b.title)));
+}
+
+function selectRecentNewsArticles(rawArticles: any[], options: { maxAgeMonths?: number; includeUndated?: boolean } = {}): Array<{ title: string | null; url: string | null; published_at: string | null; source: string | null }> {
+  const maxAgeMonths = options.maxAgeMonths ?? RECENT_NEWS_MAX_AGE_MONTHS;
+  const includeUndated = options.includeUndated ?? false;
+  const cutoff = Date.now() - maxAgeMonths * 30.44 * 24 * 60 * 60 * 1000;
+  const normalized = normalizeNewsArticles(rawArticles);
+  const recent = normalized.filter((article) => article._ts !== null && article._ts >= cutoff);
+  const undated = includeUndated ? normalized.filter((article) => article._ts === null) : [];
+
+  return [...recent, ...undated]
+    .slice(0, 5)
+    .map(({ _ts, ...article }) => article);
+}
+
 function domainLabel(domain: string | null | undefined): string {
   return normalizeDomain(domain)?.split('.')[0] || '';
 }
@@ -1148,13 +1225,8 @@ Deno.serve(async (req) => {
           if (newsRes.ok) {
             const newsData = await parseJsonResponse(newsRes);
             const articles = newsData.news_articles || newsData.articles || newsData.data || [];
-            result.newsArticles = (Array.isArray(articles) ? articles : []).slice(0, 5).map((a: any) => ({
-              title: a.title || a.headline || null,
-              url: a.url || a.link || null,
-              published_at: a.published_at || a.published_date || a.date || null,
-              source: a.source || a.publisher || null,
-            }));
-            console.log(`[enrich] Apollo news: ${result.newsArticles.length} articles`);
+            result.newsArticles = selectRecentNewsArticles(articles, { maxAgeMonths: 15, includeUndated: false });
+            console.log(`[enrich] Apollo news: ${result.newsArticles.length} recent articles`);
           }
         } catch (e) {
           console.warn('[enrich] Apollo news articles failed:', e);
@@ -1274,6 +1346,11 @@ Deno.serve(async (req) => {
     console.log(`[enrich] Jobs: ${result.openRoles.length}, Signals: ${result.signals.length}, elapsed: ${Date.now() - startTime}ms`);
 
     // ── Perplexity fallback for company insights (funding, news, headcount) ──
+    const recentNewsArticles = selectRecentNewsArticles(result.newsArticles, { maxAgeMonths: 15, includeUndated: false });
+    if (recentNewsArticles.length !== result.newsArticles.length) {
+      result.newsArticles = recentNewsArticles;
+    }
+
     const needsFundingData = !result.fundingEvents?.length;
     const needsNewsData = !result.newsArticles?.length;
     const needsHeadcountData = !result.departmentalHeadcount;
@@ -1287,11 +1364,11 @@ Deno.serve(async (req) => {
           PERPLEXITY_API_KEY,
           `Donne-moi des informations factuelles et RÉCENTES sur l'entreprise "${result.name}"${companyHint} en France :
 1. Levées de fonds : liste les tours de financement connus (date, type comme Seed/Series A/B/C, montant en euros, investisseurs principaux). S'il n'y a pas eu de levée, dis-le clairement.
-2. Actualités récentes (2025-2026) : les 5-8 articles ou événements les PLUS RÉCENTS (titre, source, date précise, URL si possible). Privilégie les actualités des 6 derniers mois.
+2. Actualités récentes (2025-2026) : les 5-8 articles ou événements les PLUS RÉCENTS (titre, source, date précise, URL si possible). Exclue toute actualité antérieure à 2025 sauf s'il n'existe vraiment rien de plus récent.
 3. Répartition des équipes : estimation du nombre d'employés par département (engineering, sales, marketing, product, HR, finance, operations, etc.) si disponible.
 4. Nombre de filiales ou entités liées.
 Sois factuel, ne spécule pas. Si une info n'est pas disponible, dis "non disponible".`,
-          { timeoutMs: 12000, model: 'sonar-pro', recencyFilter: 'month' },
+          { timeoutMs: 12000, model: 'sonar-pro', recencyFilter: 'year' },
         );
 
         if (content) {
@@ -1364,8 +1441,8 @@ Sois factuel, ne spécule pas. Si une info n'est pas disponible, dis "non dispon
                 console.log(`[enrich] Perplexity fallback: ${parsed.funding_events.length} funding events`);
               }
               if (needsNewsData && parsed.news_articles?.length) {
-                result.newsArticles = parsed.news_articles.slice(0, 5);
-                console.log(`[enrich] Perplexity fallback: ${result.newsArticles.length} news articles`);
+                result.newsArticles = selectRecentNewsArticles(parsed.news_articles, { maxAgeMonths: 15, includeUndated: true });
+                console.log(`[enrich] Perplexity fallback: ${result.newsArticles.length} recent news articles`);
               }
               if (needsHeadcountData && parsed.departmental_headcount && Object.keys(parsed.departmental_headcount).length >= 2) {
                 result.departmentalHeadcount = parsed.departmental_headcount;
@@ -1379,6 +1456,78 @@ Sois factuel, ne spécule pas. Si une info n'est pas disponible, dis "non dispon
         }
       } catch (e) {
         console.warn('[enrich] Perplexity company insights fallback failed:', e);
+      }
+    }
+
+    if (!result.newsArticles.length && result.domain && PERPLEXITY_API_KEY && LOVABLE_API_KEY && Date.now() - startTime < 45000) {
+      try {
+        console.log('[enrich] Perplexity official-site news fallback for:', result.domain);
+        const { content } = await perplexitySearch(
+          PERPLEXITY_API_KEY,
+          `Liste UNIQUEMENT les 5 actualités les plus récentes publiées sur le site officiel ${result.domain} pour l'entreprise "${result.name}". Exclue totalement les médias tiers, agrégateurs et reprises de presse. Pour chaque actualité, donne le titre, la date (exacte ou approximative), l'URL complète sur ${result.domain} et la source.`,
+          {
+            timeoutMs: 12000,
+            model: 'sonar-pro',
+            domainFilter: [result.domain],
+            recencyFilter: 'year',
+          },
+        );
+
+        if (content) {
+          const extractRes = await fetchWithTimeout('https://ai.gateway.lovable.dev/v1/chat/completions', {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              model: 'google/gemini-2.5-flash',
+              messages: [
+                { role: 'system', content: 'Extract ONLY official recent news items from the text. Return ONLY via tool call.' },
+                { role: 'user', content: `Extract official recent news for ${result.name} from ${result.domain}:\n\n${content}` },
+              ],
+              tools: [{
+                type: 'function',
+                function: {
+                  name: 'return_recent_news',
+                  parameters: {
+                    type: 'object',
+                    properties: {
+                      recent_news: {
+                        type: 'array',
+                        items: {
+                          type: 'object',
+                          properties: {
+                            title: { type: 'string' },
+                            url: { type: 'string' },
+                            published_at: { type: 'string' },
+                            source: { type: 'string' },
+                          },
+                          required: ['title'],
+                          additionalProperties: false,
+                        },
+                      },
+                    },
+                    required: ['recent_news'],
+                    additionalProperties: false,
+                  },
+                },
+              }],
+              tool_choice: { type: 'function', function: { name: 'return_recent_news' } },
+            }),
+          }, 12000);
+
+          if (extractRes.ok) {
+            const extractData = await parseJsonResponse(extractRes);
+            const toolCall = extractData.choices?.[0]?.message?.tool_calls?.[0];
+            if (toolCall) {
+              const parsed = JSON.parse(toolCall.function.arguments);
+              if (parsed.recent_news?.length) {
+                result.newsArticles = selectRecentNewsArticles(parsed.recent_news, { maxAgeMonths: 15, includeUndated: true });
+                console.log(`[enrich] Official-site news fallback: ${result.newsArticles.length} recent news articles`);
+              }
+            }
+          }
+        }
+      } catch (e) {
+        console.warn('[enrich] Perplexity official-site news fallback failed:', e);
       }
     }
 
@@ -1470,10 +1619,12 @@ NE PAS décrire l'entreprise. Être direct, actionnable, utile pour un cabinet d
     console.log(`[enrich] Done in ${Date.now() - startTime}ms. Domain: ${result.domain}, Jobs: ${result.openRoles.length}, Insights: ${result.insights.length}`);
 
     // Cache result for 24h
-    await serviceClient.from('enrichment_cache').upsert(
-      { cache_key: cacheKey, result, created_at: new Date().toISOString() },
-      { onConflict: 'cache_key' }
-    ).then(() => console.log('[enrich] Cached')).catch((e: any) => console.warn('[enrich] Cache write failed:', e));
+    await serviceClient.from('enrichment_cache').delete().eq('cache_key', cacheKey);
+    await serviceClient.from('enrichment_cache').insert({
+      cache_key: cacheKey,
+      result,
+      created_at: new Date().toISOString(),
+    }).then(() => console.log('[enrich] Cached')).catch((e: any) => console.warn('[enrich] Cache write failed:', e));
 
     return new Response(JSON.stringify({ success: true, company: result }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
