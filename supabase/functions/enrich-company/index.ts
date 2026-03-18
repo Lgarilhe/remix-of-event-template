@@ -1459,17 +1459,16 @@ Sois factuel, ne spécule pas. Si une info n'est pas disponible, dis "non dispon
       }
     }
 
-    if (!result.newsArticles.length && result.domain && PERPLEXITY_API_KEY && LOVABLE_API_KEY && Date.now() - startTime < 45000) {
+    if (!result.newsArticles.length && PERPLEXITY_API_KEY && LOVABLE_API_KEY && Date.now() - startTime < 45000) {
       try {
-        console.log('[enrich] Perplexity official-site news fallback for:', result.domain);
+        console.log('[enrich] Perplexity broad news fallback for:', result.name);
         const { content } = await perplexitySearch(
           PERPLEXITY_API_KEY,
-          `Liste UNIQUEMENT les 5 actualités les plus récentes publiées sur le site officiel ${result.domain} pour l'entreprise "${result.name}". Exclue totalement les médias tiers, agrégateurs et reprises de presse. Pour chaque actualité, donne le titre, la date (exacte ou approximative), l'URL complète sur ${result.domain} et la source.`,
+          `Quelles sont les 5 à 8 actualités les plus récentes et importantes concernant l'entreprise "${result.name}"${result.domain ? ` (${result.domain})` : ''} ? Cherche dans la presse économique et tech francophone ET internationale : Les Echos, Le Figaro, BFM Business, L'Usine Digitale, Maddyness, TechCrunch, Reuters, Bloomberg, Le Monde, etc. Pour chaque actualité : titre de l'article, nom du média source, date exacte (format YYYY-MM-DD), URL complète. UNIQUEMENT des actualités de 2025 ou 2026. Si aucune actualité récente n'existe, cherche les plus récentes disponibles mais indique la date.`,
           {
-            timeoutMs: 12000,
+            timeoutMs: 15000,
             model: 'sonar-pro',
-            domainFilter: [result.domain],
-            recencyFilter: 'year',
+            recencyFilter: 'month',
           },
         );
 
