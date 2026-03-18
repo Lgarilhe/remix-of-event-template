@@ -1594,7 +1594,7 @@ NE PAS décrire l'entreprise. Être direct, actionnable, utile pour un cabinet d
             }],
             tool_choice: { type: 'function', function: { name: 'return_insights' } },
           }),
-        }, 12000);
+        }, insightsTimeout);
 
         if (aiRes.ok) {
           const aiData = await parseJsonResponse(aiRes);
