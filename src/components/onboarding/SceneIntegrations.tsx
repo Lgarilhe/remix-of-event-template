@@ -2,10 +2,8 @@ import React, { useState, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { ArrowLeft, ArrowRight, Check, Loader2, ExternalLink, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { useLinkedInAccounts } from '@/contexts/LinkedInAccountsContext';
 import { useOrganization } from '@/hooks/useOrganization';
-import { useOrganizationIntegrations } from '@/hooks/useOrganizationIntegrations';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { toast } from 'sonner';
 
