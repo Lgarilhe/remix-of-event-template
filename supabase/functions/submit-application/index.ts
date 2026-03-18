@@ -1,4 +1,5 @@
 // Deno.serve used directly
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -61,6 +62,33 @@ Deno.serve(async (req) => {
     }
 
     const data: ApplicationData = await req.json();
+
+    // ── Rate Limiting by IP + email hash ──
+    const supabaseAdmin = createClient(
+      Deno.env.get('SUPABASE_URL')!,
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
+    );
+
+    // Use email as rate limit key (hash it for privacy)
+    const emailKey = data.email ? `submit_app_${data.email.trim().toLowerCase()}` : null;
+    const ipKey = `submit_app_ip_${req.headers.get('x-forwarded-for') || req.headers.get('cf-connecting-ip') || 'unknown'}`;
+
+    // Check rate limit: max 3 submissions per email per hour, max 10 per IP per hour
+    for (const [key, maxReq] of [[emailKey, 3], [ipKey, 10]] as const) {
+      if (!key) continue;
+      const { data: allowed } = await supabaseAdmin.rpc('check_rate_limit', {
+        p_user_id: '00000000-0000-0000-0000-000000000000', // anonymous placeholder
+        p_action: key,
+        p_max_requests: maxReq,
+        p_window_seconds: 3600,
+      });
+      if (allowed === false) {
+        return new Response(JSON.stringify({ success: false, error: 'Trop de candidatures envoyées. Réessayez plus tard.' }), {
+          status: 429,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+    }
 
     // ── Input Validation ──
     if (!data.name || typeof data.name !== 'string' || data.name.trim().length < 2 || data.name.length > 100) {

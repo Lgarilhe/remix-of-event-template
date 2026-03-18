@@ -726,8 +726,8 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Extract Apollo org ID for downstream people/job searches
-    const apolloOrgId: string | null = apolloOrg?.id || apolloOrg?.organization_id || null;
+    // Extract Apollo org ID for downstream people/job searches (let: reset on cross-validation purge)
+    let apolloOrgId: string | null = apolloOrg?.id || apolloOrg?.organization_id || null;
 
     if (apolloOrg) {
       const apolloDomain = normalizeDomain(apolloOrg.primary_domain) || normalizeDomain(apolloOrg.website_url);
@@ -825,6 +825,7 @@ Deno.serve(async (req) => {
                 result.keywords = [];
                 result.jobPostingsCount = null;
                 apolloOrg = null; // prevent downstream Apollo usage (people, jobs)
+                apolloOrgId = null; // reset org ID to prevent stale references in parallel tasks
               }
             }
           } catch (e) {
