@@ -1,0 +1,1 @@
+DELETE FROM enrichment_cache WHERE created_at > now() - interval '7 days';

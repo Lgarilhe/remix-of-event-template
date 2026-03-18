@@ -1362,13 +1362,13 @@ Deno.serve(async (req) => {
         const companyHint = result.domain ? ` (${result.domain})` : '';
         const { content } = await perplexitySearch(
           PERPLEXITY_API_KEY,
-          `Donne-moi des informations factuelles et RÉCENTES sur l'entreprise "${result.name}"${companyHint} en France :
+      `Donne-moi des informations factuelles et RÉCENTES sur l'entreprise "${result.name}"${companyHint} en France :
 1. Levées de fonds : liste les tours de financement connus (date, type comme Seed/Series A/B/C, montant en euros, investisseurs principaux). S'il n'y a pas eu de levée, dis-le clairement.
-2. Actualités récentes (2025-2026) : les 5-8 articles ou événements les PLUS RÉCENTS (titre, source, date précise, URL si possible). Exclue toute actualité antérieure à 2025 sauf s'il n'existe vraiment rien de plus récent.
+2. Actualités récentes : les 5-8 articles ou événements les PLUS RÉCENTS et IMPORTANTS concernant "${result.name}" (nouveaux produits, partenariats, nominations, levées de fonds, résultats, acquisitions, événements majeurs). Pour chaque actu donne : titre, source (ex: Les Echos, BFM, TechCrunch, L'Usine Digitale, Maddyness, etc.), date précise au format YYYY-MM-DD, URL complète. Cherche dans la presse tech, économique et généraliste. PRIORITÉ ABSOLUE aux actualités de 2025 et 2026.
 3. Répartition des équipes : estimation du nombre d'employés par département (engineering, sales, marketing, product, HR, finance, operations, etc.) si disponible.
 4. Nombre de filiales ou entités liées.
 Sois factuel, ne spécule pas. Si une info n'est pas disponible, dis "non disponible".`,
-          { timeoutMs: 12000, model: 'sonar-pro', recencyFilter: 'year' },
+          { timeoutMs: 15000, model: 'sonar-pro', recencyFilter: 'month' },
         );
 
         if (content) {
@@ -1459,17 +1459,16 @@ Sois factuel, ne spécule pas. Si une info n'est pas disponible, dis "non dispon
       }
     }
 
-    if (!result.newsArticles.length && result.domain && PERPLEXITY_API_KEY && LOVABLE_API_KEY && Date.now() - startTime < 45000) {
+    if (!result.newsArticles.length && PERPLEXITY_API_KEY && LOVABLE_API_KEY && Date.now() - startTime < 45000) {
       try {
-        console.log('[enrich] Perplexity official-site news fallback for:', result.domain);
+        console.log('[enrich] Perplexity broad news fallback for:', result.name);
         const { content } = await perplexitySearch(
           PERPLEXITY_API_KEY,
-          `Liste UNIQUEMENT les 5 actualités les plus récentes publiées sur le site officiel ${result.domain} pour l'entreprise "${result.name}". Exclue totalement les médias tiers, agrégateurs et reprises de presse. Pour chaque actualité, donne le titre, la date (exacte ou approximative), l'URL complète sur ${result.domain} et la source.`,
+          `Quelles sont les 5 à 8 actualités les plus récentes et importantes concernant l'entreprise "${result.name}"${result.domain ? ` (${result.domain})` : ''} ? Cherche dans la presse économique et tech francophone ET internationale : Les Echos, Le Figaro, BFM Business, L'Usine Digitale, Maddyness, TechCrunch, Reuters, Bloomberg, Le Monde, etc. Pour chaque actualité : titre de l'article, nom du média source, date exacte (format YYYY-MM-DD), URL complète. UNIQUEMENT des actualités de 2025 ou 2026. Si aucune actualité récente n'existe, cherche les plus récentes disponibles mais indique la date.`,
           {
-            timeoutMs: 12000,
+            timeoutMs: 15000,
             model: 'sonar-pro',
-            domainFilter: [result.domain],
-            recencyFilter: 'year',
+            recencyFilter: 'month',
           },
         );
 
@@ -1480,8 +1479,8 @@ Sois factuel, ne spécule pas. Si une info n'est pas disponible, dis "non dispon
             body: JSON.stringify({
               model: 'google/gemini-2.5-flash',
               messages: [
-                { role: 'system', content: 'Extract ONLY official recent news items from the text. Return ONLY via tool call.' },
-                { role: 'user', content: `Extract official recent news for ${result.name} from ${result.domain}:\n\n${content}` },
+                { role: 'system', content: 'Extract recent news articles about this company from the text. Each article MUST have a title, source media name, published_at date in YYYY-MM-DD format, and URL. Return ONLY via tool call. Prioritize the most recent and impactful news (funding, partnerships, product launches, nominations).' },
+                { role: 'user', content: `Extract all recent news articles about ${result.name}:\n\n${content}` },
               ],
               tools: [{
                 type: 'function',
