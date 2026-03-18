@@ -451,9 +451,32 @@ export const IntegrationsSettings = () => {
 
   const values = (integrations || {}) as Record<string, any>;
 
+  // Only show API-key integrations (Notion, Airtable, Calendly, Aircall) if already configured
+  const visibleIntegrations = INTEGRATIONS.filter(config => {
+    // LinkedIn always visible
+    if (config.hostedAuth) return true;
+    // Show if already connected/configured for this org
+    return !!values[config.connectedKey];
+  });
+
+  // Check if there are hidden integrations to offer an "Add integration" option
+  const hiddenIntegrations = INTEGRATIONS.filter(config => 
+    !config.hostedAuth && !values[config.connectedKey]
+  );
+
+  const [showAddMenu, setShowAddMenu] = useState(false);
+  const [manuallyAdded, setManuallyAdded] = useState<Set<string>>(new Set());
+
+  const allVisible = [
+    ...visibleIntegrations,
+    ...INTEGRATIONS.filter(c => manuallyAdded.has(c.id) && !visibleIntegrations.some(v => v.id === c.id)),
+  ];
+
+  const remainingHidden = hiddenIntegrations.filter(c => !manuallyAdded.has(c.id));
+
   return (
     <div className="space-y-3">
-      {INTEGRATIONS.map(config =>
+      {allVisible.map(config =>
         config.hostedAuth ? (
           <LinkedInHostedAuthCard
             key={config.id}
@@ -471,6 +494,40 @@ export const IntegrationsSettings = () => {
             isSaving={isUpdating}
           />
         )
+      )}
+
+      {/* Add integration button */}
+      {remainingHidden.length > 0 && (
+        <div className="relative">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setShowAddMenu(!showAddMenu)}
+            className="w-full border-dashed border-2 text-muted-foreground hover:text-foreground"
+          >
+            + Ajouter une intégration
+          </Button>
+          {showAddMenu && (
+            <div className="absolute top-full left-0 right-0 mt-1 bg-background border rounded-lg shadow-lg z-10 p-2 space-y-1">
+              {remainingHidden.map(config => (
+                <button
+                  key={config.id}
+                  onClick={() => {
+                    setManuallyAdded(prev => new Set(prev).add(config.id));
+                    setShowAddMenu(false);
+                  }}
+                  className="w-full flex items-center gap-3 p-2 rounded-md hover:bg-muted text-left"
+                >
+                  <img src={config.logoSrc} alt={config.name} className="w-6 h-6 object-contain" />
+                  <div>
+                    <p className="text-sm font-medium">{config.name}</p>
+                    <p className="text-xs text-muted-foreground">{config.description}</p>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
       )}
     </div>
   );
