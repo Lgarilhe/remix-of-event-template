@@ -1612,8 +1612,8 @@ NE PAS décrire l'entreprise. Être direct, actionnable, utile pour un cabinet d
       } catch (e) {
         console.warn('[enrich] AI insights failed:', e);
       }
-    } else if (timeRemaining <= 8000) {
-      console.log(`[enrich] Skipping AI insights — only ${timeRemaining}ms remaining`);
+    } else if (insightsTimeout <= 5000) {
+      console.log(`[enrich] Skipping AI insights — only ${insightsTimeout}ms remaining (elapsed: ${elapsed}ms)`);
     }
 
     console.log(`[enrich] Done in ${Date.now() - startTime}ms. Domain: ${result.domain}, Jobs: ${result.openRoles.length}, Insights: ${result.insights.length}`);
