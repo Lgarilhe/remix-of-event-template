@@ -11,10 +11,6 @@ import { toast } from 'sonner';
 
 import integrationsIcon from '@/assets/icon-integrations-3d.png';
 import linkedinLogo from '@/assets/linkedin-logo.png';
-import notionLogo from '@/assets/notion-logo.png';
-import calendlyLogo from '@/assets/calendly-logo.png';
-import airtableLogo from '@/assets/airtable-logo.svg';
-import aircallLogo from '@/assets/aircall-logo.png';
 
 interface Props {
   onNext: () => void;
