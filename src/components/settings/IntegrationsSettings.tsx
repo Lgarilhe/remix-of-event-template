@@ -440,6 +440,8 @@ const IntegrationCard = ({
  * ────────────────────────────────────────────── */
 export const IntegrationsSettings = () => {
   const { integrations, isLoading, updateIntegration, isUpdating } = useOrganizationIntegrations();
+  const [showAddMenu, setShowAddMenu] = useState(false);
+  const [manuallyAdded, setManuallyAdded] = useState<Set<string>>(new Set());
 
   if (isLoading) {
     return (
@@ -453,19 +455,13 @@ export const IntegrationsSettings = () => {
 
   // Only show API-key integrations (Notion, Airtable, Calendly, Aircall) if already configured
   const visibleIntegrations = INTEGRATIONS.filter(config => {
-    // LinkedIn always visible
     if (config.hostedAuth) return true;
-    // Show if already connected/configured for this org
     return !!values[config.connectedKey];
   });
 
-  // Check if there are hidden integrations to offer an "Add integration" option
   const hiddenIntegrations = INTEGRATIONS.filter(config => 
     !config.hostedAuth && !values[config.connectedKey]
   );
-
-  const [showAddMenu, setShowAddMenu] = useState(false);
-  const [manuallyAdded, setManuallyAdded] = useState<Set<string>>(new Set());
 
   const allVisible = [
     ...visibleIntegrations,
