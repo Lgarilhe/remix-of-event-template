@@ -1459,6 +1459,78 @@ Sois factuel, ne spécule pas. Si une info n'est pas disponible, dis "non dispon
       }
     }
 
+    if (!result.newsArticles.length && result.domain && PERPLEXITY_API_KEY && LOVABLE_API_KEY && Date.now() - startTime < 45000) {
+      try {
+        console.log('[enrich] Perplexity official-site news fallback for:', result.domain);
+        const { content } = await perplexitySearch(
+          PERPLEXITY_API_KEY,
+          `Liste UNIQUEMENT les 5 actualités les plus récentes publiées sur le site officiel ${result.domain} pour l'entreprise "${result.name}". Exclue totalement les médias tiers, agrégateurs et reprises de presse. Pour chaque actualité, donne le titre, la date (exacte ou approximative), l'URL complète sur ${result.domain} et la source.`,
+          {
+            timeoutMs: 12000,
+            model: 'sonar-pro',
+            domainFilter: [result.domain],
+            recencyFilter: 'year',
+          },
+        );
+
+        if (content) {
+          const extractRes = await fetchWithTimeout('https://ai.gateway.lovable.dev/v1/chat/completions', {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              model: 'google/gemini-2.5-flash',
+              messages: [
+                { role: 'system', content: 'Extract ONLY official recent news items from the text. Return ONLY via tool call.' },
+                { role: 'user', content: `Extract official recent news for ${result.name} from ${result.domain}:\n\n${content}` },
+              ],
+              tools: [{
+                type: 'function',
+                function: {
+                  name: 'return_recent_news',
+                  parameters: {
+                    type: 'object',
+                    properties: {
+                      recent_news: {
+                        type: 'array',
+                        items: {
+                          type: 'object',
+                          properties: {
+                            title: { type: 'string' },
+                            url: { type: 'string' },
+                            published_at: { type: 'string' },
+                            source: { type: 'string' },
+                          },
+                          required: ['title'],
+                          additionalProperties: false,
+                        },
+                      },
+                    },
+                    required: ['recent_news'],
+                    additionalProperties: false,
+                  },
+                },
+              }],
+              tool_choice: { type: 'function', function: { name: 'return_recent_news' } },
+            }),
+          }, 12000);
+
+          if (extractRes.ok) {
+            const extractData = await parseJsonResponse(extractRes);
+            const toolCall = extractData.choices?.[0]?.message?.tool_calls?.[0];
+            if (toolCall) {
+              const parsed = JSON.parse(toolCall.function.arguments);
+              if (parsed.recent_news?.length) {
+                result.newsArticles = selectRecentNewsArticles(parsed.recent_news, { maxAgeMonths: 15, includeUndated: true });
+                console.log(`[enrich] Official-site news fallback: ${result.newsArticles.length} recent news articles`);
+              }
+            }
+          }
+        }
+      } catch (e) {
+        console.warn('[enrich] Perplexity official-site news fallback failed:', e);
+      }
+    }
+
     // ═══════════════════════════════════════════════════════
     // PHASE 3 — AI Insights
     // ═══════════════════════════════════════════════════════
