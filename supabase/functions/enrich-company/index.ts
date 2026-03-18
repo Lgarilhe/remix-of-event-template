@@ -1441,8 +1441,8 @@ Sois factuel, ne spécule pas. Si une info n'est pas disponible, dis "non dispon
                 console.log(`[enrich] Perplexity fallback: ${parsed.funding_events.length} funding events`);
               }
               if (needsNewsData && parsed.news_articles?.length) {
-                result.newsArticles = parsed.news_articles.slice(0, 5);
-                console.log(`[enrich] Perplexity fallback: ${result.newsArticles.length} news articles`);
+                result.newsArticles = selectRecentNewsArticles(parsed.news_articles, { maxAgeMonths: 15, includeUndated: true });
+                console.log(`[enrich] Perplexity fallback: ${result.newsArticles.length} recent news articles`);
               }
               if (needsHeadcountData && parsed.departmental_headcount && Object.keys(parsed.departmental_headcount).length >= 2) {
                 result.departmentalHeadcount = parsed.departmental_headcount;
