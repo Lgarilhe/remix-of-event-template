@@ -41,51 +41,6 @@ const INTEGRATIONS: IntegrationDef[] = [
     essential: true,
     hostedAuth: true,
   },
-  {
-    id: 'notion',
-    name: 'Notion',
-    description: 'Synchronisation des postes, candidats et shortlists.',
-    logo: notionLogo,
-    connectedKey: 'notion_connected',
-    fields: [
-      { key: 'notion_api_key', label: 'Clé API', placeholder: 'ntn_...', secret: true },
-      { key: 'notion_postes_db_id', label: 'ID base Postes', placeholder: 'xxxxxxxx-xxxx-...' },
-      { key: 'notion_candidats_db_id', label: 'ID base Candidats', placeholder: 'xxxxxxxx-xxxx-...' },
-      { key: 'notion_shortlist_db_id', label: 'ID base Shortlist', placeholder: 'xxxxxxxx-xxxx-...' },
-    ],
-  },
-  {
-    id: 'calendly',
-    name: 'Calendly',
-    description: 'Synchronisation automatique des rendez-vous.',
-    logo: calendlyLogo,
-    connectedKey: 'calendly_connected',
-    fields: [
-      { key: 'calendly_api_key', label: 'Clé API', placeholder: 'eyJ...', secret: true },
-    ],
-  },
-  {
-    id: 'airtable',
-    name: 'Airtable',
-    description: 'Données candidats, placements et KPIs.',
-    logo: airtableLogo,
-    connectedKey: 'airtable_connected',
-    fields: [
-      { key: 'airtable_api_key', label: 'Clé API', placeholder: 'pat...', secret: true },
-      { key: 'airtable_base_id', label: 'ID Base', placeholder: 'app...' },
-    ],
-  },
-  {
-    id: 'aircall',
-    name: 'Aircall',
-    description: 'Suivi des appels et matching candidats.',
-    logo: aircallLogo,
-    connectedKey: 'aircall_connected',
-    fields: [
-      { key: 'aircall_api_id', label: 'API ID', placeholder: 'xxx...' },
-      { key: 'aircall_api_token', label: 'API Token', placeholder: 'xxx...', secret: true },
-    ],
-  },
 ];
 
 export const SceneIntegrations: React.FC<Props> = ({ onNext, onBack }) => {
