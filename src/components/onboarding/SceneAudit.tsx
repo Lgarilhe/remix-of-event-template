@@ -78,7 +78,6 @@ export const SceneAudit: React.FC<Props> = ({ companyData, onNext, onBack }) => 
   const [categories, setCategories] = useState<Category[]>([]);
   const [quickWins, setQuickWins] = useState<string[]>([]);
   const bubblesEndRef = useRef<HTMLDivElement>(null);
-  const hasStarted = useRef(false);
   const isMounted = useRef(true);
 
   useEffect(() => {
@@ -89,11 +88,11 @@ export const SceneAudit: React.FC<Props> = ({ companyData, onNext, onBack }) => 
   const apiDone = useRef(false);
   const apiResult = useRef<{ score: number; categories: Category[]; quickWins: string[] } | null>(null);
 
-  // Auto-start scan
+  // Auto-start scan — reset refs on each mount
   useEffect(() => {
-    if (hasStarted.current) return;
-    hasStarted.current = true;
     isMounted.current = true;
+    apiDone.current = false;
+    apiResult.current = null;
 
     // Animate sources and messages
     SCAN_SOURCES.forEach((_, i) => {
@@ -166,11 +165,20 @@ export const SceneAudit: React.FC<Props> = ({ companyData, onNext, onBack }) => 
 
     // #9: Poll for API completion — show results as soon as both API and minimum animation are done
     const MIN_ANIM_TIME = 2000; // minimum 2s for the scan to feel real
+    const MAX_WAIT_TIME = 60000; // max 60s before showing error
     const startTime = Date.now();
     const pollInterval = setInterval(() => {
+      const elapsed = Date.now() - startTime;
+      if (elapsed > MAX_WAIT_TIME && !apiDone.current) {
+        // Timeout — show error
+        clearInterval(pollInterval);
+        if (isMounted.current) {
+          setPhase('error');
+        }
+        return;
+      }
       if (!apiDone.current) return;
       clearInterval(pollInterval);
-      const elapsed = Date.now() - startTime;
       const delay = Math.max(0, MIN_ANIM_TIME - elapsed);
       setTimeout(() => {
         if (!isMounted.current) return;
