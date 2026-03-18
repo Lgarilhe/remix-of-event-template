@@ -165,11 +165,20 @@ export const SceneAudit: React.FC<Props> = ({ companyData, onNext, onBack }) => 
 
     // #9: Poll for API completion — show results as soon as both API and minimum animation are done
     const MIN_ANIM_TIME = 2000; // minimum 2s for the scan to feel real
+    const MAX_WAIT_TIME = 60000; // max 60s before showing error
     const startTime = Date.now();
     const pollInterval = setInterval(() => {
+      const elapsed = Date.now() - startTime;
+      if (elapsed > MAX_WAIT_TIME && !apiDone.current) {
+        // Timeout — show error
+        clearInterval(pollInterval);
+        if (isMounted.current) {
+          setPhase('error');
+        }
+        return;
+      }
       if (!apiDone.current) return;
       clearInterval(pollInterval);
-      const elapsed = Date.now() - startTime;
       const delay = Math.max(0, MIN_ANIM_TIME - elapsed);
       setTimeout(() => {
         if (!isMounted.current) return;
