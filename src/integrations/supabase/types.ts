@@ -1540,6 +1540,90 @@ export type Database = {
           },
         ]
       }
+      connector_instances: {
+        Row: {
+          config: Json | null
+          connector_id: string
+          created_at: string
+          error_message: string | null
+          id: string
+          last_sync_at: string | null
+          organization_id: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          config?: Json | null
+          connector_id: string
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          last_sync_at?: string | null
+          organization_id: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          config?: Json | null
+          connector_id?: string
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          last_sync_at?: string | null
+          organization_id?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "connector_instances_connector_id_fkey"
+            columns: ["connector_id"]
+            isOneToOne: false
+            referencedRelation: "connector_registry"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "connector_instances_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      connector_registry: {
+        Row: {
+          category: string
+          config_schema: Json | null
+          created_at: string
+          description: string | null
+          icon_url: string | null
+          id: string
+          is_active: boolean
+          name: string
+        }
+        Insert: {
+          category?: string
+          config_schema?: Json | null
+          created_at?: string
+          description?: string | null
+          icon_url?: string | null
+          id: string
+          is_active?: boolean
+          name: string
+        }
+        Update: {
+          category?: string
+          config_schema?: Json | null
+          created_at?: string
+          description?: string | null
+          icon_url?: string | null
+          id?: string
+          is_active?: boolean
+          name?: string
+        }
+        Relationships: []
+      }
       contact_submissions: {
         Row: {
           company: string | null
@@ -1957,6 +2041,68 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      knowledge_chunks: {
+        Row: {
+          chunk_type: string
+          content: string
+          content_hash: string
+          created_at: string
+          embedding: string | null
+          entity_id: string
+          entity_type: string
+          expires_at: string | null
+          id: string
+          metadata: Json | null
+          organization_id: string
+          source_connector_id: string | null
+          source_id: string | null
+          source_table: string | null
+          updated_at: string
+        }
+        Insert: {
+          chunk_type: string
+          content: string
+          content_hash: string
+          created_at?: string
+          embedding?: string | null
+          entity_id: string
+          entity_type: string
+          expires_at?: string | null
+          id?: string
+          metadata?: Json | null
+          organization_id: string
+          source_connector_id?: string | null
+          source_id?: string | null
+          source_table?: string | null
+          updated_at?: string
+        }
+        Update: {
+          chunk_type?: string
+          content?: string
+          content_hash?: string
+          created_at?: string
+          embedding?: string | null
+          entity_id?: string
+          entity_type?: string
+          expires_at?: string | null
+          id?: string
+          metadata?: Json | null
+          organization_id?: string
+          source_connector_id?: string | null
+          source_id?: string | null
+          source_table?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "knowledge_chunks_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       match_scores: {
         Row: {
@@ -3788,6 +3934,39 @@ export type Database = {
         Returns: boolean
       }
       release_sequence_lock: { Args: { p_run_id: string }; Returns: undefined }
+      retrieve_context: {
+        Args: {
+          p_chunk_types?: string[]
+          p_entity_id: string
+          p_entity_type: string
+          p_limit?: number
+          p_org_id: string
+          p_query_embedding: string
+        }
+        Returns: {
+          chunk_type: string
+          content: string
+          id: string
+          metadata: Json
+          similarity: number
+        }[]
+      }
+      retrieve_context_multi: {
+        Args: {
+          p_chunk_types?: string[]
+          p_entity_ids: string[]
+          p_limit?: number
+          p_org_id: string
+          p_query_embedding: string
+        }
+        Returns: {
+          chunk_type: string
+          content: string
+          id: string
+          metadata: Json
+          similarity: number
+        }[]
+      }
       unaccent: { Args: { "": string }; Returns: string }
     }
     Enums: {
