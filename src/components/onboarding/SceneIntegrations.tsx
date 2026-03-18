@@ -95,9 +95,9 @@ export const SceneIntegrations: React.FC<Props> = ({ onNext, onBack }) => {
         >
           04 — Vos outils
         </span>
-        <h2 className="font-editorial italic text-3xl md:text-4xl">Connectez vos outils</h2>
+        <h2 className="font-editorial italic text-3xl md:text-4xl">Connectez LinkedIn</h2>
         <p className="text-muted-foreground text-sm">
-          Un clic pour tout brancher. Vous pourrez reconfigurer à tout moment dans les paramètres.
+          Essentiel pour le sourcing et la prospection. D'autres intégrations (ATS, CRM, etc.) sont disponibles dans les paramètres.
         </p>
       </div>
 
