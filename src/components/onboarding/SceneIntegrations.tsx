@@ -85,25 +85,7 @@ export const SceneIntegrations: React.FC<Props> = ({ onNext, onBack }) => {
     try { await reloadLinkedIn(); } finally { setRefreshingLinkedIn(false); }
   }, [reloadLinkedIn]);
 
-  const handleFieldSave = async (def: IntegrationDef) => {
-    if (!def.fields || !def.connectedKey) return;
-    setConnectingId(def.id);
-    try {
-      const updates: Record<string, any> = { [def.connectedKey]: true };
-      def.fields.forEach((f) => {
-        const val = fieldValues[f.key];
-        if (val) updates[f.key] = val;
-      });
-      await updateIntegration(updates);
-      setConnectedIds((prev) => new Set(prev).add(def.id));
-      setExpandedId(null);
-      toast.success(`${def.name} connecté !`);
-    } catch {
-      toast.error(`Erreur lors de la connexion de ${def.name}`);
-    } finally {
-      setConnectingId(null);
-    }
-  };
+  // handleFieldSave is no longer needed — only LinkedIn is shown in onboarding
 
   return (
     <div className="w-full max-w-lg mx-auto flex flex-col gap-5">
