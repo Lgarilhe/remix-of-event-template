@@ -5,27 +5,6 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-// ── fetchWithTimeout (KONEKT pattern §5) ──
-function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timer));
-}
-
-// ── Sanitize suggestion text (strip dashes, superlatifs, trim) ──
-const SUPERLATIVES_RE = /\b(exceptionnel(?:le)?|incroyable|extrêmement|parfaitement|impressionnant(?:e)?|remarquable|extraordinaire|formidable|a retenu mon attention)\b/gi;
-
-const sanitizeSuggestion = (text: string): string => {
-  let cleaned = text;
-  // Strip leading dashes / bullets
-  cleaned = cleaned.replace(/^[-–—•]\s*/gm, '');
-  // Strip common superlatifs / flatterie
-  cleaned = cleaned.replace(SUPERLATIVES_RE, '');
-  // Collapse double spaces and trim
-  cleaned = cleaned.replace(/\s{2,}/g, ' ').trim();
-  return cleaned;
-};
-
 interface Message {
   text: string;
   is_sender: boolean;
@@ -121,8 +100,6 @@ interface ChatContext {
   candidateProfileUrl?: string;
   // Candidate name for Calendly pre-fill
   candidateName?: string;
-  // Candidate ID for RAG context retrieval
-  candidateId?: string;
 }
 
 // Format salary info for display
@@ -331,43 +308,6 @@ const buildEnhancedProfileContext = (context: ChatContext): string => {
   return profileContext;
 };
 
-// ── Fetch RAG context from retrieve-context edge function ──
-const fetchRAGContext = async (candidateId: string, query: string, organizationId: string): Promise<string | null> => {
-  try {
-    const supabaseUrl = Deno.env.get('SUPABASE_URL');
-    const res = await fetchWithTimeout(`${supabaseUrl}/functions/v1/retrieve-context`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${Deno.env.get('SUPABASE_ANON_KEY')}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        organization_id: organizationId,
-        entity_type: 'candidate',
-        entity_id: candidateId,
-        query: query.substring(0, 2000),
-        chunk_types: ['note', 'call_transcript', 'evaluation', 'job_context', 'conversation'],
-        limit: 8,
-      }),
-    }, 10000);
-
-    if (!res.ok) {
-      console.warn(`[RAG] retrieve-context returned ${res.status}`);
-      return null;
-    }
-
-    const data = await res.json();
-    if (data.formatted_context && data.total_chunks > 0) {
-      console.log(`[RAG] Injected ${data.total_chunks} chunks for candidate ${candidateId}`);
-      return data.formatted_context;
-    }
-    return null;
-  } catch (err) {
-    console.warn('[RAG] Failed to fetch context (non-blocking):', err);
-    return null;
-  }
-};
-
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -426,20 +366,6 @@ Deno.serve(async (req) => {
 
     // Build enhanced profile context with full data
     const profileContext = buildEnhancedProfileContext(context);
-
-    // ── RAG: fetch enriched context from Knowledge Lake ──
-    // Retrieve org_id for the RAG call
-    const { data: profile } = await svc.from('profiles').select('active_organization_id').eq('user_id', userId).maybeSingle();
-    const organizationId = profile?.active_organization_id;
-
-    let ragSection = '';
-    if (context.candidateId && organizationId) {
-      const candidateQuery = lastMessage.text || context.messages.map(m => m.text).join(' ');
-      const ragContext = await fetchRAGContext(context.candidateId, candidateQuery, organizationId);
-      if (ragContext) {
-        ragSection = `\n\nCONTEXTE ENRICHI (RAG):\n${ragContext}`;
-      }
-    }
 
     // Build enhanced job context
     let jobContext = '';
@@ -542,7 +468,6 @@ PROFIL DU CANDIDAT:
 ${profileContext}
 ${jobContext}
 ${needsInfoContext}
-${ragSection}
 ${availableJobsContext}
 ${calendlyContext}
 ${languageInstruction}
@@ -565,10 +490,6 @@ RÈGLES CRITIQUES POUR LES SUGGESTIONS:
 7. Si le candidat demande des infos et un poste correspond → UTILISE les données du poste
 8. Si des infos manquent → inclure UNE question de qualification dans la réponse détaillée
 9. Utilise le contexte du profil (About, expériences) pour personnaliser le hook
-10. POSTURE: Tu es un connecteur, pas un expert technique. Tes suggestions doivent sonner comme un recruteur humain pragmatique.
-11. INTERDITS dans les suggestions: superlatifs, flatterie, 'a retenu mon attention', 'impressionnant', 'parfaitement', tirets/listes
-12. Si le candidat pose une question factuelle (salaire, remote, etc.) et que l'info est dans le contexte → RÉPONDS FACTUELLEMENT
-13. Si l'info manque → suggère 'Je vérifie ce point et je reviens vers toi' (pas inventer)
 
 Réponds UNIQUEMENT en JSON valide:
 {
@@ -631,15 +552,10 @@ Réponds UNIQUEMENT en JSON valide:
     
     try {
       const result = JSON.parse(content);
-      // Sanitize each suggestion text
-      const sanitizedSuggestions = (result.suggestions || []).map((s: { text: string; type: string }) => ({
-        ...s,
-        text: sanitizeSuggestion(s.text),
-      }));
       return new Response(
         JSON.stringify({ 
           success: true, 
-          suggestions: sanitizedSuggestions,
+          suggestions: result.suggestions || [],
           infoToRequest: infoToRequest.length > 0 ? infoToRequest : undefined,
           detectedLanguage,
         }),
@@ -647,53 +563,7 @@ Réponds UNIQUEMENT en JSON valide:
       );
     } catch (parseError) {
       console.error("JSON parse error:", parseError, "Content:", content);
-
-      // ── Retry once with simplified prompt ──
-      try {
-        console.log('[Retry] Attempting simplified JSON generation...');
-        const retryResponse = await fetchWithTimeout("https://api.anthropic.com/v1/messages", {
-          method: "POST",
-          headers: {
-            "x-api-key": ANTHROPIC_API_KEY,
-            "anthropic-version": "2023-06-01",
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            model: "claude-sonnet-4-6",
-            max_tokens: 300,
-            system: [{ type: "text", text: "Tu es un assistant recruteur tech. Réponds UNIQUEMENT en JSON valide, sans markdown." }],
-            messages: [{
-              role: "user",
-              content: `Génère 3 réponses courtes en JSON valide pour cette conversation LinkedIn avec ${context.recipientName}.\nDernier message: ${lastMessage.text}\n\nFormat EXACT:\n{"suggestions": [{"text": "...", "type": "quick"}, {"text": "...", "type": "standard"}, {"text": "...", "type": "detailed"}]}`
-            }],
-          }),
-        }, 15000);
-
-        if (retryResponse.ok) {
-          const retryData = await retryResponse.json();
-          let retryContent = retryData.content?.[0]?.text || '';
-          retryContent = retryContent.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-          const retryResult = JSON.parse(retryContent);
-          const sanitizedRetry = (retryResult.suggestions || []).map((s: { text: string; type: string }) => ({
-            ...s,
-            text: sanitizeSuggestion(s.text),
-          }));
-          console.log('[Retry] Simplified generation succeeded');
-          return new Response(
-            JSON.stringify({
-              success: true,
-              suggestions: sanitizedRetry,
-              infoToRequest: infoToRequest.length > 0 ? infoToRequest : undefined,
-              detectedLanguage,
-            }),
-            { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-          );
-        }
-      } catch (retryError) {
-        console.warn('[Retry] Simplified generation also failed:', retryError);
-      }
-
-      // Final fallback suggestions
+      // Fallback suggestions
       return new Response(
         JSON.stringify({ 
           success: true,

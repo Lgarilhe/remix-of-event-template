@@ -276,54 +276,6 @@ async function fetchRecentPosts(
   }
 }
 
-// Fetch RAG context for a candidate from the Knowledge Lake via retrieve-context
-async function fetchRAGContext(
-  orgId: string,
-  candidateId: string,
-  jobContextText: string,
-): Promise<string | null> {
-  try {
-    const supabaseUrl = Deno.env.get('SUPABASE_URL');
-    const anonKey = Deno.env.get('SUPABASE_ANON_KEY');
-    if (!supabaseUrl || !anonKey) {
-      console.warn('[generate-outreach-message] Missing SUPABASE_URL or SUPABASE_ANON_KEY for RAG call');
-      return null;
-    }
-
-    const res = await fetchWithTimeout(`${supabaseUrl}/functions/v1/retrieve-context`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${anonKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        organization_id: orgId,
-        entity_type: 'candidate',
-        entity_id: candidateId,
-        query: jobContextText,
-        limit: 15,
-      }),
-    }, 15000);
-
-    if (!res.ok) {
-      console.warn(`[generate-outreach-message] retrieve-context returned ${res.status}`);
-      return null;
-    }
-
-    const data = await res.json();
-    if (data?.success && data?.total_chunks > 0 && data?.formatted_context) {
-      console.log(`[generate-outreach-message] RAG returned ${data.total_chunks} chunks`);
-      return data.formatted_context as string;
-    }
-
-    console.warn('[generate-outreach-message] RAG empty/error, falling back to legacy context');
-    return null;
-  } catch (err) {
-    console.warn('[generate-outreach-message] RAG empty/error, falling back to legacy context', err);
-    return null;
-  }
-}
-
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -350,7 +302,7 @@ Deno.serve(async (req) => {
     if (allowed === false) {
       return new Response(JSON.stringify({ error: 'Rate limit exceeded' }), { status: 429, headers: corsHeaders });
     }
-    const { profile, job, tone = "professional", senderName, candidateStatus = "to_evaluate", accountId, profileId, candidateId, candidateHistory, customInstructions, calendlyLink, candidateLinkedInUrl } = await req.json() as {
+    const { profile, job, tone = "professional", senderName, candidateStatus = "to_evaluate", accountId, profileId, candidateHistory, customInstructions, calendlyLink, candidateLinkedInUrl } = await req.json() as {
       profile: ProfileData;
       job: JobData;
       tone?: "professional" | "casual" | "enthusiastic";
@@ -358,7 +310,6 @@ Deno.serve(async (req) => {
       candidateStatus?: CandidateStatus;
       accountId?: string;
       profileId?: string;
-      candidateId?: string;
       candidateHistory?: CandidateHistoryData | null;
       customInstructions?: string;
       calendlyLink?: string;
@@ -398,21 +349,10 @@ Deno.serve(async (req) => {
       throw new Error("Profile and job data are required");
     }
 
-    // Build job context text for RAG query
-    const jobContextText = `${job.title} ${job.skills?.join(' ') || ''} ${job.description?.slice(0, 200) || ''}`;
-
-    // Resolve org ID for RAG call
-    const { data: profileData } = await svc.from('profiles').select('active_organization_id').eq('user_id', userId).maybeSingle();
-    const organizationId = profileData?.active_organization_id;
-
-    // Fetch posts AND RAG context in parallel (non-blocking)
+    // Fetch posts in parallel with prompt building (non-blocking)
     const postsPromise = (accountId && profileId)
       ? fetchRecentPosts(accountId, profileId)
       : Promise.resolve([]);
-
-    const ragPromise = (candidateId && organizationId)
-      ? fetchRAGContext(organizationId, candidateId, jobContextText)
-      : Promise.resolve(null);
 
     // Debug: log accompagnement to verify it's being received
     console.log('[generate-outreach-message] Job accompagnement:', JSON.stringify(job.accompagnement), 'Client:', job.client?.name);
@@ -509,8 +449,8 @@ Tu parles EN TANT QUE recruteur externe/cabinet qui accompagne un client.
 - Tu peux valoriser ta connaissance du client: "Je travaille avec leur CTO"
 - Sois transparent sur ton rôle de cabinet`;
 
-    // Await posts and RAG (fetched in parallel during prompt building above)
-    const [recentPosts, ragContext] = await Promise.all([postsPromise, ragPromise]);
+    // Await posts (fetched in parallel during prompt building above)
+    const recentPosts = await postsPromise;
 
     // Build posts section for the prompt
     const postsSection = recentPosts.length > 0
@@ -641,17 +581,8 @@ ANALYSE OBLIGATOIRE DU "À PROPOS" — EXTRAIS AU MOINS UN ÉLÉMENT:
 → UTILISE l'un de ces éléments dans la PHRASE 1 du message (accroche)
 → NE DIS JAMAIS d'où vient l'info ("dans ton À propos", "tu mentionnes") — cite DIRECTEMENT comme une observation naturelle
 → ADAPTE TON STYLE au style d'écriture du candidat (formel/décontracté, phrases courtes/longues, émojis ou pas)` : ''}
-
-=== POSTURE DU RECRUTEUR (CRITIQUE) ===
-Tu es un CONNECTEUR, pas un expert technique. Tu ne prétends pas comprendre la stack du candidat.
-Tu fais le PONT entre le candidat et l'environnement du poste.
-Exemple CORRECT: 'Le CTO chez Numspot est à fond sur le DDD, je pense que vous pourriez bien matcher'
-Exemple INCORRECT: 'Le DDD et l'ownership, c'est aussi ce qu'on pousse chez Numspot'
-Tu OBSERVES et tu POSES DES QUESTIONS, tu ne démontres pas une expertise que tu n'as pas.
-=== FIN POSTURE ===
-
-${ragContext || `${postsSection}
-${historySection}`}
+${postsSection}
+${historySection}
 
 POSTE À POURVOIR:
 - Titre: ${job.title}

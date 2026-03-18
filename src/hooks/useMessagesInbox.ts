@@ -1074,7 +1074,6 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
           calendlyLink: calendlyLink || undefined,
           candidateProfileUrl: selectedChat.attendees?.[0]?.profile_url || undefined,
           candidateName: getChatDisplayName(selectedChat) || undefined,
-          candidateId: getAttendeeProfileId(selectedChat) || undefined,
         },
       });
 
