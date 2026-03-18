@@ -2990,6 +2990,7 @@ export type Database = {
           invites_accepted: number | null
           invites_sent: number | null
           messages_sent: number | null
+          organization_id: string | null
           profile_visits: number | null
           replies_received: number | null
           sequence_id: string | null
@@ -3001,6 +3002,7 @@ export type Database = {
           invites_accepted?: number | null
           invites_sent?: number | null
           messages_sent?: number | null
+          organization_id?: string | null
           profile_visits?: number | null
           replies_received?: number | null
           sequence_id?: string | null
@@ -3012,11 +3014,19 @@ export type Database = {
           invites_accepted?: number | null
           invites_sent?: number | null
           messages_sent?: number | null
+          organization_id?: string | null
           profile_visits?: number | null
           replies_received?: number | null
           sequence_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "sequence_analytics_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "sequence_analytics_sequence_id_fkey"
             columns: ["sequence_id"]
