@@ -333,6 +333,10 @@ const Settings = () => {
             {activeTab === 'integrations' && isAdmin && (
               <IntegrationsSettings />
             )}
+
+            {activeTab === 'connectors' && isAdmin && (
+              <ConnectorSettings />
+            )}
           </div>
         </div>
       </main>
