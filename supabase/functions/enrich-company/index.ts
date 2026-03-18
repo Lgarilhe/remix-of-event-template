@@ -1479,8 +1479,8 @@ Sois factuel, ne spécule pas. Si une info n'est pas disponible, dis "non dispon
             body: JSON.stringify({
               model: 'google/gemini-2.5-flash',
               messages: [
-                { role: 'system', content: 'Extract ONLY official recent news items from the text. Return ONLY via tool call.' },
-                { role: 'user', content: `Extract official recent news for ${result.name} from ${result.domain}:\n\n${content}` },
+                { role: 'system', content: 'Extract recent news articles about this company from the text. Each article MUST have a title, source media name, published_at date in YYYY-MM-DD format, and URL. Return ONLY via tool call. Prioritize the most recent and impactful news (funding, partnerships, product launches, nominations).' },
+                { role: 'user', content: `Extract all recent news articles about ${result.name}:\n\n${content}` },
               ],
               tools: [{
                 type: 'function',
