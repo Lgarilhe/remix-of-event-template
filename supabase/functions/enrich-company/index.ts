@@ -1547,10 +1547,12 @@ NE PAS décrire l'entreprise. Être direct, actionnable, utile pour un cabinet d
     console.log(`[enrich] Done in ${Date.now() - startTime}ms. Domain: ${result.domain}, Jobs: ${result.openRoles.length}, Insights: ${result.insights.length}`);
 
     // Cache result for 24h
-    await serviceClient.from('enrichment_cache').upsert(
-      { cache_key: cacheKey, result, created_at: new Date().toISOString() },
-      { onConflict: 'cache_key' }
-    ).then(() => console.log('[enrich] Cached')).catch((e: any) => console.warn('[enrich] Cache write failed:', e));
+    await serviceClient.from('enrichment_cache').delete().eq('cache_key', cacheKey);
+    await serviceClient.from('enrichment_cache').insert({
+      cache_key: cacheKey,
+      result,
+      created_at: new Date().toISOString(),
+    }).then(() => console.log('[enrich] Cached')).catch((e: any) => console.warn('[enrich] Cache write failed:', e));
 
     return new Response(JSON.stringify({ success: true, company: result }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
