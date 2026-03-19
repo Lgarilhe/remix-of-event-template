@@ -275,6 +275,44 @@ async function fetchRecentPosts(
     return [];
   }
 }
+// Fetch RAG context for a candidate from the Knowledge Lake
+async function fetchRAGContext(
+  orgId: string,
+  candidateId: string,
+  jobContextText: string,
+): Promise<string | null> {
+  try {
+    const supabaseUrl = Deno.env.get('SUPABASE_URL');
+    const anonKey = Deno.env.get('SUPABASE_ANON_KEY');
+    if (!supabaseUrl || !anonKey) return null;
+
+    const res = await fetchWithTimeout(`${supabaseUrl}/functions/v1/retrieve-context`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${anonKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        organization_id: orgId,
+        entity_type: 'candidate',
+        entity_id: candidateId,
+        query: jobContextText,
+        limit: 15,
+      }),
+    });
+
+    if (!res.ok) {
+      console.warn('[generate-outreach-message] RAG retrieve-context failed:', res.status);
+      return null;
+    }
+
+    const data = await res.json();
+    return data?.formatted_context || null;
+  } catch (err) {
+    console.warn('[generate-outreach-message] RAG error, falling back to legacy:', err);
+    return null;
+  }
+}
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
