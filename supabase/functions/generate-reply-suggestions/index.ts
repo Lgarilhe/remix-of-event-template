@@ -1,5 +1,51 @@
 // Deno.serve used directly
 
+// Timeout wrapper for fetch calls
+function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timer));
+}
+
+// Fetch RAG context for a candidate from the Knowledge Lake
+async function fetchRAGContext(
+  orgId: string,
+  candidateId: string,
+  jobContextText: string,
+): Promise<string | null> {
+  try {
+    const supabaseUrl = Deno.env.get('SUPABASE_URL');
+    const anonKey = Deno.env.get('SUPABASE_ANON_KEY');
+    if (!supabaseUrl || !anonKey) return null;
+
+    const res = await fetchWithTimeout(`${supabaseUrl}/functions/v1/retrieve-context`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${anonKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        organization_id: orgId,
+        entity_type: 'candidate',
+        entity_id: candidateId,
+        query: jobContextText,
+        limit: 15,
+      }),
+    });
+
+    if (!res.ok) {
+      console.warn('[generate-reply-suggestions] RAG retrieve-context failed:', res.status);
+      return null;
+    }
+
+    const data = await res.json();
+    return data?.formatted_context || null;
+  } catch (err) {
+    console.warn('[generate-reply-suggestions] RAG error:', err);
+    return null;
+  }
+}
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
