@@ -517,11 +517,16 @@ Ne propose AUCUNE mission ou opportunité. Propose uniquement de garder le conta
     // Get tone instructions
     const toneInstructions = getToneInstructions(context.tone);
 
+    // Fetch RAG context
+    const candidateId = context.profileData?.currentRole ? (context.recipientName || '').toLowerCase().replace(/\s+/g, '-') : '';
+    const ragContext = (candidateId && orgId) ? await fetchRAGContext(orgId, candidateId, jobContext || '').catch(() => null) : null;
+
     const prompt = `Tu es un recruteur tech expérimenté. Génère 3 suggestions de réponses courtes et naturelles pour cette conversation LinkedIn.
 
 PROFIL DU CANDIDAT:
 ${profileContext}
 ${jobContext}
+${ragContext ? `\nCONTEXTE ENRICHI (RAG):\n${ragContext}` : ''}
 ${needsInfoContext}
 ${availableJobsContext}
 ${calendlyContext}
@@ -545,6 +550,10 @@ RÈGLES CRITIQUES POUR LES SUGGESTIONS:
 7. Si le candidat demande des infos et un poste correspond → UTILISE les données du poste
 8. Si des infos manquent → inclure UNE question de qualification dans la réponse détaillée
 9. Utilise le contexte du profil (About, expériences) pour personnaliser le hook
+10. POSTURE: Tu es un connecteur humain, pas un expert technique. Tes suggestions doivent sonner comme un recruteur pragmatique.
+11. INTERDITS: superlatifs, flatterie, "a retenu mon attention", "impressionnant", "parfaitement", tirets, listes à puces
+12. Si le candidat pose une question factuelle (salaire, remote) et que l'info est dans le contexte → RÉPONDS FACTUELLEMENT
+13. Si l'info manque → suggère "Je vérifie ce point et je reviens vers toi" plutôt qu'inventer
 
 Réponds UNIQUEMENT en JSON valide:
 {
