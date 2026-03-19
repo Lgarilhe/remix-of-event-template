@@ -129,6 +129,8 @@ Deno.serve(async (req) => {
     ];
     const batchSize = (body.batch_size as number) || 100;
     const embeddingBatchSize = (body.embedding_batch_size as number) || 50;
+    const maxRows = (body.max_rows as number) || 200;
+    const startOffset = (body.offset as number) || 0;
 
     if (!organizationId) {
       return new Response(JSON.stringify({ error: "organization_id required" }), {
