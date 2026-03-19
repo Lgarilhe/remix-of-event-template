@@ -35,7 +35,7 @@ async function ingestBatch(
   if (!res.ok) {
     const errText = await res.text();
     console.error(`Ingest failed for ${entityType}/${entityId}: ${res.status} ${errText}`);
-    return { ingested: 0, updated: 0, skipped: 0 };
+    throw new Error(`Ingest ${res.status}: ${errText}`);
   }
 
   return await res.json();
