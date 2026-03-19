@@ -1,0 +1,1 @@
+UPDATE profiles SET active_organization_id = '2f3e9aa7-adb1-4a56-8ba4-f05cf6931e82' WHERE user_id = 'e54da7a5-1fda-493f-9fd6-782171f8b749';
