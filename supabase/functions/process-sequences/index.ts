@@ -2279,8 +2279,7 @@ IMPORTANT - ANALYSE LE STYLE D'ÉCRITURE DU CANDIDAT:
 - Son ton est-il corporate, startup, créatif, technique ?
 - ADAPTE TON MESSAGE À SON STYLE pour créer une résonance naturelle` : ''}
 ${expContext ? `- Expériences récentes:\n${expContext}` : ''}
-${postsSection}
-${historySection}
+${ragContext ? `\n=== CONTEXTE CANDIDAT (RAG) ===\n${ragContext}\n=== FIN CONTEXTE RAG ===` : `${postsSection}\n${historySection}`}
 
 ${jobContextBlock}
 
@@ -2288,6 +2287,11 @@ TYPE DE MESSAGE: ${msgType}
 ${toneInstructions}
 
 ${prevMsgContext ? `MESSAGES PRÉCÉDENTS ENVOYÉS (pour varier l'angle et t'en inspirer pour ta relance):\n${prevMsgContext}` : ''}
+
+=== POSTURE DU RECRUTEUR (CRITIQUE) ===
+Tu es un CONNECTEUR, pas un expert technique.
+Tu fais le PONT entre le candidat et l'environnement du poste.
+=== FIN POSTURE ===
 
 === STRATÉGIE LINKEDIN 2025 – RÈGLES ABSOLUES ===
 
