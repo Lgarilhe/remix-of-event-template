@@ -275,6 +275,44 @@ async function fetchRecentPosts(
     return [];
   }
 }
+// Fetch RAG context for a candidate from the Knowledge Lake
+async function fetchRAGContext(
+  orgId: string,
+  candidateId: string,
+  jobContextText: string,
+): Promise<string | null> {
+  try {
+    const supabaseUrl = Deno.env.get('SUPABASE_URL');
+    const anonKey = Deno.env.get('SUPABASE_ANON_KEY');
+    if (!supabaseUrl || !anonKey) return null;
+
+    const res = await fetchWithTimeout(`${supabaseUrl}/functions/v1/retrieve-context`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${anonKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        organization_id: orgId,
+        entity_type: 'candidate',
+        entity_id: candidateId,
+        query: jobContextText,
+        limit: 15,
+      }),
+    });
+
+    if (!res.ok) {
+      console.warn('[generate-outreach-message] RAG retrieve-context failed:', res.status);
+      return null;
+    }
+
+    const data = await res.json();
+    return data?.formatted_context || null;
+  } catch (err) {
+    console.warn('[generate-outreach-message] RAG error, falling back to legacy:', err);
+    return null;
+  }
+}
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -349,10 +387,26 @@ Deno.serve(async (req) => {
       throw new Error("Profile and job data are required");
     }
 
-    // Fetch posts in parallel with prompt building (non-blocking)
+    // Fetch org_id for RAG context
+    let orgId: string | null = null;
+    try {
+      const { data: profileRow } = await svc.from('profiles').select('active_organization_id').eq('user_id', userId).maybeSingle();
+      orgId = profileRow?.active_organization_id || null;
+    } catch (e) {
+      console.warn('[generate-outreach-message] Could not fetch org_id:', e);
+    }
+
+    // Build RAG query text from job context
+    const ragQueryText = `${job.title || ''} ${job.skills?.join(' ') || ''} ${job.client?.name || ''}`.trim();
+
+    // Fetch posts in parallel with RAG context (non-blocking)
     const postsPromise = (accountId && profileId)
       ? fetchRecentPosts(accountId, profileId)
       : Promise.resolve([]);
+
+    const ragPromise = (orgId && profileId)
+      ? fetchRAGContext(orgId, profileId, ragQueryText)
+      : Promise.resolve(null);
 
     // Debug: log accompagnement to verify it's being received
     console.log('[generate-outreach-message] Job accompagnement:', JSON.stringify(job.accompagnement), 'Client:', job.client?.name);
@@ -449,8 +503,8 @@ Tu parles EN TANT QUE recruteur externe/cabinet qui accompagne un client.
 - Tu peux valoriser ta connaissance du client: "Je travaille avec leur CTO"
 - Sois transparent sur ton rôle de cabinet`;
 
-    // Await posts (fetched in parallel during prompt building above)
-    const recentPosts = await postsPromise;
+    // Await posts and RAG context (fetched in parallel)
+    const [recentPosts, ragContext] = await Promise.all([postsPromise, ragPromise]);
 
     // Build posts section for the prompt
     const postsSection = recentPosts.length > 0
@@ -581,8 +635,7 @@ ANALYSE OBLIGATOIRE DU "À PROPOS" — EXTRAIS AU MOINS UN ÉLÉMENT:
 → UTILISE l'un de ces éléments dans la PHRASE 1 du message (accroche)
 → NE DIS JAMAIS d'où vient l'info ("dans ton À propos", "tu mentionnes") — cite DIRECTEMENT comme une observation naturelle
 → ADAPTE TON STYLE au style d'écriture du candidat (formel/décontracté, phrases courtes/longues, émojis ou pas)` : ''}
-${postsSection}
-${historySection}
+${ragContext ? `\n=== CONTEXTE CANDIDAT (RAG) ===\n${ragContext}\n=== FIN CONTEXTE RAG ===` : `${postsSection}\n${historySection}`}
 
 POSTE À POURVOIR:
 - Titre: ${job.title}
@@ -600,6 +653,15 @@ ${job.description ? `- Contexte mission: ${job.description.slice(0, 300)}...` : 
 
 STATUT: ${candidateStatus.toUpperCase()}
 ${statusInstructions[candidateStatus] || statusInstructions.other}
+
+
+=== POSTURE DU RECRUTEUR (CRITIQUE) ===
+Tu es un CONNECTEUR, pas un expert technique. Tu ne prétends pas comprendre la stack du candidat.
+Tu fais le PONT entre le candidat et l'environnement du poste.
+Exemple CORRECT: "Le CTO chez ${clientName} est à fond sur le DDD, je pense que vous pourriez bien matcher"
+Exemple INCORRECT: "Le DDD et l'ownership, c'est aussi ce qu'on pousse chez ${clientName}"
+Tu OBSERVES et tu POSES DES QUESTIONS, tu ne démontres pas une expertise que tu n'as pas.
+=== FIN POSTURE ===
 
 === STRATÉGIE LINKEDIN 2025 – RÈGLES ABSOLUES ===
 
