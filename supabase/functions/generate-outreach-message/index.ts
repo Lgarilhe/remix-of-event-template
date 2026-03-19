@@ -387,10 +387,26 @@ Deno.serve(async (req) => {
       throw new Error("Profile and job data are required");
     }
 
-    // Fetch posts in parallel with prompt building (non-blocking)
+    // Fetch org_id for RAG context
+    let orgId: string | null = null;
+    try {
+      const { data: profileRow } = await svc.from('profiles').select('active_organization_id').eq('user_id', userId).maybeSingle();
+      orgId = profileRow?.active_organization_id || null;
+    } catch (e) {
+      console.warn('[generate-outreach-message] Could not fetch org_id:', e);
+    }
+
+    // Build RAG query text from job context
+    const ragQueryText = `${job.title || ''} ${job.skills?.join(' ') || ''} ${job.client?.name || ''}`.trim();
+
+    // Fetch posts in parallel with RAG context (non-blocking)
     const postsPromise = (accountId && profileId)
       ? fetchRecentPosts(accountId, profileId)
       : Promise.resolve([]);
+
+    const ragPromise = (orgId && profileId)
+      ? fetchRAGContext(orgId, profileId, ragQueryText)
+      : Promise.resolve(null);
 
     // Debug: log accompagnement to verify it's being received
     console.log('[generate-outreach-message] Job accompagnement:', JSON.stringify(job.accompagnement), 'Client:', job.client?.name);
