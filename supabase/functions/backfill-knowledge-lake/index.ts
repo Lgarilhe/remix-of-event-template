@@ -171,6 +171,7 @@ Deno.serve(async (req) => {
           const chunk = buildChunk(row as Record<string, unknown>);
           if (chunk) chunksToIngest.push(chunk);
           tableStat.processed++;
+          totalProcessed++;
         }
 
         // Process in embedding batches
@@ -184,13 +185,12 @@ Deno.serve(async (req) => {
           } catch (e) {
             console.error(`Batch error on ${tableName}:`, e instanceof Error ? e.message : String(e));
             tableStat.errors += batch.length;
-            // Wait and retry once on rate limit
             if (e instanceof Error && e.message.includes("429")) {
               await new Promise(r => setTimeout(r, 5000));
               try {
                 const result = await ingestBatchDirect(svc, openaiKey, organizationId, batch);
                 tableStat.ingested += result.ingested;
-                tableStat.errors -= batch.length; // undo error count
+                tableStat.errors -= batch.length;
                 tableStat.errors += result.errors;
               } catch { /* give up */ }
             }
@@ -198,7 +198,7 @@ Deno.serve(async (req) => {
         }
 
         offset += batchSize;
-        if (rows.length < batchSize) hasMore = false;
+        if (rows.length < batchSize || totalProcessed >= maxRows) hasMore = false;
       }
 
       stats[tableName] = tableStat;
