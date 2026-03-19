@@ -1,5 +1,51 @@
 // Deno.serve used directly
 
+// Timeout wrapper for fetch calls
+function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timer));
+}
+
+// Fetch RAG context for a candidate from the Knowledge Lake
+async function fetchRAGContext(
+  orgId: string,
+  candidateId: string,
+  jobContextText: string,
+): Promise<string | null> {
+  try {
+    const supabaseUrl = Deno.env.get('SUPABASE_URL');
+    const anonKey = Deno.env.get('SUPABASE_ANON_KEY');
+    if (!supabaseUrl || !anonKey) return null;
+
+    const res = await fetchWithTimeout(`${supabaseUrl}/functions/v1/retrieve-context`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${anonKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        organization_id: orgId,
+        entity_type: 'candidate',
+        entity_id: candidateId,
+        query: jobContextText,
+        limit: 15,
+      }),
+    });
+
+    if (!res.ok) {
+      console.warn('[generate-reply-suggestions] RAG retrieve-context failed:', res.status);
+      return null;
+    }
+
+    const data = await res.json();
+    return data?.formatted_context || null;
+  } catch (err) {
+    console.warn('[generate-reply-suggestions] RAG error:', err);
+    return null;
+  }
+}
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
@@ -337,6 +383,15 @@ Deno.serve(async (req) => {
     }
 
     const { context } = await req.json() as { context: ChatContext };
+
+    // Fetch org_id for RAG
+    let orgId: string | null = null;
+    try {
+      const { data: profileRow } = await svc.from('profiles').select('active_organization_id').eq('user_id', userId).maybeSingle();
+      orgId = profileRow?.active_organization_id || null;
+    } catch (e) {
+      console.warn('[generate-reply-suggestions] Could not fetch org_id:', e);
+    }
     
     const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
 
@@ -462,11 +517,16 @@ Ne propose AUCUNE mission ou opportunité. Propose uniquement de garder le conta
     // Get tone instructions
     const toneInstructions = getToneInstructions(context.tone);
 
+    // Fetch RAG context
+    const candidateId = context.profileData?.currentRole ? (context.recipientName || '').toLowerCase().replace(/\s+/g, '-') : '';
+    const ragContext = (candidateId && orgId) ? await fetchRAGContext(orgId, candidateId, jobContext || '').catch(() => null) : null;
+
     const prompt = `Tu es un recruteur tech expérimenté. Génère 3 suggestions de réponses courtes et naturelles pour cette conversation LinkedIn.
 
 PROFIL DU CANDIDAT:
 ${profileContext}
 ${jobContext}
+${ragContext ? `\nCONTEXTE ENRICHI (RAG):\n${ragContext}` : ''}
 ${needsInfoContext}
 ${availableJobsContext}
 ${calendlyContext}
@@ -490,6 +550,10 @@ RÈGLES CRITIQUES POUR LES SUGGESTIONS:
 7. Si le candidat demande des infos et un poste correspond → UTILISE les données du poste
 8. Si des infos manquent → inclure UNE question de qualification dans la réponse détaillée
 9. Utilise le contexte du profil (About, expériences) pour personnaliser le hook
+10. POSTURE: Tu es un connecteur humain, pas un expert technique. Tes suggestions doivent sonner comme un recruteur pragmatique.
+11. INTERDITS: superlatifs, flatterie, "a retenu mon attention", "impressionnant", "parfaitement", tirets, listes à puces
+12. Si le candidat pose une question factuelle (salaire, remote) et que l'info est dans le contexte → RÉPONDS FACTUELLEMENT
+13. Si l'info manque → suggère "Je vérifie ce point et je reviens vers toi" plutôt qu'inventer
 
 Réponds UNIQUEMENT en JSON valide:
 {
@@ -562,7 +626,37 @@ Réponds UNIQUEMENT en JSON valide:
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     } catch (parseError) {
-      console.error("JSON parse error:", parseError, "Content:", content);
+      console.warn("JSON parse error, retrying once:", parseError);
+      try {
+        const retryController = new AbortController();
+        const retryTimeout = setTimeout(() => retryController.abort(), 15000);
+        const retryRes = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: {
+            "x-api-key": ANTHROPIC_API_KEY,
+            "anthropic-version": "2023-06-01",
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            model: "claude-sonnet-4-6",
+            max_tokens: 400,
+            system: [{ type: "text", text: "Génère 3 réponses courtes en JSON valide. Format: {\"suggestions\": [{\"text\": \"...\", \"type\": \"quick\"}, {\"text\": \"...\", \"type\": \"standard\"}, {\"text\": \"...\", \"type\": \"detailed\"}]}. UNIQUEMENT du JSON." }],
+            messages: [{ role: "user", content: `Conversation:\n${conversationHistory}\n\nGénère 3 réponses.` }],
+          }),
+          signal: retryController.signal,
+        });
+        clearTimeout(retryTimeout);
+        if (retryRes.ok) {
+          const retryData = await retryRes.json();
+          let retryContent = retryData.content?.[0]?.text || "";
+          retryContent = retryContent.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+          const retryResult = JSON.parse(retryContent);
+          return new Response(
+            JSON.stringify({ success: true, suggestions: retryResult.suggestions || [] }),
+            { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+      } catch { /* retry also failed, use fallback */ }
       // Fallback suggestions
       return new Response(
         JSON.stringify({ 
