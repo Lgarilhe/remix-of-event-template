@@ -1966,7 +1966,7 @@ async function generatePersonalizedMessage(supabase: any, enrollment: Record<str
       } catch { return null; }
     })();
 
-    let [profile, recentPosts, candidateHistory] = await Promise.all([profilePromise, postsPromise, historyPromise]);
+    let [profile, recentPosts, candidateHistory, ragContext] = await Promise.all([profilePromise, postsPromise, historyPromise, ragPromise]);
 
     // Fallback: if Unipile didn't return experiences, try to get them from the DB snapshot
     const hasExperiences = Array.isArray(profile?.work_experience || profile?.experiences || profile?.positions?.values) && (profile?.work_experience || profile?.experiences || profile?.positions?.values).length > 0;
