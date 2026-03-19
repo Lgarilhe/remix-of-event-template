@@ -383,6 +383,15 @@ Deno.serve(async (req) => {
     }
 
     const { context } = await req.json() as { context: ChatContext };
+
+    // Fetch org_id for RAG
+    let orgId: string | null = null;
+    try {
+      const { data: profileRow } = await svc.from('profiles').select('active_organization_id').eq('user_id', userId).maybeSingle();
+      orgId = profileRow?.active_organization_id || null;
+    } catch (e) {
+      console.warn('[generate-reply-suggestions] Could not fetch org_id:', e);
+    }
     
     const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
 
