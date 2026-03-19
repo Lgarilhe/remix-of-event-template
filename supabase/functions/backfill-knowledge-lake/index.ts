@@ -201,7 +201,7 @@ Deno.serve(async (req) => {
         if (rows.length < batchSize || totalProcessed >= maxRows) hasMore = false;
       }
 
-      stats[tableName] = tableStat;
+      stats[tableName] = { ...tableStat, next_offset: hasMore ? offset : null };
     }
 
     // ── Process each table ─────────────────────────────────────
