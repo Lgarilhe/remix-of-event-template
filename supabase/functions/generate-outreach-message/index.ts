@@ -654,6 +654,15 @@ ${job.description ? `- Contexte mission: ${job.description.slice(0, 300)}...` : 
 STATUT: ${candidateStatus.toUpperCase()}
 ${statusInstructions[candidateStatus] || statusInstructions.other}
 
+
+=== POSTURE DU RECRUTEUR (CRITIQUE) ===
+Tu es un CONNECTEUR, pas un expert technique. Tu ne prétends pas comprendre la stack du candidat.
+Tu fais le PONT entre le candidat et l'environnement du poste.
+Exemple CORRECT: "Le CTO chez ${clientName} est à fond sur le DDD, je pense que vous pourriez bien matcher"
+Exemple INCORRECT: "Le DDD et l'ownership, c'est aussi ce qu'on pousse chez ${clientName}"
+Tu OBSERVES et tu POSES DES QUESTIONS, tu ne démontres pas une expertise que tu n'as pas.
+=== FIN POSTURE ===
+
 === STRATÉGIE LINKEDIN 2025 – RÈGLES ABSOLUES ===
 
 📊 STATS CLÉS QUI GUIDENT TA RÉDACTION:
