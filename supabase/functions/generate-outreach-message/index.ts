@@ -503,8 +503,8 @@ Tu parles EN TANT QUE recruteur externe/cabinet qui accompagne un client.
 - Tu peux valoriser ta connaissance du client: "Je travaille avec leur CTO"
 - Sois transparent sur ton rôle de cabinet`;
 
-    // Await posts (fetched in parallel during prompt building above)
-    const recentPosts = await postsPromise;
+    // Await posts and RAG context (fetched in parallel)
+    const [recentPosts, ragContext] = await Promise.all([postsPromise, ragPromise]);
 
     // Build posts section for the prompt
     const postsSection = recentPosts.length > 0
