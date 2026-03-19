@@ -22,6 +22,45 @@ function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15
   return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timer));
 }
 
+// Fetch RAG context for a candidate from the Knowledge Lake
+async function fetchRAGContext(
+  orgId: string,
+  candidateId: string,
+  jobContextText: string,
+): Promise<string | null> {
+  try {
+    const supabaseUrl = Deno.env.get('SUPABASE_URL');
+    const anonKey = Deno.env.get('SUPABASE_ANON_KEY');
+    if (!supabaseUrl || !anonKey) return null;
+
+    const res = await fetchWithTimeout(`${supabaseUrl}/functions/v1/retrieve-context`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${anonKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        organization_id: orgId,
+        entity_type: 'candidate',
+        entity_id: candidateId,
+        query: jobContextText,
+        limit: 15,
+      }),
+    });
+
+    if (!res.ok) {
+      console.warn('[process-sequences] RAG retrieve-context failed:', res.status);
+      return null;
+    }
+
+    const data = await res.json();
+    return data?.formatted_context || null;
+  } catch (err) {
+    console.warn('[process-sequences] RAG error, falling back to legacy:', err);
+    return null;
+  }
+}
+
 // In-memory profile cache — cleared at the start of each request to avoid cross-invocation staleness
 const profileInfoCache = new Map<string, { network_distance?: string; provider_id?: string }>();
 
@@ -1771,6 +1810,12 @@ async function generatePersonalizedMessage(supabase: any, enrollment: Record<str
     // Fetch profile and posts in parallel
     const profilePromise = fetchWithTimeout(`${UNIPILE_DSN}/api/v1/users/${enrollment.profile_id}?account_id=${enrollment.account_id}`, { headers: { 'X-API-KEY': UNIPILE_API_KEY! } }).then(r => r.ok ? r.json() : null).catch(() => null);
     const postsPromise = fetchRecentPostsForSequence(enrollment.account_id as string, enrollment.profile_id as string);
+
+    // RAG context (parallel with profile and posts)
+    const orgId = enrollment.organization_id as string || '';
+    const jobTitle = jobNotionData?.['Poste'] || jobNotionData?.['Titre'] || enrollment.job_title as string || '';
+    const jobSkills = jobNotionData?.['Compétences'] || jobNotionData?.['Skills'] || '';
+    const ragPromise = orgId ? fetchRAGContext(orgId, enrollment.profile_id as string, `${jobTitle} ${jobSkills}`) : Promise.resolve(null);
     
     // Fetch Notion job context (full page + body content)
     let jobNotionData: Record<string, string> = {};
@@ -1921,7 +1966,7 @@ async function generatePersonalizedMessage(supabase: any, enrollment: Record<str
       } catch { return null; }
     })();
 
-    let [profile, recentPosts, candidateHistory] = await Promise.all([profilePromise, postsPromise, historyPromise]);
+    let [profile, recentPosts, candidateHistory, ragContext] = await Promise.all([profilePromise, postsPromise, historyPromise, ragPromise]);
 
     // Fallback: if Unipile didn't return experiences, try to get them from the DB snapshot
     const hasExperiences = Array.isArray(profile?.work_experience || profile?.experiences || profile?.positions?.values) && (profile?.work_experience || profile?.experiences || profile?.positions?.values).length > 0;
@@ -2234,8 +2279,7 @@ IMPORTANT - ANALYSE LE STYLE D'ÉCRITURE DU CANDIDAT:
 - Son ton est-il corporate, startup, créatif, technique ?
 - ADAPTE TON MESSAGE À SON STYLE pour créer une résonance naturelle` : ''}
 ${expContext ? `- Expériences récentes:\n${expContext}` : ''}
-${postsSection}
-${historySection}
+${ragContext ? `\n=== CONTEXTE CANDIDAT (RAG) ===\n${ragContext}\n=== FIN CONTEXTE RAG ===` : `${postsSection}\n${historySection}`}
 
 ${jobContextBlock}
 
@@ -2243,6 +2287,11 @@ TYPE DE MESSAGE: ${msgType}
 ${toneInstructions}
 
 ${prevMsgContext ? `MESSAGES PRÉCÉDENTS ENVOYÉS (pour varier l'angle et t'en inspirer pour ta relance):\n${prevMsgContext}` : ''}
+
+=== POSTURE DU RECRUTEUR (CRITIQUE) ===
+Tu es un CONNECTEUR, pas un expert technique.
+Tu fais le PONT entre le candidat et l'environnement du poste.
+=== FIN POSTURE ===
 
 === STRATÉGIE LINKEDIN 2025 – RÈGLES ABSOLUES ===
 
