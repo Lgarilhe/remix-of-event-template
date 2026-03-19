@@ -152,8 +152,9 @@ Deno.serve(async (req) => {
       buildChunk: (row: Record<string, unknown>) => ChunkToIngest | null,
     ) {
       const tableStat = { processed: 0, ingested: 0, skipped: 0, errors: 0 };
-      let offset = 0;
+      let offset = startOffset;
       let hasMore = true;
+      let totalProcessed = 0;
 
       while (hasMore) {
         const { data: rows, error } = await svc
