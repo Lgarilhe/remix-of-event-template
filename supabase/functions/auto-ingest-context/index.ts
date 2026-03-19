@@ -1,0 +1,264 @@
+import { createClient } from "npm:@supabase/supabase-js@2.75.1";
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
+};
+
+// ── Types ──────────────────────────────────────────────────────────────
+interface TriggerPayload {
+  type: "INSERT" | "UPDATE" | "DELETE";
+  table: string;
+  schema: string;
+  record: Record<string, unknown>;
+  old_record?: Record<string, unknown>;
+}
+
+// ── Chunk builders per table ───────────────────────────────────────────
+
+function buildChunksFromJobCandidateStatus(record: Record<string, unknown>): {
+  entity_type: string;
+  entity_id: string;
+  organization_id: string;
+  chunks: Array<{ chunk_type: string; content: string; metadata?: Record<string, unknown> }>;
+} | null {
+  const orgId = record.organization_id as string;
+  const candidateId = record.candidate_id as string;
+  const jobId = record.job_id as string;
+  if (!orgId || !candidateId) return null;
+
+  const stage = record.stage as string || "unknown";
+  const candidateName = record.candidate_name as string || "Candidat";
+  const jobTitle = record.job_title as string || "";
+  const source = record.source as string || "";
+  const updatedAt = record.updated_at as string || new Date().toISOString();
+
+  const content = [
+    `Candidat: ${candidateName}`,
+    jobTitle ? `Poste: ${jobTitle}` : null,
+    `Étape pipeline: ${stage}`,
+    source ? `Source: ${source}` : null,
+    `Dernière mise à jour: ${updatedAt}`,
+  ].filter(Boolean).join("\n");
+
+  return {
+    entity_type: "candidate",
+    entity_id: candidateId,
+    organization_id: orgId,
+    chunks: [{
+      chunk_type: "profile",
+      content,
+      metadata: { job_id: jobId, stage, source, date: updatedAt },
+    }],
+  };
+}
+
+function buildChunksFromCandidateNotes(record: Record<string, unknown>) {
+  const orgId = record.organization_id as string;
+  const candidateId = record.candidate_id as string;
+  if (!orgId || !candidateId) return null;
+
+  const content = record.content as string || "";
+  if (!content.trim()) return null;
+
+  return {
+    entity_type: "candidate",
+    entity_id: candidateId,
+    organization_id: orgId,
+    chunks: [{
+      chunk_type: "note",
+      content,
+      metadata: {
+        created_by: record.created_by,
+        shortlist_id: record.shortlist_id,
+        date: record.created_at || new Date().toISOString(),
+      },
+    }],
+  };
+}
+
+function buildChunksFromCandidateComments(record: Record<string, unknown>) {
+  const orgId = record.organization_id as string;
+  const candidateId = record.candidate_id as string;
+  if (!orgId || !candidateId) return null;
+
+  const content = record.content as string || "";
+  if (!content.trim()) return null;
+
+  return {
+    entity_type: "candidate",
+    entity_id: candidateId,
+    organization_id: orgId,
+    chunks: [{
+      chunk_type: "note",
+      content: `[Commentaire] ${content}`,
+      metadata: {
+        created_by: record.created_by,
+        job_id: record.job_id,
+        date: record.created_at || new Date().toISOString(),
+      },
+    }],
+  };
+}
+
+function buildChunksFromCoachingSessions(record: Record<string, unknown>) {
+  const orgId = record.organization_id as string;
+  const candidateId = record.candidate_id as string;
+  if (!orgId || !candidateId) return null;
+
+  const parts: string[] = [];
+  if (record.transcript) parts.push(`Transcription: ${record.transcript}`);
+  if (record.report) parts.push(`Rapport: ${JSON.stringify(record.report)}`);
+  if (!parts.length) return null;
+
+  return {
+    entity_type: "candidate",
+    entity_id: candidateId,
+    organization_id: orgId,
+    chunks: [{
+      chunk_type: "call_transcript",
+      content: parts.join("\n\n"),
+      metadata: {
+        job_id: record.job_id,
+        scorecard_id: record.scorecard_id,
+        status: record.status,
+        date: record.created_at || new Date().toISOString(),
+      },
+    }],
+  };
+}
+
+function buildChunksFromEvaluations(record: Record<string, unknown>) {
+  const orgId = record.organization_id as string;
+  const candidateId = record.candidate_id as string;
+  if (!orgId || !candidateId) return null;
+
+  const parts: string[] = [];
+  if (record.summary) parts.push(`Résumé: ${record.summary}`);
+  if (record.recommendation) parts.push(`Recommandation: ${record.recommendation}`);
+  if (record.follow_up_notes) parts.push(`Notes de suivi: ${record.follow_up_notes}`);
+  if (record.overall_score) parts.push(`Score global: ${record.overall_score}/5`);
+  if (!parts.length) return null;
+
+  return {
+    entity_type: "candidate",
+    entity_id: candidateId,
+    organization_id: orgId,
+    chunks: [{
+      chunk_type: "evaluation",
+      content: parts.join("\n"),
+      metadata: {
+        job_id: record.job_id,
+        job_title: record.job_title,
+        interview_stage: record.interview_stage,
+        ai_generated: record.ai_generated,
+        date: record.created_at || new Date().toISOString(),
+      },
+    }],
+  };
+}
+
+function buildChunksFromSequenceExecutions(record: Record<string, unknown>) {
+  const orgId = record.organization_id as string;
+  const candidateId = record.candidate_linkedin_id as string || record.candidate_id as string;
+  if (!orgId || !candidateId) return null;
+
+  const messageContent = record.message_content as string || record.actual_content as string || "";
+  if (!messageContent.trim()) return null;
+
+  return {
+    entity_type: "candidate",
+    entity_id: candidateId,
+    organization_id: orgId,
+    chunks: [{
+      chunk_type: "sequence_history",
+      content: `[Séquence outreach] ${messageContent}`,
+      metadata: {
+        step_type: record.step_type,
+        status: record.status,
+        sequence_enrollment_id: record.sequence_enrollment_id,
+        date: record.executed_at || record.created_at || new Date().toISOString(),
+      },
+    }],
+  };
+}
+
+// ── Table → builder mapping ────────────────────────────────────────────
+const TABLE_BUILDERS: Record<string, (r: Record<string, unknown>) => ReturnType<typeof buildChunksFromCandidateNotes>> = {
+  job_candidate_status: buildChunksFromJobCandidateStatus,
+  candidate_notes: buildChunksFromCandidateNotes,
+  candidate_comments: buildChunksFromCandidateComments,
+  call_coaching_sessions: buildChunksFromCoachingSessions,
+  candidate_evaluations: buildChunksFromEvaluations,
+  sequence_step_executions: buildChunksFromSequenceExecutions,
+};
+
+// ── Main handler ───────────────────────────────────────────────────────
+
+Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") {
+    return new Response(null, { headers: corsHeaders });
+  }
+
+  try {
+    const payload: TriggerPayload = await req.json();
+    const { type, table, record } = payload;
+
+    console.log(`auto-ingest-context: ${type} on ${table}`);
+
+    if (type === "DELETE") {
+      return new Response(JSON.stringify({ skipped: true, reason: "DELETE not handled" }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const builder = TABLE_BUILDERS[table];
+    if (!builder) {
+      return new Response(JSON.stringify({ skipped: true, reason: `No builder for table ${table}` }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const result = builder(record);
+    if (!result) {
+      return new Response(JSON.stringify({ skipped: true, reason: "Builder returned null" }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // Call ingest-context edge function
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+
+    const svc = createClient(supabaseUrl, serviceKey);
+
+    // Get a service-level token for internal call
+    const ingestRes = await fetch(`${supabaseUrl}/functions/v1/ingest-context`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${serviceKey}`,
+      },
+      body: JSON.stringify({
+        organization_id: result.organization_id,
+        entity_type: result.entity_type,
+        entity_id: result.entity_id,
+        chunks: result.chunks,
+      }),
+    });
+
+    const ingestData = await ingestRes.json();
+    console.log(`auto-ingest-context: ingest result for ${table}:`, JSON.stringify(ingestData));
+
+    return new Response(JSON.stringify({ success: true, table, ...ingestData }), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  } catch (err) {
+    console.error("auto-ingest-context error:", err);
+    return new Response(
+      JSON.stringify({ error: err instanceof Error ? err.message : String(err) }),
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+    );
+  }
+});
