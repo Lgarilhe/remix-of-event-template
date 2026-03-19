@@ -100,7 +100,8 @@ Deno.serve(async (req) => {
           break;
         }
 
-        for (const row of rows) {
+        for (let ri = 0; ri < rows.length; ri++) {
+          const row = rows[ri];
           try {
             const content = [
               `Candidat: ${row.candidate_name || "N/A"}`,
@@ -113,7 +114,10 @@ Deno.serve(async (req) => {
               { chunk_type: "profile", content, metadata: { job_id: row.job_id, stage: row.stage, date: row.updated_at } },
             ]);
             tableStat.ingested += result.ingested;
-          } catch {
+            // Small delay to avoid OpenAI rate limits
+            if (ri % 10 === 9) await new Promise(r => setTimeout(r, 500));
+          } catch (e) {
+            if (tableStat.errors < 3) console.error(`backfill jcs error [${offset + ri}]:`, e instanceof Error ? e.message : String(e));
             tableStat.errors++;
           }
           tableStat.processed++;
