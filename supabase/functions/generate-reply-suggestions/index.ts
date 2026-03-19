@@ -626,7 +626,37 @@ Réponds UNIQUEMENT en JSON valide:
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     } catch (parseError) {
-      console.error("JSON parse error:", parseError, "Content:", content);
+      console.warn("JSON parse error, retrying once:", parseError);
+      try {
+        const retryController = new AbortController();
+        const retryTimeout = setTimeout(() => retryController.abort(), 15000);
+        const retryRes = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: {
+            "x-api-key": ANTHROPIC_API_KEY,
+            "anthropic-version": "2023-06-01",
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            model: "claude-sonnet-4-6",
+            max_tokens: 400,
+            system: [{ type: "text", text: "Génère 3 réponses courtes en JSON valide. Format: {\"suggestions\": [{\"text\": \"...\", \"type\": \"quick\"}, {\"text\": \"...\", \"type\": \"standard\"}, {\"text\": \"...\", \"type\": \"detailed\"}]}. UNIQUEMENT du JSON." }],
+            messages: [{ role: "user", content: `Conversation:\n${conversationHistory}\n\nGénère 3 réponses.` }],
+          }),
+          signal: retryController.signal,
+        });
+        clearTimeout(retryTimeout);
+        if (retryRes.ok) {
+          const retryData = await retryRes.json();
+          let retryContent = retryData.content?.[0]?.text || "";
+          retryContent = retryContent.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+          const retryResult = JSON.parse(retryContent);
+          return new Response(
+            JSON.stringify({ success: true, suggestions: retryResult.suggestions || [] }),
+            { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+      } catch { /* retry also failed, use fallback */ }
       // Fallback suggestions
       return new Response(
         JSON.stringify({ 
