@@ -22,6 +22,45 @@ function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15
   return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timer));
 }
 
+// Fetch RAG context for a candidate from the Knowledge Lake
+async function fetchRAGContext(
+  orgId: string,
+  candidateId: string,
+  jobContextText: string,
+): Promise<string | null> {
+  try {
+    const supabaseUrl = Deno.env.get('SUPABASE_URL');
+    const anonKey = Deno.env.get('SUPABASE_ANON_KEY');
+    if (!supabaseUrl || !anonKey) return null;
+
+    const res = await fetchWithTimeout(`${supabaseUrl}/functions/v1/retrieve-context`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${anonKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        organization_id: orgId,
+        entity_type: 'candidate',
+        entity_id: candidateId,
+        query: jobContextText,
+        limit: 15,
+      }),
+    });
+
+    if (!res.ok) {
+      console.warn('[process-sequences] RAG retrieve-context failed:', res.status);
+      return null;
+    }
+
+    const data = await res.json();
+    return data?.formatted_context || null;
+  } catch (err) {
+    console.warn('[process-sequences] RAG error, falling back to legacy:', err);
+    return null;
+  }
+}
+
 // In-memory profile cache — cleared at the start of each request to avoid cross-invocation staleness
 const profileInfoCache = new Map<string, { network_distance?: string; provider_id?: string }>();
 
