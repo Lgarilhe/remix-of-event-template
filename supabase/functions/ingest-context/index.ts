@@ -128,7 +128,7 @@ Deno.serve(async (req) => {
   }
 
   try {
-    // ── 1. Auth check — getClaims pattern ────────────────────────────
+    // ── 1. Auth check — dual mode (user JWT or service role) ────────
     const authHeader = req.headers.get("Authorization");
     if (!authHeader?.startsWith("Bearer ")) {
       return new Response(
@@ -137,44 +137,58 @@ Deno.serve(async (req) => {
       );
     }
 
-    const _supabaseAuth = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_ANON_KEY")!,
-      { global: { headers: { Authorization: authHeader } } },
-    );
+    const token = authHeader.replace("Bearer ", "");
+    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    let isInternalCall = false;
+    let userId: string | null = null;
 
-    const { data: claimsData, error: claimsError } =
-      // deno-lint-ignore no-explicit-any
-      await (_supabaseAuth.auth as any).getClaims(authHeader.replace("Bearer ", ""));
-
-    if (claimsError || !claimsData?.claims?.sub) {
-      return new Response(
-        JSON.stringify({ error: "Unauthorized" }),
-        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+    // Check if this is a service role call (internal)
+    if (token === serviceRoleKey) {
+      isInternalCall = true;
+      console.log("ingest-context: internal service-role call");
+    } else {
+      // Mode A — frontend JWT via getClaims
+      const _supabaseAuth = createClient(
+        Deno.env.get("SUPABASE_URL")!,
+        Deno.env.get("SUPABASE_ANON_KEY")!,
+        { global: { headers: { Authorization: authHeader } } },
       );
-    }
 
-    const userId = claimsData.claims.sub;
+      const { data: claimsData, error: claimsError } =
+        // deno-lint-ignore no-explicit-any
+        await (_supabaseAuth.auth as any).getClaims(token);
+
+      if (claimsError || !claimsData?.claims?.sub) {
+        return new Response(
+          JSON.stringify({ error: "Unauthorized" }),
+          { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+
+      userId = claimsData.claims.sub;
+    }
 
     // Service client (pour les opérations DB)
     const svc = createClient(
       Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+      serviceRoleKey,
     );
 
-    // ── 2. Rate limit: 60 req/min ───────────────────────────────────
-    const { data: allowed } = await svc.rpc("check_rate_limit", {
-      p_user_id: userId,
-      p_action: "ingest_context",
-      p_max_requests: 60,
-      p_window_seconds: 60,
-    });
+    // ── 2. Rate limit: 60 req/min (skip for internal calls) ─────────
+    if (!isInternalCall && userId) {
+      const { data: allowed } = await svc.rpc("check_rate_limit", {
+        p_user_id: userId,
+        p_action: "ingest_context",
+        p_max_requests: 60,
+        p_window_seconds: 60,
+      });
 
-    if (allowed === false) {
-      return new Response(
-        JSON.stringify({ error: "Rate limit exceeded" }),
-        { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
+      if (allowed === false) {
+        return new Response(
+          JSON.stringify({ error: "Rate limit exceeded" }),
+          { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
     }
 
     // ── Parse & validate request body ───────────────────────────────
@@ -211,19 +225,21 @@ Deno.serve(async (req) => {
       }
     }
 
-    // ── Membership check: user belongs to org ───────────────────────
-    const { data: membership } = await svc
-      .from("organization_members")
-      .select("id")
-      .eq("user_id", userId)
-      .eq("organization_id", organization_id)
-      .maybeSingle();
+    // ── Membership check (skip for internal calls) ──────────────────
+    if (!isInternalCall && userId) {
+      const { data: membership } = await svc
+        .from("organization_members")
+        .select("id")
+        .eq("user_id", userId)
+        .eq("organization_id", organization_id)
+        .maybeSingle();
 
-    if (!membership) {
-      return new Response(
-        JSON.stringify({ error: "Forbidden" }),
-        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
+      if (!membership) {
+        return new Response(
+          JSON.stringify({ error: "Forbidden" }),
+          { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
     }
 
     // ── 3. Process chunks ───────────────────────────────────────────

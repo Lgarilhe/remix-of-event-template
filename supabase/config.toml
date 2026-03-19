@@ -77,3 +77,15 @@ verify_jwt = false
 
 [functions.ai-credits]
 verify_jwt = false
+
+[functions.ingest-context]
+verify_jwt = false
+
+[functions.retrieve-context]
+verify_jwt = false
+
+[functions.auto-ingest-context]
+verify_jwt = false
+
+[functions.backfill-knowledge-lake]
+verify_jwt = false
