@@ -174,6 +174,11 @@ export default function Candidates() {
 
       <main className="pt-16 sm:pt-20 pb-8 sm:pb-12">
         <div className="max-w-[1600px] mx-auto px-3 sm:px-6 lg:px-8">
+          {/* Deprecation banner */}
+          <div className="mb-4 border border-foreground bg-brutal-accent/30 px-4 py-2.5 flex items-center gap-2 text-[11px] uppercase tracking-wider font-medium">
+            <span>ℹ️</span>
+            <span>Cette vue est aussi accessible depuis <a href="/pipeline?view=shortlist" className="underline font-bold">Pipeline → Shortlist Client</a></span>
+          </div>
           {/* Header */}
           <div className="mb-4 sm:mb-8">
             <div className="flex items-center gap-2 sm:gap-3 mb-1 sm:mb-2">

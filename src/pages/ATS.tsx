@@ -14,8 +14,14 @@ import { ATSTableSkeleton } from '@/components/ats/ATSTableSkeleton';
 import { ATSStatsSkeleton } from '@/components/ats/ATSStatsSkeleton';
 import { RemindersSidebar } from '@/components/ats/RemindersSidebar';
 import { CandidateDetailModal } from '@/components/ats/CandidateDetailModal';
+import { CandidatePipeline } from '@/components/candidates/CandidatePipeline';
+import { CandidateList } from '@/components/candidates/CandidateList';
+import { CandidateFilters } from '@/components/candidates/CandidateFilters';
+import { PipelineStats } from '@/components/candidates/PipelineStats';
+import { useNotionShortlist, useNotionCandidates } from '@/hooks/useNotionCandidates';
+import { PIPELINE_STAGES, type ShortlistEntry } from '@/pages/Candidates';
 import { Tabs, TabsContent } from '@/components/ui/tabs';
-import { Bell, Users, RefreshCw } from 'lucide-react';
+import { Bell, Users, RefreshCw, Loader2, LayoutGrid, List } from 'lucide-react';
 import iconAts3d from '@/assets/icon-ats-3d.png';
 import iconKanban3d from '@/assets/icon-kanban-3d.png';
 import iconTable3d from '@/assets/icon-table-3d.png';
@@ -32,6 +38,7 @@ const viewTabs = [
   { value: 'kanban', label: 'Kanban', icon3d: iconKanban3d },
   { value: 'table', label: 'Table', icon3d: iconTable3d },
   { value: 'timeline', label: 'Timeline', icon3d: iconTimeline3d },
+  { value: 'shortlist', label: 'Shortlist Client', icon3d: iconTimeline3d },
   { value: 'analytics', label: 'Analytics', icon3d: iconAnalytics3d },
 ] as const;
 
