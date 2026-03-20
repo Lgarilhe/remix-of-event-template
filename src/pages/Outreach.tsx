@@ -256,6 +256,54 @@ export default function Outreach() {
             )}
           </div>
 
+          {/* Prospection tab */}
+          <div className={cn("mt-0 min-w-0", activeTab !== 'prospection' && 'hidden')}>
+            <div className="bg-background border border-foreground p-3 sm:p-6">
+              {/* Sub-tabs for prospection */}
+              <div className="flex gap-0 mb-4 overflow-x-auto no-scrollbar">
+                {([
+                  { value: 'search' as const, label: 'Recherche', emoji: '🔍' },
+                  { value: 'vivier' as const, label: 'Vivier', emoji: '📋' },
+                  { value: 'icp' as const, label: 'ICP', emoji: '🎯' },
+                ]).map((sub, idx) => (
+                  <button
+                    key={sub.value}
+                    onClick={() => setProspectionTab(sub.value)}
+                    className={cn(
+                      "relative overflow-hidden flex items-center gap-1 h-[30px] px-3 text-[10px] font-medium uppercase tracking-wider border border-foreground transition-colors group shrink-0",
+                      idx > 0 && "border-l-0",
+                      prospectionTab === sub.value
+                        ? "bg-foreground text-background"
+                        : "bg-background text-foreground"
+                    )}
+                  >
+                    <span className="text-xs relative z-10">{sub.emoji}</span>
+                    <span className="relative z-10">{sub.label}</span>
+                    {prospectionTab !== sub.value && (
+                      <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
+                    )}
+                  </button>
+                ))}
+              </div>
+              <div className={cn(prospectionTab !== 'search' && 'hidden')}>
+                <ProspectSearch
+                  selectedICP={selectedICP}
+                  onSelectICP={setSelectedICP}
+                  onResults={setProspectResults}
+                  searching={prospectSearching}
+                  onSearchingChange={setProspectSearching}
+                  results={prospectResults}
+                />
+              </div>
+              <div className={cn(prospectionTab !== 'vivier' && 'hidden')}>
+                <VivierList />
+              </div>
+              <div className={cn(prospectionTab !== 'icp' && 'hidden')}>
+                <ICPList onSearchFromICP={(icp) => { setSelectedICP(icp); setProspectionTab('search'); }} />
+              </div>
+            </div>
+          </div>
+
           {/* Messages: conditional render (WebSocket connections are heavy) */}
           {activeTab === 'messages' && (
             <div className="mt-0">
