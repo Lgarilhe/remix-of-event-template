@@ -21,6 +21,7 @@ interface ATSCandidateCardProps {
   candidate: ATSCandidate;
   isDragging?: boolean;
   onClick: () => void;
+  onJobClick?: (jobId: string) => void;
 }
 
 const SOURCE_CONFIG: Record<string, { icon: React.ReactNode; label: string }> = {
