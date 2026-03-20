@@ -322,6 +322,7 @@ export default function ATS() {
                             <ATSTable
                               candidates={filteredCandidates}
                               onCandidateClick={handleCandidateClick}
+                              onJobClick={handleJobClick}
                             />
                           )}
                         </TabsContent>
