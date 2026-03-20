@@ -14,6 +14,7 @@ export const ATSDraggableCard: React.FC<ATSDraggableCardProps> = ({
   candidate,
   columnId,
   onClick,
+  onJobClick,
 }) => {
   const {
     attributes,
