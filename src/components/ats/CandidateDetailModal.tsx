@@ -17,10 +17,11 @@ import {
   Loader2, Trash2, Calendar, Brain, CheckCircle2, AlertTriangle, MapPin,
   Briefcase, Clock, MessageSquare, CalendarPlus, FolderPlus, Activity,
   FileText, Award, ExternalLink, GraduationCap, Languages, ChevronDown,
-  ChevronUp, Building2, TrendingUp, ClipboardCheck, Shield, Link2, Copy
+  ChevronUp, Building2, TrendingUp, ClipboardCheck, Shield, Link2, Copy, Zap
 } from 'lucide-react';
 import { ScorecardTab } from './ScorecardTab';
 import { FraudDetectionTab } from './FraudDetectionTab';
+import { useAgent } from '@/contexts/AgentContext';
 import { format, parseISO, formatDistanceToNow } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { toast } from 'sonner';
@@ -51,13 +52,10 @@ interface Reminder {
 
 const tabsConfig = [
   { key: 'profile', label: 'Profil', icon: User, emoji: '👤' },
-  { key: 'scoring', label: 'Scoring', icon: Target, emoji: '🎯' },
-  { key: 'evaluation', label: 'Évaluation', icon: ClipboardCheck, emoji: '📋' },
-  { key: 'fraud', label: 'Vérification', icon: Shield, emoji: '🛡️' },
+  { key: 'evaluation', label: 'Évaluation', icon: Target, emoji: '🎯' },
   { key: 'activity', label: 'Activité', icon: Activity, emoji: '⚡' },
-  { key: 'comments', label: 'Discussion', icon: MessageSquare, emoji: '💬' },
   { key: 'notes', label: 'Notes', icon: StickyNote, emoji: '📝' },
-  { key: 'reminders', label: 'Rappels', icon: Bell, emoji: '🔔' },
+  { key: 'actions', label: 'Actions', icon: Zap, emoji: '🚀' },
 ] as const;
 
 export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
@@ -76,6 +74,8 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
   const [newReminderDate, setNewReminderDate] = useState('');
   const [addingReminder, setAddingReminder] = useState(false);
   const [newTag, setNewTag] = useState('');
+  const [noteMode, setNoteMode] = useState<'team' | 'personal'>('team');
+  const { openAgent } = useAgent();
 
   const fullProfile = useCandidateFullProfile(candidate.candidateId, candidate.linkedin);
   const { data: notionJobs } = useNotionJobs();
@@ -462,9 +462,9 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
             {tabsConfig.map(tab => {
               const isActive = activeTab === tab.key;
               const count = tab.key === 'notes' ? notes.length
-                : tab.key === 'reminders' ? activeRemindersCount
+                : tab.key === 'actions' ? activeRemindersCount
                 : tab.key === 'activity' ? fullProfile.timeline.length
-                : tab.key === 'scoring' ? fullProfile.scoringHistory.length
+                : tab.key === 'evaluation' ? fullProfile.scoringHistory.length
                 : null;
               return (
                 <button key={tab.key} onClick={() => setActiveTab(tab.key)}
@@ -503,9 +503,60 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
         {/* Tab content - split or normal */}
         {isSplitMode ? (
           <div className="flex-1 min-h-0 flex flex-col lg:flex-row divide-y lg:divide-y-0 lg:divide-x divide-foreground/15 relative">
-            {/* LEFT: Scorecard */}
-            <div className="flex-1 min-w-0 min-h-0 overflow-y-auto px-4 sm:px-6 pt-4 pb-20 lg:pb-6">
+            {/* LEFT: Evaluation content */}
+            <div className="flex-1 min-w-0 min-h-0 overflow-y-auto px-4 sm:px-6 pt-4 pb-20 lg:pb-6 space-y-4">
+              {/* Score summary */}
+              {candidate.score != null && (
+                <div className="flex items-center gap-4 p-4 border border-foreground/10 bg-foreground/[0.03]">
+                  <div className={cn("h-14 w-14 flex items-center justify-center border-2 text-xl font-black shrink-0",
+                    candidate.score >= 70 ? 'border-emerald-400 bg-emerald-50 text-emerald-700' :
+                    candidate.score >= 40 ? 'border-amber-400 bg-amber-50 text-amber-700' :
+                    'border-destructive/40 bg-destructive/5 text-destructive'
+                  )}>{candidate.score}</div>
+                  <div className="flex-1 min-w-0">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Score global /100</span>
+                    {candidate.recommendation && (
+                      <span className={cn("text-[10px] px-2 py-0.5 border font-medium uppercase tracking-wider mt-1 inline-block",
+                        candidate.recommendation === 'shortlist' ? 'border-emerald-300 text-emerald-700 bg-emerald-50' :
+                        candidate.recommendation === 'skip' ? 'border-destructive/30 text-destructive bg-destructive/5' :
+                        'border-amber-300 text-amber-700 bg-amber-50'
+                      )}>{candidate.recommendation === 'shortlist' ? 'Recommandé' : candidate.recommendation === 'skip' ? 'Non recommandé' : 'À évaluer'}</span>
+                    )}
+                    {candidate.scoringDetails && (
+                      <div className="flex flex-wrap gap-3 mt-2">
+                        {candidate.scoringDetails.matching_skills?.length > 0 && (
+                          <span className="flex items-center gap-1 text-[10px] text-emerald-700 font-medium">
+                            <CheckCircle2 className="w-3 h-3" /> {candidate.scoringDetails.matching_skills.length} matchées
+                          </span>
+                        )}
+                        {candidate.scoringDetails.missing_skills?.length > 0 && (
+                          <span className="flex items-center gap-1 text-[10px] text-amber-700 font-medium">
+                            <AlertTriangle className="w-3 h-3" /> {candidate.scoringDetails.missing_skills.length} manquantes
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
               <ScorecardTab candidate={candidate} enrichedProfile={enrichedProfile} onOpenProfile={() => setMobileProfileOpen(true)} />
+
+              {/* Fraud detection - collapsible */}
+              <CollapsibleSection title="🛡️ Vérification du profil" defaultOpen={false}>
+                <FraudDetectionTab candidate={candidateWithProfileData} />
+              </CollapsibleSection>
+
+              {/* Scoring history - collapsible */}
+              {fullProfile.scoringHistory.length > 0 && (
+                <CollapsibleSection title={`📊 Historique des scorings (${fullProfile.scoringHistory.length})`} defaultOpen={false}>
+                  <div className="space-y-3">
+                    {fullProfile.scoringHistory.map((sr) => (
+                      <ScoringCard key={sr.id} scoring={sr} />
+                    ))}
+                  </div>
+                </CollapsibleSection>
+              )}
             </div>
 
             {/* Mobile: floating round pulsing button to open candidate context */}
@@ -1051,29 +1102,56 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
               </div>
             )}
 
-            {/* ==================== SCORING TAB ==================== */}
-            {activeTab === 'scoring' && (
+            {/* ==================== EVALUATION TAB (non-split fallback) ==================== */}
+            {activeTab === 'evaluation' && (
               <div className="space-y-4">
-                {fullProfile.loading ? (
-                  <CenteredLoader />
-                ) : fullProfile.scoringHistory.length === 0 ? (
-                  <EmptyState icon={Target} label="Aucun scoring" />
-                ) : (
-                  fullProfile.scoringHistory.map((sr) => (
-                    <ScoringCard key={sr.id} scoring={sr} />
-                  ))
+                {candidate.score != null && (
+                  <div className="flex items-center gap-4 p-4 border border-foreground/10 bg-foreground/[0.03]">
+                    <div className={cn("h-14 w-14 flex items-center justify-center border-2 text-xl font-black shrink-0",
+                      candidate.score >= 70 ? 'border-emerald-400 bg-emerald-50 text-emerald-700' :
+                      candidate.score >= 40 ? 'border-amber-400 bg-amber-50 text-amber-700' :
+                      'border-destructive/40 bg-destructive/5 text-destructive'
+                    )}>{candidate.score}</div>
+                    <div className="flex-1 min-w-0">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Score global /100</span>
+                      {candidate.recommendation && (
+                        <span className={cn("text-[10px] px-2 py-0.5 border font-medium uppercase tracking-wider mt-1 inline-block",
+                          candidate.recommendation === 'shortlist' ? 'border-emerald-300 text-emerald-700 bg-emerald-50' :
+                          candidate.recommendation === 'skip' ? 'border-destructive/30 text-destructive bg-destructive/5' :
+                          'border-amber-300 text-amber-700 bg-amber-50'
+                        )}>{candidate.recommendation === 'shortlist' ? 'Recommandé' : candidate.recommendation === 'skip' ? 'Non recommandé' : 'À évaluer'}</span>
+                      )}
+                      {candidate.scoringDetails && (
+                        <div className="flex flex-wrap gap-3 mt-2">
+                          {candidate.scoringDetails.matching_skills?.length > 0 && (
+                            <span className="flex items-center gap-1 text-[10px] text-emerald-700 font-medium">
+                              <CheckCircle2 className="w-3 h-3" /> {candidate.scoringDetails.matching_skills.length} matchées
+                            </span>
+                          )}
+                          {candidate.scoringDetails.missing_skills?.length > 0 && (
+                            <span className="flex items-center gap-1 text-[10px] text-amber-700 font-medium">
+                              <AlertTriangle className="w-3 h-3" /> {candidate.scoringDetails.missing_skills.length} manquantes
+                            </span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+                <ScorecardTab candidate={candidate} enrichedProfile={enrichedProfile} onOpenProfile={() => setMobileProfileOpen(true)} />
+                <CollapsibleSection title="🛡️ Vérification du profil" defaultOpen={false}>
+                  <FraudDetectionTab candidate={candidateWithProfileData} />
+                </CollapsibleSection>
+                {fullProfile.scoringHistory.length > 0 && (
+                  <CollapsibleSection title={`📊 Historique des scorings (${fullProfile.scoringHistory.length})`} defaultOpen={false}>
+                    <div className="space-y-3">
+                      {fullProfile.loading ? <CenteredLoader /> : fullProfile.scoringHistory.map((sr) => (
+                        <ScoringCard key={sr.id} scoring={sr} />
+                      ))}
+                    </div>
+                  </CollapsibleSection>
                 )}
               </div>
-            )}
-
-            {/* ==================== EVALUATION TAB ==================== */}
-            {activeTab === 'evaluation' && (
-              <ScorecardTab candidate={candidate} enrichedProfile={enrichedProfile} onOpenProfile={() => setMobileProfileOpen(true)} />
-            )}
-
-            {/* ==================== FRAUD DETECTION TAB ==================== */}
-            {activeTab === 'fraud' && (
-              <FraudDetectionTab candidate={candidateWithProfileData} />
             )}
 
             {/* ==================== ACTIVITY TAB ==================== */}
@@ -1108,117 +1186,189 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
               </div>
             )}
 
-            {/* ==================== COMMENTS TAB ==================== */}
-            {activeTab === 'comments' && (
-              <CandidateCommentsTab
-                candidateId={candidate.candidateId}
-                candidateName={candidate.name}
-                jobId={candidate.jobId}
-              />
-            )}
-
-            {/* ==================== NOTES TAB ==================== */}
+            {/* ==================== NOTES TAB (merged comments + notes) ==================== */}
             {activeTab === 'notes' && (
               <div className="space-y-4">
+                {/* Toggle team / personal */}
                 <div className="flex gap-0">
-                  <Textarea
-                    value={newNote}
-                    onChange={(e) => setNewNote(e.target.value)}
-                    placeholder="Ajouter une note..."
-                    className="flex-1 min-h-[60px] rounded-none border-foreground/30 text-sm resize-none"
-                  />
-                  <button onClick={handleAddNote} disabled={addingNote || !newNote.trim()}
-                    className="h-auto px-4 border border-foreground -ml-px bg-foreground text-background text-[10px] font-medium uppercase tracking-wider disabled:opacity-50">
-                    {addingNote ? <Loader2 className="w-3 h-3 animate-spin" /> : <Plus className="w-3 h-3" />}
+                  <button
+                    onClick={() => setNoteMode('team')}
+                    className={cn(
+                      "flex-1 py-2 text-[10px] font-bold uppercase tracking-[0.15em] border border-foreground transition-colors",
+                      noteMode === 'team' ? 'bg-foreground text-background' : 'text-foreground hover:bg-foreground/5'
+                    )}
+                  >
+                    💬 Équipe
+                  </button>
+                  <button
+                    onClick={() => setNoteMode('personal')}
+                    className={cn(
+                      "flex-1 py-2 text-[10px] font-bold uppercase tracking-[0.15em] border border-foreground -ml-px transition-colors",
+                      noteMode === 'personal' ? 'bg-foreground text-background' : 'text-foreground hover:bg-foreground/5'
+                    )}
+                  >
+                    📝 Perso
                   </button>
                 </div>
-                {loading ? (
-                  <CenteredLoader />
-                ) : notes.length === 0 ? (
-                  <EmptyState icon={StickyNote} label="Aucune note" />
+
+                {noteMode === 'team' ? (
+                  <CandidateCommentsTab
+                    candidateId={candidate.candidateId}
+                    candidateName={candidate.name}
+                    jobId={candidate.jobId}
+                  />
                 ) : (
-                  <div className="space-y-2">
-                    {notes.map(note => (
-                      <div key={note.id} className="group p-3 border border-foreground/10 bg-foreground/[0.02]">
-                        <div className="flex items-start justify-between gap-2">
-                          <p className="text-sm text-foreground whitespace-pre-wrap flex-1">{note.content}</p>
-                          <button onClick={() => handleDeleteNote(note.id)}
-                            className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive p-1">
-                            <Trash2 className="w-3 h-3" />
-                          </button>
-                        </div>
-                        <p className="text-[10px] text-muted-foreground mt-2">
-                          {formatDistanceToNow(parseISO(note.created_at), { addSuffix: true, locale: fr })}
-                        </p>
+                  <div className="space-y-4">
+                    <div className="flex gap-0">
+                      <Textarea
+                        value={newNote}
+                        onChange={(e) => setNewNote(e.target.value)}
+                        placeholder="Ajouter une note personnelle..."
+                        className="flex-1 min-h-[60px] rounded-none border-foreground/30 text-sm resize-none"
+                      />
+                      <button onClick={handleAddNote} disabled={addingNote || !newNote.trim()}
+                        className="h-auto px-4 border border-foreground -ml-px bg-foreground text-background text-[10px] font-medium uppercase tracking-wider disabled:opacity-50">
+                        {addingNote ? <Loader2 className="w-3 h-3 animate-spin" /> : <Plus className="w-3 h-3" />}
+                      </button>
+                    </div>
+                    {loading ? (
+                      <CenteredLoader />
+                    ) : notes.length === 0 ? (
+                      <EmptyState icon={StickyNote} label="Aucune note personnelle" />
+                    ) : (
+                      <div className="space-y-2">
+                        {notes.map(note => (
+                          <div key={note.id} className="group p-3 border border-foreground/10 bg-foreground/[0.02]">
+                            <div className="flex items-start justify-between gap-2">
+                              <p className="text-sm text-foreground whitespace-pre-wrap flex-1">{note.content}</p>
+                              <button onClick={() => handleDeleteNote(note.id)}
+                                className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive p-1">
+                                <Trash2 className="w-3 h-3" />
+                              </button>
+                            </div>
+                            <p className="text-[10px] text-muted-foreground mt-2">
+                              {formatDistanceToNow(parseISO(note.created_at), { addSuffix: true, locale: fr })}
+                            </p>
+                          </div>
+                        ))}
                       </div>
-                    ))}
+                    )}
                   </div>
                 )}
               </div>
             )}
 
-            {/* ==================== REMINDERS TAB ==================== */}
-            {activeTab === 'reminders' && (
-              <div className="space-y-4">
-                {!showNewReminder ? (
-                  <button onClick={() => setShowNewReminder(true)}
-                    className="w-full h-[38px] flex items-center justify-center gap-2 border border-dashed border-foreground/30 text-foreground text-[11px] font-medium uppercase tracking-wider hover:border-foreground hover:bg-foreground/[0.03] transition-colors">
-                    <Plus className="w-3.5 h-3.5" />
-                    Nouveau rappel
-                  </button>
-                ) : (
-                  <div className="space-y-2 p-3 border border-foreground/15 bg-foreground/[0.02]">
-                    <Input value={newReminderTitle} onChange={e => setNewReminderTitle(e.target.value)}
-                      placeholder="Titre du rappel" className="rounded-none border-foreground/30 text-sm" />
-                    <Input type="datetime-local" value={newReminderDate} onChange={e => setNewReminderDate(e.target.value)}
-                      className="rounded-none border-foreground/30 text-sm" />
-                    <div className="flex gap-2">
-                      <button onClick={handleAddReminder} disabled={addingReminder || !newReminderTitle.trim() || !newReminderDate}
-                        className="h-[30px] px-4 bg-foreground text-background text-[10px] font-medium uppercase tracking-wider disabled:opacity-50">
-                        {addingReminder ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Créer'}
-                      </button>
-                      <button onClick={() => setShowNewReminder(false)}
-                        className="h-[30px] px-4 border border-foreground/30 text-foreground text-[10px] font-medium uppercase tracking-wider">
-                        Annuler
-                      </button>
+            {/* ==================== ACTIONS TAB ==================== */}
+            {activeTab === 'actions' && (
+              <div className="space-y-6">
+                {/* Quick AI actions */}
+                <div>
+                  <h4 className="text-[11px] font-bold uppercase tracking-wider text-foreground mb-3">Actions IA</h4>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      onClick={() => openAgent()}
+                      className="border border-foreground/10 hover:border-foreground/40 p-3 text-left transition-all duration-150 hover:bg-muted/50 active:scale-[0.97] group"
+                    >
+                      <Brain className="w-4 h-4 text-muted-foreground group-hover:text-brutal-accent transition-colors" />
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-foreground mt-2">Résumé IA</p>
+                      <p className="text-[9px] text-muted-foreground mt-0.5">Générer un résumé du candidat</p>
+                    </button>
+                    <button
+                      onClick={() => openAgent()}
+                      className="border border-foreground/10 hover:border-foreground/40 p-3 text-left transition-all duration-150 hover:bg-muted/50 active:scale-[0.97] group"
+                    >
+                      <FileText className="w-4 h-4 text-muted-foreground group-hover:text-brutal-accent transition-colors" />
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-foreground mt-2">Brief client</p>
+                      <p className="text-[9px] text-muted-foreground mt-0.5">Préparer une présentation</p>
+                    </button>
+                    <button
+                      onClick={() => { window.location.href = '/missions?tab=messages'; }}
+                      className="border border-foreground/10 hover:border-foreground/40 p-3 text-left transition-all duration-150 hover:bg-muted/50 active:scale-[0.97] group"
+                    >
+                      <Send className="w-4 h-4 text-muted-foreground group-hover:text-brutal-accent transition-colors" />
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-foreground mt-2">Envoyer un message</p>
+                      <p className="text-[9px] text-muted-foreground mt-0.5">Ouvrir la conversation</p>
+                    </button>
+                    <button
+                      onClick={() => {
+                        if (candidate.jobId) {
+                          toast.info('Scoring en cours de lancement...');
+                        } else {
+                          toast.error('Aucun poste associé');
+                        }
+                      }}
+                      className="border border-foreground/10 hover:border-foreground/40 p-3 text-left transition-all duration-150 hover:bg-muted/50 active:scale-[0.97] group"
+                    >
+                      <Target className="w-4 h-4 text-muted-foreground group-hover:text-brutal-accent transition-colors" />
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-foreground mt-2">Lancer le scoring</p>
+                      <p className="text-[9px] text-muted-foreground mt-0.5">Scorer pour le poste associé</p>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Reminders section */}
+                <div>
+                  <h4 className="text-[11px] font-bold uppercase tracking-wider text-foreground mb-3">Rappels</h4>
+                  {!showNewReminder ? (
+                    <button onClick={() => setShowNewReminder(true)}
+                      className="w-full h-[38px] flex items-center justify-center gap-2 border border-dashed border-foreground/30 text-foreground text-[11px] font-medium uppercase tracking-wider hover:border-foreground hover:bg-foreground/[0.03] transition-colors">
+                      <Plus className="w-3.5 h-3.5" />
+                      Nouveau rappel
+                    </button>
+                  ) : (
+                    <div className="space-y-2 p-3 border border-foreground/15 bg-foreground/[0.02]">
+                      <Input value={newReminderTitle} onChange={e => setNewReminderTitle(e.target.value)}
+                        placeholder="Titre du rappel" className="rounded-none border-foreground/30 text-sm" />
+                      <Input type="datetime-local" value={newReminderDate} onChange={e => setNewReminderDate(e.target.value)}
+                        className="rounded-none border-foreground/30 text-sm" />
+                      <div className="flex gap-2">
+                        <button onClick={handleAddReminder} disabled={addingReminder || !newReminderTitle.trim() || !newReminderDate}
+                          className="h-[30px] px-4 bg-foreground text-background text-[10px] font-medium uppercase tracking-wider disabled:opacity-50">
+                          {addingReminder ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Créer'}
+                        </button>
+                        <button onClick={() => setShowNewReminder(false)}
+                          className="h-[30px] px-4 border border-foreground/30 text-foreground text-[10px] font-medium uppercase tracking-wider">
+                          Annuler
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                )}
-                {loading ? (
-                  <CenteredLoader />
-                ) : reminders.length === 0 ? (
-                  <EmptyState icon={Bell} label="Aucun rappel" />
-                ) : (
-                  <div className="space-y-2">
-                    {reminders.map(reminder => {
-                      const isPast = new Date(reminder.due_at) < new Date();
-                      const isDone = !!reminder.completed_at;
-                      return (
-                        <div key={reminder.id} className={cn(
-                          "group p-3 border",
-                          isDone ? 'border-foreground/10 bg-foreground/[0.02] opacity-60' :
-                          isPast ? 'border-destructive/30 bg-destructive/5' :
-                          'border-foreground/10 bg-foreground/[0.02]'
-                        )}>
-                          <div className="flex items-start justify-between gap-2">
-                            <div className="flex-1">
-                              <p className={cn("text-sm font-medium", isDone && 'line-through text-muted-foreground')}>{reminder.title}</p>
-                              <p className="text-[10px] text-muted-foreground mt-1 flex items-center gap-1">
-                                <Calendar className="w-3 h-3" />
-                                {format(parseISO(reminder.due_at), 'd MMM yyyy à HH:mm', { locale: fr })}
-                                {isPast && !isDone && <span className="text-destructive font-bold ml-1">En retard</span>}
-                              </p>
+                  )}
+                  {loading ? (
+                    <CenteredLoader />
+                  ) : reminders.length === 0 ? (
+                    <EmptyState icon={Bell} label="Aucun rappel" />
+                  ) : (
+                    <div className="space-y-2 mt-3">
+                      {reminders.map(reminder => {
+                        const isPast = new Date(reminder.due_at) < new Date();
+                        const isDone = !!reminder.completed_at;
+                        return (
+                          <div key={reminder.id} className={cn(
+                            "group p-3 border",
+                            isDone ? 'border-foreground/10 bg-foreground/[0.02] opacity-60' :
+                            isPast ? 'border-destructive/30 bg-destructive/5' :
+                            'border-foreground/10 bg-foreground/[0.02]'
+                          )}>
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="flex-1">
+                                <p className={cn("text-sm font-medium", isDone && 'line-through text-muted-foreground')}>{reminder.title}</p>
+                                <p className="text-[10px] text-muted-foreground mt-1 flex items-center gap-1">
+                                  <Calendar className="w-3 h-3" />
+                                  {format(parseISO(reminder.due_at), 'd MMM yyyy à HH:mm', { locale: fr })}
+                                  {isPast && !isDone && <span className="text-destructive font-bold ml-1">En retard</span>}
+                                </p>
+                              </div>
+                              <button onClick={() => handleDeleteReminder(reminder.id)}
+                                className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive p-1">
+                                <Trash2 className="w-3 h-3" />
+                              </button>
                             </div>
-                            <button onClick={() => handleDeleteReminder(reminder.id)}
-                              className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive p-1">
-                              <Trash2 className="w-3 h-3" />
-                            </button>
                           </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
               </div>
             )}
           </div>
