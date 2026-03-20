@@ -74,6 +74,8 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
   const [newReminderDate, setNewReminderDate] = useState('');
   const [addingReminder, setAddingReminder] = useState(false);
   const [newTag, setNewTag] = useState('');
+  const [noteMode, setNoteMode] = useState<'team' | 'personal'>('team');
+  const { openAgent } = useAgent();
 
   const fullProfile = useCandidateFullProfile(candidate.candidateId, candidate.linkedin);
   const { data: notionJobs } = useNotionJobs();
