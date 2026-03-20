@@ -25,6 +25,7 @@ import {
 interface ATSTableProps {
   candidates: ATSCandidate[];
   onCandidateClick: (candidate: ATSCandidate) => void;
+  onJobClick?: (jobId: string) => void;
 }
 
 type SortKey = 'name' | 'stage' | 'source' | 'jobTitle' | 'lastActivity' | 'createdAt';
