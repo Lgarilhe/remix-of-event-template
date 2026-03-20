@@ -52,13 +52,10 @@ interface Reminder {
 
 const tabsConfig = [
   { key: 'profile', label: 'Profil', icon: User, emoji: '👤' },
-  { key: 'scoring', label: 'Scoring', icon: Target, emoji: '🎯' },
-  { key: 'evaluation', label: 'Évaluation', icon: ClipboardCheck, emoji: '📋' },
-  { key: 'fraud', label: 'Vérification', icon: Shield, emoji: '🛡️' },
+  { key: 'evaluation', label: 'Évaluation', icon: Target, emoji: '🎯' },
   { key: 'activity', label: 'Activité', icon: Activity, emoji: '⚡' },
-  { key: 'comments', label: 'Discussion', icon: MessageSquare, emoji: '💬' },
   { key: 'notes', label: 'Notes', icon: StickyNote, emoji: '📝' },
-  { key: 'reminders', label: 'Rappels', icon: Bell, emoji: '🔔' },
+  { key: 'actions', label: 'Actions', icon: Zap, emoji: '🚀' },
 ] as const;
 
 export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
