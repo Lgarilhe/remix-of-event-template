@@ -7,6 +7,7 @@ interface ATSDraggableCardProps {
   candidate: ATSCandidate;
   columnId: string;
   onClick: () => void;
+  onJobClick?: (jobId: string) => void;
 }
 
 export const ATSDraggableCard: React.FC<ATSDraggableCardProps> = ({
