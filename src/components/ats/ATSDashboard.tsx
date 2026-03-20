@@ -646,7 +646,7 @@ export function ATSDashboard({ candidates, stages }: ATSDashboardProps) {
           icon={Briefcase}
           action={
             <button
-              onClick={() => navigate('/outreach')}
+              onClick={() => navigate('/missions')}
               className="text-[10px] text-muted-foreground uppercase tracking-wider hover:text-foreground transition-colors flex items-center gap-1"
             >
               Outreach <ArrowRight className="w-3 h-3" />

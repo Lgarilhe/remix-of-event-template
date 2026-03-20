@@ -64,7 +64,7 @@ export default function Qualification() {
 
       if (error || !data) {
         toast.error('Session de qualification introuvable');
-        navigate('/outreach');
+        navigate('/missions');
         return;
       }
       setSession(data as any);

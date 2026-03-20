@@ -297,7 +297,7 @@ export default function ATS() {
                         title="Aucun candidat dans l'ATS"
                         description="Les candidats apparaîtront ici automatiquement lorsque vous les contacterez via Outreach ou les ajouterez manuellement."
                         actionLabel="Aller sur Outreach"
-                        actionHref="/outreach"
+                        actionHref="/missions"
                       />
                     ) : (
                       <>

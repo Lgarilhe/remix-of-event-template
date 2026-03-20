@@ -20,7 +20,7 @@ const useRedirectIfAuthenticated = () => {
       if (session) navigate('/missions', { replace: true });
     });
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === 'SIGNED_IN' && session) navigate('/outreach', { replace: true });
+      if (event === 'SIGNED_IN' && session) navigate('/missions', { replace: true });
     });
     return () => subscription.unsubscribe();
   }, [navigate]);
