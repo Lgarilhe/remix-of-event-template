@@ -15,6 +15,7 @@ import { ATSTableSkeleton } from '@/components/ats/ATSTableSkeleton';
 import { ATSStatsSkeleton } from '@/components/ats/ATSStatsSkeleton';
 import { RemindersSidebar } from '@/components/ats/RemindersSidebar';
 import { CandidateDetailModal } from '@/components/ats/CandidateDetailModal';
+import { JobDetailSheet } from '@/components/ats/JobDetailSheet';
 import { CandidatePipeline } from '@/components/candidates/CandidatePipeline';
 import { CandidateList } from '@/components/candidates/CandidateList';
 import { CandidateFilters } from '@/components/candidates/CandidateFilters';
