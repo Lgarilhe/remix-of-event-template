@@ -322,6 +322,56 @@ export default function ATS() {
                         <TabsContent value="analytics" className="mt-0">
                           <ATSPipelineAnalytics candidates={filteredCandidates} />
                         </TabsContent>
+
+                        <TabsContent value="shortlist" className="mt-0">
+                          {shortlistLoading && shortlist.length === 0 ? (
+                            <div className="flex items-center justify-center py-20">
+                              <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+                            </div>
+                          ) : shortlist.length === 0 ? (
+                            <EmptyState
+                              icon={<Users className="w-7 h-7" />}
+                              title="Aucune shortlist client"
+                              description="Connectez Notion dans les paramètres pour synchroniser votre base candidats."
+                              actionLabel="Paramètres"
+                              actionHref="/settings?tab=integrations"
+                            />
+                          ) : (
+                            <>
+                              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
+                                <div className="flex gap-0">
+                                  {[
+                                    { value: 'pipeline' as const, label: 'Pipeline', Icon: LayoutGrid },
+                                    { value: 'list' as const, label: 'Liste', Icon: List },
+                                  ].map((tab, index) => (
+                                    <button
+                                      key={tab.value}
+                                      onClick={() => setShortlistViewMode(tab.value)}
+                                      className={cn(
+                                        "relative overflow-hidden flex items-center gap-1.5 h-[30px] px-3 text-[10px] font-medium uppercase tracking-wider border border-foreground transition-colors duration-200 group",
+                                        index > 0 && "border-l-0",
+                                        shortlistViewMode === tab.value ? "bg-brutal-accent text-foreground" : "bg-background text-foreground"
+                                      )}
+                                    >
+                                      <tab.Icon className="w-3 h-3 shrink-0 relative z-10" />
+                                      <span className="relative z-10">{tab.label}</span>
+                                      {shortlistViewMode !== tab.value && (
+                                        <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
+                                      )}
+                                    </button>
+                                  ))}
+                                </div>
+                                <CandidateFilters filters={shortlistFilters} onFiltersChange={setShortlistFilters} options={shortlistFilterOptions} />
+                              </div>
+                              <PipelineStats data={shortlistPipelineData} stages={PIPELINE_STAGES} />
+                              {shortlistViewMode === 'pipeline' ? (
+                                <CandidatePipeline data={shortlistPipelineData} stages={PIPELINE_STAGES} onStageChange={handleShortlistStageChange} />
+                              ) : (
+                                <CandidateList entries={filteredShortlist} />
+                              )}
+                            </>
+                          )}
+                        </TabsContent>
                       </>
                     )}
                   </div>
