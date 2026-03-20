@@ -16,6 +16,7 @@ import { fr } from 'date-fns/locale';
 interface ATSTimelineProps {
   candidates: ATSCandidate[];
   onCandidateClick: (candidate: ATSCandidate) => void;
+  onJobClick?: (jobId: string) => void;
 }
 
 interface TimelineGroup {
