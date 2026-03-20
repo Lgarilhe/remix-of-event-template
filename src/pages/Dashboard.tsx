@@ -55,13 +55,37 @@ export default function Dashboard() {
           {loading && candidates.length === 0 ? (
             <ATSStatsSkeleton />
           ) : candidates.length === 0 ? (
-            <EmptyState
-              icon={<img src={iconDashboard3d} alt="" className="w-7 h-7 object-contain" />}
-              title="Pas encore de données"
-              description="Le dashboard se remplit automatiquement avec vos données candidats. Commencez par sourcer des profils via Outreach."
-              actionLabel="Aller sur Outreach"
-              actionHref="/outreach"
-            />
+            <div className="border-2 border-foreground bg-background p-6 sm:p-8">
+              <div className="flex items-start gap-4">
+                <div className="text-4xl">👋</div>
+                <div>
+                  <h2 className="text-lg font-bold uppercase tracking-wider">Bienvenue sur Konekt</h2>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Voici les 3 étapes pour démarrer :
+                  </p>
+                </div>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-6">
+                <a href="/missions" className="group border border-foreground p-4 hover:bg-brutal-accent transition-colors">
+                  <div className="text-2xl mb-2">📂</div>
+                  <div className="text-[11px] font-bold uppercase tracking-wider">1. Créer une mission</div>
+                  <p className="text-[10px] text-muted-foreground mt-1">Ajoutez votre premier poste à pourvoir</p>
+                </a>
+                <a href="/missions?tab=search" className="group border border-foreground p-4 hover:bg-brutal-accent transition-colors">
+                  <div className="text-2xl mb-2">🔍</div>
+                  <div className="text-[11px] font-bold uppercase tracking-wider">2. Sourcer des candidats</div>
+                  <p className="text-[10px] text-muted-foreground mt-1">Lancez une recherche LinkedIn</p>
+                </a>
+                <a href="/settings?tab=integrations" className="group border border-foreground p-4 hover:bg-brutal-accent transition-colors">
+                  <div className="text-2xl mb-2">🔌</div>
+                  <div className="text-[11px] font-bold uppercase tracking-wider">3. Connecter vos outils</div>
+                  <p className="text-[10px] text-muted-foreground mt-1">Notion, Airtable, Aircall...</p>
+                </a>
+              </div>
+              <p className="text-[10px] text-muted-foreground mt-4 text-center">
+                Astuce : appuyez sur <kbd className="px-1 py-0.5 border border-foreground text-foreground">⌘K</kbd> à tout moment pour ouvrir le copilot IA
+              </p>
+            </div>
           ) : (
             <ATSDashboard candidates={candidates} stages={ATS_STAGES} />
           )}
