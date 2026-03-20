@@ -330,6 +330,12 @@ const Settings = () => {
               <AICreditsSettings />
             )}
 
+            {activeTab === 'connectors' && (
+              <ConnectorSettings />
+            )}
+              <AICreditsSettings />
+            )}
+
             {activeTab === 'integrations' && isAdmin && (
               <IntegrationsSettings />
             )}
