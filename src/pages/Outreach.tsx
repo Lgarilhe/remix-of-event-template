@@ -11,11 +11,15 @@ import { MessagesInbox } from '@/components/outreach/MessagesInbox';
 import { NurturingDashboard } from '@/components/outreach/NurturingDashboard';
 import { InMailQueueStatus } from '@/components/outreach/InMailQueueStatus';
 import { ProjectsList } from '@/components/outreach/projects';
+import { ICPList } from '@/components/outreach/icp';
+import { ProspectSearch } from '@/components/prospection/ProspectSearch';
+import { VivierList } from '@/components/prospection/VivierList';
 import { Search, Users, Settings, UserPlus } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { OutreachSearchProvider } from '@/contexts/OutreachSearchContext';
 import { SourcingProject } from '@/hooks/useSourcingProjects';
+import { ICP } from '@/hooks/useICPs';
 import { useUnreadMessageCount } from '@/hooks/useUnreadMessageCount';
 import { useOrganization } from '@/hooks/useOrganization';
 import { useMemberLinkedInAccounts } from '@/hooks/useMemberLinkedInAccounts';
@@ -40,6 +44,7 @@ export interface LinkedInAccount {
 const tabs = [
   { value: 'projects', label: 'Projets', shortLabel: 'Projets', emoji: '📂' },
   { value: 'search', label: 'Recherche', shortLabel: 'Recherche', emoji: '🔍' },
+  { value: 'prospection', label: 'Prospection', shortLabel: 'Prosp.', emoji: '🎯' },
   { value: 'messages', label: 'Messages', shortLabel: 'Msg', emoji: '💬' },
   { value: 'invitations', label: 'Invitations', shortLabel: 'Invit.', emoji: '🤝' },
   { value: 'sequences', label: 'Séquences', shortLabel: 'Séq.', emoji: '🔗' },
@@ -70,6 +75,10 @@ export default function Outreach() {
   }, [setSearchParams]);
   
   const [activeProject, setActiveProject] = useState<SourcingProject | null>(null);
+  const [prospectResults, setProspectResults] = useState<any[]>([]);
+  const [prospectSearching, setProspectSearching] = useState(false);
+  const [selectedICP, setSelectedICP] = useState<ICP | null>(null);
+  const [prospectionTab, setProspectionTab] = useState<'search' | 'vivier' | 'icp'>('search');
 
   // Get current user ID
   useEffect(() => {
@@ -151,8 +160,8 @@ export default function Outreach() {
   return (
     <div className="min-h-screen w-full max-w-full bg-background">
       <SEOHead
-        title="Outreach LinkedIn | Konekt"
-        description="Recherchez et contactez des candidats sur LinkedIn avec les filtres Recruiter avancés"
+        title="Missions | Konekt"
+        description="Gérez vos missions de recrutement, sourcing et prospection"
       />
       <Navbar />
 
@@ -163,10 +172,10 @@ export default function Outreach() {
             <div className="flex items-center justify-between">
               <div>
                 <div className="flex items-center gap-2.5 sm:gap-3 mb-1">
-                  <h1 className="text-xl sm:text-2xl font-bold text-foreground tracking-tight uppercase">Outreach</h1>
+                  <h1 className="text-xl sm:text-2xl font-bold text-foreground tracking-tight uppercase">Missions</h1>
                 </div>
                 <p className="text-xs sm:text-sm text-muted-foreground hidden sm:block">
-                  Sourcing, séquences & suivi candidats
+                  Sourcing, prospection, séquences & suivi candidats
                 </p>
               </div>
               <InMailQueueStatus />
@@ -245,6 +254,54 @@ export default function Outreach() {
                 />
               </OutreachSearchProvider>
             )}
+          </div>
+
+          {/* Prospection tab */}
+          <div className={cn("mt-0 min-w-0", activeTab !== 'prospection' && 'hidden')}>
+            <div className="bg-background border border-foreground p-3 sm:p-6">
+              {/* Sub-tabs for prospection */}
+              <div className="flex gap-0 mb-4 overflow-x-auto no-scrollbar">
+                {([
+                  { value: 'search' as const, label: 'Recherche', emoji: '🔍' },
+                  { value: 'vivier' as const, label: 'Vivier', emoji: '📋' },
+                  { value: 'icp' as const, label: 'ICP', emoji: '🎯' },
+                ]).map((sub, idx) => (
+                  <button
+                    key={sub.value}
+                    onClick={() => setProspectionTab(sub.value)}
+                    className={cn(
+                      "relative overflow-hidden flex items-center gap-1 h-[30px] px-3 text-[10px] font-medium uppercase tracking-wider border border-foreground transition-colors group shrink-0",
+                      idx > 0 && "border-l-0",
+                      prospectionTab === sub.value
+                        ? "bg-foreground text-background"
+                        : "bg-background text-foreground"
+                    )}
+                  >
+                    <span className="text-xs relative z-10">{sub.emoji}</span>
+                    <span className="relative z-10">{sub.label}</span>
+                    {prospectionTab !== sub.value && (
+                      <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
+                    )}
+                  </button>
+                ))}
+              </div>
+              <div className={cn(prospectionTab !== 'search' && 'hidden')}>
+                <ProspectSearch
+                  selectedICP={selectedICP}
+                  onSelectICP={setSelectedICP}
+                  onResults={setProspectResults}
+                  searching={prospectSearching}
+                  onSearchingChange={setProspectSearching}
+                  results={prospectResults}
+                />
+              </div>
+              <div className={cn(prospectionTab !== 'vivier' && 'hidden')}>
+                <VivierList />
+              </div>
+              <div className={cn(prospectionTab !== 'icp' && 'hidden')}>
+                <ICPList onSearchFromICP={(icp) => { setSelectedICP(icp); setProspectionTab('search'); }} />
+              </div>
+            </div>
           </div>
 
           {/* Messages: conditional render (WebSocket connections are heavy) */}
