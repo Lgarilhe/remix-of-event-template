@@ -333,8 +333,6 @@ const Settings = () => {
             {activeTab === 'connectors' && (
               <ConnectorSettings />
             )}
-              <AICreditsSettings />
-            )}
 
             {activeTab === 'integrations' && isAdmin && (
               <IntegrationsSettings />
