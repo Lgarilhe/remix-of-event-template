@@ -132,7 +132,15 @@ export const ATSTimeline: React.FC<ATSTimelineProps> = ({ candidates, onCandidat
                               </span>
                               
                               {candidate.jobTitle && (
-                                <span className="text-[10px] px-2 py-0.5 border border-foreground/20 text-muted-foreground">
+                                <span
+                                  className={`text-[10px] px-2 py-0.5 border border-foreground/20 text-muted-foreground ${candidate.jobId && onJobClick ? 'cursor-pointer hover:border-foreground hover:text-foreground transition-colors' : ''}`}
+                                  onClick={(e) => {
+                                    if (candidate.jobId && onJobClick) {
+                                      e.stopPropagation();
+                                      onJobClick(candidate.jobId);
+                                    }
+                                  }}
+                                >
                                   {candidate.jobTitle}
                                 </span>
                               )}
