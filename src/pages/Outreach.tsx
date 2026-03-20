@@ -11,6 +11,9 @@ import { MessagesInbox } from '@/components/outreach/MessagesInbox';
 import { NurturingDashboard } from '@/components/outreach/NurturingDashboard';
 import { InMailQueueStatus } from '@/components/outreach/InMailQueueStatus';
 import { ProjectsList } from '@/components/outreach/projects';
+import { ICPList } from '@/components/outreach/icp';
+import { ProspectSearch } from '@/components/prospection/ProspectSearch';
+import { VivierList } from '@/components/prospection/VivierList';
 import { Search, Users, Settings, UserPlus } from 'lucide-react';
 import { toast } from 'sonner';
 
