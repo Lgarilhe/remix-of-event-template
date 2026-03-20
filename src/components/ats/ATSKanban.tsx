@@ -27,7 +27,8 @@ export const ATSKanban: React.FC<ATSKanbanProps> = ({
   data, 
   stages, 
   onStageChange, 
-  onCandidateClick 
+  onCandidateClick,
+  onJobClick,
 }) => {
   const [activeCandidate, setActiveCandidate] = React.useState<ATSCandidate | null>(null);
   const [activeOverColumn, setActiveOverColumn] = React.useState<string | null>(null);
