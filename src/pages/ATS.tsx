@@ -53,6 +53,13 @@ export default function ATS() {
   );
   const [showReminders, setShowReminders] = useState(false);
   const [selectedCandidate, setSelectedCandidate] = useState<ATSCandidate | null>(null);
+  const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
+  const [jobSheetOpen, setJobSheetOpen] = useState(false);
+
+  const handleJobClick = (jobId: string) => {
+    setSelectedJobId(jobId);
+    setJobSheetOpen(true);
+  };
   
   const { candidates, loading, isFetching, isFromCache, error, refetch, handleStageChange, handleTagsChange } = useATSData();
 
