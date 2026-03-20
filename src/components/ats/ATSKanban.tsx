@@ -20,6 +20,7 @@ interface ATSKanbanProps {
   stages: { key: string; label: string; color: string }[];
   onStageChange: (candidateId: string, newStage: string) => void;
   onCandidateClick: (candidate: ATSCandidate) => void;
+  onJobClick?: (jobId: string) => void;
 }
 
 export const ATSKanban: React.FC<ATSKanbanProps> = ({ 
