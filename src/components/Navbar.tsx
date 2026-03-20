@@ -171,29 +171,29 @@ export const Navbar: React.FC = () => {
               <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out"></span>
             </Link>
             <Link
-              to="/outreach" 
+              to="/missions" 
               className="relative overflow-hidden glass text-foreground h-[34px] px-3 flex items-center text-[11px] font-medium uppercase border-l-0 border border-foreground leading-none group"
             >
-              <span className="relative z-10">OUTREACH</span>
+              <span className="relative z-10">MISSIONS</span>
+              <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out"></span>
+            </Link>
+            <Link 
+              to="/pipeline" 
+              className="relative overflow-hidden glass text-foreground h-[34px] px-3 flex items-center text-[11px] font-medium uppercase border-l-0 border border-foreground leading-none group"
+            >
+              <span className="relative z-10">PIPELINE</span>
+              <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out"></span>
+            </Link>
+            <Link 
+              to="/missions?tab=messages" 
+              className="relative overflow-hidden glass text-foreground h-[34px] px-3 flex items-center text-[11px] font-medium uppercase border-l-0 border border-foreground leading-none group"
+            >
+              <span className="relative z-10">MESSAGES</span>
               {unreadMsgCount > 0 && (
                 <span className="relative z-10 ml-1 min-w-[16px] h-4 flex items-center justify-center px-1 text-[9px] font-bold bg-destructive text-destructive-foreground rounded-full">
                   {unreadMsgCount > 99 ? '99+' : unreadMsgCount}
                 </span>
               )}
-              <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out"></span>
-            </Link>
-            <Link
-              to="/prospection" 
-              className="relative overflow-hidden glass text-foreground h-[34px] px-3 flex items-center text-[11px] font-medium uppercase border-l-0 border border-foreground leading-none group"
-            >
-              <span className="relative z-10">PROSPECTION</span>
-              <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out"></span>
-            </Link>
-            <Link 
-              to="/ats" 
-              className="relative overflow-hidden glass text-foreground h-[34px] px-3 flex items-center text-[11px] font-medium uppercase border-l-0 border border-foreground leading-none group"
-            >
-              <span className="relative z-10">ATS</span>
               <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out"></span>
             </Link>
             <Link 
