@@ -122,6 +122,7 @@ export const ATSKanban: React.FC<ATSKanbanProps> = ({
               candidates={data[stage.key] || []}
               isOver={activeOverColumn === stage.key}
               onCandidateClick={onCandidateClick}
+              onJobClick={onJobClick}
             />
           ))}
         </div>

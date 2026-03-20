@@ -22,6 +22,7 @@ export const ATSDroppableColumn: React.FC<ATSDroppableColumnProps> = ({
   candidates,
   isOver,
   onCandidateClick,
+  onJobClick,
 }) => {
   const [visibleCount, setVisibleCount] = useState(INITIAL_VISIBLE);
 
