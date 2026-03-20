@@ -66,6 +66,7 @@ export const ATSDroppableColumn: React.FC<ATSDroppableColumnProps> = ({
               candidate={candidate}
               columnId={id}
               onClick={() => onCandidateClick(candidate)}
+              onJobClick={onJobClick}
             />
           ))
         )}
