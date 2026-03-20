@@ -462,9 +462,9 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
             {tabsConfig.map(tab => {
               const isActive = activeTab === tab.key;
               const count = tab.key === 'notes' ? notes.length
-                : tab.key === 'reminders' ? activeRemindersCount
+                : tab.key === 'actions' ? activeRemindersCount
                 : tab.key === 'activity' ? fullProfile.timeline.length
-                : tab.key === 'scoring' ? fullProfile.scoringHistory.length
+                : tab.key === 'evaluation' ? fullProfile.scoringHistory.length
                 : null;
               return (
                 <button key={tab.key} onClick={() => setActiveTab(tab.key)}
