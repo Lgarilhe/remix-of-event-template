@@ -30,7 +30,7 @@ const SOURCE_CONFIG: Record<string, { icon: React.ReactNode }> = {
   inmail: { icon: <Send className="w-3 h-3" /> },
 };
 
-export const ATSTimeline: React.FC<ATSTimelineProps> = ({ candidates, onCandidateClick }) => {
+export const ATSTimeline: React.FC<ATSTimelineProps> = ({ candidates, onCandidateClick, onJobClick }) => {
   const timelineGroups = useMemo(() => {
     const groups: TimelineGroup[] = [];
     const today: ATSCandidate[] = [];
