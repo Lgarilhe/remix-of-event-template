@@ -257,33 +257,33 @@ export const Navbar: React.FC = () => {
                   DASHBOARD
                 </Link>
                 <Link
-                  to="/outreach" 
+                  to="/missions" 
                   onClick={() => setIsMobileMenuOpen(false)}
-                  className="flex-1 flex items-center justify-center gap-2 bg-background text-foreground text-[17px] font-medium uppercase border-b border-foreground tracking-[-0.34px] animate-fade-in"
+                  className="flex-1 flex items-center justify-center bg-background text-foreground text-[17px] font-medium uppercase border-b border-foreground tracking-[-0.34px] animate-fade-in"
+                  style={{ animationDelay: '0.25s', animationFillMode: 'both' }}
+                >
+                  MISSIONS
+                </Link>
+                <Link 
+                  to="/pipeline" 
+                  onClick={() => setIsMobileMenuOpen(false)}
+                  className="flex-1 flex items-center justify-center bg-background text-foreground text-[17px] font-medium uppercase border-b border-foreground tracking-[-0.34px] animate-fade-in"
                   style={{ animationDelay: '0.3s', animationFillMode: 'both' }}
                 >
-                  OUTREACH
+                  PIPELINE
+                </Link>
+                <Link 
+                  to="/missions?tab=messages" 
+                  onClick={() => setIsMobileMenuOpen(false)}
+                  className="flex-1 flex items-center justify-center gap-2 bg-background text-foreground text-[17px] font-medium uppercase border-b border-foreground tracking-[-0.34px] animate-fade-in"
+                  style={{ animationDelay: '0.35s', animationFillMode: 'both' }}
+                >
+                  MESSAGES
                   {unreadMsgCount > 0 && (
                     <span className="min-w-[20px] h-5 flex items-center justify-center px-1.5 text-[10px] font-bold bg-destructive text-destructive-foreground rounded-full">
                       {unreadMsgCount > 99 ? '99+' : unreadMsgCount}
                     </span>
                   )}
-                </Link>
-                <Link
-                  to="/prospection" 
-                  onClick={() => setIsMobileMenuOpen(false)}
-                  className="flex-1 flex items-center justify-center bg-background text-foreground text-[17px] font-medium uppercase border-b border-foreground tracking-[-0.34px] animate-fade-in"
-                  style={{ animationDelay: '0.32s', animationFillMode: 'both' }}
-                >
-                  PROSPECTION
-                </Link>
-                <Link 
-                  to="/ats" 
-                  onClick={() => setIsMobileMenuOpen(false)}
-                  className="flex-1 flex items-center justify-center bg-background text-foreground text-[17px] font-medium uppercase border-b border-foreground tracking-[-0.34px] animate-fade-in"
-                  style={{ animationDelay: '0.35s', animationFillMode: 'both' }}
-                >
-                  ATS
                 </Link>
                 <Link 
                   to="/settings" 
