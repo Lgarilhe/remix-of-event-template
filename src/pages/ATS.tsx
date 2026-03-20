@@ -414,6 +414,12 @@ export default function ATS() {
           onRefresh={refetch}
         />
       )}
+
+      <JobDetailSheet
+        jobId={selectedJobId}
+        open={jobSheetOpen}
+        onOpenChange={setJobSheetOpen}
+      />
     </div>
   );
 }
