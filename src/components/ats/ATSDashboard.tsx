@@ -310,7 +310,7 @@ export function ATSDashboard({ candidates, stages }: ATSDashboardProps) {
               className="border-b-0 lg:border-r-0"
               action={
                 <button
-                  onClick={() => navigate('/ats')}
+                  onClick={() => navigate('/pipeline')}
                   className="text-[10px] text-muted-foreground uppercase tracking-wider hover:text-foreground transition-colors flex items-center gap-1"
                 >
                   Voir ATS <ArrowRight className="w-3 h-3" />
