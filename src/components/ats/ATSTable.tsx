@@ -45,7 +45,7 @@ const SOURCE_ICONS: Record<string, React.ReactNode> = {
   outreach: <Target className="w-3 h-3" />,
 };
 
-export const ATSTable: React.FC<ATSTableProps> = ({ candidates, onCandidateClick }) => {
+export const ATSTable: React.FC<ATSTableProps> = ({ candidates, onCandidateClick, onJobClick }) => {
   const [sortKey, setSortKey] = useState<SortKey>('lastActivity');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
 
