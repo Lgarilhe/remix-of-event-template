@@ -331,6 +331,7 @@ export default function ATS() {
                           <ATSTimeline
                             candidates={filteredCandidates}
                             onCandidateClick={handleCandidateClick}
+                            onJobClick={handleJobClick}
                           />
                         </TabsContent>
 
