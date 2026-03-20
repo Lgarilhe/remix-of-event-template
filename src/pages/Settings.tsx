@@ -104,6 +104,7 @@ const Settings = () => {
     { value: 'team', label: 'Équipe', icon3d: iconTeam3d },
     ...(isAdmin ? [{ value: 'billing', label: 'Abonnement', icon3d: iconBilling3d }] : []),
     { value: 'credits', label: 'Crédits IA', icon3d: iconCredits3d },
+    { value: 'connectors', label: 'Connecteurs', icon3d: iconIntegrations3d },
     ...(isAdmin ? [{ value: 'integrations', label: 'Intégrations', icon3d: iconIntegrations3d }] : []),
   ];
 
