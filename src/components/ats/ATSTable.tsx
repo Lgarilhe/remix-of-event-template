@@ -147,7 +147,17 @@ export const ATSTable: React.FC<ATSTableProps> = ({ candidates, onCandidateClick
               </TableCell>
               <TableCell>
                 {candidate.jobTitle ? (
-                  <span className="text-sm text-foreground/80 truncate block max-w-[180px]">{candidate.jobTitle}</span>
+                  <span
+                    className={`text-sm text-foreground/80 truncate block max-w-[180px] ${candidate.jobId && onJobClick ? 'cursor-pointer hover:text-foreground hover:underline transition-colors' : ''}`}
+                    onClick={(e) => {
+                      if (candidate.jobId && onJobClick) {
+                        e.stopPropagation();
+                        onJobClick(candidate.jobId);
+                      }
+                    }}
+                  >
+                    {candidate.jobTitle}
+                  </span>
                 ) : (
                   <span className="text-sm text-muted-foreground">—</span>
                 )}
