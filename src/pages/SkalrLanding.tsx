@@ -17,7 +17,7 @@ const useRedirectIfAuthenticated = () => {
   const navigate = useNavigate();
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) navigate('/outreach', { replace: true });
+      if (session) navigate('/missions', { replace: true });
     });
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === 'SIGNED_IN' && session) navigate('/outreach', { replace: true });
