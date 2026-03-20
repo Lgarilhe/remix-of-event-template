@@ -503,9 +503,60 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
         {/* Tab content - split or normal */}
         {isSplitMode ? (
           <div className="flex-1 min-h-0 flex flex-col lg:flex-row divide-y lg:divide-y-0 lg:divide-x divide-foreground/15 relative">
-            {/* LEFT: Scorecard */}
-            <div className="flex-1 min-w-0 min-h-0 overflow-y-auto px-4 sm:px-6 pt-4 pb-20 lg:pb-6">
+            {/* LEFT: Evaluation content */}
+            <div className="flex-1 min-w-0 min-h-0 overflow-y-auto px-4 sm:px-6 pt-4 pb-20 lg:pb-6 space-y-4">
+              {/* Score summary */}
+              {candidate.score != null && (
+                <div className="flex items-center gap-4 p-4 border border-foreground/10 bg-foreground/[0.03]">
+                  <div className={cn("h-14 w-14 flex items-center justify-center border-2 text-xl font-black shrink-0",
+                    candidate.score >= 70 ? 'border-emerald-400 bg-emerald-50 text-emerald-700' :
+                    candidate.score >= 40 ? 'border-amber-400 bg-amber-50 text-amber-700' :
+                    'border-destructive/40 bg-destructive/5 text-destructive'
+                  )}>{candidate.score}</div>
+                  <div className="flex-1 min-w-0">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Score global /100</span>
+                    {candidate.recommendation && (
+                      <span className={cn("text-[10px] px-2 py-0.5 border font-medium uppercase tracking-wider mt-1 inline-block",
+                        candidate.recommendation === 'shortlist' ? 'border-emerald-300 text-emerald-700 bg-emerald-50' :
+                        candidate.recommendation === 'skip' ? 'border-destructive/30 text-destructive bg-destructive/5' :
+                        'border-amber-300 text-amber-700 bg-amber-50'
+                      )}>{candidate.recommendation === 'shortlist' ? 'Recommandé' : candidate.recommendation === 'skip' ? 'Non recommandé' : 'À évaluer'}</span>
+                    )}
+                    {candidate.scoringDetails && (
+                      <div className="flex flex-wrap gap-3 mt-2">
+                        {candidate.scoringDetails.matching_skills?.length > 0 && (
+                          <span className="flex items-center gap-1 text-[10px] text-emerald-700 font-medium">
+                            <CheckCircle2 className="w-3 h-3" /> {candidate.scoringDetails.matching_skills.length} matchées
+                          </span>
+                        )}
+                        {candidate.scoringDetails.missing_skills?.length > 0 && (
+                          <span className="flex items-center gap-1 text-[10px] text-amber-700 font-medium">
+                            <AlertTriangle className="w-3 h-3" /> {candidate.scoringDetails.missing_skills.length} manquantes
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
               <ScorecardTab candidate={candidate} enrichedProfile={enrichedProfile} onOpenProfile={() => setMobileProfileOpen(true)} />
+
+              {/* Fraud detection - collapsible */}
+              <CollapsibleSection title="🛡️ Vérification du profil" defaultOpen={false}>
+                <FraudDetectionTab candidate={candidateWithProfileData} />
+              </CollapsibleSection>
+
+              {/* Scoring history - collapsible */}
+              {fullProfile.scoringHistory.length > 0 && (
+                <CollapsibleSection title={`📊 Historique des scorings (${fullProfile.scoringHistory.length})`} defaultOpen={false}>
+                  <div className="space-y-3">
+                    {fullProfile.scoringHistory.map((sr) => (
+                      <ScoringCard key={sr.id} scoring={sr} />
+                    ))}
+                  </div>
+                </CollapsibleSection>
+              )}
             </div>
 
             {/* Mobile: floating round pulsing button to open candidate context */}
