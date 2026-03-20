@@ -50,6 +50,57 @@ export default function ATS() {
   
   const { candidates, loading, isFetching, isFromCache, error, refetch, handleStageChange, handleTagsChange } = useATSData();
 
+  // Notion shortlist data
+  const { data: shortlistData = [], isLoading: shortlistLoading } = useNotionShortlist();
+  const { data: candidatesNotionData = [] } = useNotionCandidates();
+  const [shortlist, setShortlist] = useState<ShortlistEntry[]>([]);
+  useEffect(() => { if (shortlistData.length > 0) setShortlist(shortlistData); }, [shortlistData]);
+
+  const [shortlistViewMode, setShortlistViewMode] = useState<'pipeline' | 'list'>('pipeline');
+  const [shortlistFilters, setShortlistFilters] = useState({ search: '', stage: [] as string[], expertise: [] as string[], entity: [] as string[], position: [] as string[] });
+
+  // Shortlist filter options
+  const shortlistFilterOptions = useMemo(() => {
+    const stages = new Set<string>();
+    const expertise = new Set<string>();
+    const entities = new Set<string>();
+    const positionsMap = new Map<string, string>();
+    shortlist.forEach(entry => {
+      if (entry.stage) stages.add(entry.stage);
+      if (entry.entity) entities.add(entry.entity);
+      entry.candidate?.expertise?.forEach(e => expertise.add(e));
+      entry.positions?.forEach(pos => { if (!positionsMap.has(pos.id)) positionsMap.set(pos.id, pos.name); });
+    });
+    return { stages: Array.from(stages), expertise: Array.from(expertise), entities: Array.from(entities), positions: Array.from(positionsMap.entries()).map(([id, name]) => ({ id, name })) };
+  }, [shortlist]);
+
+  // Filtered shortlist
+  const filteredShortlist = useMemo(() => {
+    return shortlist.filter(entry => {
+      if (shortlistFilters.search) {
+        const s = shortlistFilters.search.toLowerCase();
+        if (!entry.name?.toLowerCase().includes(s) && !entry.candidate?.name?.toLowerCase().includes(s) && !entry.candidate?.email?.toLowerCase().includes(s) && !entry.positions?.some(p => p.name.toLowerCase().includes(s))) return false;
+      }
+      if (shortlistFilters.stage.length > 0 && entry.stage && !shortlistFilters.stage.includes(entry.stage)) return false;
+      if (shortlistFilters.entity.length > 0 && entry.entity && !shortlistFilters.entity.includes(entry.entity)) return false;
+      if (shortlistFilters.expertise.length > 0) { const ce = entry.candidate?.expertise || []; if (!shortlistFilters.expertise.some(e => ce.includes(e))) return false; }
+      if (shortlistFilters.position.length > 0) { const ep = entry.positions?.map(p => p.id) || []; if (!shortlistFilters.position.some(pid => ep.includes(pid))) return false; }
+      return true;
+    });
+  }, [shortlist, shortlistFilters]);
+
+  // Shortlist pipeline data
+  const shortlistPipelineData = useMemo(() => {
+    const grouped: Record<string, ShortlistEntry[]> = {};
+    PIPELINE_STAGES.forEach(stage => { grouped[stage.key] = []; });
+    filteredShortlist.forEach(entry => { const stage = entry.stage || 'Pressenti'; if (grouped[stage]) grouped[stage].push(entry); else grouped['Pressenti'].push(entry); });
+    return grouped;
+  }, [filteredShortlist]);
+
+  const handleShortlistStageChange = (entryId: string, newStage: string) => {
+    setShortlist(prev => prev.map(entry => entry.id === entryId ? { ...entry, stage: newStage } : entry));
+  };
+
   const [filters, setFilters] = useState({
     search: '',
     stage: [] as string[],
