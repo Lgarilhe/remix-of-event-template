@@ -25,9 +25,6 @@ import { useOrganization } from '@/hooks/useOrganization';
 import { useMemberLinkedInAccounts } from '@/hooks/useMemberLinkedInAccounts';
 import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
-import { useMemberLinkedInAccounts } from '@/hooks/useMemberLinkedInAccounts';
-import { supabase } from '@/integrations/supabase/client';
-import { cn } from '@/lib/utils';
 
 export interface LinkedInAccountSubscriptions {
   classic: boolean;
