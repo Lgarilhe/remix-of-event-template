@@ -10,6 +10,7 @@ interface ATSDroppableColumnProps {
   candidates: ATSCandidate[];
   isOver: boolean;
   onCandidateClick: (candidate: ATSCandidate) => void;
+  onJobClick?: (jobId: string) => void;
 }
 
 const INITIAL_VISIBLE = 10;
