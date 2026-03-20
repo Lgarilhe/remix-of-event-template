@@ -160,8 +160,8 @@ export default function Outreach() {
   return (
     <div className="min-h-screen w-full max-w-full bg-background">
       <SEOHead
-        title="Outreach LinkedIn | Konekt"
-        description="Recherchez et contactez des candidats sur LinkedIn avec les filtres Recruiter avancés"
+        title="Missions | Konekt"
+        description="Gérez vos missions de recrutement, sourcing et prospection"
       />
       <Navbar />
 
@@ -172,10 +172,10 @@ export default function Outreach() {
             <div className="flex items-center justify-between">
               <div>
                 <div className="flex items-center gap-2.5 sm:gap-3 mb-1">
-                  <h1 className="text-xl sm:text-2xl font-bold text-foreground tracking-tight uppercase">Outreach</h1>
+                  <h1 className="text-xl sm:text-2xl font-bold text-foreground tracking-tight uppercase">Missions</h1>
                 </div>
                 <p className="text-xs sm:text-sm text-muted-foreground hidden sm:block">
-                  Sourcing, séquences & suivi candidats
+                  Sourcing, prospection, séquences & suivi candidats
                 </p>
               </div>
               <InMailQueueStatus />
