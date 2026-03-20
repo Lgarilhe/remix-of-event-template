@@ -44,7 +44,7 @@ const viewTabs = [
 
 export default function ATS() {
   const [user, setUser] = useState<User | null>(null);
-  const [activeView, setActiveView] = useState<'kanban' | 'table' | 'timeline' | 'analytics'>('kanban');
+  const [activeView, setActiveView] = useState<'kanban' | 'table' | 'timeline' | 'shortlist' | 'analytics'>('kanban');
   const [showReminders, setShowReminders] = useState(false);
   const [selectedCandidate, setSelectedCandidate] = useState<ATSCandidate | null>(null);
   
