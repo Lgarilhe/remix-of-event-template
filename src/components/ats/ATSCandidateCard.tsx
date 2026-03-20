@@ -35,6 +35,7 @@ export const ATSCandidateCard: React.FC<ATSCandidateCardProps> = ({
   candidate,
   isDragging,
   onClick,
+  onJobClick,
 }) => {
   const sourceConfig = SOURCE_CONFIG[candidate.source] || SOURCE_CONFIG.shortlist;
 
