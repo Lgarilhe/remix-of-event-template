@@ -75,6 +75,10 @@ export default function Outreach() {
   }, [setSearchParams]);
   
   const [activeProject, setActiveProject] = useState<SourcingProject | null>(null);
+  const [prospectResults, setProspectResults] = useState<any[]>([]);
+  const [prospectSearching, setProspectSearching] = useState(false);
+  const [selectedICP, setSelectedICP] = useState<ICP | null>(null);
+  const [prospectionTab, setProspectionTab] = useState<'search' | 'vivier' | 'icp'>('search');
 
   // Get current user ID
   useEffect(() => {
