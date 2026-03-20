@@ -1186,117 +1186,189 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
               </div>
             )}
 
-            {/* ==================== COMMENTS TAB ==================== */}
-            {activeTab === 'comments' && (
-              <CandidateCommentsTab
-                candidateId={candidate.candidateId}
-                candidateName={candidate.name}
-                jobId={candidate.jobId}
-              />
-            )}
-
-            {/* ==================== NOTES TAB ==================== */}
+            {/* ==================== NOTES TAB (merged comments + notes) ==================== */}
             {activeTab === 'notes' && (
               <div className="space-y-4">
+                {/* Toggle team / personal */}
                 <div className="flex gap-0">
-                  <Textarea
-                    value={newNote}
-                    onChange={(e) => setNewNote(e.target.value)}
-                    placeholder="Ajouter une note..."
-                    className="flex-1 min-h-[60px] rounded-none border-foreground/30 text-sm resize-none"
-                  />
-                  <button onClick={handleAddNote} disabled={addingNote || !newNote.trim()}
-                    className="h-auto px-4 border border-foreground -ml-px bg-foreground text-background text-[10px] font-medium uppercase tracking-wider disabled:opacity-50">
-                    {addingNote ? <Loader2 className="w-3 h-3 animate-spin" /> : <Plus className="w-3 h-3" />}
+                  <button
+                    onClick={() => setNoteMode('team')}
+                    className={cn(
+                      "flex-1 py-2 text-[10px] font-bold uppercase tracking-[0.15em] border border-foreground transition-colors",
+                      noteMode === 'team' ? 'bg-foreground text-background' : 'text-foreground hover:bg-foreground/5'
+                    )}
+                  >
+                    💬 Équipe
+                  </button>
+                  <button
+                    onClick={() => setNoteMode('personal')}
+                    className={cn(
+                      "flex-1 py-2 text-[10px] font-bold uppercase tracking-[0.15em] border border-foreground -ml-px transition-colors",
+                      noteMode === 'personal' ? 'bg-foreground text-background' : 'text-foreground hover:bg-foreground/5'
+                    )}
+                  >
+                    📝 Perso
                   </button>
                 </div>
-                {loading ? (
-                  <CenteredLoader />
-                ) : notes.length === 0 ? (
-                  <EmptyState icon={StickyNote} label="Aucune note" />
+
+                {noteMode === 'team' ? (
+                  <CandidateCommentsTab
+                    candidateId={candidate.candidateId}
+                    candidateName={candidate.name}
+                    jobId={candidate.jobId}
+                  />
                 ) : (
-                  <div className="space-y-2">
-                    {notes.map(note => (
-                      <div key={note.id} className="group p-3 border border-foreground/10 bg-foreground/[0.02]">
-                        <div className="flex items-start justify-between gap-2">
-                          <p className="text-sm text-foreground whitespace-pre-wrap flex-1">{note.content}</p>
-                          <button onClick={() => handleDeleteNote(note.id)}
-                            className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive p-1">
-                            <Trash2 className="w-3 h-3" />
-                          </button>
-                        </div>
-                        <p className="text-[10px] text-muted-foreground mt-2">
-                          {formatDistanceToNow(parseISO(note.created_at), { addSuffix: true, locale: fr })}
-                        </p>
+                  <div className="space-y-4">
+                    <div className="flex gap-0">
+                      <Textarea
+                        value={newNote}
+                        onChange={(e) => setNewNote(e.target.value)}
+                        placeholder="Ajouter une note personnelle..."
+                        className="flex-1 min-h-[60px] rounded-none border-foreground/30 text-sm resize-none"
+                      />
+                      <button onClick={handleAddNote} disabled={addingNote || !newNote.trim()}
+                        className="h-auto px-4 border border-foreground -ml-px bg-foreground text-background text-[10px] font-medium uppercase tracking-wider disabled:opacity-50">
+                        {addingNote ? <Loader2 className="w-3 h-3 animate-spin" /> : <Plus className="w-3 h-3" />}
+                      </button>
+                    </div>
+                    {loading ? (
+                      <CenteredLoader />
+                    ) : notes.length === 0 ? (
+                      <EmptyState icon={StickyNote} label="Aucune note personnelle" />
+                    ) : (
+                      <div className="space-y-2">
+                        {notes.map(note => (
+                          <div key={note.id} className="group p-3 border border-foreground/10 bg-foreground/[0.02]">
+                            <div className="flex items-start justify-between gap-2">
+                              <p className="text-sm text-foreground whitespace-pre-wrap flex-1">{note.content}</p>
+                              <button onClick={() => handleDeleteNote(note.id)}
+                                className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive p-1">
+                                <Trash2 className="w-3 h-3" />
+                              </button>
+                            </div>
+                            <p className="text-[10px] text-muted-foreground mt-2">
+                              {formatDistanceToNow(parseISO(note.created_at), { addSuffix: true, locale: fr })}
+                            </p>
+                          </div>
+                        ))}
                       </div>
-                    ))}
+                    )}
                   </div>
                 )}
               </div>
             )}
 
-            {/* ==================== REMINDERS TAB ==================== */}
-            {activeTab === 'reminders' && (
-              <div className="space-y-4">
-                {!showNewReminder ? (
-                  <button onClick={() => setShowNewReminder(true)}
-                    className="w-full h-[38px] flex items-center justify-center gap-2 border border-dashed border-foreground/30 text-foreground text-[11px] font-medium uppercase tracking-wider hover:border-foreground hover:bg-foreground/[0.03] transition-colors">
-                    <Plus className="w-3.5 h-3.5" />
-                    Nouveau rappel
-                  </button>
-                ) : (
-                  <div className="space-y-2 p-3 border border-foreground/15 bg-foreground/[0.02]">
-                    <Input value={newReminderTitle} onChange={e => setNewReminderTitle(e.target.value)}
-                      placeholder="Titre du rappel" className="rounded-none border-foreground/30 text-sm" />
-                    <Input type="datetime-local" value={newReminderDate} onChange={e => setNewReminderDate(e.target.value)}
-                      className="rounded-none border-foreground/30 text-sm" />
-                    <div className="flex gap-2">
-                      <button onClick={handleAddReminder} disabled={addingReminder || !newReminderTitle.trim() || !newReminderDate}
-                        className="h-[30px] px-4 bg-foreground text-background text-[10px] font-medium uppercase tracking-wider disabled:opacity-50">
-                        {addingReminder ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Créer'}
-                      </button>
-                      <button onClick={() => setShowNewReminder(false)}
-                        className="h-[30px] px-4 border border-foreground/30 text-foreground text-[10px] font-medium uppercase tracking-wider">
-                        Annuler
-                      </button>
+            {/* ==================== ACTIONS TAB ==================== */}
+            {activeTab === 'actions' && (
+              <div className="space-y-6">
+                {/* Quick AI actions */}
+                <div>
+                  <h4 className="text-[11px] font-bold uppercase tracking-wider text-foreground mb-3">Actions IA</h4>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      onClick={() => openAgent()}
+                      className="border border-foreground/10 hover:border-foreground/40 p-3 text-left transition-all duration-150 hover:bg-muted/50 active:scale-[0.97] group"
+                    >
+                      <Brain className="w-4 h-4 text-muted-foreground group-hover:text-brutal-accent transition-colors" />
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-foreground mt-2">Résumé IA</p>
+                      <p className="text-[9px] text-muted-foreground mt-0.5">Générer un résumé du candidat</p>
+                    </button>
+                    <button
+                      onClick={() => openAgent()}
+                      className="border border-foreground/10 hover:border-foreground/40 p-3 text-left transition-all duration-150 hover:bg-muted/50 active:scale-[0.97] group"
+                    >
+                      <FileText className="w-4 h-4 text-muted-foreground group-hover:text-brutal-accent transition-colors" />
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-foreground mt-2">Brief client</p>
+                      <p className="text-[9px] text-muted-foreground mt-0.5">Préparer une présentation</p>
+                    </button>
+                    <button
+                      onClick={() => { window.location.href = '/missions?tab=messages'; }}
+                      className="border border-foreground/10 hover:border-foreground/40 p-3 text-left transition-all duration-150 hover:bg-muted/50 active:scale-[0.97] group"
+                    >
+                      <Send className="w-4 h-4 text-muted-foreground group-hover:text-brutal-accent transition-colors" />
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-foreground mt-2">Envoyer un message</p>
+                      <p className="text-[9px] text-muted-foreground mt-0.5">Ouvrir la conversation</p>
+                    </button>
+                    <button
+                      onClick={() => {
+                        if (candidate.jobId) {
+                          toast.info('Scoring en cours de lancement...');
+                        } else {
+                          toast.error('Aucun poste associé');
+                        }
+                      }}
+                      className="border border-foreground/10 hover:border-foreground/40 p-3 text-left transition-all duration-150 hover:bg-muted/50 active:scale-[0.97] group"
+                    >
+                      <Target className="w-4 h-4 text-muted-foreground group-hover:text-brutal-accent transition-colors" />
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-foreground mt-2">Lancer le scoring</p>
+                      <p className="text-[9px] text-muted-foreground mt-0.5">Scorer pour le poste associé</p>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Reminders section */}
+                <div>
+                  <h4 className="text-[11px] font-bold uppercase tracking-wider text-foreground mb-3">Rappels</h4>
+                  {!showNewReminder ? (
+                    <button onClick={() => setShowNewReminder(true)}
+                      className="w-full h-[38px] flex items-center justify-center gap-2 border border-dashed border-foreground/30 text-foreground text-[11px] font-medium uppercase tracking-wider hover:border-foreground hover:bg-foreground/[0.03] transition-colors">
+                      <Plus className="w-3.5 h-3.5" />
+                      Nouveau rappel
+                    </button>
+                  ) : (
+                    <div className="space-y-2 p-3 border border-foreground/15 bg-foreground/[0.02]">
+                      <Input value={newReminderTitle} onChange={e => setNewReminderTitle(e.target.value)}
+                        placeholder="Titre du rappel" className="rounded-none border-foreground/30 text-sm" />
+                      <Input type="datetime-local" value={newReminderDate} onChange={e => setNewReminderDate(e.target.value)}
+                        className="rounded-none border-foreground/30 text-sm" />
+                      <div className="flex gap-2">
+                        <button onClick={handleAddReminder} disabled={addingReminder || !newReminderTitle.trim() || !newReminderDate}
+                          className="h-[30px] px-4 bg-foreground text-background text-[10px] font-medium uppercase tracking-wider disabled:opacity-50">
+                          {addingReminder ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Créer'}
+                        </button>
+                        <button onClick={() => setShowNewReminder(false)}
+                          className="h-[30px] px-4 border border-foreground/30 text-foreground text-[10px] font-medium uppercase tracking-wider">
+                          Annuler
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                )}
-                {loading ? (
-                  <CenteredLoader />
-                ) : reminders.length === 0 ? (
-                  <EmptyState icon={Bell} label="Aucun rappel" />
-                ) : (
-                  <div className="space-y-2">
-                    {reminders.map(reminder => {
-                      const isPast = new Date(reminder.due_at) < new Date();
-                      const isDone = !!reminder.completed_at;
-                      return (
-                        <div key={reminder.id} className={cn(
-                          "group p-3 border",
-                          isDone ? 'border-foreground/10 bg-foreground/[0.02] opacity-60' :
-                          isPast ? 'border-destructive/30 bg-destructive/5' :
-                          'border-foreground/10 bg-foreground/[0.02]'
-                        )}>
-                          <div className="flex items-start justify-between gap-2">
-                            <div className="flex-1">
-                              <p className={cn("text-sm font-medium", isDone && 'line-through text-muted-foreground')}>{reminder.title}</p>
-                              <p className="text-[10px] text-muted-foreground mt-1 flex items-center gap-1">
-                                <Calendar className="w-3 h-3" />
-                                {format(parseISO(reminder.due_at), 'd MMM yyyy à HH:mm', { locale: fr })}
-                                {isPast && !isDone && <span className="text-destructive font-bold ml-1">En retard</span>}
-                              </p>
+                  )}
+                  {loading ? (
+                    <CenteredLoader />
+                  ) : reminders.length === 0 ? (
+                    <EmptyState icon={Bell} label="Aucun rappel" />
+                  ) : (
+                    <div className="space-y-2 mt-3">
+                      {reminders.map(reminder => {
+                        const isPast = new Date(reminder.due_at) < new Date();
+                        const isDone = !!reminder.completed_at;
+                        return (
+                          <div key={reminder.id} className={cn(
+                            "group p-3 border",
+                            isDone ? 'border-foreground/10 bg-foreground/[0.02] opacity-60' :
+                            isPast ? 'border-destructive/30 bg-destructive/5' :
+                            'border-foreground/10 bg-foreground/[0.02]'
+                          )}>
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="flex-1">
+                                <p className={cn("text-sm font-medium", isDone && 'line-through text-muted-foreground')}>{reminder.title}</p>
+                                <p className="text-[10px] text-muted-foreground mt-1 flex items-center gap-1">
+                                  <Calendar className="w-3 h-3" />
+                                  {format(parseISO(reminder.due_at), 'd MMM yyyy à HH:mm', { locale: fr })}
+                                  {isPast && !isDone && <span className="text-destructive font-bold ml-1">En retard</span>}
+                                </p>
+                              </div>
+                              <button onClick={() => handleDeleteReminder(reminder.id)}
+                                className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive p-1">
+                                <Trash2 className="w-3 h-3" />
+                              </button>
                             </div>
-                            <button onClick={() => handleDeleteReminder(reminder.id)}
-                              className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive p-1">
-                              <Trash2 className="w-3 h-3" />
-                            </button>
                           </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
               </div>
             )}
           </div>
