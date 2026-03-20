@@ -15,6 +15,7 @@ import { ATSTableSkeleton } from '@/components/ats/ATSTableSkeleton';
 import { ATSStatsSkeleton } from '@/components/ats/ATSStatsSkeleton';
 import { RemindersSidebar } from '@/components/ats/RemindersSidebar';
 import { CandidateDetailModal } from '@/components/ats/CandidateDetailModal';
+import { JobDetailSheet } from '@/components/ats/JobDetailSheet';
 import { CandidatePipeline } from '@/components/candidates/CandidatePipeline';
 import { CandidateList } from '@/components/candidates/CandidateList';
 import { CandidateFilters } from '@/components/candidates/CandidateFilters';
@@ -52,6 +53,13 @@ export default function ATS() {
   );
   const [showReminders, setShowReminders] = useState(false);
   const [selectedCandidate, setSelectedCandidate] = useState<ATSCandidate | null>(null);
+  const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
+  const [jobSheetOpen, setJobSheetOpen] = useState(false);
+
+  const handleJobClick = (jobId: string) => {
+    setSelectedJobId(jobId);
+    setJobSheetOpen(true);
+  };
   
   const { candidates, loading, isFetching, isFromCache, error, refetch, handleStageChange, handleTagsChange } = useATSData();
 
@@ -302,6 +310,7 @@ export default function ATS() {
                               stages={ATS_STAGES}
                               onStageChange={handleStageChange}
                               onCandidateClick={handleCandidateClick}
+                              onJobClick={handleJobClick}
                             />
                           )}
                         </TabsContent>
@@ -313,6 +322,7 @@ export default function ATS() {
                             <ATSTable
                               candidates={filteredCandidates}
                               onCandidateClick={handleCandidateClick}
+                              onJobClick={handleJobClick}
                             />
                           )}
                         </TabsContent>
@@ -321,6 +331,7 @@ export default function ATS() {
                           <ATSTimeline
                             candidates={filteredCandidates}
                             onCandidateClick={handleCandidateClick}
+                            onJobClick={handleJobClick}
                           />
                         </TabsContent>
 
@@ -406,6 +417,12 @@ export default function ATS() {
           onRefresh={refetch}
         />
       )}
+
+      <JobDetailSheet
+        jobId={selectedJobId}
+        open={jobSheetOpen}
+        onOpenChange={setJobSheetOpen}
+      />
     </div>
   );
 }

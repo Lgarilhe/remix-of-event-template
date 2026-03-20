@@ -20,13 +20,15 @@ interface ATSKanbanProps {
   stages: { key: string; label: string; color: string }[];
   onStageChange: (candidateId: string, newStage: string) => void;
   onCandidateClick: (candidate: ATSCandidate) => void;
+  onJobClick?: (jobId: string) => void;
 }
 
 export const ATSKanban: React.FC<ATSKanbanProps> = ({ 
   data, 
   stages, 
   onStageChange, 
-  onCandidateClick 
+  onCandidateClick,
+  onJobClick,
 }) => {
   const [activeCandidate, setActiveCandidate] = React.useState<ATSCandidate | null>(null);
   const [activeOverColumn, setActiveOverColumn] = React.useState<string | null>(null);
@@ -120,6 +122,7 @@ export const ATSKanban: React.FC<ATSKanbanProps> = ({
               candidates={data[stage.key] || []}
               isOver={activeOverColumn === stage.key}
               onCandidateClick={onCandidateClick}
+              onJobClick={onJobClick}
             />
           ))}
         </div>

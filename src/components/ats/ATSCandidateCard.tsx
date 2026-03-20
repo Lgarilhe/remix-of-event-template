@@ -21,6 +21,7 @@ interface ATSCandidateCardProps {
   candidate: ATSCandidate;
   isDragging?: boolean;
   onClick: () => void;
+  onJobClick?: (jobId: string) => void;
 }
 
 const SOURCE_CONFIG: Record<string, { icon: React.ReactNode; label: string }> = {
@@ -34,6 +35,7 @@ export const ATSCandidateCard: React.FC<ATSCandidateCardProps> = ({
   candidate,
   isDragging,
   onClick,
+  onJobClick,
 }) => {
   const sourceConfig = SOURCE_CONFIG[candidate.source] || SOURCE_CONFIG.shortlist;
 
@@ -119,7 +121,15 @@ export const ATSCandidateCard: React.FC<ATSCandidateCardProps> = ({
         )}
 
         {candidate.jobTitle && (
-          <span className="text-[10px] px-1.5 py-0.5 border border-foreground/20 bg-background text-muted-foreground truncate max-w-[140px]">
+          <span
+            className={`text-[10px] px-1.5 py-0.5 border border-foreground/20 bg-background text-muted-foreground truncate max-w-[140px] ${candidate.jobId && onJobClick ? 'cursor-pointer hover:border-foreground hover:text-foreground transition-colors' : ''}`}
+            onClick={(e) => {
+              if (candidate.jobId && onJobClick) {
+                e.stopPropagation();
+                onJobClick(candidate.jobId);
+              }
+            }}
+          >
             {candidate.jobTitle.length > 20 
               ? candidate.jobTitle.slice(0, 20) + '...' 
               : candidate.jobTitle}

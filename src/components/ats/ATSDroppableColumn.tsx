@@ -10,6 +10,7 @@ interface ATSDroppableColumnProps {
   candidates: ATSCandidate[];
   isOver: boolean;
   onCandidateClick: (candidate: ATSCandidate) => void;
+  onJobClick?: (jobId: string) => void;
 }
 
 const INITIAL_VISIBLE = 10;
@@ -21,6 +22,7 @@ export const ATSDroppableColumn: React.FC<ATSDroppableColumnProps> = ({
   candidates,
   isOver,
   onCandidateClick,
+  onJobClick,
 }) => {
   const [visibleCount, setVisibleCount] = useState(INITIAL_VISIBLE);
 
@@ -64,6 +66,7 @@ export const ATSDroppableColumn: React.FC<ATSDroppableColumnProps> = ({
               candidate={candidate}
               columnId={id}
               onClick={() => onCandidateClick(candidate)}
+              onJobClick={onJobClick}
             />
           ))
         )}

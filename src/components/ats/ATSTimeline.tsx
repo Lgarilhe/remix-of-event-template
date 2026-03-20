@@ -16,6 +16,7 @@ import { fr } from 'date-fns/locale';
 interface ATSTimelineProps {
   candidates: ATSCandidate[];
   onCandidateClick: (candidate: ATSCandidate) => void;
+  onJobClick?: (jobId: string) => void;
 }
 
 interface TimelineGroup {
@@ -29,7 +30,7 @@ const SOURCE_CONFIG: Record<string, { icon: React.ReactNode }> = {
   inmail: { icon: <Send className="w-3 h-3" /> },
 };
 
-export const ATSTimeline: React.FC<ATSTimelineProps> = ({ candidates, onCandidateClick }) => {
+export const ATSTimeline: React.FC<ATSTimelineProps> = ({ candidates, onCandidateClick, onJobClick }) => {
   const timelineGroups = useMemo(() => {
     const groups: TimelineGroup[] = [];
     const today: ATSCandidate[] = [];
@@ -131,7 +132,15 @@ export const ATSTimeline: React.FC<ATSTimelineProps> = ({ candidates, onCandidat
                               </span>
                               
                               {candidate.jobTitle && (
-                                <span className="text-[10px] px-2 py-0.5 border border-foreground/20 text-muted-foreground">
+                                <span
+                                  className={`text-[10px] px-2 py-0.5 border border-foreground/20 text-muted-foreground ${candidate.jobId && onJobClick ? 'cursor-pointer hover:border-foreground hover:text-foreground transition-colors' : ''}`}
+                                  onClick={(e) => {
+                                    if (candidate.jobId && onJobClick) {
+                                      e.stopPropagation();
+                                      onJobClick(candidate.jobId);
+                                    }
+                                  }}
+                                >
                                   {candidate.jobTitle}
                                 </span>
                               )}

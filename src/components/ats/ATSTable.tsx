@@ -25,6 +25,7 @@ import {
 interface ATSTableProps {
   candidates: ATSCandidate[];
   onCandidateClick: (candidate: ATSCandidate) => void;
+  onJobClick?: (jobId: string) => void;
 }
 
 type SortKey = 'name' | 'stage' | 'source' | 'jobTitle' | 'lastActivity' | 'createdAt';
@@ -44,7 +45,7 @@ const SOURCE_ICONS: Record<string, React.ReactNode> = {
   outreach: <Target className="w-3 h-3" />,
 };
 
-export const ATSTable: React.FC<ATSTableProps> = ({ candidates, onCandidateClick }) => {
+export const ATSTable: React.FC<ATSTableProps> = ({ candidates, onCandidateClick, onJobClick }) => {
   const [sortKey, setSortKey] = useState<SortKey>('lastActivity');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
 
@@ -146,7 +147,17 @@ export const ATSTable: React.FC<ATSTableProps> = ({ candidates, onCandidateClick
               </TableCell>
               <TableCell>
                 {candidate.jobTitle ? (
-                  <span className="text-sm text-foreground/80 truncate block max-w-[180px]">{candidate.jobTitle}</span>
+                  <span
+                    className={`text-sm text-foreground/80 truncate block max-w-[180px] ${candidate.jobId && onJobClick ? 'cursor-pointer hover:text-foreground hover:underline transition-colors' : ''}`}
+                    onClick={(e) => {
+                      if (candidate.jobId && onJobClick) {
+                        e.stopPropagation();
+                        onJobClick(candidate.jobId);
+                      }
+                    }}
+                  >
+                    {candidate.jobTitle}
+                  </span>
                 ) : (
                   <span className="text-sm text-muted-foreground">—</span>
                 )}
