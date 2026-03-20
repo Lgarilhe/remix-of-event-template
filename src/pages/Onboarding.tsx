@@ -80,7 +80,7 @@ const Onboarding = () => {
     markCompleted(5);
     await queryClient.invalidateQueries({ queryKey: ['active-organization'] });
     await queryClient.refetchQueries({ queryKey: ['active-organization'] });
-    navigate('/outreach', { replace: true });
+    navigate('/dashboard', { replace: true });
   }, [navigate, queryClient, markCompleted]);
 
   const completedSteps = completedSet.size;
