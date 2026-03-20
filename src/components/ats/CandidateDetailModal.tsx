@@ -17,10 +17,11 @@ import {
   Loader2, Trash2, Calendar, Brain, CheckCircle2, AlertTriangle, MapPin,
   Briefcase, Clock, MessageSquare, CalendarPlus, FolderPlus, Activity,
   FileText, Award, ExternalLink, GraduationCap, Languages, ChevronDown,
-  ChevronUp, Building2, TrendingUp, ClipboardCheck, Shield, Link2, Copy
+  ChevronUp, Building2, TrendingUp, ClipboardCheck, Shield, Link2, Copy, Zap
 } from 'lucide-react';
 import { ScorecardTab } from './ScorecardTab';
 import { FraudDetectionTab } from './FraudDetectionTab';
+import { useAgent } from '@/contexts/AgentContext';
 import { format, parseISO, formatDistanceToNow } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { toast } from 'sonner';
