@@ -122,6 +122,25 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({ onClose }) => {
 
   const [activeTab, setActiveTab] = useState<'new' | 'history'>('new');
 
+  const QUICK_ACTIONS = [
+    { emoji: '🔍', label: 'Sourcer des candidats', prompt: 'Je cherche des candidats pour un poste. Aide-moi à définir les critères.' },
+    { emoji: '✍️', label: 'Rédiger un message', prompt: "Aide-moi à rédiger un message d'approche personnalisé." },
+    { emoji: '📊', label: 'Analyser un poste', prompt: 'Analyse les postes ouverts et identifie les priorités.' },
+    { emoji: '🧠', label: 'Que sais-tu sur...', prompt: 'Que sais-tu sur ce candidat/poste ? (tape un nom ou un titre)' },
+    { emoji: '📝', label: 'Résumer un candidat', prompt: "Résume le profil et l'historique d'un candidat." },
+    { emoji: '💡', label: 'Suggérer des actions', prompt: "Quelles actions devrais-je prioriser aujourd'hui ?" },
+  ];
+
+  const handleQuickAction = useCallback(async (prompt: string) => {
+    const id = await createConversation();
+    if (id) {
+      setConversationId(id);
+      setShowList(false);
+      setJobSentForConv(null);
+      setTimeout(() => sendMessage(prompt, null, id), 100);
+    }
+  }, [createConversation, sendMessage]);
+
   // ── List view ──
   if (showList) {
     return (
@@ -133,9 +152,9 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({ onClose }) => {
             <div className="flex items-center gap-3">
               <AnimatedOrb size={32} />
               <div>
-                <h2 className="text-sm font-display font-black uppercase tracking-wider text-foreground">Agent IA</h2>
+                <h2 className="text-sm font-display font-black uppercase tracking-wider text-foreground">Copilot IA</h2>
                 <p className="text-[10px] uppercase tracking-[0.15em] text-muted-foreground mt-0.5">
-                  Sourcing automatisé
+                  Votre assistant recrutement
                 </p>
               </div>
             </div>
@@ -147,6 +166,25 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({ onClose }) => {
                 Fermer
               </button>
             )}
+          </div>
+        </div>
+
+        {/* Quick Actions Grid */}
+        <div className="px-4 py-4 border-b border-foreground/10 shrink-0">
+          <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground mb-3">Actions rapides</p>
+          <div className="grid grid-cols-2 gap-2">
+            {QUICK_ACTIONS.map((qa) => (
+              <button
+                key={qa.label}
+                onClick={() => handleQuickAction(qa.prompt)}
+                className="border border-foreground/10 hover:border-foreground/40 p-3 text-left transition-all duration-150 hover:bg-muted/50 active:scale-[0.97] group"
+              >
+                <span className="text-base">{qa.emoji}</span>
+                <p className="text-[11px] font-bold uppercase tracking-wider text-foreground mt-1.5 leading-tight group-hover:text-brutal-accent transition-colors">
+                  {qa.label}
+                </p>
+              </button>
+            ))}
           </div>
         </div>
 
