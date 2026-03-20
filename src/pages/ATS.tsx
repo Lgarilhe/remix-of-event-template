@@ -310,6 +310,7 @@ export default function ATS() {
                               stages={ATS_STAGES}
                               onStageChange={handleStageChange}
                               onCandidateClick={handleCandidateClick}
+                              onJobClick={handleJobClick}
                             />
                           )}
                         </TabsContent>
