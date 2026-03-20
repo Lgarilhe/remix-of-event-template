@@ -44,8 +44,12 @@ const viewTabs = [
 ] as const;
 
 export default function ATS() {
+  const [searchParams] = useSearchParams();
+  const initialView = (searchParams.get('view') as any) || 'kanban';
   const [user, setUser] = useState<User | null>(null);
-  const [activeView, setActiveView] = useState<'kanban' | 'table' | 'timeline' | 'shortlist' | 'analytics'>('kanban');
+  const [activeView, setActiveView] = useState<'kanban' | 'table' | 'timeline' | 'shortlist' | 'analytics'>(
+    ['kanban', 'table', 'timeline', 'shortlist', 'analytics'].includes(initialView) ? initialView : 'kanban'
+  );
   const [showReminders, setShowReminders] = useState(false);
   const [selectedCandidate, setSelectedCandidate] = useState<ATSCandidate | null>(null);
   
