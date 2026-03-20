@@ -170,7 +170,7 @@ export const AddToPipelineModal: React.FC<AddToPipelineModalProps> = ({
           description: `${candidate.name} est déjà shortlisté pour "${selectedJob.title}"`,
           action: {
             label: 'Voir pipeline',
-            onClick: () => window.open('/candidates', '_blank'),
+            onClick: () => window.open('/pipeline', '_blank'),
           },
         });
       } else {
