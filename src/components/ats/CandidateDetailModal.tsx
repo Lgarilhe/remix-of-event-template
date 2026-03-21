@@ -1161,7 +1161,7 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
                 {fullProfile.loading ? (
                   <CenteredLoader />
                 ) : fullProfile.timeline.length === 0 ? (
-                  <EmptyState icon={Activity} label="Aucune activité enregistrée" />
+                  <EmptyStateUI icon={<Activity className="w-7 h-7" />} title="Aucune activité enregistrée" description="" compact />
                 ) : (
                   <div className="relative pl-6 space-y-4">
                     <div className="absolute left-[9px] top-2 bottom-2 w-0.5 bg-foreground/15" />
