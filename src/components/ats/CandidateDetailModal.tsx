@@ -26,6 +26,7 @@ import { format, parseISO, formatDistanceToNow } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { EmptyState as EmptyStateUI } from '@/components/ui/EmptyState';
 
 interface CandidateDetailModalProps {
   candidate: ATSCandidate;
@@ -1160,7 +1161,7 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
                 {fullProfile.loading ? (
                   <CenteredLoader />
                 ) : fullProfile.timeline.length === 0 ? (
-                  <EmptyState icon={Activity} label="Aucune activité enregistrée" />
+                  <EmptyStateUI icon={<Activity className="w-7 h-7" />} title="Aucune activité enregistrée" description="" compact />
                 ) : (
                   <div className="relative pl-6 space-y-4">
                     <div className="absolute left-[9px] top-2 bottom-2 w-0.5 bg-foreground/15" />
@@ -1234,7 +1235,7 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
                     {loading ? (
                       <CenteredLoader />
                     ) : notes.length === 0 ? (
-                      <EmptyState icon={StickyNote} label="Aucune note personnelle" />
+                      <EmptyStateUI icon={<StickyNote className="w-7 h-7" />} title="Aucune note personnelle" description="" compact />
                     ) : (
                       <div className="space-y-2">
                         {notes.map(note => (
@@ -1336,7 +1337,7 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
                   {loading ? (
                     <CenteredLoader />
                   ) : reminders.length === 0 ? (
-                    <EmptyState icon={Bell} label="Aucun rappel" />
+                    <EmptyStateUI icon={<Bell className="w-7 h-7" />} title="Aucun rappel" description="" compact />
                   ) : (
                     <div className="space-y-2 mt-3">
                       {reminders.map(reminder => {
@@ -1736,14 +1737,6 @@ function CenteredLoader() {
   );
 }
 
-function EmptyState({ icon: Icon, label }: { icon: any; label: string }) {
-  return (
-    <div className="text-center py-12">
-      <Icon className="w-10 h-10 mx-auto mb-3 text-muted-foreground opacity-30" />
-      <p className="text-muted-foreground text-[11px] uppercase tracking-wider">{label}</p>
-    </div>
-  );
-}
 
 function CollapsibleSection({ title, defaultOpen = false, children }: { title: string; defaultOpen?: boolean; children: React.ReactNode }) {
   const [open, setOpen] = React.useState(defaultOpen);
