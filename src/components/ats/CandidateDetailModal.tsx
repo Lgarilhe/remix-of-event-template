@@ -1737,14 +1737,6 @@ function CenteredLoader() {
   );
 }
 
-function EmptyState({ icon: Icon, label }: { icon: any; label: string }) {
-  return (
-    <div className="text-center py-12">
-      <Icon className="w-10 h-10 mx-auto mb-3 text-muted-foreground opacity-30" />
-      <p className="text-muted-foreground text-[11px] uppercase tracking-wider">{label}</p>
-    </div>
-  );
-}
 
 function CollapsibleSection({ title, defaultOpen = false, children }: { title: string; defaultOpen?: boolean; children: React.ReactNode }) {
   const [open, setOpen] = React.useState(defaultOpen);
