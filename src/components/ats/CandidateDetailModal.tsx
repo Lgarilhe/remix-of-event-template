@@ -26,6 +26,7 @@ import { format, parseISO, formatDistanceToNow } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { EmptyState as EmptyStateUI } from '@/components/ui/EmptyState';
 
 interface CandidateDetailModalProps {
   candidate: ATSCandidate;
