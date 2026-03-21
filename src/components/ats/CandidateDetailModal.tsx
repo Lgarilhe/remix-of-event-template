@@ -1337,7 +1337,7 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
                   {loading ? (
                     <CenteredLoader />
                   ) : reminders.length === 0 ? (
-                    <EmptyState icon={Bell} label="Aucun rappel" />
+                    <EmptyStateUI icon={<Bell className="w-7 h-7" />} title="Aucun rappel" description="" compact />
                   ) : (
                     <div className="space-y-2 mt-3">
                       {reminders.map(reminder => {
