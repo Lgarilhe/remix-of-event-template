@@ -1235,7 +1235,7 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
                     {loading ? (
                       <CenteredLoader />
                     ) : notes.length === 0 ? (
-                      <EmptyState icon={StickyNote} label="Aucune note personnelle" />
+                      <EmptyStateUI icon={<StickyNote className="w-7 h-7" />} title="Aucune note personnelle" description="" compact />
                     ) : (
                       <div className="space-y-2">
                         {notes.map(note => (
