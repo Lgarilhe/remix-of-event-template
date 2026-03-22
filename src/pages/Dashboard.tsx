@@ -1,15 +1,20 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Navbar } from '@/components/Navbar';
 import { SEOHead } from '@/components/SEOHead';
 import { ATSDashboard } from '@/components/ats/ATSDashboard';
 import { ATSStatsSkeleton } from '@/components/ats/ATSStatsSkeleton';
-import { useATSData, ATS_STAGES } from '@/hooks/useATSData';
+import { CandidateDetailModal } from '@/components/ats/CandidateDetailModal';
+import { JobDetailSheet } from '@/components/ats/JobDetailSheet';
+import { useATSData, ATS_STAGES, ATSCandidate } from '@/hooks/useATSData';
 import { RefreshCw } from 'lucide-react';
-import { EmptyState } from '@/components/ui/EmptyState';
 import iconDashboard3d from '@/assets/icon-dashboard-3d.png';
 
 export default function Dashboard() {
-  const { candidates, loading, isFetching, isFromCache, refetch } = useATSData();
+  const { candidates, loading, isFetching, isFromCache, refetch, handleStageChange, handleTagsChange } = useATSData();
+  const [selectedCandidate, setSelectedCandidate] = useState<ATSCandidate | null>(null);
+  const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
+
+  const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
 
   return (
     <div className="min-h-screen bg-background">
@@ -76,21 +81,42 @@ export default function Dashboard() {
                   <div className="text-[11px] font-bold uppercase tracking-wider">2. Sourcer des candidats</div>
                   <p className="text-[10px] text-muted-foreground mt-1">Lancez une recherche LinkedIn</p>
                 </a>
-                <a href="/settings?tab=integrations" className="group border border-foreground p-4 hover:bg-brutal-accent transition-colors">
+                <a href="/settings?tab=connectors" className="group border border-foreground p-4 hover:bg-brutal-accent transition-colors">
                   <div className="text-2xl mb-2">🔌</div>
                   <div className="text-[11px] font-bold uppercase tracking-wider">3. Connecter vos outils</div>
                   <p className="text-[10px] text-muted-foreground mt-1">Notion, Airtable, Aircall...</p>
                 </a>
               </div>
               <p className="text-[10px] text-muted-foreground mt-4 text-center">
-                Astuce : appuyez sur <kbd className="px-1 py-0.5 border border-foreground text-foreground">⌘K</kbd> à tout moment pour ouvrir le copilot IA
+                Astuce : appuyez sur <kbd className="px-1 py-0.5 border border-foreground text-foreground">{isMac ? '⌘K' : 'Ctrl+K'}</kbd> à tout moment pour ouvrir le copilot IA
               </p>
             </div>
           ) : (
-            <ATSDashboard candidates={candidates} stages={ATS_STAGES} />
+            <ATSDashboard
+              candidates={candidates}
+              stages={ATS_STAGES}
+              onCandidateClick={(c) => setSelectedCandidate(c)}
+              onJobClick={(jobId) => setSelectedJobId(jobId)}
+            />
           )}
         </div>
       </main>
+
+      {selectedCandidate && (
+        <CandidateDetailModal
+          candidate={selectedCandidate}
+          onClose={() => setSelectedCandidate(null)}
+          onStageChange={handleStageChange}
+          onTagsChange={handleTagsChange}
+          onRefresh={refetch}
+        />
+      )}
+
+      <JobDetailSheet
+        jobId={selectedJobId}
+        open={!!selectedJobId}
+        onOpenChange={(open) => !open && setSelectedJobId(null)}
+      />
     </div>
   );
 }
