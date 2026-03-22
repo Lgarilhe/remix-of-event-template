@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { ATSCandidate } from '@/hooks/useATSData';
 import { useTodayScheduledMessages, ScheduledMessage } from '@/hooks/useTodayScheduledMessages';
 import { useOutreachAcceptanceStats } from '@/hooks/useOutreachAcceptanceStats';
@@ -9,7 +9,7 @@ import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, AreaChart, Area, CartesianGrid,
 } from 'recharts';
-import { format, subDays, parseISO, isAfter, differenceInDays, isToday, isTomorrow } from 'date-fns';
+import { format, subDays, parseISO, isAfter, differenceInDays, isToday } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import {
   TrendingUp, Users, MessageCircle, CheckCircle, Target, Clock,
@@ -21,6 +21,8 @@ import { cn } from '@/lib/utils';
 interface ATSDashboardProps {
   candidates: ATSCandidate[];
   stages: { key: string; label: string; color: string }[];
+  onCandidateClick?: (candidate: ATSCandidate) => void;
+  onJobClick?: (jobId: string) => void;
 }
 
 const STAGE_COLORS: Record<string, string> = {
@@ -87,11 +89,12 @@ function Section({ title, subtitle, icon: Icon, children, action, className }: {
   );
 }
 
-export function ATSDashboard({ candidates, stages }: ATSDashboardProps) {
+export function ATSDashboard({ candidates, stages, onCandidateClick, onJobClick }: ATSDashboardProps) {
   const navigate = useNavigate();
+  const [period, setPeriod] = useState<7 | 30 | 90>(30);
   const { data: scheduledMessages = [], isLoading: loadingMessages } = useTodayScheduledMessages();
   const { data: acceptanceStats, isLoading: loadingAcceptance } = useOutreachAcceptanceStats();
-  const { data: dailyInvites = [], isLoading: loadingInvites } = useDailyInviteStats(30);
+  const { data: dailyInvites = [], isLoading: loadingInvites } = useDailyInviteStats(period);
   const { data: responseRates, isLoading: loadingResponseRates } = useResponseRateStats();
   const [expandedMessageId, setExpandedMessageId] = React.useState<string | null>(null);
   const [responseView, setResponseView] = React.useState<'all' | 'sequences' | 'inmails'>('all');
@@ -100,42 +103,18 @@ export function ATSDashboard({ candidates, stages }: ATSDashboardProps) {
   const kpis = useMemo(() => {
     const total = candidates.length;
     
-    // "Contacted" = candidates where a message was ACTUALLY sent
-    // NOT shortlisted/scored candidates who were never messaged
     const contacted = candidates.filter(c => {
-      // outreachStatus proves a message was sent
-      if (['messaged', 'replied', 'interested', 'not_interested'].includes(c.outreachStatus || '')) {
-        return true;
-      }
-      // Stage explicitly set to Contacté or beyond (manual pipeline move = real action)
-      if (['Contacté', 'Répondu'].includes(c.stage)) {
-        return true;
-      }
-      // Sequence enrollment that actually sent something (active/completed/replied, not just enrolled & paused)
-      if (c.sequenceStatus && ['active', 'completed', 'replied'].includes(c.sequenceStatus)) {
-        return true;
-      }
-      // InMail candidates with stage beyond Nouveau (sent)
-      if (c.source === 'inmail' && c.stage !== 'Nouveau') {
-        return true;
-      }
+      if (['messaged', 'replied', 'interested', 'not_interested'].includes(c.outreachStatus || '')) return true;
+      if (['Contacté', 'Répondu'].includes(c.stage)) return true;
+      if (c.sequenceStatus && ['active', 'completed', 'replied'].includes(c.sequenceStatus)) return true;
+      if (c.source === 'inmail' && c.stage !== 'Nouveau') return true;
       return false;
     }).length;
     
-    // "Replied" = candidates who actually responded
     const replied = candidates.filter(c => {
-      // Stage-based: Répondu or beyond (but not Pressenti which is just shortlisted)
-      if (['Répondu', 'Pré-qualif', 'CV envoyé', 'ITW en cours', 'Offre', 'Gagné'].includes(c.stage)) {
-        return true;
-      }
-      // OutreachStatus-based
-      if (['replied', 'interested', 'not_interested'].includes(c.outreachStatus || '')) {
-        return true;
-      }
-      // Sequence replied
-      if (c.sequenceStatus === 'replied') {
-        return true;
-      }
+      if (['Répondu', 'Pré-qualif', 'CV envoyé', 'ITW en cours', 'Offre', 'Gagné'].includes(c.stage)) return true;
+      if (['replied', 'interested', 'not_interested'].includes(c.outreachStatus || '')) return true;
+      if (c.sequenceStatus === 'replied') return true;
       return false;
     }).length;
     
@@ -154,7 +133,11 @@ export function ATSDashboard({ candidates, stages }: ATSDashboardProps) {
       .filter(c => {
         if (c.stage !== 'Répondu') return false;
         if (!c.lastActivity) return true;
-        return differenceInDays(new Date(), parseISO(c.lastActivity)) >= 2;
+        try {
+          return differenceInDays(new Date(), parseISO(c.lastActivity)) >= 2;
+        } catch {
+          return true;
+        }
       })
       .slice(0, 5);
   }, [candidates]);
@@ -180,19 +163,19 @@ export function ATSDashboard({ candidates, stages }: ATSDashboardProps) {
     }));
   }, [candidates]);
 
-  // ═══ Activity over time (30 days) ═══
+  // ═══ Activity over time (period days) ═══
   const activityData = useMemo(() => {
     const now = new Date();
-    const thirtyDaysAgo = subDays(now, 30);
+    const startDate = subDays(now, period);
     const dayCounts: Record<string, number> = {};
-    for (let i = 0; i <= 30; i++) {
-      dayCounts[format(subDays(now, 30 - i), 'yyyy-MM-dd')] = 0;
+    for (let i = 0; i <= period; i++) {
+      dayCounts[format(subDays(now, period - i), 'yyyy-MM-dd')] = 0;
     }
     candidates.forEach(c => {
       if (!c.createdAt) return;
       try {
         const date = parseISO(c.createdAt);
-        if (isAfter(date, thirtyDaysAgo)) {
+        if (isAfter(date, startDate)) {
           const key = format(date, 'yyyy-MM-dd');
           if (dayCounts[key] !== undefined) dayCounts[key]++;
         }
@@ -202,7 +185,7 @@ export function ATSDashboard({ candidates, stages }: ATSDashboardProps) {
       date: format(parseISO(date), 'dd MMM', { locale: fr }),
       candidats: count,
     }));
-  }, [candidates]);
+  }, [candidates, period]);
 
   // ═══ Top performing jobs ═══
   const topJobs = useMemo(() => {
@@ -258,9 +241,51 @@ export function ATSDashboard({ candidates, stages }: ATSDashboardProps) {
     }).length;
   }, [candidates]);
 
+  // ═══ Funnel total (computed once) ═══
+  const funnelTotal = useMemo(() => funnelData.reduce((s, x) => s + x.count, 0), [funnelData]);
+
+  // ═══ Check if conversion rows would be empty ═══
+  const hasConversionData = useMemo(() => {
+    const stageOrderMap: Record<string, number> = {};
+    STAGE_ORDER_CONV.forEach((s, i) => { stageOrderMap[s] = i; });
+    const atOrBeyond = (stage: string) => {
+      const idx = stageOrderMap[stage];
+      if (idx === undefined) return 0;
+      return candidates.filter(c => {
+        const cIdx = stageOrderMap[c.stage];
+        return cIdx !== undefined && cIdx >= idx;
+      }).length;
+    };
+    for (let i = 0; i < STAGE_ORDER_CONV.length - 1; i++) {
+      if (atOrBeyond(STAGE_ORDER_CONV[i]) > 0) return true;
+    }
+    return false;
+  }, [candidates]);
+
   return (
     <div className="space-y-4">
-      {/* ─── Hero KPI Strip with decorative illustration ─── */}
+      {/* ─── Period selector ─── */}
+      <div className="flex items-center justify-end mb-2">
+        <div className="flex gap-0 border border-foreground">
+          {([7, 30, 90] as const).map((p, i) => (
+            <button
+              key={p}
+              onClick={() => setPeriod(p)}
+              className={cn(
+                "px-3 py-1 text-[10px] uppercase tracking-wider font-medium transition-colors",
+                period === p
+                  ? "bg-foreground text-background"
+                  : "text-muted-foreground hover:text-foreground",
+                i > 0 && "border-l border-foreground",
+              )}
+            >
+              {p}j
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* ─── Hero KPI Strip ─── */}
       <div>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-0 relative z-10">
           {[
@@ -313,13 +338,17 @@ export function ATSDashboard({ candidates, stages }: ATSDashboardProps) {
                   onClick={() => navigate('/pipeline')}
                   className="text-[10px] text-muted-foreground uppercase tracking-wider hover:text-foreground transition-colors flex items-center gap-1"
                 >
-                  Voir ATS <ArrowRight className="w-3 h-3" />
+                  Voir Pipeline <ArrowRight className="w-3 h-3" />
                 </button>
               }
             >
               <div className="divide-y divide-border">
                 {urgentCandidates.map(c => (
-                  <div key={c.id} className="flex items-center gap-3 px-4 py-2.5 hover:bg-muted/50 transition-colors cursor-pointer group">
+                  <div
+                    key={c.id}
+                    className="flex items-center gap-3 px-4 py-2.5 hover:bg-muted/50 transition-colors cursor-pointer group"
+                    onClick={() => onCandidateClick?.(c)}
+                  >
                     <div className="w-7 h-7 bg-destructive/10 border border-destructive/30 flex items-center justify-center shrink-0">
                       <Clock className="w-3 h-3 text-destructive" />
                     </div>
@@ -328,7 +357,13 @@ export function ATSDashboard({ candidates, stages }: ATSDashboardProps) {
                       <p className="text-[10px] text-muted-foreground truncate">{c.headline || c.jobTitle || 'Pas de détails'}</p>
                     </div>
                     <span className="text-[9px] text-destructive font-medium uppercase tracking-wider whitespace-nowrap">
-                      {c.lastActivity ? `${differenceInDays(new Date(), parseISO(c.lastActivity))}j` : '?'}
+                      {(() => {
+                        try {
+                          return c.lastActivity ? `${differenceInDays(new Date(), parseISO(c.lastActivity))}j` : '?';
+                        } catch {
+                          return '?';
+                        }
+                      })()}
                     </span>
                     <ArrowRight className="w-3 h-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
                   </div>
@@ -342,9 +377,8 @@ export function ATSDashboard({ candidates, stages }: ATSDashboardProps) {
             <div className="p-4">
               {/* Visual pipeline bar */}
               <div className="flex h-8 mb-4 border border-foreground overflow-hidden relative z-10">
-                {funnelData.filter(d => d.count > 0).map((d, i) => {
-                  const total = funnelData.reduce((s, x) => s + x.count, 0);
-                  const pct = total > 0 ? (d.count / total) * 100 : 0;
+                {funnelData.filter(d => d.count > 0).map((d) => {
+                  const pct = funnelTotal > 0 ? (d.count / funnelTotal) * 100 : 0;
                   return (
                     <div
                       key={d.name}
@@ -376,7 +410,7 @@ export function ATSDashboard({ candidates, stages }: ATSDashboardProps) {
           </Section>
 
           {/* Activity chart */}
-          <Section title="Activité (30 jours)" icon={Calendar} className="border-t-0 lg:border-r-0">
+          <Section title={`Activité (${period} jours)`} icon={Calendar} className="border-t-0 lg:border-r-0">
             <div className="p-4 h-[200px]">
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={activityData} margin={{ left: -10, right: 8, top: 4, bottom: 0 }}>
@@ -386,7 +420,7 @@ export function ATSDashboard({ candidates, stages }: ATSDashboardProps) {
                     tick={{ fontSize: 9, fill: 'hsl(var(--muted-foreground))' }}
                     axisLine={false}
                     tickLine={false}
-                    interval="preserveStartEnd"
+                    interval={period <= 7 ? 0 : period <= 30 ? 'preserveStartEnd' : Math.floor(period / 10)}
                   />
                   <YAxis
                     tick={{ fontSize: 9, fill: 'hsl(var(--muted-foreground))' }}
@@ -416,7 +450,10 @@ export function ATSDashboard({ candidates, stages }: ATSDashboardProps) {
           <Section title="Sources" icon={Target} className="max-lg:border-t-0">
             <div className="p-4">
               {sourceData.length === 0 ? (
-                <p className="text-xs text-muted-foreground">Aucune donnée</p>
+                <div className="p-6 flex flex-col items-center gap-2">
+                  <Target className="w-6 h-6 text-muted-foreground/40" />
+                  <p className="text-xs text-muted-foreground">Aucune donnée</p>
+                </div>
               ) : (
                 <div className="flex items-center gap-4">
                   <div className="w-24 h-24 sm:w-28 sm:h-28 shrink-0">
@@ -484,7 +521,7 @@ export function ATSDashboard({ candidates, stages }: ATSDashboardProps) {
                 onClick={() => navigate('/missions')}
                 className="text-[10px] text-muted-foreground uppercase tracking-wider hover:text-foreground transition-colors flex items-center gap-1"
               >
-                Outreach <ArrowRight className="w-3 h-3" />
+                Missions <ArrowRight className="w-3 h-3" />
               </button>
             }
           >
@@ -591,7 +628,11 @@ export function ATSDashboard({ candidates, stages }: ATSDashboardProps) {
             ) : (
               <div className="divide-y divide-border">
                 {topScored.map(c => (
-                  <div key={c.id} className="flex items-center gap-2.5 px-4 py-2 hover:bg-muted/50 transition-colors cursor-pointer">
+                  <div
+                    key={c.id}
+                    className="flex items-center gap-2.5 px-4 py-2 hover:bg-muted/50 transition-colors cursor-pointer"
+                    onClick={() => onCandidateClick?.(c)}
+                  >
                     <div className="w-7 h-7 bg-foreground text-background flex items-center justify-center shrink-0 text-[10px] font-bold font-mono">
                       {c.score}
                     </div>
@@ -613,11 +654,18 @@ export function ATSDashboard({ candidates, stages }: ATSDashboardProps) {
           {/* Recent activity */}
           <Section title="Dernières activités" icon={Clock} className="border-t-0">
             {recentActivity.length === 0 ? (
-              <p className="text-xs text-muted-foreground p-4">Aucune activité</p>
+              <div className="p-6 flex flex-col items-center gap-2">
+                <Clock className="w-6 h-6 text-muted-foreground/40" />
+                <p className="text-xs text-muted-foreground">Aucune activité</p>
+              </div>
             ) : (
               <div className="divide-y divide-border">
                 {recentActivity.map(c => (
-                  <div key={c.id} className="flex items-center gap-2.5 px-4 py-2 hover:bg-muted/50 transition-colors">
+                  <div
+                    key={c.id}
+                    className="flex items-center gap-2.5 px-4 py-2 hover:bg-muted/50 transition-colors cursor-pointer"
+                    onClick={() => onCandidateClick?.(c)}
+                  >
                     <div
                       className="w-2 h-2 shrink-0 border border-foreground/20"
                       style={{ backgroundColor: STAGE_COLORS[c.stage] || 'hsl(var(--muted))' }}
@@ -627,9 +675,15 @@ export function ATSDashboard({ candidates, stages }: ATSDashboardProps) {
                       {c.stage}
                     </span>
                     <span className="text-[9px] text-muted-foreground font-mono whitespace-nowrap">
-                      {c.lastActivity || c.createdAt
-                        ? format(parseISO(c.lastActivity || c.createdAt), 'dd/MM', { locale: fr })
-                        : '—'}
+                      {(() => {
+                        try {
+                          return (c.lastActivity || c.createdAt)
+                            ? format(parseISO(c.lastActivity || c.createdAt), 'dd/MM', { locale: fr })
+                            : '—';
+                        } catch {
+                          return '—';
+                        }
+                      })()}
                     </span>
                   </div>
                 ))}
@@ -649,7 +703,7 @@ export function ATSDashboard({ candidates, stages }: ATSDashboardProps) {
               onClick={() => navigate('/missions')}
               className="text-[10px] text-muted-foreground uppercase tracking-wider hover:text-foreground transition-colors flex items-center gap-1"
             >
-              Outreach <ArrowRight className="w-3 h-3" />
+              Missions <ArrowRight className="w-3 h-3" />
             </button>
           }
         >
@@ -668,7 +722,11 @@ export function ATSDashboard({ candidates, stages }: ATSDashboardProps) {
                 {topJobs.map(job => {
                   const rate = job.contacted > 0 ? Math.round((job.replied / job.contacted) * 100) : 0;
                   return (
-                    <tr key={job.id} className="hover:bg-muted/50 transition-colors">
+                    <tr
+                      key={job.id}
+                      className="hover:bg-muted/50 transition-colors cursor-pointer"
+                      onClick={() => onJobClick?.(job.id)}
+                    >
                       <td className="px-4 py-2.5 font-medium truncate max-w-[200px]">{job.title}</td>
                       <td className="text-center px-3 py-2.5 font-mono font-bold">{job.contacted}</td>
                       <td className="text-center px-3 py-2.5 font-mono">{job.replied}</td>
@@ -715,7 +773,7 @@ export function ATSDashboard({ candidates, stages }: ATSDashboardProps) {
         ) : (
           <>
             {/* Global KPI strip */}
-            <div className="grid grid-cols-2 sm:grid-cols-5 gap-0 border-b border-border">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-0 border-b border-foreground">
               {[
                 { label: 'Inscrits', value: acceptanceStats.global.totalEnrolled, icon: Users },
                 { label: 'Connectés', value: acceptanceStats.global.connected, icon: UserCheck },
@@ -729,9 +787,9 @@ export function ATSDashboard({ candidates, stages }: ATSDashboardProps) {
                     key={kpi.label}
                     className={cn(
                       "p-3 flex flex-col gap-1",
-                      i > 0 && "sm:border-l border-border",
-                      i % 2 !== 0 && "max-sm:border-l border-border",
-                      i >= 2 && "max-sm:border-t border-border",
+                      i > 0 && "sm:border-l border-foreground",
+                      i % 2 !== 0 && "max-sm:border-l border-foreground",
+                      i >= 2 && "max-sm:border-t border-foreground",
                       (kpi as any).accent ? "bg-brutal-accent/10" : "",
                     )}
                   >
@@ -872,7 +930,7 @@ export function ATSDashboard({ candidates, stages }: ATSDashboardProps) {
       </Section>
 
       {/* ─── Daily Invitations Chart ─── */}
-      <Section title="Invitations réseau / jour" subtitle="Envoyées vs acceptées (30 jours)" icon={UserPlus}>
+      <Section title="Invitations réseau / jour" subtitle={`Envoyées vs acceptées (${period} jours)`} icon={UserPlus}>
         {loadingInvites ? (
           <div className="p-4 h-[220px] bg-muted animate-pulse" />
         ) : dailyInvites.every(d => d.invitesSent === 0 && d.invitesAccepted === 0) ? (
@@ -909,7 +967,7 @@ export function ATSDashboard({ candidates, stages }: ATSDashboardProps) {
                     tick={{ fontSize: 9, fill: 'hsl(var(--muted-foreground))' }}
                     axisLine={false}
                     tickLine={false}
-                    interval="preserveStartEnd"
+                    interval={period <= 7 ? 0 : period <= 30 ? 'preserveStartEnd' : Math.floor(period / 10)}
                   />
                   <YAxis
                     tick={{ fontSize: 9, fill: 'hsl(var(--muted-foreground))' }}
@@ -930,21 +988,28 @@ export function ATSDashboard({ candidates, stages }: ATSDashboardProps) {
 
       {/* ─── Pipeline Conversion Report ─── */}
       <Section title="Conversion pipeline" icon={TrendingUp}>
-        <div className="overflow-x-auto">
-          <table className="w-full text-xs">
-            <thead>
-              <tr className="border-b border-foreground">
-                <th className="text-left px-4 py-2 text-[9px] uppercase tracking-wider font-bold text-muted-foreground">Transition</th>
-                <th className="text-center px-3 py-2 text-[9px] uppercase tracking-wider font-bold text-muted-foreground">Entrée</th>
-                <th className="text-center px-3 py-2 text-[9px] uppercase tracking-wider font-bold text-muted-foreground">Sortie</th>
-                <th className="text-center px-3 py-2 text-[9px] uppercase tracking-wider font-bold text-muted-foreground">Taux</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              <ConversionRows candidates={candidates} stages={stages} />
-            </tbody>
-          </table>
-        </div>
+        {!hasConversionData ? (
+          <div className="p-6 flex flex-col items-center gap-2">
+            <TrendingUp className="w-6 h-6 text-muted-foreground/40" />
+            <p className="text-xs text-muted-foreground">Pas assez de données pour le calcul de conversion</p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b border-foreground">
+                  <th className="text-left px-4 py-2 text-[9px] uppercase tracking-wider font-bold text-muted-foreground">Transition</th>
+                  <th className="text-center px-3 py-2 text-[9px] uppercase tracking-wider font-bold text-muted-foreground">Entrée</th>
+                  <th className="text-center px-3 py-2 text-[9px] uppercase tracking-wider font-bold text-muted-foreground">Sortie</th>
+                  <th className="text-center px-3 py-2 text-[9px] uppercase tracking-wider font-bold text-muted-foreground">Taux</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                <ConversionRows candidates={candidates} stages={stages} />
+              </tbody>
+            </table>
+          </div>
+        )}
       </Section>
     </div>
   );
