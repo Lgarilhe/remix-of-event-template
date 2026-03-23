@@ -19,6 +19,7 @@ interface MessagesInboxProps {
   onUnreadCountChange?: (count: number) => void;
   initialChatId?: string | null;
   onChatChange?: (chatId: string | null) => void;
+  loading?: boolean;
 }
 
 export const MessagesInbox: React.FC<MessagesInboxProps> = (props) => {
