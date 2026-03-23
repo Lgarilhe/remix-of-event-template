@@ -1,7 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useNurturingOpportunities, NurturingOpportunity } from '@/hooks/useNurturingOpportunities';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { BrutalLoader } from '@/components/ui/brutal-loader';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Checkbox } from '@/components/ui/checkbox';
