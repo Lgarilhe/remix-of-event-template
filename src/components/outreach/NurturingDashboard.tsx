@@ -1,7 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useNurturingOpportunities, NurturingOpportunity } from '@/hooks/useNurturingOpportunities';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { BrutalLoader } from '@/components/ui/brutal-loader';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -251,6 +250,22 @@ export function NurturingDashboard({ accounts, selectedAccount }: NurturingDashb
 
   return (
     <div className="space-y-4">
+      {/* Empty state intro for new users */}
+      {opportunities.length === 0 && !isLoading && !error && (
+        <div className="bg-background border border-foreground p-6 flex items-start gap-4">
+          <div className="w-10 h-10 bg-foreground text-background flex items-center justify-center shrink-0">
+            <Sparkles className="w-5 h-5" />
+          </div>
+          <div>
+            <h3 className="text-sm font-bold uppercase tracking-wider text-foreground mb-1">Nurturing IA</h3>
+            <p className="text-sm text-muted-foreground leading-relaxed">
+              Le nurturing détecte automatiquement les candidats à relancer : ceux qui n'ont pas répondu depuis longtemps, 
+              ceux qui ont changé de poste, ou ceux qui matchent un nouveau job. L'IA génère un message personnalisé pour chaque relance.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Compact Stats Bar */}
       <div className="flex items-center justify-between bg-background border border-foreground p-3">
         <div className="flex items-center gap-6">
@@ -317,7 +332,7 @@ export function NurturingDashboard({ accounts, selectedAccount }: NurturingDashb
 
       {/* Error Display */}
       {error && (
-        <div className="rounded-lg border bg-destructive/10 px-4 py-3 text-sm text-destructive">
+        <div className="border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
           <div className="flex items-start gap-2">
             <AlertCircle className="mt-0.5 h-4 w-4" />
             <div>
@@ -329,8 +344,8 @@ export function NurturingDashboard({ accounts, selectedAccount }: NurturingDashb
       )}
 
       {/* Main Content */}
-      <Card>
-        <CardHeader className="py-3 px-4">
+      <div className="bg-background border border-foreground">
+        <div className="py-3 px-4 border-b border-foreground/10">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
               {/* Select All */}
@@ -370,9 +385,9 @@ export function NurturingDashboard({ accounts, selectedAccount }: NurturingDashb
               </div>
             )}
           </div>
-        </CardHeader>
+        </div>
 
-        <CardContent className="p-0">
+        <div>
           {isLoading ? (
             <div className="p-4">
               <BrutalLoader compact messages={['Analyse des opportunités…', 'Scoring en cours…', 'Détection des signaux…']} />
@@ -588,8 +603,8 @@ export function NurturingDashboard({ accounts, selectedAccount }: NurturingDashb
               </div>
             </ScrollArea>
           )}
-        </CardContent>
-      </Card>
+        </div>
+      </div>
     </div>
   );
 }

@@ -6,7 +6,6 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Loader2, Trash2, CheckCircle, AlertCircle, Key, Cookie, RefreshCw, Building2, Info, ToggleLeft, ToggleRight, UserCircle, Save } from 'lucide-react';
 import linkedInLogo from '@/assets/linkedin-logo.png';
 import { toast } from 'sonner';
@@ -283,17 +282,17 @@ export const LinkedInAccountManager: React.FC<LinkedInAccountManagerProps> = ({
     <div className="space-y-6">
       <div className="grid gap-6 lg:grid-cols-2">
       {/* Connected accounts */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
+      <div className="bg-background border border-foreground">
+        <div className="p-4 border-b border-foreground/10">
+          <h3 className="flex items-center gap-2 text-sm font-bold uppercase tracking-wider">
             <img src={linkedInLogo} alt="LinkedIn" className="w-5 h-5 object-contain" />
             Comptes connectés
-          </CardTitle>
-          <CardDescription>
+          </h3>
+          <p className="text-xs text-muted-foreground mt-1">
             Gérez vos comptes LinkedIn connectés
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
+          </p>
+        </div>
+        <div className="p-4">
           {accounts.length === 0 ? (
             <div className="text-center py-8 text-[#1A1A1A]/50">
               Aucun compte connecté
@@ -306,7 +305,7 @@ export const LinkedInAccountManager: React.FC<LinkedInAccountManagerProps> = ({
                   className="flex items-center justify-between p-3 bg-muted/50 rounded-none border border-foreground"
                 >
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-[#0077B5] rounded-sm flex items-center justify-center">
+                    <div className="w-10 h-10 bg-[#0077B5] flex items-center justify-center">
                       <img src={linkedInLogo} alt="LinkedIn" className="w-6 h-6 object-contain" />
                     </div>
                     <div>
@@ -425,28 +424,29 @@ export const LinkedInAccountManager: React.FC<LinkedInAccountManagerProps> = ({
               ))}
             </div>
           )}
-        </CardContent>
-      </Card>
+          </div>
+        </div>
+      </div>
 
       {/* Connect new account or Reconnect */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center justify-between">
+      <div className="bg-background border border-foreground">
+        <div className="p-4 border-b border-foreground/10">
+          <h3 className="flex items-center justify-between text-sm font-bold uppercase tracking-wider">
             <span>{reconnectingAccount ? 'Reconnecter le compte' : 'Connecter un compte'}</span>
             {reconnectingAccount && (
               <Button variant="ghost" size="sm" onClick={handleCancelReconnect}>
                 Annuler
               </Button>
             )}
-          </CardTitle>
-          <CardDescription>
+          </h3>
+          <p className="text-xs text-muted-foreground mt-1">
             {reconnectingAccount 
               ? `Reconnectez "${reconnectingAccount.name || reconnectingAccount.identifier}" avec de nouveaux identifiants`
               : 'Ajoutez un nouveau compte LinkedIn Recruiter'
             }
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
+          </p>
+        </div>
+        <div className="p-4">
           {checkpoint ? (
             <div className="space-y-4">
               <div className="p-4 bg-yellow-50 border border-foreground rounded-none">
@@ -608,22 +608,22 @@ export const LinkedInAccountManager: React.FC<LinkedInAccountManagerProps> = ({
               </TabsContent>
             </Tabs>
           )}
-        </CardContent>
-      </Card>
+        </div>
+      </div>
       </div>
 
       {/* Signature settings */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
+      <div className="bg-background border border-foreground">
+        <div className="p-4 border-b border-foreground/10">
+          <h3 className="flex items-center gap-2 text-sm font-bold uppercase tracking-wider">
             <UserCircle className="w-5 h-5" />
             Signature des messages
-          </CardTitle>
-          <CardDescription>
+          </h3>
+          <p className="text-xs text-muted-foreground mt-1">
             Votre prénom utilisé comme signature dans les messages d'approche et les séquences
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
+          </p>
+        </div>
+        <div className="p-4">
           <div className="flex items-center gap-3">
             <div className="flex-1">
               <Label htmlFor="signature-name" className="text-xs text-muted-foreground mb-1.5 block">
@@ -655,8 +655,8 @@ export const LinkedInAccountManager: React.FC<LinkedInAccountManagerProps> = ({
           <p className="text-xs text-muted-foreground mt-2">
             Ce prénom sera utilisé automatiquement dans tous vos messages d'approche et séquences.
           </p>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
 
       {/* Webhook Manager */}
       <WebhookManager />

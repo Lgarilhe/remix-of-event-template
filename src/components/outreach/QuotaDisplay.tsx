@@ -21,7 +21,7 @@ const QuotaItem: React.FC<QuotaItemProps> = ({ label, current, limit, icon }) =>
   return (
     <div className="flex items-center gap-2">
       <div className={cn(
-        "w-6 h-6 rounded flex items-center justify-center",
+        "w-6 h-6 flex items-center justify-center",
         isCritical ? "bg-red-100 text-red-600" :
         isWarning ? "bg-amber-100 text-amber-600" :
         "bg-muted text-muted-foreground"

@@ -596,11 +596,12 @@ export const SequencesList: React.FC<SequencesListProps> = ({
       ) : (
         <div className="bg-background border border-foreground overflow-hidden">
           {/* Table header - hidden on mobile */}
-          <div className="hidden sm:grid grid-cols-[auto_auto_1fr_100px_100px_100px_80px] gap-4 px-4 py-3 bg-muted border-b border-foreground text-xs font-medium text-muted-foreground uppercase tracking-wide">
+          <div className="hidden sm:grid grid-cols-[auto_auto_1fr_100px_80px_100px_100px_80px] gap-4 px-4 py-3 bg-muted border-b border-foreground text-xs font-medium text-muted-foreground uppercase tracking-wide">
             <div className="w-5" />
             <div>Statut</div>
             <div>Nom de la séquence</div>
             <div className="text-center">Prospects</div>
+            <div className="text-center">Funnel</div>
             <div className="text-center">Créé à</div>
             <div className="text-center">Actions</div>
             <div />
@@ -612,7 +613,7 @@ export const SequencesList: React.FC<SequencesListProps> = ({
               <div
                 key={seq.id}
                 className={cn(
-                  "hidden sm:grid grid-cols-[auto_auto_1fr_100px_100px_100px_80px] gap-4 px-4 py-3 items-center hover:bg-brutal-accent/10 transition-colors",
+                  "hidden sm:grid grid-cols-[auto_auto_1fr_100px_80px_100px_100px_80px] gap-4 px-4 py-3 items-center hover:bg-brutal-accent/10 transition-colors",
                   selectedProfiles.length > 0 && selectedAccount && "cursor-pointer"
                 )}
                 onClick={() => {
@@ -647,6 +648,27 @@ export const SequencesList: React.FC<SequencesListProps> = ({
                   <span className="text-muted-foreground">/</span>
                   <span>{seq.enrollments.total}</span>
                 </button>
+                {/* Mini conversion funnel */}
+                {seq.enrollments.total > 0 && (
+                  <div className="flex items-center gap-0.5 h-2.5 w-[80px]" title={`${seq.enrollments.active} actifs • ${seq.enrollments.completed} terminés • ${seq.enrollments.replied} répondus`}>
+                    {seq.steps.map((_, i) => {
+                      const total = seq.enrollments.total || 1;
+                      // Simple decay: each step retains ~70% of the previous
+                      const pct = Math.max(10, Math.round(100 * Math.pow(0.7, i)));
+                      return (
+                        <div
+                          key={i}
+                          className="flex-1 h-full bg-foreground/15"
+                        >
+                          <div
+                            className="h-full bg-foreground/60"
+                            style={{ width: `${pct}%` }}
+                          />
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
                 <div className="text-center text-sm text-muted-foreground">
                   {formatDistanceToNow(new Date(seq.created_at), { addSuffix: false, locale: fr })}
                 </div>
