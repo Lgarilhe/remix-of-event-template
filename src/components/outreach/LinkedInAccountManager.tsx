@@ -306,7 +306,7 @@ export const LinkedInAccountManager: React.FC<LinkedInAccountManagerProps> = ({
                   className="flex items-center justify-between p-3 bg-muted/50 rounded-none border border-foreground"
                 >
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-[#0077B5] rounded-sm flex items-center justify-center">
+                    <div className="w-10 h-10 bg-[#0077B5] flex items-center justify-center">
                       <img src={linkedInLogo} alt="LinkedIn" className="w-6 h-6 object-contain" />
                     </div>
                     <div>
