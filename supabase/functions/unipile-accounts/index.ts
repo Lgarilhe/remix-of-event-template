@@ -791,6 +791,7 @@ Deno.serve(async (req) => {
           inviter_id: item.inviter?.inviter_id || '',
           inviter_public_identifier: item.inviter?.inviter_public_identifier || '',
           inviter_description: item.inviter?.inviter_description || null,
+          inviter_picture_url: item.inviter?.inviter_picture_url || item.inviter?.profile_picture_url || null,
           invitation_text: item.invitation_text || null,
           date: item.date || '',
           parsed_datetime: item.parsed_datetime || null,
