@@ -8,6 +8,9 @@ import { InlineAIPanel } from './InlineAIPanel';
 import { ActivityEventCard } from './ActivityEventCard';
 import { useProfileActivity, ActivityEvent } from '@/hooks/useProfileActivity';
 import {
+  Sparkles,
+} from 'lucide-react';
+import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -85,6 +88,9 @@ export const MessageView: React.FC<MessageViewProps> = ({
   loadingMessages,
   newMessage,
   sending,
+  replySuggestions,
+  loadingSuggestions,
+  suggestionsLoaded,
   enrollmentsMap,
   availableJobs,
   messagesEndRef,
@@ -96,6 +102,8 @@ export const MessageView: React.FC<MessageViewProps> = ({
   onSendMessage,
   onSuggestionClick,
   onSuggestionSend,
+  onFetchSuggestions,
+  onClearSuggestions,
   onAddToPipeline,
   onEnrollInSequence,
   onScheduleCall,
@@ -424,6 +432,19 @@ export const MessageView: React.FC<MessageViewProps> = ({
         onAddToPipeline={onAddToPipeline}
         sending={sending}
       />
+
+      {/* AI suggestions badge when panel is closed */}
+      {replySuggestions.length > 0 && !aiPanelOpen && (
+        <div className="px-3 pt-2">
+          <button
+            onClick={() => setAiPanelOpen(true)}
+            className="flex items-center gap-1.5 px-2 py-1 text-[10px] uppercase tracking-wider font-medium border border-foreground bg-brutal-accent/10 hover:bg-brutal-accent/20 transition-colors"
+          >
+            <Sparkles className="w-3 h-3" />
+            {replySuggestions.length} suggestions IA
+          </button>
+        </div>
+      )}
 
       {/* Separator before input */}
       <div className="border-t border-foreground" />

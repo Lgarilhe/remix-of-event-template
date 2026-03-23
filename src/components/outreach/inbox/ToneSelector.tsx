@@ -31,7 +31,7 @@ const toneOptions: Array<{
   {
     value: 'casual',
     label: 'Décontracté',
-    description: 'Friendly et accessible',
+    description: 'Amical et accessible',
     emoji: '😊',
   },
   {
@@ -71,7 +71,7 @@ export const ToneSelector: React.FC<ToneSelectorProps> = ({
           <Palette className="w-3 h-3" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-56 p-2" align="start">
+      <PopoverContent className="w-56 p-2 rounded-none border-foreground" align="start">
         <div className="space-y-1">
           <p className="text-xs font-medium text-muted-foreground px-2 pb-1">
             Ton des réponses IA
@@ -81,10 +81,10 @@ export const ToneSelector: React.FC<ToneSelectorProps> = ({
               key={option.value}
               onClick={() => onToneChange(option.value)}
               className={cn(
-                "w-full flex items-center gap-3 p-2 rounded-lg text-left transition-colors",
+                "w-full flex items-center gap-3 p-2 text-left transition-colors",
                 selectedTone === option.value
-                  ? "bg-primary/10 text-primary"
-                  : "hover:bg-muted"
+                  ? "bg-foreground/10 text-foreground border border-foreground"
+                  : "hover:bg-muted border border-transparent"
               )}
             >
               <span className="text-lg">{option.emoji}</span>
