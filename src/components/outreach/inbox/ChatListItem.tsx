@@ -138,7 +138,7 @@ export const ChatListItem: React.FC<ChatListItemProps> = ({
           <div className="flex items-center gap-1.5 mt-0.5 overflow-hidden min-w-0">
             {categoryInfo && (
               <span className={cn(
-                "inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[9px] font-medium border rounded-sm shrink-0",
+                "inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[9px] font-medium border shrink-0",
                 categoryInfo.color
               )}>
                 {categoryInfo.emoji} {categoryInfo.label}
