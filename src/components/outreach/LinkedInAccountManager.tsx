@@ -425,8 +425,9 @@ export const LinkedInAccountManager: React.FC<LinkedInAccountManagerProps> = ({
               ))}
             </div>
           )}
-        </CardContent>
-      </Card>
+          </div>
+        </div>
+      </div>
 
       {/* Connect new account or Reconnect */}
       <Card>
