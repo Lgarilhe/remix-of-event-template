@@ -335,7 +335,7 @@ export const MessageView: React.FC<MessageViewProps> = ({
               const msg = item.data;
               return (
                 <div
-                  key={msg.id || idx}
+                  key={msg.id ?? idx}
                   className={cn("flex group/msg relative", msg.is_sender ? "justify-end" : "justify-start")}
                 >
                   <div className="relative max-w-[75%]">
@@ -371,7 +371,7 @@ export const MessageView: React.FC<MessageViewProps> = ({
                     </div>
 
                     {/* Reaction bar for received messages */}
-                    {!msg.is_sender && onAddReaction && msg.id && (
+                    {!msg.is_sender && onAddReaction && msg.id != null && (
                       <div className="absolute -bottom-3 left-2 opacity-0 group-hover/msg:opacity-100 transition-opacity z-10 flex gap-0.5 bg-background/90 backdrop-blur-sm border border-foreground/20 px-1 py-0.5 shadow-md">
                         {REACTION_EMOJIS.map(emoji => (
                           <button
@@ -395,7 +395,7 @@ export const MessageView: React.FC<MessageViewProps> = ({
                     )}
 
                     {/* Delete button for sent messages */}
-                    {!!msg.is_sender && onDeleteMessage && msg.id && (
+                    {!!msg.is_sender && onDeleteMessage && msg.id != null && (
                       <button
                         onClick={() => setDeleteMsgConfirm(msg.id)}
                         className="absolute -top-2 -right-2 opacity-0 group-hover/msg:opacity-100 transition-opacity z-10 h-6 w-6 flex items-center justify-center bg-destructive text-destructive-foreground border border-foreground/20 shadow-md hover:bg-destructive/80"
