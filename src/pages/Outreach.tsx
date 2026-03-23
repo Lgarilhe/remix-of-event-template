@@ -310,6 +310,7 @@ export default function Outreach() {
               <MessagesInbox
                 accounts={accounts}
                 selectedAccount={selectedAccount}
+                loading={loading}
                 onAccountChange={setSelectedAccount}
                 onUnreadCountChange={setUnreadMessageCount}
                 initialChatId={searchParams.get('chatId')}
