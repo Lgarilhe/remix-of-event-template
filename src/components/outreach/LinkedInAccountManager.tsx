@@ -424,7 +424,6 @@ export const LinkedInAccountManager: React.FC<LinkedInAccountManagerProps> = ({
               ))}
             </div>
           )}
-          </div>
         </div>
       </div>
 
