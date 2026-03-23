@@ -596,11 +596,12 @@ export const SequencesList: React.FC<SequencesListProps> = ({
       ) : (
         <div className="bg-background border border-foreground overflow-hidden">
           {/* Table header - hidden on mobile */}
-          <div className="hidden sm:grid grid-cols-[auto_auto_1fr_100px_100px_100px_80px] gap-4 px-4 py-3 bg-muted border-b border-foreground text-xs font-medium text-muted-foreground uppercase tracking-wide">
+          <div className="hidden sm:grid grid-cols-[auto_auto_1fr_100px_80px_100px_100px_80px] gap-4 px-4 py-3 bg-muted border-b border-foreground text-xs font-medium text-muted-foreground uppercase tracking-wide">
             <div className="w-5" />
             <div>Statut</div>
             <div>Nom de la séquence</div>
             <div className="text-center">Prospects</div>
+            <div className="text-center">Funnel</div>
             <div className="text-center">Créé à</div>
             <div className="text-center">Actions</div>
             <div />
