@@ -8,6 +8,9 @@ import { InlineAIPanel } from './InlineAIPanel';
 import { ActivityEventCard } from './ActivityEventCard';
 import { useProfileActivity, ActivityEvent } from '@/hooks/useProfileActivity';
 import {
+  Sparkles,
+} from 'lucide-react';
+import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
