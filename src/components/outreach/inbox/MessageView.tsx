@@ -456,7 +456,7 @@ export const MessageView: React.FC<MessageViewProps> = ({
             <InMailTextEditor
               value={newMessage}
               onChange={onNewMessageChange}
-              placeholder="Écrivez un message... (Ctrl+Entrée pour envoyer)"
+              placeholder={`Écrivez un message... (${typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent) ? '⌘' : 'Ctrl'}+Entrée pour envoyer)`}
               minHeight="60px"
               maxHeight="200px"
               showWordCount={false}
