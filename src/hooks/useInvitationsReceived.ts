@@ -8,6 +8,7 @@ export interface ReceivedInvitation {
   inviter_id: string;
   inviter_public_identifier: string;
   inviter_description: string | null;
+  inviter_picture_url: string | null;
   invitation_text: string | null;
   date: string;
   parsed_datetime: string | null;
