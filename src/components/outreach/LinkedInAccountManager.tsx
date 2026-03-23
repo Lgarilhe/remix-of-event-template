@@ -609,8 +609,8 @@ export const LinkedInAccountManager: React.FC<LinkedInAccountManagerProps> = ({
               </TabsContent>
             </Tabs>
           )}
-        </CardContent>
-      </Card>
+        </div>
+      </div>
       </div>
 
       {/* Signature settings */}
