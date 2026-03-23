@@ -430,24 +430,24 @@ export const LinkedInAccountManager: React.FC<LinkedInAccountManagerProps> = ({
       </div>
 
       {/* Connect new account or Reconnect */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center justify-between">
+      <div className="bg-background border border-foreground">
+        <div className="p-4 border-b border-foreground/10">
+          <h3 className="flex items-center justify-between text-sm font-bold uppercase tracking-wider">
             <span>{reconnectingAccount ? 'Reconnecter le compte' : 'Connecter un compte'}</span>
             {reconnectingAccount && (
               <Button variant="ghost" size="sm" onClick={handleCancelReconnect}>
                 Annuler
               </Button>
             )}
-          </CardTitle>
-          <CardDescription>
+          </h3>
+          <p className="text-xs text-muted-foreground mt-1">
             {reconnectingAccount 
               ? `Reconnectez "${reconnectingAccount.name || reconnectingAccount.identifier}" avec de nouveaux identifiants`
               : 'Ajoutez un nouveau compte LinkedIn Recruiter'
             }
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
+          </p>
+        </div>
+        <div className="p-4">
           {checkpoint ? (
             <div className="space-y-4">
               <div className="p-4 bg-yellow-50 border border-foreground rounded-none">
