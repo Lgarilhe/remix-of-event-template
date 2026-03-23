@@ -656,8 +656,8 @@ export const LinkedInAccountManager: React.FC<LinkedInAccountManagerProps> = ({
           <p className="text-xs text-muted-foreground mt-2">
             Ce prénom sera utilisé automatiquement dans tous vos messages d'approche et séquences.
           </p>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
 
       {/* Webhook Manager */}
       <WebhookManager />
