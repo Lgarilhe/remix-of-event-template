@@ -332,7 +332,7 @@ export function NurturingDashboard({ accounts, selectedAccount }: NurturingDashb
 
       {/* Error Display */}
       {error && (
-        <div className="rounded-lg border bg-destructive/10 px-4 py-3 text-sm text-destructive">
+        <div className="border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
           <div className="flex items-start gap-2">
             <AlertCircle className="mt-0.5 h-4 w-4" />
             <div>
