@@ -359,25 +359,23 @@ export const ProjectsList: React.FC<ProjectsListProps> = ({ onResumeSearch }) =>
                       </div>
                     )}
 
-                    {/* Stats (only if sourcing project exists with activity) */}
+                    {/* Progression badges */}
                     {(stats.total > 0 || hasSourcingProject) && (
-                      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
-                        <span className="flex items-center gap-1 text-muted-foreground">
-                          <Users className="w-3.5 h-3.5" />
-                          {stats.total} trouvés
+                      <div className="flex flex-wrap items-center gap-x-1 gap-y-1 text-xs">
+                        <span className="px-2 py-0.5 bg-muted text-muted-foreground border border-foreground/10 text-[10px] font-medium">
+                          {stats.total} sourcés
                         </span>
-                        <span className="flex items-center gap-1 text-muted-foreground">
-                          <MessageSquare className="w-3.5 h-3.5" />
+                        <span className="px-2 py-0.5 bg-muted text-muted-foreground border border-foreground/10 text-[10px] font-medium">
                           {stats.messaged} contactés
                         </span>
-                        <span className="flex items-center gap-1 text-muted-foreground">
-                          <UserCheck className="w-3.5 h-3.5" />
-                          {stats.shortlisted} shortlistés
+                        <span className="px-2 py-0.5 bg-muted text-muted-foreground border border-foreground/10 text-[10px] font-medium">
+                          {stats.shortlisted} réponses
                         </span>
-                        <span className="flex items-center gap-1 text-muted-foreground">
-                          <UserX className="w-3.5 h-3.5" />
-                          {stats.dismissed} écartés
-                        </span>
+                        {stats.shortlisted > 0 && stats.messaged > 0 && (
+                          <span className="px-2 py-0.5 bg-foreground text-background text-[10px] font-bold">
+                            {Math.round((stats.shortlisted / stats.messaged) * 100)}%
+                          </span>
+                        )}
                       </div>
                     )}
                   </div>
