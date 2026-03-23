@@ -1881,7 +1881,13 @@ async function generatePersonalizedMessage(supabase: any, enrollment: Record<str
         // Extract accompagnement
         const accomp = jobNotionData['Accompagnement'] || jobNotionData['Type accompagnement'] || '';
         if (accomp) jobAccompagnement = accomp.split(',').map(s => s.trim()).filter(Boolean);
-      } catch { /* ignore */ }
+    } catch { /* ignore */ }
+
+    // RAG context (after Notion data is loaded so jobTitle is available)
+    const orgId = enrollment.organization_id as string || '';
+    const ragJobTitle = jobNotionData?.['Poste'] || jobNotionData?.['Titre'] || enrollment.job_title as string || '';
+    const ragJobSkills = jobNotionData?.['Compétences'] || jobNotionData?.['Skills'] || '';
+    const ragPromise = orgId ? fetchRAGContext(orgId, enrollment.profile_id as string, `${ragJobTitle} ${ragJobSkills}`) : Promise.resolve(null);
     }
 
     // Fetch candidate history from Airtable cache
