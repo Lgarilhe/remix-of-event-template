@@ -31,7 +31,7 @@ const toneOptions: Array<{
   {
     value: 'casual',
     label: 'Décontracté',
-    description: 'Friendly et accessible',
+    description: 'Amical et accessible',
     emoji: '😊',
   },
   {
