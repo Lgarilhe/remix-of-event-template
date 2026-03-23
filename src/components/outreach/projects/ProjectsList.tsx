@@ -251,17 +251,31 @@ export const ProjectsList: React.FC<ProjectsListProps> = ({ onResumeSearch }) =>
       {/* Projects list */}
       {sortedProjects.length === 0 ? (
         <div className="bg-background border border-foreground p-12 text-center">
-          <div className="h-16 w-16 bg-foreground text-background flex items-center justify-center mx-auto mb-4">
-            <FolderOpen className="w-8 h-8" />
-          </div>
-          <h3 className="text-lg font-bold text-foreground mb-2 uppercase tracking-wide">
-            {searchQuery || statusFilter ? 'Aucun projet trouvé' : 'Aucun poste disponible'}
-          </h3>
-          <p className="text-muted-foreground mb-6 text-sm">
-            {searchQuery || statusFilter
-              ? 'Essayez de modifier vos filtres'
-              : 'Les postes Notion apparaîtront automatiquement ici'}
-          </p>
+          {searchQuery || statusFilter ? (
+            <>
+              <div className="h-16 w-16 bg-foreground text-background flex items-center justify-center mx-auto mb-4">
+                <FolderOpen className="w-8 h-8" />
+              </div>
+              <h3 className="text-lg font-bold text-foreground mb-2 uppercase tracking-wide">Aucun projet trouvé</h3>
+              <p className="text-muted-foreground mb-6 text-sm">Essayez de modifier vos filtres</p>
+            </>
+          ) : (
+            <>
+              <div className="text-4xl mb-4">📂</div>
+              <h3 className="text-lg font-bold text-foreground mb-2 uppercase tracking-wide">Votre première mission</h3>
+              <p className="text-muted-foreground mb-6 text-sm max-w-md mx-auto">
+                Une mission = un poste à pourvoir. Créez-en une pour commencer à sourcer des candidats.
+                Si vos postes sont dans Notion, ils apparaîtront automatiquement.
+              </p>
+              <button
+                onClick={() => setShowCreateModal(true)}
+                className="relative overflow-hidden h-[34px] px-6 bg-foreground text-background border border-foreground text-xs font-medium uppercase tracking-wider group"
+              >
+                <span className="relative z-10">Créer une mission</span>
+                <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
+              </button>
+            </>
+          )}
         </div>
       ) : (
         <div className="grid gap-3 min-w-0">
@@ -345,25 +359,23 @@ export const ProjectsList: React.FC<ProjectsListProps> = ({ onResumeSearch }) =>
                       </div>
                     )}
 
-                    {/* Stats (only if sourcing project exists with activity) */}
+                    {/* Progression badges */}
                     {(stats.total > 0 || hasSourcingProject) && (
-                      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
-                        <span className="flex items-center gap-1 text-muted-foreground">
-                          <Users className="w-3.5 h-3.5" />
-                          {stats.total} trouvés
+                      <div className="flex flex-wrap items-center gap-x-1 gap-y-1 text-xs">
+                        <span className="px-2 py-0.5 bg-muted text-muted-foreground border border-foreground/10 text-[10px] font-medium">
+                          {stats.total} sourcés
                         </span>
-                        <span className="flex items-center gap-1 text-muted-foreground">
-                          <MessageSquare className="w-3.5 h-3.5" />
+                        <span className="px-2 py-0.5 bg-muted text-muted-foreground border border-foreground/10 text-[10px] font-medium">
                           {stats.messaged} contactés
                         </span>
-                        <span className="flex items-center gap-1 text-muted-foreground">
-                          <UserCheck className="w-3.5 h-3.5" />
-                          {stats.shortlisted} shortlistés
+                        <span className="px-2 py-0.5 bg-muted text-muted-foreground border border-foreground/10 text-[10px] font-medium">
+                          {stats.shortlisted} réponses
                         </span>
-                        <span className="flex items-center gap-1 text-muted-foreground">
-                          <UserX className="w-3.5 h-3.5" />
-                          {stats.dismissed} écartés
-                        </span>
+                        {stats.shortlisted > 0 && stats.messaged > 0 && (
+                          <span className="px-2 py-0.5 bg-foreground text-background text-[10px] font-bold">
+                            {Math.round((stats.shortlisted / stats.messaged) * 100)}%
+                          </span>
+                        )}
                       </div>
                     )}
                   </div>
