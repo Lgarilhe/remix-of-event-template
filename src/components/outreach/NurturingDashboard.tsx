@@ -385,9 +385,9 @@ export function NurturingDashboard({ accounts, selectedAccount }: NurturingDashb
               </div>
             )}
           </div>
-        </CardHeader>
+        </div>
 
-        <CardContent className="p-0">
+        <div>
           {isLoading ? (
             <div className="p-4">
               <BrutalLoader compact messages={['Analyse des opportunités…', 'Scoring en cours…', 'Détection des signaux…']} />
