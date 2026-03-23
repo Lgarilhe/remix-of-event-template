@@ -613,7 +613,7 @@ export const SequencesList: React.FC<SequencesListProps> = ({
               <div
                 key={seq.id}
                 className={cn(
-                  "hidden sm:grid grid-cols-[auto_auto_1fr_100px_100px_100px_80px] gap-4 px-4 py-3 items-center hover:bg-brutal-accent/10 transition-colors",
+                  "hidden sm:grid grid-cols-[auto_auto_1fr_100px_80px_100px_100px_80px] gap-4 px-4 py-3 items-center hover:bg-brutal-accent/10 transition-colors",
                   selectedProfiles.length > 0 && selectedAccount && "cursor-pointer"
                 )}
                 onClick={() => {
