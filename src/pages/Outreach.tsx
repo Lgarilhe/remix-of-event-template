@@ -143,13 +143,13 @@ export default function Outreach() {
     activeValue: string;
     onChange: (v: string) => void;
   }) => (
-    <div className="flex flex-wrap gap-0 mb-4">
+    <div className="flex gap-0 mb-4 overflow-x-auto no-scrollbar">
       {items.map((sub, idx) => (
         <button
           key={sub.value}
           onClick={() => onChange(sub.value)}
           className={cn(
-            "relative overflow-hidden flex items-center gap-1 h-[30px] px-3 text-[10px] font-medium uppercase tracking-wider border border-foreground transition-colors group",
+            "relative overflow-hidden flex items-center gap-1 h-[30px] px-3 text-[10px] font-medium uppercase tracking-wider border border-foreground transition-colors group shrink-0",
             idx > 0 && "border-l-0",
             activeValue === sub.value ? "bg-foreground text-background" : "bg-background text-foreground"
           )}
@@ -207,7 +207,7 @@ export default function Outreach() {
 
           {/* Tabs — brutal style */}
           <div className="mb-3 md:mb-5 sm:mb-6 min-w-0">
-            <div className="flex flex-wrap gap-0 w-full min-w-0">
+            <div className="flex gap-0 w-full min-w-0 overflow-x-auto no-scrollbar">
               {tabs.map((tab, index) => {
                 const isActive = activeTab === tab.value;
                 return (
@@ -215,7 +215,7 @@ export default function Outreach() {
                     key={tab.value}
                     onClick={() => setActiveTab(tab.value)}
                     className={cn(
-                      "relative overflow-hidden flex items-center justify-center gap-1 h-[34px] px-2 sm:px-4 text-[10px] sm:text-xs font-medium uppercase tracking-wider border border-foreground transition-colors duration-200 group",
+                      "relative overflow-hidden flex items-center justify-center gap-1 h-[34px] px-2 sm:px-4 text-[10px] sm:text-xs font-medium uppercase tracking-wider border border-foreground transition-colors duration-200 group shrink-0",
                       index > 0 && "border-l-0",
                       isActive
                         ? "bg-brutal-accent text-foreground"
