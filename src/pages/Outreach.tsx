@@ -236,7 +236,7 @@ export default function Outreach() {
                   Pour rechercher des candidats, connectez d'abord un compte LinkedIn Recruiter.
                 </p>
                 <button
-                  onClick={() => navigate('/settings?tab=integrations')}
+                  onClick={() => navigate('/settings?tab=connectors')}
                   className="relative overflow-hidden h-[34px] px-6 bg-background text-foreground border border-foreground text-xs font-medium uppercase tracking-wider group"
                 >
                   <span className="relative z-10 flex items-center gap-2"><Settings className="w-4 h-4" /> Aller dans les paramètres</span>

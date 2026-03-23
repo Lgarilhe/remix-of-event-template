@@ -81,10 +81,10 @@ export const ToneSelector: React.FC<ToneSelectorProps> = ({
               key={option.value}
               onClick={() => onToneChange(option.value)}
               className={cn(
-                "w-full flex items-center gap-3 p-2 rounded-lg text-left transition-colors",
+                "w-full flex items-center gap-3 p-2 text-left transition-colors",
                 selectedTone === option.value
-                  ? "bg-primary/10 text-primary"
-                  : "hover:bg-muted"
+                  ? "bg-foreground/10 text-foreground border border-foreground"
+                  : "hover:bg-muted border border-transparent"
               )}
             >
               <span className="text-lg">{option.emoji}</span>
