@@ -207,7 +207,7 @@ export default function Outreach() {
 
           {/* Tabs — brutal style */}
           <div className="mb-3 md:mb-5 sm:mb-6 min-w-0">
-            <div className="flex gap-0 w-full min-w-0 overflow-x-auto no-scrollbar">
+            <div className="flex flex-wrap gap-0 w-full min-w-0">
               {tabs.map((tab, index) => {
                 const isActive = activeTab === tab.value;
                 return (
