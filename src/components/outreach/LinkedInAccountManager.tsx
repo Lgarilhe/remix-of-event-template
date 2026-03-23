@@ -283,17 +283,17 @@ export const LinkedInAccountManager: React.FC<LinkedInAccountManagerProps> = ({
     <div className="space-y-6">
       <div className="grid gap-6 lg:grid-cols-2">
       {/* Connected accounts */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
+      <div className="bg-background border border-foreground">
+        <div className="p-4 border-b border-foreground/10">
+          <h3 className="flex items-center gap-2 text-sm font-bold uppercase tracking-wider">
             <img src={linkedInLogo} alt="LinkedIn" className="w-5 h-5 object-contain" />
             Comptes connectés
-          </CardTitle>
-          <CardDescription>
+          </h3>
+          <p className="text-xs text-muted-foreground mt-1">
             Gérez vos comptes LinkedIn connectés
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
+          </p>
+        </div>
+        <div className="p-4">
           {accounts.length === 0 ? (
             <div className="text-center py-8 text-[#1A1A1A]/50">
               Aucun compte connecté
