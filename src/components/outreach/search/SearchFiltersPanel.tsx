@@ -329,7 +329,7 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
             className="min-h-[140px] text-sm font-mono"
             rows={6}
           />
-          <div className="space-y-1.5 text-xs text-muted-foreground bg-muted/50 rounded-md p-3">
+          <div className="space-y-1.5 text-xs text-muted-foreground bg-muted/50 p-3 border border-foreground/10">
             <p className="font-medium text-foreground/70">💡 Astuces Boolean avancées :</p>
             <ul className="space-y-1 list-disc list-inside">
               <li><strong>OR</strong> entre synonymes : <code className="text-[10px] bg-muted px-1 rounded">Java OR JEE OR J2EE</code></li>
