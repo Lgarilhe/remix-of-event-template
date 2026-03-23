@@ -395,7 +395,7 @@ export const MessageView: React.FC<MessageViewProps> = ({
                     )}
 
                     {/* Delete button for sent messages */}
-                    {msg.is_sender && onDeleteMessage && msg.id && (
+                    {!!msg.is_sender && onDeleteMessage && msg.id && (
                       <button
                         onClick={() => setDeleteMsgConfirm(msg.id)}
                         className="absolute -top-2 -right-2 opacity-0 group-hover/msg:opacity-100 transition-opacity z-10 h-6 w-6 flex items-center justify-center bg-destructive text-destructive-foreground border border-foreground/20 shadow-md hover:bg-destructive/80"
