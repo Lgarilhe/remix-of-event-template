@@ -344,8 +344,8 @@ export function NurturingDashboard({ accounts, selectedAccount }: NurturingDashb
       )}
 
       {/* Main Content */}
-      <Card>
-        <CardHeader className="py-3 px-4">
+      <div className="bg-background border border-foreground">
+        <div className="py-3 px-4 border-b border-foreground/10">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
               {/* Select All */}
