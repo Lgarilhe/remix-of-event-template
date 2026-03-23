@@ -473,10 +473,25 @@ export const InvitationsPanel: React.FC<InvitationsPanelProps> = ({
             <AlertDialogTitle>
               {bulkConfirm === 'accept' ? 'Accepter' : 'Décliner'} {selectedCount} invitation{selectedCount > 1 ? 's' : ''} ?
             </AlertDialogTitle>
-            <AlertDialogDescription>
-              {bulkConfirm === 'accept'
-                ? 'Les invitations seront traitées une par une avec un délai anti-rate-limit.'
-                : 'Les invitations seront refusées. Cette action est irréversible.'}
+            <AlertDialogDescription asChild>
+              <div className="space-y-3 text-sm text-muted-foreground">
+                <p>
+                  {bulkConfirm === 'accept'
+                    ? 'Les invitations sélectionnées seront acceptées.'
+                    : 'Les invitations sélectionnées seront refusées. Cette action est irréversible.'}
+                </p>
+                <div className="rounded-none border border-amber-500/30 bg-amber-500/10 p-3 space-y-1.5">
+                  <p className="font-semibold text-foreground text-xs uppercase tracking-wider flex items-center gap-1.5">
+                    ⏱ Pourquoi c'est lent ?
+                  </p>
+                  <p className="text-xs leading-relaxed">
+                    Pour protéger votre compte LinkedIn, chaque invitation est traitée individuellement avec un <span className="font-medium text-foreground">délai de ~1.5 seconde</span> entre chaque action. LinkedIn détecte et bloque les actions trop rapides.
+                  </p>
+                  <p className="text-xs text-muted-foreground/80">
+                    Estimation : ~{Math.ceil(selectedCount * 1.5)} secondes pour {selectedCount} invitation{selectedCount > 1 ? 's' : ''}.
+                  </p>
+                </div>
+              </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
