@@ -149,7 +149,7 @@ export default function Outreach() {
           key={sub.value}
           onClick={() => onChange(sub.value)}
           className={cn(
-            "relative overflow-hidden flex items-center gap-1 h-[30px] px-3 text-[10px] font-medium uppercase tracking-wider border border-foreground transition-colors group shrink-0",
+            "relative overflow-hidden flex items-center gap-1 h-[30px] px-3 text-[10px] font-medium uppercase tracking-wider border border-foreground transition-colors group",
             idx > 0 && "border-l-0",
             activeValue === sub.value ? "bg-foreground text-background" : "bg-background text-foreground"
           )}
