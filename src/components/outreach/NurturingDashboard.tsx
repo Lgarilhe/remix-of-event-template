@@ -603,8 +603,8 @@ export function NurturingDashboard({ accounts, selectedAccount }: NurturingDashb
               </div>
             </ScrollArea>
           )}
-        </CardContent>
-      </Card>
+        </div>
+      </div>
     </div>
   );
 }

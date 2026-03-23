@@ -332,11 +332,11 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
           <div className="space-y-1.5 text-xs text-muted-foreground bg-muted/50 p-3 border border-foreground/10">
             <p className="font-medium text-foreground/70">💡 Astuces Boolean avancées :</p>
             <ul className="space-y-1 list-disc list-inside">
-              <li><strong>OR</strong> entre synonymes : <code className="text-[10px] bg-muted px-1 rounded">Java OR JEE OR J2EE</code></li>
-              <li><strong>AND</strong> entre catégories : <code className="text-[10px] bg-muted px-1 rounded">(Java OR JEE) AND (Spring OR SpringBoot)</code></li>
-              <li><strong>NOT</strong> pour exclure : <code className="text-[10px] bg-muted px-1 rounded">NOT (junior OR stagiaire OR freelance)</code></li>
-              <li><strong>Guillemets</strong> pour expressions exactes : <code className="text-[10px] bg-muted px-1 rounded">"data scientist"</code></li>
-              <li><strong>Wildcard *</strong> pour variantes : <code className="text-[10px] bg-muted px-1 rounded">cloud*</code> → cloud, cloudops, cloudstack</li>
+              <li><strong>OR</strong> entre synonymes : <code className="text-[10px] bg-muted px-1">Java OR JEE OR J2EE</code></li>
+              <li><strong>AND</strong> entre catégories : <code className="text-[10px] bg-muted px-1">(Java OR JEE) AND (Spring OR SpringBoot)</code></li>
+              <li><strong>NOT</strong> pour exclure : <code className="text-[10px] bg-muted px-1">NOT (junior OR stagiaire OR freelance)</code></li>
+              <li><strong>Guillemets</strong> pour expressions exactes : <code className="text-[10px] bg-muted px-1">"data scientist"</code></li>
+              <li><strong>Wildcard *</strong> pour variantes : <code className="text-[10px] bg-muted px-1">cloud*</code> → cloud, cloudops, cloudstack</li>
             </ul>
             <p className="text-[10px] mt-1 text-muted-foreground/70">⚠️ Mettre les titres de poste dans le champ Rôle, pas ici. Limite ~200 caractères.</p>
           </div>
