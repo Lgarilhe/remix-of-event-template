@@ -143,7 +143,7 @@ export default function Outreach() {
     activeValue: string;
     onChange: (v: string) => void;
   }) => (
-    <div className="flex gap-0 mb-4 overflow-x-auto no-scrollbar">
+    <div className="flex flex-wrap gap-0 mb-4">
       {items.map((sub, idx) => (
         <button
           key={sub.value}
