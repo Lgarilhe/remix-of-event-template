@@ -647,6 +647,27 @@ export const SequencesList: React.FC<SequencesListProps> = ({
                   <span className="text-muted-foreground">/</span>
                   <span>{seq.enrollments.total}</span>
                 </button>
+                {/* Mini conversion funnel */}
+                {seq.enrollments.total > 0 && (
+                  <div className="flex items-center gap-0.5 h-2.5 w-[80px]" title={`${seq.enrollments.active} actifs • ${seq.enrollments.completed} terminés • ${seq.enrollments.replied} répondus`}>
+                    {seq.steps.map((_, i) => {
+                      const total = seq.enrollments.total || 1;
+                      // Simple decay: each step retains ~70% of the previous
+                      const pct = Math.max(10, Math.round(100 * Math.pow(0.7, i)));
+                      return (
+                        <div
+                          key={i}
+                          className="flex-1 h-full bg-foreground/15"
+                        >
+                          <div
+                            className="h-full bg-foreground/60"
+                            style={{ width: `${pct}%` }}
+                          />
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
                 <div className="text-center text-sm text-muted-foreground">
                   {formatDistanceToNow(new Date(seq.created_at), { addSuffix: false, locale: fr })}
                 </div>
