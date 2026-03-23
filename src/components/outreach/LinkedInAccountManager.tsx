@@ -614,17 +614,17 @@ export const LinkedInAccountManager: React.FC<LinkedInAccountManagerProps> = ({
       </div>
 
       {/* Signature settings */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
+      <div className="bg-background border border-foreground">
+        <div className="p-4 border-b border-foreground/10">
+          <h3 className="flex items-center gap-2 text-sm font-bold uppercase tracking-wider">
             <UserCircle className="w-5 h-5" />
             Signature des messages
-          </CardTitle>
-          <CardDescription>
+          </h3>
+          <p className="text-xs text-muted-foreground mt-1">
             Votre prénom utilisé comme signature dans les messages d'approche et les séquences
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
+          </p>
+        </div>
+        <div className="p-4">
           <div className="flex items-center gap-3">
             <div className="flex-1">
               <Label htmlFor="signature-name" className="text-xs text-muted-foreground mb-1.5 block">
