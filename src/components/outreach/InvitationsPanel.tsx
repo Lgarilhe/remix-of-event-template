@@ -336,12 +336,12 @@ export const InvitationsPanel: React.FC<InvitationsPanelProps> = ({
                     )}
                   >
                     <div className="p-3">
-                      {/* Row 1: checkbox + avatar + name + date */}
-                      <div className="flex items-center gap-2">
+                      {/* Row: checkbox + avatar + info + actions */}
+                      <div className="flex items-start gap-2">
                         <Checkbox
                           checked={isSelected}
                           onCheckedChange={() => toggleOne(invitation.id)}
-                          className="border-foreground h-3.5 w-3.5 shrink-0"
+                          className="border-foreground h-3.5 w-3.5 shrink-0 mt-1"
                           disabled={isItemProcessing}
                         />
 
@@ -372,69 +372,67 @@ export const InvitationsPanel: React.FC<InvitationsPanelProps> = ({
                         )}
 
                         <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-1.5">
-                            {linkedinUrl ? (
-                              <a
-                                href={linkedinUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="inline-flex items-center gap-1 text-sm font-semibold text-foreground hover:underline truncate"
-                              >
-                                <span className="truncate">{invitation.inviter_name}</span>
-                                <ExternalLink className="h-3 w-3 shrink-0 opacity-40" />
-                              </a>
-                            ) : (
-                              <span className="text-sm font-semibold text-foreground truncate">
-                                {invitation.inviter_name}
+                          <div className="flex items-start justify-between gap-1">
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-1.5">
+                                {linkedinUrl ? (
+                                  <a
+                                    href={linkedinUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="inline-flex items-center gap-1 text-sm font-semibold text-foreground hover:underline truncate"
+                                  >
+                                    <span className="truncate">{invitation.inviter_name}</span>
+                                    <ExternalLink className="h-3 w-3 shrink-0 opacity-40" />
+                                  </a>
+                                ) : (
+                                  <span className="text-sm font-semibold text-foreground truncate">
+                                    {invitation.inviter_name}
+                                  </span>
+                                )}
+                              </div>
+                              {invitation.inviter_description && (
+                                <p className="text-xs text-muted-foreground truncate mt-0.5">
+                                  {invitation.inviter_description}
+                                </p>
+                              )}
+                              <span className="text-[9px] uppercase tracking-wider text-muted-foreground mt-0.5 block">
+                                {formatRelativeDate(invitation.date, invitation.parsed_datetime)}
                               </span>
-                            )}
+                            </div>
+
+                            {/* Actions — always visible inline */}
+                            <div className="flex items-center gap-1 shrink-0 ml-1">
+                              <Button
+                                variant="default"
+                                size="sm"
+                                onClick={() => handleAccept(invitation)}
+                                disabled={isItemProcessing || isProcessing}
+                                className="rounded-none border border-foreground h-7 px-1.5 sm:px-2.5 text-[10px] uppercase tracking-wider"
+                              >
+                                {isItemProcessing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
+                                <span className="ml-1 hidden sm:inline">OK</span>
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleDecline(invitation)}
+                                disabled={isItemProcessing || isProcessing}
+                                className="rounded-none border border-foreground h-7 px-1.5 sm:px-2.5 text-[10px] uppercase tracking-wider text-muted-foreground"
+                              >
+                                <X className="h-3 w-3" />
+                              </Button>
+                            </div>
                           </div>
-                          {invitation.inviter_description && (
-                            <p className="text-xs text-muted-foreground truncate mt-0.5">
-                              {invitation.inviter_description}
-                            </p>
+
+                          {/* Invitation text */}
+                          {invitation.invitation_text && (
+                            <div className="mt-1.5 border-l-2 border-foreground/15 bg-muted/10 px-2.5 py-1.5">
+                              <p className="text-xs italic leading-relaxed text-muted-foreground line-clamp-2">
+                                "{invitation.invitation_text}"
+                              </p>
+                            </div>
                           )}
-                        </div>
-
-                        <Badge variant="outline" className="rounded-none border-foreground/20 bg-background px-1.5 py-0.5 text-[9px] uppercase tracking-wider text-muted-foreground shrink-0 hidden sm:flex">
-                          {formatRelativeDate(invitation.date, invitation.parsed_datetime)}
-                        </Badge>
-                      </div>
-
-                      {/* Invitation text */}
-                      {invitation.invitation_text && (
-                        <div className="mt-2 ml-[52px] border-l-2 border-foreground/15 bg-muted/10 px-2.5 py-1.5">
-                          <p className="text-xs italic leading-relaxed text-muted-foreground line-clamp-2">
-                            "{invitation.invitation_text}"
-                          </p>
-                        </div>
-                      )}
-
-                      {/* Actions row */}
-                      <div className="mt-2 ml-[52px] flex items-center justify-between">
-                        <span className="text-[9px] uppercase tracking-wider text-muted-foreground sm:hidden">
-                          {formatRelativeDate(invitation.date, invitation.parsed_datetime)}
-                        </span>
-                        <div className="flex items-center gap-1.5 ml-auto">
-                          <Button
-                            variant="default"
-                            size="sm"
-                            onClick={() => handleAccept(invitation)}
-                            disabled={isItemProcessing || isProcessing}
-                            className="rounded-none border border-foreground h-7 px-2.5 text-[10px] uppercase tracking-wider"
-                          >
-                            {isItemProcessing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
-                            <span className="ml-1">OK</span>
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handleDecline(invitation)}
-                            disabled={isItemProcessing || isProcessing}
-                            className="rounded-none border border-foreground h-7 px-2.5 text-[10px] uppercase tracking-wider text-muted-foreground"
-                          >
-                            <X className="h-3 w-3" />
-                          </Button>
                         </div>
                       </div>
                     </div>
