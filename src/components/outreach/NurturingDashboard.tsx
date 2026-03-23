@@ -252,16 +252,30 @@ export function NurturingDashboard({ accounts, selectedAccount }: NurturingDashb
     <div className="space-y-4">
       {/* Empty state intro for new users */}
       {opportunities.length === 0 && !isLoading && !error && (
-        <div className="bg-background border border-foreground p-6 flex items-start gap-4">
-          <div className="w-10 h-10 bg-foreground text-background flex items-center justify-center shrink-0">
-            <Sparkles className="w-5 h-5" />
-          </div>
-          <div>
-            <h3 className="text-sm font-bold uppercase tracking-wider text-foreground mb-1">Nurturing IA</h3>
-            <p className="text-sm text-muted-foreground leading-relaxed">
-              Le nurturing détecte automatiquement les candidats à relancer : ceux qui n'ont pas répondu depuis longtemps, 
-              ceux qui ont changé de poste, ou ceux qui matchent un nouveau job. L'IA génère un message personnalisé pour chaque relance.
-            </p>
+        <div className="bg-background border border-foreground p-8 text-center space-y-6">
+          <div className="text-4xl">✨</div>
+          <h3 className="text-lg font-bold uppercase tracking-wider text-foreground">Suivi intelligent</h3>
+          <p className="text-sm text-muted-foreground leading-relaxed max-w-lg mx-auto">
+            Le suivi détecte automatiquement les candidats à relancer : ceux qui n'ont pas répondu, 
+            ceux qui ont changé de poste, ou ceux qui matchent un nouveau poste. 
+            Pour commencer, envoyez des messages via les séquences.
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 max-w-xl mx-auto">
+            <div className="border border-foreground/10 p-4 text-center">
+              <div className="text-2xl mb-2">⏰</div>
+              <div className="text-xs font-bold uppercase tracking-wider mb-1">Silence</div>
+              <div className="text-[10px] text-muted-foreground">Candidats sans réponse depuis 7+ jours</div>
+            </div>
+            <div className="border border-foreground/10 p-4 text-center">
+              <div className="text-2xl mb-2">🔄</div>
+              <div className="text-xs font-bold uppercase tracking-wider mb-1">Changement</div>
+              <div className="text-[10px] text-muted-foreground">Candidats qui ont changé de poste</div>
+            </div>
+            <div className="border border-foreground/10 p-4 text-center">
+              <div className="text-2xl mb-2">🎯</div>
+              <div className="text-xs font-bold uppercase tracking-wider mb-1">Match</div>
+              <div className="text-[10px] text-muted-foreground">Profils qui matchent un nouveau poste</div>
+            </div>
           </div>
         </div>
       )}

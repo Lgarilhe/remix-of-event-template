@@ -7,20 +7,18 @@ import { applySubscriptionOverrides } from '@/components/outreach/LinkedInAccoun
 import { LinkedInSearch } from '@/components/outreach/LinkedInSearch';
 import { InvitationsPanel } from '@/components/outreach/InvitationsPanel';
 import { SequencesList } from '@/components/outreach/SequencesList';
-import { MessagesInbox } from '@/components/outreach/MessagesInbox';
 import { NurturingDashboard } from '@/components/outreach/NurturingDashboard';
 import { InMailQueueStatus } from '@/components/outreach/InMailQueueStatus';
 import { ProjectsList } from '@/components/outreach/projects';
 import { ICPList } from '@/components/outreach/icp';
 import { ProspectSearch } from '@/components/prospection/ProspectSearch';
 import { VivierList } from '@/components/prospection/VivierList';
-import { Search, Users, Settings, UserPlus } from 'lucide-react';
+import { Users, Settings } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { OutreachSearchProvider } from '@/contexts/OutreachSearchContext';
 import { SourcingProject } from '@/hooks/useSourcingProjects';
 import { ICP } from '@/hooks/useICPs';
-import { useUnreadMessageCount } from '@/hooks/useUnreadMessageCount';
 import { useOrganization } from '@/hooks/useOrganization';
 import { useMemberLinkedInAccounts } from '@/hooks/useMemberLinkedInAccounts';
 import { supabase } from '@/integrations/supabase/client';
@@ -42,13 +40,10 @@ export interface LinkedInAccount {
 }
 
 const tabs = [
-  { value: 'projects', label: 'Projets', shortLabel: 'Projets', emoji: '📂' },
-  { value: 'search', label: 'Recherche', shortLabel: 'Recherche', emoji: '🔍' },
-  { value: 'prospection', label: 'Prospection', shortLabel: 'Prosp.', emoji: '🎯' },
-  { value: 'messages', label: 'Messages', shortLabel: 'Msg', emoji: '💬' },
-  { value: 'invitations', label: 'Invitations', shortLabel: 'Invit.', emoji: '🤝' },
+  { value: 'projects', label: 'Missions', shortLabel: 'Missions', emoji: '📂' },
+  { value: 'sourcing', label: 'Sourcing', shortLabel: 'Source', emoji: '🔍' },
   { value: 'sequences', label: 'Séquences', shortLabel: 'Séq.', emoji: '🔗' },
-  { value: 'nurturing', label: 'Nurturing', shortLabel: 'Nurt.', emoji: '✨' },
+  { value: 'nurturing', label: 'Suivi', shortLabel: 'Suivi', emoji: '✨' },
 ] as const;
 
 export default function Outreach() {
@@ -62,9 +57,13 @@ export default function Outreach() {
   const { isAdmin, isOwner, organizationId } = useOrganization();
   const { mappings, getUserLinkedAccountId } = useMemberLinkedInAccounts();
   
-  const validTabs = tabs.map(t => t.value) as string[];
+  const validTabs = ['projects', 'sourcing', 'sequences', 'nurturing'];
   const tabFromUrl = searchParams.get('tab');
-  const activeTab = validTabs.includes(tabFromUrl || '') ? tabFromUrl! : 'projects';
+  // Redirect old tab values
+  const resolvedTab = tabFromUrl === 'search' || tabFromUrl === 'prospection' ? 'sourcing'
+    : tabFromUrl === 'messages' || tabFromUrl === 'invitations' ? 'projects'
+    : tabFromUrl;
+  const activeTab = validTabs.includes(resolvedTab || '') ? resolvedTab! : 'projects';
   
   const setActiveTab = useCallback((tab: string) => {
     setSearchParams(prev => {
@@ -78,7 +77,10 @@ export default function Outreach() {
   const [prospectResults, setProspectResults] = useState<any[]>([]);
   const [prospectSearching, setProspectSearching] = useState(false);
   const [selectedICP, setSelectedICP] = useState<ICP | null>(null);
-  const [prospectionTab, setProspectionTab] = useState<'search' | 'vivier' | 'icp'>('search');
+  
+  // Sub-tab states
+  const [sourcingTab, setSourcingTab] = useState<string>('linkedin');
+  const [sequencesSubTab, setSequencesSubTab] = useState<string>('sequences');
 
   // Get current user ID
   useEffect(() => {
@@ -89,42 +91,21 @@ export default function Outreach() {
 
   const allAccounts = useMemo(() => rawAccounts.map(applySubscriptionOverrides), [rawAccounts]);
 
-  // Filter accounts based on role:
-  // Admin/Owner: see all accounts
-  // Member: only see their linked account
   const accounts = useMemo(() => {
     if (isAdmin || isOwner) return allAccounts;
     if (!currentUserId) return allAccounts;
     
     const linkedAccountId = getUserLinkedAccountId(currentUserId);
-    if (!linkedAccountId) return allAccounts; // No mapping yet, show all (backward compat)
+    if (!linkedAccountId) return allAccounts;
     
     return allAccounts.filter(a => a.id === linkedAccountId);
   }, [allAccounts, isAdmin, isOwner, currentUserId, mappings, getUserLinkedAccountId]);
 
-  const { count: initialUnreadCount, refresh: refreshUnreadCount } = useUnreadMessageCount(selectedAccount);
-  const [unreadMessageCount, setUnreadMessageCount] = useState(0);
-
-  useEffect(() => {
-    setUnreadMessageCount(initialUnreadCount);
-  }, [initialUnreadCount]);
-
   const handleResumeSearch = useCallback((project: SourcingProject) => {
     setActiveProject(project);
-    setActiveTab('search');
+    setSourcingTab('linkedin');
+    setActiveTab('sourcing');
   }, []);
-
-  const handleChatChange = useCallback((chatId: string | null) => {
-    setSearchParams(prev => {
-      const next = new URLSearchParams(prev);
-      if (chatId) {
-        next.set('chatId', chatId);
-      } else {
-        next.delete('chatId');
-      }
-      return next;
-    }, { replace: true });
-  }, [setSearchParams]);
 
   // Fetch connected accounts
   const fetchAccounts = async () => {
@@ -156,6 +137,32 @@ export default function Outreach() {
     fetchAccounts();
   }, []);
 
+  // Sub-tab selector component
+  const SubTabSelector = ({ items, activeValue, onChange }: { 
+    items: { value: string; label: string; emoji: string }[];
+    activeValue: string;
+    onChange: (v: string) => void;
+  }) => (
+    <div className="flex gap-0 mb-4 overflow-x-auto no-scrollbar">
+      {items.map((sub, idx) => (
+        <button
+          key={sub.value}
+          onClick={() => onChange(sub.value)}
+          className={cn(
+            "relative overflow-hidden flex items-center gap-1 h-[30px] px-3 text-[10px] font-medium uppercase tracking-wider border border-foreground transition-colors group shrink-0",
+            idx > 0 && "border-l-0",
+            activeValue === sub.value ? "bg-foreground text-background" : "bg-background text-foreground"
+          )}
+        >
+          <span className="text-xs relative z-10">{sub.emoji}</span>
+          <span className="relative z-10">{sub.label}</span>
+          {activeValue !== sub.value && (
+            <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
+          )}
+        </button>
+      ))}
+    </div>
+  );
 
   return (
     <div className="min-h-screen w-full max-w-full bg-background">
@@ -167,23 +174,39 @@ export default function Outreach() {
 
       <main className="pt-20 pb-0 w-full max-w-full">
         <div className="max-w-[1600px] mx-auto w-full min-w-0 px-3 sm:px-6 lg:px-8">
-          {/* Header — hidden on mobile when Messages tab is active */}
-          <div className="mb-6 sm:mb-8 hidden md:block">
+          {/* Header — always visible, compact */}
+          <div className="mb-4 sm:mb-6">
             <div className="flex items-center justify-between">
               <div>
-                <div className="flex items-center gap-2.5 sm:gap-3 mb-1">
+                <div className="flex items-center gap-3 mb-0.5">
                   <h1 className="text-xl sm:text-2xl font-bold text-foreground tracking-tight uppercase">Missions</h1>
+                  {!loading && (
+                    <div className="hidden sm:flex items-center gap-2 text-xs text-muted-foreground">
+                      <span className="font-medium text-foreground">{accounts.length}</span> compte{accounts.length > 1 ? 's' : ''}
+                    </div>
+                  )}
                 </div>
-                <p className="text-xs sm:text-sm text-muted-foreground hidden sm:block">
-                  Sourcing, prospection, séquences & suivi candidats
-                </p>
               </div>
-              <InMailQueueStatus />
+              <div className="flex items-center gap-2">
+                <InMailQueueStatus />
+                {/* Account selector — compact */}
+                {accounts.length > 1 && (
+                  <select
+                    value={selectedAccount || ''}
+                    onChange={(e) => setSelectedAccount(e.target.value || null)}
+                    className="h-[30px] px-2 text-[10px] uppercase tracking-wider border border-foreground bg-background text-foreground font-medium"
+                  >
+                    {accounts.map(a => (
+                      <option key={a.id} value={a.id}>{a.name || a.identifier}</option>
+                    ))}
+                  </select>
+                )}
+              </div>
             </div>
           </div>
 
           {/* Tabs — brutal style */}
-          <div className={cn("mb-3 md:mb-5 sm:mb-6 min-w-0", activeTab === 'messages' && "mb-2 md:mb-5")}>
+          <div className="mb-3 md:mb-5 sm:mb-6 min-w-0">
             <div className="flex gap-0 w-full min-w-0 overflow-x-auto no-scrollbar">
               {tabs.map((tab, index) => {
                 const isActive = activeTab === tab.value;
@@ -201,11 +224,6 @@ export default function Outreach() {
                   >
                     <span className="text-sm shrink-0 relative z-10">{tab.emoji}</span>
                     <span className="relative z-10 whitespace-nowrap">{tab.label}</span>
-                    {tab.value === 'messages' && unreadMessageCount > 0 && (
-                      <span className="ml-0.5 px-1.5 py-0.5 text-[9px] sm:text-[10px] font-bold bg-red-600 text-white rounded-full min-w-[16px] text-center relative z-10">
-                        {unreadMessageCount > 99 ? '99+' : unreadMessageCount}
-                      </span>
-                    )}
                     {!isActive && (
                       <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out"></span>
                     )}
@@ -215,16 +233,16 @@ export default function Outreach() {
             </div>
           </div>
 
-          {/* Tab panels — Search stays mounted (CSS hidden) to preserve state; Messages is conditional (WebSocket) */}
+          {/* ═══ Tab: Missions (Projects) ═══ */}
           <div className={cn("mt-0 min-w-0", activeTab !== 'projects' && 'hidden')}>
             <div className="bg-background border border-foreground p-3 sm:p-6 overflow-hidden">
               <ProjectsList onResumeSearch={handleResumeSearch} />
             </div>
           </div>
 
-
-          <div className={cn("mt-0 min-w-0", activeTab !== 'search' && 'hidden')}>
-            {accounts.length === 0 ? (
+          {/* ═══ Tab: Sourcing (LinkedIn + DB + ICP) ═══ */}
+          <div className={cn("mt-0 min-w-0", activeTab !== 'sourcing' && 'hidden')}>
+            {accounts.length === 0 && sourcingTab === 'linkedin' ? (
               <div className="bg-background border border-foreground p-12 text-center">
                 <div className="h-14 w-14 bg-foreground text-background flex items-center justify-center mx-auto mb-4">
                   <Users className="w-7 h-7" />
@@ -244,100 +262,85 @@ export default function Outreach() {
                 </button>
               </div>
             ) : (
-              <OutreachSearchProvider>
-                <LinkedInSearch
-                  accounts={accounts}
-                  selectedAccount={selectedAccount}
-                  onAccountChange={setSelectedAccount}
-                  activeProject={activeProject}
-                  onProjectChange={setActiveProject}
+              <div className="bg-background border border-foreground p-3 sm:p-6">
+                <SubTabSelector
+                  items={[
+                    { value: 'linkedin', label: 'LinkedIn', emoji: '🔗' },
+                    { value: 'database', label: 'Base de données', emoji: '🗄️' },
+                    { value: 'icp', label: 'ICP', emoji: '🎯' },
+                  ]}
+                  activeValue={sourcingTab}
+                  onChange={setSourcingTab}
                 />
-              </OutreachSearchProvider>
+
+                <div className={cn(sourcingTab !== 'linkedin' && 'hidden')}>
+                  {accounts.length > 0 ? (
+                    <OutreachSearchProvider>
+                      <LinkedInSearch
+                        accounts={accounts}
+                        selectedAccount={selectedAccount}
+                        onAccountChange={setSelectedAccount}
+                        activeProject={activeProject}
+                        onProjectChange={setActiveProject}
+                      />
+                    </OutreachSearchProvider>
+                  ) : (
+                    <div className="text-center py-8 text-muted-foreground text-sm">
+                      Connectez un compte LinkedIn pour rechercher des candidats.
+                    </div>
+                  )}
+                </div>
+
+                <div className={cn(sourcingTab !== 'database' && 'hidden')}>
+                  <ProspectSearch
+                    selectedICP={selectedICP}
+                    onSelectICP={setSelectedICP}
+                    onResults={setProspectResults}
+                    searching={prospectSearching}
+                    onSearchingChange={setProspectSearching}
+                    results={prospectResults}
+                  />
+                </div>
+
+                <div className={cn(sourcingTab !== 'icp' && 'hidden')}>
+                  <ICPList onSearchFromICP={(icp) => { setSelectedICP(icp); setSourcingTab('database'); }} />
+                </div>
+              </div>
             )}
           </div>
 
-          {/* Prospection tab */}
-          <div className={cn("mt-0 min-w-0", activeTab !== 'prospection' && 'hidden')}>
+          {/* ═══ Tab: Séquences + Invitations ═══ */}
+          <div className={cn("mt-0 min-w-0", activeTab !== 'sequences' && 'hidden')}>
             <div className="bg-background border border-foreground p-3 sm:p-6">
-              {/* Sub-tabs for prospection */}
-              <div className="flex gap-0 mb-4 overflow-x-auto no-scrollbar">
-                {([
-                  { value: 'search' as const, label: 'Recherche', emoji: '🔍' },
-                  { value: 'vivier' as const, label: 'Vivier', emoji: '📋' },
-                  { value: 'icp' as const, label: 'ICP', emoji: '🎯' },
-                ]).map((sub, idx) => (
-                  <button
-                    key={sub.value}
-                    onClick={() => setProspectionTab(sub.value)}
-                    className={cn(
-                      "relative overflow-hidden flex items-center gap-1 h-[30px] px-3 text-[10px] font-medium uppercase tracking-wider border border-foreground transition-colors group shrink-0",
-                      idx > 0 && "border-l-0",
-                      prospectionTab === sub.value
-                        ? "bg-foreground text-background"
-                        : "bg-background text-foreground"
-                    )}
-                  >
-                    <span className="text-xs relative z-10">{sub.emoji}</span>
-                    <span className="relative z-10">{sub.label}</span>
-                    {prospectionTab !== sub.value && (
-                      <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
-                    )}
-                  </button>
-                ))}
-              </div>
-              <div className={cn(prospectionTab !== 'search' && 'hidden')}>
-                <ProspectSearch
-                  selectedICP={selectedICP}
-                  onSelectICP={setSelectedICP}
-                  onResults={setProspectResults}
-                  searching={prospectSearching}
-                  onSearchingChange={setProspectSearching}
-                  results={prospectResults}
+              <SubTabSelector
+                items={[
+                  { value: 'sequences', label: 'Séquences', emoji: '🔗' },
+                  { value: 'invitations', label: 'Invitations', emoji: '🤝' },
+                ]}
+                activeValue={sequencesSubTab}
+                onChange={setSequencesSubTab}
+              />
+
+              <div className={cn(sequencesSubTab !== 'sequences' && 'hidden')}>
+                <SequencesList
+                  accounts={accounts}
+                  selectedAccount={selectedAccount}
+                  isVisible={activeTab === 'sequences' && sequencesSubTab === 'sequences'}
                 />
               </div>
-              <div className={cn(prospectionTab !== 'vivier' && 'hidden')}>
-                <VivierList />
+
+              <div className={cn(sequencesSubTab !== 'invitations' && 'hidden')}>
+                <InvitationsPanel
+                  accounts={accounts}
+                  selectedAccount={selectedAccount}
+                  onAccountChange={setSelectedAccount}
+                  organizationId={organizationId}
+                />
               </div>
-              <div className={cn(prospectionTab !== 'icp' && 'hidden')}>
-                <ICPList onSearchFromICP={(icp) => { setSelectedICP(icp); setProspectionTab('search'); }} />
-              </div>
             </div>
           </div>
 
-          {/* Messages: conditional render (WebSocket connections are heavy) */}
-          {activeTab === 'messages' && (
-            <div className="mt-0">
-              <MessagesInbox
-                accounts={accounts}
-                selectedAccount={selectedAccount}
-                loading={loading}
-                onAccountChange={setSelectedAccount}
-                onUnreadCountChange={setUnreadMessageCount}
-                initialChatId={searchParams.get('chatId')}
-                onChatChange={handleChatChange}
-              />
-            </div>
-          )}
-
-          <div className={cn("mt-0 min-w-0", activeTab !== 'invitations' && 'hidden')}>
-            <InvitationsPanel
-              accounts={accounts}
-              selectedAccount={selectedAccount}
-              onAccountChange={setSelectedAccount}
-              organizationId={organizationId}
-            />
-          </div>
-
-          <div className={cn("mt-0", activeTab !== 'sequences' && 'hidden')}>
-            <div className="bg-background border border-foreground p-3 sm:p-6">
-              <SequencesList
-                accounts={accounts}
-                selectedAccount={selectedAccount}
-                isVisible={activeTab === 'sequences'}
-              />
-            </div>
-          </div>
-
+          {/* ═══ Tab: Suivi (Nurturing) ═══ */}
           <div className={cn("mt-0", activeTab !== 'nurturing' && 'hidden')}>
             <NurturingDashboard
               accounts={accounts}

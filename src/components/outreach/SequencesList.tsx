@@ -579,18 +579,18 @@ export const SequencesList: React.FC<SequencesListProps> = ({
       {/* Table */}
       {sequences.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-16 bg-background border border-foreground">
-          <div className="h-16 w-16 bg-foreground text-background flex items-center justify-center mb-4">
-            <Send className="w-8 h-8" />
-          </div>
-          <h3 className="font-bold text-lg text-foreground mb-2 uppercase tracking-wide">Aucune séquence</h3>
+          <div className="text-4xl mb-4">🔗</div>
+          <h3 className="font-bold text-lg text-foreground mb-2 uppercase tracking-wide">Séquences automatisées</h3>
           <p className="text-muted-foreground text-center mb-6 max-w-md text-sm">
-            Créez votre première séquence d'outreach pour automatiser vos prises de contact LinkedIn.
+            Les séquences envoient automatiquement des messages personnalisés à vos candidats en plusieurs étapes.
+            L'IA adapte chaque message au profil du candidat et au poste.
           </p>
           <button 
             onClick={handleCreateNew}
             className="relative overflow-hidden h-[34px] px-6 bg-foreground text-background border border-foreground text-xs font-medium uppercase tracking-wider group"
           >
-            <span className="relative z-10 flex items-center gap-2"><Plus className="w-4 h-4" /> Créer une séquence</span>
+            <span className="relative z-10 flex items-center gap-2">Créer ma première séquence</span>
+            <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
           </button>
         </div>
       ) : (
