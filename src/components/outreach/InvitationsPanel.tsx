@@ -345,9 +345,31 @@ export const InvitationsPanel: React.FC<InvitationsPanelProps> = ({
                           disabled={isItemProcessing}
                         />
 
-                        <div className="flex h-9 w-9 shrink-0 items-center justify-center border border-foreground/10 bg-muted/50 text-[11px] font-bold uppercase tracking-wide text-foreground">
-                          {getInitials(invitation.inviter_name)}
-                        </div>
+                        {linkedinUrl ? (
+                          <a href={linkedinUrl} target="_blank" rel="noopener noreferrer" className="shrink-0">
+                            {invitation.inviter_picture_url ? (
+                              <img
+                                src={invitation.inviter_picture_url}
+                                alt={invitation.inviter_name}
+                                className="h-9 w-9 border border-foreground/10 object-cover"
+                              />
+                            ) : (
+                              <div className="flex h-9 w-9 items-center justify-center border border-foreground/10 bg-muted/50 text-[11px] font-bold uppercase tracking-wide text-foreground">
+                                {getInitials(invitation.inviter_name)}
+                              </div>
+                            )}
+                          </a>
+                        ) : invitation.inviter_picture_url ? (
+                          <img
+                            src={invitation.inviter_picture_url}
+                            alt={invitation.inviter_name}
+                            className="h-9 w-9 shrink-0 border border-foreground/10 object-cover"
+                          />
+                        ) : (
+                          <div className="flex h-9 w-9 shrink-0 items-center justify-center border border-foreground/10 bg-muted/50 text-[11px] font-bold uppercase tracking-wide text-foreground">
+                            {getInitials(invitation.inviter_name)}
+                          </div>
+                        )}
 
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-1.5">
