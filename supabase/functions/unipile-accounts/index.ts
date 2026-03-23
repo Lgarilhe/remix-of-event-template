@@ -785,19 +785,30 @@ Deno.serve(async (req) => {
           );
         }
 
-        const mappedInvitations = (invData.items || []).map((item: any) => ({
-          id: item.id,
-          inviter_name: item.inviter?.inviter_name || 'Inconnu',
-          inviter_id: item.inviter?.inviter_id || '',
-          inviter_public_identifier: item.inviter?.inviter_public_identifier || '',
-          inviter_description: item.inviter?.inviter_description || null,
-          inviter_picture_url: item.inviter?.inviter_picture_url || item.inviter?.profile_picture_url || null,
-          invitation_text: item.invitation_text || null,
-          date: item.date || '',
-          parsed_datetime: item.parsed_datetime || null,
-          shared_secret: item.specifics?.shared_secret || '',
-          provider: item.specifics?.provider || 'LINKEDIN',
-        }));
+        // Log inviter object structure for debugging
+        if (invData.items?.[0]) {
+          console.log(`[list_invitations_received] First item keys: ${JSON.stringify(Object.keys(invData.items[0]))}`);
+          if (invData.items[0].inviter) {
+            console.log(`[list_invitations_received] Inviter keys: ${JSON.stringify(Object.keys(invData.items[0].inviter))}`);
+          }
+        }
+
+        const mappedInvitations = (invData.items || []).map((item: any) => {
+          const inv = item.inviter || {};
+          return {
+            id: item.id,
+            inviter_name: inv.inviter_name || item.invited_user || 'Inconnu',
+            inviter_id: inv.inviter_id || item.invited_user_id || '',
+            inviter_public_identifier: inv.inviter_public_identifier || item.invited_user_public_id || '',
+            inviter_description: inv.inviter_description || null,
+            inviter_picture_url: inv.inviter_profile_picture_url || inv.inviter_picture_url || inv.profile_picture_url || item.invited_user_profile_picture_url || null,
+            invitation_text: item.invitation_text || null,
+            date: item.date || '',
+            parsed_datetime: item.parsed_datetime || null,
+            shared_secret: item.specifics?.shared_secret || '',
+            provider: item.specifics?.provider || 'LINKEDIN',
+          };
+        });
 
         return new Response(
           JSON.stringify({ success: true, invitations: mappedInvitations, cursor: invData.cursor || null }),
