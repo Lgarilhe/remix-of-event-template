@@ -283,13 +283,13 @@ async function fetchRAGContext(
 ): Promise<string | null> {
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
-    const anonKey = Deno.env.get('SUPABASE_ANON_KEY');
-    if (!supabaseUrl || !anonKey) return null;
+    const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+    if (!supabaseUrl || !serviceKey) return null;
 
     const res = await fetchWithTimeout(`${supabaseUrl}/functions/v1/retrieve-context`, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${anonKey}`,
+        'Authorization': `Bearer ${serviceKey}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
@@ -298,6 +298,8 @@ async function fetchRAGContext(
         entity_id: candidateId,
         query: jobContextText,
         limit: 8,
+        // Only fetch enriched chunk types, skip bare pipeline status profiles
+        chunk_types: ['experience', 'about', 'conversation', 'call_transcript', 'evaluation', 'note', 'sequence_history', 'scoring_result', 'linkedin_post'],
       }),
     });
 
@@ -308,7 +310,8 @@ async function fetchRAGContext(
 
     const data = await res.json();
     const ctx = data?.formatted_context || null;
-    return ctx ? ctx.substring(0, 2000) : null;
+    if (!ctx || ctx.length < 30) return null; // Skip near-empty context
+    return ctx.substring(0, 2000);
   } catch (err) {
     console.warn('[generate-outreach-message] RAG error, falling back to legacy:', err);
     return null;
@@ -636,7 +639,9 @@ ANALYSE OBLIGATOIRE DU "À PROPOS" — EXTRAIS AU MOINS UN ÉLÉMENT:
 → UTILISE l'un de ces éléments dans la PHRASE 1 du message (accroche)
 → NE DIS JAMAIS d'où vient l'info ("dans ton À propos", "tu mentionnes") — cite DIRECTEMENT comme une observation naturelle
 → ADAPTE TON STYLE au style d'écriture du candidat (formel/décontracté, phrases courtes/longues, émojis ou pas)` : ''}
-${ragContext ? `\n=== CONTEXTE CANDIDAT (RAG) ===\n${ragContext}\n=== FIN CONTEXTE RAG ===` : `${postsSection}\n${historySection}`}
+${postsSection}
+${historySection}
+${ragContext ? `\n=== CONTEXTE ENRICHI CANDIDAT (Knowledge Lake) ===\n${ragContext}\n=== FIN CONTEXTE ENRICHI ===\nUTILISATION DU CONTEXTE ENRICHI: Ces informations complètent le profil ci-dessus. Utilise-les pour personnaliser le message (appels passés, évaluations, historique de séquences, notes). Ne cite JAMAIS la source ("dans le Knowledge Lake"), intègre naturellement.` : ''}
 
 POSTE À POURVOIR:
 - Titre: ${job.title}

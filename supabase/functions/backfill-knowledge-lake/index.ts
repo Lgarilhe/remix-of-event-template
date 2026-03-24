@@ -138,6 +138,7 @@ const ALL_TABLES = [
   "candidate_comments",
   "call_coaching_sessions",
   "candidate_evaluations",
+  "candidate_profiles",
   "airtable_candidates",
   "airtable_notes",
   "airtable_shortlists",
@@ -307,6 +308,24 @@ Deno.serve(async (req) => {
           job_id: row.job_id,
         });
         return toIngestChunks("candidate", row.candidate_id as string, adapterChunks);
+      });
+    }
+
+    if (tables.includes("candidate_profiles")) {
+      await processTable("candidate_profiles", (row) => {
+        const candidateId = row.candidate_id as string;
+        if (!candidateId) return [];
+        const lines: string[] = [];
+        if (row.name) lines.push(`Nom: ${row.name}`);
+        if (row.headline) lines.push(`Titre: ${row.headline}`);
+        if (row.summary) lines.push(`Résumé: ${(row.summary as string).substring(0, 800)}`);
+        if (row.skills && (row.skills as string[]).length > 0) lines.push(`Compétences: ${(row.skills as string[]).join(', ')}`);
+        if (lines.length < 2) return []; // Skip near-empty profiles
+        return [{
+          entity_type: "candidate", entity_id: candidateId, chunk_type: "profile",
+          content: lines.join("\n"), source_table: "candidate_profiles", source_id: row.id as string,
+          metadata: { name: row.name, headline: row.headline, date: row.updated_at },
+        }];
       });
     }
 
