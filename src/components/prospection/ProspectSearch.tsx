@@ -414,8 +414,8 @@ export function ProspectSearch({ selectedICP, onSelectICP, onResults, searching,
           }),
         invokeEdgeFunction<{ prospects: ProspectProfile[] }>('apollo-search', apollo)
           .then(({ data, error }) => {
-            if (error) { errors.push(`Apollo: ${error.message}`); return; }
-            if (!data?.success) { errors.push(`Apollo: ${data?.error || 'Erreur'}`); return; }
+            if (error) { errors.push(`Recherche: ${error.message}`); return; }
+            if (!data?.success) { errors.push(`Recherche: ${data?.error || 'Erreur'}`); return; }
             ((data as any).prospects || []).forEach((p: any) => { p.source = 'apollo'; allProspects.push(p); });
           }),
       ]);
