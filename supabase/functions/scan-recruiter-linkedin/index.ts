@@ -383,17 +383,25 @@ serve(async (req) => {
 
     const experienceDetails = employmentHistory.slice(0, 8).map((e: any) => {
       const orgName = e.organization_name || e.company_name || null;
-      // Try Apollo's logo first, then derive from website domain via Clearbit
-      let logoUrl = e.organization_logo_url || e.logo_url || null;
+      // Try Apollo's logo first
+      let logoUrl = e.organization_logo_url || e.logo_url || e.organization_profile_photo || null;
+      // Try website domain via Clearbit
       if (!logoUrl && e.organization_website_url) {
         try {
           const domain = new URL(e.organization_website_url.startsWith('http') ? e.organization_website_url : `https://${e.organization_website_url}`).hostname;
           logoUrl = `https://logo.clearbit.com/${domain}`;
         } catch { /* ignore */ }
       }
-      if (!logoUrl && e.organization_id) {
-        // Apollo org profile photo fallback
-        logoUrl = e.organization_profile_photo || null;
+      // Guess domain from company name as last resort
+      if (!logoUrl && orgName) {
+        const guess = orgName
+          .toLowerCase()
+          .replace(/\s*(group|inc\.?|ltd\.?|llc|sas|sarl|sa|gmbh|co\.?|corp\.?|france|europe|international)\s*/gi, '')
+          .trim()
+          .replace(/[^a-z0-9]/g, '');
+        if (guess.length >= 2) {
+          logoUrl = `https://logo.clearbit.com/${guess}.com`;
+        }
       }
       return {
         title: e.title || null,
