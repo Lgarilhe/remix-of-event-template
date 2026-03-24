@@ -1614,7 +1614,7 @@ Sois factuel, ne spécule pas. Si une info n'est pas disponible, dis "non dispon
       }
     }
 
-    if (!result.newsArticles.length && PERPLEXITY_API_KEY && LOVABLE_API_KEY && Date.now() - startTime < 45000) {
+    if (!jobsOnly && !result.newsArticles.length && PERPLEXITY_API_KEY && LOVABLE_API_KEY && Date.now() - startTime < 45000) {
       try {
         console.log('[enrich] Perplexity broad news fallback for:', result.name);
         const { content } = await perplexitySearch(
