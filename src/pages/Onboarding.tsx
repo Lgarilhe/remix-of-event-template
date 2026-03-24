@@ -102,7 +102,7 @@ const Onboarding = () => {
         if (org?.id) {
           await supabase
             .from('organizations')
-            .update({ org_type: 'freelance', team_size: teamSize, annual_hires: annualHires, discovery_source: discoverySource } as any)
+            .update({ org_type: 'freelance', team_size: teamSize, annual_hires: annualHires, discovery_source: discoverySource, freelance_mode: data.freelanceMode } as any)
             .eq('id', org.id);
         }
         setOrgCreated(true);
