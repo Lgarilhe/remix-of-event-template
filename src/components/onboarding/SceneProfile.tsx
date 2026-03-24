@@ -9,6 +9,7 @@ import { toast } from 'sonner';
 interface Props {
   onNext: () => void;
   onBack: () => void;
+  orgType?: 'enterprise' | 'agency' | 'freelance' | null;
 }
 
 const SPECIALIZATIONS = [
@@ -22,11 +23,13 @@ const SPECIALIZATIONS = [
   'Management IT',
 ];
 
-export const SceneProfile: React.FC<Props> = ({ onNext, onBack }) => {
+export const SceneProfile: React.FC<Props> = ({ onNext, onBack, orgType }) => {
   const [displayName, setDisplayName] = useState('');
   const [jobTitle, setJobTitle] = useState('');
   const [selectedSpecs, setSelectedSpecs] = useState<Set<string>>(new Set());
   const [saving, setSaving] = useState(false);
+
+  const isFreelance = orgType === 'freelance';
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
@@ -66,7 +69,7 @@ export const SceneProfile: React.FC<Props> = ({ onNext, onBack }) => {
         {
           user_id: user.id,
           display_name: displayName.trim() || null,
-          job_title: jobTitle.trim() || null,
+          job_title: isFreelance ? 'Recruteur indépendant' : (jobTitle.trim() || null),
           specializations: Array.from(selectedSpecs),
         } as any,
         { onConflict: 'user_id' }
@@ -89,11 +92,13 @@ export const SceneProfile: React.FC<Props> = ({ onNext, onBack }) => {
           className="skalr-gradient-text text-[11px] uppercase tracking-[0.2em] font-semibold"
           style={{ fontFamily: "'Space Mono', monospace" }}
         >
-          03 — Votre profil
+          {isFreelance ? '02' : '04'} — Votre profil
         </span>
         <h2 className="font-editorial italic text-3xl md:text-4xl">Faisons connaissance</h2>
         <p className="text-muted-foreground text-sm">
-          Comment souhaitez-vous apparaître auprès de votre équipe ?
+          {isFreelance
+            ? 'Présentez-vous et choisissez vos spécialisations.'
+            : 'Comment souhaitez-vous apparaître auprès de votre équipe ?'}
         </p>
       </div>
 
@@ -126,17 +131,19 @@ export const SceneProfile: React.FC<Props> = ({ onNext, onBack }) => {
           />
         </div>
 
-        <div className="space-y-2">
-          <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-            Fonction / Poste
-          </label>
-          <Input
-            placeholder="Recruteur Senior, DRH, Consultant..."
-            value={jobTitle}
-            onChange={(e) => setJobTitle(e.target.value)}
-            className="border-2 border-foreground/20 focus:border-foreground focus:shadow-[3px_3px_0px_0px_hsl(var(--brutal-accent))] transition-shadow text-sm h-11"
-          />
-        </div>
+        {!isFreelance && (
+          <div className="space-y-2">
+            <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+              Fonction / Poste
+            </label>
+            <Input
+              placeholder="Recruteur Senior, DRH, Consultant..."
+              value={jobTitle}
+              onChange={(e) => setJobTitle(e.target.value)}
+              className="border-2 border-foreground/20 focus:border-foreground focus:shadow-[3px_3px_0px_0px_hsl(var(--brutal-accent))] transition-shadow text-sm h-11"
+            />
+          </div>
+        )}
 
         <div className="space-y-2">
           <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
