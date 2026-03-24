@@ -8,7 +8,7 @@ import { InvitationBanner } from '@/components/InvitationBanner';
 import { OnboardingLayout } from '@/components/onboarding/OnboardingLayout';
 import { SceneOrganization } from '@/components/onboarding/SceneOrganization';
 import { SceneAudit } from '@/components/onboarding/SceneAudit';
-import { SceneProfile } from '@/components/onboarding/SceneProfile';
+import { SceneProfile, type ProfileFormState } from '@/components/onboarding/SceneProfile';
 import { SceneIntegrations } from '@/components/onboarding/SceneIntegrations';
 import { SceneOrgType } from '@/components/onboarding/SceneOrgType';
 import { SceneOrgDetails, type OrgDetailsData } from '@/components/onboarding/SceneOrgDetails';
@@ -42,6 +42,7 @@ const Onboarding = () => {
   const [companyData, setCompanyData] = useState<OnboardingCompanyData | null>(null);
   const [orgType, setOrgType] = useState<OrgType | null>(null);
   const [orgDetailsData, setOrgDetailsData] = useState<OrgDetailsData | null>(null);
+  const [profileState, setProfileState] = useState<ProfileFormState | undefined>(undefined);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { organization, organizationId } = useOrganization();
@@ -212,7 +213,13 @@ const Onboarding = () => {
               />
             )}
             {currentScene === 'profile' && (
-              <SceneProfile onNext={() => completeAndNext(step)} onBack={goBack} orgType={orgType} />
+              <SceneProfile
+                onNext={() => completeAndNext(step)}
+                onBack={goBack}
+                orgType={orgType}
+                savedState={profileState}
+                onStateChange={setProfileState}
+              />
             )}
             {currentScene === 'integrations' && (
               <SceneIntegrations onNext={() => completeAndNext(step)} onBack={goBack} />

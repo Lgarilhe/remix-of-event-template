@@ -6,10 +6,39 @@ import { Input } from '@/components/ui/input';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
+export interface ScanResultData {
+  bio: string;
+  headline: string;
+  skills: string[];
+  yearsExperience: number;
+  slug: string;
+  name: string;
+  seniority?: string | null;
+  currentCompany?: string | null;
+  currentTitle?: string | null;
+  location?: string | null;
+  industries?: string[];
+  tags?: string[];
+  companies?: string[];
+  photoUrl?: string | null;
+  education?: string[];
+  recommendations?: { body: string; recommenderName?: string | null; recommenderTitle?: string | null }[];
+}
+
+export interface ProfileFormState {
+  displayName: string;
+  jobTitle: string;
+  linkedinUrl: string;
+  selectedSpecs: string[];
+  scanResult: ScanResultData | null;
+}
+
 interface Props {
   onNext: () => void;
   onBack: () => void;
   orgType?: 'enterprise' | 'agency' | 'freelance' | null;
+  savedState?: ProfileFormState;
+  onStateChange?: (state: ProfileFormState) => void;
 }
 
 const SPECIALIZATIONS = [
@@ -23,35 +52,19 @@ const SPECIALIZATIONS = [
   'Management IT',
 ];
 
-export const SceneProfile: React.FC<Props> = ({ onNext, onBack, orgType }) => {
-  const [displayName, setDisplayName] = useState('');
-  const [jobTitle, setJobTitle] = useState('');
-  const [linkedinUrl, setLinkedinUrl] = useState('');
-  const [selectedSpecs, setSelectedSpecs] = useState<Set<string>>(new Set());
+export const SceneProfile: React.FC<Props> = ({ onNext, onBack, orgType, savedState, onStateChange }) => {
+  const [displayName, setDisplayName] = useState(savedState?.displayName ?? '');
+  const [jobTitle, setJobTitle] = useState(savedState?.jobTitle ?? '');
+  const [linkedinUrl, setLinkedinUrl] = useState(savedState?.linkedinUrl ?? '');
+  const [selectedSpecs, setSelectedSpecs] = useState<Set<string>>(new Set(savedState?.selectedSpecs ?? []));
   const [saving, setSaving] = useState(false);
   const [scanning, setScanning] = useState(false);
-  const [scanResult, setScanResult] = useState<{
-    bio: string;
-    headline: string;
-    skills: string[];
-    yearsExperience: number;
-    slug: string;
-    name: string;
-    seniority?: string | null;
-    currentCompany?: string | null;
-    currentTitle?: string | null;
-    location?: string | null;
-    industries?: string[];
-    tags?: string[];
-    companies?: string[];
-    photoUrl?: string | null;
-    education?: string[];
-    recommendations?: { body: string; recommenderName?: string | null; recommenderTitle?: string | null }[];
-  } | null>(null);
+  const [scanResult, setScanResult] = useState<ScanResultData | null>(savedState?.scanResult ?? null);
 
   const isFreelance = orgType === 'freelance';
 
   useEffect(() => {
+    if (savedState) return; // Don't overwrite restored state
     supabase.auth.getUser().then(({ data: { user } }) => {
       if (user) {
         const meta = user.user_metadata;
@@ -59,7 +72,18 @@ export const SceneProfile: React.FC<Props> = ({ onNext, onBack, orgType }) => {
         else if (meta?.name) setDisplayName(meta.name);
       }
     });
-  }, []);
+  }, [savedState]);
+
+  // Sync state back to parent for persistence
+  useEffect(() => {
+    onStateChange?.({
+      displayName,
+      jobTitle,
+      linkedinUrl,
+      selectedSpecs: Array.from(selectedSpecs),
+      scanResult,
+    });
+  }, [displayName, jobTitle, linkedinUrl, selectedSpecs, scanResult, onStateChange]);
 
   const toggleSpec = (spec: string) => {
     setSelectedSpecs((prev) => {
