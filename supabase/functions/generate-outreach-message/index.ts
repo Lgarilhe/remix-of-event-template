@@ -639,7 +639,9 @@ ANALYSE OBLIGATOIRE DU "À PROPOS" — EXTRAIS AU MOINS UN ÉLÉMENT:
 → UTILISE l'un de ces éléments dans la PHRASE 1 du message (accroche)
 → NE DIS JAMAIS d'où vient l'info ("dans ton À propos", "tu mentionnes") — cite DIRECTEMENT comme une observation naturelle
 → ADAPTE TON STYLE au style d'écriture du candidat (formel/décontracté, phrases courtes/longues, émojis ou pas)` : ''}
-${ragContext ? `\n=== CONTEXTE CANDIDAT (RAG) ===\n${ragContext}\n=== FIN CONTEXTE RAG ===` : `${postsSection}\n${historySection}`}
+${postsSection}
+${historySection}
+${ragContext ? `\n=== CONTEXTE ENRICHI CANDIDAT (Knowledge Lake) ===\n${ragContext}\n=== FIN CONTEXTE ENRICHI ===\nUTILISATION DU CONTEXTE ENRICHI: Ces informations complètent le profil ci-dessus. Utilise-les pour personnaliser le message (appels passés, évaluations, historique de séquences, notes). Ne cite JAMAIS la source ("dans le Knowledge Lake"), intègre naturellement.` : ''}
 
 POSTE À POURVOIR:
 - Titre: ${job.title}
