@@ -27,11 +27,12 @@ Deno.serve(async (req) => {
     const { data: { user }, error: authError } = await userClient.auth.getUser();
     if (authError || !user) throw new Error("Unauthorized");
 
-    const { email, role, organization_id } = await req.json();
+    const { email, role, organization_id, resend } = await req.json();
     if (!email || !organization_id) throw new Error("Missing email or organization_id");
 
     const normalizedEmail = String(email).trim().toLowerCase();
     const normalizedRole = role || "member";
+    const isResend = Boolean(resend);
 
     const { data: callerMembership } = await supabase
       .from("organization_members")
@@ -90,12 +91,15 @@ Deno.serve(async (req) => {
 
     const origin = req.headers.get("origin") || "https://id-preview--08a19073-7da4-47fa-92af-b78fed96739f.lovable.app";
     const inviteUrl = `${origin}/auth`;
+    const idempotencyKey = isResend
+      ? `team-invite-resend-${invitationId}-${Date.now()}`
+      : `team-invite-${invitationId}`;
 
     const { error: emailError } = await supabase.functions.invoke("send-transactional-email", {
       body: {
         templateName: "team-invitation",
         recipientEmail: normalizedEmail,
-        idempotencyKey: `team-invite-${invitationId}`,
+        idempotencyKey,
         templateData: {
           organizationName: org?.name || "votre équipe",
           inviterName: inviterProfile?.display_name || user.email,
@@ -109,7 +113,7 @@ Deno.serve(async (req) => {
       console.error("Failed to send invitation email:", emailError);
     }
 
-    return new Response(JSON.stringify({ success: true, invitation_id: invitationId }), {
+    return new Response(JSON.stringify({ success: true, invitation_id: invitationId, resent: isResend }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (error) {

@@ -225,6 +225,27 @@ export const useOrganizationMembers = (orgId: string | null) => {
     },
   });
 
+  const resendInvitation = useMutation({
+    mutationFn: async ({ email, role }: { email: string; role: string }) => {
+      if (!orgId) throw new Error('No organization');
+
+      const { data, error } = await invokeEdgeFunction('send-team-invitation', {
+        email: email.toLowerCase(),
+        role,
+        organization_id: orgId,
+        resend: true,
+      });
+      if (error || !data?.success) throw new Error(data?.error || 'Erreur lors du renvoi');
+      return data;
+    },
+    onSuccess: () => {
+      toast.success('Invitation renvoyée par email');
+    },
+    onError: (err: Error) => {
+      toast.error(err.message);
+    },
+  });
+
   const cancelInvitation = useMutation({
     mutationFn: async (invitationId: string) => {
       const { error } = await supabase
@@ -291,6 +312,8 @@ export const useOrganizationMembers = (orgId: string | null) => {
     pendingInvitations,
     inviteMember: inviteMember.mutateAsync,
     isInviting: inviteMember.isPending,
+    resendInvitation: resendInvitation.mutateAsync,
+    isResendingInvitation: resendInvitation.isPending,
     cancelInvitation: cancelInvitation.mutateAsync,
     updateRole: updateRole.mutateAsync,
     removeMember: removeMember.mutateAsync,

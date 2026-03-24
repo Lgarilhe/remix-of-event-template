@@ -46,7 +46,7 @@ const roleLabels = {
 const Settings = () => {
   const [searchParams] = useSearchParams();
   const { organization, organizationId, isOwner, isAdmin } = useOrganization();
-  const { members, isLoading, pendingInvitations, inviteMember, isInviting, cancelInvitation, updateRole, removeMember } = useOrganizationMembers(organizationId);
+  const { members, isLoading, pendingInvitations, inviteMember, isInviting, resendInvitation, isResendingInvitation, cancelInvitation, updateRole, removeMember } = useOrganizationMembers(organizationId);
 
   const [editingName, setEditingName] = useState(false);
   const [newName, setNewName] = useState('');
@@ -300,7 +300,9 @@ const Settings = () => {
                     <PendingInvitations
                       invitations={pendingInvitations}
                       onCancel={cancelInvitation}
+                      onResend={async (email, role) => { await resendInvitation({ email, role }); }}
                       canManage={isAdmin}
+                      isResending={isResendingInvitation}
                     />
 
                     {isAdmin && (
