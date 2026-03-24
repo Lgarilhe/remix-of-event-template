@@ -23,10 +23,6 @@ function generateToken(): string {
     .join('')
 }
 
-// Auth note: this function uses verify_jwt = true in config.toml, so Supabase's
-// gateway validates the caller's JWT (anon or service_role) before the request
-// reaches this code. No in-function auth check is needed.
-
 Deno.serve(async (req) => {
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
@@ -45,6 +41,39 @@ Deno.serve(async (req) => {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       }
     )
+  }
+
+  const supabase = createClient(supabaseUrl, supabaseServiceKey)
+  const authHeader = req.headers.get('Authorization')
+  const bearerToken = authHeader?.startsWith('Bearer ')
+    ? authHeader.slice('Bearer '.length).trim()
+    : null
+  const apiKey = req.headers.get('apikey')
+  const isServiceRoleCaller =
+    apiKey === supabaseServiceKey || bearerToken === supabaseServiceKey
+
+  if (!isServiceRoleCaller) {
+    if (!bearerToken) {
+      return new Response(
+        JSON.stringify({ error: 'Unauthorized' }),
+        {
+          status: 401,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        }
+      )
+    }
+
+    const { data: authData, error: authError } = await supabase.auth.getUser(bearerToken)
+
+    if (authError || !authData.user) {
+      return new Response(
+        JSON.stringify({ error: 'Unauthorized' }),
+        {
+          status: 401,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        }
+      )
+    }
   }
 
   // Parse request body
@@ -114,9 +143,6 @@ Deno.serve(async (req) => {
       }
     )
   }
-
-  // Create Supabase client with service role (bypasses RLS)
-  const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
   // 2. Check suppression list (fail-closed: if we can't verify, don't send)
   const { data: suppressed, error: suppressionError } = await supabase
