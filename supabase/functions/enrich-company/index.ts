@@ -585,6 +585,8 @@ Deno.serve(async (req) => {
       });
     }
 
+    if (jobsOnly) console.log('[enrich] jobs_only mode — skipping insights, decision makers, news');
+
     // In-DB cache: return cached result if enriched within last 24h (unless force_refresh)
     const cacheKey = company_name.trim().toLowerCase().replace(/\s+/g, ' ');
     if (!force_refresh) {
