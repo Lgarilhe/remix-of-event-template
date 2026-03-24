@@ -12,6 +12,7 @@ import { SceneProfile, type ProfileFormState } from '@/components/onboarding/Sce
 import { SceneIntegrations } from '@/components/onboarding/SceneIntegrations';
 import { SceneOrgType } from '@/components/onboarding/SceneOrgType';
 import { SceneOrgDetails, type OrgDetailsData } from '@/components/onboarding/SceneOrgDetails';
+import { SceneDiscovery } from '@/components/onboarding/SceneDiscovery';
 import { SceneTeam } from '@/components/onboarding/SceneTeam';
 import { SceneLaunch } from '@/components/onboarding/SceneLaunch';
 
@@ -24,12 +25,12 @@ export interface OnboardingCompanyData {
 
 type OrgType = 'enterprise' | 'agency' | 'freelance';
 
-type SceneKey = 'orgtype' | 'orgdetails' | 'org' | 'audit' | 'profile' | 'integrations' | 'team' | 'launch';
+type SceneKey = 'orgtype' | 'orgdetails' | 'discovery' | 'org' | 'audit' | 'profile' | 'integrations' | 'team' | 'launch';
 
 const FLOWS: Record<OrgType, SceneKey[]> = {
-  enterprise: ['orgtype', 'orgdetails', 'org', 'audit', 'profile', 'integrations', 'team', 'launch'],
-  agency:     ['orgtype', 'orgdetails', 'org', 'audit', 'profile', 'integrations', 'team', 'launch'],
-  freelance:  ['orgtype', 'orgdetails', 'profile', 'integrations', 'launch'],
+  enterprise: ['orgtype', 'orgdetails', 'discovery', 'org', 'audit', 'profile', 'integrations', 'team', 'launch'],
+  agency:     ['orgtype', 'orgdetails', 'discovery', 'org', 'audit', 'profile', 'integrations', 'team', 'launch'],
+  freelance:  ['orgtype', 'orgdetails', 'discovery', 'profile', 'integrations', 'launch'],
 };
 
 const DEFAULT_FLOW: SceneKey[] = FLOWS.enterprise;
@@ -42,6 +43,7 @@ const Onboarding = () => {
   const [companyData, setCompanyData] = useState<OnboardingCompanyData | null>(null);
   const [orgType, setOrgType] = useState<OrgType | null>(null);
   const [orgDetailsData, setOrgDetailsData] = useState<OrgDetailsData | null>(null);
+  const [discoverySource, setDiscoverySource] = useState('');
   const [profileState, setProfileState] = useState<ProfileFormState | undefined>(undefined);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -92,13 +94,22 @@ const Onboarding = () => {
     setStep(1); // go to orgdetails
   }, [markCompleted]);
 
-  // Step 2: details submitted
-  const handleOrgDetailsSubmitted = useCallback(async (data: OrgDetailsData) => {
+  // Step 2: details submitted (no longer handles discovery)
+  const handleOrgDetailsSubmitted = useCallback((data: OrgDetailsData) => {
     setOrgDetailsData(data);
     markCompleted(1);
     setDirection(1);
+    setStep(2); // go to discovery
+  }, [markCompleted]);
 
-    if (orgType === 'freelance') {
+  // Step 3: discovery source submitted
+  const handleDiscoverySubmitted = useCallback(async (source: string) => {
+    setDiscoverySource(source);
+    const discoveryIndex = flow.indexOf('discovery');
+    if (discoveryIndex >= 0) markCompleted(discoveryIndex);
+    setDirection(1);
+
+    if (orgType === 'freelance' && orgDetailsData) {
       try {
         const { data: { user } } = await supabase.auth.getUser();
         const userName = user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Mon espace';
@@ -112,10 +123,10 @@ const Onboarding = () => {
             .from('organizations')
             .update({
               org_type: 'freelance',
-              team_size: data.teamSize,
-              specializations: data.specializations,
-              discovery_source: data.discoverySource,
-              freelance_mode: data.freelanceMode,
+              team_size: orgDetailsData.teamSize,
+              specializations: orgDetailsData.specializations,
+              discovery_source: source,
+              freelance_mode: orgDetailsData.freelanceMode,
             } as any)
             .eq('id', org.id);
         }
@@ -125,8 +136,8 @@ const Onboarding = () => {
       }
     }
 
-    setStep(2);
-  }, [markCompleted, createOrganization, orgType]);
+    setStep((discoveryIndex >= 0 ? discoveryIndex : 2) + 1);
+  }, [flow, markCompleted, createOrganization, orgType, orgDetailsData]);
 
   const handleOrgCreated = useCallback((data: OnboardingCompanyData) => {
     setOrgCreated(true);
@@ -141,7 +152,7 @@ const Onboarding = () => {
           org_type: orgType,
           team_size: orgDetailsData.teamSize,
           specializations: orgDetailsData.specializations,
-          discovery_source: orgDetailsData.discoverySource,
+          discovery_source: discoverySource,
           freelance_mode: orgDetailsData.freelanceMode,
         } as any)
         .eq('id', organizationId);
@@ -201,6 +212,9 @@ const Onboarding = () => {
             )}
             {currentScene === 'orgdetails' && orgType && (
               <SceneOrgDetails orgType={orgType} onSubmit={handleOrgDetailsSubmitted} onBack={goBack} />
+            )}
+            {currentScene === 'discovery' && (
+              <SceneDiscovery onSubmit={handleDiscoverySubmitted} onBack={goBack} savedValue={discoverySource} />
             )}
             {currentScene === 'org' && (
               <SceneOrganization onComplete={handleOrgCreated} onBack={goBack} />

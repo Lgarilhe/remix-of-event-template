@@ -53,26 +53,6 @@ const SPECIALIZATIONS = [
   { value: 'other', label: 'Autre' },
 ];
 
-const DISCOVERY_SOURCES = [
-  { value: 'linkedin', label: 'LinkedIn (post / pub)' },
-  { value: 'linkedin-dm', label: 'LinkedIn (message privé)' },
-  { value: 'google', label: 'Recherche Google' },
-  { value: 'word-of-mouth', label: 'Bouche-à-oreille / Recommandation' },
-  { value: 'community', label: 'Communauté Slack / Discord' },
-  { value: 'podcast', label: 'Podcast' },
-  { value: 'youtube', label: 'YouTube' },
-  { value: 'newsletter', label: 'Newsletter' },
-  { value: 'blog', label: 'Article / Blog' },
-  { value: 'event', label: 'Événement / Salon / Meetup' },
-  { value: 'product-hunt', label: 'Product Hunt' },
-  { value: 'appsumo', label: 'AppSumo' },
-  { value: 'comparison', label: 'Site de comparatifs (G2, Capterra…)' },
-  { value: 'referral', label: 'Programme de parrainage' },
-  { value: 'social-twitter', label: 'X (Twitter)' },
-  { value: 'social-instagram', label: 'Instagram / TikTok' },
-  { value: 'partner', label: 'Partenaire / Intégrateur' },
-  { value: 'other', label: 'Autre' },
-];
 
 const FREELANCE_MODES = [
   { value: 'rpo', label: 'RPO (embedded)' },
@@ -88,7 +68,7 @@ export const SceneOrgDetails: React.FC<Props> = ({ orgType, onSubmit, onBack }) 
   const isFreelance = orgType === 'freelance';
   const [teamSize, setTeamSize] = useState(isFreelance ? '1' : '');
   const [specializations, setSpecializations] = useState<string[]>([]);
-  const [discoverySource, setDiscoverySource] = useState('');
+  
   const [freelanceMode, setFreelanceMode] = useState('');
   const [tjm, setTjm] = useState<[number, number]>([400, 700]);
 
@@ -111,7 +91,7 @@ export const SceneOrgDetails: React.FC<Props> = ({ orgType, onSubmit, onBack }) 
   const tjmStartPercent = ((tjm[0] - TJM_MIN) / (TJM_MAX - TJM_MIN)) * 100;
   const tjmEndPercent = ((tjm[1] - TJM_MIN) / (TJM_MAX - TJM_MIN)) * 100;
 
-  const canSubmit = teamSize && specializations.length > 0 && discoverySource && (!isFreelance || freelanceMode);
+  const canSubmit = teamSize && specializations.length > 0 && (!isFreelance || freelanceMode);
 
   
 
@@ -261,22 +241,6 @@ export const SceneOrgDetails: React.FC<Props> = ({ orgType, onSubmit, onBack }) 
           </div>
         </div>
 
-        {/* Discovery source */}
-        <div className="space-y-1.5">
-          <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-            Comment avez-vous découvert Konekt ?
-          </label>
-          <Select value={discoverySource} onValueChange={setDiscoverySource}>
-            <SelectTrigger className="border-2 border-foreground/20 h-10 text-sm">
-              <SelectValue placeholder="Sélectionnez" />
-            </SelectTrigger>
-            <SelectContent>
-              {DISCOVERY_SOURCES.map(s => (
-                <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
       </motion.div>
 
       {/* Navigation */}
@@ -294,7 +258,7 @@ export const SceneOrgDetails: React.FC<Props> = ({ orgType, onSubmit, onBack }) 
           <ArrowLeft className="w-4 h-4" /> Retour
         </Button>
         <Button
-          onClick={() => canSubmit && onSubmit({ teamSize, specializations, discoverySource, freelanceMode: isFreelance ? freelanceMode : undefined, tjm: (freelanceMode === 'rpo' || freelanceMode === 'both') ? `${tjm[0]}-${tjm[1]}` : undefined })}
+          onClick={() => canSubmit && onSubmit({ teamSize, specializations, discoverySource: '', freelanceMode: isFreelance ? freelanceMode : undefined, tjm: (freelanceMode === 'rpo' || freelanceMode === 'both') ? `${tjm[0]}-${tjm[1]}` : undefined })}
           disabled={!canSubmit}
           className="gap-2 border-2 border-foreground bg-foreground text-background hover:bg-foreground/90 text-sm px-6"
           style={{ boxShadow: '3px 3px 0px 0px hsl(var(--brutal-accent))' }}
