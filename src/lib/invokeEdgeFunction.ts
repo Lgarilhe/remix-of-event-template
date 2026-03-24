@@ -31,8 +31,35 @@ function humanizeError(err: Error | string): string {
   if (lower.includes('internal') || lower.includes('500') || lower.includes('502') || lower.includes('503')) {
     return 'Erreur serveur temporaire. Réessayez dans quelques instants.';
   }
-  // Return original if no match (but cap length)
+
   return msg.length > 200 ? msg.slice(0, 200) + '…' : msg;
+}
+
+async function extractEdgeFunctionError(err: unknown): Promise<string> {
+  const context = (err as { context?: Response })?.context;
+
+  if (context instanceof Response) {
+    try {
+      const payload = await context.clone().json();
+      if (typeof payload?.error === 'string' && payload.error.trim()) {
+        return payload.error;
+      }
+      if (typeof payload?.message === 'string' && payload.message.trim()) {
+        return payload.message;
+      }
+    } catch {
+      try {
+        const text = await context.clone().text();
+        if (text.trim()) {
+          return text;
+        }
+      } catch {
+        // noop
+      }
+    }
+  }
+
+  return humanizeError(err instanceof Error ? err : String(err));
 }
 
 export async function invokeEdgeFunction<T = Record<string, unknown>>(
@@ -48,7 +75,6 @@ export async function invokeEdgeFunction<T = Record<string, unknown>>(
   }
 
   try {
-    // Timeout wrapper
     let timer: ReturnType<typeof setTimeout> | undefined;
     const timeoutPromise = new Promise<never>((_, reject) => {
       timer = setTimeout(() => reject(new Error('timeout')), TIMEOUT_MS);
@@ -64,13 +90,13 @@ export async function invokeEdgeFunction<T = Record<string, unknown>>(
     if (timer) clearTimeout(timer);
 
     if (error) {
-      const friendlyMsg = humanizeError(error);
+      const friendlyMsg = await extractEdgeFunctionError(error);
       return { data: { success: false, error: friendlyMsg } as any, error: new Error(friendlyMsg) };
     }
 
     return { data: data as T & { success?: boolean; error?: string }, error: null };
   } catch (e: any) {
-    const friendlyMsg = humanizeError(e);
+    const friendlyMsg = await extractEdgeFunctionError(e);
     console.error(`[invokeEdgeFunction] ${functionName} failed:`, e);
     return { data: { success: false, error: friendlyMsg } as any, error: new Error(friendlyMsg) };
   }
