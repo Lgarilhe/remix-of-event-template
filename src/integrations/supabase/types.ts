@@ -2760,32 +2760,41 @@ export type Database = {
       }
       organizations: {
         Row: {
+          annual_hires: string | null
           created_at: string
           created_by: string
+          discovery_source: string | null
           id: string
           logo_url: string | null
           name: string
           slug: string
+          team_size: string | null
           updated_at: string
           website: string | null
         }
         Insert: {
+          annual_hires?: string | null
           created_at?: string
           created_by: string
+          discovery_source?: string | null
           id?: string
           logo_url?: string | null
           name: string
           slug: string
+          team_size?: string | null
           updated_at?: string
           website?: string | null
         }
         Update: {
+          annual_hires?: string | null
           created_at?: string
           created_by?: string
+          discovery_source?: string | null
           id?: string
           logo_url?: string | null
           name?: string
           slug?: string
+          team_size?: string | null
           updated_at?: string
           website?: string | null
         }
