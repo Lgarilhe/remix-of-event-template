@@ -380,6 +380,16 @@ serve(async (req) => {
       const parts = [e.title, e.organization_name || e.company_name, e.location].filter(Boolean);
       return parts.join(" — ");
     });
+
+    const experienceDetails = employmentHistory.slice(0, 8).map((e: any) => ({
+      title: e.title || null,
+      company: e.organization_name || e.company_name || null,
+      location: e.location || null,
+      startDate: e.start_date || null,
+      endDate: e.end_date || null,
+      current: e.current || false,
+    }));
+
     const education = educationHistory.slice(0, 3).map((e: any) =>
       [e.school_name || e.school, e.degree, e.field_of_study].filter(Boolean).join(" — ")
     );
@@ -482,6 +492,7 @@ serve(async (req) => {
           photoUrl,
           education: [],
           recommendations: [],
+          experienceDetails: [],
           warning: "Profil LinkedIn trop limité pour générer une bio. Vous pouvez la rédiger manuellement.",
         }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -606,6 +617,7 @@ CONSIGNES STRICTES :
         photoUrl,
         education: education.slice(0, 3),
         recommendations,
+        experienceDetails,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
