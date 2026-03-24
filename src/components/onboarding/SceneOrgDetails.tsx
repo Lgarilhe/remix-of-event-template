@@ -241,22 +241,6 @@ export const SceneOrgDetails: React.FC<Props> = ({ orgType, onSubmit, onBack }) 
           </div>
         </div>
 
-        {/* Discovery source */}
-        <div className="space-y-1.5">
-          <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-            Comment avez-vous découvert Konekt ?
-          </label>
-          <Select value={discoverySource} onValueChange={setDiscoverySource}>
-            <SelectTrigger className="border-2 border-foreground/20 h-10 text-sm">
-              <SelectValue placeholder="Sélectionnez" />
-            </SelectTrigger>
-            <SelectContent>
-              {DISCOVERY_SOURCES.map(s => (
-                <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
       </motion.div>
 
       {/* Navigation */}
