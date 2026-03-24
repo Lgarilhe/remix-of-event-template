@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft, ArrowRight, Loader2, Sparkles, CheckCircle2, MapPin, Building2, Briefcase, GraduationCap, Tag, Quote } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Loader2, Sparkles, CheckCircle2, MapPin, Building2, Briefcase, GraduationCap, Tag, Quote, Wand2 } from 'lucide-react';
 import linkedinLogo from '@/assets/linkedin-logo.png';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -8,7 +8,6 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
 export interface ScanResultData {
-  bio: string;
   headline: string;
   skills: string[];
   yearsExperience: number;
@@ -24,6 +23,9 @@ export interface ScanResultData {
   photoUrl?: string | null;
   education?: string[];
   recommendations?: { body: string; recommenderName?: string | null; recommenderTitle?: string | null }[];
+  about?: string;
+  experiences?: string[];
+  bio?: string;
 }
 
 export interface ExperienceDetail {
@@ -52,6 +54,8 @@ export interface ProfileFormState {
   experienceClassifications: ExperienceClassification[];
 }
 
+type ProfileStep = 'form' | 'classify' | 'result';
+
 interface Props {
   onNext: () => void;
   onBack: () => void;
@@ -66,15 +70,19 @@ export const SceneProfile: React.FC<Props> = ({ onNext, onBack, orgType, savedSt
   const [linkedinUrl, setLinkedinUrl] = useState(savedState?.linkedinUrl ?? '');
   const [saving, setSaving] = useState(false);
   const [scanning, setScanning] = useState(false);
+  const [generatingBio, setGeneratingBio] = useState(false);
   const [scanResult, setScanResult] = useState<ScanResultData | null>(savedState?.scanResult ?? null);
   const [expClassifications, setExpClassifications] = useState<ExperienceClassification[]>(
     savedState?.experienceClassifications ?? []
+  );
+  const [profileStep, setProfileStep] = useState<ProfileStep>(
+    savedState?.scanResult?.bio ? 'result' : savedState?.experienceClassifications?.length ? 'classify' : 'form'
   );
 
   const isFreelance = orgType === 'freelance';
 
   useEffect(() => {
-    if (savedState) return; // Don't overwrite restored state
+    if (savedState) return;
     supabase.auth.getUser().then(({ data: { user } }) => {
       if (user) {
         const meta = user.user_metadata;
@@ -84,7 +92,6 @@ export const SceneProfile: React.FC<Props> = ({ onNext, onBack, orgType, savedSt
     });
   }, [savedState]);
 
-  // Sync state back to parent for persistence
   useEffect(() => {
     onStateChange?.({
       displayName,
@@ -119,25 +126,67 @@ export const SceneProfile: React.FC<Props> = ({ onNext, onBack, orgType, savedSt
 
       setScanResult(data);
       if (data.experienceDetails?.length) {
-        setExpClassifications(
-          data.experienceDetails.map((exp: any) => ({
-            company: exp.company || '',
-            title: exp.title || '',
-            type: null as ExperienceType,
-          }))
-        );
+        const classifications = data.experienceDetails.map((exp: any) => ({
+          company: exp.company || '',
+          title: exp.title || '',
+          type: null as ExperienceType,
+        }));
+        setExpClassifications(classifications);
+        setProfileStep('classify');
+      } else {
+        // No experiences to classify, go straight to bio generation
+        await generateBio(data, []);
       }
       if (data.name && !displayName.trim()) setDisplayName(data.name);
       if (data.warning) {
         toast.warning(data.warning);
       } else {
-        toast.success('Profil LinkedIn analysé avec succès !');
+        toast.success('Profil scanné ! Classez vos expériences.');
       }
     } catch (err: any) {
       toast.error(err.message || 'Erreur lors du scan LinkedIn');
     } finally {
       setScanning(false);
     }
+  };
+
+  const generateBio = async (profileData: ScanResultData, classifications: ExperienceClassification[]) => {
+    setGeneratingBio(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('generate-recruiter-bio', {
+        body: {
+          profileData: {
+            name: profileData.name,
+            headline: profileData.headline,
+            about: profileData.about || '',
+            experiences: profileData.experiences || [],
+            skills: profileData.skills,
+            yearsExperience: profileData.yearsExperience,
+            location: profileData.location,
+            currentCompany: profileData.currentCompany,
+            education: profileData.education || [],
+            companies: profileData.companies || [],
+          },
+          classifications: classifications.filter(c => c.type !== null),
+        },
+      });
+
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+
+      setScanResult(prev => prev ? { ...prev, bio: data.bio } : prev);
+      setProfileStep('result');
+      toast.success('Bio générée avec succès !');
+    } catch (err: any) {
+      toast.error(err.message || 'Erreur lors de la génération de la bio');
+    } finally {
+      setGeneratingBio(false);
+    }
+  };
+
+  const handleGenerateBio = () => {
+    if (!scanResult) return;
+    generateBio(scanResult, expClassifications);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -168,6 +217,134 @@ export const SceneProfile: React.FC<Props> = ({ onNext, onBack, orgType, savedSt
     }
   };
 
+  // --- CLASSIFY STEP ---
+  if (profileStep === 'classify' && scanResult) {
+    return (
+      <div className="w-full max-w-lg mx-auto flex flex-col gap-5">
+        <div className="text-center space-y-2">
+          <span
+            className="skalr-gradient-text text-[11px] uppercase tracking-[0.2em] font-semibold"
+            style={{ fontFamily: "'Space Mono', monospace" }}
+          >
+            Classification
+          </span>
+          <h2 className="font-editorial italic text-3xl md:text-4xl">Classez vos expériences</h2>
+          <p className="text-muted-foreground text-sm">
+            Indiquez pour chaque expérience s'il s'agissait de recrutement en <strong>RPO</strong>, en <strong>cabinet</strong>, ou en <strong>direct</strong> (client final). Cela nous permettra de générer un résumé fidèle.
+          </p>
+        </div>
+
+        {/* Profile header */}
+        <div className="flex items-center gap-3 border-2 border-foreground/10 p-3"
+          style={{ boxShadow: '3px 3px 0px 0px hsl(var(--brutal-accent) / 0.2)' }}>
+          {scanResult.photoUrl ? (
+            <img src={scanResult.photoUrl} alt={scanResult.name} className="w-10 h-10 border-2 border-foreground/20 object-cover shrink-0" />
+          ) : (
+            <div className="w-10 h-10 border-2 border-foreground/20 shrink-0 flex items-center justify-center text-sm font-bold text-white"
+              style={{ background: 'linear-gradient(135deg, hsl(var(--skalr-purple)), hsl(var(--skalr-pink)))' }}>
+              {scanResult.name?.split(/\s+/).slice(0, 2).map(w => w[0]?.toUpperCase()).join('') || '?'}
+            </div>
+          )}
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-bold truncate">{scanResult.name}</p>
+            <p className="text-[11px] text-muted-foreground truncate">{scanResult.currentTitle}{scanResult.currentCompany ? ` @ ${scanResult.currentCompany}` : ''}</p>
+          </div>
+        </div>
+
+        {/* Legend */}
+        <div className="flex flex-wrap gap-3 text-[10px]">
+          {[
+            { label: 'RPO / Embarqué', color: 'var(--skalr-purple)', desc: 'Intégré chez le client' },
+            { label: 'Cabinet', color: 'var(--skalr-green)', desc: 'Chasse & conseil' },
+            { label: 'Direct', color: 'var(--skalr-pink)', desc: 'Recrutement interne' },
+          ].map(item => (
+            <div key={item.label} className="flex items-center gap-1.5">
+              <span className="w-2.5 h-2.5 border border-foreground/20" style={{ background: `hsl(${item.color} / 0.3)` }} />
+              <span className="font-bold uppercase tracking-wider">{item.label}</span>
+              <span className="text-muted-foreground">— {item.desc}</span>
+            </div>
+          ))}
+        </div>
+
+        {/* Classification list */}
+        <div className="border-2 border-foreground/10 divide-y divide-foreground/5"
+          style={{ boxShadow: '3px 3px 0px 0px hsl(var(--brutal-accent) / 0.15)' }}>
+          {expClassifications.map((exp, i) => {
+            const label = [exp.title, exp.company].filter(Boolean).join(' @ ');
+            if (!label) return null;
+            return (
+              <div key={i} className="flex items-center gap-3 px-3 py-2.5">
+                <span className="text-[11px] text-foreground/80 flex-1 min-w-0 truncate">{label}</span>
+                <div className="flex gap-1 shrink-0">
+                  {([
+                    { value: 'rpo' as const, label: 'RPO', color: 'var(--skalr-purple)' },
+                    { value: 'cabinet' as const, label: 'Cabinet', color: 'var(--skalr-green)' },
+                    { value: 'direct' as const, label: 'Direct', color: 'var(--skalr-pink)' },
+                  ]).map((opt) => (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => {
+                        setExpClassifications(prev =>
+                          prev.map((c, idx) =>
+                            idx === i ? { ...c, type: c.type === opt.value ? null : opt.value } : c
+                          )
+                        );
+                      }}
+                      className={`px-2.5 py-1 text-[9px] font-bold uppercase tracking-wider border-2 transition-all ${
+                        exp.type === opt.value
+                          ? 'border-foreground text-foreground'
+                          : 'border-foreground/10 text-muted-foreground/50 hover:border-foreground/30'
+                      }`}
+                      style={
+                        exp.type === opt.value
+                          ? { background: `hsl(${opt.color} / 0.15)` }
+                          : {}
+                      }
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        <p className="text-[10px] text-muted-foreground text-center">
+          Vous pouvez laisser certaines expériences non classées si elles ne sont pas liées au recrutement.
+        </p>
+
+        {/* Navigation */}
+        <div className="flex items-center justify-between pt-2">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => setProfileStep('form')}
+            className="gap-2 border-2 border-foreground/20 text-sm"
+          >
+            <ArrowLeft className="w-4 h-4" /> Retour
+          </Button>
+          <Button
+            type="button"
+            onClick={handleGenerateBio}
+            disabled={generatingBio}
+            className="gap-2 border-2 border-foreground bg-foreground text-background hover:bg-foreground/90 text-sm px-6"
+            style={{ boxShadow: '3px 3px 0px 0px hsl(var(--brutal-accent))' }}
+          >
+            {generatingBio ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <Wand2 className="w-4 h-4" />
+            )}
+            {generatingBio ? 'Génération...' : 'Générer ma bio'}
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  // --- RESULT / FORM STEP ---
   return (
     <div className="w-full max-w-lg mx-auto flex flex-col gap-5">
       {/* Header */}
@@ -262,9 +439,9 @@ export const SceneProfile: React.FC<Props> = ({ onNext, onBack, orgType, savedSt
           </p>
         </div>
 
-        {/* Scan result preview */}
+        {/* Scan result preview (only when bio is generated) */}
         <AnimatePresence>
-          {scanResult && (
+          {scanResult?.bio && profileStep === 'result' && (
             <motion.div
               initial={{ opacity: 0, height: 0 }}
               animate={{ opacity: 1, height: 'auto' }}
@@ -328,6 +505,27 @@ export const SceneProfile: React.FC<Props> = ({ onNext, onBack, orgType, savedSt
                 )}
               </div>
 
+              {/* Classifications summary */}
+              {expClassifications.some(c => c.type) && (
+                <div className="flex flex-wrap gap-1.5">
+                  {(['rpo', 'cabinet', 'direct'] as const).map(type => {
+                    const count = expClassifications.filter(c => c.type === type).length;
+                    if (!count) return null;
+                    const config = {
+                      rpo: { label: 'RPO', color: 'var(--skalr-purple)' },
+                      cabinet: { label: 'Cabinet', color: 'var(--skalr-green)' },
+                      direct: { label: 'Direct', color: 'var(--skalr-pink)' },
+                    }[type];
+                    return (
+                      <span key={type} className="px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider border-2 border-foreground/20"
+                        style={{ background: `hsl(${config.color} / 0.1)` }}>
+                        {config.label} × {count}
+                      </span>
+                    );
+                  })}
+                </div>
+              )}
+
               {/* Bio */}
               <div className="space-y-1">
                 <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Bio générée</p>
@@ -335,6 +533,15 @@ export const SceneProfile: React.FC<Props> = ({ onNext, onBack, orgType, savedSt
                   {scanResult.bio}
                 </p>
               </div>
+
+              {/* Re-classify button */}
+              <button
+                type="button"
+                onClick={() => setProfileStep('classify')}
+                className="text-[10px] text-muted-foreground hover:text-foreground underline underline-offset-2 transition-colors"
+              >
+                Modifier la classification et régénérer
+              </button>
 
               {/* Industries */}
               {scanResult.industries && scanResult.industries.length > 0 && (
@@ -352,71 +559,13 @@ export const SceneProfile: React.FC<Props> = ({ onNext, onBack, orgType, savedSt
                 </div>
               )}
 
-              {/* Companies */}
-              {expClassifications.length > 0 && (
-                <div className="space-y-2">
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1">
-                    <Briefcase className="w-3 h-3" /> Classez vos expériences
-                  </p>
-                  <div className="space-y-1.5">
-                    {expClassifications.map((exp, i) => {
-                      const label = [exp.title, exp.company].filter(Boolean).join(' @ ');
-                      if (!label) return null;
-                      return (
-                        <div key={i} className="flex items-center gap-2 py-1.5 border-b border-foreground/5 last:border-0">
-                          <span className="text-[11px] text-foreground/70 flex-1 min-w-0 truncate">
-                            {label}
-                          </span>
-                          <div className="flex gap-1 shrink-0">
-                            {([
-                              { value: 'rpo' as const, label: 'RPO', color: 'var(--skalr-purple)' },
-                              { value: 'cabinet' as const, label: 'Cabinet', color: 'var(--skalr-green)' },
-                              { value: 'direct' as const, label: 'Direct', color: 'var(--skalr-pink)' },
-                            ]).map((opt) => (
-                              <button
-                                key={opt.value}
-                                type="button"
-                                onClick={() => {
-                                  setExpClassifications(prev =>
-                                    prev.map((c, idx) =>
-                                      idx === i
-                                        ? { ...c, type: c.type === opt.value ? null : opt.value }
-                                        : c
-                                    )
-                                  );
-                                }}
-                                className={`px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider border transition-all ${
-                                  exp.type === opt.value
-                                    ? 'border-foreground text-foreground'
-                                    : 'border-foreground/10 text-muted-foreground/50 hover:border-foreground/30'
-                                }`}
-                                style={
-                                  exp.type === opt.value
-                                    ? { background: `hsl(${opt.color} / 0.15)` }
-                                    : {}
-                                }
-                              >
-                                {opt.label}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-
               {/* Skills */}
               {scanResult.skills.length > 0 && (
                 <div className="space-y-1">
                   <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Compétences</p>
                   <div className="flex flex-wrap gap-1.5">
                     {scanResult.skills.slice(0, 12).map((skill) => (
-                      <span
-                        key={skill}
-                        className="px-2 py-0.5 text-[10px] font-semibold border border-foreground/15 text-muted-foreground"
-                      >
+                      <span key={skill} className="px-2 py-0.5 text-[10px] font-semibold border border-foreground/15 text-muted-foreground">
                         {skill}
                       </span>
                     ))}
