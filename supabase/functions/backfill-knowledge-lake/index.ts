@@ -138,6 +138,7 @@ const ALL_TABLES = [
   "candidate_comments",
   "call_coaching_sessions",
   "candidate_evaluations",
+  "candidate_profiles",
   "airtable_candidates",
   "airtable_notes",
   "airtable_shortlists",
