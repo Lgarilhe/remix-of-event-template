@@ -95,8 +95,17 @@ Deno.serve(async (req) => {
       ? `team-invite-resend-${invitationId}-${Date.now()}`
       : `team-invite-${invitationId}`;
 
-    const { error: emailError } = await supabase.functions.invoke("send-transactional-email", {
-      body: {
+    const functionUrl = `${Deno.env.get("SUPABASE_URL")!}/functions/v1/send-transactional-email`;
+    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+
+    const emailResponse = await fetch(functionUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${serviceRoleKey}`,
+        apikey: serviceRoleKey,
+      },
+      body: JSON.stringify({
         templateName: "team-invitation",
         recipientEmail: normalizedEmail,
         idempotencyKey,
@@ -106,11 +115,18 @@ Deno.serve(async (req) => {
           role: normalizedRole,
           inviteUrl,
         },
-      },
-      headers: {
-        Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!}`,
-      },
+      }),
     });
+
+    let emailError: string | null = null;
+    if (!emailResponse.ok) {
+      try {
+        const payload = await emailResponse.json();
+        emailError = payload?.error || payload?.message || `${emailResponse.status} ${emailResponse.statusText}`;
+      } catch {
+        emailError = `${emailResponse.status} ${emailResponse.statusText}`;
+      }
+    }
 
     if (emailError) {
       console.error("Failed to send invitation email:", emailError);
