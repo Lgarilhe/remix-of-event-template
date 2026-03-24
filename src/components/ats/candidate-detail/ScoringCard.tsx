@@ -28,7 +28,7 @@ export const ScoringCard = React.memo<ScoringCardProps>(({ scoring }) => {
   const details = scoring.scoringDetails;
 
   // Parse weighted dimensions
-  const dimensions = details?.dimensions || details?.dimension_scores || [];
+  const dimensions = (details?.dimensions ? Object.values(details.dimensions) : []) as any[];
   const weightedDims = dimensions.filter((d: any) => d.weight > 0);
   const llmDims = dimensions.filter((d: any) => d.weight === 0);
 
