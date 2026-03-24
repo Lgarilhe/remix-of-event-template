@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft, ArrowRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 
@@ -12,6 +13,7 @@ export interface OrgDetailsData {
   specializations: string[];
   discoverySource: string;
   freelanceMode?: string;
+  tjm?: string;
 }
 
 interface Props {
@@ -85,6 +87,7 @@ export const SceneOrgDetails: React.FC<Props> = ({ orgType, onSubmit, onBack }) 
   const [specializations, setSpecializations] = useState<string[]>([]);
   const [discoverySource, setDiscoverySource] = useState('');
   const [freelanceMode, setFreelanceMode] = useState('');
+  const [tjm, setTjm] = useState('');
 
   const toggleSpec = (value: string) => {
     setSpecializations(prev =>
@@ -138,6 +141,30 @@ export const SceneOrgDetails: React.FC<Props> = ({ orgType, onSubmit, onBack }) 
             </Select>
           </div>
         )}
+
+        {/* TJM field - shown when RPO or both */}
+        <AnimatePresence>
+          {isFreelance && (freelanceMode === 'rpo' || freelanceMode === 'both') && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              className="space-y-1.5"
+            >
+              <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                TJM indicatif (€/jour)
+              </label>
+              <Input
+                type="number"
+                placeholder="Ex : 450"
+                value={tjm}
+                onChange={(e) => setTjm(e.target.value)}
+                className="border-2 border-foreground/20 h-10 text-sm w-40"
+              />
+              <p className="text-[10px] text-muted-foreground">Facultatif — à titre indicatif uniquement.</p>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* Team size (hidden for freelance) */}
         {!isFreelance && (
@@ -214,7 +241,7 @@ export const SceneOrgDetails: React.FC<Props> = ({ orgType, onSubmit, onBack }) 
           <ArrowLeft className="w-4 h-4" /> Retour
         </Button>
         <Button
-          onClick={() => canSubmit && onSubmit({ teamSize, specializations, discoverySource, freelanceMode: isFreelance ? freelanceMode : undefined })}
+          onClick={() => canSubmit && onSubmit({ teamSize, specializations, discoverySource, freelanceMode: isFreelance ? freelanceMode : undefined, tjm: tjm || undefined })}
           disabled={!canSubmit}
           className="gap-2 border-2 border-foreground bg-foreground text-background hover:bg-foreground/90 text-sm px-6"
           style={{ boxShadow: '3px 3px 0px 0px hsl(var(--brutal-accent))' }}
