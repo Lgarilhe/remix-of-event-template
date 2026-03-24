@@ -5,6 +5,34 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+const DEFAULT_APP_ORIGIN = "https://id-preview--08a19073-7da4-47fa-92af-b78fed96739f.lovable.app";
+
+const resolveAppOrigin = (req: Request) => {
+  const directOrigin = req.headers.get("origin");
+  if (directOrigin) {
+    try {
+      const hostname = new URL(directOrigin).hostname;
+      if (!hostname.endsWith(".lovableproject.com")) return directOrigin;
+    } catch {
+      // noop
+    }
+  }
+
+  const referer = req.headers.get("referer");
+  if (referer) {
+    try {
+      const refererUrl = new URL(referer);
+      if (!refererUrl.hostname.endsWith(".lovableproject.com")) {
+        return refererUrl.origin;
+      }
+    } catch {
+      // noop
+    }
+  }
+
+  return DEFAULT_APP_ORIGIN;
+};
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -96,7 +124,7 @@ Deno.serve(async (req) => {
       invitationToken = invitation.token;
     }
 
-    const origin = req.headers.get("origin") || "https://id-preview--08a19073-7da4-47fa-92af-b78fed96739f.lovable.app";
+    const origin = resolveAppOrigin(req);
     const inviteUrl = `${origin}/auth?invitation=${invitationId}`;
     const idempotencyKey = isResend
       ? `team-invite-resend-${invitationId}-${Date.now()}`

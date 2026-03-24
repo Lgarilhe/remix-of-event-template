@@ -5,6 +5,8 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -34,14 +36,17 @@ Deno.serve(async (req) => {
     }
 
     // Get invitation
+    const invitationIdentifier = String(invitation_id ?? invitation_token).trim();
+    const shouldLookupById = Boolean(invitation_id) || UUID_REGEX.test(invitationIdentifier);
+
     let invitationQuery = supabase
       .from("organization_invitations")
       .select("*")
       .eq("status", "pending");
 
-    invitationQuery = invitation_id
-      ? invitationQuery.eq("id", invitation_id)
-      : invitationQuery.eq("token", invitation_token);
+    invitationQuery = shouldLookupById
+      ? invitationQuery.eq("id", invitationIdentifier)
+      : invitationQuery.eq("token", invitationIdentifier);
 
     const { data: invitation, error: invError } = await invitationQuery.single();
 
@@ -57,7 +62,7 @@ Deno.serve(async (req) => {
       await supabase
         .from("organization_invitations")
         .update({ status: "expired" })
-        .eq("id", invitation_id);
+        .eq("id", invitation.id);
       throw new Error("Invitation expirée");
     }
 
@@ -74,7 +79,7 @@ Deno.serve(async (req) => {
       await supabase
         .from("organization_invitations")
         .update({ status: "accepted", accepted_at: new Date().toISOString() })
-        .eq("id", invitation_id);
+        .eq("id", invitation.id);
 
       return new Response(JSON.stringify({ success: true, already_member: true }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -96,7 +101,7 @@ Deno.serve(async (req) => {
     await supabase
       .from("organization_invitations")
       .update({ status: "accepted", accepted_at: new Date().toISOString() })
-      .eq("id", invitation_id);
+      .eq("id", invitation.id);
 
     // Set as active org if user has none
     const { data: profile } = await supabase
