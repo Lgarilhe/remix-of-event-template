@@ -2852,6 +2852,7 @@ export type Database = {
           active_organization_id: string | null
           created_at: string
           display_name: string | null
+          experience_classifications: Json | null
           id: string
           job_title: string | null
           linkedin_skills: string[] | null
@@ -2868,6 +2869,7 @@ export type Database = {
           active_organization_id?: string | null
           created_at?: string
           display_name?: string | null
+          experience_classifications?: Json | null
           id?: string
           job_title?: string | null
           linkedin_skills?: string[] | null
@@ -2884,6 +2886,7 @@ export type Database = {
           active_organization_id?: string | null
           created_at?: string
           display_name?: string | null
+          experience_classifications?: Json | null
           id?: string
           job_title?: string | null
           linkedin_skills?: string[] | null

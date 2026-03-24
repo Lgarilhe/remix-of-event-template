@@ -26,12 +26,30 @@ export interface ScanResultData {
   recommendations?: { body: string; recommenderName?: string | null; recommenderTitle?: string | null }[];
 }
 
+export interface ExperienceDetail {
+  title: string | null;
+  company: string | null;
+  location: string | null;
+  startDate: string | null;
+  endDate: string | null;
+  current: boolean;
+}
+
+export type ExperienceType = 'rpo' | 'cabinet' | 'direct' | null;
+
+export interface ExperienceClassification {
+  company: string;
+  title: string;
+  type: ExperienceType;
+}
+
 export interface ProfileFormState {
   displayName: string;
   jobTitle: string;
   linkedinUrl: string;
   selectedSpecs: string[];
   scanResult: ScanResultData | null;
+  experienceClassifications: ExperienceClassification[];
 }
 
 interface Props {
@@ -49,6 +67,9 @@ export const SceneProfile: React.FC<Props> = ({ onNext, onBack, orgType, savedSt
   const [saving, setSaving] = useState(false);
   const [scanning, setScanning] = useState(false);
   const [scanResult, setScanResult] = useState<ScanResultData | null>(savedState?.scanResult ?? null);
+  const [expClassifications, setExpClassifications] = useState<ExperienceClassification[]>(
+    savedState?.experienceClassifications ?? []
+  );
 
   const isFreelance = orgType === 'freelance';
 
@@ -71,8 +92,9 @@ export const SceneProfile: React.FC<Props> = ({ onNext, onBack, orgType, savedSt
       linkedinUrl,
       selectedSpecs: savedState?.selectedSpecs ?? [],
       scanResult,
+      experienceClassifications: expClassifications,
     });
-  }, [displayName, jobTitle, linkedinUrl, scanResult, onStateChange]);
+  }, [displayName, jobTitle, linkedinUrl, scanResult, expClassifications, onStateChange]);
 
   const initials = displayName
     .trim()
@@ -96,6 +118,15 @@ export const SceneProfile: React.FC<Props> = ({ onNext, onBack, orgType, savedSt
       if (data?.error) throw new Error(data.error);
 
       setScanResult(data);
+      if (data.experienceDetails?.length) {
+        setExpClassifications(
+          data.experienceDetails.map((exp: any) => ({
+            company: exp.company || '',
+            title: exp.title || '',
+            type: null as ExperienceType,
+          }))
+        );
+      }
       if (data.name && !displayName.trim()) setDisplayName(data.name);
       if (data.warning) {
         toast.warning(data.warning);
@@ -123,6 +154,7 @@ export const SceneProfile: React.FC<Props> = ({ onNext, onBack, orgType, savedSt
           job_title: isFreelance ? 'Recruteur indépendant' : (jobTitle.trim() || null),
           specializations: savedState?.selectedSpecs ?? [],
           linkedin_url: linkedinUrl.trim() || null,
+          experience_classifications: expClassifications.filter(c => c.type !== null),
         } as any,
         { onConflict: 'user_id' }
       );
@@ -321,17 +353,56 @@ export const SceneProfile: React.FC<Props> = ({ onNext, onBack, orgType, savedSt
               )}
 
               {/* Companies */}
-              {scanResult.companies && scanResult.companies.length > 0 && (
-                <div className="space-y-1">
+              {expClassifications.length > 0 && (
+                <div className="space-y-2">
                   <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1">
-                    <Briefcase className="w-3 h-3" /> Entreprises
+                    <Briefcase className="w-3 h-3" /> Classez vos expériences
                   </p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {scanResult.companies.slice(0, 6).map((company) => (
-                      <span key={company} className="px-2 py-0.5 text-[10px] font-semibold border border-foreground/15 text-foreground/70">
-                        {company}
-                      </span>
-                    ))}
+                  <div className="space-y-1.5">
+                    {expClassifications.map((exp, i) => {
+                      const label = [exp.title, exp.company].filter(Boolean).join(' @ ');
+                      if (!label) return null;
+                      return (
+                        <div key={i} className="flex items-center gap-2 py-1.5 border-b border-foreground/5 last:border-0">
+                          <span className="text-[11px] text-foreground/70 flex-1 min-w-0 truncate">
+                            {label}
+                          </span>
+                          <div className="flex gap-1 shrink-0">
+                            {([
+                              { value: 'rpo' as const, label: 'RPO', color: 'var(--skalr-purple)' },
+                              { value: 'cabinet' as const, label: 'Cabinet', color: 'var(--skalr-green)' },
+                              { value: 'direct' as const, label: 'Direct', color: 'var(--skalr-pink)' },
+                            ]).map((opt) => (
+                              <button
+                                key={opt.value}
+                                type="button"
+                                onClick={() => {
+                                  setExpClassifications(prev =>
+                                    prev.map((c, idx) =>
+                                      idx === i
+                                        ? { ...c, type: c.type === opt.value ? null : opt.value }
+                                        : c
+                                    )
+                                  );
+                                }}
+                                className={`px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider border transition-all ${
+                                  exp.type === opt.value
+                                    ? 'border-foreground text-foreground'
+                                    : 'border-foreground/10 text-muted-foreground/50 hover:border-foreground/30'
+                                }`}
+                                style={
+                                  exp.type === opt.value
+                                    ? { background: `hsl(${opt.color} / 0.15)` }
+                                    : {}
+                                }
+                              >
+                                {opt.label}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               )}
