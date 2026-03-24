@@ -168,13 +168,8 @@ function ProspectCard({ prospect, index }: { prospect: ProspectProfile; index: n
                     </Badge>
                   )}
                   {prospect.source && (
-                     <Badge className={cn(
-                      "text-[9px] border gap-0.5 px-1.5 py-0",
-                      prospect.source === 'apollo'
-                        ? "bg-orange-500/10 text-orange-600 border-orange-500/30"
-                        : "bg-violet-500/10 text-violet-600 border-violet-500/30"
-                    )}>
-                      {prospect.source === 'apollo' ? '🚀 Apollo' : '🔬 PDL'}
+                     <Badge className="text-[9px] border gap-0.5 px-1.5 py-0 bg-muted text-muted-foreground border-border/50">
+                      🔍 Base
                     </Badge>
                   )}
                 </div>
@@ -388,7 +383,7 @@ export function ProspectResults({ results, searching }: ProspectResultsProps) {
             </div>
             <h3 className="text-sm font-semibold text-foreground mb-1 uppercase tracking-wider">Aucun prospect</h3>
             <p className="text-xs text-muted-foreground max-w-xs mx-auto">
-              Utilisez les filtres à gauche pour lancer une recherche PDL + Apollo
+              Utilisez les filtres à gauche pour lancer une recherche
             </p>
           </div>
         )}
@@ -399,7 +394,7 @@ export function ProspectResults({ results, searching }: ProspectResultsProps) {
                <Loader2 className="w-7 h-7 animate-spin text-foreground" />
             </div>
             <h3 className="text-sm font-semibold text-foreground mb-1">Recherche en cours…</h3>
-            <p className="text-xs text-muted-foreground">Interrogation de PDL & Apollo</p>
+            <p className="text-xs text-muted-foreground">Recherche dans nos bases de données</p>
           </div>
         )}
 

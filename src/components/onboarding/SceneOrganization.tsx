@@ -81,7 +81,7 @@ interface ApolloCandidate {
 }
 
 const SCAN_SOURCES: Source[] = [
-  { id: 'apollo', label: 'Apollo', done: false },
+  { id: 'apollo', label: 'Base entreprises', done: false },
   { id: 'linkedin', label: 'LinkedIn', done: false },
   { id: 'web', label: 'Web', done: false },
   { id: 'wttj', label: 'WTTJ', done: false },
@@ -90,7 +90,7 @@ const SCAN_SOURCES: Source[] = [
 
 const AGENT_MESSAGES = [
   "Je recherche des infos sur cette société...",
-  "Enrichissement via Apollo 🎯",
+  "Enrichissement des données 🎯",
   "Scraping du site web en cours...",
   "Recherche des décideurs clés...",
   "Analyse des postes ouverts...",

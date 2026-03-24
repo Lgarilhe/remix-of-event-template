@@ -302,11 +302,8 @@ export const SceneTeam: React.FC<Props> = ({ organizationId, onFinish, onBack })
                 src={p.source === 'linkedin' ? linkedinLogo : undefined}
                 alt={p.source}
                 className="w-4 h-4 object-contain opacity-50"
-                style={p.source === 'apollo' ? { display: 'none' } : {}}
+                style={p.source !== 'linkedin' ? { display: 'none' } : {}}
               />
-              {p.source === 'apollo' && (
-                <span className="text-[9px] px-1.5 py-0.5 bg-muted text-muted-foreground font-mono">Apollo</span>
-              )}
             </label>
           ))}
         </motion.div>
