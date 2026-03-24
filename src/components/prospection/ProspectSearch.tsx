@@ -183,7 +183,7 @@ const EDUCATION_DEGREES = [
 function FilterSection({ label, icon, hint, children }: { label: string; icon?: React.ReactNode; hint?: string; children: React.ReactNode }) {
   return (
     <div className="space-y-1.5">
-      <label className="text-[11px] font-semibold text-foreground/70 flex items-center gap-1.5">
+      <label className="text-[11px] font-medium text-foreground/70 uppercase tracking-wide flex items-center gap-1.5">
         {icon}{label}
       </label>
       {children}
@@ -198,7 +198,7 @@ function ChipToggle({ label, active, onClick }: { label: string; active: boolean
       "px-3 py-1.5 text-xs border transition-all duration-200",
       active
         ? "bg-foreground text-background border-foreground"
-        : "bg-background text-foreground/70 border-border hover:border-foreground/30 hover:bg-muted/50"
+        : "bg-background text-foreground/70 border-foreground/40 hover:border-foreground hover:bg-muted/50"
     )}>{label}</button>
   );
 }
@@ -209,16 +209,16 @@ function CollapsibleFilterGroup({ title, emoji, defaultOpen = false, count, chil
 }) {
   const [open, setOpen] = useState(defaultOpen);
   return (
-    <Collapsible open={open} onOpenChange={setOpen}>
-      <CollapsibleTrigger className="flex items-center gap-2 w-full py-2 border-b border-border/40 hover:border-foreground/20 transition-colors group">
+    <Collapsible open={open} onOpenChange={setOpen} className="border-b border-foreground">
+      <CollapsibleTrigger className="flex items-center gap-2 w-full p-4 hover:bg-muted/50 transition-colors group">
         <span className="text-sm">{emoji}</span>
-        <span className="text-[10px] font-bold uppercase tracking-widest text-foreground flex-1 text-left">{title}</span>
+        <span className="text-sm font-semibold uppercase tracking-wide text-foreground flex-1 text-left">{title}</span>
         {count !== undefined && count > 0 && (
-          <span className="text-[9px] font-bold bg-foreground text-background px-1.5 py-0.5">{count}</span>
+          <Badge variant="secondary" className="h-5 px-1.5 text-xs bg-foreground/10 text-foreground">{count}</Badge>
         )}
-        <ChevronDown className={cn("w-3.5 h-3.5 text-muted-foreground transition-transform duration-200", open && "rotate-180")} />
+        <ChevronDown className={cn("w-4 h-4 text-foreground/40 transition-transform duration-200", open && "rotate-180")} />
       </CollapsibleTrigger>
-      <CollapsibleContent className="pt-3 pb-1">
+      <CollapsibleContent className="px-3 pb-3">
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2 gap-3">
           {children}
         </div>
@@ -440,8 +440,8 @@ export function ProspectSearch({ selectedICP, onSelectICP, onResults, searching,
     }
   };
 
-  const inputClasses = "h-9 text-sm border-border/60 bg-background focus:border-foreground/40 focus:ring-1 focus:ring-foreground/10 transition-all";
-  const selectTriggerClasses = "h-9 border-border/60";
+  const inputClasses = "h-9 text-sm border-foreground/40 bg-background focus:border-foreground focus:ring-1 focus:ring-foreground/10 transition-all";
+  const selectTriggerClasses = "h-9 border-foreground/40";
 
   // The actual filters panel content
   const filtersPanel = (
@@ -453,7 +453,7 @@ export function ProspectSearch({ selectedICP, onSelectICP, onResults, searching,
             <Search className="w-3.5 h-3.5" />
           </div>
           <span className="text-[10px] font-bold uppercase tracking-widest text-foreground">Filtres</span>
-          <Badge variant="outline" className="text-[9px] border-border/40 font-normal bg-background/80 ml-auto">PDL + Apollo</Badge>
+          <Badge variant="outline" className="text-[9px] border-foreground/40 font-normal bg-background/80 ml-auto">PDL + Apollo</Badge>
         </div>
 
         {/* ICP selector */}
@@ -466,7 +466,7 @@ export function ProspectSearch({ selectedICP, onSelectICP, onResults, searching,
                 {icps.map(icp => (<SelectItem key={icp.id} value={icp.id}>{icp.name}</SelectItem>))}
               </SelectContent>
             </Select>
-            {selectedICP && (<Badge variant="outline" className="text-[9px] border-border/40 gap-1 shrink-0"><Target className="w-3 h-3" /> ICP</Badge>)}
+            {selectedICP && (<Badge variant="outline" className="text-[9px] border-foreground/40 gap-1 shrink-0"><Target className="w-3 h-3" /> ICP</Badge>)}
           </div>
         )}
 
@@ -479,11 +479,11 @@ export function ProspectSearch({ selectedICP, onSelectICP, onResults, searching,
       </div>
 
       {/* Intent signals — always visible */}
-      <div className="border border-border/60 p-3 space-y-2">
+      <div className="border border-foreground p-3 space-y-2">
         <div className="flex items-center gap-2">
           <Zap className="w-3.5 h-3.5 text-amber-500" />
-          <span className="text-[10px] font-bold uppercase tracking-widest text-foreground">Signaux d'intention</span>
-          {intentCount > 0 && <span className="text-[9px] font-bold bg-foreground text-background px-1.5 py-0.5 ml-auto">{intentCount}</span>}
+          <span className="text-sm font-semibold uppercase tracking-wide text-foreground">Signaux d'intention</span>
+          {intentCount > 0 && <Badge variant="secondary" className="h-5 px-1.5 text-xs bg-foreground/10 text-foreground ml-auto">{intentCount}</Badge>}
         </div>
         <div className="flex flex-wrap gap-1.5">
           <ChipToggle label="🔄 Job change" active={intentJobChange} onClick={() => setIntentJobChange(!intentJobChange)} />
@@ -494,7 +494,7 @@ export function ProspectSearch({ selectedICP, onSelectICP, onResults, searching,
       </div>
 
       {/* ═══ PROSPECT SECTIONS ═══ */}
-      <div className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground pt-1">👤 Prospect</div>
+      <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground pt-1 px-1">👤 Prospect</div>
 
       <CollapsibleFilterGroup title="Poste & Fonction" emoji="💼" defaultOpen={true} count={posteCount}>
         <FilterSection label="Titre du poste" icon={<Briefcase className="w-3 h-3" />}>
@@ -650,7 +650,7 @@ export function ProspectSearch({ selectedICP, onSelectICP, onResults, searching,
       </CollapsibleFilterGroup>
 
       {/* ═══ ENTREPRISE SECTIONS ═══ */}
-      <div className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground pt-2">🏢 Entreprise</div>
+      <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground pt-2 px-1">🏢 Entreprise</div>
 
       <CollapsibleFilterGroup title="Identité" emoji="🏷️" count={idCount}>
         <FilterSection label="Nom" icon={<Building2 className="w-3 h-3" />}>
