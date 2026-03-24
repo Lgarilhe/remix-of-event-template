@@ -298,6 +298,7 @@ async function fetchRAGContext(
         entity_id: candidateId,
         query: jobContextText,
         limit: 8,
+        min_similarity: 0.1, // Lower threshold since we already filter by entity_id
         // Only fetch enriched chunk types, skip bare pipeline status profiles
         chunk_types: ['experience', 'about', 'conversation', 'call_transcript', 'evaluation', 'note', 'sequence_history', 'scoring_result', 'linkedin_post'],
       }),
