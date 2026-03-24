@@ -516,6 +516,43 @@ Deno.serve(async (req) => {
       console.error('[auto-analyze] Full analysis cache error:', e);
     }
 
+    // ── Fire-and-forget RAG ingestion (analysis result) ──
+    const candidateId2 = sender_id || chatDetails.attendeeProviderId;
+    if (candidateId2 && analysis) {
+      const ragOrgId = (() => {
+        // Resolve org from any available source
+        return null; // Will use service key mode in ingest-context
+      })();
+      const supabaseUrlRag = Deno.env.get('SUPABASE_URL');
+      const serviceKeyRag = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+      if (supabaseUrlRag && serviceKeyRag) {
+        // Try to find org from member_linkedin_accounts
+        const { data: memberMapping } = await supabase
+          .from('member_linkedin_accounts')
+          .select('organization_id')
+          .eq('linkedin_account_id', account_id)
+          .limit(1);
+        const resolvedOrgId = memberMapping?.[0]?.organization_id;
+        if (resolvedOrgId) {
+          fetch(`${supabaseUrlRag}/functions/v1/ingest-context`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${serviceKeyRag}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              organization_id: resolvedOrgId,
+              entity_type: 'candidate',
+              entity_id: candidateId2,
+              chunks: [{
+                chunk_type: 'evaluation',
+                content: `Analyse automatique: Intent=${analysis.intent} (${analysis.confidence}%) — ${analysis.summary}`,
+                source_table: 'auto_analyze_message',
+                metadata: { chat_id: chat_id, intent: analysis.intent, confidence: analysis.confidence, date: new Date().toISOString() },
+              }],
+            }),
+          }).catch(err => console.warn('[auto-analyze] RAG ingest failed (non-blocking):', err));
+        }
+      }
+    }
+
     return new Response(JSON.stringify({ 
       success: true, 
       analysis,
