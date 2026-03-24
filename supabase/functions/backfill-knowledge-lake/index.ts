@@ -1,4 +1,11 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check";
+import {
+  adaptAirtableHistory,
+  adaptCallData,
+  adaptQualificationSession,
+  adaptSequenceHistory,
+  type Chunk,
+} from "../_shared/rag-adapters.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -36,7 +43,10 @@ interface ChunkToIngest {
   entity_id: string;
   chunk_type: string;
   content: string;
+  source_table?: string;
+  source_id?: string;
   metadata?: Record<string, unknown>;
+  expires_at?: string;
 }
 
 async function ingestBatchDirect(
@@ -47,10 +57,8 @@ async function ingestBatchDirect(
 ): Promise<{ ingested: number; skipped: number; errors: number }> {
   if (!chunks.length) return { ingested: 0, skipped: 0, errors: 0 };
 
-  // Compute hashes
   const hashes = await Promise.all(chunks.map(c => sha256Hex(c.content)));
 
-  // Check existing
   const { data: existing } = await svc
     .from("knowledge_chunks")
     .select("content_hash")
@@ -59,16 +67,15 @@ async function ingestBatchDirect(
 
   const existingSet = new Set((existing ?? []).map((r: { content_hash: string }) => r.content_hash));
 
-  const toEmbed: { chunk: ChunkToIngest; hash: string; idx: number }[] = [];
+  const toEmbed: { chunk: ChunkToIngest; hash: string }[] = [];
   let skipped = 0;
   for (let i = 0; i < chunks.length; i++) {
-    if (existingSet.has(hashes[i])) { skipped++; } 
-    else { toEmbed.push({ chunk: chunks[i], hash: hashes[i], idx: i }); }
+    if (existingSet.has(hashes[i])) { skipped++; }
+    else { toEmbed.push({ chunk: chunks[i], hash: hashes[i] }); }
   }
 
   if (!toEmbed.length) return { ingested: 0, skipped, errors: 0 };
 
-  // Batch embed (max 2048 per OpenAI call)
   const allEmbeddings: number[][] = [];
   for (let i = 0; i < toEmbed.length; i += 2048) {
     const slice = toEmbed.slice(i, i + 2048);
@@ -76,7 +83,6 @@ async function ingestBatchDirect(
     allEmbeddings.push(...embeddings);
   }
 
-  // Upsert
   let ingested = 0;
   let errors = 0;
   for (let i = 0; i < toEmbed.length; i++) {
@@ -91,7 +97,10 @@ async function ingestBatchDirect(
       content: chunk.content,
       content_hash: hash,
       embedding: embeddingStr,
+      source_table: chunk.source_table ?? null,
+      source_id: chunk.source_id ?? null,
       metadata: chunk.metadata ?? {},
+      expires_at: chunk.expires_at ?? null,
       updated_at: new Date().toISOString(),
     }, { onConflict: "organization_id,entity_type,entity_id,chunk_type,content_hash" });
 
@@ -105,6 +114,36 @@ async function ingestBatchDirect(
 
   return { ingested, skipped, errors };
 }
+
+// ── Adapter: convert rag-adapters Chunk[] to ChunkToIngest[] ───────────
+
+function toIngestChunks(entityType: string, entityId: string, adapterChunks: Chunk[]): ChunkToIngest[] {
+  return adapterChunks.map(c => ({
+    entity_type: entityType,
+    entity_id: entityId,
+    chunk_type: c.chunk_type,
+    content: c.content,
+    source_table: c.source_table,
+    source_id: c.source_id,
+    metadata: c.metadata,
+    expires_at: c.expires_at,
+  }));
+}
+
+// ── All supported sources ──────────────────────────────────────────────
+
+const ALL_TABLES = [
+  "job_candidate_status",
+  "candidate_notes",
+  "candidate_comments",
+  "call_coaching_sessions",
+  "candidate_evaluations",
+  "airtable_candidates",
+  "airtable_notes",
+  "airtable_shortlists",
+  "sequence_step_executions",
+  "aircall_calls",
+];
 
 // ── Main handler ───────────────────────────────────────────────────────
 
@@ -123,10 +162,7 @@ Deno.serve(async (req) => {
 
     const body = await req.json().catch(() => ({}));
     const organizationId = body.organization_id as string;
-    const tables = (body.tables as string[] | undefined) ?? [
-      "job_candidate_status", "candidate_notes", "candidate_comments",
-      "call_coaching_sessions", "candidate_evaluations",
-    ];
+    const tables = (body.tables as string[] | undefined) ?? ALL_TABLES;
     const batchSize = (body.batch_size as number) || 100;
     const embeddingBatchSize = (body.embedding_batch_size as number) || 50;
     const maxRows = (body.max_rows as number) || 200;
@@ -144,12 +180,13 @@ Deno.serve(async (req) => {
     if (!openaiKey) throw new Error("OPENAI_API_KEY not configured");
 
     const svc = createClient(supabaseUrl, serviceKey);
-    const stats: Record<string, { processed: number; ingested: number; skipped: number; errors: number }> = {};
+    // deno-lint-ignore no-explicit-any
+    const stats: Record<string, any> = {};
 
     // ── Helper: process a table ────────────────────────────────
     async function processTable(
       tableName: string,
-      buildChunk: (row: Record<string, unknown>) => ChunkToIngest | null,
+      buildChunks: (row: Record<string, unknown>) => ChunkToIngest[],
     ) {
       const tableStat = { processed: 0, ingested: 0, skipped: 0, errors: 0 };
       let offset = startOffset;
@@ -165,16 +202,14 @@ Deno.serve(async (req) => {
 
         if (error || !rows?.length) { hasMore = false; break; }
 
-        // Build chunks for this page
         const chunksToIngest: ChunkToIngest[] = [];
         for (const row of rows) {
-          const chunk = buildChunk(row as Record<string, unknown>);
-          if (chunk) chunksToIngest.push(chunk);
+          const chunks = buildChunks(row as Record<string, unknown>);
+          chunksToIngest.push(...chunks);
           tableStat.processed++;
           totalProcessed++;
         }
 
-        // Process in embedding batches
         for (let i = 0; i < chunksToIngest.length; i += embeddingBatchSize) {
           const batch = chunksToIngest.slice(i, i + embeddingBatchSize);
           try {
@@ -209,70 +244,168 @@ Deno.serve(async (req) => {
     if (tables.includes("job_candidate_status")) {
       await processTable("job_candidate_status", (row) => {
         const candidateId = row.candidate_id as string;
-        if (!candidateId) return null;
+        if (!candidateId) return [];
         const content = [
           `Candidat: ${row.candidate_name || "N/A"}`,
           row.job_title ? `Poste: ${row.job_title}` : null,
           `Étape: ${row.stage || "unknown"}`,
           row.source ? `Source: ${row.source}` : null,
         ].filter(Boolean).join("\n");
-        return {
+        return [{
           entity_type: "candidate", entity_id: candidateId, chunk_type: "profile",
           content, metadata: { job_id: row.job_id, stage: row.stage, date: row.updated_at },
-        };
+        }];
       });
     }
 
     if (tables.includes("candidate_notes")) {
       await processTable("candidate_notes", (row) => {
         const content = row.content as string;
-        if (!content?.trim() || !row.candidate_id) return null;
-        return {
+        if (!content?.trim() || !row.candidate_id) return [];
+        return [{
           entity_type: "candidate", entity_id: row.candidate_id as string, chunk_type: "note",
-          content, metadata: { created_by: row.created_by, date: row.created_at },
-        };
+          content, source_table: "candidate_notes", source_id: row.id as string,
+          metadata: { created_by: row.created_by, date: row.created_at },
+        }];
       });
     }
 
     if (tables.includes("candidate_comments")) {
       await processTable("candidate_comments", (row) => {
         const content = row.content as string;
-        if (!content?.trim() || !row.candidate_id) return null;
-        return {
+        if (!content?.trim() || !row.candidate_id) return [];
+        return [{
           entity_type: "candidate", entity_id: row.candidate_id as string, chunk_type: "note",
-          content: `[Commentaire] ${content}`,
+          content: `[Commentaire] ${content}`, source_table: "candidate_comments", source_id: row.id as string,
           metadata: { created_by: row.created_by, job_id: row.job_id, date: row.created_at },
-        };
+        }];
       });
     }
 
     if (tables.includes("call_coaching_sessions")) {
       await processTable("call_coaching_sessions", (row) => {
-        const parts: string[] = [];
-        if (row.transcript) parts.push(`Transcription: ${row.transcript}`);
-        if (row.report) parts.push(`Rapport: ${JSON.stringify(row.report)}`);
-        if (!parts.length || !row.candidate_id) return null;
-        return {
-          entity_type: "candidate", entity_id: row.candidate_id as string, chunk_type: "call_transcript",
-          content: parts.join("\n\n"),
-          metadata: { job_id: row.job_id, date: row.created_at },
-        };
+        if (!row.candidate_id) return [];
+        const adapterChunks = adaptCallData(
+          { started_at: row.created_at, duration: row.duration_seconds, direction: "outbound" },
+          row.transcript as string | undefined,
+          row.report,
+        );
+        return toIngestChunks("candidate", row.candidate_id as string, adapterChunks);
       });
     }
 
     if (tables.includes("candidate_evaluations")) {
       await processTable("candidate_evaluations", (row) => {
-        const parts: string[] = [];
-        if (row.summary) parts.push(`Résumé: ${row.summary}`);
-        if (row.recommendation) parts.push(`Recommandation: ${row.recommendation}`);
-        if (row.follow_up_notes) parts.push(`Notes: ${row.follow_up_notes}`);
-        if (row.overall_score) parts.push(`Score: ${row.overall_score}/5`);
-        if (!parts.length || !row.candidate_id) return null;
-        return {
-          entity_type: "candidate", entity_id: row.candidate_id as string, chunk_type: "evaluation",
-          content: parts.join("\n"),
-          metadata: { job_id: row.job_id, job_title: row.job_title, date: row.created_at },
-        };
+        if (!row.candidate_id) return [];
+        const adapterChunks = adaptQualificationSession({
+          id: row.id,
+          verdict: row.recommendation,
+          notes: row.follow_up_notes || row.summary,
+          scoring_summary: row.ratings,
+          job_title: row.job_title,
+          event_start_at: row.created_at,
+          job_id: row.job_id,
+        });
+        return toIngestChunks("candidate", row.candidate_id as string, adapterChunks);
+      });
+    }
+
+    // ── New sources ────────────────────────────────────────────
+
+    if (tables.includes("airtable_candidates")) {
+      await processTable("airtable_candidates", (row) => {
+        const name = (row.full_name || row.first_name || "") as string;
+        if (!name.trim()) return [];
+        const lines = [
+          name.trim(),
+          row.experience ? `Expérience: ${row.experience}` : null,
+          row.education_level ? `Formation: ${row.education_level}` : null,
+          row.skills && (row.skills as string[]).length > 0 ? `Compétences: ${(row.skills as string[]).join(", ")}` : null,
+          row.status ? `Statut: ${row.status}` : null,
+        ].filter(Boolean).join("\n");
+        return [{
+          entity_type: "candidate", entity_id: row.airtable_id as string, chunk_type: "profile",
+          content: lines, source_table: "airtable_candidates", source_id: row.airtable_id as string,
+          metadata: { name, source_base: row.source_base, date: row.synced_at },
+        }];
+      });
+    }
+
+    if (tables.includes("airtable_notes")) {
+      await processTable("airtable_notes", (row) => {
+        if (!row.candidate_airtable_id || (!row.detail && !row.title)) return [];
+        const adapterChunks = adaptAirtableHistory({
+          notes: [{ title: row.title, detail: row.detail, airtable_id: row.airtable_id, note_date: row.note_date, author: row.author, note_type: row.note_type }],
+        });
+        return toIngestChunks("candidate", row.candidate_airtable_id as string, adapterChunks);
+      });
+    }
+
+    if (tables.includes("airtable_shortlists")) {
+      await processTable("airtable_shortlists", (row) => {
+        if (!row.candidate_airtable_id) return [];
+        const adapterChunks = adaptAirtableHistory({
+          shortlists: [{ job_title: row.job_airtable_id, company_name: row.company_airtable_id, date_added: row.date_added, status: row.status }],
+        });
+        return toIngestChunks("candidate", row.candidate_airtable_id as string, adapterChunks);
+      });
+    }
+
+    if (tables.includes("sequence_step_executions")) {
+      // Group by enrollment_id, process sent/replied steps
+      const execStat = { processed: 0, ingested: 0, skipped: 0, errors: 0 };
+      // Get distinct enrollment_ids
+      const { data: enrollments } = await svc
+        .from("sequence_enrollments")
+        .select("id, profile_id, organization_id")
+        .eq("organization_id", organizationId)
+        .range(startOffset, startOffset + maxRows - 1);
+
+      if (enrollments) {
+        for (const enrollment of enrollments) {
+          const { data: executions } = await svc
+            .from("sequence_step_executions")
+            .select("*, step:step_id(action_type)")
+            .eq("enrollment_id", enrollment.id)
+            .in("status", ["sent", "replied"])
+            .order("step_order", { ascending: true })
+            .limit(20);
+
+          if (!executions?.length) continue;
+
+          const adapterChunks = adaptSequenceHistory(executions);
+          const ingestChunks = toIngestChunks("candidate", enrollment.profile_id, adapterChunks);
+
+          if (ingestChunks.length > 0) {
+            try {
+              const result = await ingestBatchDirect(svc, openaiKey, organizationId, ingestChunks);
+              execStat.ingested += result.ingested;
+              execStat.skipped += result.skipped;
+              execStat.errors += result.errors;
+            } catch (e) {
+              console.error("Batch error on sequence_step_executions:", e instanceof Error ? e.message : String(e));
+              execStat.errors += ingestChunks.length;
+            }
+          }
+          execStat.processed++;
+        }
+      }
+      stats["sequence_step_executions"] = execStat;
+    }
+
+    if (tables.includes("aircall_calls")) {
+      await processTable("aircall_calls", (row) => {
+        const notes = row.notes as string | undefined;
+        const recording = row.recording_url as string | undefined;
+        if (!notes && !recording) return [];
+        // Use matched candidate ID or fallback to aircall_id
+        const entityId = (row.matched_airtable_candidate_id || row.matched_linkedin_profile_id || `aircall_${row.aircall_id}`) as string;
+        const adapterChunks = adaptCallData(
+          { started_at: row.started_at, duration: row.duration, direction: row.direction },
+          notes || undefined,
+          undefined, // no report for raw aircall calls
+        );
+        return toIngestChunks("candidate", entityId, adapterChunks);
       });
     }
 

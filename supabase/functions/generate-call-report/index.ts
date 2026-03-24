@@ -141,6 +141,37 @@ Retourne UNIQUEMENT ce JSON :
           duration_seconds: call_duration_seconds,
         })
         .eq("id", session_id);
+
+      // ── Fire-and-forget RAG ingestion (call report) ──
+      if (report && session_id) {
+        // Get session details to find candidate and org
+        const { data: session } = await supabase
+          .from("call_coaching_sessions")
+          .select("candidate_id, organization_id")
+          .eq("id", session_id)
+          .maybeSingle();
+
+        if (session?.candidate_id && session?.organization_id) {
+          const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+          const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+          fetch(`${supabaseUrl}/functions/v1/ingest-context`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${serviceKey}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              organization_id: session.organization_id,
+              entity_type: 'candidate',
+              entity_id: session.candidate_id,
+              chunks: [{
+                chunk_type: 'evaluation',
+                content: `Rapport d'appel: ${report.summary || ''}\nRecommandation: ${report.recommendation || ''} — ${report.recommendation_reason || ''}`,
+                source_table: 'call_coaching_sessions',
+                source_id: session_id,
+                metadata: { candidate_name, job_title, recommendation: report.recommendation, date: new Date().toISOString() },
+              }],
+            }),
+          }).catch(err => console.warn('[generate-call-report] RAG ingest failed (non-blocking):', err));
+        }
+      }
     }
 
     return new Response(JSON.stringify(report), {

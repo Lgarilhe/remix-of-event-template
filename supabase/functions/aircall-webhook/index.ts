@@ -145,6 +145,42 @@ Deno.serve(async (req) => {
 
     if (error) throw error;
 
+    // ── Fire-and-forget RAG ingestion (call notes) ──
+    if (notes && matchedAirtableId) {
+      const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+      if (supabaseUrl && serviceKey) {
+        // Find org for this candidate
+        const { data: orgData } = await supabase
+          .from('airtable_candidates')
+          .select('organization_id')
+          .eq('airtable_id', matchedAirtableId)
+          .maybeSingle();
+
+        if (orgData?.organization_id) {
+          fetch(`${supabaseUrl}/functions/v1/ingest-context`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${serviceKey}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              organization_id: orgData.organization_id,
+              entity_type: 'candidate',
+              entity_id: matchedAirtableId,
+              chunks: [{
+                chunk_type: 'call_transcript',
+                content: `Notes d'appel Aircall:\n${notes}`,
+                source_table: 'aircall_calls',
+                source_id: String(callData.id),
+                metadata: {
+                  date: row.started_at || new Date().toISOString(),
+                  duration: callData.duration || 0,
+                  direction: callData.direction || '',
+                },
+              }],
+            }),
+          }).catch(err => console.warn('[aircall-webhook] RAG ingest failed (non-blocking):', err));
+        }
+      }
+    }
+
     return new Response(JSON.stringify({ ok: true, aircall_id: callData.id, matched: !!matchedAirtableId }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });

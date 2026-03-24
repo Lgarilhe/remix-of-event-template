@@ -209,6 +209,34 @@ Génère la scorecard d'évaluation sur mesure.`;
       }
     })();
 
+    // ── Fire-and-forget RAG ingestion (scorecard) ──
+    const supabaseUrlRag = Deno.env.get('SUPABASE_URL');
+    const serviceKeyRag = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+    if (supabaseUrlRag && serviceKeyRag && candidateProfile?.name) {
+      // Resolve org from user profile
+      const { data: userProfile } = await svc.from('profiles').select('active_organization_id').eq('user_id', userId).maybeSingle();
+      const orgId = userProfile?.active_organization_id;
+      const candidateId = candidateProfile.linkedin_id || candidateProfile.provider_id || candidateProfile.name;
+      if (orgId && candidateId) {
+        const criteriaLabels = (parsed.criteria || []).map((c: any) => c.label).join(', ');
+        fetch(`${supabaseUrlRag}/functions/v1/ingest-context`, {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${serviceKeyRag}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            organization_id: orgId,
+            entity_type: 'candidate',
+            entity_id: candidateId,
+            chunks: [{
+              chunk_type: 'evaluation',
+              content: `Scorecard générée pour ${candidateProfile.name} — ${jobContext.title || 'poste'}. Critères: ${criteriaLabels}`,
+              source_table: 'generate_scorecard',
+              metadata: { job_title: jobContext.title, criteria_count: parsed.criteria?.length, date: new Date().toISOString() },
+            }],
+          }),
+        }).catch(err => console.warn('[generate-scorecard] RAG ingest failed (non-blocking):', err));
+      }
+    }
+
     return new Response(JSON.stringify({ success: true, criteria: parsed.criteria }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

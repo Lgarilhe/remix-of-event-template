@@ -588,4 +588,31 @@ async function handleNewMessage(supabase: SupabaseClient, payload: WebhookPayloa
       console.error('[unipile-webhook] Auto-analyze trigger failed:', err);
     });
   }
+
+  // ── Fire-and-forget RAG ingestion (conversation message) ──
+  if (senderId && chatId) {
+    const supabaseUrl = Deno.env.get('SUPABASE_URL');
+    const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+    const orgId = linkedMembers?.[0]?.organization_id;
+    if (supabaseUrl && serviceKey && orgId) {
+      const senderName = payload.sender?.attendee_name
+        || (data?.message as any)?.sender?.name
+        || senderId;
+      fetch(`${supabaseUrl}/functions/v1/ingest-context`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${serviceKey}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          organization_id: orgId,
+          entity_type: 'candidate',
+          entity_id: senderId,
+          chunks: [{
+            chunk_type: 'conversation',
+            content: `Message reçu de ${senderName} (chat ${chatId})`,
+            source_table: 'unipile_conversations',
+            metadata: { chat_id: chatId, account_id: account_id, date: new Date().toISOString() },
+          }],
+        }),
+      }).catch(err => console.warn('[unipile-webhook] RAG ingest failed (non-blocking):', err));
+    }
+  }
 }
