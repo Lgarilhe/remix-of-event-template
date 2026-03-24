@@ -732,6 +732,21 @@ Deno.serve(async (req) => {
       }
     }
 
+    // If careers_url is provided directly, pre-set it and extract domain
+    if (careers_url) {
+      result.careersUrl = careers_url;
+      const careersDomain = normalizeDomain(careers_url);
+      if (careersDomain && !result.domain) {
+        // Only set domain from careers_url if it's not an ATS domain
+        const isAts = ATS_HOST_HINTS.some((hint) => careersDomain.includes(hint));
+        if (!isAts) {
+          result.domain = careersDomain;
+          result.websiteUrl = `https://${careersDomain}`;
+        }
+      }
+      console.log(`[enrich] Direct careers URL provided: ${careers_url} (source: ${detectUrlSourceType(careers_url)})`);
+    }
+
     // ═══════════════════════════════════════════════════════
     // PHASE 1 — Apollo org + domain resolution
     // ═══════════════════════════════════════════════════════
