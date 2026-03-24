@@ -381,14 +381,30 @@ serve(async (req) => {
       return parts.join(" — ");
     });
 
-    const experienceDetails = employmentHistory.slice(0, 8).map((e: any) => ({
-      title: e.title || null,
-      company: e.organization_name || e.company_name || null,
-      location: e.location || null,
-      startDate: e.start_date || null,
-      endDate: e.end_date || null,
-      current: e.current || (!e.end_date),
-    }));
+    const experienceDetails = employmentHistory.slice(0, 8).map((e: any) => {
+      const orgName = e.organization_name || e.company_name || null;
+      // Try Apollo's logo first, then derive from website domain via Clearbit
+      let logoUrl = e.organization_logo_url || e.logo_url || null;
+      if (!logoUrl && e.organization_website_url) {
+        try {
+          const domain = new URL(e.organization_website_url.startsWith('http') ? e.organization_website_url : `https://${e.organization_website_url}`).hostname;
+          logoUrl = `https://logo.clearbit.com/${domain}`;
+        } catch { /* ignore */ }
+      }
+      if (!logoUrl && e.organization_id) {
+        // Apollo org profile photo fallback
+        logoUrl = e.organization_profile_photo || null;
+      }
+      return {
+        title: e.title || null,
+        company: orgName,
+        location: e.location || null,
+        startDate: e.start_date || null,
+        endDate: e.end_date || null,
+        current: e.current || (!e.end_date),
+        logoUrl,
+      };
+    });
 
     const education = educationHistory.slice(0, 3).map((e: any) =>
       [e.school_name || e.school, e.degree, e.field_of_study].filter(Boolean).join(" — ")

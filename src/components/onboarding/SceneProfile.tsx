@@ -43,6 +43,7 @@ export interface ExperienceClassification {
   company: string;
   title: string;
   type: ExperienceType;
+  logoUrl?: string | null;
 }
 
 export interface ProfileFormState {
@@ -130,6 +131,7 @@ export const SceneProfile: React.FC<Props> = ({ onNext, onBack, orgType, savedSt
           company: exp.company || '',
           title: exp.title || '',
           type: null as ExperienceType,
+          logoUrl: exp.logoUrl || null,
         }));
         setExpClassifications(classifications);
         setProfileStep('classify');
@@ -275,7 +277,15 @@ export const SceneProfile: React.FC<Props> = ({ onNext, onBack, orgType, savedSt
             if (!label) return null;
             return (
               <div key={i} className="flex items-center gap-3 px-3 py-2.5">
-                <div className="w-7 h-7 shrink-0 border-2 border-foreground/10 flex items-center justify-center text-[10px] font-bold text-foreground/60 bg-muted"
+                {exp.logoUrl ? (
+                  <img
+                    src={exp.logoUrl}
+                    alt={exp.company}
+                    className="w-7 h-7 shrink-0 border-2 border-foreground/10 object-contain bg-white p-0.5"
+                    onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; (e.target as HTMLImageElement).nextElementSibling?.classList.remove('hidden'); }}
+                  />
+                ) : null}
+                <div className={`w-7 h-7 shrink-0 border-2 border-foreground/10 flex items-center justify-center text-[10px] font-bold text-foreground/60 bg-muted ${exp.logoUrl ? 'hidden' : ''}`}
                   style={{ background: `hsl(var(--skalr-purple) / ${0.08 + (i % 3) * 0.04})` }}>
                   {exp.company?.charAt(0)?.toUpperCase() || '?'}
                 </div>
