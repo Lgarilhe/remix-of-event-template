@@ -134,21 +134,27 @@ export const SceneOrgDetails: React.FC<Props> = ({ orgType, onSubmit, onBack }) 
           </div>
         )}
 
-        {/* Annual hires */}
-        <div className="space-y-1.5">
+        {/* Specializations */}
+        <div className="space-y-2">
           <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-            Combien de recrutements par an ?
+            Vos spécialisations
           </label>
-          <Select value={annualHires} onValueChange={setAnnualHires}>
-            <SelectTrigger className="border-2 border-foreground/20 h-10 text-sm">
-              <SelectValue placeholder="Sélectionnez" />
-            </SelectTrigger>
-            <SelectContent>
-              {ANNUAL_HIRES.map(s => (
-                <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <div className="flex flex-wrap gap-2">
+            {SPECIALIZATIONS.map(s => (
+              <Badge
+                key={s.value}
+                variant={specializations.includes(s.value) ? 'default' : 'outline'}
+                className={`cursor-pointer text-xs px-3 py-1.5 transition-all ${
+                  specializations.includes(s.value)
+                    ? 'bg-foreground text-background border-foreground'
+                    : 'border-foreground/20 hover:border-foreground/40'
+                }`}
+                onClick={() => toggleSpec(s.value)}
+              >
+                {s.label}
+              </Badge>
+            ))}
+          </div>
         </div>
 
         {/* Discovery source */}
