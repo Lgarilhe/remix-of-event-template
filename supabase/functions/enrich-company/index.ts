@@ -1321,8 +1321,8 @@ Deno.serve(async (req) => {
       }
     })());
 
-    // ── Task E: Apollo Organization Enrichment ──
-    if (APOLLO_API_KEY && result.domain) {
+    // ── Task E: Apollo Organization Enrichment (skip in jobs_only mode) ──
+    if (APOLLO_API_KEY && result.domain && !jobsOnly) {
       parallelTasks.push((async () => {
         try {
           console.log('[enrich] Apollo org enrichment for domain:', result.domain);
