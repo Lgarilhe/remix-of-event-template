@@ -13,6 +13,7 @@ export interface OrgDetailsData {
   specializations: string[];
   discoverySource: string;
   freelanceMode?: string;
+  tjm?: string;
 }
 
 interface Props {
