@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { ArrowLeft, ArrowRight, Building2, Users, UserCircle } from 'lucide-react';
+import { ArrowRight, Building2, Users, UserCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 type OrgType = 'enterprise' | 'agency' | 'freelance';
@@ -31,7 +31,7 @@ const ORG_TYPE_OPTIONS: { value: OrgType; icon: React.ElementType; title: string
   },
 ];
 
-export const SceneOrgType: React.FC<Props> = ({ onSelect, onBack }) => {
+export const SceneOrgType: React.FC<Props> = ({ onSelect }) => {
   const [selected, setSelected] = useState<OrgType | null>(null);
 
   return (
@@ -42,7 +42,7 @@ export const SceneOrgType: React.FC<Props> = ({ onSelect, onBack }) => {
           className="skalr-gradient-text text-[11px] uppercase tracking-[0.2em] font-semibold"
           style={{ fontFamily: "'Space Mono', monospace" }}
         >
-          05 — Votre activité
+          01 — Votre activité
         </span>
         <h2 className="font-editorial italic text-3xl md:text-4xl">
           Comment recrutez-vous ?
@@ -106,16 +106,13 @@ export const SceneOrgType: React.FC<Props> = ({ onSelect, onBack }) => {
         })}
       </div>
 
-      {/* Navigation */}
+      {/* Navigation — no back button since this is step 1 */}
       <motion.div
-        className="flex items-center justify-between pt-2"
+        className="flex items-center justify-end pt-2"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ delay: 0.5 }}
       >
-        <Button variant="outline" onClick={onBack} className="gap-2 border-2 border-foreground/20 text-sm">
-          <ArrowLeft className="w-4 h-4" /> Retour
-        </Button>
         <Button
           onClick={() => selected && onSelect(selected)}
           disabled={!selected}
