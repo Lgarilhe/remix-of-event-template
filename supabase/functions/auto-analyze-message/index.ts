@@ -288,8 +288,11 @@ Deno.serve(async (req) => {
       }
     }
 
-    const { chat_id, account_id, sender_id } = await req.json();
+    const { chat_id, account_id, sender_id, organization_id } = await req.json();
     
+    // Resolve org-specific credentials (Unipile + Notion)
+    await resolveOrgCredentials(organization_id);
+
     if (!chat_id || !account_id) {
       throw new Error('chat_id and account_id are required');
     }

@@ -396,13 +396,22 @@ Deno.serve(async (req) => {
       throw new Error("Profile and job data are required");
     }
 
-    // Fetch org_id for RAG context
+    // Fetch org_id for RAG context + credential resolution
     let orgId: string | null = null;
     try {
       const { data: profileRow } = await svc.from('profiles').select('active_organization_id').eq('user_id', userId).maybeSingle();
       orgId = profileRow?.active_organization_id || null;
     } catch (e) {
       console.warn('[generate-outreach-message] Could not fetch org_id:', e);
+    }
+
+    // Resolve Unipile credentials from org_integrations with env fallback
+    let resolvedUnipile: { dsn: string; apiKey: string } | null = null;
+    try {
+      const { resolveUnipileCredentials } = await import("../_shared/resolve-org-credentials.ts");
+      resolvedUnipile = await resolveUnipileCredentials(orgId, svc);
+    } catch (e) {
+      console.warn('[generate-outreach-message] Org Unipile resolution failed:', e);
     }
 
     // Build RAG query text from job context + candidate name for better matching
@@ -412,7 +421,7 @@ Deno.serve(async (req) => {
 
     // Fetch posts in parallel with RAG context (non-blocking)
     const postsPromise = (accountId && profileId)
-      ? fetchRecentPosts(accountId, profileId)
+      ? fetchRecentPosts(accountId, profileId, 5, 90, resolvedUnipile)
       : Promise.resolve([]);
 
     const ragPromise = (orgId && profileId)
