@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check";
+import { adaptLinkedInProfile, type Chunk } from "../_shared/rag-adapters.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
