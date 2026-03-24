@@ -64,6 +64,7 @@ export const SceneProfile: React.FC<Props> = ({ onNext, onBack, orgType, savedSt
   const isFreelance = orgType === 'freelance';
 
   useEffect(() => {
+    if (savedState) return; // Don't overwrite restored state
     supabase.auth.getUser().then(({ data: { user } }) => {
       if (user) {
         const meta = user.user_metadata;
@@ -71,7 +72,18 @@ export const SceneProfile: React.FC<Props> = ({ onNext, onBack, orgType, savedSt
         else if (meta?.name) setDisplayName(meta.name);
       }
     });
-  }, []);
+  }, [savedState]);
+
+  // Sync state back to parent for persistence
+  useEffect(() => {
+    onStateChange?.({
+      displayName,
+      jobTitle,
+      linkedinUrl,
+      selectedSpecs: Array.from(selectedSpecs),
+      scanResult,
+    });
+  }, [displayName, jobTitle, linkedinUrl, selectedSpecs, scanResult, onStateChange]);
 
   const toggleSpec = (spec: string) => {
     setSelectedSpecs((prev) => {
