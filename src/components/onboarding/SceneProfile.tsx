@@ -281,6 +281,7 @@ export const SceneProfile: React.FC<Props> = ({ onNext, onBack, orgType, savedSt
                     { value: 'rpo' as const, label: 'RPO', color: 'var(--skalr-purple)' },
                     { value: 'cabinet' as const, label: 'Cabinet', color: 'var(--skalr-green)' },
                     { value: 'direct' as const, label: 'Direct', color: 'var(--skalr-pink)' },
+                    { value: 'other' as const, label: 'Autre', color: 'var(--foreground)' },
                   ]).map((opt) => (
                     <button
                       key={opt.value}
