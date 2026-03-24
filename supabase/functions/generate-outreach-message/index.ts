@@ -297,7 +297,7 @@ async function fetchRAGContext(
         entity_type: 'candidate',
         entity_id: candidateId,
         query: jobContextText,
-        limit: 15,
+        limit: 8,
       }),
     });
 
@@ -307,7 +307,8 @@ async function fetchRAGContext(
     }
 
     const data = await res.json();
-    return data?.formatted_context || null;
+    const ctx = data?.formatted_context || null;
+    return ctx ? ctx.substring(0, 2000) : null;
   } catch (err) {
     console.warn('[generate-outreach-message] RAG error, falling back to legacy:', err);
     return null;

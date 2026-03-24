@@ -275,7 +275,7 @@ Deno.serve(async (req) => {
         console.error("retrieve_context_multi RPC error:", error);
         throw new Error(`RPC error: ${error.message}`);
       }
-      chunks = data ?? [];
+      chunks = (data ?? []).filter((c: any) => typeof c.similarity === 'number' && c.similarity >= min_similarity);
     } else {
       // Call retrieve_context (single entity)
       const embeddingStr = `[${queryEmbedding.join(",")}]`;
@@ -292,7 +292,7 @@ Deno.serve(async (req) => {
         console.error("retrieve_context RPC error:", error);
         throw new Error(`RPC error: ${error.message}`);
       }
-      chunks = data ?? [];
+      chunks = (data ?? []).filter((c: any) => typeof c.similarity === 'number' && c.similarity >= min_similarity);
     }
 
     // ── 5. Format context for prompt injection ─────────────────
