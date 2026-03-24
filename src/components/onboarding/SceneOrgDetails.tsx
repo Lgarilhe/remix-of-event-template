@@ -170,22 +170,45 @@ export const SceneOrgDetails: React.FC<Props> = ({ orgType, onSubmit, onBack }) 
               <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
                 Fourchette TJM indicative
               </label>
-              <div className="px-2 py-3">
-                <Slider
-                  value={tjm}
-                  onValueChange={setTjm}
-                  min={200}
-                  max={1500}
-                  step={50}
-                  minStepsBetweenThumbs={1}
-                  className="w-full [&_[role=slider]]:h-6 [&_[role=slider]]:w-6 [&_[role=slider]]:border-[3px] [&_[role=slider]]:border-foreground [&_[role=slider]]:shadow-[2px_2px_0px_0px_hsl(var(--brutal-accent))] [&_.relative]:h-3 [&_.relative]:rounded-none [&_.relative]:border-2 [&_.relative]:border-foreground/20 [&_.relative]:bg-muted [&_[data-orientation=horizontal]>.absolute]:bg-foreground"
-                />
+
+              <div className="space-y-3 rounded-md border border-border/60 bg-muted/20 px-3 py-3">
+                <div className="relative h-8">
+                  <div className="absolute inset-x-0 top-1/2 h-1 -translate-y-1/2 rounded-full bg-border" />
+                  <div
+                    className="absolute top-1/2 h-1 -translate-y-1/2 rounded-full bg-foreground"
+                    style={{ left: `${tjmStartPercent}%`, width: `${tjmEndPercent - tjmStartPercent}%` }}
+                  />
+
+                  <input
+                    type="range"
+                    min={TJM_MIN}
+                    max={TJM_MAX}
+                    step={TJM_STEP}
+                    value={tjm[0]}
+                    onChange={handleTjmMinChange}
+                    aria-label="TJM minimum"
+                    className="pointer-events-none absolute inset-0 z-20 h-8 w-full appearance-none bg-transparent [&::-webkit-slider-runnable-track]:h-1 [&::-webkit-slider-runnable-track]:bg-transparent [&::-moz-range-track]:h-1 [&::-moz-range-track]:bg-transparent [&::-webkit-slider-thumb]:pointer-events-auto [&::-webkit-slider-thumb]:relative [&::-webkit-slider-thumb]:mt-[-8px] [&::-webkit-slider-thumb]:h-5 [&::-webkit-slider-thumb]:w-5 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-foreground [&::-webkit-slider-thumb]:bg-background [&::-webkit-slider-thumb]:shadow-[2px_2px_0px_0px_hsl(var(--brutal-accent))] [&::-moz-range-thumb]:pointer-events-auto [&::-moz-range-thumb]:h-5 [&::-moz-range-thumb]:w-5 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-2 [&::-moz-range-thumb]:border-foreground [&::-moz-range-thumb]:bg-background"
+                  />
+
+                  <input
+                    type="range"
+                    min={TJM_MIN}
+                    max={TJM_MAX}
+                    step={TJM_STEP}
+                    value={tjm[1]}
+                    onChange={handleTjmMaxChange}
+                    aria-label="TJM maximum"
+                    className="pointer-events-none absolute inset-0 z-10 h-8 w-full appearance-none bg-transparent [&::-webkit-slider-runnable-track]:h-1 [&::-webkit-slider-runnable-track]:bg-transparent [&::-moz-range-track]:h-1 [&::-moz-range-track]:bg-transparent [&::-webkit-slider-thumb]:pointer-events-auto [&::-webkit-slider-thumb]:relative [&::-webkit-slider-thumb]:mt-[-8px] [&::-webkit-slider-thumb]:h-5 [&::-webkit-slider-thumb]:w-5 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-foreground [&::-webkit-slider-thumb]:bg-background [&::-webkit-slider-thumb]:shadow-[2px_2px_0px_0px_hsl(var(--brutal-accent))] [&::-moz-range-thumb]:pointer-events-auto [&::-moz-range-thumb]:h-5 [&::-moz-range-thumb]:w-5 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-2 [&::-moz-range-thumb]:border-foreground [&::-moz-range-thumb]:bg-background"
+                  />
+                </div>
+
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-muted-foreground/60">{TJM_MIN}€</span>
+                  <span className="font-bold text-foreground text-sm">{tjm[0]}€ — {tjm[1]}€ <span className="text-muted-foreground font-normal text-xs">/ jour</span></span>
+                  <span className="text-muted-foreground/60">{TJM_MAX}€</span>
+                </div>
               </div>
-              <div className="flex items-center justify-between text-xs">
-                <span className="text-muted-foreground/60">200€</span>
-                <span className="font-bold text-foreground text-sm">{tjm[0]}€ — {tjm[1]}€ <span className="text-muted-foreground font-normal text-xs">/ jour</span></span>
-                <span className="text-muted-foreground/60">1 500€</span>
-              </div>
+
               <p className="text-[10px] text-muted-foreground">Facultatif — à titre indicatif uniquement.</p>
             </motion.div>
           )}
