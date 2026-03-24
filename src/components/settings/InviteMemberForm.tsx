@@ -14,11 +14,15 @@ interface InviteMemberFormProps {
 export const InviteMemberForm = ({ onInvite, isLoading }: InviteMemberFormProps) => {
   const [email, setEmail] = useState('');
   const [role, setRole] = useState('member');
-  const { canAddMember, limits } = useQuotaGate();
+  const { canAddMember, limits, isLoading: isQuotaLoading } = useQuotaGate();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email.trim()) return;
+    if (isQuotaLoading) {
+      toast.info('Vérification des limites en cours...');
+      return;
+    }
     if (!canAddMember) {
       toast.error(`Limite de ${limits.max_members} membre${limits.max_members > 1 ? 's' : ''} atteinte. Passez au plan supérieur.`);
       return;
@@ -52,8 +56,8 @@ export const InviteMemberForm = ({ onInvite, isLoading }: InviteMemberFormProps)
           </SelectContent>
         </Select>
       </div>
-      <Button type="submit" size="sm" className="h-9 gap-1.5" disabled={isLoading || !email.trim()}>
-        {isLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <UserPlus className="w-3.5 h-3.5" />}
+      <Button type="submit" size="sm" className="h-9 gap-1.5" disabled={isLoading || isQuotaLoading || !email.trim()}>
+        {isLoading || isQuotaLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <UserPlus className="w-3.5 h-3.5" />}
         Inviter
       </Button>
     </form>

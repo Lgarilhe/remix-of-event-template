@@ -45,9 +45,10 @@ export const useQuotaGate = () => {
   });
 
   const limits = currentPlan?.limits || { max_jobs: 2, max_searches: 50, max_members: 1, ai_credits: 100 };
+  const hasResolvedLimits = Boolean(currentPlan?.limits);
 
-  const canCreateJob = jobCount < limits.max_jobs;
-  const canAddMember = memberCount < limits.max_members;
+  const canCreateJob = !hasResolvedLimits ? true : jobCount < limits.max_jobs;
+  const canAddMember = !hasResolvedLimits ? true : memberCount < limits.max_members;
 
   return {
     isLoading,
