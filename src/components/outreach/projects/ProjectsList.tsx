@@ -243,21 +243,30 @@ export const ProjectsList: React.FC<ProjectsListProps> = ({ onResumeSearch }) =>
           </DropdownMenu>
         </div>
 
-        <button
-          onClick={() => {
-            if (!canCreateJob) {
-              import('sonner').then(({ toast }) => {
-                toast.error(`Limite de ${limits.max_jobs} projets atteinte. Passez au plan supérieur.`);
-              });
-              return;
-            }
-            setShowCreateModal(true);
-          }}
-          className="relative overflow-hidden flex items-center gap-2 h-[34px] px-4 text-xs font-medium uppercase tracking-wider border border-foreground bg-foreground text-background shrink-0 group"
-        >
-          <Plus className="w-3.5 h-3.5 relative z-10" />
-          <span className="relative z-10">Nouveau projet</span>
-        </button>
+        <div className="flex items-center gap-0">
+          <button
+            onClick={() => setShowImportModal(true)}
+            className="relative overflow-hidden flex items-center gap-2 h-[34px] px-4 text-xs font-medium uppercase tracking-wider border border-foreground bg-background text-foreground shrink-0 group"
+          >
+            <span className="relative z-10">📥 Importer</span>
+            <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
+          </button>
+          <button
+            onClick={() => {
+              if (!canCreateJob) {
+                import('sonner').then(({ toast }) => {
+                  toast.error(`Limite de ${limits.max_jobs} projets atteinte. Passez au plan supérieur.`);
+                });
+                return;
+              }
+              setShowCreateModal(true);
+            }}
+            className="relative overflow-hidden flex items-center gap-2 h-[34px] px-4 text-xs font-medium uppercase tracking-wider border border-foreground border-l-0 bg-foreground text-background shrink-0 group"
+          >
+            <Plus className="w-3.5 h-3.5 relative z-10" />
+            <span className="relative z-10">Nouveau projet</span>
+          </button>
+        </div>
       </div>
 
       {/* Count */}
