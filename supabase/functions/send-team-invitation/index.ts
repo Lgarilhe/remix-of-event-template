@@ -14,14 +14,19 @@ Deno.serve(async (req) => {
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) throw new Error("Missing auth");
 
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
-    );
+    const supabaseUrl = Deno.env.get("SUPABASE_URL");
+    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    const anonKey = Deno.env.get("SUPABASE_ANON_KEY");
+
+    if (!supabaseUrl || !serviceRoleKey || !anonKey) {
+      throw new Error("Configuration serveur manquante pour l'envoi d'invitations");
+    }
+
+    const supabase = createClient(supabaseUrl, serviceRoleKey);
 
     const userClient = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_ANON_KEY")!,
+      supabaseUrl,
+      anonKey,
       { global: { headers: { Authorization: authHeader } } }
     );
     const { data: { user }, error: authError } = await userClient.auth.getUser();
@@ -99,8 +104,14 @@ Deno.serve(async (req) => {
       ? `team-invite-resend-${invitationId}-${Date.now()}`
       : `team-invite-${invitationId}`;
 
-    const { error: invokeError } = await userClient.functions.invoke("send-transactional-email", {
-      body: {
+    const emailResponse = await fetch(`${supabaseUrl}/functions/v1/send-transactional-email`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${serviceRoleKey}`,
+        apikey: serviceRoleKey,
+      },
+      body: JSON.stringify({
         templateName: "team-invitation",
         recipientEmail: normalizedEmail,
         idempotencyKey,
@@ -110,10 +121,20 @@ Deno.serve(async (req) => {
           role: normalizedRole,
           inviteUrl,
         },
-      },
+      }),
     });
 
-    const emailError = invokeError ? invokeError.message || "Erreur inconnue lors de l'envoi" : null;
+    let emailError: string | null = null;
+
+    if (!emailResponse.ok) {
+      try {
+        const payload = await emailResponse.clone().json();
+        emailError = payload?.error || payload?.message || `HTTP ${emailResponse.status}`;
+      } catch {
+        const text = await emailResponse.text();
+        emailError = text || `HTTP ${emailResponse.status}`;
+      }
+    }
 
     if (emailError) {
       console.error("Failed to send invitation email:", emailError);
