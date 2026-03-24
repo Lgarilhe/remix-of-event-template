@@ -154,7 +154,7 @@ export const SceneOrgDetails: React.FC<Props> = ({ orgType, onSubmit, onBack }) 
               <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
                 Fourchette TJM indicative
               </label>
-              <div className="px-1">
+              <div className="px-2 py-3">
                 <Slider
                   value={tjm}
                   onValueChange={setTjm}
@@ -162,12 +162,13 @@ export const SceneOrgDetails: React.FC<Props> = ({ orgType, onSubmit, onBack }) 
                   max={1500}
                   step={50}
                   minStepsBetweenThumbs={1}
-                  className="w-full"
+                  className="w-full [&_[role=slider]]:h-6 [&_[role=slider]]:w-6 [&_[role=slider]]:border-[3px] [&_[role=slider]]:border-foreground [&_[role=slider]]:shadow-[2px_2px_0px_0px_hsl(var(--brutal-accent))] [&_.relative]:h-3 [&_.relative]:rounded-none [&_.relative]:border-2 [&_.relative]:border-foreground/20 [&_.relative]:bg-muted [&_[data-orientation=horizontal]>.absolute]:bg-foreground"
                 />
               </div>
-              <div className="flex items-center justify-between rounded-md border border-border/60 bg-muted/30 px-3 py-2 text-xs">
-                <span className="text-muted-foreground">Sélection</span>
-                <span className="font-semibold text-foreground">{tjm[0]}€ — {tjm[1]}€ / jour</span>
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-muted-foreground/60">200€</span>
+                <span className="font-bold text-foreground text-sm">{tjm[0]}€ — {tjm[1]}€ <span className="text-muted-foreground font-normal text-xs">/ jour</span></span>
+                <span className="text-muted-foreground/60">1 500€</span>
               </div>
               <p className="text-[10px] text-muted-foreground">Facultatif — à titre indicatif uniquement.</p>
             </motion.div>
