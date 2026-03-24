@@ -19,9 +19,25 @@ export interface OrganizationMember {
   id: string;
   organization_id: string;
   user_id: string;
-  role: 'owner' | 'admin' | 'member';
-  // Extended roles stored in DB but not in this union
+  role: 'owner' | 'admin' | 'member' | 'collaborator';
   created_at: string;
+}
+
+interface OrganizationInvitation {
+  id: string;
+  email: string;
+  role: string;
+  status: string;
+  created_at: string;
+  expires_at: string;
+  token?: string | null;
+  accepted_at?: string | null;
+}
+
+interface SendInvitationResult {
+  success: boolean;
+  invitation_id?: string | null;
+  invitation_token?: string | null;
 }
 
 export const useOrganization = () => {
@@ -190,6 +206,30 @@ export const useUserOrganizations = () => {
 export const useOrganizationMembers = (orgId: string | null) => {
   const queryClient = useQueryClient();
 
+  useEffect(() => {
+    if (!orgId) return;
+
+    const channel = supabase
+      .channel(`organization-invitations-${orgId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'organization_invitations',
+          filter: `organization_id=eq.${orgId}`,
+        },
+        () => {
+          queryClient.invalidateQueries({ queryKey: ['org-invitations', orgId] });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [orgId, queryClient]);
+
   const { data: members = [], isLoading } = useQuery({
     queryKey: ['org-members', orgId],
     queryFn: async () => {
@@ -215,11 +255,28 @@ export const useOrganizationMembers = (orgId: string | null) => {
         role,
         organization_id: orgId,
       });
-      if (error || !data?.success) throw new Error(data?.error || 'Erreur lors de l\'envoi');
-      return data;
+      const result = (data ?? null) as SendInvitationResult | null;
+      if (error || !result?.success) throw new Error((data as { error?: string } | null)?.error || 'Erreur lors de l\'envoi');
+      return result;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['org-invitations', orgId] });
+    onSuccess: async (data, variables) => {
+      const optimisticInvitation: OrganizationInvitation = {
+        id: data?.invitation_id || crypto.randomUUID(),
+        email: variables.email.toLowerCase(),
+        role: variables.role,
+        status: 'pending',
+        created_at: new Date().toISOString(),
+        expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+        token: data?.invitation_token || data?.invitation_id || null,
+        accepted_at: null,
+      };
+
+      queryClient.setQueryData<OrganizationInvitation[]>(['org-invitations', orgId], (current = []) => {
+        const next = current.filter((invitation) => invitation.id !== optimisticInvitation.id);
+        return [optimisticInvitation, ...next];
+      });
+
+      await queryClient.refetchQueries({ queryKey: ['org-invitations', orgId], type: 'active' });
       toast.success('Invitation envoyée par email');
     },
     onError: (err: Error) => {
@@ -240,7 +297,8 @@ export const useOrganizationMembers = (orgId: string | null) => {
       if (error || !data?.success) throw new Error(data?.error || 'Erreur lors du renvoi');
       return data;
     },
-    onSuccess: () => {
+    onSuccess: async () => {
+      await queryClient.refetchQueries({ queryKey: ['org-invitations', orgId], type: 'active' });
       toast.success('Invitation renvoyée par email');
     },
     onError: (err: Error) => {
@@ -256,8 +314,8 @@ export const useOrganizationMembers = (orgId: string | null) => {
         .eq('id', invitationId);
       if (error) throw error;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['org-invitations', orgId] });
+    onSuccess: async () => {
+      await queryClient.refetchQueries({ queryKey: ['org-invitations', orgId], type: 'active' });
       toast.success('Invitation annulée');
     },
   });
@@ -275,7 +333,7 @@ export const useOrganizationMembers = (orgId: string | null) => {
 
       if (error) throw error;
 
-      return data || [];
+      return (data || []) as OrganizationInvitation[];
     },
     enabled: !!orgId,
   });
