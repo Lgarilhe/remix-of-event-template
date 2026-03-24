@@ -174,14 +174,13 @@ export const SceneOrgDetails: React.FC<Props> = ({ orgType, onSubmit, onBack }) 
               <div className="space-y-3 rounded-md border-2 border-foreground/20 bg-background px-4 py-4">
                 <div className="relative h-10">
                   {/* Track background */}
-                  <div className="absolute inset-x-0 top-1/2 h-2 -translate-y-1/2 rounded-full bg-foreground/10" />
+                  <div className="absolute inset-x-0 top-1/2 h-2 -translate-y-1/2 rounded-full bg-foreground/15" />
                   {/* Active range */}
                   <div
-                    className="absolute top-1/2 h-2 -translate-y-1/2 rounded-full"
+                    className="absolute top-1/2 h-2 -translate-y-1/2 rounded-full bg-foreground"
                     style={{
                       left: `${tjmStartPercent}%`,
                       width: `${tjmEndPercent - tjmStartPercent}%`,
-                      background: 'linear-gradient(90deg, hsl(var(--skalr-purple)), hsl(var(--skalr-pink)))',
                     }}
                   />
 
