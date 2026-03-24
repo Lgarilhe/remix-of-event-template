@@ -743,7 +743,7 @@ export function ProspectSearch({ selectedICP, onSelectICP, onResults, searching,
         <FilterSection label="Funding max ($)" icon={<DollarSign className="w-3 h-3" />}>
           <Input value={fundingRaisedMax} onChange={e => setFundingRaisedMax(e.target.value)} placeholder="50000000" className={inputClasses} />
         </FilterSection>
-        <FilterSection label="CA (Apollo)" icon={<BadgeDollarSign className="w-3 h-3" />}>
+        <FilterSection label="Chiffre d'affaires" icon={<BadgeDollarSign className="w-3 h-3" />}>
           <Select value={revenueRange || 'all'} onValueChange={v => setRevenueRange(v === 'all' ? '' : v)}>
             <SelectTrigger className={selectTriggerClasses}><SelectValue placeholder="Tous" /></SelectTrigger>
             <SelectContent>
