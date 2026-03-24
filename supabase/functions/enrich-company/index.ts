@@ -990,7 +990,9 @@ Deno.serve(async (req) => {
 
     // ── Task B: Careers page detection + extraction ──
     parallelTasks.push((async () => {
-      let careersUrl: string | null = null;
+      // When careers_url is provided directly, skip the discovery phase entirely
+      let careersUrl: string | null = careers_url || null;
+      let scrapingFailed = false;
       const companyDomain = result.domain || normalizeDomain(result.websiteUrl);
 
       if (companyDomain) {
