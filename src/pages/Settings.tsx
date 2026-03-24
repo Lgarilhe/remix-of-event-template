@@ -300,7 +300,9 @@ const Settings = () => {
                     <PendingInvitations
                       invitations={pendingInvitations}
                       onCancel={cancelInvitation}
+                      onResend={async (email, role) => { await resendInvitation({ email, role }); }}
                       canManage={isAdmin}
+                      isResending={isResendingInvitation}
                     />
 
                     {isAdmin && (
