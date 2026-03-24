@@ -216,8 +216,9 @@ export const SceneProfile: React.FC<Props> = ({ onNext, onBack, orgType, savedSt
         {/* LinkedIn URL + Scan */}
         <div className="space-y-2">
           <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-            <Linkedin className="w-3.5 h-3.5" />
+            <img src={linkedinLogo} alt="LinkedIn" className="w-4 h-4 object-contain" />
             Profil LinkedIn
+          </label>
           </label>
           <div className="flex gap-2">
             <Input
