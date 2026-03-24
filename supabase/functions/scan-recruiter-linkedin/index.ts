@@ -27,6 +27,21 @@ function uniqueStrings(values: Array<string | null | undefined>) {
   return Array.from(new Set(values.filter((value): value is string => Boolean(value))));
 }
 
+function humanizeLinkedInSlug(value: string) {
+  const normalized = decodeURIComponent(value || "")
+    .replace(/[-_]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (!normalized) return "Ce recruteur";
+
+  return normalized
+    .split(" ")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
 function normalizeLinkedInInput(linkedinUrl: string) {
   const parsed = new URL(linkedinUrl.trim().startsWith("http") ? linkedinUrl.trim() : `https://${linkedinUrl.trim()}`);
   if (!parsed.hostname.includes("linkedin.com") || !parsed.pathname.startsWith("/in/")) {
@@ -237,11 +252,13 @@ serve(async (req) => {
 
     let cleanUrl = "";
     let expectedSlug = "";
+    let displaySlug = "";
     let urlCandidates: string[] = [];
     try {
       const normalized = normalizeLinkedInInput(linkedinUrl);
       cleanUrl = normalized.cleanUrl;
       expectedSlug = normalized.asciiSlug || slugifyAscii(normalized.decodedSlug || normalized.rawSlug);
+      displaySlug = normalized.decodedSlug || normalized.rawSlug || normalized.asciiSlug;
       urlCandidates = normalized.candidates;
     } catch {
       throw new Error("URL LinkedIn invalide. Format attendu: linkedin.com/in/votre-profil");
@@ -298,7 +315,46 @@ serve(async (req) => {
     }
 
     if (!profile) {
-      throw new Error("Aucun profil exploitable trouvé pour cette URL LinkedIn.");
+      console.warn("[scan-recruiter-linkedin] No Apollo/Unipile profile found, using slug fallback", JSON.stringify({
+        cleanUrl,
+        expectedSlug,
+        displaySlug,
+      }));
+
+      profile = {
+        name: humanizeLinkedInSlug(displaySlug || expectedSlug),
+        first_name: null,
+        last_name: null,
+        headline: "",
+        title: "",
+        bio: "",
+        skills: [],
+        experience: [],
+        employment_history: [],
+        education: [],
+        education_history: [],
+        organization_name: null,
+        organization: {
+          name: null,
+          industries: [],
+          technology_names: [],
+          keywords: [],
+          industry: null,
+          short_description: null,
+          seo_description: null,
+        },
+        city: null,
+        state: null,
+        country: null,
+        location: null,
+        photo_url: null,
+        email: null,
+        phone_numbers: [],
+        recommendations: [],
+        seniority: null,
+        linkedin_url: cleanUrl,
+        __source: "slug_fallback",
+      };
     }
 
     const employmentHistory = Array.isArray(profile.employment_history)
