@@ -28,16 +28,22 @@ Deno.serve(async (req) => {
     const { data: { user }, error: authError } = await userClient.auth.getUser();
     if (authError || !user) throw new Error("Unauthorized");
 
-    const { invitation_id } = await req.json();
-    if (!invitation_id) throw new Error("Missing invitation_id");
+    const { invitation_id, invitation_token } = await req.json();
+    if (!invitation_id && !invitation_token) {
+      throw new Error("Missing invitation_id or invitation_token");
+    }
 
     // Get invitation
-    const { data: invitation, error: invError } = await supabase
+    let invitationQuery = supabase
       .from("organization_invitations")
       .select("*")
-      .eq("id", invitation_id)
-      .eq("status", "pending")
-      .single();
+      .eq("status", "pending");
+
+    invitationQuery = invitation_id
+      ? invitationQuery.eq("id", invitation_id)
+      : invitationQuery.eq("token", invitation_token);
+
+    const { data: invitation, error: invError } = await invitationQuery.single();
 
     if (invError || !invitation) throw new Error("Invitation introuvable ou expirée");
 
@@ -106,7 +112,7 @@ Deno.serve(async (req) => {
         .eq("user_id", user.id);
     }
 
-    return new Response(JSON.stringify({ success: true }), {
+    return new Response(JSON.stringify({ success: true, organization_id: invitation.organization_id }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (error) {
