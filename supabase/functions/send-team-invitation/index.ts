@@ -59,13 +59,14 @@ Deno.serve(async (req) => {
 
     const { data: existingInvitation } = await supabase
       .from("organization_invitations")
-      .select("id, status")
+      .select("id, status, token")
       .eq("organization_id", organization_id)
       .eq("email", normalizedEmail)
       .eq("status", "pending")
       .maybeSingle();
 
     let invitationId = existingInvitation?.id;
+    let invitationToken = existingInvitation?.token;
 
     if (!invitationId) {
       const { data: invitation, error: invError } = await supabase
@@ -76,7 +77,7 @@ Deno.serve(async (req) => {
           role: normalizedRole,
           invited_by: user.id,
         })
-        .select("id")
+        .select("id, token")
         .single();
 
       if (invError) {
@@ -87,25 +88,19 @@ Deno.serve(async (req) => {
       }
 
       invitationId = invitation.id;
+      invitationToken = invitation.token;
     }
 
     const origin = req.headers.get("origin") || "https://id-preview--08a19073-7da4-47fa-92af-b78fed96739f.lovable.app";
-    const inviteUrl = `${origin}/auth`;
+    const inviteUrl = invitationToken
+      ? `${origin}/auth?invitation=${encodeURIComponent(invitationToken)}`
+      : `${origin}/auth`;
     const idempotencyKey = isResend
       ? `team-invite-resend-${invitationId}-${Date.now()}`
       : `team-invite-${invitationId}`;
 
-    const functionUrl = `${Deno.env.get("SUPABASE_URL")!}/functions/v1/send-transactional-email`;
-    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-
-    const emailResponse = await fetch(functionUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${serviceRoleKey}`,
-        apikey: serviceRoleKey,
-      },
-      body: JSON.stringify({
+    const { error: invokeError } = await userClient.functions.invoke("send-transactional-email", {
+      body: {
         templateName: "team-invitation",
         recipientEmail: normalizedEmail,
         idempotencyKey,
@@ -115,21 +110,14 @@ Deno.serve(async (req) => {
           role: normalizedRole,
           inviteUrl,
         },
-      }),
+      },
     });
 
-    let emailError: string | null = null;
-    if (!emailResponse.ok) {
-      try {
-        const payload = await emailResponse.json();
-        emailError = payload?.error || payload?.message || `${emailResponse.status} ${emailResponse.statusText}`;
-      } catch {
-        emailError = `${emailResponse.status} ${emailResponse.statusText}`;
-      }
-    }
+    const emailError = invokeError ? invokeError.message || "Erreur inconnue lors de l'envoi" : null;
 
     if (emailError) {
       console.error("Failed to send invitation email:", emailError);
+      throw new Error(`Impossible d'envoyer l'invitation: ${emailError}`);
     }
 
     return new Response(JSON.stringify({ success: true, invitation_id: invitationId, resent: isResend }), {
