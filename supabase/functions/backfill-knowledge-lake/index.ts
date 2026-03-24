@@ -2,6 +2,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.1?target
 import {
   adaptAirtableHistory,
   adaptCallData,
+  adaptLinkedInProfile,
   adaptQualificationSession,
   adaptSequenceHistory,
   type Chunk,
