@@ -45,18 +45,19 @@ serve(async (req) => {
     const APOLLO_API_KEY = Deno.env.get("APOLLO_API_KEY");
     if (!APOLLO_API_KEY) throw new Error("Configuration Apollo manquante");
 
-    const apolloUrl = new URL("https://api.apollo.io/api/v1/people/match");
-    apolloUrl.searchParams.set("linkedin_url", cleanUrl);
-    apolloUrl.searchParams.set("reveal_personal_emails", "false");
-    apolloUrl.searchParams.set("reveal_phone_number", "false");
-
-    const profileRes = await fetch(apolloUrl.toString(), {
+    const profileRes = await fetch("https://api.apollo.io/api/v1/people/match", {
       method: "POST",
       headers: {
         "X-Api-Key": APOLLO_API_KEY,
+        "Content-Type": "application/json",
         Accept: "application/json",
         "Cache-Control": "no-cache",
       },
+      body: JSON.stringify({
+        linkedin_url: cleanUrl,
+        reveal_personal_emails: false,
+        reveal_phone_number: false,
+      }),
     });
 
     if (!profileRes.ok) {
