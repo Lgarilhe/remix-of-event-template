@@ -37,7 +37,7 @@ export interface ExperienceDetail {
   current: boolean;
 }
 
-export type ExperienceType = 'rpo' | 'cabinet' | 'direct' | null;
+export type ExperienceType = 'rpo' | 'cabinet' | 'direct' | 'other' | null;
 
 export interface ExperienceClassification {
   company: string;
