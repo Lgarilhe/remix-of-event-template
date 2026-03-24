@@ -197,14 +197,12 @@ function mapUnipileProfileToApolloShape(profileData: any, cleanUrl: string) {
       company_name: org?.name || org?.company_name || null,
       title: org?.title || profileData?.headline || profileData?.occupation || null,
       location: locationText || null,
-      organization_logo_url: org?.logo_url || org?.logo || null,
     })),
     employment_history: organizations.map((org: any) => ({
       organization_name: org?.name || org?.company_name || null,
       company_name: org?.name || org?.company_name || null,
       title: org?.title || profileData?.headline || profileData?.occupation || null,
       location: locationText || null,
-      organization_logo_url: org?.logo_url || org?.logo || null,
     })),
     education: [],
     education_history: [],
@@ -386,11 +384,10 @@ serve(async (req) => {
     const experienceDetails = employmentHistory.slice(0, 8).map((e: any) => ({
       title: e.title || null,
       company: e.organization_name || e.company_name || null,
-      logo: e.organization_logo_url || e.logo_url || e.company_logo_url || null,
       location: e.location || null,
       startDate: e.start_date || null,
       endDate: e.end_date || null,
-      current: e.current || false,
+      current: e.current || (!e.end_date),
     }));
 
     const education = educationHistory.slice(0, 3).map((e: any) =>
