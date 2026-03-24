@@ -83,13 +83,14 @@ const Onboarding = () => {
 
   const { createOrganization } = useOrganization();
 
-  const handleOrgTypeSelected = useCallback(async (type: OrgType) => {
+  const handleOrgTypeSelected = useCallback(async (data: OrgTypeData) => {
+    const { orgType: type, teamSize, annualHires, discoverySource } = data;
     setOrgType(type);
+    setOrgExtraData({ teamSize, annualHires, discoverySource });
     markCompleted(0);
     setDirection(1);
 
     if (type === 'freelance') {
-      // Auto-create org for freelancer using their name
       try {
         const { data: { user } } = await supabase.auth.getUser();
         const userName = user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Mon espace';
@@ -101,7 +102,7 @@ const Onboarding = () => {
         if (org?.id) {
           await supabase
             .from('organizations')
-            .update({ org_type: 'freelance' } as any)
+            .update({ org_type: 'freelance', team_size: teamSize, annual_hires: annualHires, discovery_source: discoverySource } as any)
             .eq('id', org.id);
         }
         setOrgCreated(true);
