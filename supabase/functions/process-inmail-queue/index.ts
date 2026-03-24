@@ -242,12 +242,14 @@ Deno.serve(async (req: Request) => {
 
     // Action: process - Process pending items (called by cron or manually)
     if (action === "process") {
+      const user = await validateUser();
       const now = new Date();
       
-      // Get items that are scheduled and ready to send
+      // Get items that are scheduled and ready to send — scoped to the authenticated user
       const { data: pendingItems, error: fetchError } = await supabase
         .from("inmail_queue")
         .select("*")
+        .eq("created_by", user.id)
         .in("status", ["scheduled", "pending"])
         .lte("scheduled_at", now.toISOString())
         .order("scheduled_at", { ascending: true })
@@ -397,27 +399,14 @@ Deno.serve(async (req: Request) => {
 
     // Action: status - Get queue status for current user
     if (action === "status") {
-      // Try to get user, but allow anonymous access for status view
-      let userId: string | null = null;
-      try {
-        const user = await validateUser();
-        userId = user.id;
-      } catch (authErr) {
-        // Allow unauthenticated status check - show recent items
-        console.warn('[process-inmail-queue] Status auth check failed (non-blocking):', authErr);
-      }
+      const user = await validateUser();
 
-      const query = supabase
+      const { data: queueItems, error: fetchError } = await supabase
         .from("inmail_queue")
         .select("*")
+        .eq("created_by", user.id)
         .order("created_at", { ascending: false })
         .limit(100);
-
-      if (userId) {
-        query.eq("created_by", userId);
-      }
-
-      const { data: queueItems, error: fetchError } = await query;
 
       if (fetchError) throw fetchError;
 
