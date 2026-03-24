@@ -2,31 +2,30 @@ import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import linkedinLogo from '@/assets/linkedin-logo.png';
 import { supabase } from '@/integrations/supabase/client';
-import { CandidateCommentsTab } from './CandidateCommentsTab';
 import { ATSCandidate, ATS_STAGES } from '@/hooks/useATSData';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
-import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import { useNotionJobs } from '@/hooks/useNotionJobs';
-
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { useCandidateFullProfile, ScoringRecord } from '@/hooks/useCandidateFullProfile';
+import { useCandidateFullProfile } from '@/hooks/useCandidateFullProfile';
 import { EnrichedProfile } from '@/hooks/useProfileEnrichment';
-import { 
-  X, Mail, Phone, StickyNote, Bell, Send, Plus, User, GitBranch, Target,
-  Loader2, Trash2, Calendar, Brain, CheckCircle2, AlertTriangle, MapPin,
-  Briefcase, Clock, MessageSquare, CalendarPlus, FolderPlus, Activity,
-  FileText, Award, ExternalLink, GraduationCap, Languages, ChevronDown,
-  ChevronUp, Building2, TrendingUp, ClipboardCheck, Shield, Link2, Copy, Zap
+import {
+  X, Mail, User, Target, CheckCircle2, AlertTriangle,
+  MapPin, Briefcase, TrendingUp, Building2, Link2, Zap,
+  Activity, StickyNote
 } from 'lucide-react';
 import { ScorecardTab } from './ScorecardTab';
 import { FraudDetectionTab } from './FraudDetectionTab';
 import { useAgent } from '@/contexts/AgentContext';
-import { format, parseISO, formatDistanceToNow } from 'date-fns';
-import { fr } from 'date-fns/locale';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
-import { EmptyState as EmptyStateUI } from '@/components/ui/EmptyState';
+
+// Sub-components
+import {
+  ProfileTab, ActivityTab, NotesTab, ActionsTab, ScoringCard,
+  BrutalButton, CollapsibleSection, CollapsibleCard,
+  ExperienceItem, EducationItem,
+} from './candidate-detail';
 
 interface CandidateDetailModalProps {
   candidate: ATSCandidate;
@@ -68,14 +67,7 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
   const [notes, setNotes] = useState<Note[]>([]);
   const [reminders, setReminders] = useState<Reminder[]>([]);
   const [loading, setLoading] = useState(false);
-  const [newNote, setNewNote] = useState('');
-  const [addingNote, setAddingNote] = useState(false);
-  const [showNewReminder, setShowNewReminder] = useState(false);
-  const [newReminderTitle, setNewReminderTitle] = useState('');
-  const [newReminderDate, setNewReminderDate] = useState('');
-  const [addingReminder, setAddingReminder] = useState(false);
   const [newTag, setNewTag] = useState('');
-  const [noteMode, setNoteMode] = useState<'team' | 'personal'>('team');
   const { openAgent } = useAgent();
 
   const fullProfile = useCandidateFullProfile(candidate.candidateId, candidate.linkedin);
@@ -129,7 +121,7 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
     linkedinProfileData: profileSnapshot ?? candidate.linkedinProfileData ?? null,
   }), [candidate, profileSnapshot]);
 
-  // Build enriched profile from stored LinkedIn data (no API call needed)
+  // Build enriched profile from stored LinkedIn data
   const enrichedProfile: EnrichedProfile | null = React.useMemo(() => {
     const raw = candidateWithProfileData.linkedinProfileData;
     if (!raw) return null;
@@ -137,7 +129,6 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
     const workExperience = raw.work_experience || [];
     const currentJob = workExperience.find((exp: any) => !exp.end) || workExperience[0];
     
-    // Calculate years of experience from earliest start date
     let yearsOfExperience: number | undefined;
     const allStartYears = workExperience
       .map((exp: any) => exp.start?.year)
@@ -168,16 +159,11 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
         const schoolName = typeof edu.school === 'string'
           ? edu.school
           : edu.school?.name || edu.school_name || edu.school_details?.name || '';
-
         const schoolLogo =
-          edu.school_logo ||
-          edu.logo_url ||
-          edu.logo ||
-          edu.school_details?.logo ||
-          edu.school_details?.logo_url ||
+          edu.school_logo || edu.logo_url || edu.logo ||
+          edu.school_details?.logo || edu.school_details?.logo_url ||
           edu.school_details?.image ||
           (typeof edu.school === 'object' ? edu.school?.logo : undefined);
-
         return {
           school: schoolName,
           logo: schoolLogo || undefined,
@@ -194,7 +180,7 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
 
   const enrichLoading = snapshotLoading && !candidateWithProfileData.linkedinProfileData;
 
-  // Build job details from Notion jobs + sourcing project
+  // Job details
   const [projectNotes, setProjectNotes] = useState<string | null>(null);
   const [projectCalendly, setProjectCalendly] = useState<string | null>(null);
 
@@ -203,35 +189,22 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
     const notionJob = notionJobs?.find(j => j.id === candidate.jobId);
     if (!notionJob) return null;
     return {
-      title: notionJob.title,
-      client: notionJob.client?.name,
-      clientSector: notionJob.client?.sector,
-      clientSize: notionJob.client?.size,
-      description: notionJob.description,
-      requirements: notionJob.requirements,
-      interviewProcess: notionJob.interviewProcess,
-      sourcingCriteria: notionJob.sourcingCriteria,
-      teamInfo: notionJob.teamInfo,
-      location: notionJob.location,
-      remote: notionJob.remote,
-      salaryMin: notionJob.salaryMin,
-      salaryMax: notionJob.salaryMax,
-      contractType: notionJob.contractType,
-      seniority: notionJob.seniority,
-      skills: notionJob.skills,
-      mustHave: notionJob.mustHave,
-      shouldHave: notionJob.shouldHave,
-      niceToHave: notionJob.niceToHave,
-      bodyContent: notionJob.bodyContent,
-      xpMin: notionJob.xpMin,
-      xpMax: notionJob.xpMax,
-      accompagnement: notionJob.accompagnement,
-      transversalCriteria: notionJob.transversalCriteria,
-      entity: notionJob.entity,
-      notes: projectNotes,
+      title: notionJob.title, client: notionJob.client?.name,
+      clientSector: notionJob.client?.sector, location: notionJob.location,
+      remote: notionJob.remote, seniority: notionJob.seniority,
+      contractType: notionJob.contractType, salaryMin: notionJob.salaryMin,
+      salaryMax: notionJob.salaryMax, skills: notionJob.skills,
+      mustHave: notionJob.mustHave, shouldHave: notionJob.shouldHave,
+      niceToHave: notionJob.niceToHave, description: notionJob.description,
+      requirements: notionJob.requirements, interviewProcess: notionJob.interviewProcess,
+      sourcingCriteria: notionJob.sourcingCriteria, teamInfo: notionJob.teamInfo,
+      bodyContent: notionJob.bodyContent, xpMin: notionJob.xpMin, xpMax: notionJob.xpMax,
+      accompagnement: notionJob.accompagnement, transversalCriteria: notionJob.transversalCriteria,
+      entity: notionJob.entity, notes: projectNotes,
     };
   }, [candidate.jobId, notionJobs, projectNotes]);
 
+  // Load data
   useEffect(() => {
     const fetchData = async () => {
       setLoading(true);
@@ -243,7 +216,6 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
         setNotes(notesData || []);
         setReminders(remindersData || []);
 
-        // Fetch project notes
         if (candidate.jobId) {
           const { data: projectData } = await supabase
             .from('sourcing_projects')
@@ -260,22 +232,18 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
     fetchData();
   }, [candidate.candidateId, candidate.jobId]);
 
-  const handleAddNote = async () => {
-    if (!newNote.trim()) return;
-    setAddingNote(true);
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Not authenticated');
-      await supabase.from('candidate_notes').insert({
-        candidate_id: candidate.candidateId, shortlist_id: candidate.notionShortlistId || null,
-        content: newNote.trim(), created_by: user.id,
-      });
-      const { data } = await supabase.from('candidate_notes').select('*').eq('candidate_id', candidate.candidateId).order('created_at', { ascending: false });
-      setNotes(data || []);
-      setNewNote('');
-      toast.success('Note ajoutée');
-      onRefresh();
-    } catch { toast.error("Erreur lors de l'ajout"); } finally { setAddingNote(false); }
+  // Handlers
+  const handleAddNote = async (content: string) => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error('Not authenticated');
+    await supabase.from('candidate_notes').insert({
+      candidate_id: candidate.candidateId, shortlist_id: candidate.notionShortlistId || null,
+      content, created_by: user.id,
+    });
+    const { data } = await supabase.from('candidate_notes').select('*').eq('candidate_id', candidate.candidateId).order('created_at', { ascending: false });
+    setNotes(data || []);
+    toast.success('Note ajoutée');
+    onRefresh();
   };
 
   const handleDeleteNote = async (id: string) => {
@@ -285,26 +253,19 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
     onRefresh();
   };
 
-  const handleAddReminder = async () => {
-    if (!newReminderTitle.trim() || !newReminderDate) return;
-    setAddingReminder(true);
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Not authenticated');
-      await supabase.from('candidate_reminders').insert({
-        candidate_id: candidate.candidateId, candidate_name: candidate.name,
-        shortlist_id: candidate.notionShortlistId || null, job_id: candidate.jobId,
-        job_title: candidate.jobTitle, title: newReminderTitle.trim(),
-        due_at: new Date(newReminderDate).toISOString(), created_by: user.id,
-      });
-      const { data } = await supabase.from('candidate_reminders').select('*').eq('candidate_id', candidate.candidateId).order('due_at', { ascending: true });
-      setReminders(data || []);
-      setNewReminderTitle('');
-      setNewReminderDate('');
-      setShowNewReminder(false);
-      toast.success('Rappel créé');
-      onRefresh();
-    } catch { toast.error('Erreur'); } finally { setAddingReminder(false); }
+  const handleAddReminder = async (title: string, date: string) => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error('Not authenticated');
+    await supabase.from('candidate_reminders').insert({
+      candidate_id: candidate.candidateId, candidate_name: candidate.name,
+      shortlist_id: candidate.notionShortlistId || null, job_id: candidate.jobId,
+      job_title: candidate.jobTitle, title,
+      due_at: new Date(date).toISOString(), created_by: user.id,
+    });
+    const { data } = await supabase.from('candidate_reminders').select('*').eq('candidate_id', candidate.candidateId).order('due_at', { ascending: true });
+    setReminders(data || []);
+    toast.success('Rappel créé');
+    onRefresh();
   };
 
   const handleDeleteReminder = async (id: string) => {
@@ -312,6 +273,34 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
     setReminders(prev => prev.filter(r => r.id !== id));
     toast.success('Rappel supprimé');
     onRefresh();
+  };
+
+  const handleCreatePortalLink = async () => {
+    try {
+      const user = (await supabase.auth.getUser()).data.user;
+      if (!user) return;
+      const { data: tokenData, error: insertError } = await supabase
+        .from('candidate_portal_tokens')
+        .insert({
+          candidate_id: candidate.candidateId,
+          candidate_name: candidate.name,
+          job_id: candidate.jobId,
+          job_title: candidate.jobTitle,
+          pipeline_stage: candidate.stage,
+          created_by: user.id,
+          recruiter_name: user.user_metadata?.full_name || user.email?.split('@')[0] || null,
+          recruiter_email: user.email || null,
+          stage_updated_at: new Date().toISOString(),
+        })
+        .select('token')
+        .single();
+      if (insertError) throw insertError;
+      const url = `${window.location.origin}/portal/${tokenData.token}`;
+      await navigator.clipboard.writeText(url);
+      toast.success('Lien portail copié !');
+    } catch (e: any) {
+      toast.error('Erreur : ' + (e.message || 'impossible de créer le lien'));
+    }
   };
 
   const activeRemindersCount = reminders.filter(r => !r.completed_at).length;
@@ -338,7 +327,6 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
               {(enrichedProfile?.headline || candidate.headline) && (
                 <p className="text-xs sm:text-sm text-muted-foreground mt-0.5 sm:mt-1 truncate">{enrichedProfile?.headline || candidate.headline}</p>
               )}
-              {/* Quick info from enrichment - hidden on mobile */}
               <div className="hidden sm:flex flex-wrap items-center gap-x-3 gap-y-1 mt-1.5 text-[11px] text-muted-foreground">
                 {enrichedProfile?.currentCompany && (
                   <span className="flex items-center gap-1 font-medium text-foreground/80">
@@ -391,33 +379,7 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
                 </BrutalButton>
               )}
               <button
-                onClick={async () => {
-                  try {
-                    const user = (await supabase.auth.getUser()).data.user;
-                    if (!user) return;
-                    const { data: tokenData, error: insertError } = await supabase
-                      .from('candidate_portal_tokens')
-                      .insert({
-                        candidate_id: candidate.candidateId,
-                        candidate_name: candidate.name,
-                        job_id: candidate.jobId,
-                        job_title: candidate.jobTitle,
-                        pipeline_stage: candidate.stage,
-                        created_by: user.id,
-                        recruiter_name: user.user_metadata?.full_name || user.email?.split('@')[0] || null,
-                        recruiter_email: user.email || null,
-                        stage_updated_at: new Date().toISOString(),
-                      })
-                      .select('token')
-                      .single();
-                    if (insertError) throw insertError;
-                    const url = `${window.location.origin}/portal/${tokenData.token}`;
-                    await navigator.clipboard.writeText(url);
-                    toast.success('Lien portail copié !');
-                  } catch (e: any) {
-                    toast.error('Erreur : ' + (e.message || 'impossible de créer le lien'));
-                  }
-                }}
+                onClick={handleCreatePortalLink}
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 ml-2 border-2 border-emerald-600 bg-emerald-600 text-white text-[11px] font-bold uppercase tracking-wider hover:bg-emerald-700 transition-colors"
               >
                 <Link2 className="w-3.5 h-3.5" /> <span className="hidden sm:inline">Portail</span>
@@ -471,9 +433,7 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
                 <button key={tab.key} onClick={() => setActiveTab(tab.key)}
                   className={cn(
                     "relative flex flex-col sm:flex-row items-center gap-0.5 sm:gap-1.5 px-3 sm:px-3 py-2 sm:py-2.5 text-[10px] font-medium uppercase tracking-wider transition-all -mb-px whitespace-nowrap group",
-                    isActive 
-                      ? "text-foreground" 
-                      : "text-muted-foreground/60 hover:text-foreground/80"
+                    isActive ? "text-foreground" : "text-muted-foreground/60 hover:text-foreground/80"
                   )}>
                   <span className={cn(
                     "text-lg sm:text-base leading-none transition-transform duration-150",
@@ -490,7 +450,6 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
                       {count}
                     </span>
                   )}
-                  {/* Active indicator */}
                   <span className={cn(
                     "absolute bottom-0 left-1/2 -translate-x-1/2 h-0.5 bg-foreground transition-all duration-200 rounded-full",
                     isActive ? "w-full" : "w-0 group-hover:w-1/2"
@@ -501,54 +460,18 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
           </div>
         </div>
 
-        {/* Tab content - split or normal */}
+        {/* Tab content */}
         {isSplitMode ? (
           <div className="flex-1 min-h-0 flex flex-col lg:flex-row divide-y lg:divide-y-0 lg:divide-x divide-foreground/15 relative">
-            {/* LEFT: Evaluation content */}
+            {/* LEFT: Evaluation */}
             <div className="flex-1 min-w-0 min-h-0 overflow-y-auto px-4 sm:px-6 pt-4 pb-20 lg:pb-6 space-y-4">
-              {/* Score summary */}
               {candidate.score != null && (
-                <div className="flex items-center gap-4 p-4 border border-foreground/10 bg-foreground/[0.03]">
-                  <div className={cn("h-14 w-14 flex items-center justify-center border-2 text-xl font-black shrink-0",
-                    candidate.score >= 70 ? 'border-emerald-400 bg-emerald-50 text-emerald-700' :
-                    candidate.score >= 40 ? 'border-amber-400 bg-amber-50 text-amber-700' :
-                    'border-destructive/40 bg-destructive/5 text-destructive'
-                  )}>{candidate.score}</div>
-                  <div className="flex-1 min-w-0">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Score global /100</span>
-                    {candidate.recommendation && (
-                      <span className={cn("text-[10px] px-2 py-0.5 border font-medium uppercase tracking-wider mt-1 inline-block",
-                        candidate.recommendation === 'shortlist' ? 'border-emerald-300 text-emerald-700 bg-emerald-50' :
-                        candidate.recommendation === 'skip' ? 'border-destructive/30 text-destructive bg-destructive/5' :
-                        'border-amber-300 text-amber-700 bg-amber-50'
-                      )}>{candidate.recommendation === 'shortlist' ? 'Recommandé' : candidate.recommendation === 'skip' ? 'Non recommandé' : 'À évaluer'}</span>
-                    )}
-                    {candidate.scoringDetails && (
-                      <div className="flex flex-wrap gap-3 mt-2">
-                        {candidate.scoringDetails.matching_skills?.length > 0 && (
-                          <span className="flex items-center gap-1 text-[10px] text-emerald-700 font-medium">
-                            <CheckCircle2 className="w-3 h-3" /> {candidate.scoringDetails.matching_skills.length} matchées
-                          </span>
-                        )}
-                        {candidate.scoringDetails.missing_skills?.length > 0 && (
-                          <span className="flex items-center gap-1 text-[10px] text-amber-700 font-medium">
-                            <AlertTriangle className="w-3 h-3" /> {candidate.scoringDetails.missing_skills.length} manquantes
-                          </span>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                </div>
+                <ScoreSummary candidate={candidate} />
               )}
-
               <ScorecardTab candidate={candidate} enrichedProfile={enrichedProfile} onOpenProfile={() => setMobileProfileOpen(true)} />
-
-              {/* Fraud detection - collapsible */}
               <CollapsibleSection title="🛡️ Vérification du profil" defaultOpen={false}>
                 <FraudDetectionTab candidate={candidateWithProfileData} />
               </CollapsibleSection>
-
-              {/* Scoring history - collapsible */}
               {fullProfile.scoringHistory.length > 0 && (
                 <CollapsibleSection title={`📊 Historique des scorings (${fullProfile.scoringHistory.length})`} defaultOpen={false}>
                   <div className="space-y-3">
@@ -560,7 +483,7 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
               )}
             </div>
 
-            {/* Mobile: floating round pulsing button to open candidate context */}
+            {/* Mobile floating button */}
             <button
               onClick={() => setMobileProfileOpen(true)}
               className="lg:hidden fixed bottom-6 right-4 z-[2600] h-14 w-14 rounded-full flex items-center justify-center bg-foreground text-background shadow-xl animate-pulse"
@@ -570,9 +493,8 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
               <span className="absolute inset-0 rounded-full border-2 border-foreground/40 animate-ping" style={{ animationDuration: '3s' }} />
             </button>
 
-            {/* RIGHT: Compact profile (desktop only) */}
+            {/* RIGHT: Compact profile sidebar (desktop) */}
             <div className="hidden lg:block w-[400px] shrink-0 overflow-y-auto px-4 pt-4 pb-6 space-y-3">
-              {/* ========== CARD 1: Candidat ========== */}
               <CollapsibleCard
                 title={enrichedProfile?.name || candidate.name}
                 subtitle={enrichedProfile?.headline || candidate.headline}
@@ -580,132 +502,13 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
                 variant="dark"
                 defaultOpen={false}
               >
-                <div className="space-y-3">
-                  {/* City + years of experience */}
-                  <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
-                    {enrichedProfile?.location && (
-                      <span className="flex items-center gap-1">
-                        <MapPin className="w-3 h-3" /> {enrichedProfile.location}
-                      </span>
-                    )}
-                    {enrichedProfile?.yearsOfExperience && (
-                      <span className="flex items-center gap-1">
-                        <Briefcase className="w-3 h-3" /> ~{enrichedProfile.yearsOfExperience} ans
-                      </span>
-                    )}
-                  </div>
-
-                  {/* LinkedIn link */}
-                  {candidate.linkedin && (
-                    <a href={candidate.linkedin} target="_blank" rel="noopener noreferrer"
-                      className="flex items-center gap-1.5 text-[10px] text-foreground font-medium uppercase tracking-wider hover:text-blue-600">
-                      <ExternalLink className="w-3 h-3" /> Voir sur LinkedIn
-                    </a>
-                  )}
-
-                  {/* Portal share button */}
-                  <button
-                    onClick={async () => {
-                      try {
-                        const user = (await supabase.auth.getUser()).data.user;
-                        if (!user) return;
-                        const { data: tokenData, error: insertError } = await supabase
-                          .from('candidate_portal_tokens')
-                          .insert({
-                            candidate_id: candidate.candidateId,
-                            candidate_name: candidate.name,
-                            job_id: candidate.jobId,
-                            job_title: candidate.jobTitle,
-                            pipeline_stage: candidate.stage,
-                            created_by: user.id,
-                          })
-                          .select('token')
-                          .single();
-                        if (insertError) throw insertError;
-                        const url = `${window.location.origin}/portal/${tokenData.token}`;
-                        await navigator.clipboard.writeText(url);
-                        toast.success('Lien portail copié dans le presse-papier !');
-                      } catch (e: any) {
-                        toast.error('Erreur : ' + (e.message || 'impossible de créer le lien'));
-                      }
-                    }}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-emerald-600 text-white text-xs font-semibold hover:bg-emerald-700 transition-colors"
-                  >
-                    <Link2 className="w-3.5 h-3.5" /> Portail candidat
-                  </button>
-
-                  {/* Score */}
-                  {candidate.score != null && (
-                    <div className="border border-foreground/15 p-2">
-                      <div className="flex items-center justify-between">
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Score IA</span>
-                        <span className={cn("text-sm font-bold",
-                          candidate.score >= 75 ? "text-emerald-600" :
-                          candidate.score >= 50 ? "text-amber-600" : "text-red-600"
-                        )}>{candidate.score}/100</span>
-                      </div>
-                      {candidate.recommendation && (
-                        <p className="text-[10px] text-muted-foreground mt-1">{candidate.recommendation}</p>
-                      )}
-                    </div>
-                  )}
-
-                  {/* À propos */}
-                  {enrichedProfile?.summary && (
-                    <CollapsibleSection title="À propos" defaultOpen={false}>
-                      <p className="text-[10px] text-muted-foreground leading-relaxed">{enrichedProfile.summary}</p>
-                    </CollapsibleSection>
-                  )}
-
-                  {/* Expériences */}
-                  {enrichedProfile?.experiences && enrichedProfile.experiences.length > 0 && (
-                    <CollapsibleSection title="Expériences" defaultOpen={false}>
-                      <div className="space-y-0 relative">
-                        <div className="absolute left-[5px] top-2 bottom-2 w-px bg-foreground/15" />
-                        {enrichedProfile.experiences.map((exp, i) => (
-                          <ExperienceItem key={i} exp={exp} />
-                        ))}
-                      </div>
-                    </CollapsibleSection>
-                  )}
-
-                  {/* Formation */}
-                  {enrichedProfile?.education && enrichedProfile.education.length > 0 && (
-                    <CollapsibleSection title="Formation" defaultOpen={false}>
-                      <div className="space-y-0 relative">
-                        <div className="absolute left-[5px] top-2 bottom-2 w-px bg-foreground/15" />
-                        {enrichedProfile.education.map((edu, i) => (
-                          <EducationItem key={i} edu={edu} />
-                        ))}
-                      </div>
-                    </CollapsibleSection>
-                  )}
-
-                  {/* Compétences */}
-                  {enrichedProfile?.skills && enrichedProfile.skills.length > 0 && (
-                    <CollapsibleSection title="Compétences" defaultOpen={false}>
-                      <div className="flex flex-wrap gap-1">
-                        {enrichedProfile.skills.map(s => (
-                          <span key={s} className="text-[9px] px-1.5 py-0.5 border border-foreground/20 text-muted-foreground font-medium uppercase tracking-wider">{s}</span>
-                        ))}
-                      </div>
-                    </CollapsibleSection>
-                  )}
-
-                  {/* Langues */}
-                  {enrichedProfile?.languages && enrichedProfile.languages.length > 0 && (
-                    <CollapsibleSection title="Langues" defaultOpen={false}>
-                      <div className="flex flex-wrap gap-1">
-                        {enrichedProfile.languages.map(l => (
-                          <span key={l} className="text-[9px] px-1.5 py-0.5 border border-foreground/20 text-muted-foreground font-medium uppercase tracking-wider">{l}</span>
-                        ))}
-                      </div>
-                    </CollapsibleSection>
-                  )}
-                </div>
+                <CandidateProfileSidebarContent
+                  candidate={candidate}
+                  enrichedProfile={enrichedProfile}
+                  onCreatePortalLink={handleCreatePortalLink}
+                />
               </CollapsibleCard>
 
-              {/* ========== CARD 2: Poste ========== */}
               {(jobDetails || candidate.jobTitle) && (
                 <CollapsibleCard
                   title={jobDetails?.title || candidate.jobTitle || 'Poste'}
@@ -714,431 +517,24 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
                   variant="accent"
                   defaultOpen={false}
                 >
-                  <div className="space-y-2">
-                    {/* Quick job meta */}
-                    <div className="flex flex-wrap items-center gap-2 text-[10px] text-muted-foreground">
-                      {jobDetails?.contractType && (
-                        <span className="px-1.5 py-0.5 border border-foreground/20 font-medium uppercase tracking-wider text-[9px]">{jobDetails.contractType}</span>
-                      )}
-                      {jobDetails?.remote && (
-                        <span className="px-1.5 py-0.5 border border-foreground/20 font-medium uppercase tracking-wider text-[9px]">{jobDetails.remote}</span>
-                      )}
-                      {jobDetails?.seniority && (
-                        <span className="px-1.5 py-0.5 border border-foreground/20 font-medium uppercase tracking-wider text-[9px]">{jobDetails.seniority}</span>
-                      )}
-                      {(jobDetails?.salaryMin || jobDetails?.salaryMax) && (
-                        <span className="px-1.5 py-0.5 border border-foreground/20 font-medium uppercase tracking-wider text-[9px]">
-                          {jobDetails.salaryMin && jobDetails.salaryMax
-                            ? `${jobDetails.salaryMin}k - ${jobDetails.salaryMax}k`
-                            : jobDetails.salaryMin ? `${jobDetails.salaryMin}k+` : `≤${jobDetails.salaryMax}k`}
-                        </span>
-                      )}
-                      {(jobDetails?.xpMin || jobDetails?.xpMax) && (
-                        <span className="text-[9px]">
-                          XP: {jobDetails.xpMin || 0}-{jobDetails.xpMax || '?'} ans
-                        </span>
-                      )}
-                    </div>
-
-                    {/* Skills */}
-                    {jobDetails?.skills && jobDetails.skills.length > 0 && (
-                      <CollapsibleSection title={`Compétences recherchées (${jobDetails.skills.length})`} defaultOpen={false}>
-                        <div className="flex flex-wrap gap-1">
-                          {jobDetails.skills.map(s => (
-                            <span key={s} className="text-[9px] px-1.5 py-0.5 border border-foreground/20 text-muted-foreground font-medium uppercase tracking-wider">{s}</span>
-                          ))}
-                        </div>
-                      </CollapsibleSection>
-                    )}
-
-                    {jobDetails?.description && (
-                      <CollapsibleSection title="Description du poste" defaultOpen={false}>
-                        <p className="text-[10px] text-muted-foreground leading-relaxed whitespace-pre-wrap">{jobDetails.description}</p>
-                      </CollapsibleSection>
-                    )}
-
-                    {jobDetails?.requirements && (
-                      <CollapsibleSection title="Prérequis" defaultOpen={false}>
-                        <p className="text-[10px] text-muted-foreground leading-relaxed whitespace-pre-wrap">{jobDetails.requirements}</p>
-                      </CollapsibleSection>
-                    )}
-
-                    {(jobDetails?.mustHave || jobDetails?.shouldHave || jobDetails?.niceToHave) && (
-                      <CollapsibleSection title="Critères (Must / Should / Nice)" defaultOpen={false}>
-                        <div className="space-y-1.5 text-[10px]">
-                          {jobDetails.mustHave && (
-                            <div><span className="font-bold text-red-600">Must:</span> <span className="text-muted-foreground">{jobDetails.mustHave}</span></div>
-                          )}
-                          {jobDetails.shouldHave && (
-                            <div><span className="font-bold text-amber-600">Should:</span> <span className="text-muted-foreground">{jobDetails.shouldHave}</span></div>
-                          )}
-                          {jobDetails.niceToHave && (
-                            <div><span className="font-bold text-emerald-600">Nice:</span> <span className="text-muted-foreground">{jobDetails.niceToHave}</span></div>
-                          )}
-                        </div>
-                      </CollapsibleSection>
-                    )}
-
-                    {jobDetails?.transversalCriteria && (
-                      <CollapsibleSection title="Critères transverses" defaultOpen={false}>
-                        <div className="space-y-1.5 text-[10px]">
-                          {jobDetails.transversalCriteria.must && (
-                            <div><span className="font-bold text-red-600">Must:</span> <span className="text-muted-foreground">{jobDetails.transversalCriteria.must}</span></div>
-                          )}
-                          {jobDetails.transversalCriteria.should && (
-                            <div><span className="font-bold text-amber-600">Should:</span> <span className="text-muted-foreground">{jobDetails.transversalCriteria.should}</span></div>
-                          )}
-                          {jobDetails.transversalCriteria.niceToHave && (
-                            <div><span className="font-bold text-emerald-600">Nice:</span> <span className="text-muted-foreground">{jobDetails.transversalCriteria.niceToHave}</span></div>
-                          )}
-                          {jobDetails.transversalCriteria.context && (
-                            <div><span className="font-bold">Contexte:</span> <span className="text-muted-foreground">{jobDetails.transversalCriteria.context}</span></div>
-                          )}
-                        </div>
-                      </CollapsibleSection>
-                    )}
-
-                    {jobDetails?.interviewProcess && (
-                      <CollapsibleSection title="Process d'entretien" defaultOpen={false}>
-                        <p className="text-[10px] text-muted-foreground leading-relaxed whitespace-pre-wrap">{jobDetails.interviewProcess}</p>
-                      </CollapsibleSection>
-                    )}
-
-                    {jobDetails?.teamInfo && (
-                      <CollapsibleSection title="Équipe" defaultOpen={false}>
-                        <p className="text-[10px] text-muted-foreground leading-relaxed whitespace-pre-wrap">{jobDetails.teamInfo}</p>
-                      </CollapsibleSection>
-                    )}
-
-                    {jobDetails?.sourcingCriteria && (
-                      <CollapsibleSection title="Critères de sourcing" defaultOpen={false}>
-                        <p className="text-[10px] text-muted-foreground leading-relaxed whitespace-pre-wrap">{jobDetails.sourcingCriteria}</p>
-                      </CollapsibleSection>
-                    )}
-
-                    {jobDetails?.bodyContent && (
-                      <CollapsibleSection title="Contenu Notion" defaultOpen={false}>
-                        <p className="text-[10px] text-muted-foreground leading-relaxed whitespace-pre-wrap">{jobDetails.bodyContent}</p>
-                      </CollapsibleSection>
-                    )}
-
-                    {jobDetails?.notes && (
-                      <CollapsibleSection title="Notes projet" defaultOpen={false}>
-                        <p className="text-[10px] text-muted-foreground leading-relaxed whitespace-pre-wrap">{jobDetails.notes}</p>
-                      </CollapsibleSection>
-                    )}
-
-                    {candidate.scoringDetails && (
-                      <CollapsibleSection title="Détails du matching" defaultOpen={false}>
-                        <div className="space-y-2 text-[10px]">
-                          <p className="text-muted-foreground">{candidate.scoringDetails.summary}</p>
-                          {candidate.scoringDetails.matching_skills?.length > 0 && (
-                            <div>
-                              <p className="font-medium text-emerald-600 mb-0.5">Compétences matchées</p>
-                              <div className="flex flex-wrap gap-1">
-                                {candidate.scoringDetails.matching_skills.map(s => (
-                                  <span key={s} className="text-[9px] px-1.5 py-0.5 border border-emerald-300 bg-emerald-50 text-emerald-700 font-medium">{s}</span>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-                          {candidate.scoringDetails.missing_skills?.length > 0 && (
-                            <div>
-                              <p className="font-medium text-red-600 mb-0.5">Compétences manquantes</p>
-                              <div className="flex flex-wrap gap-1">
-                                {candidate.scoringDetails.missing_skills.map(s => (
-                                  <span key={s} className="text-[9px] px-1.5 py-0.5 border border-red-300 bg-red-50 text-red-700 font-medium">{s}</span>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      </CollapsibleSection>
-                    )}
-                  </div>
+                  <JobDetailsSidebarContent jobDetails={jobDetails} />
                 </CollapsibleCard>
               )}
             </div>
           </div>
         ) : (
-          <div className="flex-1 min-h-0 overflow-y-auto px-6 pt-4 pb-6">
-            {/* ==================== PROFIL TAB ==================== */}
+          <div className="flex-1 min-h-0 overflow-y-auto px-3 sm:px-6 pt-4 pb-6 sm:pb-8">
             {activeTab === 'profile' && (
-              <div className="space-y-4 pr-1">
-                {enrichLoading && (
-                  <div className="flex items-center gap-2 p-3 bg-foreground/[0.03] border border-foreground/10 text-muted-foreground text-[11px]">
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    Chargement du profil LinkedIn complet...
-                  </div>
-                )}
-
-                <Section title="Source">
-                  <div className="flex flex-wrap gap-2">
-                    <BadgeItem icon={
-                      candidate.source === 'local' ? <Target className="w-3 h-3" /> :
-                      candidate.source === 'sequence' ? <GitBranch className="w-3 h-3" /> :
-                      <Send className="w-3 h-3" />
-                    }>
-                      {candidate.source === 'local' ? (candidate.notionShortlistId ? 'Pipeline' : 'Outreach') : 
-                       candidate.source === 'sequence' ? 'Séquence' : 'InMail'}
-                    </BadgeItem>
-                    {candidate.outreachStatus && <BadgeItem>{candidate.outreachStatus}</BadgeItem>}
-                    {candidate.jobTitle && <BadgeItem>{candidate.jobTitle}</BadgeItem>}
-                    {candidate.sequenceName && <BadgeItem icon={<GitBranch className="w-3 h-3" />}>{candidate.sequenceName}</BadgeItem>}
-                  </div>
-                </Section>
-
-                {enrichedProfile?.experiences && enrichedProfile.experiences.length > 0 && (
-                  <Section title="Expériences">
-                    <div className="space-y-3">
-                      {enrichedProfile.experiences.map((exp, i) => (
-                        <div key={i} className="flex gap-3">
-                          {exp.logo ? (
-                            <img src={exp.logo} alt={exp.company} className="w-8 h-8 object-contain shrink-0 border border-foreground/10 bg-background" />
-                          ) : (
-                            <div className="w-8 h-8 shrink-0 border border-foreground/10 bg-foreground/5 flex items-center justify-center">
-                              <Building2 className="w-4 h-4 text-muted-foreground" />
-                            </div>
-                          )}
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-start justify-between gap-2">
-                              <div>
-                                <p className="text-sm font-medium text-foreground">{exp.title}</p>
-                                <p className="text-[11px] text-muted-foreground">{exp.company}</p>
-                              </div>
-                              {exp.isCurrent && (
-                                <span className="text-[9px] px-1.5 py-0.5 border border-emerald-300 text-emerald-700 bg-emerald-50 font-bold uppercase tracking-wider shrink-0">Actuel</span>
-                              )}
-                            </div>
-                            {(exp.startDate || exp.endDate) && (
-                              <p className="text-[10px] text-muted-foreground mt-0.5">
-                                {exp.startDate?.split('-')[0] || '?'} — {exp.endDate ? exp.endDate.split('-')[0] : 'Présent'}
-                              </p>
-                            )}
-                            {exp.description && (
-                              <p className="text-[11px] text-muted-foreground mt-1 line-clamp-3 leading-relaxed">{exp.description}</p>
-                            )}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </Section>
-                )}
-
-                {enrichedProfile?.education && enrichedProfile.education.length > 0 && (
-                  <Section title="Formation">
-                    <div className="space-y-2">
-                      {enrichedProfile.education.map((edu, i) => (
-                        <div key={i} className="flex items-start gap-2">
-                          {edu.logo ? (
-                            <img
-                              src={edu.logo}
-                              alt={edu.school}
-                              className="w-4 h-4 object-contain shrink-0 mt-0.5"
-                              onError={(e) => {
-                                (e.currentTarget as HTMLImageElement).style.display = 'none';
-                              }}
-                            />
-                          ) : (
-                            <GraduationCap className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" />
-                          )}
-                          <div>
-                            <p className="text-sm font-medium text-foreground">{edu.school}</p>
-                            {(edu.degree || edu.field) && (
-                              <p className="text-[11px] text-muted-foreground">
-                                {[edu.degree, edu.field].filter(Boolean).join(' — ')}
-                              </p>
-                            )}
-                            {(edu.startYear || edu.endYear) && (
-                              <p className="text-[10px] text-muted-foreground">{edu.startYear || '?'} — {edu.endYear || '?'}</p>
-                            )}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </Section>
-                )}
-
-                {enrichedProfile?.skills && enrichedProfile.skills.length > 0 && (
-                  <Section title="Compétences">
-                    <div className="flex flex-wrap gap-1.5">
-                      {enrichedProfile.skills.slice(0, 20).map(s => (
-                        <span key={s} className="text-[10px] px-2 py-0.5 border border-foreground/30 text-foreground font-medium uppercase tracking-wider">{s}</span>
-                      ))}
-                    </div>
-                  </Section>
-                )}
-
-                {enrichedProfile?.languages && enrichedProfile.languages.length > 0 && (
-                  <Section title="Langues">
-                    <div className="flex flex-wrap gap-2">
-                      {enrichedProfile.languages.map(l => (
-                        <BadgeItem key={l} icon={<Languages className="w-3 h-3" />}>{l}</BadgeItem>
-                      ))}
-                    </div>
-                  </Section>
-                )}
-
-                {enrichedProfile?.summary && (
-                  <Section title="À propos">
-                    <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-wrap line-clamp-6">{enrichedProfile.summary}</p>
-                  </Section>
-                )}
-
-                {!enrichedProfile && candidate.expertise.length > 0 && (
-                  <Section title="Compétences">
-                    <div className="flex flex-wrap gap-1.5">
-                      {candidate.expertise.map(s => (
-                        <span key={s} className="text-[10px] px-2 py-0.5 border border-foreground/30 text-foreground font-medium uppercase tracking-wider">{s}</span>
-                      ))}
-                    </div>
-                  </Section>
-                )}
-
-                {fullProfile.qualificationSessions.length > 0 && (
-                  <Section title="Qualification">
-                    <div className="space-y-3">
-                      {fullProfile.qualificationSessions.map(qs => (
-                        <div key={qs.id} className="flex items-start gap-3">
-                          <div className={cn("h-8 w-8 flex items-center justify-center border shrink-0 text-[10px] font-bold",
-                            qs.verdict === 'go' ? 'border-emerald-400 bg-emerald-50 text-emerald-700' :
-                            qs.verdict === 'no_go' ? 'border-destructive/40 bg-destructive/5 text-destructive' :
-                            qs.verdict === 'maybe' ? 'border-amber-400 bg-amber-50 text-amber-700' :
-                            'border-foreground/20 bg-foreground/5 text-muted-foreground'
-                          )}>
-                            {qs.verdict === 'go' ? '✓' : qs.verdict === 'no_go' ? '✗' : qs.verdict === 'maybe' ? '?' : '📅'}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2">
-                              <span className="text-sm font-medium text-foreground">
-                                {qs.verdict === 'go' ? 'Go' : qs.verdict === 'no_go' ? 'No-Go' : qs.verdict === 'maybe' ? 'Maybe' : 'Planifié'}
-                              </span>
-                              {qs.jobTitle && <span className="text-[10px] text-muted-foreground">• {qs.jobTitle}</span>}
-                            </div>
-                            {qs.eventStartAt && (
-                              <span className="text-[10px] text-muted-foreground">
-                                {format(parseISO(qs.eventStartAt), 'd MMM yyyy à HH:mm', { locale: fr })}
-                              </span>
-                            )}
-                            {qs.verdictNotes && (
-                              <p className="text-[11px] text-muted-foreground mt-1 line-clamp-2">{qs.verdictNotes}</p>
-                            )}
-                            <a href={`/qualification/${qs.id}`} target="_blank" rel="noopener noreferrer"
-                              className="text-[10px] text-foreground underline underline-offset-2 hover:text-brutal-accent flex items-center gap-1 mt-1">
-                              <ExternalLink className="w-3 h-3" /> Voir la scorecard
-                            </a>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </Section>
-                )}
-
-                {fullProfile.airtableMatch && (
-                  <Section title="Historique CRM">
-                    <div className="space-y-2 text-sm">
-                      {fullProfile.airtableMatch.status && (
-                        <div className="flex items-center justify-between">
-                          <span className="text-muted-foreground">Statut Airtable</span>
-                          <BadgeItem>{fullProfile.airtableMatch.status}</BadgeItem>
-                        </div>
-                      )}
-                      {fullProfile.airtableMatch.experience && (
-                        <div className="flex items-center justify-between">
-                          <span className="text-muted-foreground">Expérience</span>
-                          <span className="text-foreground font-medium">{fullProfile.airtableMatch.experience}</span>
-                        </div>
-                      )}
-                      {fullProfile.airtableShortlists.length > 0 && (
-                        <div className="mt-2 pt-2 border-t border-foreground/10">
-                          <span className="text-[10px] font-bold uppercase tracking-wider text-foreground mb-2 block">
-                            Shortlists précédentes ({fullProfile.airtableShortlists.length})
-                          </span>
-                          <div className="space-y-1.5">
-                            {fullProfile.airtableShortlists.slice(0, 5).map(s => (
-                              <div key={s.id} className="flex items-center justify-between text-[11px]">
-                                <span className="text-foreground">{s.jobTitle || s.companyName || 'Shortlist'}</span>
-                                <div className="flex items-center gap-2">
-                                  {s.status && <BadgeItem>{s.status}</BadgeItem>}
-                                  {s.dateAdded && <span className="text-muted-foreground">{s.dateAdded}</span>}
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </Section>
-                )}
-
-                {(candidate.email || candidate.phone || candidate.linkedin) && (
-                  <Section title="Contact">
-                    <div className="space-y-2 text-sm">
-                      {candidate.email && <ContactLine icon={<Mail className="w-4 h-4" />}>{candidate.email}</ContactLine>}
-                      {candidate.phone && <ContactLine icon={<Phone className="w-4 h-4" />}>{candidate.phone}</ContactLine>}
-                      {candidate.linkedin && (
-                        <ContactLine icon={<img src={linkedinLogo} alt="LinkedIn" className="w-4 h-4 object-contain" />}>
-                          <a href={candidate.linkedin} target="_blank" rel="noopener noreferrer"
-                            className="text-foreground hover:text-brutal-accent underline underline-offset-2">Voir le profil</a>
-                        </ContactLine>
-                      )}
-                    </div>
-                  </Section>
-                )}
-
-                <Section title="Historique">
-                  <div className="space-y-2 text-sm">
-                    <div className="flex items-center justify-between">
-                      <span className="text-muted-foreground">Créé le</span>
-                      <span className="text-foreground font-medium">{format(parseISO(candidate.createdAt), 'd MMMM yyyy', { locale: fr })}</span>
-                    </div>
-                    {candidate.lastActivity && (
-                      <div className="flex items-center justify-between">
-                        <span className="text-muted-foreground">Dernière activité</span>
-                        <span className="text-foreground font-medium">{format(parseISO(candidate.lastActivity), 'd MMMM yyyy', { locale: fr })}</span>
-                      </div>
-                    )}
-                  </div>
-                </Section>
-              </div>
+              <ProfileTab
+                candidate={candidate}
+                enrichedProfile={enrichedProfile}
+                enrichLoading={enrichLoading}
+                fullProfile={fullProfile}
+              />
             )}
-
-            {/* ==================== EVALUATION TAB (non-split fallback) ==================== */}
             {activeTab === 'evaluation' && (
               <div className="space-y-4">
-                {candidate.score != null && (
-                  <div className="flex items-center gap-4 p-4 border border-foreground/10 bg-foreground/[0.03]">
-                    <div className={cn("h-14 w-14 flex items-center justify-center border-2 text-xl font-black shrink-0",
-                      candidate.score >= 70 ? 'border-emerald-400 bg-emerald-50 text-emerald-700' :
-                      candidate.score >= 40 ? 'border-amber-400 bg-amber-50 text-amber-700' :
-                      'border-destructive/40 bg-destructive/5 text-destructive'
-                    )}>{candidate.score}</div>
-                    <div className="flex-1 min-w-0">
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Score global /100</span>
-                      {candidate.recommendation && (
-                        <span className={cn("text-[10px] px-2 py-0.5 border font-medium uppercase tracking-wider mt-1 inline-block",
-                          candidate.recommendation === 'shortlist' ? 'border-emerald-300 text-emerald-700 bg-emerald-50' :
-                          candidate.recommendation === 'skip' ? 'border-destructive/30 text-destructive bg-destructive/5' :
-                          'border-amber-300 text-amber-700 bg-amber-50'
-                        )}>{candidate.recommendation === 'shortlist' ? 'Recommandé' : candidate.recommendation === 'skip' ? 'Non recommandé' : 'À évaluer'}</span>
-                      )}
-                      {candidate.scoringDetails && (
-                        <div className="flex flex-wrap gap-3 mt-2">
-                          {candidate.scoringDetails.matching_skills?.length > 0 && (
-                            <span className="flex items-center gap-1 text-[10px] text-emerald-700 font-medium">
-                              <CheckCircle2 className="w-3 h-3" /> {candidate.scoringDetails.matching_skills.length} matchées
-                            </span>
-                          )}
-                          {candidate.scoringDetails.missing_skills?.length > 0 && (
-                            <span className="flex items-center gap-1 text-[10px] text-amber-700 font-medium">
-                              <AlertTriangle className="w-3 h-3" /> {candidate.scoringDetails.missing_skills.length} manquantes
-                            </span>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
+                {candidate.score != null && <ScoreSummary candidate={candidate} />}
                 <ScorecardTab candidate={candidate} enrichedProfile={enrichedProfile} onOpenProfile={() => setMobileProfileOpen(true)} />
                 <CollapsibleSection title="🛡️ Vérification du profil" defaultOpen={false}>
                   <FraudDetectionTab candidate={candidateWithProfileData} />
@@ -1146,7 +542,7 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
                 {fullProfile.scoringHistory.length > 0 && (
                   <CollapsibleSection title={`📊 Historique des scorings (${fullProfile.scoringHistory.length})`} defaultOpen={false}>
                     <div className="space-y-3">
-                      {fullProfile.loading ? <CenteredLoader /> : fullProfile.scoringHistory.map((sr) => (
+                      {fullProfile.scoringHistory.map((sr) => (
                         <ScoringCard key={sr.id} scoring={sr} />
                       ))}
                     </div>
@@ -1154,866 +550,224 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
                 )}
               </div>
             )}
-
-            {/* ==================== ACTIVITY TAB ==================== */}
             {activeTab === 'activity' && (
-              <div>
-                {fullProfile.loading ? (
-                  <CenteredLoader />
-                ) : fullProfile.timeline.length === 0 ? (
-                  <EmptyStateUI icon={<Activity className="w-7 h-7" />} title="Aucune activité enregistrée" description="" compact />
-                ) : (
-                  <div className="relative pl-6 space-y-4">
-                    <div className="absolute left-[9px] top-2 bottom-2 w-0.5 bg-foreground/15" />
-                    {fullProfile.timeline.map((event, i) => {
-                      const typeConfig = ACTIVITY_TYPE_CONFIG[event.type] || { icon: <Clock className="w-3 h-3" />, color: 'bg-foreground/10 text-foreground' };
-                      return (
-                        <div key={i} className="relative">
-                          <div className={cn("absolute -left-6 top-1 w-5 h-5 flex items-center justify-center", typeConfig.color)}>
-                            {typeConfig.icon}
-                          </div>
-                          <div>
-                            <p className="text-sm font-medium text-foreground">{event.title}</p>
-                            {event.detail && <p className="text-[11px] text-muted-foreground mt-0.5">{event.detail}</p>}
-                            <p className="text-[10px] text-muted-foreground mt-1">
-                              {formatDistanceToNow(parseISO(event.date), { addSuffix: true, locale: fr })}
-                            </p>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
+              <ActivityTab loading={fullProfile.loading} timeline={fullProfile.timeline} />
             )}
-
-            {/* ==================== NOTES TAB (merged comments + notes) ==================== */}
             {activeTab === 'notes' && (
-              <div className="space-y-4">
-                {/* Toggle team / personal */}
-                <div className="flex gap-0">
-                  <button
-                    onClick={() => setNoteMode('team')}
-                    className={cn(
-                      "flex-1 py-2 text-[10px] font-bold uppercase tracking-[0.15em] border border-foreground transition-colors",
-                      noteMode === 'team' ? 'bg-foreground text-background' : 'text-foreground hover:bg-foreground/5'
-                    )}
-                  >
-                    💬 Équipe
-                  </button>
-                  <button
-                    onClick={() => setNoteMode('personal')}
-                    className={cn(
-                      "flex-1 py-2 text-[10px] font-bold uppercase tracking-[0.15em] border border-foreground -ml-px transition-colors",
-                      noteMode === 'personal' ? 'bg-foreground text-background' : 'text-foreground hover:bg-foreground/5'
-                    )}
-                  >
-                    📝 Perso
-                  </button>
-                </div>
-
-                {noteMode === 'team' ? (
-                  <CandidateCommentsTab
-                    candidateId={candidate.candidateId}
-                    candidateName={candidate.name}
-                    jobId={candidate.jobId}
-                  />
-                ) : (
-                  <div className="space-y-4">
-                    <div className="flex gap-0">
-                      <Textarea
-                        value={newNote}
-                        onChange={(e) => setNewNote(e.target.value)}
-                        placeholder="Ajouter une note personnelle..."
-                        className="flex-1 min-h-[60px] rounded-none border-foreground/30 text-sm resize-none"
-                      />
-                      <button onClick={handleAddNote} disabled={addingNote || !newNote.trim()}
-                        className="h-auto px-4 border border-foreground -ml-px bg-foreground text-background text-[10px] font-medium uppercase tracking-wider disabled:opacity-50">
-                        {addingNote ? <Loader2 className="w-3 h-3 animate-spin" /> : <Plus className="w-3 h-3" />}
-                      </button>
-                    </div>
-                    {loading ? (
-                      <CenteredLoader />
-                    ) : notes.length === 0 ? (
-                      <EmptyStateUI icon={<StickyNote className="w-7 h-7" />} title="Aucune note personnelle" description="" compact />
-                    ) : (
-                      <div className="space-y-2">
-                        {notes.map(note => (
-                          <div key={note.id} className="group p-3 border border-foreground/10 bg-foreground/[0.02]">
-                            <div className="flex items-start justify-between gap-2">
-                              <p className="text-sm text-foreground whitespace-pre-wrap flex-1">{note.content}</p>
-                              <button onClick={() => handleDeleteNote(note.id)}
-                                className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive p-1">
-                                <Trash2 className="w-3 h-3" />
-                              </button>
-                            </div>
-                            <p className="text-[10px] text-muted-foreground mt-2">
-                              {formatDistanceToNow(parseISO(note.created_at), { addSuffix: true, locale: fr })}
-                            </p>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
+              <NotesTab
+                candidateId={candidate.candidateId}
+                candidateName={candidate.name}
+                jobId={candidate.jobId}
+                notes={notes}
+                loading={loading}
+                onAddNote={handleAddNote}
+                onDeleteNote={handleDeleteNote}
+              />
             )}
-
-            {/* ==================== ACTIONS TAB ==================== */}
             {activeTab === 'actions' && (
-              <div className="space-y-6">
-                {/* Quick AI actions */}
-                <div>
-                  <h4 className="text-[11px] font-bold uppercase tracking-wider text-foreground mb-3">Actions IA</h4>
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      onClick={() => openAgent()}
-                      className="border border-foreground/10 hover:border-foreground/40 p-3 text-left transition-all duration-150 hover:bg-muted/50 active:scale-[0.97] group"
-                    >
-                      <Brain className="w-4 h-4 text-muted-foreground group-hover:text-brutal-accent transition-colors" />
-                      <p className="text-[10px] font-bold uppercase tracking-wider text-foreground mt-2">Résumé IA</p>
-                      <p className="text-[9px] text-muted-foreground mt-0.5">Générer un résumé du candidat</p>
-                    </button>
-                    <button
-                      onClick={() => openAgent()}
-                      className="border border-foreground/10 hover:border-foreground/40 p-3 text-left transition-all duration-150 hover:bg-muted/50 active:scale-[0.97] group"
-                    >
-                      <FileText className="w-4 h-4 text-muted-foreground group-hover:text-brutal-accent transition-colors" />
-                      <p className="text-[10px] font-bold uppercase tracking-wider text-foreground mt-2">Brief client</p>
-                      <p className="text-[9px] text-muted-foreground mt-0.5">Préparer une présentation</p>
-                    </button>
-                    <button
-                      onClick={() => { window.location.href = '/missions?tab=messages'; }}
-                      className="border border-foreground/10 hover:border-foreground/40 p-3 text-left transition-all duration-150 hover:bg-muted/50 active:scale-[0.97] group"
-                    >
-                      <Send className="w-4 h-4 text-muted-foreground group-hover:text-brutal-accent transition-colors" />
-                      <p className="text-[10px] font-bold uppercase tracking-wider text-foreground mt-2">Envoyer un message</p>
-                      <p className="text-[9px] text-muted-foreground mt-0.5">Ouvrir la conversation</p>
-                    </button>
-                    <button
-                      onClick={() => {
-                        if (candidate.jobId) {
-                          toast.info('Scoring en cours de lancement...');
-                        } else {
-                          toast.error('Aucun poste associé');
-                        }
-                      }}
-                      className="border border-foreground/10 hover:border-foreground/40 p-3 text-left transition-all duration-150 hover:bg-muted/50 active:scale-[0.97] group"
-                    >
-                      <Target className="w-4 h-4 text-muted-foreground group-hover:text-brutal-accent transition-colors" />
-                      <p className="text-[10px] font-bold uppercase tracking-wider text-foreground mt-2">Lancer le scoring</p>
-                      <p className="text-[9px] text-muted-foreground mt-0.5">Scorer pour le poste associé</p>
-                    </button>
-                  </div>
-                </div>
-
-                {/* Reminders section */}
-                <div>
-                  <h4 className="text-[11px] font-bold uppercase tracking-wider text-foreground mb-3">Rappels</h4>
-                  {!showNewReminder ? (
-                    <button onClick={() => setShowNewReminder(true)}
-                      className="w-full h-[38px] flex items-center justify-center gap-2 border border-dashed border-foreground/30 text-foreground text-[11px] font-medium uppercase tracking-wider hover:border-foreground hover:bg-foreground/[0.03] transition-colors">
-                      <Plus className="w-3.5 h-3.5" />
-                      Nouveau rappel
-                    </button>
-                  ) : (
-                    <div className="space-y-2 p-3 border border-foreground/15 bg-foreground/[0.02]">
-                      <Input value={newReminderTitle} onChange={e => setNewReminderTitle(e.target.value)}
-                        placeholder="Titre du rappel" className="rounded-none border-foreground/30 text-sm" />
-                      <Input type="datetime-local" value={newReminderDate} onChange={e => setNewReminderDate(e.target.value)}
-                        className="rounded-none border-foreground/30 text-sm" />
-                      <div className="flex gap-2">
-                        <button onClick={handleAddReminder} disabled={addingReminder || !newReminderTitle.trim() || !newReminderDate}
-                          className="h-[30px] px-4 bg-foreground text-background text-[10px] font-medium uppercase tracking-wider disabled:opacity-50">
-                          {addingReminder ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Créer'}
-                        </button>
-                        <button onClick={() => setShowNewReminder(false)}
-                          className="h-[30px] px-4 border border-foreground/30 text-foreground text-[10px] font-medium uppercase tracking-wider">
-                          Annuler
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                  {loading ? (
-                    <CenteredLoader />
-                  ) : reminders.length === 0 ? (
-                    <EmptyStateUI icon={<Bell className="w-7 h-7" />} title="Aucun rappel" description="" compact />
-                  ) : (
-                    <div className="space-y-2 mt-3">
-                      {reminders.map(reminder => {
-                        const isPast = new Date(reminder.due_at) < new Date();
-                        const isDone = !!reminder.completed_at;
-                        return (
-                          <div key={reminder.id} className={cn(
-                            "group p-3 border",
-                            isDone ? 'border-foreground/10 bg-foreground/[0.02] opacity-60' :
-                            isPast ? 'border-destructive/30 bg-destructive/5' :
-                            'border-foreground/10 bg-foreground/[0.02]'
-                          )}>
-                            <div className="flex items-start justify-between gap-2">
-                              <div className="flex-1">
-                                <p className={cn("text-sm font-medium", isDone && 'line-through text-muted-foreground')}>{reminder.title}</p>
-                                <p className="text-[10px] text-muted-foreground mt-1 flex items-center gap-1">
-                                  <Calendar className="w-3 h-3" />
-                                  {format(parseISO(reminder.due_at), 'd MMM yyyy à HH:mm', { locale: fr })}
-                                  {isPast && !isDone && <span className="text-destructive font-bold ml-1">En retard</span>}
-                                </p>
-                              </div>
-                              <button onClick={() => handleDeleteReminder(reminder.id)}
-                                className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive p-1">
-                                <Trash2 className="w-3 h-3" />
-                              </button>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              </div>
+              <ActionsTab
+                reminders={reminders}
+                onAddReminder={handleAddReminder}
+                onDeleteReminder={handleDeleteReminder}
+                onOpenAgent={openAgent}
+                candidateLinkedin={candidate.linkedin}
+              />
             )}
           </div>
         )}
-
-
-        {/* Mobile profile panel — normal flex child at bottom of DialogContent */}
-        {isSplitMode && mobileProfileOpen && (
-          <div className="h-[45dvh] shrink-0 border-t-2 border-foreground bg-background flex flex-col lg:hidden">
-            <div className="px-4 py-3 border-b border-foreground/15 flex items-center justify-between shrink-0">
-              <div className="flex items-center gap-2">
-                <User className="w-4 h-4" />
-                <span className="text-[11px] font-bold uppercase tracking-wider">Profil & Poste</span>
-              </div>
-              <button 
-                onClick={() => setMobileProfileOpen(false)}
-                className="h-7 w-7 flex items-center justify-center hover:bg-foreground/10"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-            <div className="flex-1 overflow-y-auto px-4 pt-3 pb-6 space-y-3">
-              <CollapsibleCard
-                title={enrichedProfile?.name || candidate.name}
-                subtitle={enrichedProfile?.headline || candidate.headline}
-                icon={<User className="w-3.5 h-3.5" />}
-                variant="dark"
-                defaultOpen={true}
-              >
-                <MobileProfileContent candidate={candidate} enrichedProfile={enrichedProfile} />
-              </CollapsibleCard>
-              {(jobDetails || candidate.jobTitle) && (
-                <CollapsibleCard
-                  title={jobDetails?.title || candidate.jobTitle || 'Poste'}
-                  subtitle={jobDetails?.client ? `${jobDetails.client}${jobDetails.location ? ` · ${jobDetails.location}` : ''}` : undefined}
-                  icon={<Target className="w-3.5 h-3.5" />}
-                  variant="accent"
-                  defaultOpen={true}
-                >
-                  <MobileJobContent jobDetails={jobDetails} candidate={candidate} />
-                </CollapsibleCard>
-              )}
-            </div>
-          </div>
-        )}
-
       </DialogContent>
     </Dialog>
+
+    {/* Mobile profile overlay */}
+    {mobileProfileOpen && createPortal(
+      <div className="fixed inset-0 z-[2700] bg-background overflow-y-auto">
+        <div className="sticky top-0 z-10 flex items-center justify-between p-3 bg-background border-b border-foreground/20">
+          <h3 className="text-sm font-bold text-foreground uppercase tracking-wider">Profil candidat</h3>
+          <button onClick={() => setMobileProfileOpen(false)} className="h-8 w-8 flex items-center justify-center border border-foreground text-foreground">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+        <div className="p-4 space-y-4">
+          <ProfileTab
+            candidate={candidate}
+            enrichedProfile={enrichedProfile}
+            enrichLoading={enrichLoading}
+            fullProfile={fullProfile}
+          />
+        </div>
+      </div>,
+      document.body
+    )}
     </>
   );
 };
 
-// ========== Scoring Card Component ==========
+// ========== Small inline sub-components ==========
 
-const DIMENSION_LABELS: Record<string, { label: string; icon: React.ReactNode }> = {
-  tech_fit_llm: { label: 'Tech', icon: <Brain className="w-3 h-3" /> },
-  soft_skills_llm: { label: 'Soft Skills', icon: <Award className="w-3 h-3" /> },
-  seniority: { label: 'Séniorité', icon: <TrendingUp className="w-3 h-3" /> },
-  location: { label: 'Localisation', icon: <MapPin className="w-3 h-3" /> },
-  receptivity: { label: 'Réceptivité', icon: <Send className="w-3 h-3" /> },
-  tenure: { label: 'Stabilité', icon: <Clock className="w-3 h-3" /> },
-  contract_fit: { label: 'Contrat', icon: <FileText className="w-3 h-3" /> },
-};
-
-function ScoringCard({ scoring }: { scoring: ScoringRecord }) {
-  const [expanded, setExpanded] = useState(false);
-  const details = scoring.scoringDetails;
-  const dims = details?.dimensions;
-
-  // Sort dimensions: weighted first (desc), then unweighted
-  const sortedDimensions = React.useMemo(() => {
-    if (!dims) return [];
-    return Object.entries(dims)
-      .map(([key, dim]) => ({ key, ...dim }))
-      .sort((a, b) => (b.weight || 0) - (a.weight || 0));
-  }, [dims]);
-
-  const weightedDims = sortedDimensions.filter(d => d.weight > 0);
-  const llmDims = sortedDimensions.filter(d => d.weight === 0);
-
-  return (
-    <div className="border border-foreground/10 bg-foreground/[0.03] hover:border-foreground/30 transition-colors">
-      {/* Header */}
-      <button onClick={() => setExpanded(!expanded)} className="w-full p-4 flex items-center gap-3 text-left">
-        <div className={cn("h-10 w-10 flex items-center justify-center border shrink-0 text-sm font-bold",
-          (scoring.score ?? 0) >= 70 ? 'border-emerald-400 bg-emerald-50 text-emerald-700' :
-          (scoring.score ?? 0) >= 40 ? 'border-amber-400 bg-amber-50 text-amber-700' :
-          'border-destructive/40 bg-destructive/5 text-destructive'
-        )}>
-          {scoring.score ?? '—'}
-        </div>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-medium text-foreground">
-              {scoring.recommendation === 'shortlist' ? '✅ Shortlist' :
-               scoring.recommendation === 'skip' ? '❌ Skip' :
-               scoring.recommendation === 'maybe' ? '🤔 Maybe' : 'Scoring'}
+const ScoreSummary = React.memo<{ candidate: ATSCandidate }>(({ candidate }) => (
+  <div className="flex items-center gap-4 p-4 border border-foreground/10 bg-foreground/[0.03]">
+    <div className={cn("h-14 w-14 flex items-center justify-center border-2 text-xl font-black shrink-0",
+      (candidate.score ?? 0) >= 70 ? 'border-emerald-400 bg-emerald-50 text-emerald-700' :
+      (candidate.score ?? 0) >= 40 ? 'border-amber-400 bg-amber-50 text-amber-700' :
+      'border-destructive/40 bg-destructive/5 text-destructive'
+    )}>{candidate.score}</div>
+    <div className="flex-1 min-w-0">
+      <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Score global /100</span>
+      {candidate.recommendation && (
+        <span className={cn("text-[10px] px-2 py-0.5 border font-medium uppercase tracking-wider mt-1 inline-block",
+          candidate.recommendation === 'shortlist' ? 'border-emerald-300 text-emerald-700 bg-emerald-50' :
+          candidate.recommendation === 'skip' ? 'border-destructive/30 text-destructive bg-destructive/5' :
+          'border-amber-300 text-amber-700 bg-amber-50'
+        )}>{candidate.recommendation === 'shortlist' ? 'Recommandé' : candidate.recommendation === 'skip' ? 'Non recommandé' : 'À évaluer'}</span>
+      )}
+      {candidate.scoringDetails && (
+        <div className="flex flex-wrap gap-3 mt-2">
+          {candidate.scoringDetails.matching_skills?.length > 0 && (
+            <span className="flex items-center gap-1 text-[10px] text-emerald-700 font-medium">
+              <CheckCircle2 className="w-3 h-3" /> {candidate.scoringDetails.matching_skills.length} matchées
             </span>
-            {scoring.pipelineStage && (
-              <span className="text-[9px] px-1.5 py-0.5 border border-foreground/20 text-muted-foreground font-medium uppercase tracking-wider">{scoring.pipelineStage}</span>
-            )}
-          </div>
-          <span className="text-[10px] text-muted-foreground">
-            {format(parseISO(scoring.updatedAt), 'd MMM yyyy', { locale: fr })}
-            {(scoring.jobTitle || scoring.jobId) && ` • ${scoring.jobTitle || scoring.jobId.slice(0, 8) + '...'}`}
-          </span>
-        </div>
-        {expanded ? <ChevronUp className="w-4 h-4 text-muted-foreground shrink-0" /> : <ChevronDown className="w-4 h-4 text-muted-foreground shrink-0" />}
-      </button>
-
-      {/* Expanded details */}
-      {expanded && details && (
-        <div className="px-4 pb-4 space-y-3 border-t border-foreground/10 pt-3">
-          {/* Hard filter KO */}
-          {details.hardFilterPassed === false && details.hardFilterKO && (
-            <div className="flex items-start gap-2 p-2.5 bg-destructive/5 border border-destructive/20">
-              <AlertTriangle className="w-4 h-4 text-destructive shrink-0 mt-0.5" />
-              <div>
-                <span className="text-[10px] font-bold uppercase tracking-wider text-destructive block mb-0.5">Filtre éliminatoire</span>
-                <p className="text-[11px] text-destructive/80">{details.hardFilterKO}</p>
-              </div>
-            </div>
           )}
-
-          {/* Summary */}
-          {details.summary && (
-            <p className="text-sm text-muted-foreground whitespace-pre-wrap leading-relaxed">{details.summary}</p>
-          )}
-
-          {/* Dimensions — weighted bars */}
-          {weightedDims.length > 0 && (
-            <div>
-              <span className="text-[10px] font-bold uppercase tracking-wider text-foreground mb-2 block">Dimensions</span>
-              <div className="space-y-2">
-                {weightedDims.map(dim => {
-                  const cfg = DIMENSION_LABELS[dim.key] || { label: dim.key, icon: <Target className="w-3 h-3" /> };
-                  return (
-                    <div key={dim.key} className="space-y-0.5">
-                      <div className="flex items-center justify-between text-[10px]">
-                        <span className="flex items-center gap-1 text-muted-foreground">
-                          {cfg.icon}
-                          {cfg.label}
-                          <span className="text-[8px] text-muted-foreground/60">({dim.weight}%)</span>
-                        </span>
-                        <span className={cn("font-bold",
-                          dim.score >= 70 ? 'text-emerald-600' :
-                          dim.score >= 40 ? 'text-amber-600' : 'text-destructive'
-                        )}>{dim.score}</span>
-                      </div>
-                      <div className="h-1.5 bg-foreground/10 rounded-full overflow-hidden">
-                        <div
-                          className={cn("h-full transition-all duration-500 rounded-full",
-                            dim.score >= 70 ? 'bg-emerald-500' :
-                            dim.score >= 40 ? 'bg-amber-500' : 'bg-destructive'
-                          )}
-                          style={{ width: `${dim.score}%` }}
-                        />
-                      </div>
-                      {dim.details && (
-                        <p className="text-[9px] text-muted-foreground/70">{dim.details}</p>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          {/* LLM dimensions (weight=0, supplementary) */}
-          {llmDims.length > 0 && (
-            <div>
-              <span className="text-[10px] font-bold uppercase tracking-wider text-foreground mb-1.5 block">Analyse IA</span>
-              <div className="flex flex-wrap gap-2">
-                {llmDims.map(dim => {
-                  const cfg = DIMENSION_LABELS[dim.key] || { label: dim.key, icon: <Brain className="w-3 h-3" /> };
-                  return (
-                    <div key={dim.key} className="flex items-center gap-1.5 px-2 py-1 border border-foreground/10 text-[10px]">
-                      {cfg.icon}
-                      <span className="text-muted-foreground">{cfg.label}</span>
-                      <span className={cn("font-bold",
-                        dim.score >= 70 ? 'text-emerald-600' :
-                        dim.score >= 40 ? 'text-amber-600' : 'text-destructive'
-                      )}>{dim.score}</span>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          {/* Matching skills */}
-          {details.matching_skills && details.matching_skills.length > 0 && (
-            <div>
-              <div className="flex items-center gap-1.5 mb-1.5">
-                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700">Compétences matchées</span>
-              </div>
-              <div className="flex flex-wrap gap-1.5">
-                {details.matching_skills.map((s: string) => (
-                  <span key={s} className="text-[10px] px-2 py-0.5 border border-emerald-300 text-emerald-700 bg-emerald-50 font-medium">{s}</span>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Missing skills */}
-          {details.missing_skills && details.missing_skills.length > 0 && (
-            <div>
-              <div className="flex items-center gap-1.5 mb-1.5">
-                <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />
-                <span className="text-[10px] font-bold uppercase tracking-wider text-amber-700">Compétences manquantes</span>
-              </div>
-              <div className="flex flex-wrap gap-1.5">
-                {details.missing_skills.map((s: string) => (
-                  <span key={s} className="text-[10px] px-2 py-0.5 border border-amber-300 text-amber-700 bg-amber-50 font-medium">{s}</span>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Strengths */}
-          {details.strengths && details.strengths.length > 0 && (
-            <div>
-              <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 mb-1 block">Forces</span>
-              <ul className="text-[11px] text-muted-foreground space-y-0.5">
-                {details.strengths.map((s: string, i: number) => <li key={i}>• {s}</li>)}
-              </ul>
-            </div>
-          )}
-
-          {/* Concerns / Weaknesses */}
-          {(details.concerns || details.weaknesses) && (details.concerns || details.weaknesses)!.length > 0 && (
-            <div>
-              <span className="text-[10px] font-bold uppercase tracking-wider text-amber-700 mb-1 block">Points d'attention</span>
-              <ul className="text-[11px] text-muted-foreground space-y-0.5">
-                {(details.concerns || details.weaknesses)!.map((w: string, i: number) => <li key={i}>• {w}</li>)}
-              </ul>
-            </div>
-          )}
-
-          {/* Experience & Location (legacy fields) */}
-          <div className="flex flex-wrap gap-3 text-[11px]">
-            {details.experience_match && (
-              <div className="flex items-center gap-1">
-                <Briefcase className="w-3.5 h-3.5 text-muted-foreground" />
-                <span className="text-muted-foreground">Expérience :</span>
-                <span className={cn("font-medium",
-                  details.experience_match === 'compatible' ? 'text-emerald-600' :
-                  details.experience_match === 'trop_senior' ? 'text-amber-600' :
-                  details.experience_match === 'trop_junior' ? 'text-destructive' : 'text-muted-foreground'
-                )}>
-                  {details.experience_match === 'compatible' ? 'Compatible' :
-                   details.experience_match === 'trop_senior' ? 'Trop senior' :
-                   details.experience_match === 'trop_junior' ? 'Trop junior' : 'Incertain'}
-                </span>
-              </div>
-            )}
-            {details.location_match !== undefined && (
-              <div className="flex items-center gap-1">
-                <MapPin className="w-3.5 h-3.5 text-muted-foreground" />
-                <span className="text-muted-foreground">Localisation :</span>
-                <span className={cn("font-medium", details.location_match ? 'text-emerald-600' : 'text-destructive')}>
-                  {details.location_match ? 'Compatible' : 'Non compatible'}
-                </span>
-              </div>
-            )}
-          </div>
-
-          {/* Salary */}
-          {details.salary_analysis && (
-            <div className="pt-2 border-t border-foreground/10 text-[11px] text-muted-foreground">
-              💰 {details.salary_analysis.status === 'adequate' ? 'Salaire adéquat' :
-                  details.salary_analysis.status === 'too_low' ? 'Salaire potentiellement bas' :
-                  details.salary_analysis.status === 'too_high' ? 'Salaire potentiellement élevé' : 'Analyse salariale'}
-              {details.salary_analysis.gap_percent && ` (écart: ${details.salary_analysis.gap_percent}%)`}
-            </div>
-          )}
-
-          {/* LLM Score badge */}
-          {details.llmScore != null && (
-            <div className="pt-2 border-t border-foreground/10 flex items-center gap-2 text-[10px]">
-              <Brain className="w-3.5 h-3.5 text-muted-foreground" />
-              <span className="text-muted-foreground">Score LLM :</span>
-              <span className={cn("font-bold",
-                details.llmScore >= 70 ? 'text-emerald-600' :
-                details.llmScore >= 40 ? 'text-amber-600' : 'text-destructive'
-              )}>{details.llmScore}/100</span>
-            </div>
+          {candidate.scoringDetails.missing_skills?.length > 0 && (
+            <span className="flex items-center gap-1 text-[10px] text-amber-700 font-medium">
+              <AlertTriangle className="w-3 h-3" /> {candidate.scoringDetails.missing_skills.length} manquantes
+            </span>
           )}
         </div>
       )}
     </div>
-  );
-}
+  </div>
+));
+ScoreSummary.displayName = 'ScoreSummary';
 
-// ========== Sub-components ==========
-
-const ACTIVITY_TYPE_CONFIG: Record<string, { icon: React.ReactNode; color: string }> = {
-  scored: { icon: <Target className="w-3 h-3" />, color: 'bg-foreground text-background' },
-  messaged: { icon: <Send className="w-3 h-3" />, color: 'bg-foreground text-background' },
-  sequence_enrolled: { icon: <GitBranch className="w-3 h-3" />, color: 'bg-foreground text-background' },
-  sequence_step: { icon: <Send className="w-3 h-3" />, color: 'bg-foreground/80 text-background' },
-  inmail_sent: { icon: <Send className="w-3 h-3" />, color: 'bg-foreground text-background' },
-  qualification_scheduled: { icon: <Calendar className="w-3 h-3" />, color: 'bg-brutal-accent text-foreground' },
-  qualification_verdict: { icon: <Award className="w-3 h-3" />, color: 'bg-brutal-accent text-foreground' },
-  shortlist_added: { icon: <FileText className="w-3 h-3" />, color: 'bg-foreground text-background' },
-  appointment: { icon: <Calendar className="w-3 h-3" />, color: 'bg-foreground text-background' },
-};
-
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <div className="p-4 bg-foreground/[0.03] border border-foreground/10">
-      <h4 className="text-[11px] font-bold uppercase tracking-wider text-foreground mb-3">{title}</h4>
-      {children}
+const CandidateProfileSidebarContent = React.memo<{
+  candidate: ATSCandidate;
+  enrichedProfile: EnrichedProfile | null;
+  onCreatePortalLink: () => void;
+}>(({ candidate, enrichedProfile, onCreatePortalLink }) => (
+  <div className="space-y-3">
+    <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
+      {enrichedProfile?.location && (
+        <span className="flex items-center gap-1"><MapPin className="w-3 h-3" /> {enrichedProfile.location}</span>
+      )}
+      {enrichedProfile?.yearsOfExperience && (
+        <span className="flex items-center gap-1"><Briefcase className="w-3 h-3" /> ~{enrichedProfile.yearsOfExperience} ans</span>
+      )}
     </div>
-  );
-}
-
-function BadgeItem({ children, icon }: { children: React.ReactNode; icon?: React.ReactNode }) {
-  return (
-    <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 border border-foreground/30 text-foreground font-medium uppercase tracking-wider">
-      {icon}{children}
-    </span>
-  );
-}
-
-function ContactLine({ icon, children }: { icon: React.ReactNode; children: React.ReactNode }) {
-  return <div className="flex items-center gap-2"><span className="text-muted-foreground">{icon}</span>{children}</div>;
-}
-
-function BrutalButton({ children, onClick, first = true }: { children: React.ReactNode; onClick: () => void; first?: boolean }) {
-  return (
-    <button onClick={onClick}
-      className={cn(
-        "relative overflow-hidden h-9 px-4 flex items-center gap-2 border border-foreground text-foreground text-[11px] font-medium uppercase tracking-wider group",
-        !first && '-ml-px'
-      )}>
-      {children}
-      <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
+    {candidate.linkedin && (
+      <a href={candidate.linkedin} target="_blank" rel="noopener noreferrer"
+        className="flex items-center gap-1.5 text-[10px] text-foreground font-medium uppercase tracking-wider hover:text-blue-600">
+        <Link2 className="w-3 h-3" /> Voir sur LinkedIn
+      </a>
+    )}
+    <button
+      onClick={onCreatePortalLink}
+      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-emerald-600 text-white text-xs font-semibold hover:bg-emerald-700 transition-colors"
+    >
+      <Link2 className="w-3.5 h-3.5" /> Portail candidat
     </button>
-  );
-}
-
-function BrutalActionButton({ children, onClick, disabled, loading, first }: {
-  children: React.ReactNode; onClick: () => void; disabled?: boolean; loading?: boolean; first?: boolean;
-}) {
-  return (
-    <button onClick={onClick} disabled={disabled}
-      className={cn(
-        "relative overflow-hidden h-[34px] px-4 flex items-center gap-2 border border-foreground text-foreground text-[11px] font-medium uppercase tracking-wider group disabled:opacity-50 disabled:cursor-not-allowed",
-        first !== false && 'first:ml-0',
-        !first && '-ml-px'
-      )}>
-      {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin relative z-10" /> : children}
-      <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
-    </button>
-  );
-}
-
-function CenteredLoader() {
-  return (
-    <div className="flex items-center justify-center py-12">
-      <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
-    </div>
-  );
-}
-
-
-function CollapsibleSection({ title, defaultOpen = false, children }: { title: string; defaultOpen?: boolean; children: React.ReactNode }) {
-  const [open, setOpen] = React.useState(defaultOpen);
-  return (
-    <div className="border border-foreground/15">
-      <button onClick={() => setOpen(!open)} className="w-full flex items-center justify-between px-3 py-2 hover:bg-foreground/[0.03] transition-colors">
-        <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{title}</span>
-        {open ? <ChevronUp className="w-3 h-3 text-muted-foreground" /> : <ChevronDown className="w-3 h-3 text-muted-foreground" />}
-      </button>
-      {open && <div className="px-3 pb-3">{children}</div>}
-    </div>
-  );
-}
-
-function CollapsibleCard({ title, subtitle, icon, variant = 'dark', defaultOpen = false, children }: {
-  title: string;
-  subtitle?: string | null;
-  icon: React.ReactNode;
-  variant?: 'dark' | 'accent';
-  defaultOpen?: boolean;
-  children: React.ReactNode;
-}) {
-  const [open, setOpen] = React.useState(defaultOpen);
-  return (
-    <div className="border border-foreground bg-card">
-      <button
-        onClick={() => setOpen(!open)}
-        className={cn(
-          "w-full px-3 py-2 flex items-center gap-2 transition-colors",
-          variant === 'dark' ? "bg-foreground text-background hover:bg-foreground/90" : "bg-brutal-accent text-foreground hover:bg-brutal-accent/80"
-        )}
-      >
-        {icon}
-        <div className="flex-1 min-w-0 text-left">
-          <span className="text-[10px] font-bold uppercase tracking-wider">{title}</span>
-          {subtitle && <span className="text-[9px] opacity-70 ml-2">{subtitle}</span>}
-        </div>
-        {open ? <ChevronUp className="w-3.5 h-3.5 shrink-0" /> : <ChevronDown className="w-3.5 h-3.5 shrink-0" />}
-      </button>
-      {open && <div className="p-3">{children}</div>}
-    </div>
-  );
-}
-
-function formatExpDate(dateStr?: string) {
-  if (!dateStr) return '';
-  const parts = dateStr.split('-');
-  return parts[0] || '';
-}
-
-function calcDuration(startDate?: string, endDate?: string) {
-  if (!startDate) return '';
-  const startYear = parseInt(startDate.split('-')[0]);
-  const endYear = endDate ? parseInt(endDate.split('-')[0]) : new Date().getFullYear();
-  if (isNaN(startYear) || isNaN(endYear)) return '';
-  const diff = endYear - startYear;
-  return diff <= 0 ? '<1 an' : diff === 1 ? '1 an' : `${diff} ans`;
-}
-
-function ExperienceItem({ exp }: { exp: { title: string; company: string; logo?: string; description?: string; startDate?: string; endDate?: string; isCurrent?: boolean } }) {
-  const [expanded, setExpanded] = React.useState(false);
-  const duration = calcDuration(exp.startDate, exp.endDate);
-  return (
-    <div className="relative pl-5 py-1.5">
-      {/* Dot / Logo */}
-      {exp.logo ? (
-        <img
-          src={exp.logo}
-          alt={exp.company}
-          className="absolute left-0 top-2.5 w-3 h-3 rounded-sm object-contain"
-          onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-        />
-      ) : (
-        <div className={cn("absolute left-0.5 top-3 w-2 h-2 rounded-full border-2", exp.isCurrent ? "bg-emerald-500 border-emerald-500" : "bg-background border-foreground/30")} />
-      )}
-      <div className="flex items-start justify-between gap-2">
-        <div className="flex-1 min-w-0">
-          <p className="text-[10px] font-medium text-foreground leading-tight">{exp.title}</p>
-          <p className="text-[9px] text-muted-foreground">{exp.company}</p>
-        </div>
-        <div className="text-right shrink-0">
-          <p className="text-[9px] text-muted-foreground">{formatExpDate(exp.startDate)} — {exp.isCurrent ? 'Auj.' : formatExpDate(exp.endDate)}</p>
-          {duration && <p className="text-[8px] text-muted-foreground/70">{duration}</p>}
+    {candidate.score != null && (
+      <div className="border border-foreground/15 p-2">
+        <div className="flex items-center justify-between">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Score IA</span>
+          <span className={cn("text-sm font-bold",
+            candidate.score >= 75 ? "text-emerald-600" :
+            candidate.score >= 50 ? "text-amber-600" : "text-red-600"
+          )}>{candidate.score}/100</span>
         </div>
       </div>
-      {exp.description && (
-        <>
-          <button onClick={() => setExpanded(!expanded)} className="text-[8px] text-muted-foreground hover:text-foreground mt-0.5 flex items-center gap-0.5">
-            {expanded ? <ChevronUp className="w-2.5 h-2.5" /> : <ChevronDown className="w-2.5 h-2.5" />}
-            {expanded ? 'Masquer' : 'Détails'}
-          </button>
-          {expanded && <p className="text-[9px] text-muted-foreground leading-relaxed mt-1">{exp.description}</p>}
-        </>
-      )}
-    </div>
-  );
-}
-
-function EducationItem({ edu }: { edu: { school: string; logo?: string; degree?: string; field?: string; startYear?: string; endYear?: string } }) {
-  const [expanded, setExpanded] = React.useState(false);
-  const hasDetails = edu.degree || edu.field;
-  return (
-    <div className="relative pl-5 py-1.5">
-      {edu.logo ? (
-        <img
-          src={edu.logo}
-          alt={edu.school}
-          className="absolute left-0 top-2.5 w-3 h-3 rounded-sm object-contain"
-          onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-        />
-      ) : (
-        <div className="absolute left-0.5 top-3 w-2 h-2 rounded-full border-2 bg-background border-foreground/30" />
-      )}
-      <div className="flex items-start justify-between gap-2">
-        <div className="flex-1 min-w-0">
-          <p className="text-[10px] font-medium text-foreground leading-tight">{edu.school}</p>
-          {!expanded && edu.degree && <p className="text-[9px] text-muted-foreground truncate">{edu.degree}</p>}
+    )}
+    {enrichedProfile?.summary && (
+      <CollapsibleSection title="À propos" defaultOpen={false}>
+        <p className="text-[10px] text-muted-foreground leading-relaxed">{enrichedProfile.summary}</p>
+      </CollapsibleSection>
+    )}
+    {enrichedProfile?.experiences && enrichedProfile.experiences.length > 0 && (
+      <CollapsibleSection title="Expériences" defaultOpen={false}>
+        <div className="space-y-0 relative">
+          <div className="absolute left-[5px] top-2 bottom-2 w-px bg-foreground/15" />
+          {enrichedProfile.experiences.map((exp, i) => (
+            <ExperienceItem key={i} exp={exp} />
+          ))}
         </div>
-        <div className="text-right shrink-0">
-          <p className="text-[9px] text-muted-foreground">{edu.startYear || ''}{edu.startYear && edu.endYear ? ' — ' : ''}{edu.endYear || ''}</p>
+      </CollapsibleSection>
+    )}
+    {enrichedProfile?.education && enrichedProfile.education.length > 0 && (
+      <CollapsibleSection title="Formation" defaultOpen={false}>
+        <div className="space-y-0 relative">
+          <div className="absolute left-[5px] top-2 bottom-2 w-px bg-foreground/15" />
+          {enrichedProfile.education.map((edu, i) => (
+            <EducationItem key={i} edu={edu} />
+          ))}
         </div>
-      </div>
-      {hasDetails && (
-        <>
-          <button onClick={() => setExpanded(!expanded)} className="text-[8px] text-muted-foreground hover:text-foreground mt-0.5 flex items-center gap-0.5">
-            {expanded ? <ChevronUp className="w-2.5 h-2.5" /> : <ChevronDown className="w-2.5 h-2.5" />}
-            {expanded ? 'Masquer' : 'Détails'}
-          </button>
-          {expanded && (
-            <div className="text-[9px] text-muted-foreground mt-1 space-y-0.5">
-              {edu.degree && <p>Diplôme: {edu.degree}</p>}
-              {edu.field && <p>Domaine: {edu.field}</p>}
-            </div>
-          )}
-        </>
-      )}
-    </div>
-  );
-}
-
-function MobileProfileContent({ candidate, enrichedProfile }: { candidate: ATSCandidate; enrichedProfile: EnrichedProfile | null }) {
-  return (
-    <div className="space-y-3">
-      <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
-        {enrichedProfile?.location && (
-          <span className="flex items-center gap-1"><MapPin className="w-3 h-3" /> {enrichedProfile.location}</span>
-        )}
-        {enrichedProfile?.yearsOfExperience && (
-          <span className="flex items-center gap-1"><Briefcase className="w-3 h-3" /> ~{enrichedProfile.yearsOfExperience} ans</span>
-        )}
-      </div>
-      {candidate.linkedin && (
-        <a href={candidate.linkedin} target="_blank" rel="noopener noreferrer"
-          className="flex items-center gap-1.5 text-[10px] text-foreground font-medium uppercase tracking-wider hover:text-blue-600">
-          <ExternalLink className="w-3 h-3" /> Voir sur LinkedIn
-        </a>
-      )}
-      {candidate.score != null && (
-        <div className="border border-foreground/15 p-2">
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Score IA</span>
-            <span className={cn("text-sm font-bold",
-              candidate.score >= 75 ? "text-emerald-600" :
-              candidate.score >= 50 ? "text-amber-600" : "text-red-600"
-            )}>{candidate.score}/100</span>
-          </div>
-          {candidate.recommendation && (
-            <p className="text-[10px] text-muted-foreground mt-1">{candidate.recommendation}</p>
-          )}
+      </CollapsibleSection>
+    )}
+    {enrichedProfile?.skills && enrichedProfile.skills.length > 0 && (
+      <CollapsibleSection title="Compétences" defaultOpen={false}>
+        <div className="flex flex-wrap gap-1">
+          {enrichedProfile.skills.map(s => (
+            <span key={s} className="text-[9px] px-1.5 py-0.5 border border-foreground/20 text-muted-foreground font-medium uppercase tracking-wider">{s}</span>
+          ))}
         </div>
-      )}
-      {enrichedProfile?.summary && (
-        <CollapsibleSection title="À propos" defaultOpen={false}>
-          <p className="text-[10px] text-muted-foreground leading-relaxed">{enrichedProfile.summary}</p>
-        </CollapsibleSection>
-      )}
-      {enrichedProfile?.experiences && enrichedProfile.experiences.length > 0 && (
-        <CollapsibleSection title="Expériences" defaultOpen={true}>
-          <div className="space-y-0 relative">
-            <div className="absolute left-[5px] top-2 bottom-2 w-px bg-foreground/15" />
-            {enrichedProfile.experiences.map((exp, i) => (
-              <ExperienceItem key={i} exp={exp} />
-            ))}
-          </div>
-        </CollapsibleSection>
-      )}
-      {enrichedProfile?.education && enrichedProfile.education.length > 0 && (
-        <CollapsibleSection title="Formation" defaultOpen={false}>
-          <div className="space-y-0 relative">
-            <div className="absolute left-[5px] top-2 bottom-2 w-px bg-foreground/15" />
-            {enrichedProfile.education.map((edu, i) => (
-              <EducationItem key={i} edu={edu} />
-            ))}
-          </div>
-        </CollapsibleSection>
-      )}
-      {enrichedProfile?.skills && enrichedProfile.skills.length > 0 && (
-        <CollapsibleSection title="Compétences" defaultOpen={false}>
-          <div className="flex flex-wrap gap-1">
-            {enrichedProfile.skills.map(s => (
-              <span key={s} className="text-[9px] px-1.5 py-0.5 border border-foreground/20 text-muted-foreground font-medium uppercase tracking-wider">{s}</span>
-            ))}
-          </div>
-        </CollapsibleSection>
-      )}
-    </div>
-  );
-}
+      </CollapsibleSection>
+    )}
+    {enrichedProfile?.languages && enrichedProfile.languages.length > 0 && (
+      <CollapsibleSection title="Langues" defaultOpen={false}>
+        <div className="flex flex-wrap gap-1">
+          {enrichedProfile.languages.map(l => (
+            <span key={l} className="text-[9px] px-1.5 py-0.5 border border-foreground/20 text-muted-foreground font-medium uppercase tracking-wider">{l}</span>
+          ))}
+        </div>
+      </CollapsibleSection>
+    )}
+  </div>
+));
+CandidateProfileSidebarContent.displayName = 'CandidateProfileSidebarContent';
 
-function MobileJobContent({ jobDetails, candidate }: { jobDetails: any; candidate: ATSCandidate }) {
+const JobDetailsSidebarContent = React.memo<{ jobDetails: any }>(({ jobDetails }) => {
+  if (!jobDetails) return null;
   return (
     <div className="space-y-2">
       <div className="flex flex-wrap items-center gap-2 text-[10px] text-muted-foreground">
-        {jobDetails?.contractType && (
+        {jobDetails.contractType && (
           <span className="px-1.5 py-0.5 border border-foreground/20 font-medium uppercase tracking-wider text-[9px]">{jobDetails.contractType}</span>
         )}
-        {jobDetails?.remote && (
+        {jobDetails.remote && (
           <span className="px-1.5 py-0.5 border border-foreground/20 font-medium uppercase tracking-wider text-[9px]">{jobDetails.remote}</span>
         )}
-        {(jobDetails?.salaryMin || jobDetails?.salaryMax) && (
+        {jobDetails.seniority && (
+          <span className="px-1.5 py-0.5 border border-foreground/20 font-medium uppercase tracking-wider text-[9px]">{jobDetails.seniority}</span>
+        )}
+        {(jobDetails.salaryMin || jobDetails.salaryMax) && (
           <span className="px-1.5 py-0.5 border border-foreground/20 font-medium uppercase tracking-wider text-[9px]">
             {jobDetails.salaryMin && jobDetails.salaryMax
-              ? `${jobDetails.salaryMin}k - ${jobDetails.salaryMax}k`
-              : jobDetails.salaryMin ? `${jobDetails.salaryMin}k+` : `≤${jobDetails.salaryMax}k`}
+              ? `${jobDetails.salaryMin}-${jobDetails.salaryMax}k€`
+              : jobDetails.salaryMin ? `${jobDetails.salaryMin}k€+` : `≤${jobDetails.salaryMax}k€`}
           </span>
         )}
       </div>
-      {jobDetails?.skills && jobDetails.skills.length > 0 && (
-        <CollapsibleSection title={`Compétences recherchées (${jobDetails.skills.length})`} defaultOpen={true}>
-          <div className="flex flex-wrap gap-1">
-            {jobDetails.skills.map((s: string) => (
-              <span key={s} className="text-[9px] px-1.5 py-0.5 border border-foreground/20 text-muted-foreground font-medium uppercase tracking-wider">{s}</span>
-            ))}
-          </div>
+      {jobDetails.skills?.length > 0 && (
+        <div className="flex flex-wrap gap-1 mt-2">
+          {jobDetails.skills.slice(0, 8).map((s: string) => (
+            <span key={s} className="text-[9px] px-1.5 py-0.5 border border-foreground/20 text-muted-foreground font-medium uppercase tracking-wider">{s}</span>
+          ))}
+        </div>
+      )}
+      {jobDetails.mustHave && (
+        <CollapsibleSection title="Must-have" defaultOpen={false}>
+          <p className="text-[10px] text-muted-foreground whitespace-pre-line">{jobDetails.mustHave}</p>
         </CollapsibleSection>
       )}
-      {jobDetails?.description && (
-        <CollapsibleSection title="Description du poste" defaultOpen={false}>
-          <p className="text-[10px] text-muted-foreground leading-relaxed whitespace-pre-wrap">{jobDetails.description}</p>
+      {jobDetails.shouldHave && (
+        <CollapsibleSection title="Should-have" defaultOpen={false}>
+          <p className="text-[10px] text-muted-foreground whitespace-pre-line">{jobDetails.shouldHave}</p>
         </CollapsibleSection>
       )}
-      {(jobDetails?.mustHave || jobDetails?.shouldHave || jobDetails?.niceToHave) && (
-        <CollapsibleSection title="Critères (Must / Should / Nice)" defaultOpen={false}>
-          <div className="space-y-1.5 text-[10px]">
-            {jobDetails.mustHave && <div><span className="font-bold text-red-600">Must:</span> <span className="text-muted-foreground">{jobDetails.mustHave}</span></div>}
-            {jobDetails.shouldHave && <div><span className="font-bold text-amber-600">Should:</span> <span className="text-muted-foreground">{jobDetails.shouldHave}</span></div>}
-            {jobDetails.niceToHave && <div><span className="font-bold text-emerald-600">Nice:</span> <span className="text-muted-foreground">{jobDetails.niceToHave}</span></div>}
-          </div>
-        </CollapsibleSection>
-      )}
-      {candidate.scoringDetails && (
-        <CollapsibleSection title="Détails du matching" defaultOpen={false}>
-          <div className="space-y-2 text-[10px]">
-            <p className="text-muted-foreground">{candidate.scoringDetails.summary}</p>
-            {candidate.scoringDetails.matching_skills?.length > 0 && (
-              <div>
-                <p className="font-medium text-emerald-600 mb-0.5">Compétences matchées</p>
-                <div className="flex flex-wrap gap-1">
-                  {candidate.scoringDetails.matching_skills.map((s: string) => (
-                    <span key={s} className="text-[9px] px-1.5 py-0.5 border border-emerald-300 bg-emerald-50 text-emerald-700 font-medium">{s}</span>
-                  ))}
-                </div>
-              </div>
-            )}
-            {candidate.scoringDetails.missing_skills?.length > 0 && (
-              <div>
-                <p className="font-medium text-red-600 mb-0.5">Compétences manquantes</p>
-                <div className="flex flex-wrap gap-1">
-                  {candidate.scoringDetails.missing_skills.map((s: string) => (
-                    <span key={s} className="text-[9px] px-1.5 py-0.5 border border-red-300 bg-red-50 text-red-700 font-medium">{s}</span>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
+      {jobDetails.description && (
+        <CollapsibleSection title="Description" defaultOpen={false}>
+          <p className="text-[10px] text-muted-foreground whitespace-pre-line line-clamp-10">{jobDetails.description}</p>
         </CollapsibleSection>
       )}
     </div>
   );
-}
+});
+JobDetailsSidebarContent.displayName = 'JobDetailsSidebarContent';
