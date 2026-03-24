@@ -183,7 +183,7 @@ const EDUCATION_DEGREES = [
 function FilterSection({ label, icon, hint, children }: { label: string; icon?: React.ReactNode; hint?: string; children: React.ReactNode }) {
   return (
     <div className="space-y-1.5">
-      <label className="text-[11px] font-semibold text-foreground/70 flex items-center gap-1.5">
+      <label className="text-[11px] font-medium text-foreground/70 uppercase tracking-wide flex items-center gap-1.5">
         {icon}{label}
       </label>
       {children}
@@ -198,7 +198,7 @@ function ChipToggle({ label, active, onClick }: { label: string; active: boolean
       "px-3 py-1.5 text-xs border transition-all duration-200",
       active
         ? "bg-foreground text-background border-foreground"
-        : "bg-background text-foreground/70 border-border hover:border-foreground/30 hover:bg-muted/50"
+        : "bg-background text-foreground/70 border-foreground/40 hover:border-foreground hover:bg-muted/50"
     )}>{label}</button>
   );
 }
@@ -209,16 +209,16 @@ function CollapsibleFilterGroup({ title, emoji, defaultOpen = false, count, chil
 }) {
   const [open, setOpen] = useState(defaultOpen);
   return (
-    <Collapsible open={open} onOpenChange={setOpen}>
-      <CollapsibleTrigger className="flex items-center gap-2 w-full py-2 border-b border-border/40 hover:border-foreground/20 transition-colors group">
+    <Collapsible open={open} onOpenChange={setOpen} className="border-b border-foreground">
+      <CollapsibleTrigger className="flex items-center gap-2 w-full p-4 hover:bg-muted/50 transition-colors group">
         <span className="text-sm">{emoji}</span>
-        <span className="text-[10px] font-bold uppercase tracking-widest text-foreground flex-1 text-left">{title}</span>
+        <span className="text-sm font-semibold uppercase tracking-wide text-foreground flex-1 text-left">{title}</span>
         {count !== undefined && count > 0 && (
-          <span className="text-[9px] font-bold bg-foreground text-background px-1.5 py-0.5">{count}</span>
+          <Badge variant="secondary" className="h-5 px-1.5 text-xs bg-foreground/10 text-foreground">{count}</Badge>
         )}
-        <ChevronDown className={cn("w-3.5 h-3.5 text-muted-foreground transition-transform duration-200", open && "rotate-180")} />
+        <ChevronDown className={cn("w-4 h-4 text-foreground/40 transition-transform duration-200", open && "rotate-180")} />
       </CollapsibleTrigger>
-      <CollapsibleContent className="pt-3 pb-1">
+      <CollapsibleContent className="px-3 pb-3">
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2 gap-3">
           {children}
         </div>
