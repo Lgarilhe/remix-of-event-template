@@ -177,6 +177,10 @@ export const ImportJobsModal: React.FC<ImportJobsModalProps> = ({ open, onClose,
         // Deduce sources used from roles
         const usedSources = [...new Set(roles.map(r => r.source).filter(Boolean))];
 
+        if (company.scrapingFailed && roles.length === 0) {
+          toast.warning(company.scrapingMessage || "Impossible de scraper cette page. Essayez de copier-coller les postes manuellement.");
+        }
+
         setResult({
           name: company.name || name || 'Entreprise',
           logoUrl: company.logoUrl,
