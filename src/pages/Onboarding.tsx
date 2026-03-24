@@ -80,13 +80,37 @@ const Onboarding = () => {
     setStep((s) => Math.max(0, s - 1));
   }, []);
 
+  const { createOrganization } = useOrganization();
+
   const handleOrgTypeSelected = useCallback(async (type: OrgType) => {
     setOrgType(type);
     markCompleted(0);
-    // Flow changes here, step 1 is always 'org'
     setDirection(1);
+
+    if (type === 'freelance') {
+      // Auto-create org for freelancer using their name
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        const userName = user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Mon espace';
+        const slug = userName.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-').slice(0, 30);
+        const org = await createOrganization({
+          name: userName,
+          slug: `${slug}-${Date.now().toString(36)}`,
+        });
+        if (org?.id) {
+          await supabase
+            .from('organizations')
+            .update({ org_type: 'freelance' } as any)
+            .eq('id', org.id);
+        }
+        setOrgCreated(true);
+      } catch (err) {
+        console.error('[Onboarding] Auto-create org failed:', err);
+      }
+    }
+
     setStep(1);
-  }, [markCompleted]);
+  }, [markCompleted, createOrganization]);
 
   const handleOrgCreated = useCallback((data: OnboardingCompanyData) => {
     setOrgCreated(true);
