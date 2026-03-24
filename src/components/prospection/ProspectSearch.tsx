@@ -494,7 +494,7 @@ export function ProspectSearch({ selectedICP, onSelectICP, onResults, searching,
       </div>
 
       {/* ═══ PROSPECT SECTIONS ═══ */}
-      <div className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground pt-1">👤 Prospect</div>
+      <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground pt-1 px-1">👤 Prospect</div>
 
       <CollapsibleFilterGroup title="Poste & Fonction" emoji="💼" defaultOpen={true} count={posteCount}>
         <FilterSection label="Titre du poste" icon={<Briefcase className="w-3 h-3" />}>
