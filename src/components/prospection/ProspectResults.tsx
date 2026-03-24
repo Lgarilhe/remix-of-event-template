@@ -394,7 +394,7 @@ export function ProspectResults({ results, searching }: ProspectResultsProps) {
                <Loader2 className="w-7 h-7 animate-spin text-foreground" />
             </div>
             <h3 className="text-sm font-semibold text-foreground mb-1">Recherche en cours…</h3>
-            <p className="text-xs text-muted-foreground">Interrogation de PDL & Apollo</p>
+            <p className="text-xs text-muted-foreground">Recherche dans nos bases de données</p>
           </div>
         )}
 

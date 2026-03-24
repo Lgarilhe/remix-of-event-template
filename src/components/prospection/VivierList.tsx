@@ -980,7 +980,7 @@ function EnrichedContactSheet({ contact, enrichment, open, onOpenChange, onCopyM
                       {careerAnalysis.employmentHistory.length > 0 && (
                         <div className="mt-4">
                           <div className="text-[9px] uppercase tracking-widest text-muted-foreground mb-2 font-medium">
-                            Parcours professionnel complet (Apollo)
+                            Parcours professionnel complet
                           </div>
                           <div className="space-y-0">
                             {careerAnalysis.employmentHistory.map((job, i) => {

@@ -90,7 +90,7 @@ const SCAN_SOURCES: Source[] = [
 
 const AGENT_MESSAGES = [
   "Je recherche des infos sur cette société...",
-  "Enrichissement via Apollo 🎯",
+  "Enrichissement des données 🎯",
   "Scraping du site web en cours...",
   "Recherche des décideurs clés...",
   "Analyse des postes ouverts...",
