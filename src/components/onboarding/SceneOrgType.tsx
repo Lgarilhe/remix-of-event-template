@@ -63,6 +63,12 @@ const DISCOVERY_SOURCES = [
   { value: 'other', label: 'Autre' },
 ];
 
+const FREELANCE_MODES = [
+  { value: 'rpo', label: 'RPO (embedded)' },
+  { value: 'success', label: 'Au succès' },
+  { value: 'both', label: 'Les deux' },
+];
+
 export const SceneOrgType: React.FC<Props> = ({ onSelect }) => {
   const [selected, setSelected] = useState<OrgType | null>(null);
   const [teamSize, setTeamSize] = useState('');
