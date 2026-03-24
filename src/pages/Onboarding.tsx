@@ -44,6 +44,7 @@ const Onboarding = () => {
   const [orgType, setOrgType] = useState<OrgType | null>(null);
   const [orgDetailsData, setOrgDetailsData] = useState<OrgDetailsData | null>(null);
   const [discoverySource, setDiscoverySource] = useState('');
+  const [discoverySpecs, setDiscoverySpecs] = useState<string[]>([]);
   const [profileState, setProfileState] = useState<ProfileFormState | undefined>(undefined);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -103,8 +104,9 @@ const Onboarding = () => {
   }, [markCompleted]);
 
   // Step 3: discovery source submitted
-  const handleDiscoverySubmitted = useCallback(async (source: string) => {
+  const handleDiscoverySubmitted = useCallback(async (source: string, specializations: string[]) => {
     setDiscoverySource(source);
+    setDiscoverySpecs(specializations);
     const discoveryIndex = flow.indexOf('discovery');
     if (discoveryIndex >= 0) markCompleted(discoveryIndex);
     setDirection(1);
@@ -214,7 +216,7 @@ const Onboarding = () => {
               <SceneOrgDetails orgType={orgType} onSubmit={handleOrgDetailsSubmitted} onBack={goBack} />
             )}
             {currentScene === 'discovery' && (
-              <SceneDiscovery onSubmit={handleDiscoverySubmitted} onBack={goBack} savedValue={discoverySource} />
+              <SceneDiscovery onSubmit={handleDiscoverySubmitted} onBack={goBack} savedValue={discoverySource} savedSpecializations={discoverySpecs} />
             )}
             {currentScene === 'org' && (
               <SceneOrganization onComplete={handleOrgCreated} onBack={goBack} />
