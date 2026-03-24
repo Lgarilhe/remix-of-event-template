@@ -30,6 +30,7 @@ const Onboarding = lazy(() => import("./pages/Onboarding"));
 const Settings = lazy(() => import("./pages/Settings"));
 
 const Pricing = lazy(() => import("./pages/Pricing"));
+const UnsubscribePage = lazy(() => import("./pages/Unsubscribe"));
 
 const PUBLIC_ROUTES = ['/', '/auth', '/portal'];
 
