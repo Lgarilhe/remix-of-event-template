@@ -97,9 +97,7 @@ Deno.serve(async (req) => {
     }
 
     const origin = req.headers.get("origin") || "https://id-preview--08a19073-7da4-47fa-92af-b78fed96739f.lovable.app";
-    const inviteUrl = invitationToken
-      ? `${origin}/auth?invitation=${encodeURIComponent(invitationToken)}`
-      : `${origin}/auth`;
+    const inviteUrl = `${origin}/auth?invitation=${invitationId}`;
     const idempotencyKey = isResend
       ? `team-invite-resend-${invitationId}-${Date.now()}`
       : `team-invite-${invitationId}`;
