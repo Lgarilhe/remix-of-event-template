@@ -131,6 +131,15 @@ serve(async (req) => {
       ...(industry ? [industry] : []),
     ].filter(Boolean))) as string[];
 
+    // Extract recommendations
+    const recommendations = Array.isArray(profile.recommendations)
+      ? profile.recommendations.slice(0, 5).map((r: any) => ({
+          body: typeof r === 'string' ? r : (r.body || r.text || r.recommendation || ''),
+          recommenderName: r.recommender_name || r.recommender?.name || r.name || null,
+          recommenderTitle: r.recommender_title || r.recommender?.title || null,
+        })).filter((r: any) => r.body)
+      : [];
+
     // Build tags from various sources
     const tags = Array.from(new Set([
       ...(seniority ? [seniority] : []),
@@ -237,9 +246,10 @@ CONSIGNES STRICTES :
         industries,
         tags,
         companies,
-        photoUrl,
-        education: education.slice(0, 3),
-      }),
+      photoUrl,
+      education: education.slice(0, 3),
+      recommendations,
+    }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (e) {
