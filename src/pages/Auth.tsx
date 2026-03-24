@@ -9,6 +9,14 @@ import { lovable } from '@/integrations/lovable/index';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 
 const PENDING_INVITATION_STORAGE_KEY = 'pending-team-invitation-token';
+const DEFAULT_APP_ORIGIN = 'https://id-preview--08a19073-7da4-47fa-92af-b78fed96739f.lovable.app';
+
+const getPublicAppOrigin = () => {
+  if (typeof window === 'undefined') return DEFAULT_APP_ORIGIN;
+
+  const { origin, hostname } = window.location;
+  return hostname.endsWith('.lovableproject.com') ? DEFAULT_APP_ORIGIN : origin;
+};
 
 const Auth = () => {
   const [email, setEmail] = useState('');
@@ -49,7 +57,7 @@ const Auth = () => {
     }
 
     const query = params.toString();
-    return `${window.location.origin}/auth${query ? `?${query}` : ''}`;
+    return `${getPublicAppOrigin()}/auth${query ? `?${query}` : ''}`;
   }, []);
 
   const acceptPendingInvitation = useCallback(async () => {
