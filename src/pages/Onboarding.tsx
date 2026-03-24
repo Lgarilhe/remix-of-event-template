@@ -13,6 +13,7 @@ import { SceneIntegrations } from '@/components/onboarding/SceneIntegrations';
 import { SceneOrgType } from '@/components/onboarding/SceneOrgType';
 import { SceneOrgDetails, type OrgDetailsData } from '@/components/onboarding/SceneOrgDetails';
 import { SceneDiscovery } from '@/components/onboarding/SceneDiscovery';
+import { SceneSpecializations } from '@/components/onboarding/SceneSpecializations';
 import { SceneTeam } from '@/components/onboarding/SceneTeam';
 import { SceneLaunch } from '@/components/onboarding/SceneLaunch';
 
@@ -25,12 +26,12 @@ export interface OnboardingCompanyData {
 
 type OrgType = 'enterprise' | 'agency' | 'freelance';
 
-type SceneKey = 'orgtype' | 'orgdetails' | 'discovery' | 'org' | 'audit' | 'profile' | 'integrations' | 'team' | 'launch';
+type SceneKey = 'orgtype' | 'orgdetails' | 'discovery' | 'specializations' | 'org' | 'audit' | 'profile' | 'integrations' | 'team' | 'launch';
 
 const FLOWS: Record<OrgType, SceneKey[]> = {
-  enterprise: ['orgtype', 'orgdetails', 'discovery', 'org', 'audit', 'profile', 'integrations', 'team', 'launch'],
-  agency:     ['orgtype', 'orgdetails', 'discovery', 'org', 'audit', 'profile', 'integrations', 'team', 'launch'],
-  freelance:  ['orgtype', 'orgdetails', 'discovery', 'profile', 'integrations', 'launch'],
+  enterprise: ['orgtype', 'orgdetails', 'discovery', 'specializations', 'org', 'audit', 'profile', 'integrations', 'team', 'launch'],
+  agency:     ['orgtype', 'orgdetails', 'discovery', 'specializations', 'org', 'audit', 'profile', 'integrations', 'team', 'launch'],
+  freelance:  ['orgtype', 'orgdetails', 'discovery', 'specializations', 'profile', 'integrations', 'launch'],
 };
 
 const DEFAULT_FLOW: SceneKey[] = FLOWS.enterprise;
@@ -44,7 +45,7 @@ const Onboarding = () => {
   const [orgType, setOrgType] = useState<OrgType | null>(null);
   const [orgDetailsData, setOrgDetailsData] = useState<OrgDetailsData | null>(null);
   const [discoverySource, setDiscoverySource] = useState('');
-  const [discoverySpecs, setDiscoverySpecs] = useState<string[]>([]);
+  const [specializations, setSpecializations] = useState<string[]>([]);
   const [profileState, setProfileState] = useState<ProfileFormState | undefined>(undefined);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -104,11 +105,18 @@ const Onboarding = () => {
   }, [markCompleted]);
 
   // Step 3: discovery source submitted
-  const handleDiscoverySubmitted = useCallback(async (source: string, specializations: string[]) => {
+  const handleDiscoverySubmitted = useCallback(async (source: string) => {
     setDiscoverySource(source);
-    setDiscoverySpecs(specializations);
     const discoveryIndex = flow.indexOf('discovery');
     if (discoveryIndex >= 0) markCompleted(discoveryIndex);
+    setDirection(1);
+    setStep((discoveryIndex >= 0 ? discoveryIndex : 2) + 1);
+  }, [flow, markCompleted]);
+
+  const handleSpecializationsSubmitted = useCallback(async (specs: string[]) => {
+    setSpecializations(specs);
+    const specIndex = flow.indexOf('specializations');
+    if (specIndex >= 0) markCompleted(specIndex);
     setDirection(1);
 
     if (orgType === 'freelance' && orgDetailsData) {
@@ -126,8 +134,8 @@ const Onboarding = () => {
             .update({
               org_type: 'freelance',
               team_size: orgDetailsData.teamSize,
-              specializations: orgDetailsData.specializations,
-              discovery_source: source,
+              specializations: specs,
+              discovery_source: discoverySource,
               freelance_mode: orgDetailsData.freelanceMode,
             } as any)
             .eq('id', org.id);
@@ -138,8 +146,8 @@ const Onboarding = () => {
       }
     }
 
-    setStep((discoveryIndex >= 0 ? discoveryIndex : 2) + 1);
-  }, [flow, markCompleted, createOrganization, orgType, orgDetailsData]);
+    setStep((specIndex >= 0 ? specIndex : 3) + 1);
+  }, [flow, markCompleted, createOrganization, orgType, orgDetailsData, discoverySource]);
 
   const handleOrgCreated = useCallback((data: OnboardingCompanyData) => {
     setOrgCreated(true);
@@ -153,7 +161,7 @@ const Onboarding = () => {
         .update({
           org_type: orgType,
           team_size: orgDetailsData.teamSize,
-          specializations: orgDetailsData.specializations,
+          specializations,
           discovery_source: discoverySource,
           freelance_mode: orgDetailsData.freelanceMode,
         } as any)
@@ -216,7 +224,14 @@ const Onboarding = () => {
               <SceneOrgDetails orgType={orgType} onSubmit={handleOrgDetailsSubmitted} onBack={goBack} />
             )}
             {currentScene === 'discovery' && (
-              <SceneDiscovery onSubmit={handleDiscoverySubmitted} onBack={goBack} savedValue={discoverySource} savedSpecializations={discoverySpecs} />
+              <SceneDiscovery onSubmit={handleDiscoverySubmitted} onBack={goBack} savedValue={discoverySource} />
+            )}
+            {currentScene === 'specializations' && (
+              <SceneSpecializations
+                onSubmit={handleSpecializationsSubmitted}
+                onBack={goBack}
+                savedSpecializations={specializations}
+              />
             )}
             {currentScene === 'org' && (
               <SceneOrganization onComplete={handleOrgCreated} onBack={goBack} />
