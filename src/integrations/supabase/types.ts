@@ -2769,6 +2769,7 @@ export type Database = {
           logo_url: string | null
           name: string
           slug: string
+          specializations: string[] | null
           team_size: string | null
           updated_at: string
           website: string | null
@@ -2783,6 +2784,7 @@ export type Database = {
           logo_url?: string | null
           name: string
           slug: string
+          specializations?: string[] | null
           team_size?: string | null
           updated_at?: string
           website?: string | null
@@ -2797,6 +2799,7 @@ export type Database = {
           logo_url?: string | null
           name?: string
           slug?: string
+          specializations?: string[] | null
           team_size?: string | null
           updated_at?: string
           website?: string | null
