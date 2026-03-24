@@ -32,10 +32,10 @@ interface ProfileTabProps {
     } | null;
     airtableShortlists: Array<{
       id: string;
-      jobTitle: string | null;
-      companyName: string | null;
-      status: string | null;
-      dateAdded: string | null;
+      jobTitle?: string;
+      companyName?: string;
+      status: string;
+      dateAdded: string;
     }>;
   };
 }
