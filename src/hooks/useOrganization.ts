@@ -268,10 +268,16 @@ export const useOrganizationMembers = (orgId: string | null) => {
         .from('organization_invitations')
         .select('*')
         .eq('organization_id', orgId)
-        .eq('status', 'pending')
         .order('created_at', { ascending: false });
       if (error) throw error;
-      return data || [];
+
+      return (data || []).filter((invitation) => {
+        if (invitation.status === 'accepted' || invitation.status === 'cancelled') {
+          return false;
+        }
+
+        return true;
+      });
     },
     enabled: !!orgId,
   });

@@ -16,6 +16,11 @@ interface Invitation {
   token?: string;
 }
 
+const isExpired = (expiresAt?: string) => {
+  if (!expiresAt) return false;
+  return new Date(expiresAt).getTime() < Date.now();
+};
+
 interface PendingInvitationsProps {
   invitations: Invitation[];
   onCancel: (id: string) => void;
@@ -66,6 +71,7 @@ export const PendingInvitations = ({
       </p>
       {invitations.map(inv => {
         const isInvitationResending = isResending && resendingId === inv.id;
+        const expired = isExpired(inv.expires_at);
 
         return (
           <div key={inv.id} className="flex items-center justify-between py-2 px-3 bg-muted/50 rounded-md">
@@ -81,7 +87,7 @@ export const PendingInvitations = ({
               </div>
             </div>
             <div className="flex items-center gap-1.5">
-              <Badge variant="outline" className="text-[10px]">En attente</Badge>
+              <Badge variant="outline" className="text-[10px]">{expired ? 'Expirée' : 'En attente'}</Badge>
               {canManage && (
                 <Button
                   variant="ghost"
