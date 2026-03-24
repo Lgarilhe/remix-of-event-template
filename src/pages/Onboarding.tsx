@@ -94,13 +94,22 @@ const Onboarding = () => {
     setStep(1); // go to orgdetails
   }, [markCompleted]);
 
-  // Step 2: details submitted
-  const handleOrgDetailsSubmitted = useCallback(async (data: OrgDetailsData) => {
+  // Step 2: details submitted (no longer handles discovery)
+  const handleOrgDetailsSubmitted = useCallback((data: OrgDetailsData) => {
     setOrgDetailsData(data);
     markCompleted(1);
     setDirection(1);
+    setStep(2); // go to discovery
+  }, [markCompleted]);
 
-    if (orgType === 'freelance') {
+  // Step 3: discovery source submitted
+  const handleDiscoverySubmitted = useCallback(async (source: string) => {
+    setDiscoverySource(source);
+    const discoveryIndex = flow.indexOf('discovery');
+    if (discoveryIndex >= 0) markCompleted(discoveryIndex);
+    setDirection(1);
+
+    if (orgType === 'freelance' && orgDetailsData) {
       try {
         const { data: { user } } = await supabase.auth.getUser();
         const userName = user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Mon espace';
@@ -114,10 +123,10 @@ const Onboarding = () => {
             .from('organizations')
             .update({
               org_type: 'freelance',
-              team_size: data.teamSize,
-              specializations: data.specializations,
-              discovery_source: data.discoverySource,
-              freelance_mode: data.freelanceMode,
+              team_size: orgDetailsData.teamSize,
+              specializations: orgDetailsData.specializations,
+              discovery_source: source,
+              freelance_mode: orgDetailsData.freelanceMode,
             } as any)
             .eq('id', org.id);
         }
@@ -127,8 +136,8 @@ const Onboarding = () => {
       }
     }
 
-    setStep(2);
-  }, [markCompleted, createOrganization, orgType]);
+    setStep((discoveryIndex >= 0 ? discoveryIndex : 2) + 1);
+  }, [flow, markCompleted, createOrganization, orgType, orgDetailsData]);
 
   const handleOrgCreated = useCallback((data: OnboardingCompanyData) => {
     setOrgCreated(true);
