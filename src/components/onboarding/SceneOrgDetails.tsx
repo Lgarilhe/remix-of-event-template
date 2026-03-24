@@ -68,7 +68,7 @@ export const SceneOrgDetails: React.FC<Props> = ({ orgType, onSubmit, onBack }) 
   const isFreelance = orgType === 'freelance';
   const [teamSize, setTeamSize] = useState(isFreelance ? '1' : '');
   const [specializations, setSpecializations] = useState<string[]>([]);
-  const [discoverySource, setDiscoverySource] = useState('');
+  
   const [freelanceMode, setFreelanceMode] = useState('');
   const [tjm, setTjm] = useState<[number, number]>([400, 700]);
 
