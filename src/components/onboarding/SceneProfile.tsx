@@ -117,7 +117,11 @@ export const SceneProfile: React.FC<Props> = ({ onNext, onBack, orgType, savedSt
 
       setScanResult(data);
       if (data.name && !displayName.trim()) setDisplayName(data.name);
-      toast.success('Profil LinkedIn analysé avec succès !');
+      if (data.warning) {
+        toast.warning(data.warning);
+      } else {
+        toast.success('Profil LinkedIn analysé avec succès !');
+      }
     } catch (err: any) {
       toast.error(err.message || 'Erreur lors du scan LinkedIn');
     } finally {
