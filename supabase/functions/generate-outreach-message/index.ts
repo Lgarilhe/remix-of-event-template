@@ -230,12 +230,12 @@ async function fetchRecentPosts(
   }
 
   try {
-    const url = `https://${UNIPILE_DSN}/api/v1/users/${encodeURIComponent(profileId)}/posts?account_id=${encodeURIComponent(accountId)}&limit=${maxPosts}`;
+    const url = `https://${creds.dsn}/api/v1/users/${encodeURIComponent(profileId)}/posts?account_id=${encodeURIComponent(accountId)}&limit=${maxPosts}`;
     console.log('[generate-outreach-message] Fetching posts:', url);
 
     const response = await fetchWithTimeout(url, {
       headers: {
-        'X-API-KEY': UNIPILE_API_KEY,
+        'X-API-KEY': creds.apiKey,
         'accept': 'application/json',
       },
     });
