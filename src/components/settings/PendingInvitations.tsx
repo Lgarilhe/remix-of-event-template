@@ -102,7 +102,7 @@ export const PendingInvitations = ({
                   onClick={() => handleCopyLink(inv)}
                   title="Copier le lien d'invitation"
                 >
-                  {copiedId === inv.id ? <Check className="w-3.5 h-3.5 text-green-500" /> : <Link className="w-3.5 h-3.5" />}
+                  {copiedId === inv.id ? <Check className="w-3.5 h-3.5 text-primary" /> : <Link className="w-3.5 h-3.5" />}
                 </Button>
               )}
               {canManage && (
@@ -121,3 +121,4 @@ export const PendingInvitations = ({
       })}
     </div>
   );
+};
