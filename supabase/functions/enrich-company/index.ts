@@ -640,6 +640,16 @@ Deno.serve(async (req) => {
       newsArticles: [],
     };
 
+    // If website_url is provided directly (e.g. from ImportJobsModal), pre-set domain
+    if (website_url) {
+      const directDomain = normalizeDomain(website_url);
+      if (directDomain) {
+        result.domain = directDomain;
+        result.websiteUrl = website_url;
+        result.careersUrl = website_url;
+      }
+    }
+
     // ═══════════════════════════════════════════════════════
     // PHASE 1 — Apollo org + domain resolution
     // ═══════════════════════════════════════════════════════
