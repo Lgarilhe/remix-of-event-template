@@ -7,6 +7,7 @@ import { useToast } from '@/hooks/use-toast';
 import { SEOHead } from '@/components/SEOHead';
 import { lovable } from '@/integrations/lovable/index';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
+import { CollaboratorWelcome } from '@/components/onboarding/CollaboratorWelcome';
 
 const PENDING_INVITATION_STORAGE_KEY = 'pending-team-invitation-token';
 const DEFAULT_APP_ORIGIN = 'https://id-preview--08a19073-7da4-47fa-92af-b78fed96739f.lovable.app';
