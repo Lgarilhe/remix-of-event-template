@@ -1,12 +1,18 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { Link, useNavigate } from 'react-router-dom';
-import { Menu, X, Bell } from 'lucide-react';
+import { Menu, X, Bell, Plus } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { User } from '@supabase/supabase-js';
 import { AuthSheet } from './AuthSheet';
 import { NotificationDropdown } from './NotificationDropdown';
 import { useUnreadMessageNotifications } from '@/hooks/useUnreadMessageNotifications';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 
 
 type FaceState = 'idle' | 'wink' | 'surprise' | 'happy' | 'look-left' | 'look-right';
@@ -205,6 +211,26 @@ export const Navbar: React.FC = () => {
             </Link>
             {/* Spacer */}
             <div className="flex-1" />
+            {/* Quick create menu */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button className="relative overflow-hidden glass text-foreground h-[34px] w-[34px] flex items-center justify-center text-sm font-bold border border-foreground leading-none group">
+                  <span className="relative z-10">+</span>
+                  <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out"></span>
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => navigate('/missions?create=brief')}>
+                  📋 Nouvelle mission (Brief IA)
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => navigate('/missions?create=import')}>
+                  📥 Importer depuis page carrières
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => navigate('/missions?create=manual')}>
+                  ✏️ Création manuelle
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
             {/* Right group: notifications + sign out */}
             <NotificationDropdown />
             <button 

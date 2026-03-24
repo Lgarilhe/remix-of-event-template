@@ -1,4 +1,5 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useSourcingProjects, SourcingProject } from '@/hooks/useSourcingProjects';
 import { useQuotaGate } from '@/hooks/useQuotaGate';
 import { useNotionJobs } from '@/hooks/useNotionJobs';
@@ -83,11 +84,26 @@ export const ProjectsList: React.FC<ProjectsListProps> = ({ onResumeSearch }) =>
   const { data: notionJobs = [], isLoading: jobsLoading } = useNotionJobs();
   const { canCreateJob, limits, jobCount } = useQuotaGate();
   const { isAdmin: canManageVisibility } = useOrganization();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [createInitialTab, setCreateInitialTab] = useState<string | undefined>(undefined);
   const [selectedProjectKey, setSelectedProjectKey] = useState<string | null>(null);
+
+  // Auto-open create dialog from ?create= query param
+  useEffect(() => {
+    const createMode = searchParams.get('create');
+    if (createMode && ['brief', 'import', 'manual'].includes(createMode)) {
+      setCreateInitialTab(createMode);
+      setShowCreateModal(true);
+      setSearchParams(prev => {
+        const next = new URLSearchParams(prev);
+        next.delete('create');
+        return next;
+      }, { replace: true });
+    }
+  }, [searchParams, setSearchParams]);
 
   // Merge Notion jobs + manual projects into unified list
   const unifiedProjects = useMemo(
