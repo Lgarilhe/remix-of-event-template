@@ -1500,7 +1500,7 @@ Deno.serve(async (req) => {
     result.signals = buildSignals(apolloOrg, result);
     console.log(`[enrich] Jobs: ${result.openRoles.length}, Signals: ${result.signals.length}, elapsed: ${Date.now() - startTime}ms`);
 
-    // ── Perplexity fallback for company insights (funding, news, headcount) ──
+    // ── Perplexity fallback for company insights (skip in jobs_only mode) ──
     const recentNewsArticles = selectRecentNewsArticles(result.newsArticles, { maxAgeMonths: 15, includeUndated: false });
     if (recentNewsArticles.length !== result.newsArticles.length) {
       result.newsArticles = recentNewsArticles;
@@ -1511,7 +1511,7 @@ Deno.serve(async (req) => {
     const needsHeadcountData = !result.departmentalHeadcount;
     const elapsedBeforeFallback = Date.now() - startTime;
 
-    if (PERPLEXITY_API_KEY && LOVABLE_API_KEY && (needsFundingData || needsNewsData || needsHeadcountData) && elapsedBeforeFallback < 40000) {
+    if (!jobsOnly && PERPLEXITY_API_KEY && LOVABLE_API_KEY && (needsFundingData || needsNewsData || needsHeadcountData) && elapsedBeforeFallback < 40000) {
       try {
         console.log('[enrich] Perplexity company insights fallback for:', result.name);
         const companyHint = result.domain ? ` (${result.domain})` : '';
