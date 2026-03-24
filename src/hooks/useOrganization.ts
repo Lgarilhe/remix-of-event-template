@@ -146,6 +146,7 @@ export const useOrganization = () => {
     userRole: data?.role || null,
     isOwner: data?.role === 'owner',
     isAdmin: data?.role === 'owner' || data?.role === 'admin',
+    isCollaborator: data?.role === 'collaborator',
     isLoading,
     needsOnboarding: !isLoading && data === null,
     createOrganization: createOrgMutation.mutateAsync,
