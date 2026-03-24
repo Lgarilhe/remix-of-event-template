@@ -91,7 +91,7 @@ export const SceneOrgDetails: React.FC<Props> = ({ orgType, onSubmit, onBack }) 
   const tjmStartPercent = ((tjm[0] - TJM_MIN) / (TJM_MAX - TJM_MIN)) * 100;
   const tjmEndPercent = ((tjm[1] - TJM_MIN) / (TJM_MAX - TJM_MIN)) * 100;
 
-  const canSubmit = teamSize && specializations.length > 0 && (!isFreelance || freelanceMode);
+  const canSubmit = teamSize && (!isFreelance || freelanceMode);
 
   
 
