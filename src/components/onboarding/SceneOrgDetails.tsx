@@ -171,12 +171,18 @@ export const SceneOrgDetails: React.FC<Props> = ({ orgType, onSubmit, onBack }) 
                 Fourchette TJM indicative
               </label>
 
-              <div className="space-y-3 rounded-md border border-border/60 bg-muted/20 px-3 py-3">
-                <div className="relative h-8">
-                  <div className="absolute inset-x-0 top-1/2 h-1 -translate-y-1/2 rounded-full bg-border" />
+              <div className="space-y-3 rounded-md border-2 border-foreground/20 bg-background px-4 py-4">
+                <div className="relative h-10">
+                  {/* Track background */}
+                  <div className="absolute inset-x-0 top-1/2 h-2 -translate-y-1/2 rounded-full bg-foreground/10" />
+                  {/* Active range */}
                   <div
-                    className="absolute top-1/2 h-1 -translate-y-1/2 rounded-full bg-foreground"
-                    style={{ left: `${tjmStartPercent}%`, width: `${tjmEndPercent - tjmStartPercent}%` }}
+                    className="absolute top-1/2 h-2 -translate-y-1/2 rounded-full"
+                    style={{
+                      left: `${tjmStartPercent}%`,
+                      width: `${tjmEndPercent - tjmStartPercent}%`,
+                      background: 'linear-gradient(90deg, hsl(var(--skalr-purple)), hsl(var(--skalr-pink)))',
+                    }}
                   />
 
                   <input
@@ -187,7 +193,7 @@ export const SceneOrgDetails: React.FC<Props> = ({ orgType, onSubmit, onBack }) 
                     value={tjm[0]}
                     onChange={handleTjmMinChange}
                     aria-label="TJM minimum"
-                    className="pointer-events-none absolute inset-0 z-20 h-8 w-full appearance-none bg-transparent [&::-webkit-slider-runnable-track]:h-1 [&::-webkit-slider-runnable-track]:bg-transparent [&::-moz-range-track]:h-1 [&::-moz-range-track]:bg-transparent [&::-webkit-slider-thumb]:pointer-events-auto [&::-webkit-slider-thumb]:relative [&::-webkit-slider-thumb]:mt-[-8px] [&::-webkit-slider-thumb]:h-5 [&::-webkit-slider-thumb]:w-5 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-foreground [&::-webkit-slider-thumb]:bg-background [&::-webkit-slider-thumb]:shadow-[2px_2px_0px_0px_hsl(var(--brutal-accent))] [&::-moz-range-thumb]:pointer-events-auto [&::-moz-range-thumb]:h-5 [&::-moz-range-thumb]:w-5 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-2 [&::-moz-range-thumb]:border-foreground [&::-moz-range-thumb]:bg-background"
+                    className="pointer-events-none absolute inset-0 z-20 h-10 w-full appearance-none bg-transparent [&::-webkit-slider-runnable-track]:bg-transparent [&::-moz-range-track]:bg-transparent [&::-webkit-slider-thumb]:pointer-events-auto [&::-webkit-slider-thumb]:relative [&::-webkit-slider-thumb]:mt-[-6px] [&::-webkit-slider-thumb]:h-6 [&::-webkit-slider-thumb]:w-6 [&::-webkit-slider-thumb]:cursor-grab [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:border-[3px] [&::-webkit-slider-thumb]:border-foreground [&::-webkit-slider-thumb]:bg-background [&::-webkit-slider-thumb]:shadow-[2px_2px_0px_0px_hsl(var(--brutal-accent))] [&::-moz-range-thumb]:pointer-events-auto [&::-moz-range-thumb]:h-6 [&::-moz-range-thumb]:w-6 [&::-moz-range-thumb]:cursor-grab [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-[3px] [&::-moz-range-thumb]:border-foreground [&::-moz-range-thumb]:bg-background [&::-moz-range-thumb]:shadow-[2px_2px_0px_0px_hsl(var(--brutal-accent))]"
                   />
 
                   <input
@@ -198,7 +204,7 @@ export const SceneOrgDetails: React.FC<Props> = ({ orgType, onSubmit, onBack }) 
                     value={tjm[1]}
                     onChange={handleTjmMaxChange}
                     aria-label="TJM maximum"
-                    className="pointer-events-none absolute inset-0 z-10 h-8 w-full appearance-none bg-transparent [&::-webkit-slider-runnable-track]:h-1 [&::-webkit-slider-runnable-track]:bg-transparent [&::-moz-range-track]:h-1 [&::-moz-range-track]:bg-transparent [&::-webkit-slider-thumb]:pointer-events-auto [&::-webkit-slider-thumb]:relative [&::-webkit-slider-thumb]:mt-[-8px] [&::-webkit-slider-thumb]:h-5 [&::-webkit-slider-thumb]:w-5 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-foreground [&::-webkit-slider-thumb]:bg-background [&::-webkit-slider-thumb]:shadow-[2px_2px_0px_0px_hsl(var(--brutal-accent))] [&::-moz-range-thumb]:pointer-events-auto [&::-moz-range-thumb]:h-5 [&::-moz-range-thumb]:w-5 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-2 [&::-moz-range-thumb]:border-foreground [&::-moz-range-thumb]:bg-background"
+                    className="pointer-events-none absolute inset-0 z-30 h-10 w-full appearance-none bg-transparent [&::-webkit-slider-runnable-track]:bg-transparent [&::-moz-range-track]:bg-transparent [&::-webkit-slider-thumb]:pointer-events-auto [&::-webkit-slider-thumb]:relative [&::-webkit-slider-thumb]:mt-[-6px] [&::-webkit-slider-thumb]:h-6 [&::-webkit-slider-thumb]:w-6 [&::-webkit-slider-thumb]:cursor-grab [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:border-[3px] [&::-webkit-slider-thumb]:border-foreground [&::-webkit-slider-thumb]:bg-background [&::-webkit-slider-thumb]:shadow-[2px_2px_0px_0px_hsl(var(--brutal-accent))] [&::-moz-range-thumb]:pointer-events-auto [&::-moz-range-thumb]:h-6 [&::-moz-range-thumb]:w-6 [&::-moz-range-thumb]:cursor-grab [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-[3px] [&::-moz-range-thumb]:border-foreground [&::-moz-range-thumb]:bg-background [&::-moz-range-thumb]:shadow-[2px_2px_0px_0px_hsl(var(--brutal-accent))]"
                   />
                 </div>
 
