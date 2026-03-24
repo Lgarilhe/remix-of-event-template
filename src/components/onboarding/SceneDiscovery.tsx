@@ -4,6 +4,17 @@ import { ArrowLeft, ArrowRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 
+const SPECIALIZATIONS = [
+  'Cloud & Infra',
+  'DevOps / SRE',
+  'Datacenter',
+  'Cybersécurité',
+  'Data & IA',
+  'Développement',
+  'Réseau',
+  'Management IT',
+];
+
 const DISCOVERY_SOURCES = [
   { value: 'linkedin', label: 'LinkedIn (post / pub)' },
   { value: 'linkedin-dm', label: 'LinkedIn (message privé)' },
@@ -26,13 +37,23 @@ const DISCOVERY_SOURCES = [
 ];
 
 interface Props {
-  onSubmit: (source: string) => void;
+  onSubmit: (source: string, specializations: string[]) => void;
   onBack: () => void;
   savedValue?: string;
+  savedSpecializations?: string[];
 }
 
-export const SceneDiscovery: React.FC<Props> = ({ onSubmit, onBack, savedValue }) => {
+export const SceneDiscovery: React.FC<Props> = ({ onSubmit, onBack, savedValue, savedSpecializations }) => {
   const [selected, setSelected] = useState(savedValue || '');
+  const [selectedSpecs, setSelectedSpecs] = useState<Set<string>>(new Set(savedSpecializations ?? []));
+
+  const toggleSpec = (spec: string) => {
+    setSelectedSpecs((prev) => {
+      const next = new Set(prev);
+      next.has(spec) ? next.delete(spec) : next.add(spec);
+      return next;
+    });
+  };
 
   return (
     <div className="w-full max-w-lg mx-auto flex flex-col gap-5">
@@ -74,6 +95,37 @@ export const SceneDiscovery: React.FC<Props> = ({ onSubmit, onBack, savedValue }
         ))}
       </motion.div>
 
+      {/* Spécialisations */}
+      <div className="space-y-2">
+        <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+          Spécialisations (optionnel)
+        </label>
+        <div className="flex flex-wrap gap-2 justify-center">
+          {SPECIALIZATIONS.map((spec) => {
+            const active = selectedSpecs.has(spec);
+            return (
+              <button
+                key={spec}
+                type="button"
+                onClick={() => toggleSpec(spec)}
+                className={`px-3 py-1.5 text-xs font-semibold border-2 transition-all duration-200 ${
+                  active
+                    ? 'border-foreground text-foreground'
+                    : 'border-foreground/15 text-muted-foreground hover:border-foreground/30'
+                }`}
+                style={
+                  active
+                    ? { background: 'hsl(var(--skalr-green) / 0.15)' }
+                    : {}
+                }
+              >
+                {spec}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
       {/* Navigation */}
       <motion.div
         className="flex items-center justify-between pt-2"
@@ -89,7 +141,7 @@ export const SceneDiscovery: React.FC<Props> = ({ onSubmit, onBack, savedValue }
           <ArrowLeft className="w-4 h-4" /> Retour
         </Button>
         <Button
-          onClick={() => selected && onSubmit(selected)}
+          onClick={() => selected && onSubmit(selected, Array.from(selectedSpecs))}
           disabled={!selected}
           className="gap-2 border-2 border-foreground bg-foreground text-background hover:bg-foreground/90 text-sm px-6"
           style={{ boxShadow: '3px 3px 0px 0px hsl(var(--brutal-accent))' }}

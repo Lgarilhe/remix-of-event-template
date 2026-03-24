@@ -42,22 +42,10 @@ interface Props {
   onStateChange?: (state: ProfileFormState) => void;
 }
 
-const SPECIALIZATIONS = [
-  'Cloud & Infra',
-  'DevOps / SRE',
-  'Datacenter',
-  'Cybersécurité',
-  'Data & IA',
-  'Développement',
-  'Réseau',
-  'Management IT',
-];
-
 export const SceneProfile: React.FC<Props> = ({ onNext, onBack, orgType, savedState, onStateChange }) => {
   const [displayName, setDisplayName] = useState(savedState?.displayName ?? '');
   const [jobTitle, setJobTitle] = useState(savedState?.jobTitle ?? '');
   const [linkedinUrl, setLinkedinUrl] = useState(savedState?.linkedinUrl ?? '');
-  const [selectedSpecs, setSelectedSpecs] = useState<Set<string>>(new Set(savedState?.selectedSpecs ?? []));
   const [saving, setSaving] = useState(false);
   const [scanning, setScanning] = useState(false);
   const [scanResult, setScanResult] = useState<ScanResultData | null>(savedState?.scanResult ?? null);
@@ -81,18 +69,10 @@ export const SceneProfile: React.FC<Props> = ({ onNext, onBack, orgType, savedSt
       displayName,
       jobTitle,
       linkedinUrl,
-      selectedSpecs: Array.from(selectedSpecs),
+      selectedSpecs: savedState?.selectedSpecs ?? [],
       scanResult,
     });
-  }, [displayName, jobTitle, linkedinUrl, selectedSpecs, scanResult, onStateChange]);
-
-  const toggleSpec = (spec: string) => {
-    setSelectedSpecs((prev) => {
-      const next = new Set(prev);
-      next.has(spec) ? next.delete(spec) : next.add(spec);
-      return next;
-    });
-  };
+  }, [displayName, jobTitle, linkedinUrl, scanResult, onStateChange]);
 
   const initials = displayName
     .trim()
@@ -419,36 +399,6 @@ export const SceneProfile: React.FC<Props> = ({ onNext, onBack, orgType, savedSt
             </motion.div>
           )}
         </AnimatePresence>
-
-        <div className="space-y-2">
-          <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-            Spécialisations
-          </label>
-          <div className="flex flex-wrap gap-2">
-            {SPECIALIZATIONS.map((spec) => {
-              const active = selectedSpecs.has(spec);
-              return (
-                <button
-                  key={spec}
-                  type="button"
-                  onClick={() => toggleSpec(spec)}
-                  className={`px-3 py-1.5 text-xs font-semibold border-2 transition-all duration-200 ${
-                    active
-                      ? 'border-foreground text-foreground'
-                      : 'border-foreground/15 text-muted-foreground hover:border-foreground/30'
-                  }`}
-                  style={
-                    active
-                      ? { background: 'hsl(var(--skalr-green) / 0.15)' }
-                      : {}
-                  }
-                >
-                  {spec}
-                </button>
-              );
-            })}
-          </div>
-        </div>
 
         {/* Navigation */}
         <div className="flex items-center justify-between pt-2">
