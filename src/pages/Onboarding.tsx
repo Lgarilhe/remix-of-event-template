@@ -10,7 +10,8 @@ import { SceneOrganization } from '@/components/onboarding/SceneOrganization';
 import { SceneAudit } from '@/components/onboarding/SceneAudit';
 import { SceneProfile } from '@/components/onboarding/SceneProfile';
 import { SceneIntegrations } from '@/components/onboarding/SceneIntegrations';
-import { SceneOrgType, type OrgTypeData } from '@/components/onboarding/SceneOrgType';
+import { SceneOrgType } from '@/components/onboarding/SceneOrgType';
+import { SceneOrgDetails, type OrgDetailsData } from '@/components/onboarding/SceneOrgDetails';
 import { SceneTeam } from '@/components/onboarding/SceneTeam';
 import { SceneLaunch } from '@/components/onboarding/SceneLaunch';
 
@@ -23,15 +24,14 @@ export interface OnboardingCompanyData {
 
 type OrgType = 'enterprise' | 'agency' | 'freelance';
 
-type SceneKey = 'orgtype' | 'org' | 'audit' | 'profile' | 'integrations' | 'team' | 'launch';
+type SceneKey = 'orgtype' | 'orgdetails' | 'org' | 'audit' | 'profile' | 'integrations' | 'team' | 'launch';
 
 const FLOWS: Record<OrgType, SceneKey[]> = {
-  enterprise: ['orgtype', 'org', 'audit', 'profile', 'integrations', 'team', 'launch'],
-  agency:     ['orgtype', 'org', 'audit', 'profile', 'integrations', 'team', 'launch'],
-  freelance:  ['orgtype', 'profile', 'integrations', 'launch'],
+  enterprise: ['orgtype', 'orgdetails', 'org', 'audit', 'profile', 'integrations', 'team', 'launch'],
+  agency:     ['orgtype', 'orgdetails', 'org', 'audit', 'profile', 'integrations', 'team', 'launch'],
+  freelance:  ['orgtype', 'orgdetails', 'profile', 'integrations', 'launch'],
 };
 
-// Before orgType is chosen, show the full flow length
 const DEFAULT_FLOW: SceneKey[] = FLOWS.enterprise;
 
 const Onboarding = () => {
@@ -41,7 +41,7 @@ const Onboarding = () => {
   const [completedSet, setCompletedSet] = useState<Set<number>>(new Set());
   const [companyData, setCompanyData] = useState<OnboardingCompanyData | null>(null);
   const [orgType, setOrgType] = useState<OrgType | null>(null);
-  const [orgExtraData, setOrgExtraData] = useState<Omit<OrgTypeData, 'orgType'> | null>(null);
+  const [orgDetailsData, setOrgDetailsData] = useState<OrgDetailsData | null>(null);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { organization, organizationId } = useOrganization();
@@ -49,7 +49,7 @@ const Onboarding = () => {
   const flow = useMemo(() => orgType ? FLOWS[orgType] : DEFAULT_FLOW, [orgType]);
   const currentScene = flow[step] ?? 'orgtype';
   const stepCount = flow.length;
-  const trackableSteps = stepCount - 1; // exclude launch
+  const trackableSteps = stepCount - 1;
 
   const markCompleted = useCallback((stepIndex: number) => {
     setCompletedSet((prev) => {
@@ -83,14 +83,21 @@ const Onboarding = () => {
 
   const { createOrganization } = useOrganization();
 
-  const handleOrgTypeSelected = useCallback(async (data: OrgTypeData) => {
-    const { orgType: type, teamSize, annualHires, discoverySource } = data;
+  // Step 1: pick org type
+  const handleOrgTypeSelected = useCallback((type: OrgType) => {
     setOrgType(type);
-    setOrgExtraData({ teamSize, annualHires, discoverySource });
     markCompleted(0);
     setDirection(1);
+    setStep(1); // go to orgdetails
+  }, [markCompleted]);
 
-    if (type === 'freelance') {
+  // Step 2: details submitted
+  const handleOrgDetailsSubmitted = useCallback(async (data: OrgDetailsData) => {
+    setOrgDetailsData(data);
+    markCompleted(1);
+    setDirection(1);
+
+    if (orgType === 'freelance') {
       try {
         const { data: { user } } = await supabase.auth.getUser();
         const userName = user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Mon espace';
@@ -102,7 +109,13 @@ const Onboarding = () => {
         if (org?.id) {
           await supabase
             .from('organizations')
-            .update({ org_type: 'freelance', team_size: teamSize, annual_hires: annualHires, discovery_source: discoverySource, freelance_mode: data.freelanceMode } as any)
+            .update({
+              org_type: 'freelance',
+              team_size: data.teamSize,
+              annual_hires: data.annualHires,
+              discovery_source: data.discoverySource,
+              freelance_mode: data.freelanceMode,
+            } as any)
             .eq('id', org.id);
         }
         setOrgCreated(true);
@@ -111,34 +124,30 @@ const Onboarding = () => {
       }
     }
 
-    setStep(1);
-  }, [markCompleted, createOrganization]);
+    setStep(2);
+  }, [markCompleted, createOrganization, orgType]);
 
   const handleOrgCreated = useCallback((data: OnboardingCompanyData) => {
     setOrgCreated(true);
     setCompanyData(data);
-    // Find 'org' index in current flow and mark complete
     const orgIndex = flow.indexOf('org');
     if (orgIndex >= 0) markCompleted(orgIndex);
 
-    // Update org_type + extra data in DB
-    if (organizationId && orgType) {
+    if (organizationId && orgType && orgDetailsData) {
       supabase
         .from('organizations')
         .update({
           org_type: orgType,
-          ...(orgExtraData ? {
-            team_size: orgExtraData.teamSize,
-            annual_hires: orgExtraData.annualHires,
-            discovery_source: orgExtraData.discoverySource,
-            freelance_mode: orgExtraData.freelanceMode,
-          } : {}),
+          team_size: orgDetailsData.teamSize,
+          annual_hires: orgDetailsData.annualHires,
+          discovery_source: orgDetailsData.discoverySource,
+          freelance_mode: orgDetailsData.freelanceMode,
         } as any)
         .eq('id', organizationId);
     }
 
     goNext();
-  }, [flow, goNext, markCompleted, organizationId, orgType]);
+  }, [flow, goNext, markCompleted, organizationId, orgType, orgDetailsData]);
 
   const handleFinish = useCallback(async () => {
     const teamIndex = flow.indexOf('team');
@@ -161,9 +170,6 @@ const Onboarding = () => {
       scale: 0.97,
     }),
   };
-
-  // Scene numbering for display (1-indexed, exclude launch)
-  const sceneNumber = step + 1;
 
   return (
     <OnboardingLayout
@@ -191,6 +197,9 @@ const Onboarding = () => {
           >
             {currentScene === 'orgtype' && (
               <SceneOrgType onSelect={handleOrgTypeSelected} onBack={() => {}} />
+            )}
+            {currentScene === 'orgdetails' && orgType && (
+              <SceneOrgDetails orgType={orgType} onSubmit={handleOrgDetailsSubmitted} onBack={goBack} />
             )}
             {currentScene === 'org' && (
               <SceneOrganization onComplete={handleOrgCreated} onBack={goBack} />
