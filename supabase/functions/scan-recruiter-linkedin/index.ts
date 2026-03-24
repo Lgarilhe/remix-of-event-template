@@ -28,85 +28,88 @@ serve(async (req) => {
       throw new Error("URL LinkedIn requise");
     }
 
-    // Clean LinkedIn URL to get identifier
-    const cleanUrl = linkedinUrl.trim().replace(/\/+$/, "");
-    const match = cleanUrl.match(/linkedin\.com\/in\/([^/?]+)/);
-    if (!match) throw new Error("URL LinkedIn invalide. Format attendu: linkedin.com/in/votre-profil");
-    const identifier = match[1];
-
-    // Fetch profile from Unipile
-    const UNIPILE_DSN = Deno.env.get("UNIPILE_DSN");
-    const UNIPILE_API_KEY = Deno.env.get("UNIPILE_API_KEY");
-    if (!UNIPILE_DSN || !UNIPILE_API_KEY) throw new Error("Configuration manquante");
-
-    // Get user's organization to find their LinkedIn account
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("active_organization_id")
-      .eq("user_id", user.id)
-      .single();
-
-    let accountId: string | null = null;
-    if (profile?.active_organization_id) {
-      const { data: linkedAccounts } = await supabase
-        .from("member_linkedin_accounts")
-        .select("linkedin_account_id")
-        .eq("organization_id", profile.active_organization_id)
-        .eq("user_id", user.id)
-        .limit(1);
-      if (linkedAccounts?.length) accountId = linkedAccounts[0].linkedin_account_id;
+    // Normalize LinkedIn URL for Apollo People Enrichment
+    let cleanUrl = linkedinUrl.trim();
+    try {
+      const parsed = new URL(cleanUrl.startsWith("http") ? cleanUrl : `https://${cleanUrl}`);
+      if (!parsed.hostname.includes("linkedin.com") || !parsed.pathname.startsWith("/in/")) {
+        throw new Error("invalid_linkedin_url");
+      }
+      parsed.search = "";
+      parsed.hash = "";
+      cleanUrl = parsed.toString().replace(/\/+$/, "");
+    } catch {
+      throw new Error("URL LinkedIn invalide. Format attendu: linkedin.com/in/votre-profil");
     }
 
-    // If no linked account, try to find any account in the org
-    if (!accountId && profile?.active_organization_id) {
-      const { data: anyAccount } = await supabase
-        .from("member_linkedin_accounts")
-        .select("linkedin_account_id")
-        .eq("organization_id", profile.active_organization_id)
-        .limit(1);
-      if (anyAccount?.length) accountId = anyAccount[0].linkedin_account_id;
-    }
+    const APOLLO_API_KEY = Deno.env.get("APOLLO_API_KEY");
+    if (!APOLLO_API_KEY) throw new Error("Configuration Apollo manquante");
 
-    if (!accountId) throw new Error("Aucun compte LinkedIn connecté. Connectez d'abord votre compte LinkedIn dans les paramètres.");
+    const apolloUrl = new URL("https://api.apollo.io/api/v1/people/match");
+    apolloUrl.searchParams.set("linkedin_url", cleanUrl);
+    apolloUrl.searchParams.set("reveal_personal_emails", "false");
+    apolloUrl.searchParams.set("reveal_phone_number", "false");
 
-    const profileRes = await fetch(
-      `https://${UNIPILE_DSN}/api/v1/users/${identifier}?account_id=${accountId}&linkedin_sections=experience,about,skills,education`,
-      { headers: { "X-API-KEY": UNIPILE_API_KEY, Accept: "application/json" } }
-    );
+    const profileRes = await fetch(apolloUrl.toString(), {
+      method: "POST",
+      headers: {
+        "X-Api-Key": APOLLO_API_KEY,
+        Accept: "application/json",
+        "Cache-Control": "no-cache",
+      },
+    });
 
     if (!profileRes.ok) {
-      console.error("Unipile error:", profileRes.status, await profileRes.text());
-      throw new Error("Impossible de récupérer le profil LinkedIn. Vérifiez l'URL.");
+      const errorText = await profileRes.text();
+      console.error("Apollo error:", profileRes.status, errorText);
+      throw new Error("Impossible de récupérer le profil via Apollo. Vérifiez l'URL LinkedIn.");
     }
 
-    const profile = await profileRes.json();
+    const apolloData = await profileRes.json();
+    const profile = apolloData?.person;
+    if (!profile) {
+      console.error("Apollo empty response:", apolloData);
+      throw new Error("Aucun profil trouvé dans Apollo pour cette URL LinkedIn.");
+    }
+
+    const employmentHistory = Array.isArray(profile.employment_history)
+      ? profile.employment_history
+      : Array.isArray(profile.experience)
+        ? profile.experience
+        : [];
+
+    const educationHistory = Array.isArray(profile.education)
+      ? profile.education
+      : Array.isArray(profile.education_history)
+        ? profile.education_history
+        : [];
 
     // Build context for AI summary
-    const name = profile.first_name && profile.last_name
-      ? `${profile.first_name} ${profile.last_name}`
-      : profile.name || "Ce recruteur";
-    const headline = profile.headline || "";
-    const about = profile.about || "";
-    const skills = (profile.skills || []).map((s: any) => typeof s === "string" ? s : s.name).filter(Boolean);
-    const experiences = (profile.experience || []).slice(0, 8).map((e: any) => {
-      const parts = [e.title, e.company_name, e.location].filter(Boolean);
-      if (e.description) parts.push(e.description.slice(0, 200));
+    const name = profile.name || [profile.first_name, profile.last_name].filter(Boolean).join(" ") || "Ce recruteur";
+    const headline = profile.headline || profile.title || "";
+    const about = profile.bio || profile.organization?.short_description || profile.organization?.seo_description || "";
+    const skills = Array.from(new Set([
+      ...(Array.isArray(profile.skills) ? profile.skills.map((s: any) => typeof s === "string" ? s : s?.name) : []),
+      ...(Array.isArray(profile.organization?.keywords) ? profile.organization.keywords : []),
+      ...(Array.isArray(profile.organization?.technology_names) ? profile.organization.technology_names : []),
+    ].filter(Boolean)));
+    const experiences = employmentHistory.slice(0, 8).map((e: any) => {
+      const parts = [e.title, e.organization_name || e.company_name, e.location].filter(Boolean);
       return parts.join(" — ");
     });
-    const education = (profile.education || []).slice(0, 3).map((e: any) =>
-      [e.school_name, e.degree, e.field_of_study].filter(Boolean).join(" — ")
+    const education = educationHistory.slice(0, 3).map((e: any) =>
+      [e.school_name || e.school, e.degree, e.field_of_study].filter(Boolean).join(" — ")
     );
 
-    // Calculate approximate years of experience
-    let totalYears = 0;
-    for (const exp of (profile.experience || [])) {
-      if (exp.start_date) {
-        const start = new Date(exp.start_date);
-        const end = exp.end_date ? new Date(exp.end_date) : new Date();
-        totalYears += (end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24 * 365);
-      }
-    }
-    const yearsExperience = Math.round(totalYears);
+    const validStartDates = employmentHistory
+      .map((exp: any) => exp.start_date ? new Date(exp.start_date) : null)
+      .filter((date: Date | null): date is Date => !!date && !Number.isNaN(date.getTime()));
+    const earliestStart = validStartDates.length
+      ? Math.min(...validStartDates.map((date) => date.getTime()))
+      : null;
+    const yearsExperience = earliestStart
+      ? Math.max(1, Math.round((Date.now() - earliestStart) / (1000 * 60 * 60 * 24 * 365)))
+      : 0;
 
     // Generate AI bio
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
