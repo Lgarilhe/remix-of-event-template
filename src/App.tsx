@@ -31,6 +31,7 @@ const Settings = lazy(() => import("./pages/Settings"));
 
 const Pricing = lazy(() => import("./pages/Pricing"));
 const UnsubscribePage = lazy(() => import("./pages/Unsubscribe"));
+const RecruiterPublicProfile = lazy(() => import("./pages/RecruiterPublicProfile"));
 
 const PUBLIC_ROUTES = ['/', '/auth', '/portal'];
 
