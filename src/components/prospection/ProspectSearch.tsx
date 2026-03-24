@@ -414,8 +414,8 @@ export function ProspectSearch({ selectedICP, onSelectICP, onResults, searching,
           }),
         invokeEdgeFunction<{ prospects: ProspectProfile[] }>('apollo-search', apollo)
           .then(({ data, error }) => {
-            if (error) { errors.push(`Apollo: ${error.message}`); return; }
-            if (!data?.success) { errors.push(`Apollo: ${data?.error || 'Erreur'}`); return; }
+            if (error) { errors.push(`Recherche: ${error.message}`); return; }
+            if (!data?.success) { errors.push(`Recherche: ${data?.error || 'Erreur'}`); return; }
             ((data as any).prospects || []).forEach((p: any) => { p.source = 'apollo'; allProspects.push(p); });
           }),
       ]);
@@ -453,7 +453,7 @@ export function ProspectSearch({ selectedICP, onSelectICP, onResults, searching,
             <Search className="w-3.5 h-3.5" />
           </div>
           <span className="text-[10px] font-bold uppercase tracking-widest text-foreground">Filtres</span>
-          <Badge variant="outline" className="text-[9px] border-foreground/40 font-normal bg-background/80 ml-auto">PDL + Apollo</Badge>
+          <Badge variant="outline" className="text-[9px] border-foreground/40 font-normal bg-background/80 ml-auto">Recherche avancée</Badge>
         </div>
 
         {/* ICP selector */}
@@ -743,7 +743,7 @@ export function ProspectSearch({ selectedICP, onSelectICP, onResults, searching,
         <FilterSection label="Funding max ($)" icon={<DollarSign className="w-3 h-3" />}>
           <Input value={fundingRaisedMax} onChange={e => setFundingRaisedMax(e.target.value)} placeholder="50000000" className={inputClasses} />
         </FilterSection>
-        <FilterSection label="CA (Apollo)" icon={<BadgeDollarSign className="w-3 h-3" />}>
+        <FilterSection label="Chiffre d'affaires" icon={<BadgeDollarSign className="w-3 h-3" />}>
           <Select value={revenueRange || 'all'} onValueChange={v => setRevenueRange(v === 'all' ? '' : v)}>
             <SelectTrigger className={selectTriggerClasses}><SelectValue placeholder="Tous" /></SelectTrigger>
             <SelectContent>

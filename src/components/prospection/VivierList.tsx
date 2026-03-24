@@ -976,7 +976,7 @@ function EnrichedContactSheet({ contact, enrichment, open, onOpenChange, onCopyM
                         </div>
                       )}
 
-                      {/* Full career timeline from Apollo */}
+                      {/* Full career timeline */}
                       {careerAnalysis.employmentHistory.length > 0 && (
                         <div className="mt-4">
                           <div className="text-[9px] uppercase tracking-widest text-muted-foreground mb-2 font-medium">
