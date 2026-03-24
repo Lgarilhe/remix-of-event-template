@@ -401,8 +401,10 @@ Deno.serve(async (req) => {
       console.warn('[generate-outreach-message] Could not fetch org_id:', e);
     }
 
-    // Build RAG query text from job context
-    const ragQueryText = `${job.title || ''} ${job.skills?.join(' ') || ''} ${job.client?.name || ''}`.trim();
+    // Build RAG query text from job context + candidate name for better matching
+    const candidateName = profileData?.name || profileData?.first_name || '';
+    const candidateHeadline = profileData?.headline || profileData?.occupation || '';
+    const ragQueryText = `${candidateName} ${candidateHeadline} ${job.title || ''} ${job.skills?.join(' ') || ''} ${job.client?.name || ''}`.trim();
 
     // Fetch posts in parallel with RAG context (non-blocking)
     const postsPromise = (accountId && profileId)
