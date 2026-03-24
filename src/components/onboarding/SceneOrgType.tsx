@@ -75,8 +75,9 @@ export const SceneOrgType: React.FC<Props> = ({ onSelect }) => {
   const [teamSize, setTeamSize] = useState('');
   const [annualHires, setAnnualHires] = useState('');
   const [discoverySource, setDiscoverySource] = useState('');
+  const [freelanceMode, setFreelanceMode] = useState('');
 
-  const canSubmit = selected && teamSize && annualHires && discoverySource;
+  const canSubmit = selected && teamSize && annualHires && discoverySource && (selected !== 'freelance' || freelanceMode);
 
   return (
     <div className="w-full max-w-lg mx-auto flex flex-col gap-5">
