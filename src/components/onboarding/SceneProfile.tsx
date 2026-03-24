@@ -37,6 +37,15 @@ export const SceneProfile: React.FC<Props> = ({ onNext, onBack, orgType }) => {
     yearsExperience: number;
     slug: string;
     name: string;
+    seniority?: string | null;
+    currentCompany?: string | null;
+    currentTitle?: string | null;
+    location?: string | null;
+    industries?: string[];
+    tags?: string[];
+    companies?: string[];
+    photoUrl?: string | null;
+    education?: string[];
   } | null>(null);
 
   const isFreelance = orgType === 'freelance';
