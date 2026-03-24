@@ -6,6 +6,38 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+// ── In-memory embedding cache (avoids re-embedding the same job query) ──
+const embeddingCache = new Map<string, { embedding: number[]; timestamp: number }>();
+const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+function getCachedEmbedding(queryHash: string): number[] | null {
+  const entry = embeddingCache.get(queryHash);
+  if (!entry) return null;
+  if (Date.now() - entry.timestamp > CACHE_TTL_MS) {
+    embeddingCache.delete(queryHash);
+    return null;
+  }
+  return entry.embedding;
+}
+
+function setCachedEmbedding(queryHash: string, embedding: number[]): void {
+  // Evict expired entries periodically (keep cache small)
+  if (embeddingCache.size > 100) {
+    const now = Date.now();
+    for (const [k, v] of embeddingCache) {
+      if (now - v.timestamp > CACHE_TTL_MS) embeddingCache.delete(k);
+    }
+  }
+  embeddingCache.set(queryHash, { embedding, timestamp: Date.now() });
+}
+
+async function hashQuery(query: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(query);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+  return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, "0")).join("");
+}
+
 function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
