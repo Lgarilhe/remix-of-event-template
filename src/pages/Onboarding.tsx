@@ -139,7 +139,7 @@ const Onboarding = () => {
         .update({
           org_type: orgType,
           team_size: orgDetailsData.teamSize,
-          annual_hires: orgDetailsData.annualHires,
+          specializations: orgDetailsData.specializations,
           discovery_source: orgDetailsData.discoverySource,
           freelance_mode: orgDetailsData.freelanceMode,
         } as any)
