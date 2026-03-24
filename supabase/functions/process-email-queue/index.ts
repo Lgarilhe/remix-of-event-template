@@ -61,11 +61,11 @@ async function moveToDlq(
 }
 
 Deno.serve(async (req) => {
-  const apiKey = Deno.env.get('LOVABLE_API_KEY')
+  const lovableApiKey = Deno.env.get('LOVABLE_API_KEY')
   const supabaseUrl = Deno.env.get('SUPABASE_URL')
   const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
 
-  if (!apiKey || !supabaseUrl || !supabaseServiceKey) {
+  if (!lovableApiKey || !supabaseUrl || !supabaseServiceKey) {
     console.error('Missing required environment variables')
     return new Response(
       JSON.stringify({ error: 'Server configuration error' }),
@@ -77,9 +77,9 @@ Deno.serve(async (req) => {
   const bearerToken = authHeader?.startsWith('Bearer ')
     ? authHeader.slice('Bearer '.length).trim()
     : null
-  const apiKey = req.headers.get('apikey')
+  const requestApiKey = req.headers.get('apikey')
   const isServiceRoleCaller =
-    apiKey === supabaseServiceKey || bearerToken === supabaseServiceKey
+    requestApiKey === supabaseServiceKey || bearerToken === supabaseServiceKey
 
   if (!isServiceRoleCaller) {
     return new Response(
@@ -241,7 +241,7 @@ Deno.serve(async (req) => {
           // sendUrl is optional — when LOVABLE_SEND_URL is not set, the library
           // falls back to the default Lovable API endpoint (https://api.lovable.dev).
           // Set LOVABLE_SEND_URL as a Supabase secret to override (e.g. for local dev).
-          { apiKey, sendUrl: Deno.env.get('LOVABLE_SEND_URL') }
+          { apiKey: lovableApiKey, sendUrl: Deno.env.get('LOVABLE_SEND_URL') }
         )
 
         // Log success
