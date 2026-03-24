@@ -34,6 +34,24 @@ function getRetryAfterSeconds(error: unknown): number {
   return 60
 }
 
+function parseJwtClaims(token: string): Record<string, unknown> | null {
+  const parts = token.split('.')
+  if (parts.length < 2) {
+    return null
+  }
+
+  try {
+    const payload = parts[1]
+      .replaceAll('-', '+')
+      .replaceAll('_', '/')
+      .padEnd(Math.ceil(parts[1].length / 4) * 4, '=')
+
+    return JSON.parse(atob(payload)) as Record<string, unknown>
+  } catch {
+    return null
+  }
+}
+
 // Move a message to the dead letter queue and log the reason.
 async function moveToDlq(
   supabase: ReturnType<typeof createClient>,
@@ -61,11 +79,11 @@ async function moveToDlq(
 }
 
 Deno.serve(async (req) => {
-  const lovableApiKey = Deno.env.get('LOVABLE_API_KEY')
+  const apiKey = Deno.env.get('LOVABLE_API_KEY')
   const supabaseUrl = Deno.env.get('SUPABASE_URL')
   const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
 
-  if (!lovableApiKey || !supabaseUrl || !supabaseServiceKey) {
+  if (!apiKey || !supabaseUrl || !supabaseServiceKey) {
     console.error('Missing required environment variables')
     return new Response(
       JSON.stringify({ error: 'Server configuration error' }),
@@ -74,17 +92,22 @@ Deno.serve(async (req) => {
   }
 
   const authHeader = req.headers.get('Authorization')
-  const bearerToken = authHeader?.startsWith('Bearer ')
-    ? authHeader.slice('Bearer '.length).trim()
-    : null
-  const requestApiKey = req.headers.get('apikey')
-  const isServiceRoleCaller =
-    requestApiKey === supabaseServiceKey || bearerToken === supabaseServiceKey
-
-  if (!isServiceRoleCaller) {
+  if (!authHeader?.startsWith('Bearer ')) {
     return new Response(
       JSON.stringify({ error: 'Unauthorized' }),
       { status: 401, headers: { 'Content-Type': 'application/json' } }
+    )
+  }
+
+  // Defense in depth: verify_jwt=true already requires a valid JWT at the
+  // gateway layer. This adds an explicit role check so only service-role
+  // callers can trigger queue processing.
+  const token = authHeader.slice('Bearer '.length).trim()
+  const claims = parseJwtClaims(token)
+  if (claims?.role !== 'service_role') {
+    return new Response(
+      JSON.stringify({ error: 'Forbidden' }),
+      { status: 403, headers: { 'Content-Type': 'application/json' } }
     )
   }
 
@@ -241,7 +264,7 @@ Deno.serve(async (req) => {
           // sendUrl is optional — when LOVABLE_SEND_URL is not set, the library
           // falls back to the default Lovable API endpoint (https://api.lovable.dev).
           // Set LOVABLE_SEND_URL as a Supabase secret to override (e.g. for local dev).
-          { apiKey: lovableApiKey, sendUrl: Deno.env.get('LOVABLE_SEND_URL') }
+          { apiKey, sendUrl: Deno.env.get('LOVABLE_SEND_URL') }
         )
 
         // Log success
