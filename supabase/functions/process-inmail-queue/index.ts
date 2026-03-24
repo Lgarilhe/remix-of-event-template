@@ -141,6 +141,24 @@ Deno.serve(async (req: Request) => {
         throw new Error("Authentication failed");
       }
       
+      // Resolve Unipile credentials for this user's org
+      if (!unipileApiKey || !unipileDsn) {
+        try {
+          const { resolveUnipileCredentials, resolveOrgIdFromUser } = await import("../_shared/resolve-org-credentials.ts");
+          const orgId = await resolveOrgIdFromUser(user.id, supabase);
+          const creds = await resolveUnipileCredentials(orgId, supabase);
+          if (creds) {
+            unipileApiKey = creds.apiKey;
+            unipileDsn = creds.dsn.replace(/^https?:\/\//, '');
+          }
+        } catch (e) {
+          console.warn('[process-inmail-queue] Org credential resolution failed:', e);
+        }
+        if (!unipileApiKey) unipileApiKey = Deno.env.get("UNIPILE_API_KEY");
+        if (!unipileDsn) unipileDsn = Deno.env.get("UNIPILE_DSN");
+        if (!unipileApiKey || !unipileDsn) throw new Error("Missing Unipile configuration");
+      }
+      
       return user;
     };
 
