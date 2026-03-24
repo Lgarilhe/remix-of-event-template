@@ -1,0 +1,1 @@
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS experience_classifications jsonb DEFAULT '[]'::jsonb;
