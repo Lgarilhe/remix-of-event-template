@@ -107,6 +107,9 @@ Deno.serve(async (req) => {
           inviteUrl,
         },
       },
+      headers: {
+        Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!}`,
+      },
     });
 
     if (emailError) {
