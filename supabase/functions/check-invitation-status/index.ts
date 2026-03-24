@@ -6,9 +6,12 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 };
 
-const UNIPILE_API_KEY = Deno.env.get('UNIPILE_API_KEY');
+// Unipile credentials resolved per-org at request time (see Deno.serve handler)
+let UNIPILE_API_KEY: string | null = Deno.env.get('UNIPILE_API_KEY') || null;
+let UNIPILE_DSN: string = '';
 const rawDsn = Deno.env.get('UNIPILE_DSN') || '';
-const UNIPILE_DSN = rawDsn.startsWith('http') ? rawDsn : `https://${rawDsn}`;
+const envDsn = rawDsn.startsWith('http') ? rawDsn : `https://${rawDsn}`;
+UNIPILE_DSN = envDsn;
 const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
 const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
@@ -120,6 +123,19 @@ Deno.serve(async (req) => {
     const { data: { user }, error: authError } = await supabaseAuth.auth.getUser();
     if (authError || !user) {
       return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+
+    // Resolve org-specific Unipile credentials
+    try {
+      const { resolveUnipileCredentials, resolveOrgIdFromUser } = await import("../_shared/resolve-org-credentials.ts");
+      const orgId = await resolveOrgIdFromUser(user.id, supabase);
+      const creds = await resolveUnipileCredentials(orgId, supabase);
+      if (creds) {
+        UNIPILE_API_KEY = creds.apiKey;
+        UNIPILE_DSN = creds.dsn;
+      }
+    } catch (e) {
+      console.warn('[check-invitation] Org credential resolution failed, using env:', e);
     }
 
     // Get all active enrollments with pending_invite OR pending check

@@ -6,15 +6,37 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-const UNIPILE_API_KEY = Deno.env.get("UNIPILE_API_KEY");
-const UNIPILE_DSN = Deno.env.get("UNIPILE_DSN");
+// Per-org credentials — resolved at request time, env vars as fallback
+let UNIPILE_API_KEY = Deno.env.get("UNIPILE_API_KEY");
+let UNIPILE_DSN = Deno.env.get("UNIPILE_DSN");
 const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
-const NOTION_API_KEY = Deno.env.get("NOTION_API_KEY");
-const CANDIDATS_DATABASE_ID = Deno.env.get("NOTION_CANDIDATS_DB_ID")!;
-const SHORTLIST_DATABASE_ID = Deno.env.get("NOTION_SHORTLIST_DB_ID")!;
+let NOTION_API_KEY = Deno.env.get("NOTION_API_KEY");
+let CANDIDATS_DATABASE_ID = Deno.env.get("NOTION_CANDIDATS_DB_ID")!;
+let SHORTLIST_DATABASE_ID = Deno.env.get("NOTION_SHORTLIST_DB_ID")!;
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
+// Helper to resolve org-specific credentials at request time
+async function resolveOrgCredentials(organizationId?: string) {
+  if (!organizationId) return;
+  try {
+    const { resolveUnipileCredentials, resolveNotionCredentials } = await import("../_shared/resolve-org-credentials.ts");
+    const uCreds = await resolveUnipileCredentials(organizationId, supabase);
+    if (uCreds) {
+      UNIPILE_API_KEY = uCreds.apiKey;
+      UNIPILE_DSN = uCreds.dsn.replace(/^https?:\/\//, '');
+    }
+    const nCreds = await resolveNotionCredentials(organizationId, supabase);
+    if (nCreds) {
+      NOTION_API_KEY = nCreds.apiKey;
+      if (nCreds.candidatsDbId) CANDIDATS_DATABASE_ID = nCreds.candidatsDbId;
+      if (nCreds.shortlistDbId) SHORTLIST_DATABASE_ID = nCreds.shortlistDbId;
+    }
+  } catch (e) {
+    console.warn('[auto-analyze] Org credential resolution failed, using env:', e);
+  }
+}
 // ─── Intent → Notion property mapping ─────────────────────────────
 // Candidats DB uses "Etat" (select): Pré-qualif à planifier, Répondu, En attente de réponse, Message à envoyer
 // Shortlist DB uses "Etape" (select): Pressenti, Contacté, Pré-qualif, Pas intéressé, Pas pertinent, En attente, etc.
@@ -266,8 +288,11 @@ Deno.serve(async (req) => {
       }
     }
 
-    const { chat_id, account_id, sender_id } = await req.json();
+    const { chat_id, account_id, sender_id, organization_id } = await req.json();
     
+    // Resolve org-specific credentials (Unipile + Notion)
+    await resolveOrgCredentials(organization_id);
+
     if (!chat_id || !account_id) {
       throw new Error('chat_id and account_id are required');
     }

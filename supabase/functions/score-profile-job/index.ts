@@ -1560,11 +1560,23 @@ Deno.serve(async (req) => {
     // Enrichment happens INSIDE scoreProfile, AFTER hard filter pass.
     // This avoids wasting get_profile calls on profiles that would be eliminated.
     const ENRICHMENT_DAILY_LIMIT = 500;
-    const unipileApiKey = Deno.env.get("UNIPILE_API_KEY");
-    const unipileDsn = Deno.env.get("UNIPILE_DSN");
+    // Resolve Unipile credentials from org_integrations with env fallback
+    let resolvedUnipile: { apiKey: string; dsn: string } | null = null;
+    try {
+      const { resolveUnipileCredentials, resolveOrgIdFromUser } = await import("../_shared/resolve-org-credentials.ts");
+      const orgId = await resolveOrgIdFromUser(userId, supabase);
+      resolvedUnipile = await resolveUnipileCredentials(orgId, supabase);
+    } catch (e) {
+      console.warn('[score-profile-job] Failed to resolve org credentials, falling back to env:', e);
+      const envKey = Deno.env.get("UNIPILE_API_KEY");
+      const envDsn = Deno.env.get("UNIPILE_DSN");
+      if (envKey && envDsn) {
+        resolvedUnipile = { apiKey: envKey, dsn: `https://${envDsn.replace(/^https?:\/\//, '')}` };
+      }
+    }
     let enrichmentCtx: EnrichmentContext | null = null;
 
-    if (accountId && unipileApiKey && unipileDsn) {
+    if (accountId && resolvedUnipile) {
       const today = new Date().toISOString().split("T")[0];
       const countKey = `enrichment_count_${today}`;
       const { data: countRow } = await supabase
@@ -1576,8 +1588,8 @@ Deno.serve(async (req) => {
 
       enrichmentCtx = {
         accountId,
-        apiKey: unipileApiKey,
-        baseUrl: `https://${unipileDsn}/api/v1`,
+        apiKey: resolvedUnipile.apiKey,
+        baseUrl: `${resolvedUnipile.dsn}/api/v1`,
         dailyCount,
         dailyLimit: ENRICHMENT_DAILY_LIMIT,
       };

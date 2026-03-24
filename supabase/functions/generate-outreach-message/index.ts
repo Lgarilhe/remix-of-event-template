@@ -217,21 +217,25 @@ async function fetchRecentPosts(
   profileId: string,
   maxPosts = 5,
   maxAgeDays = 90,
+  unipileCreds?: { dsn: string; apiKey: string } | null,
 ): Promise<{ text: string; date: string; reactions?: number }[]> {
-  const UNIPILE_DSN = Deno.env.get("UNIPILE_DSN");
-  const UNIPILE_API_KEY = Deno.env.get("UNIPILE_API_KEY");
+  const creds = unipileCreds || (() => {
+    const d = Deno.env.get("UNIPILE_DSN");
+    const k = Deno.env.get("UNIPILE_API_KEY");
+    return d && k ? { dsn: d, apiKey: k } : null;
+  })();
 
-  if (!UNIPILE_DSN || !UNIPILE_API_KEY || !accountId || !profileId) {
+  if (!creds || !accountId || !profileId) {
     return [];
   }
 
   try {
-    const url = `https://${UNIPILE_DSN}/api/v1/users/${encodeURIComponent(profileId)}/posts?account_id=${encodeURIComponent(accountId)}&limit=${maxPosts}`;
+    const url = `https://${creds.dsn}/api/v1/users/${encodeURIComponent(profileId)}/posts?account_id=${encodeURIComponent(accountId)}&limit=${maxPosts}`;
     console.log('[generate-outreach-message] Fetching posts:', url);
 
     const response = await fetchWithTimeout(url, {
       headers: {
-        'X-API-KEY': UNIPILE_API_KEY,
+        'X-API-KEY': creds.apiKey,
         'accept': 'application/json',
       },
     });
@@ -392,13 +396,22 @@ Deno.serve(async (req) => {
       throw new Error("Profile and job data are required");
     }
 
-    // Fetch org_id for RAG context
+    // Fetch org_id for RAG context + credential resolution
     let orgId: string | null = null;
     try {
       const { data: profileRow } = await svc.from('profiles').select('active_organization_id').eq('user_id', userId).maybeSingle();
       orgId = profileRow?.active_organization_id || null;
     } catch (e) {
       console.warn('[generate-outreach-message] Could not fetch org_id:', e);
+    }
+
+    // Resolve Unipile credentials from org_integrations with env fallback
+    let resolvedUnipile: { dsn: string; apiKey: string } | null = null;
+    try {
+      const { resolveUnipileCredentials } = await import("../_shared/resolve-org-credentials.ts");
+      resolvedUnipile = await resolveUnipileCredentials(orgId, svc);
+    } catch (e) {
+      console.warn('[generate-outreach-message] Org Unipile resolution failed:', e);
     }
 
     // Build RAG query text from job context + candidate name for better matching
@@ -408,7 +421,7 @@ Deno.serve(async (req) => {
 
     // Fetch posts in parallel with RAG context (non-blocking)
     const postsPromise = (accountId && profileId)
-      ? fetchRecentPosts(accountId, profileId)
+      ? fetchRecentPosts(accountId, profileId, 5, 90, resolvedUnipile)
       : Promise.resolve([]);
 
     const ragPromise = (orgId && profileId)

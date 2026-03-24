@@ -62,15 +62,31 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: 'Rate limit exceeded' }), { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    const UNIPILE_DSN = Deno.env.get("UNIPILE_DSN");
-    const UNIPILE_API_KEY = Deno.env.get("UNIPILE_API_KEY");
-    const NOTION_API_KEY = Deno.env.get("NOTION_API_KEY");
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+    if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY not configured");
+
+    // Resolve Unipile + Notion credentials from org_integrations with env fallback
+    let UNIPILE_DSN: string;
+    let UNIPILE_API_KEY: string;
+    let NOTION_API_KEY: string;
+    try {
+      const { resolveUnipileCredentials, resolveNotionCredentials, resolveOrgIdFromUser } = await import("../_shared/resolve-org-credentials.ts");
+      const orgId = await resolveOrgIdFromUser(userId, svc);
+      const uCreds = await resolveUnipileCredentials(orgId, svc);
+      const nCreds = await resolveNotionCredentials(orgId, svc);
+      UNIPILE_API_KEY = uCreds?.apiKey || Deno.env.get("UNIPILE_API_KEY") || '';
+      UNIPILE_DSN = uCreds ? uCreds.dsn.replace(/^https?:\/\//, '') : (Deno.env.get("UNIPILE_DSN") || '');
+      NOTION_API_KEY = nCreds?.apiKey || Deno.env.get("NOTION_API_KEY") || '';
+    } catch (e) {
+      console.warn('[screen-candidate] Org credential resolution failed, using env:', e);
+      UNIPILE_DSN = Deno.env.get("UNIPILE_DSN") || '';
+      UNIPILE_API_KEY = Deno.env.get("UNIPILE_API_KEY") || '';
+      NOTION_API_KEY = Deno.env.get("NOTION_API_KEY") || '';
+    }
 
     if (!UNIPILE_DSN) throw new Error("UNIPILE_DSN not configured");
     if (!UNIPILE_API_KEY) throw new Error("UNIPILE_API_KEY not configured");
     if (!NOTION_API_KEY) throw new Error("NOTION_API_KEY not configured");
-    if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY not configured");
 
     const body = await req.json();
     const { linkedin_url, job_url, account_id } = body;
