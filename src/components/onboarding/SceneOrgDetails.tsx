@@ -3,12 +3,13 @@ import { motion } from 'framer-motion';
 import { ArrowLeft, ArrowRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Badge } from '@/components/ui/badge';
 
 type OrgType = 'enterprise' | 'agency' | 'freelance';
 
 export interface OrgDetailsData {
   teamSize: string;
-  annualHires: string;
+  specializations: string[];
   discoverySource: string;
   freelanceMode?: string;
 }
@@ -26,11 +27,17 @@ const TEAM_SIZES = [
   { value: '50+', label: '50+' },
 ];
 
-const ANNUAL_HIRES = [
-  { value: '1-5', label: '1 – 5 recrutements' },
-  { value: '6-20', label: '6 – 20 recrutements' },
-  { value: '21-50', label: '21 – 50 recrutements' },
-  { value: '50+', label: '50+ recrutements' },
+const SPECIALIZATIONS = [
+  { value: 'tech', label: 'Tech / IT' },
+  { value: 'finance', label: 'Finance / Compta' },
+  { value: 'sales', label: 'Sales / Commerce' },
+  { value: 'marketing', label: 'Marketing / Com' },
+  { value: 'engineering', label: 'Ingénierie / Industrie' },
+  { value: 'health', label: 'Santé / Pharma' },
+  { value: 'legal', label: 'Juridique / RH' },
+  { value: 'executive', label: 'Executive / C-level' },
+  { value: 'generalist', label: 'Généraliste' },
+  { value: 'other', label: 'Autre' },
 ];
 
 const DISCOVERY_SOURCES = [
@@ -51,11 +58,19 @@ const FREELANCE_MODES = [
 export const SceneOrgDetails: React.FC<Props> = ({ orgType, onSubmit, onBack }) => {
   const isFreelance = orgType === 'freelance';
   const [teamSize, setTeamSize] = useState(isFreelance ? '1' : '');
-  const [annualHires, setAnnualHires] = useState('');
+  const [specializations, setSpecializations] = useState<string[]>([]);
   const [discoverySource, setDiscoverySource] = useState('');
   const [freelanceMode, setFreelanceMode] = useState('');
 
-  const canSubmit = teamSize && annualHires && discoverySource && (!isFreelance || freelanceMode);
+  const toggleSpec = (value: string) => {
+    setSpecializations(prev =>
+      prev.includes(value) ? prev.filter(v => v !== value) : [...prev, value]
+    );
+  };
+
+  const canSubmit = teamSize && specializations.length > 0 && discoverySource && (!isFreelance || freelanceMode);
+
+  
 
   return (
     <div className="w-full max-w-lg mx-auto flex flex-col gap-5">
@@ -119,21 +134,27 @@ export const SceneOrgDetails: React.FC<Props> = ({ orgType, onSubmit, onBack }) 
           </div>
         )}
 
-        {/* Annual hires */}
-        <div className="space-y-1.5">
+        {/* Specializations */}
+        <div className="space-y-2">
           <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-            Combien de recrutements par an ?
+            Vos spécialisations
           </label>
-          <Select value={annualHires} onValueChange={setAnnualHires}>
-            <SelectTrigger className="border-2 border-foreground/20 h-10 text-sm">
-              <SelectValue placeholder="Sélectionnez" />
-            </SelectTrigger>
-            <SelectContent>
-              {ANNUAL_HIRES.map(s => (
-                <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <div className="flex flex-wrap gap-2">
+            {SPECIALIZATIONS.map(s => (
+              <Badge
+                key={s.value}
+                variant={specializations.includes(s.value) ? 'default' : 'outline'}
+                className={`cursor-pointer text-xs px-3 py-1.5 transition-all ${
+                  specializations.includes(s.value)
+                    ? 'bg-foreground text-background border-foreground'
+                    : 'border-foreground/20 hover:border-foreground/40'
+                }`}
+                onClick={() => toggleSpec(s.value)}
+              >
+                {s.label}
+              </Badge>
+            ))}
+          </div>
         </div>
 
         {/* Discovery source */}
@@ -169,7 +190,7 @@ export const SceneOrgDetails: React.FC<Props> = ({ orgType, onSubmit, onBack }) 
           <ArrowLeft className="w-4 h-4" /> Retour
         </Button>
         <Button
-          onClick={() => canSubmit && onSubmit({ teamSize, annualHires, discoverySource, freelanceMode: isFreelance ? freelanceMode : undefined })}
+          onClick={() => canSubmit && onSubmit({ teamSize, specializations, discoverySource, freelanceMode: isFreelance ? freelanceMode : undefined })}
           disabled={!canSubmit}
           className="gap-2 border-2 border-foreground bg-foreground text-background hover:bg-foreground/90 text-sm px-6"
           style={{ boxShadow: '3px 3px 0px 0px hsl(var(--brutal-accent))' }}
