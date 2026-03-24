@@ -1499,6 +1499,41 @@ export type Database = {
           },
         ]
       }
+      career_page_scans: {
+        Row: {
+          careers_url: string
+          id: string
+          new_roles_count: number | null
+          organization_id: string
+          roles_found: Json | null
+          scanned_at: string | null
+        }
+        Insert: {
+          careers_url: string
+          id?: string
+          new_roles_count?: number | null
+          organization_id: string
+          roles_found?: Json | null
+          scanned_at?: string | null
+        }
+        Update: {
+          careers_url?: string
+          id?: string
+          new_roles_count?: number | null
+          organization_id?: string
+          roles_found?: Json | null
+          scanned_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "career_page_scans_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       chat_categories: {
         Row: {
           account_id: string
@@ -2761,6 +2796,7 @@ export type Database = {
       organizations: {
         Row: {
           annual_hires: string | null
+          careers_url: string | null
           created_at: string
           created_by: string
           discovery_source: string | null
@@ -2776,6 +2812,7 @@ export type Database = {
         }
         Insert: {
           annual_hires?: string | null
+          careers_url?: string | null
           created_at?: string
           created_by: string
           discovery_source?: string | null
@@ -2791,6 +2828,7 @@ export type Database = {
         }
         Update: {
           annual_hires?: string | null
+          careers_url?: string | null
           created_at?: string
           created_by?: string
           discovery_source?: string | null
