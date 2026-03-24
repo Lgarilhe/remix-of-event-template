@@ -2854,9 +2854,15 @@ export type Database = {
           display_name: string | null
           id: string
           job_title: string | null
+          linkedin_skills: string[] | null
+          linkedin_url: string | null
+          public_slug: string | null
+          recruiter_bio: string | null
+          recruiter_headline: string | null
           specializations: string[] | null
           updated_at: string
           user_id: string
+          years_experience: number | null
         }
         Insert: {
           active_organization_id?: string | null
@@ -2864,9 +2870,15 @@ export type Database = {
           display_name?: string | null
           id?: string
           job_title?: string | null
+          linkedin_skills?: string[] | null
+          linkedin_url?: string | null
+          public_slug?: string | null
+          recruiter_bio?: string | null
+          recruiter_headline?: string | null
           specializations?: string[] | null
           updated_at?: string
           user_id: string
+          years_experience?: number | null
         }
         Update: {
           active_organization_id?: string | null
@@ -2874,9 +2886,15 @@ export type Database = {
           display_name?: string | null
           id?: string
           job_title?: string | null
+          linkedin_skills?: string[] | null
+          linkedin_url?: string | null
+          public_slug?: string | null
+          recruiter_bio?: string | null
+          recruiter_headline?: string | null
           specializations?: string[] | null
           updated_at?: string
           user_id?: string
+          years_experience?: number | null
         }
         Relationships: [
           {

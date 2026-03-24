@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
-import { ArrowLeft, ArrowRight, Loader2 } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { ArrowLeft, ArrowRight, Loader2, Linkedin, Sparkles, CheckCircle2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { supabase } from '@/integrations/supabase/client';
@@ -26,8 +26,18 @@ const SPECIALIZATIONS = [
 export const SceneProfile: React.FC<Props> = ({ onNext, onBack, orgType }) => {
   const [displayName, setDisplayName] = useState('');
   const [jobTitle, setJobTitle] = useState('');
+  const [linkedinUrl, setLinkedinUrl] = useState('');
   const [selectedSpecs, setSelectedSpecs] = useState<Set<string>>(new Set());
   const [saving, setSaving] = useState(false);
+  const [scanning, setScanning] = useState(false);
+  const [scanResult, setScanResult] = useState<{
+    bio: string;
+    headline: string;
+    skills: string[];
+    yearsExperience: number;
+    slug: string;
+    name: string;
+  } | null>(null);
 
   const isFreelance = orgType === 'freelance';
 
@@ -56,13 +66,35 @@ export const SceneProfile: React.FC<Props> = ({ onNext, onBack, orgType }) => {
     .map((w) => w[0]?.toUpperCase() || '')
     .join('');
 
+  const handleScanLinkedIn = async () => {
+    if (!linkedinUrl.trim()) return;
+    setScanning(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error('Non authentifié');
+
+      const { data, error } = await supabase.functions.invoke('scan-recruiter-linkedin', {
+        body: { linkedinUrl: linkedinUrl.trim() },
+      });
+
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+
+      setScanResult(data);
+      if (data.name && !displayName.trim()) setDisplayName(data.name);
+      toast.success('Profil LinkedIn analysé avec succès !');
+    } catch (err: any) {
+      toast.error(err.message || 'Erreur lors du scan LinkedIn');
+    } finally {
+      setScanning(false);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
     try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Non authentifié');
 
       const { error } = await supabase.from('profiles').upsert(
@@ -71,6 +103,7 @@ export const SceneProfile: React.FC<Props> = ({ onNext, onBack, orgType }) => {
           display_name: displayName.trim() || null,
           job_title: isFreelance ? 'Recruteur indépendant' : (jobTitle.trim() || null),
           specializations: Array.from(selectedSpecs),
+          linkedin_url: linkedinUrl.trim() || null,
         } as any,
         { onConflict: 'user_id' }
       );
@@ -97,7 +130,7 @@ export const SceneProfile: React.FC<Props> = ({ onNext, onBack, orgType }) => {
         <h2 className="font-editorial italic text-3xl md:text-4xl">Faisons connaissance</h2>
         <p className="text-muted-foreground text-sm">
           {isFreelance
-            ? 'Présentez-vous et choisissez vos spécialisations.'
+            ? 'Présentez-vous et connectez votre LinkedIn pour générer votre vitrine.'
             : 'Comment souhaitez-vous apparaître auprès de votre équipe ?'}
         </p>
       </div>
@@ -145,6 +178,77 @@ export const SceneProfile: React.FC<Props> = ({ onNext, onBack, orgType }) => {
           </div>
         )}
 
+        {/* LinkedIn URL + Scan */}
+        <div className="space-y-2">
+          <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+            <Linkedin className="w-3.5 h-3.5" />
+            Profil LinkedIn
+          </label>
+          <div className="flex gap-2">
+            <Input
+              placeholder="https://linkedin.com/in/votre-profil"
+              value={linkedinUrl}
+              onChange={(e) => setLinkedinUrl(e.target.value)}
+              className="border-2 border-foreground/20 focus:border-foreground focus:shadow-[3px_3px_0px_0px_hsl(var(--brutal-accent))] transition-shadow text-sm h-11 flex-1"
+            />
+            <Button
+              type="button"
+              onClick={handleScanLinkedIn}
+              disabled={scanning || !linkedinUrl.trim()}
+              className="gap-1.5 border-2 border-foreground/20 text-sm h-11 px-3 shrink-0"
+              variant="outline"
+            >
+              {scanning ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Sparkles className="w-4 h-4" />
+              )}
+              {scanning ? 'Analyse...' : 'Scanner'}
+            </Button>
+          </div>
+          <p className="text-[10px] text-muted-foreground">
+            On analyse votre parcours pour générer une bio professionnelle visible sur votre profil public.
+          </p>
+        </div>
+
+        {/* Scan result preview */}
+        <AnimatePresence>
+          {scanResult && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              className="border-2 border-foreground/15 p-4 space-y-3"
+              style={{ boxShadow: '3px 3px 0px 0px hsl(var(--brutal-accent) / 0.3)' }}
+            >
+              <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-foreground">
+                <CheckCircle2 className="w-4 h-4 text-green-500" />
+                Bio générée par IA
+              </div>
+              <p className="text-sm leading-relaxed text-foreground/80">
+                {scanResult.bio}
+              </p>
+              {scanResult.skills.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 pt-1">
+                  {scanResult.skills.slice(0, 8).map((skill) => (
+                    <span
+                      key={skill}
+                      className="px-2 py-0.5 text-[10px] font-semibold border border-foreground/15 text-muted-foreground"
+                    >
+                      {skill}
+                    </span>
+                  ))}
+                </div>
+              )}
+              {scanResult.yearsExperience > 0 && (
+                <p className="text-[10px] text-muted-foreground">
+                  ~{scanResult.yearsExperience} ans d'expérience détectés
+                </p>
+              )}
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         <div className="space-y-2">
           <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
             Spécialisations
@@ -187,7 +291,7 @@ export const SceneProfile: React.FC<Props> = ({ onNext, onBack, orgType }) => {
           </Button>
           <Button
             type="submit"
-            disabled={saving}
+            disabled={saving || scanning}
             className="gap-2 border-2 border-foreground bg-foreground text-background hover:bg-foreground/90 text-sm px-6"
             style={{ boxShadow: '3px 3px 0px 0px hsl(var(--brutal-accent))' }}
           >

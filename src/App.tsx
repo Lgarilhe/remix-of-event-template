@@ -31,6 +31,7 @@ const Settings = lazy(() => import("./pages/Settings"));
 
 const Pricing = lazy(() => import("./pages/Pricing"));
 const UnsubscribePage = lazy(() => import("./pages/Unsubscribe"));
+const RecruiterPublicProfile = lazy(() => import("./pages/RecruiterPublicProfile"));
 
 const PUBLIC_ROUTES = ['/', '/auth', '/portal'];
 
@@ -111,6 +112,7 @@ const AppContent = () => {
           <Route path="/pricing" element={<ProtectedRoute><OrganizationGuard><Pricing /></OrganizationGuard></ProtectedRoute>} />
           <Route path="/portal/:token" element={<CandidatePortal />} />
           <Route path="/unsubscribe" element={<Suspense fallback={null}><UnsubscribePage /></Suspense>} />
+          <Route path="/r/:slug" element={<RecruiterPublicProfile />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </Suspense>
