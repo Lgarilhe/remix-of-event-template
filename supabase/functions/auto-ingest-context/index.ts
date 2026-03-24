@@ -29,29 +29,48 @@ function buildChunksFromJobCandidateStatus(record: Record<string, unknown>): {
   const jobId = record.job_id as string;
   if (!orgId || !candidateId) return null;
 
-  const stage = record.stage as string || "unknown";
-  const candidateName = record.candidate_name as string || "Candidat";
-  const jobTitle = record.job_title as string || "";
-  const source = record.source as string || "";
-  const updatedAt = record.updated_at as string || new Date().toISOString();
+  const chunks: Array<{ chunk_type: string; content: string; metadata?: Record<string, unknown> }> = [];
 
-  const content = [
-    `Candidat: ${candidateName}`,
-    jobTitle ? `Poste: ${jobTitle}` : null,
-    `Étape pipeline: ${stage}`,
-    source ? `Source: ${source}` : null,
-    `Dernière mise à jour: ${updatedAt}`,
-  ].filter(Boolean).join("\n");
+  // A. Extract full LinkedIn profile via adapter if linkedin_profile_data exists
+  if (record.linkedin_profile_data && typeof record.linkedin_profile_data === 'object') {
+    const profileChunks = adaptLinkedInProfile(record.linkedin_profile_data as Record<string, unknown>);
+    for (const pc of profileChunks) {
+      chunks.push({
+        chunk_type: pc.chunk_type,
+        content: pc.content,
+        metadata: { ...pc.metadata, job_id: jobId, source: "linkedin_profile" },
+      });
+    }
+  }
+
+  // B. Fallback: minimal chunk if no linkedin_profile_data
+  if (chunks.length === 0) {
+    const stage = record.stage as string || "unknown";
+    const candidateName = record.candidate_name as string || "Candidat";
+    const jobTitle = record.job_title as string || "";
+    const source = record.source as string || "";
+    const updatedAt = record.updated_at as string || new Date().toISOString();
+
+    const content = [
+      `Candidat: ${candidateName}`,
+      jobTitle ? `Poste: ${jobTitle}` : null,
+      `Étape pipeline: ${stage}`,
+      source ? `Source: ${source}` : null,
+      `Dernière mise à jour: ${updatedAt}`,
+    ].filter(Boolean).join("\n");
+
+    chunks.push({
+      chunk_type: "profile",
+      content,
+      metadata: { job_id: jobId, stage, source, date: updatedAt },
+    });
+  }
 
   return {
     entity_type: "candidate",
     entity_id: candidateId,
     organization_id: orgId,
-    chunks: [{
-      chunk_type: "profile",
-      content,
-      metadata: { job_id: jobId, stage, source, date: updatedAt },
-    }],
+    chunks,
   };
 }
 
