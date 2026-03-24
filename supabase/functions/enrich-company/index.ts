@@ -847,8 +847,8 @@ Deno.serve(async (req) => {
     const jobSources: Array<{ title: string; location: string; source: string; department?: string; url?: string }> = [];
     const parallelTasks: Promise<void>[] = [];
 
-    // ── Task A: Apollo People Search ──
-    if (APOLLO_API_KEY) {
+    // ── Task A: Apollo People Search (skip in jobs_only mode) ──
+    if (APOLLO_API_KEY && !jobsOnly) {
       parallelTasks.push((async () => {
         try {
           const peopleBody: Record<string, any> = {
