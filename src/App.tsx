@@ -109,6 +109,7 @@ const AppContent = () => {
           <Route path="/settings" element={<ProtectedRoute><OrganizationGuard><Settings /></OrganizationGuard></ProtectedRoute>} />
           <Route path="/pricing" element={<ProtectedRoute><OrganizationGuard><Pricing /></OrganizationGuard></ProtectedRoute>} />
           <Route path="/portal/:token" element={<CandidatePortal />} />
+          <Route path="/unsubscribe" element={<Suspense fallback={null}><UnsubscribePage /></Suspense>} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </Suspense>
