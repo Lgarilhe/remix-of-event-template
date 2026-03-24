@@ -131,6 +131,7 @@ const Onboarding = () => {
             team_size: orgExtraData.teamSize,
             annual_hires: orgExtraData.annualHires,
             discovery_source: orgExtraData.discoverySource,
+            freelance_mode: orgExtraData.freelanceMode,
           } : {}),
         } as any)
         .eq('id', organizationId);
