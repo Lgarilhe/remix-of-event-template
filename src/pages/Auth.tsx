@@ -27,6 +27,7 @@ const Auth = () => {
   const [isForgotPassword, setIsForgotPassword] = useState(false);
   const [isResettingPassword, setIsResettingPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [collaboratorWelcome, setCollaboratorWelcome] = useState<{ orgName: string } | null>(null);
   const navigate = useNavigate();
   const location = useLocation();
   const { toast } = useToast();
