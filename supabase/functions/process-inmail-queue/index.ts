@@ -105,15 +105,14 @@ Deno.serve(async (req: Request) => {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
-    const unipileApiKey = Deno.env.get("UNIPILE_API_KEY");
-    const unipileDsn = Deno.env.get("UNIPILE_DSN");
 
-    if (!unipileApiKey || !unipileDsn) {
-      throw new Error("Missing Unipile configuration");
-    }
-
-    // Service role client for database operations (hoisted for warm invocation reuse would require refactor of validateUser closure)
+    // Service role client for database operations
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+    // Resolve Unipile credentials from org_integrations with env fallback
+    let unipileApiKey: string | undefined;
+    let unipileDsn: string | undefined;
+    // We'll resolve after auth when we have the user ID
 
     const { action, items, user_timezone, item_ids } = await req.json();
 

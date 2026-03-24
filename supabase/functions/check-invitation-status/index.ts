@@ -125,6 +125,19 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
+    // Resolve org-specific Unipile credentials
+    try {
+      const { resolveUnipileCredentials, resolveOrgIdFromUser } = await import("../_shared/resolve-org-credentials.ts");
+      const orgId = await resolveOrgIdFromUser(user.id, supabase);
+      const creds = await resolveUnipileCredentials(orgId, supabase);
+      if (creds) {
+        UNIPILE_API_KEY = creds.apiKey;
+        UNIPILE_DSN = creds.dsn;
+      }
+    } catch (e) {
+      console.warn('[check-invitation] Org credential resolution failed, using env:', e);
+    }
+
     // Get all active enrollments with pending_invite OR pending check
     const { data: enrollments, error: enrollError } = await supabase
       .from('sequence_enrollments')

@@ -138,11 +138,25 @@ Deno.serve(async (req) => {
     }
 
     const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
-    const UNIPILE_API_KEY = Deno.env.get('UNIPILE_API_KEY');
-    const UNIPILE_DSN = Deno.env.get('UNIPILE_DSN');
-
     if (!LOVABLE_API_KEY) throw new Error('Missing LOVABLE_API_KEY');
-    if (!UNIPILE_API_KEY || !UNIPILE_DSN) throw new Error('Missing UNIPILE credentials');
+
+    // Resolve Unipile credentials from org_integrations with env fallback
+    let UNIPILE_API_KEY: string;
+    let UNIPILE_DSN: string;
+    try {
+      const { resolveUnipileCredentials, resolveOrgIdFromUser } = await import("../_shared/resolve-org-credentials.ts");
+      const orgId = await resolveOrgIdFromUser(user.id);
+      const creds = await resolveUnipileCredentials(orgId);
+      if (!creds) throw new Error('No Unipile credentials found');
+      UNIPILE_API_KEY = creds.apiKey;
+      UNIPILE_DSN = creds.dsn.replace(/^https?:\/\//, '');
+    } catch (e) {
+      const envKey = Deno.env.get('UNIPILE_API_KEY');
+      const envDsn = Deno.env.get('UNIPILE_DSN');
+      if (!envKey || !envDsn) throw new Error('Missing UNIPILE credentials');
+      UNIPILE_API_KEY = envKey;
+      UNIPILE_DSN = envDsn;
+    }
 
     // Fetch last messages for each chat in parallel (batches of 10)
     const chatMessages: Array<Array<{ text: string; is_sender: boolean }>> = new Array(chats.length);

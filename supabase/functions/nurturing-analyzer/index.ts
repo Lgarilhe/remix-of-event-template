@@ -165,12 +165,25 @@ Deno.serve(async (req) => {
     const body = await req.json();
     const { action, account_id, user_id, conversations, jobs } = body;
 
-    const UNIPILE_API_KEY = Deno.env.get("UNIPILE_API_KEY");
-    const UNIPILE_DSN = Deno.env.get("UNIPILE_DSN");
     const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY"); // Keep for intent analysis (lightweight)
 
-    // Action: Analyze conversations for nurturing opportunities
+    // Resolve Unipile credentials from org_integrations with env fallback
+    let UNIPILE_API_KEY: string | null = null;
+    let UNIPILE_DSN: string | null = null;
+    try {
+      const { resolveUnipileCredentials, resolveOrgIdFromUser } = await import("../_shared/resolve-org-credentials.ts");
+      const orgId = await resolveOrgIdFromUser(authUserId);
+      const creds = await resolveUnipileCredentials(orgId);
+      if (creds) {
+        UNIPILE_API_KEY = creds.apiKey;
+        UNIPILE_DSN = creds.dsn.replace(/^https?:\/\//, '');
+      }
+    } catch (e) {
+      console.warn('[nurturing-analyzer] Org credential resolution failed, using env:', e);
+    }
+    if (!UNIPILE_API_KEY) UNIPILE_API_KEY = Deno.env.get("UNIPILE_API_KEY") || null;
+    if (!UNIPILE_DSN) UNIPILE_DSN = Deno.env.get("UNIPILE_DSN") || null;
 
     // Action: Analyze conversations for nurturing opportunities
     if (action === 'analyze') {

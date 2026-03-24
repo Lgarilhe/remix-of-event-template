@@ -1588,8 +1588,8 @@ Deno.serve(async (req) => {
 
       enrichmentCtx = {
         accountId,
-        apiKey: unipileApiKey,
-        baseUrl: `https://${unipileDsn}/api/v1`,
+        apiKey: resolvedUnipile.apiKey,
+        baseUrl: `${resolvedUnipile.dsn}/api/v1`,
         dailyCount,
         dailyLimit: ENRICHMENT_DAILY_LIMIT,
       };
