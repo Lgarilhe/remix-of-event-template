@@ -242,12 +242,14 @@ Deno.serve(async (req: Request) => {
 
     // Action: process - Process pending items (called by cron or manually)
     if (action === "process") {
+      const user = await validateUser();
       const now = new Date();
       
-      // Get items that are scheduled and ready to send
+      // Get items that are scheduled and ready to send — scoped to the authenticated user
       const { data: pendingItems, error: fetchError } = await supabase
         .from("inmail_queue")
         .select("*")
+        .eq("created_by", user.id)
         .in("status", ["scheduled", "pending"])
         .lte("scheduled_at", now.toISOString())
         .order("scheduled_at", { ascending: true })
