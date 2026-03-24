@@ -4,31 +4,6 @@ import { ArrowLeft, ArrowRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 
-const SPECIALIZATIONS = [
-  { value: 'tech', label: 'Tech / IT' },
-  { value: 'data', label: 'Data / IA / ML' },
-  { value: 'product', label: 'Product / Design' },
-  { value: 'finance', label: 'Finance / Compta' },
-  { value: 'sales', label: 'Sales / Business Dev' },
-  { value: 'marketing', label: 'Marketing / Com' },
-  { value: 'engineering', label: 'Ingénierie / Industrie' },
-  { value: 'health', label: 'Santé / Pharma / Biotech' },
-  { value: 'legal', label: 'Juridique / Compliance' },
-  { value: 'hr', label: 'RH / People' },
-  { value: 'executive', label: 'Executive / C-level' },
-  { value: 'supply-chain', label: 'Supply Chain / Logistique' },
-  { value: 'construction', label: 'BTP / Immobilier' },
-  { value: 'retail', label: 'Retail / E-commerce' },
-  { value: 'hospitality', label: 'Hôtellerie / Restauration' },
-  { value: 'education', label: 'Éducation / Formation' },
-  { value: 'public-sector', label: 'Secteur public / ESS' },
-  { value: 'media', label: 'Média / Édition / Créatif' },
-  { value: 'energy', label: 'Énergie / Environnement' },
-  { value: 'telecom', label: 'Télécom / Réseaux' },
-  { value: 'generalist', label: 'Généraliste' },
-  { value: 'other', label: 'Autre' },
-];
-
 const DISCOVERY_SOURCES = [
   { value: 'linkedin', label: 'LinkedIn (post / pub)' },
   { value: 'linkedin-dm', label: 'LinkedIn (message privé)' },
@@ -51,23 +26,13 @@ const DISCOVERY_SOURCES = [
 ];
 
 interface Props {
-  onSubmit: (source: string, specializations: string[]) => void;
+  onSubmit: (source: string) => void;
   onBack: () => void;
   savedValue?: string;
-  savedSpecializations?: string[];
 }
 
-export const SceneDiscovery: React.FC<Props> = ({ onSubmit, onBack, savedValue, savedSpecializations }) => {
+export const SceneDiscovery: React.FC<Props> = ({ onSubmit, onBack, savedValue }) => {
   const [selected, setSelected] = useState(savedValue || '');
-  const [selectedSpecs, setSelectedSpecs] = useState<Set<string>>(new Set(savedSpecializations ?? []));
-
-  const toggleSpec = (spec: string) => {
-    setSelectedSpecs((prev) => {
-      const next = new Set(prev);
-      next.has(spec) ? next.delete(spec) : next.add(spec);
-      return next;
-    });
-  };
 
   return (
     <div className="w-full max-w-lg mx-auto flex flex-col gap-5">
@@ -109,37 +74,6 @@ export const SceneDiscovery: React.FC<Props> = ({ onSubmit, onBack, savedValue, 
         ))}
       </motion.div>
 
-      {/* Spécialisations */}
-      <div className="space-y-2">
-        <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-          Spécialisations (optionnel)
-        </label>
-        <div className="flex flex-wrap gap-2 justify-center">
-          {SPECIALIZATIONS.map((spec) => {
-            const active = selectedSpecs.has(spec.value);
-            return (
-              <button
-                key={spec.value}
-                type="button"
-                onClick={() => toggleSpec(spec.value)}
-                className={`px-3 py-1.5 text-xs font-semibold border-2 transition-all duration-200 ${
-                  active
-                    ? 'border-foreground text-foreground'
-                    : 'border-foreground/15 text-muted-foreground hover:border-foreground/30'
-                }`}
-                style={
-                  active
-                    ? { background: 'hsl(var(--skalr-green) / 0.15)' }
-                    : {}
-                }
-              >
-                {spec.label}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
       {/* Navigation */}
       <motion.div
         className="flex items-center justify-between pt-2"
@@ -155,7 +89,7 @@ export const SceneDiscovery: React.FC<Props> = ({ onSubmit, onBack, savedValue, 
           <ArrowLeft className="w-4 h-4" /> Retour
         </Button>
         <Button
-          onClick={() => selected && onSubmit(selected, Array.from(selectedSpecs))}
+          onClick={() => selected && onSubmit(selected)}
           disabled={!selected}
           className="gap-2 border-2 border-foreground bg-foreground text-background hover:bg-foreground/90 text-sm px-6"
           style={{ boxShadow: '3px 3px 0px 0px hsl(var(--brutal-accent))' }}
