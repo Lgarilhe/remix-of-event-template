@@ -279,49 +279,52 @@ export const SceneProfile: React.FC<Props> = ({ onNext, onBack, orgType, savedSt
 
             return (
               <div key={i} className="group">
-                <div className="flex items-center gap-3 px-4 py-3">
-                  {/* Avatar */}
-                  <div className="relative shrink-0">
-                    {exp.logoUrl ? (
-                      <img
-                        src={exp.logoUrl}
-                        alt={exp.company}
-                        className="w-8 h-8 border border-foreground/10 object-contain bg-white p-0.5"
-                        onError={(e) => {
-                          const img = e.target as HTMLImageElement;
-                          img.style.display = 'none';
-                          img.nextElementSibling?.classList.remove('hidden');
-                        }}
-                      />
-                    ) : null}
-                    <div
-                      className={`w-8 h-8 border border-foreground/10 flex items-center justify-center text-[10px] font-bold text-muted-foreground ${exp.logoUrl ? 'hidden' : ''}`}
-                      style={{ background: `hsl(var(--skalr-purple) / ${0.05 + (i % 3) * 0.03})` }}
-                    >
-                      {exp.company?.charAt(0)?.toUpperCase() || '?'}
-                    </div>
-                    {isClassified && activeOpt && (
+                <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 px-3 sm:px-4 py-3">
+                  {/* Left: avatar + info */}
+                  <div className="flex items-center gap-3 flex-1 min-w-0">
+                    {/* Avatar */}
+                    <div className="relative shrink-0">
+                      {exp.logoUrl ? (
+                        <img
+                          src={exp.logoUrl}
+                          alt={exp.company}
+                          className="w-8 h-8 border border-foreground/10 object-contain bg-white p-0.5"
+                          onError={(e) => {
+                            const img = e.target as HTMLImageElement;
+                            img.style.display = 'none';
+                            img.nextElementSibling?.classList.remove('hidden');
+                          }}
+                        />
+                      ) : null}
                       <div
-                        className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 flex items-center justify-center text-[7px] text-white border border-background"
-                        style={{ background: `hsl(${activeOpt.color})` }}
+                        className={`w-8 h-8 border border-foreground/10 flex items-center justify-center text-[10px] font-bold text-muted-foreground ${exp.logoUrl ? 'hidden' : ''}`}
+                        style={{ background: `hsl(var(--skalr-purple) / ${0.05 + (i % 3) * 0.03})` }}
                       >
-                        ✓
+                        {exp.company?.charAt(0)?.toUpperCase() || '?'}
                       </div>
-                    )}
+                      {isClassified && activeOpt && (
+                        <div
+                          className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 flex items-center justify-center text-[7px] text-white border border-background"
+                          style={{ background: `hsl(${activeOpt.color})` }}
+                        >
+                          ✓
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Info */}
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[13px] font-semibold text-foreground truncate leading-tight">
+                        {exp.title || 'Poste non renseigné'}
+                      </p>
+                      <p className="text-[11px] text-muted-foreground truncate">
+                        {exp.company || 'Entreprise inconnue'}
+                      </p>
+                    </div>
                   </div>
 
-                  {/* Info */}
-                  <div className="flex-1 min-w-0">
-                    <p className="text-[13px] font-semibold text-foreground truncate leading-tight">
-                      {exp.title || 'Poste non renseigné'}
-                    </p>
-                    <p className="text-[11px] text-muted-foreground truncate">
-                      {exp.company || 'Entreprise inconnue'}
-                    </p>
-                  </div>
-
-                  {/* Type pills */}
-                  <div className="flex gap-1 shrink-0">
+                  {/* Type pills — wrap on mobile */}
+                  <div className="flex gap-1 shrink-0 pl-11 sm:pl-0">
                     {typeOptions.map((opt) => {
                       const isActive = exp.type === opt.value;
                       return (
