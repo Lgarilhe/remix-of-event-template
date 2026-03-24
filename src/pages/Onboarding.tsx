@@ -43,6 +43,7 @@ const Onboarding = () => {
   const [companyData, setCompanyData] = useState<OnboardingCompanyData | null>(null);
   const [orgType, setOrgType] = useState<OrgType | null>(null);
   const [orgDetailsData, setOrgDetailsData] = useState<OrgDetailsData | null>(null);
+  const [discoverySource, setDiscoverySource] = useState('');
   const [profileState, setProfileState] = useState<ProfileFormState | undefined>(undefined);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
