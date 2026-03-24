@@ -237,9 +237,10 @@ CONSIGNES STRICTES :
         industries,
         tags,
         companies,
-        photoUrl,
-        education: education.slice(0, 3),
-      }),
+      photoUrl,
+      education: education.slice(0, 3),
+      recommendations,
+    }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (e) {

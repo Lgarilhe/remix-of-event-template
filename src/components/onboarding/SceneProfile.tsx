@@ -349,6 +349,27 @@ export const SceneProfile: React.FC<Props> = ({ onNext, onBack, orgType }) => {
                 </div>
               )}
 
+              {/* Recommendations */}
+              {scanResult.recommendations && scanResult.recommendations.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1">
+                    <Quote className="w-3 h-3" /> Recommandations ({scanResult.recommendations.length})
+                  </p>
+                  {scanResult.recommendations.slice(0, 3).map((rec, i) => (
+                    <div key={i} className="border-l-2 border-foreground/15 pl-3 space-y-0.5">
+                      <p className="text-[11px] text-foreground/70 italic leading-relaxed line-clamp-3">
+                        "{rec.body}"
+                      </p>
+                      {(rec.recommenderName || rec.recommenderTitle) && (
+                        <p className="text-[10px] text-muted-foreground font-semibold">
+                          — {[rec.recommenderName, rec.recommenderTitle].filter(Boolean).join(', ')}
+                        </p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+
               {/* Tags */}
               {scanResult.tags && scanResult.tags.length > 0 && (
                 <div className="flex flex-wrap gap-1.5 pt-1 border-t border-foreground/10">
