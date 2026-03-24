@@ -266,20 +266,16 @@ export const useOrganizationMembers = (orgId: string | null) => {
     queryKey: ['org-invitations', orgId],
     queryFn: async () => {
       if (!orgId) return [];
+
       const { data, error } = await supabase
         .from('organization_invitations')
-        .select('*')
+        .select('id, email, role, status, created_at, expires_at, token, accepted_at')
         .eq('organization_id', orgId)
         .order('created_at', { ascending: false });
+
       if (error) throw error;
 
-      return (data || []).filter((invitation) => {
-        if (invitation.status === 'accepted' || invitation.status === 'cancelled') {
-          return false;
-        }
-
-        return true;
-      });
+      return data || [];
     },
     enabled: !!orgId,
   });
