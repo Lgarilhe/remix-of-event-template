@@ -157,6 +157,8 @@ export const ImportJobsModal: React.FC<ImportJobsModalProps> = ({ open, onClose,
           location: string | null;
           careersUrl: string | null;
           openRoles: OpenRole[];
+          scrapingFailed?: boolean;
+          scrapingMessage?: string;
         };
       }>('enrich-company', body);
 
