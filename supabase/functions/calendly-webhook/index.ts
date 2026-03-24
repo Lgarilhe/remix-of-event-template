@@ -20,8 +20,8 @@ function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15
 async function verifyCalendlySignature(req: Request, body: string): Promise<boolean> {
   const signingKey = Deno.env.get('CALENDLY_WEBHOOK_SIGNING_KEY');
   if (!signingKey) {
-    console.warn('[calendly-webhook] ⚠️ CALENDLY_WEBHOOK_SIGNING_KEY not set — webhook signature verification DISABLED. Set this key in production!');
-    return true; // Allow in dev, but must be set in production
+    console.error('[calendly-webhook] ❌ CALENDLY_WEBHOOK_SIGNING_KEY not set — rejecting request. Configure this secret before using the webhook.');
+    return false;
   }
 
   const signatureHeader = req.headers.get('Calendly-Webhook-Signature');
