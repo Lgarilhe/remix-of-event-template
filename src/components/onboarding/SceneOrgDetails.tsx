@@ -27,11 +27,17 @@ const TEAM_SIZES = [
   { value: '50+', label: '50+' },
 ];
 
-const ANNUAL_HIRES = [
-  { value: '1-5', label: '1 – 5 recrutements' },
-  { value: '6-20', label: '6 – 20 recrutements' },
-  { value: '21-50', label: '21 – 50 recrutements' },
-  { value: '50+', label: '50+ recrutements' },
+const SPECIALIZATIONS = [
+  { value: 'tech', label: 'Tech / IT' },
+  { value: 'finance', label: 'Finance / Compta' },
+  { value: 'sales', label: 'Sales / Commerce' },
+  { value: 'marketing', label: 'Marketing / Com' },
+  { value: 'engineering', label: 'Ingénierie / Industrie' },
+  { value: 'health', label: 'Santé / Pharma' },
+  { value: 'legal', label: 'Juridique / RH' },
+  { value: 'executive', label: 'Executive / C-level' },
+  { value: 'generalist', label: 'Généraliste' },
+  { value: 'other', label: 'Autre' },
 ];
 
 const DISCOVERY_SOURCES = [
