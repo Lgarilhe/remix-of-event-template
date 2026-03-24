@@ -276,14 +276,14 @@ export const SceneProfile: React.FC<Props> = ({ onNext, onBack, orgType, savedSt
             if (!label) return null;
             return (
               <div key={i} className="flex items-center gap-3 px-3 py-2.5">
-                {exp.logo ? (
-                  <img src={exp.logo} alt={exp.company} className="w-6 h-6 object-contain shrink-0 border border-foreground/10 bg-white p-0.5" />
-                ) : (
-                  <div className="w-6 h-6 shrink-0 border border-foreground/10 flex items-center justify-center text-[8px] font-bold text-muted-foreground bg-muted">
-                    {exp.company?.charAt(0)?.toUpperCase() || '?'}
-                  </div>
-                )}
-                <span className="text-[11px] text-foreground/80 flex-1 min-w-0 truncate">{label}</span>
+                <div className="w-7 h-7 shrink-0 border-2 border-foreground/10 flex items-center justify-center text-[10px] font-bold text-foreground/60 bg-muted"
+                  style={{ background: `hsl(var(--skalr-purple) / ${0.08 + (i % 3) * 0.04})` }}>
+                  {exp.company?.charAt(0)?.toUpperCase() || '?'}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-[11px] font-semibold text-foreground/80 truncate">{exp.title || 'Poste non renseigné'}</p>
+                  <p className="text-[10px] text-muted-foreground truncate">{exp.company || 'Entreprise inconnue'}</p>
+                </div>
                 <div className="flex gap-1 shrink-0">
                   {([
                     { value: 'rpo' as const, label: 'RPO', color: 'var(--skalr-purple)' },
