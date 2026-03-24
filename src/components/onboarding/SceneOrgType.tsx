@@ -15,7 +15,7 @@ const ORG_TYPE_OPTIONS: { value: OrgType; icon: React.ElementType; title: string
     value: 'enterprise',
     icon: Building2,
     title: 'Je recrute pour mon entreprise',
-    description: 'Gérez vos recrutements en interne, avec ou sans l'aide de cabinets externes.',
+    description: "Gérez vos recrutements en interne, avec ou sans l'aide de cabinets externes.",
   },
   {
     value: 'agency',
