@@ -335,17 +335,17 @@ export const SceneProfile: React.FC<Props> = ({ onNext, onBack, orgType, savedSt
                               )
                             );
                           }}
-                          className={`px-2 py-1 text-[9px] font-bold uppercase tracking-wider border transition-all ${
+                          className={`px-2.5 py-1 text-[9px] font-bold uppercase tracking-wider border-2 transition-all ${
                             isActive
-                              ? 'border-current'
-                              : 'border-transparent text-muted-foreground/30 hover:text-muted-foreground/60 hover:border-foreground/10'
+                              ? 'text-white'
+                              : 'border-foreground/8 text-muted-foreground/30 hover:text-muted-foreground/60 hover:border-foreground/15'
                           }`}
                           style={
                             isActive
                               ? {
-                                  background: `hsl(${opt.color} / 0.12)`,
-                                  color: `hsl(${opt.color})`,
-                                  borderColor: `hsl(${opt.color} / 0.3)`,
+                                  background: `hsl(${opt.color})`,
+                                  borderColor: `hsl(${opt.color})`,
+                                  boxShadow: `2px 2px 0px 0px hsl(${opt.color} / 0.3)`,
                                 }
                               : {}
                           }
