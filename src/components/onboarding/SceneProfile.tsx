@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft, ArrowRight, Loader2, Linkedin, Sparkles, CheckCircle2 } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Loader2, Linkedin, Sparkles, CheckCircle2, MapPin, Building2, Briefcase, GraduationCap, Tag } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { supabase } from '@/integrations/supabase/client';
@@ -37,6 +37,15 @@ export const SceneProfile: React.FC<Props> = ({ onNext, onBack, orgType }) => {
     yearsExperience: number;
     slug: string;
     name: string;
+    seniority?: string | null;
+    currentCompany?: string | null;
+    currentTitle?: string | null;
+    location?: string | null;
+    industries?: string[];
+    tags?: string[];
+    companies?: string[];
+    photoUrl?: string | null;
+    education?: string[];
   } | null>(null);
 
   const isFreelance = orgType === 'freelance';
@@ -218,32 +227,136 @@ export const SceneProfile: React.FC<Props> = ({ onNext, onBack, orgType }) => {
               initial={{ opacity: 0, height: 0 }}
               animate={{ opacity: 1, height: 'auto' }}
               exit={{ opacity: 0, height: 0 }}
-              className="border-2 border-foreground/15 p-4 space-y-3"
+              className="border-2 border-foreground/15 p-4 space-y-4"
               style={{ boxShadow: '3px 3px 0px 0px hsl(var(--brutal-accent) / 0.3)' }}
             >
-              <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-foreground">
-                <CheckCircle2 className="w-4 h-4 text-green-500" />
-                Bio générée par IA
-              </div>
-              <p className="text-sm leading-relaxed text-foreground/80">
-                {scanResult.bio}
-              </p>
-              {scanResult.skills.length > 0 && (
-                <div className="flex flex-wrap gap-1.5 pt-1">
-                  {scanResult.skills.slice(0, 8).map((skill) => (
-                    <span
-                      key={skill}
-                      className="px-2 py-0.5 text-[10px] font-semibold border border-foreground/15 text-muted-foreground"
-                    >
-                      {skill}
+              {/* Header with photo */}
+              <div className="flex items-start gap-3">
+                {scanResult.photoUrl && (
+                  <img
+                    src={scanResult.photoUrl}
+                    alt={scanResult.name}
+                    className="w-12 h-12 border-2 border-foreground/20 object-cover shrink-0"
+                  />
+                )}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-green-500 shrink-0" />
+                    <span className="text-xs font-bold uppercase tracking-wider text-foreground truncate">
+                      {scanResult.name}
                     </span>
+                  </div>
+                  {scanResult.currentTitle && (
+                    <p className="text-xs text-muted-foreground truncate mt-0.5">
+                      {scanResult.currentTitle}
+                      {scanResult.currentCompany && ` @ ${scanResult.currentCompany}`}
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              {/* Key info badges */}
+              <div className="flex flex-wrap gap-1.5">
+                {scanResult.yearsExperience > 0 && (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold border-2 border-foreground/20 text-foreground"
+                    style={{ background: 'hsl(var(--skalr-green) / 0.1)' }}>
+                    <Briefcase className="w-3 h-3" />
+                    {scanResult.yearsExperience} ans d'exp.
+                  </span>
+                )}
+                {scanResult.seniority && (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold border-2 border-foreground/20 text-foreground"
+                    style={{ background: 'hsl(var(--skalr-purple) / 0.1)' }}>
+                    <Tag className="w-3 h-3" />
+                    {scanResult.seniority}
+                  </span>
+                )}
+                {scanResult.location && (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold border-2 border-foreground/20 text-muted-foreground">
+                    <MapPin className="w-3 h-3" />
+                    {scanResult.location}
+                  </span>
+                )}
+              </div>
+
+              {/* Bio */}
+              <div className="space-y-1">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Bio générée</p>
+                <p className="text-sm leading-relaxed text-foreground/80">
+                  {scanResult.bio}
+                </p>
+              </div>
+
+              {/* Industries */}
+              {scanResult.industries && scanResult.industries.length > 0 && (
+                <div className="space-y-1">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1">
+                    <Building2 className="w-3 h-3" /> Secteurs
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {scanResult.industries.map((ind) => (
+                      <span key={ind} className="px-2 py-0.5 text-[10px] font-semibold border border-foreground/15 text-muted-foreground capitalize">
+                        {ind}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Companies */}
+              {scanResult.companies && scanResult.companies.length > 0 && (
+                <div className="space-y-1">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1">
+                    <Briefcase className="w-3 h-3" /> Entreprises
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {scanResult.companies.slice(0, 6).map((company) => (
+                      <span key={company} className="px-2 py-0.5 text-[10px] font-semibold border border-foreground/15 text-foreground/70">
+                        {company}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Skills */}
+              {scanResult.skills.length > 0 && (
+                <div className="space-y-1">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Compétences</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {scanResult.skills.slice(0, 12).map((skill) => (
+                      <span
+                        key={skill}
+                        className="px-2 py-0.5 text-[10px] font-semibold border border-foreground/15 text-muted-foreground"
+                      >
+                        {skill}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Education */}
+              {scanResult.education && scanResult.education.length > 0 && (
+                <div className="space-y-1">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1">
+                    <GraduationCap className="w-3 h-3" /> Formation
+                  </p>
+                  {scanResult.education.map((edu, i) => (
+                    <p key={i} className="text-[11px] text-foreground/60">{edu}</p>
                   ))}
                 </div>
               )}
-              {scanResult.yearsExperience > 0 && (
-                <p className="text-[10px] text-muted-foreground">
-                  ~{scanResult.yearsExperience} ans d'expérience détectés
-                </p>
+
+              {/* Tags */}
+              {scanResult.tags && scanResult.tags.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 pt-1 border-t border-foreground/10">
+                  {scanResult.tags.map((tag) => (
+                    <span key={tag} className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-foreground/50">
+                      #{tag}
+                    </span>
+                  ))}
+                </div>
               )}
             </motion.div>
           )}
