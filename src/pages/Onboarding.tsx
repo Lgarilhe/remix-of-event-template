@@ -10,7 +10,7 @@ import { SceneOrganization } from '@/components/onboarding/SceneOrganization';
 import { SceneAudit } from '@/components/onboarding/SceneAudit';
 import { SceneProfile } from '@/components/onboarding/SceneProfile';
 import { SceneIntegrations } from '@/components/onboarding/SceneIntegrations';
-import { SceneOrgType } from '@/components/onboarding/SceneOrgType';
+import { SceneOrgType, type OrgTypeData } from '@/components/onboarding/SceneOrgType';
 import { SceneTeam } from '@/components/onboarding/SceneTeam';
 import { SceneLaunch } from '@/components/onboarding/SceneLaunch';
 
