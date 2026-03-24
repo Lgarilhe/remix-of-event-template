@@ -41,11 +41,23 @@ const SPECIALIZATIONS = [
 ];
 
 const DISCOVERY_SOURCES = [
-  { value: 'linkedin', label: 'LinkedIn' },
-  { value: 'google', label: 'Google' },
-  { value: 'word-of-mouth', label: 'Bouche-à-oreille' },
-  { value: 'event', label: 'Événement / Salon' },
+  { value: 'linkedin', label: 'LinkedIn (post / pub)' },
+  { value: 'linkedin-dm', label: 'LinkedIn (message privé)' },
+  { value: 'google', label: 'Recherche Google' },
+  { value: 'word-of-mouth', label: 'Bouche-à-oreille / Recommandation' },
+  { value: 'community', label: 'Communauté Slack / Discord' },
+  { value: 'podcast', label: 'Podcast' },
+  { value: 'youtube', label: 'YouTube' },
+  { value: 'newsletter', label: 'Newsletter' },
   { value: 'blog', label: 'Article / Blog' },
+  { value: 'event', label: 'Événement / Salon / Meetup' },
+  { value: 'product-hunt', label: 'Product Hunt' },
+  { value: 'appsumo', label: 'AppSumo' },
+  { value: 'comparison', label: 'Site de comparatifs (G2, Capterra…)' },
+  { value: 'referral', label: 'Programme de parrainage' },
+  { value: 'social-twitter', label: 'X (Twitter)' },
+  { value: 'social-instagram', label: 'Instagram / TikTok' },
+  { value: 'partner', label: 'Partenaire / Intégrateur' },
   { value: 'other', label: 'Autre' },
 ];
 
