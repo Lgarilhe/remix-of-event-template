@@ -96,14 +96,18 @@ Deno.serve(async (req) => {
       : `team-invite-${invitationId}`;
 
     const functionUrl = `${Deno.env.get("SUPABASE_URL")!}/functions/v1/send-transactional-email`;
-    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const anonKey = Deno.env.get("SUPABASE_ANON_KEY");
+
+    if (!anonKey) {
+      throw new Error("Missing SUPABASE_ANON_KEY");
+    }
 
     const emailResponse = await fetch(functionUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${serviceRoleKey}`,
-        apikey: serviceRoleKey,
+        Authorization: authHeader,
+        apikey: anonKey,
       },
       body: JSON.stringify({
         templateName: "team-invitation",
@@ -130,6 +134,7 @@ Deno.serve(async (req) => {
 
     if (emailError) {
       console.error("Failed to send invitation email:", emailError);
+      throw new Error(`Impossible d'envoyer l'invitation: ${emailError}`);
     }
 
     return new Response(JSON.stringify({ success: true, invitation_id: invitationId, resent: isResend }), {
