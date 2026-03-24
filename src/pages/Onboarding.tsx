@@ -213,6 +213,9 @@ const Onboarding = () => {
             {currentScene === 'orgdetails' && orgType && (
               <SceneOrgDetails orgType={orgType} onSubmit={handleOrgDetailsSubmitted} onBack={goBack} />
             )}
+            {currentScene === 'discovery' && (
+              <SceneDiscovery onSubmit={handleDiscoverySubmitted} onBack={goBack} savedValue={discoverySource} />
+            )}
             {currentScene === 'org' && (
               <SceneOrganization onComplete={handleOrgCreated} onBack={goBack} />
             )}
