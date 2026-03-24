@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { Input } from '@/components/ui/input';
@@ -6,6 +6,9 @@ import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import { SEOHead } from '@/components/SEOHead';
 import { lovable } from '@/integrations/lovable/index';
+import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
+
+const PENDING_INVITATION_STORAGE_KEY = 'pending-team-invitation-token';
 
 const Auth = () => {
   const [email, setEmail] = useState('');
@@ -19,6 +22,78 @@ const Auth = () => {
   const location = useLocation();
   const { toast } = useToast();
   const from = (location.state as any)?.from || '/outreach';
+  const invitationTokenFromUrl = useMemo(
+    () => new URLSearchParams(location.search).get('invitation'),
+    [location.search]
+  );
+  const invitationTokenRef = useRef<string | null>(null);
+  const handledAccessTokenRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    const storedToken = sessionStorage.getItem(PENDING_INVITATION_STORAGE_KEY);
+    const nextToken = invitationTokenFromUrl || storedToken;
+
+    invitationTokenRef.current = nextToken;
+
+    if (invitationTokenFromUrl) {
+      sessionStorage.setItem(PENDING_INVITATION_STORAGE_KEY, invitationTokenFromUrl);
+    }
+  }, [invitationTokenFromUrl]);
+
+  const getAuthRedirectUrl = useCallback(() => {
+    const token = invitationTokenRef.current || sessionStorage.getItem(PENDING_INVITATION_STORAGE_KEY);
+    const params = new URLSearchParams();
+
+    if (token) {
+      params.set('invitation', token);
+    }
+
+    const query = params.toString();
+    return `${window.location.origin}/auth${query ? `?${query}` : ''}`;
+  }, []);
+
+  const acceptPendingInvitation = useCallback(async () => {
+    const token = invitationTokenRef.current || sessionStorage.getItem(PENDING_INVITATION_STORAGE_KEY);
+    if (!token) return false;
+
+    const { data, error } = await invokeEdgeFunction('accept-invitation', {
+      invitation_token: token,
+    });
+
+    if (error || !data?.success) {
+      throw new Error(data?.error || error?.message || 'Impossible d\'accepter l\'invitation');
+    }
+
+    sessionStorage.removeItem(PENDING_INVITATION_STORAGE_KEY);
+    invitationTokenRef.current = null;
+    return true;
+  }, []);
+
+  const handleAuthenticatedUser = useCallback(async (accessToken: string) => {
+    if (handledAccessTokenRef.current === accessToken) return;
+    handledAccessTokenRef.current = accessToken;
+
+    try {
+      const invitationAccepted = await acceptPendingInvitation();
+
+      if (invitationAccepted) {
+        toast({
+          title: 'Invitation acceptée',
+          description: 'Vous avez bien rejoint votre équipe.',
+        });
+        navigate('/settings', { replace: true });
+        return;
+      }
+
+      navigate(from, { replace: true });
+    } catch (error: any) {
+      toast({
+        title: 'Invitation non acceptée',
+        description: error.message,
+        variant: 'destructive',
+      });
+    }
+  }, [acceptPendingInvitation, from, navigate, toast]);
 
   useEffect(() => {
     // Check URL hash FIRST for recovery flow before anything else
@@ -31,19 +106,19 @@ const Auth = () => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === 'PASSWORD_RECOVERY') {
         setIsResettingPassword(true);
-      } else if (event === 'SIGNED_IN' && !isResettingPassword) {
-        navigate(from);
+      } else if (event === 'SIGNED_IN' && !isResettingPassword && session?.access_token) {
+        void handleAuthenticatedUser(session.access_token);
       }
     });
 
     supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session && !isResettingPassword) {
-        navigate(from);
+      if (session?.access_token && !isResettingPassword) {
+        void handleAuthenticatedUser(session.access_token);
       }
     });
 
     return () => subscription.unsubscribe();
-  }, [navigate, isResettingPassword]);
+  }, [handleAuthenticatedUser, isResettingPassword]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -61,7 +136,7 @@ const Auth = () => {
         navigate(from);
       } else if (isForgotPassword) {
         const { error } = await supabase.auth.resetPasswordForEmail(email, {
-          redirectTo: `${window.location.origin}/auth`,
+          redirectTo: getAuthRedirectUrl(),
         });
         if (error) throw error;
         toast({
@@ -76,10 +151,15 @@ const Auth = () => {
       } else {
         const { error } = await supabase.auth.signUp({
           email, password,
-          options: { emailRedirectTo: `${window.location.origin}/outreach` },
+          options: { emailRedirectTo: getAuthRedirectUrl() },
         });
         if (error) throw error;
-        toast({ title: 'Success', description: 'Account created successfully' });
+        toast({
+          title: 'Compte créé',
+          description: invitationTokenRef.current
+            ? 'Vérifiez votre email puis revenez via le lien reçu : l’invitation sera acceptée automatiquement.'
+            : 'Compte créé avec succès.',
+        });
       }
     } catch (error: any) {
       toast({ title: 'Error', description: error.message, variant: 'destructive' });
@@ -173,7 +253,7 @@ const Auth = () => {
               className="w-full border-foreground text-foreground"
               onClick={async () => {
                 const { error } = await lovable.auth.signInWithOAuth('google', {
-                  redirect_uri: window.location.origin,
+                  redirect_uri: getAuthRedirectUrl(),
                 });
                 if (error) {
                   toast({ title: 'Erreur', description: error.message, variant: 'destructive' });
