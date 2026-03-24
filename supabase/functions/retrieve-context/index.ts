@@ -178,36 +178,45 @@ Deno.serve(async (req) => {
       );
     }
 
-    // ── 3. Embed the query via OpenAI ──────────────────────────
+    // ── 3. Embed the query via OpenAI (with cache) ───────────
     const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
     if (!OPENAI_API_KEY) {
       throw new Error("OPENAI_API_KEY not configured");
     }
 
-    const embeddingRes = await fetchWithTimeout(
-      "https://api.openai.com/v1/embeddings",
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${OPENAI_API_KEY}`,
-          "Content-Type": "application/json",
+    const queryText = query.substring(0, 8000);
+    const queryHash = await hashQuery(queryText);
+    let queryEmbedding = getCachedEmbedding(queryHash);
+
+    if (queryEmbedding) {
+      console.log("retrieve-context: embedding cache HIT");
+    } else {
+      const embeddingRes = await fetchWithTimeout(
+        "https://api.openai.com/v1/embeddings",
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${OPENAI_API_KEY}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            model: "text-embedding-3-small",
+            input: queryText,
+          }),
         },
-        body: JSON.stringify({
-          model: "text-embedding-3-small",
-          input: query.substring(0, 8000),
-        }),
-      },
-      15000,
-    );
+        15000,
+      );
 
-    if (!embeddingRes.ok) {
-      const errBody = await embeddingRes.text();
-      console.error(`OpenAI API error [${embeddingRes.status}]:`, errBody);
-      throw new Error(`OpenAI embedding error: ${embeddingRes.status}`);
+      if (!embeddingRes.ok) {
+        const errBody = await embeddingRes.text();
+        console.error(`OpenAI API error [${embeddingRes.status}]:`, errBody);
+        throw new Error(`OpenAI embedding error: ${embeddingRes.status}`);
+      }
+
+      const embeddingData = await embeddingRes.json();
+      queryEmbedding = embeddingData.data[0].embedding;
+      setCachedEmbedding(queryHash, queryEmbedding);
     }
-
-    const embeddingData = await embeddingRes.json();
-    const queryEmbedding = embeddingData.data[0].embedding;
 
     // ── 4. Call the RPC ────────────────────────────────────────
     const svc = createClient(
