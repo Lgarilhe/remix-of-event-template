@@ -87,6 +87,25 @@ const Auth = () => {
       const invitationAccepted = await acceptPendingInvitation();
 
       if (invitationAccepted) {
+        // Check if the user was invited as a collaborator
+        const token = sessionStorage.getItem(PENDING_INVITATION_STORAGE_KEY) || invitationTokenRef.current;
+        
+        // Try to get invitation details to check role
+        try {
+          const { data: invData } = await supabase
+            .from('organization_invitations')
+            .select('role, organizations!inner(name)')
+            .or(`token.eq.${token},id.eq.${token}`)
+            .single();
+          
+          if (invData?.role === 'collaborator' && (invData as any)?.organizations?.name) {
+            setCollaboratorWelcome({ orgName: (invData as any).organizations.name });
+            return;
+          }
+        } catch {
+          // If we can't fetch invitation details, continue normally
+        }
+
         toast({
           title: 'Invitation acceptée',
           description: 'Vous avez bien rejoint votre équipe.',
