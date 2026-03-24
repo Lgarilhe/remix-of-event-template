@@ -37,7 +37,7 @@ export interface ExperienceDetail {
   current: boolean;
 }
 
-export type ExperienceType = 'rpo' | 'cabinet' | 'direct' | null;
+export type ExperienceType = 'rpo' | 'cabinet' | 'direct' | 'other' | null;
 
 export interface ExperienceClassification {
   company: string;
@@ -257,6 +257,7 @@ export const SceneProfile: React.FC<Props> = ({ onNext, onBack, orgType, savedSt
             { label: 'RPO / Embarqué', color: 'var(--skalr-purple)', desc: 'Intégré chez le client' },
             { label: 'Cabinet', color: 'var(--skalr-green)', desc: 'Chasse & conseil' },
             { label: 'Direct', color: 'var(--skalr-pink)', desc: 'Recrutement interne' },
+            { label: 'Autre', color: 'var(--foreground)', desc: 'Hors recrutement' },
           ].map(item => (
             <div key={item.label} className="flex items-center gap-1.5">
               <span className="w-2.5 h-2.5 border border-foreground/20" style={{ background: `hsl(${item.color} / 0.3)` }} />
@@ -280,6 +281,7 @@ export const SceneProfile: React.FC<Props> = ({ onNext, onBack, orgType, savedSt
                     { value: 'rpo' as const, label: 'RPO', color: 'var(--skalr-purple)' },
                     { value: 'cabinet' as const, label: 'Cabinet', color: 'var(--skalr-green)' },
                     { value: 'direct' as const, label: 'Direct', color: 'var(--skalr-pink)' },
+                    { value: 'other' as const, label: 'Autre', color: 'var(--foreground)' },
                   ]).map((opt) => (
                     <button
                       key={opt.value}
@@ -508,13 +510,14 @@ export const SceneProfile: React.FC<Props> = ({ onNext, onBack, orgType, savedSt
               {/* Classifications summary */}
               {expClassifications.some(c => c.type) && (
                 <div className="flex flex-wrap gap-1.5">
-                  {(['rpo', 'cabinet', 'direct'] as const).map(type => {
+                  {(['rpo', 'cabinet', 'direct', 'other'] as const).map(type => {
                     const count = expClassifications.filter(c => c.type === type).length;
                     if (!count) return null;
                     const config = {
                       rpo: { label: 'RPO', color: 'var(--skalr-purple)' },
                       cabinet: { label: 'Cabinet', color: 'var(--skalr-green)' },
                       direct: { label: 'Direct', color: 'var(--skalr-pink)' },
+                      other: { label: 'Autre', color: 'var(--foreground)' },
                     }[type];
                     return (
                       <span key={type} className="px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider border-2 border-foreground/20"

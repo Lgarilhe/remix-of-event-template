@@ -52,6 +52,7 @@ serve(async (req) => {
       rpo: "RPO / Recrutement embarqué",
       cabinet: "Cabinet de recrutement",
       direct: "Recrutement en entreprise (client final)",
+      other: "Autre (hors recrutement)",
     };
 
     let classificationContext = "";
