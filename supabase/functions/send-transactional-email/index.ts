@@ -14,22 +14,6 @@ const corsHeaders = {
     'authorization, x-client-info, apikey, content-type',
 }
 
-function parseJwtClaims(token: string): Record<string, unknown> | null {
-  const parts = token.split('.')
-  if (parts.length < 2) return null
-
-  try {
-    const payload = parts[1]
-      .replaceAll('-', '+')
-      .replaceAll('_', '/')
-      .padEnd(Math.ceil(parts[1].length / 4) * 4, '=')
-
-    return JSON.parse(atob(payload)) as Record<string, unknown>
-  } catch {
-    return null
-  }
-}
-
 // Generate a cryptographically random 32-byte hex token
 function generateToken(): string {
   const bytes = new Uint8Array(32)
@@ -59,24 +43,27 @@ Deno.serve(async (req) => {
     )
   }
 
-  const authHeader = req.headers.get('Authorization')
-  if (!authHeader?.startsWith('Bearer ')) {
-    return new Response(
-      JSON.stringify({ error: 'Unauthorized' }),
-      {
-        status: 401,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      }
-    )
-  }
-
-  const token = authHeader.slice('Bearer '.length).trim()
-  const claims = parseJwtClaims(token)
   const supabase = createClient(supabaseUrl, supabaseServiceKey)
-  const isServiceRoleCaller = claims?.role === 'service_role'
+  const authHeader = req.headers.get('Authorization')
+  const bearerToken = authHeader?.startsWith('Bearer ')
+    ? authHeader.slice('Bearer '.length).trim()
+    : null
+  const apiKey = req.headers.get('apikey')
+  const isServiceRoleCaller =
+    apiKey === supabaseServiceKey || bearerToken === supabaseServiceKey
 
   if (!isServiceRoleCaller) {
-    const { data: authData, error: authError } = await supabase.auth.getUser(token)
+    if (!bearerToken) {
+      return new Response(
+        JSON.stringify({ error: 'Unauthorized' }),
+        {
+          status: 401,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        }
+      )
+    }
+
+    const { data: authData, error: authError } = await supabase.auth.getUser(bearerToken)
 
     if (authError || !authData.user) {
       return new Response(
