@@ -1090,6 +1090,12 @@ Deno.serve(async (req) => {
             }
           }
 
+          // If both direct fetch and Firecrawl failed, mark scraping as failed
+          if (!careersRaw || careersRaw.length < 500) {
+            scrapingFailed = true;
+            console.warn('[enrich] Scraping completely failed for:', careersUrl);
+          }
+
           let extractionRaw = careersRaw;
           const externalAtsUrl = extractExternalAtsUrl(`${careersUrl}\n${careersRaw}`);
           if (externalAtsUrl && externalAtsUrl !== careersUrl) {
