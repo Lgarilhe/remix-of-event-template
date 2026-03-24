@@ -1,0 +1,1 @@
+DELETE FROM knowledge_chunks WHERE chunk_type = 'profile' AND length(content) < 200 AND content LIKE '%pipeline:%';
