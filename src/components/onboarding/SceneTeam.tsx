@@ -53,14 +53,19 @@ export const SceneTeam: React.FC<Props> = ({ organizationId, onFinish, onBack })
       // Run Apollo + LinkedIn searches in parallel
       const searches = [];
 
-      // Apollo search for HR people at the org
+      // Search for HR people at the org
+      const searchParams: Record<string, any> = {
+        job_company_name: orgName,
+        job_title: 'RH,Recruteur,Recruiter,Talent Acquisition,HR,DRH,Manager',
+        job_title_role: 'human_resources',
+        per_page: 10,
+      };
+
+      // Add location filter if org has a website (use France as default)
+      searchParams.person_locations = 'France';
+
       searches.push(
-        invokeEdgeFunction('apollo-search', {
-          job_company_name: orgName,
-          job_title: 'RH,Recruteur,Recruiter,Talent Acquisition,HR,DRH,Manager',
-          job_title_role: 'human_resources',
-          per_page: 10,
-        }).then(({ data }) => {
+        invokeEdgeFunction('apollo-search', searchParams).then(({ data }) => {
           if (data?.success && Array.isArray((data as any).prospects)) {
             for (const p of (data as any).prospects) {
               results.push({
@@ -73,7 +78,7 @@ export const SceneTeam: React.FC<Props> = ({ organizationId, onFinish, onBack })
             }
           }
         }).catch((err) => {
-          console.warn('[SceneTeam] Apollo search failed:', err);
+          console.warn('[SceneTeam] Search failed:', err);
         })
       );
 
