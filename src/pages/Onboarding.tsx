@@ -193,7 +193,7 @@ const Onboarding = () => {
               />
             )}
             {currentScene === 'profile' && (
-              <SceneProfile onNext={() => completeAndNext(step)} onBack={goBack} />
+              <SceneProfile onNext={() => completeAndNext(step)} onBack={goBack} orgType={orgType} />
             )}
             {currentScene === 'integrations' && (
               <SceneIntegrations onNext={() => completeAndNext(step)} onBack={goBack} />
