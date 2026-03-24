@@ -86,7 +86,7 @@ export const ProjectsList: React.FC<ProjectsListProps> = ({ onResumeSearch }) =>
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [showImportModal, setShowImportModal] = useState(false);
+  const [createInitialTab, setCreateInitialTab] = useState<string | undefined>(undefined);
   const [selectedProjectKey, setSelectedProjectKey] = useState<string | null>(null);
 
   // Merge Notion jobs + manual projects into unified list
