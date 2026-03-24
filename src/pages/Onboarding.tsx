@@ -10,7 +10,7 @@ import { SceneOrganization } from '@/components/onboarding/SceneOrganization';
 import { SceneAudit } from '@/components/onboarding/SceneAudit';
 import { SceneProfile } from '@/components/onboarding/SceneProfile';
 import { SceneIntegrations } from '@/components/onboarding/SceneIntegrations';
-import { SceneOrgType } from '@/components/onboarding/SceneOrgType';
+import { SceneOrgType, type OrgTypeData } from '@/components/onboarding/SceneOrgType';
 import { SceneTeam } from '@/components/onboarding/SceneTeam';
 import { SceneLaunch } from '@/components/onboarding/SceneLaunch';
 
@@ -41,6 +41,7 @@ const Onboarding = () => {
   const [completedSet, setCompletedSet] = useState<Set<number>>(new Set());
   const [companyData, setCompanyData] = useState<OnboardingCompanyData | null>(null);
   const [orgType, setOrgType] = useState<OrgType | null>(null);
+  const [orgExtraData, setOrgExtraData] = useState<Omit<OrgTypeData, 'orgType'> | null>(null);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { organization, organizationId } = useOrganization();
@@ -82,13 +83,14 @@ const Onboarding = () => {
 
   const { createOrganization } = useOrganization();
 
-  const handleOrgTypeSelected = useCallback(async (type: OrgType) => {
+  const handleOrgTypeSelected = useCallback(async (data: OrgTypeData) => {
+    const { orgType: type, teamSize, annualHires, discoverySource } = data;
     setOrgType(type);
+    setOrgExtraData({ teamSize, annualHires, discoverySource });
     markCompleted(0);
     setDirection(1);
 
     if (type === 'freelance') {
-      // Auto-create org for freelancer using their name
       try {
         const { data: { user } } = await supabase.auth.getUser();
         const userName = user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Mon espace';
@@ -100,7 +102,7 @@ const Onboarding = () => {
         if (org?.id) {
           await supabase
             .from('organizations')
-            .update({ org_type: 'freelance' } as any)
+            .update({ org_type: 'freelance', team_size: teamSize, annual_hires: annualHires, discovery_source: discoverySource } as any)
             .eq('id', org.id);
         }
         setOrgCreated(true);
@@ -119,11 +121,18 @@ const Onboarding = () => {
     const orgIndex = flow.indexOf('org');
     if (orgIndex >= 0) markCompleted(orgIndex);
 
-    // Update org_type in DB
+    // Update org_type + extra data in DB
     if (organizationId && orgType) {
       supabase
         .from('organizations')
-        .update({ org_type: orgType } as any)
+        .update({
+          org_type: orgType,
+          ...(orgExtraData ? {
+            team_size: orgExtraData.teamSize,
+            annual_hires: orgExtraData.annualHires,
+            discovery_source: orgExtraData.discoverySource,
+          } : {}),
+        } as any)
         .eq('id', organizationId);
     }
 
