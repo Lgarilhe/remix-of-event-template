@@ -305,7 +305,7 @@ const Settings = () => {
 
                     {isAdmin && (
                       <InviteMemberForm
-                        onInvite={(email, role) => inviteMember({ email, role })}
+                        onInvite={async (email, role) => { await inviteMember({ email, role }); }}
                         isLoading={isInviting}
                       />
                     )}
