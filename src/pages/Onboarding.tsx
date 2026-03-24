@@ -12,6 +12,7 @@ import { SceneProfile, type ProfileFormState } from '@/components/onboarding/Sce
 import { SceneIntegrations } from '@/components/onboarding/SceneIntegrations';
 import { SceneOrgType } from '@/components/onboarding/SceneOrgType';
 import { SceneOrgDetails, type OrgDetailsData } from '@/components/onboarding/SceneOrgDetails';
+import { SceneDiscovery } from '@/components/onboarding/SceneDiscovery';
 import { SceneTeam } from '@/components/onboarding/SceneTeam';
 import { SceneLaunch } from '@/components/onboarding/SceneLaunch';
 
