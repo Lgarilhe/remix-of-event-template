@@ -4,6 +4,7 @@ import { ArrowLeft, ArrowRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Slider } from '@/components/ui/slider';
 import { Badge } from '@/components/ui/badge';
 
 type OrgType = 'enterprise' | 'agency' | 'freelance';
@@ -87,7 +88,7 @@ export const SceneOrgDetails: React.FC<Props> = ({ orgType, onSubmit, onBack }) 
   const [specializations, setSpecializations] = useState<string[]>([]);
   const [discoverySource, setDiscoverySource] = useState('');
   const [freelanceMode, setFreelanceMode] = useState('');
-  const [tjm, setTjm] = useState('');
+  const [tjm, setTjm] = useState([400, 600]);
 
   const toggleSpec = (value: string) => {
     setSpecializations(prev =>
@@ -142,25 +143,33 @@ export const SceneOrgDetails: React.FC<Props> = ({ orgType, onSubmit, onBack }) 
           </div>
         )}
 
-        {/* TJM field - shown when RPO or both */}
+        {/* TJM range - shown when RPO or both */}
         <AnimatePresence>
           {isFreelance && (freelanceMode === 'rpo' || freelanceMode === 'both') && (
             <motion.div
               initial={{ opacity: 0, height: 0 }}
               animate={{ opacity: 1, height: 'auto' }}
               exit={{ opacity: 0, height: 0 }}
-              className="space-y-1.5"
+              className="space-y-3"
             >
               <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                TJM indicatif (€/jour)
+                Fourchette TJM indicative
               </label>
-              <Input
-                type="number"
-                placeholder="Ex : 450"
-                value={tjm}
-                onChange={(e) => setTjm(e.target.value)}
-                className="border-2 border-foreground/20 h-10 text-sm w-40"
-              />
+              <div className="px-1">
+                <Slider
+                  value={tjm}
+                  onValueChange={(val: number[]) => setTjm(val)}
+                  min={200}
+                  max={1500}
+                  step={50}
+                  className="w-full"
+                />
+              </div>
+              <div className="flex justify-between text-xs text-muted-foreground">
+                <span className="font-semibold text-foreground">{tjm[0]}€</span>
+                <span className="text-[10px]">par jour</span>
+                <span className="font-semibold text-foreground">{tjm[1]}€</span>
+              </div>
               <p className="text-[10px] text-muted-foreground">Facultatif — à titre indicatif uniquement.</p>
             </motion.div>
           )}
@@ -241,7 +250,7 @@ export const SceneOrgDetails: React.FC<Props> = ({ orgType, onSubmit, onBack }) 
           <ArrowLeft className="w-4 h-4" /> Retour
         </Button>
         <Button
-          onClick={() => canSubmit && onSubmit({ teamSize, specializations, discoverySource, freelanceMode: isFreelance ? freelanceMode : undefined, tjm: tjm || undefined })}
+          onClick={() => canSubmit && onSubmit({ teamSize, specializations, discoverySource, freelanceMode: isFreelance ? freelanceMode : undefined, tjm: (freelanceMode === 'rpo' || freelanceMode === 'both') ? `${tjm[0]}-${tjm[1]}` : undefined })}
           disabled={!canSubmit}
           className="gap-2 border-2 border-foreground bg-foreground text-background hover:bg-foreground/90 text-sm px-6"
           style={{ boxShadow: '3px 3px 0px 0px hsl(var(--brutal-accent))' }}
