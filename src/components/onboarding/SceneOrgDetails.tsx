@@ -80,19 +80,36 @@ const FREELANCE_MODES = [
   { value: 'both', label: 'Les deux' },
 ];
 
+const TJM_MIN = 200;
+const TJM_MAX = 1500;
+const TJM_STEP = 50;
+
 export const SceneOrgDetails: React.FC<Props> = ({ orgType, onSubmit, onBack }) => {
   const isFreelance = orgType === 'freelance';
   const [teamSize, setTeamSize] = useState(isFreelance ? '1' : '');
   const [specializations, setSpecializations] = useState<string[]>([]);
   const [discoverySource, setDiscoverySource] = useState('');
   const [freelanceMode, setFreelanceMode] = useState('');
-  const [tjm, setTjm] = useState([400, 700]);
+  const [tjm, setTjm] = useState<[number, number]>([400, 700]);
 
   const toggleSpec = (value: string) => {
     setSpecializations(prev =>
       prev.includes(value) ? prev.filter(v => v !== value) : [...prev, value]
     );
   };
+
+  const handleTjmMinChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const nextMin = Math.min(Number(event.target.value), tjm[1] - TJM_STEP);
+    setTjm([nextMin, tjm[1]]);
+  };
+
+  const handleTjmMaxChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const nextMax = Math.max(Number(event.target.value), tjm[0] + TJM_STEP);
+    setTjm([tjm[0], nextMax]);
+  };
+
+  const tjmStartPercent = ((tjm[0] - TJM_MIN) / (TJM_MAX - TJM_MIN)) * 100;
+  const tjmEndPercent = ((tjm[1] - TJM_MIN) / (TJM_MAX - TJM_MIN)) * 100;
 
   const canSubmit = teamSize && specializations.length > 0 && discoverySource && (!isFreelance || freelanceMode);
 
