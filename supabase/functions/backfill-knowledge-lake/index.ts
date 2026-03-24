@@ -2,6 +2,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.1?target
 import {
   adaptAirtableHistory,
   adaptCallData,
+  adaptLinkedInProfile,
   adaptQualificationSession,
   adaptSequenceHistory,
   type Chunk,
@@ -246,16 +247,43 @@ Deno.serve(async (req) => {
       await processTable("job_candidate_status", (row) => {
         const candidateId = row.candidate_id as string;
         if (!candidateId) return [];
-        const content = [
-          `Candidat: ${row.candidate_name || "N/A"}`,
-          row.job_title ? `Poste: ${row.job_title}` : null,
-          `Étape: ${row.stage || "unknown"}`,
-          row.source ? `Source: ${row.source}` : null,
-        ].filter(Boolean).join("\n");
-        return [{
-          entity_type: "candidate", entity_id: candidateId, chunk_type: "profile",
-          content, metadata: { job_id: row.job_id, stage: row.stage, date: row.updated_at },
-        }];
+
+        const allChunks: ChunkToIngest[] = [];
+
+        // A. Extract full LinkedIn profile via adapter if linkedin_profile_data exists
+        if (row.linkedin_profile_data && typeof row.linkedin_profile_data === 'object') {
+          const profileChunks = adaptLinkedInProfile(row.linkedin_profile_data as Record<string, unknown>);
+          for (const pc of profileChunks) {
+            allChunks.push({
+              entity_type: "candidate",
+              entity_id: candidateId,
+              chunk_type: pc.chunk_type,
+              content: pc.content,
+              source_table: pc.source_table,
+              source_id: pc.source_id,
+              metadata: { ...pc.metadata, job_id: row.job_id, source: "linkedin_profile" },
+            });
+          }
+        }
+
+        // B. Fallback: minimal chunk if no linkedin_profile_data or adapter returned nothing
+        if (allChunks.length === 0) {
+          const content = [
+            row.candidate_name ? `Candidat: ${row.candidate_name}` : null,
+            row.candidate_headline ? `Titre: ${row.candidate_headline}` : null,
+            row.job_title ? `Poste visé: ${row.job_title}` : null,
+            row.stage ? `Étape: ${row.stage}` : null,
+          ].filter(Boolean).join("\n");
+          if (content) {
+            allChunks.push({
+              entity_type: "candidate", entity_id: candidateId,
+              chunk_type: "profile", content,
+              metadata: { job_id: row.job_id, stage: row.stage },
+            });
+          }
+        }
+
+        return allChunks;
       });
     }
 
