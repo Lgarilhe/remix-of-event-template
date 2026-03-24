@@ -88,7 +88,7 @@ export const SceneOrgDetails: React.FC<Props> = ({ orgType, onSubmit, onBack }) 
   const [specializations, setSpecializations] = useState<string[]>([]);
   const [discoverySource, setDiscoverySource] = useState('');
   const [freelanceMode, setFreelanceMode] = useState('');
-  const [tjm, setTjm] = useState('');
+  const [tjm, setTjm] = useState([400, 600]);
 
   const toggleSpec = (value: string) => {
     setSpecializations(prev =>
