@@ -9,7 +9,7 @@ type OrgType = 'enterprise' | 'agency' | 'freelance';
 
 export interface OrgDetailsData {
   teamSize: string;
-  annualHires: string;
+  specializations: string[];
   discoverySource: string;
   freelanceMode?: string;
 }
