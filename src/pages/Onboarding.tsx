@@ -25,12 +25,12 @@ export interface OnboardingCompanyData {
 
 type OrgType = 'enterprise' | 'agency' | 'freelance';
 
-type SceneKey = 'orgtype' | 'orgdetails' | 'org' | 'audit' | 'profile' | 'integrations' | 'team' | 'launch';
+type SceneKey = 'orgtype' | 'orgdetails' | 'discovery' | 'org' | 'audit' | 'profile' | 'integrations' | 'team' | 'launch';
 
 const FLOWS: Record<OrgType, SceneKey[]> = {
-  enterprise: ['orgtype', 'orgdetails', 'org', 'audit', 'profile', 'integrations', 'team', 'launch'],
-  agency:     ['orgtype', 'orgdetails', 'org', 'audit', 'profile', 'integrations', 'team', 'launch'],
-  freelance:  ['orgtype', 'orgdetails', 'profile', 'integrations', 'launch'],
+  enterprise: ['orgtype', 'orgdetails', 'discovery', 'org', 'audit', 'profile', 'integrations', 'team', 'launch'],
+  agency:     ['orgtype', 'orgdetails', 'discovery', 'org', 'audit', 'profile', 'integrations', 'team', 'launch'],
+  freelance:  ['orgtype', 'orgdetails', 'discovery', 'profile', 'integrations', 'launch'],
 };
 
 const DEFAULT_FLOW: SceneKey[] = FLOWS.enterprise;
