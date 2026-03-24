@@ -2,52 +2,46 @@ import React from 'react';
 import { motion } from 'framer-motion';
 import skalrLogo from '@/assets/skalr-logo-concept-3.png';
 
-const STEP_COUNT = 8;
-
 interface OnboardingLayoutProps {
   currentStep: number;
+  totalSteps: number;
   orgName?: string;
   completedSteps: number;
+  trackableSteps: number;
   children: React.ReactNode;
 }
 
 export const OnboardingLayout: React.FC<OnboardingLayoutProps> = ({
   currentStep,
+  totalSteps,
   orgName,
   completedSteps,
+  trackableSteps,
   children,
 }) => {
-  const progress = ((currentStep + 1) / STEP_COUNT) * 100;
-  const scorePercent = Math.round((completedSteps / STEP_COUNT) * 100);
+  const progress = ((currentStep + 1) / totalSteps) * 100;
+  const scorePercent = Math.round((completedSteps / Math.max(trackableSteps, 1)) * 100);
   const circumference = 2 * Math.PI * 18;
   const strokeDashoffset = circumference - (scorePercent / 100) * circumference;
 
   return (
     <div className="min-h-screen flex flex-col relative overflow-hidden">
-      {/* Sky background at 50% opacity */}
       <div className="absolute inset-0 landing-sky-gradient opacity-50" />
 
-      {/* Decorative orbs */}
       <div
         className="absolute -top-32 -right-32 w-[500px] h-[500px] rounded-full pointer-events-none"
-        style={{
-          background: 'radial-gradient(circle, hsl(var(--skalr-purple) / 0.04) 0%, transparent 70%)',
-        }}
+        style={{ background: 'radial-gradient(circle, hsl(var(--skalr-purple) / 0.04) 0%, transparent 70%)' }}
       />
       <div
         className="absolute -bottom-32 -left-32 w-[500px] h-[500px] rounded-full pointer-events-none"
-        style={{
-          background: 'radial-gradient(circle, hsl(var(--skalr-blue) / 0.035) 0%, transparent 70%)',
-        }}
+        style={{ background: 'radial-gradient(circle, hsl(var(--skalr-blue) / 0.035) 0%, transparent 70%)' }}
       />
 
       {/* Progress bar */}
       <div className="w-full h-1 relative z-10">
         <motion.div
           className="h-full"
-          style={{
-            background: 'linear-gradient(90deg, hsl(var(--skalr-purple)), hsl(var(--skalr-pink)), hsl(var(--skalr-blue)))',
-          }}
+          style={{ background: 'linear-gradient(90deg, hsl(var(--skalr-purple)), hsl(var(--skalr-pink)), hsl(var(--skalr-blue)))' }}
           initial={{ width: 0 }}
           animate={{ width: `${progress}%` }}
           transition={{ duration: 0.5, ease: 'easeInOut' }}
@@ -56,7 +50,6 @@ export const OnboardingLayout: React.FC<OnboardingLayoutProps> = ({
 
       {/* Top bar */}
       <div className="sticky top-0 z-20 flex items-center justify-between px-3 sm:px-6 py-3 backdrop-blur-sm bg-background/60">
-        {/* Left: Logo + Konekt */}
         <div className="flex items-center gap-2 shrink-0">
           <img src={skalrLogo} alt="Konekt" className="h-6 sm:h-7 w-auto" />
           {orgName && (
@@ -64,15 +57,13 @@ export const OnboardingLayout: React.FC<OnboardingLayoutProps> = ({
           )}
         </div>
 
-        {/* Center: Step dots */}
+        {/* Step dots */}
         <div className="flex items-center gap-1 sm:gap-1.5">
-          {Array.from({ length: STEP_COUNT }).map((_, i) => (
+          {Array.from({ length: totalSteps }).map((_, i) => (
             <motion.div
               key={i}
               className={`h-1.5 rounded-[1px] transition-all duration-300 ${
-                i === currentStep
-                  ? 'w-4 sm:w-6'
-                  : 'w-2 sm:w-3'
+                i === currentStep ? 'w-4 sm:w-6' : 'w-2 sm:w-3'
               }`}
               style={{
                 background:
@@ -88,7 +79,7 @@ export const OnboardingLayout: React.FC<OnboardingLayoutProps> = ({
           ))}
         </div>
 
-        {/* Right: Score ring */}
+        {/* Score ring */}
         <div className="flex items-center gap-1.5 shrink-0">
           <svg width="32" height="32" viewBox="0 0 40 40" className="rotate-[-90deg] sm:w-10 sm:h-10">
             <defs>
@@ -97,45 +88,31 @@ export const OnboardingLayout: React.FC<OnboardingLayoutProps> = ({
                 <stop offset="100%" stopColor="hsl(var(--skalr-pink))" />
               </linearGradient>
             </defs>
-            <circle
-              cx="20" cy="20" r="18"
-              fill="none"
-              stroke="hsl(var(--foreground) / 0.08)"
-              strokeWidth="2.5"
-            />
+            <circle cx="20" cy="20" r="18" fill="none" stroke="hsl(var(--foreground) / 0.08)" strokeWidth="2.5" />
             <motion.circle
-              cx="20" cy="20" r="18"
-              fill="none"
-              stroke="url(#score-gradient)"
-              strokeWidth="2.5"
-              strokeLinecap="round"
+              cx="20" cy="20" r="18" fill="none"
+              stroke="url(#score-gradient)" strokeWidth="2.5" strokeLinecap="round"
               strokeDasharray={circumference}
               initial={{ strokeDashoffset: circumference }}
               animate={{ strokeDashoffset }}
               transition={{ duration: 0.6, ease: 'easeOut' }}
             />
           </svg>
-          <span
-            className="text-[10px] sm:text-xs font-bold text-foreground/70"
-            style={{ fontFamily: "'Space Mono', monospace" }}
-          >
+          <span className="text-[10px] sm:text-xs font-bold text-foreground/70" style={{ fontFamily: "'Space Mono', monospace" }}>
             {scorePercent}%
           </span>
         </div>
       </div>
 
-      {/* Content area */}
+      {/* Content */}
       <div className="flex-1 flex flex-col items-center justify-center px-3 sm:px-4 relative z-10 overflow-x-hidden">
         {children}
       </div>
 
       {/* Step counter */}
       <div className="text-center pb-6 relative z-10">
-        <span
-          className="text-xs text-muted-foreground tracking-wider"
-          style={{ fontFamily: "'Space Mono', monospace" }}
-        >
-          {String(currentStep + 1).padStart(2, '0')} / {String(STEP_COUNT).padStart(2, '0')}
+        <span className="text-xs text-muted-foreground tracking-wider" style={{ fontFamily: "'Space Mono', monospace" }}>
+          {String(currentStep + 1).padStart(2, '0')} / {String(totalSteps).padStart(2, '0')}
         </span>
       </div>
     </div>

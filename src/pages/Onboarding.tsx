@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { AnimatePresence, motion } from 'framer-motion';
@@ -6,7 +6,6 @@ import { useOrganization } from '@/hooks/useOrganization';
 import { supabase } from '@/integrations/supabase/client';
 import { InvitationBanner } from '@/components/InvitationBanner';
 import { OnboardingLayout } from '@/components/onboarding/OnboardingLayout';
-import { SceneWelcome } from '@/components/onboarding/SceneWelcome';
 import { SceneOrganization } from '@/components/onboarding/SceneOrganization';
 import { SceneAudit } from '@/components/onboarding/SceneAudit';
 import { SceneProfile } from '@/components/onboarding/SceneProfile';
@@ -15,11 +14,6 @@ import { SceneOrgType } from '@/components/onboarding/SceneOrgType';
 import { SceneTeam } from '@/components/onboarding/SceneTeam';
 import { SceneLaunch } from '@/components/onboarding/SceneLaunch';
 
-// Step indices: 0=Welcome, 1=Org, 2=Audit, 3=Profile, 4=Integrations, 5=OrgType, 6=Team, 7=Launch
-const STEP_COUNT = 8;
-const TRACKABLE_STEPS = [0, 1, 2, 3, 4, 5, 6] as const;
-
-// Company data passed from SceneOrganization → SceneAudit via lifted state
 export interface OnboardingCompanyData {
   name: string;
   domain: string | null;
@@ -28,6 +22,17 @@ export interface OnboardingCompanyData {
 }
 
 type OrgType = 'enterprise' | 'agency' | 'freelance';
+
+type SceneKey = 'orgtype' | 'org' | 'audit' | 'profile' | 'integrations' | 'team' | 'launch';
+
+const FLOWS: Record<OrgType, SceneKey[]> = {
+  enterprise: ['orgtype', 'org', 'audit', 'profile', 'integrations', 'team', 'launch'],
+  agency:     ['orgtype', 'org', 'audit', 'profile', 'integrations', 'team', 'launch'],
+  freelance:  ['orgtype', 'org', 'profile', 'integrations', 'launch'],
+};
+
+// Before orgType is chosen, show the full flow length
+const DEFAULT_FLOW: SceneKey[] = FLOWS.enterprise;
 
 const Onboarding = () => {
   const [step, setStep] = useState(0);
@@ -39,6 +44,11 @@ const Onboarding = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { organization, organizationId } = useOrganization();
+
+  const flow = useMemo(() => orgType ? FLOWS[orgType] : DEFAULT_FLOW, [orgType]);
+  const currentScene = flow[step] ?? 'orgtype';
+  const stepCount = flow.length;
+  const trackableSteps = stepCount - 1; // exclude launch
 
   const markCompleted = useCallback((stepIndex: number) => {
     setCompletedSet((prev) => {
@@ -52,14 +62,13 @@ const Onboarding = () => {
   useEffect(() => {
     if (organization && !orgCreated) {
       setOrgCreated(true);
-      markCompleted(1);
     }
-  }, [organization, orgCreated, markCompleted]);
+  }, [organization, orgCreated]);
 
   const goNext = useCallback(() => {
     setDirection(1);
-    setStep((s) => Math.min((s ?? 0) + 1, STEP_COUNT - 1));
-  }, []);
+    setStep((s) => Math.min(s + 1, stepCount - 1));
+  }, [stepCount]);
 
   const completeAndNext = useCallback((stepIndex: number) => {
     markCompleted(stepIndex);
@@ -68,52 +77,42 @@ const Onboarding = () => {
 
   const goBack = useCallback(() => {
     setDirection(-1);
-    setStep((s) => Math.max(0, (s ?? 0) - 1));
+    setStep((s) => Math.max(0, s - 1));
   }, []);
 
-  // Special goBack for Team that skips OrgType when going back (since OrgType is already completed)
-  const goBackFromTeam = useCallback(() => {
-    setDirection(-1);
-    setStep(5); // Go back to OrgType
-  }, []);
+  const handleOrgTypeSelected = useCallback(async (type: OrgType) => {
+    setOrgType(type);
+    markCompleted(0);
+    // Flow changes here, step 1 is always 'org'
+    setDirection(1);
+    setStep(1);
+  }, [markCompleted]);
 
   const handleOrgCreated = useCallback((data: OnboardingCompanyData) => {
     setOrgCreated(true);
     setCompanyData(data);
-    markCompleted(1);
-    goNext();
-  }, [goNext, markCompleted]);
+    // Find 'org' index in current flow and mark complete
+    const orgIndex = flow.indexOf('org');
+    if (orgIndex >= 0) markCompleted(orgIndex);
 
-  const handleOrgTypeSelected = useCallback(async (type: OrgType) => {
-    setOrgType(type);
-    markCompleted(5);
-
-    // Update org_type in the database
-    if (organizationId) {
-      await supabase
+    // Update org_type in DB
+    if (organizationId && orgType) {
+      supabase
         .from('organizations')
-        .update({ org_type: type } as any)
+        .update({ org_type: orgType } as any)
         .eq('id', organizationId);
     }
 
-    if (type === 'freelance') {
-      // Skip team step for freelancers
-      markCompleted(6);
-      setDirection(1);
-      setStep(7); // Jump to Launch
-    } else {
-      goNext(); // Go to Team step
-    }
-  }, [organizationId, markCompleted, goNext]);
+    goNext();
+  }, [flow, goNext, markCompleted, organizationId, orgType]);
 
   const handleFinish = useCallback(async () => {
-    markCompleted(6);
+    const teamIndex = flow.indexOf('team');
+    if (teamIndex >= 0) markCompleted(teamIndex);
     await queryClient.invalidateQueries({ queryKey: ['active-organization'] });
     await queryClient.refetchQueries({ queryKey: ['active-organization'] });
     navigate('/dashboard', { replace: true });
-  }, [navigate, queryClient, markCompleted]);
-
-  const completedSteps = completedSet.size;
+  }, [navigate, queryClient, markCompleted, flow]);
 
   const variants = {
     enter: (dir: number) => ({
@@ -121,11 +120,7 @@ const Onboarding = () => {
       opacity: 0,
       scale: 0.97,
     }),
-    center: {
-      x: 0,
-      opacity: 1,
-      scale: 1,
-    },
+    center: { x: 0, opacity: 1, scale: 1 },
     exit: (dir: number) => ({
       x: dir > 0 ? '-60%' : '60%',
       opacity: 0,
@@ -133,18 +128,21 @@ const Onboarding = () => {
     }),
   };
 
+  // Scene numbering for display (1-indexed, exclude launch)
+  const sceneNumber = step + 1;
+
   return (
     <OnboardingLayout
       currentStep={step}
+      totalSteps={stepCount}
       orgName={organization?.name}
-      completedSteps={completedSteps}
+      completedSteps={completedSet.size}
+      trackableSteps={trackableSteps}
     >
-      {/* Invitation banner */}
       <div className="px-4 max-w-lg mx-auto w-full mb-4">
         <InvitationBanner />
       </div>
 
-      {/* Step content */}
       <div className="w-full max-w-lg relative px-1" style={{ minHeight: 340 }}>
         <AnimatePresence mode="wait" custom={direction}>
           <motion.div
@@ -157,28 +155,36 @@ const Onboarding = () => {
             transition={{ duration: 0.4, ease: [0.4, 0, 0.2, 1] }}
             className="w-full"
           >
-            {step === 0 && <SceneWelcome onNext={() => completeAndNext(0)} />}
-            {step === 1 && <SceneOrganization onComplete={handleOrgCreated} onBack={goBack} />}
-            {step === 2 && <SceneAudit companyData={companyData} onNext={() => completeAndNext(2)} onBack={goBack} />}
-            {step === 3 && <SceneProfile onNext={() => completeAndNext(3)} onBack={goBack} />}
-            {step === 4 && <SceneIntegrations onNext={() => completeAndNext(4)} onBack={goBack} />}
-            {step === 5 && (
-              <SceneOrgType
-                onSelect={handleOrgTypeSelected}
+            {currentScene === 'orgtype' && (
+              <SceneOrgType onSelect={handleOrgTypeSelected} onBack={() => {}} />
+            )}
+            {currentScene === 'org' && (
+              <SceneOrganization onComplete={handleOrgCreated} onBack={goBack} />
+            )}
+            {currentScene === 'audit' && (
+              <SceneAudit
+                companyData={companyData}
+                onNext={() => completeAndNext(step)}
                 onBack={goBack}
               />
             )}
-            {step === 6 && (
+            {currentScene === 'profile' && (
+              <SceneProfile onNext={() => completeAndNext(step)} onBack={goBack} />
+            )}
+            {currentScene === 'integrations' && (
+              <SceneIntegrations onNext={() => completeAndNext(step)} onBack={goBack} />
+            )}
+            {currentScene === 'team' && (
               <SceneTeam
                 organizationId={organizationId}
-                onFinish={() => { markCompleted(6); goNext(); }}
-                onBack={goBackFromTeam}
+                onFinish={() => { markCompleted(step); goNext(); }}
+                onBack={goBack}
               />
             )}
-            {step === 7 && (
+            {currentScene === 'launch' && (
               <SceneLaunch
                 completedSet={completedSet}
-                totalSteps={TRACKABLE_STEPS.length}
+                totalSteps={trackableSteps}
                 onFinish={handleFinish}
               />
             )}
