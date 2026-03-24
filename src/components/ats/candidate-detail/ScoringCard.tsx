@@ -25,7 +25,7 @@ interface ScoringCardProps {
 }
 
 export const ScoringCard = React.memo<ScoringCardProps>(({ scoring }) => {
-  const details = scoring.details;
+  const details = scoring.scoringDetails;
 
   // Parse weighted dimensions
   const dimensions = details?.dimensions || details?.dimension_scores || [];
