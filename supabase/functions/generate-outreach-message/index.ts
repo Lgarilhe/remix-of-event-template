@@ -283,13 +283,13 @@ async function fetchRAGContext(
 ): Promise<string | null> {
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
-    const anonKey = Deno.env.get('SUPABASE_ANON_KEY');
-    if (!supabaseUrl || !anonKey) return null;
+    const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+    if (!supabaseUrl || !serviceKey) return null;
 
     const res = await fetchWithTimeout(`${supabaseUrl}/functions/v1/retrieve-context`, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${anonKey}`,
+        'Authorization': `Bearer ${serviceKey}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
@@ -298,6 +298,8 @@ async function fetchRAGContext(
         entity_id: candidateId,
         query: jobContextText,
         limit: 8,
+        // Only fetch enriched chunk types, skip bare pipeline status profiles
+        chunk_types: ['experience', 'about', 'conversation', 'call_transcript', 'evaluation', 'note', 'sequence_history', 'scoring_result', 'linkedin_post'],
       }),
     });
 
@@ -308,7 +310,8 @@ async function fetchRAGContext(
 
     const data = await res.json();
     const ctx = data?.formatted_context || null;
-    return ctx ? ctx.substring(0, 2000) : null;
+    if (!ctx || ctx.length < 30) return null; // Skip near-empty context
+    return ctx.substring(0, 2000);
   } catch (err) {
     console.warn('[generate-outreach-message] RAG error, falling back to legacy:', err);
     return null;
