@@ -155,8 +155,15 @@ serve(async (req) => {
     const hasExperiences = experiences.length > 0;
     const hasAbout = about.length > 10;
     const hasSkills = skills.length > 0;
+    const hasHeadline = headline.length > 5;
 
-    if (!hasExperiences && !hasAbout && !hasSkills) {
+    console.log("Apollo data summary:", JSON.stringify({
+      name, headline: headline.slice(0, 50), aboutLen: about.length,
+      experiencesCount: experiences.length, skillsCount: skills.length,
+      companiesCount: companies.length, hasExperiences, hasAbout, hasSkills, hasHeadline,
+    }));
+
+    if (!hasExperiences && !hasAbout && !hasSkills && !hasHeadline) {
       // Not enough data — return a minimal result without bio
       const slugBase = name
         .toLowerCase()
