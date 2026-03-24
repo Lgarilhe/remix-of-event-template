@@ -151,6 +151,54 @@ serve(async (req) => {
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) throw new Error("Clé AI manquante");
 
+    // Check if we have enough data for a meaningful bio
+    const hasExperiences = experiences.length > 0;
+    const hasAbout = about.length > 10;
+    const hasSkills = skills.length > 0;
+
+    if (!hasExperiences && !hasAbout && !hasSkills) {
+      // Not enough data — return a minimal result without bio
+      const slugBase = name
+        .toLowerCase()
+        .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-|-$/g, "")
+        .slice(0, 40);
+      const slug = `${slugBase}-${Date.now().toString(36).slice(-4)}`;
+
+      await supabase
+        .from("profiles")
+        .update({
+          linkedin_url: cleanUrl,
+          recruiter_headline: headline,
+          public_slug: slug,
+        })
+        .eq("user_id", user.id);
+
+      return new Response(
+        JSON.stringify({
+          bio: "",
+          headline,
+          skills: [],
+          yearsExperience: 0,
+          slug,
+          name,
+          seniority,
+          currentCompany,
+          currentTitle,
+          location,
+          industries,
+          tags,
+          companies,
+          photoUrl,
+          education: [],
+          recommendations: [],
+          warning: "Profil Apollo trop limité pour générer une bio. Vous pouvez la rédiger manuellement.",
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     const prompt = `Tu es un copywriter expert en personal branding pour recruteurs indépendants.
 
 Tu dois rédiger une bio qui donne envie à un potentiel client (entreprise, DRH, hiring manager) de travailler avec ce recruteur. Le lecteur doit se dire "cette personne connaît MON marché, je veux bosser avec elle".
@@ -180,7 +228,8 @@ CONSIGNES STRICTES :
 - Mentionne le nombre d'années d'expérience si disponible
 - Termine par une phrase qui indique clairement le type de missions/profils sur lesquels tu interviens
 - PAS de formules bateau ("passionné", "expert reconnu", "à votre écoute")
-- PAS de guillemets, PAS d'introduction, juste le texte brut de la bio`;
+- PAS de guillemets, PAS d'introduction, juste le texte brut de la bio
+- INTERDICTION ABSOLUE d'utiliser des crochets [comme ceci] ou des placeholders. N'écris QUE des informations réelles tirées des données ci-dessus. Si une info manque, ne la mentionne pas plutôt que de mettre un placeholder.`;
 
     const aiRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
