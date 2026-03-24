@@ -1298,6 +1298,7 @@ Deno.serve(async (req) => {
         } catch (e) {
           console.warn('[enrich] Careers job extraction failed:', e);
         }
+      }
       // Propagate scrapingFailed flag to result
       if (scrapingFailed && careers_url) {
         result.scrapingFailed = true;
