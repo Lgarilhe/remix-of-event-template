@@ -65,6 +65,69 @@ function smartCapitalize(name: string): string {
   return name;
 }
 
+/** Extract company name from a known ATS/careers URL */
+function extractCompanyNameFromUrl(url: string): string | null {
+  try {
+    const parsed = new URL(url);
+    const host = parsed.hostname.toLowerCase();
+    const path = parsed.pathname;
+
+    // WTTJ: welcometothejungle.com/fr/companies/{slug}/jobs
+    if (host.includes('welcometothejungle.com')) {
+      const match = path.match(/\/companies\/([a-z0-9-]+)/i);
+      if (match) return smartCapitalize(match[1].replace(/-/g, ' '));
+    }
+
+    // Lever: jobs.lever.co/{company}
+    if (host === 'jobs.lever.co') {
+      const match = path.match(/^\/([a-z0-9-]+)/i);
+      if (match && match[1] !== 'jobs') return smartCapitalize(match[1].replace(/-/g, ' '));
+    }
+
+    // Greenhouse: boards.greenhouse.io/{company}
+    if (host === 'boards.greenhouse.io') {
+      const match = path.match(/^\/([a-z0-9-]+)/i);
+      if (match) return smartCapitalize(match[1].replace(/-/g, ' '));
+    }
+
+    // Teamtailor: {company}.teamtailor.com
+    if (host.endsWith('.teamtailor.com')) {
+      const sub = host.replace('.teamtailor.com', '');
+      if (sub && sub !== 'www') return smartCapitalize(sub.replace(/-/g, ' '));
+    }
+
+    // Recruitee: {company}.recruitee.com
+    if (host.endsWith('.recruitee.com')) {
+      const sub = host.replace('.recruitee.com', '');
+      if (sub && sub !== 'www') return smartCapitalize(sub.replace(/-/g, ' '));
+    }
+
+    // Workable: apply.workable.com/{company}
+    if (host === 'apply.workable.com') {
+      const match = path.match(/^\/([a-z0-9-]+)/i);
+      if (match) return smartCapitalize(match[1].replace(/-/g, ' '));
+    }
+
+    // Generic: extract hostname label
+    const label = host.replace(/^www\./, '').split('.')[0];
+    if (label && label.length > 2) return smartCapitalize(label.replace(/-/g, ' '));
+
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/** Detect source type from a URL */
+function detectUrlSourceType(url: string): string {
+  const lower = url.toLowerCase();
+  if (lower.includes('welcometothejungle')) return 'WTTJ';
+  if (lower.includes('lever.co') || lower.includes('greenhouse.io') || lower.includes('workable.com')
+    || lower.includes('teamtailor.com') || lower.includes('recruitee.com') || lower.includes('ashbyhq.com')
+    || lower.includes('breezy.hr') || lower.includes('smartrecruiters.com')) return 'ATS';
+  return 'Careers page';
+}
+
 /** Simple Levenshtein distance for short strings */
 function levenshtein(a: string, b: string): number {
   const m = a.length, n = b.length;
