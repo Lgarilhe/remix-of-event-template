@@ -41,7 +41,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { CreateProjectModal } from './CreateProjectModal';
 import { ProjectDetailView } from './ProjectDetailView';
-import { ImportJobsModal } from '@/components/missions/ImportJobsModal';
+
 import { useOrganization } from '@/hooks/useOrganization';
 import { supabase } from '@/integrations/supabase/client';
 import {
@@ -86,7 +86,7 @@ export const ProjectsList: React.FC<ProjectsListProps> = ({ onResumeSearch }) =>
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [showImportModal, setShowImportModal] = useState(false);
+  const [createInitialTab, setCreateInitialTab] = useState<string | undefined>(undefined);
   const [selectedProjectKey, setSelectedProjectKey] = useState<string | null>(null);
 
   // Merge Notion jobs + manual projects into unified list
@@ -245,7 +245,10 @@ export const ProjectsList: React.FC<ProjectsListProps> = ({ onResumeSearch }) =>
 
         <div className="flex items-center gap-0">
           <button
-            onClick={() => setShowImportModal(true)}
+            onClick={() => {
+              setCreateInitialTab('import');
+              setShowCreateModal(true);
+            }}
             className="relative overflow-hidden flex items-center gap-2 h-[34px] px-4 text-xs font-medium uppercase tracking-wider border border-foreground bg-background text-foreground shrink-0 group"
           >
             <span className="relative z-10">📥 Importer</span>
@@ -259,6 +262,7 @@ export const ProjectsList: React.FC<ProjectsListProps> = ({ onResumeSearch }) =>
                 });
                 return;
               }
+              setCreateInitialTab(undefined);
               setShowCreateModal(true);
             }}
             className="relative overflow-hidden flex items-center gap-2 h-[34px] px-4 text-xs font-medium uppercase tracking-wider border border-foreground border-l-0 bg-foreground text-background shrink-0 group"
@@ -295,7 +299,7 @@ export const ProjectsList: React.FC<ProjectsListProps> = ({ onResumeSearch }) =>
                 Si vos postes sont dans Notion, ils apparaîtront automatiquement.
               </p>
               <button
-                onClick={() => setShowCreateModal(true)}
+                onClick={() => { setCreateInitialTab(undefined); setShowCreateModal(true); }}
                 className="relative overflow-hidden h-[34px] px-6 bg-foreground text-background border border-foreground text-xs font-medium uppercase tracking-wider group"
               >
                 <span className="relative z-10">Créer une mission</span>
@@ -499,10 +503,7 @@ export const ProjectsList: React.FC<ProjectsListProps> = ({ onResumeSearch }) =>
       <CreateProjectModal
         open={showCreateModal}
         onOpenChange={setShowCreateModal}
-      />
-      <ImportJobsModal
-        open={showImportModal}
-        onClose={() => setShowImportModal(false)}
+        initialTab={createInitialTab}
       />
 
       {selectedProject && (
