@@ -575,13 +575,17 @@ Deno.serve(async (req) => {
       });
     }
 
-    const { company_name, country, force_refresh, selected_apollo_id } = await req.json();
+    const { company_name, country, force_refresh, selected_apollo_id, mode, website_url } = await req.json();
+    const jobsOnly = mode === 'jobs_only';
+
     if (!company_name || company_name.trim().length < 2) {
       return new Response(JSON.stringify({ success: false, error: 'company_name required' }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
+
+    if (jobsOnly) console.log('[enrich] jobs_only mode — skipping insights, decision makers, news');
 
     // In-DB cache: return cached result if enriched within last 24h (unless force_refresh)
     const cacheKey = company_name.trim().toLowerCase().replace(/\s+/g, ' ');
@@ -637,6 +641,16 @@ Deno.serve(async (req) => {
       numSuborganizations: null,
       newsArticles: [],
     };
+
+    // If website_url is provided directly (e.g. from ImportJobsModal), pre-set domain
+    if (website_url) {
+      const directDomain = normalizeDomain(website_url);
+      if (directDomain) {
+        result.domain = directDomain;
+        result.websiteUrl = website_url;
+        result.careersUrl = website_url;
+      }
+    }
 
     // ═══════════════════════════════════════════════════════
     // PHASE 1 — Apollo org + domain resolution
@@ -845,8 +859,8 @@ Deno.serve(async (req) => {
     const jobSources: Array<{ title: string; location: string; source: string; department?: string; url?: string }> = [];
     const parallelTasks: Promise<void>[] = [];
 
-    // ── Task A: Apollo People Search ──
-    if (APOLLO_API_KEY) {
+    // ── Task A: Apollo People Search (skip in jobs_only mode) ──
+    if (APOLLO_API_KEY && !jobsOnly) {
       parallelTasks.push((async () => {
         try {
           const peopleBody: Record<string, any> = {
@@ -1319,8 +1333,8 @@ Deno.serve(async (req) => {
       }
     })());
 
-    // ── Task E: Apollo Organization Enrichment ──
-    if (APOLLO_API_KEY && result.domain) {
+    // ── Task E: Apollo Organization Enrichment (skip in jobs_only mode) ──
+    if (APOLLO_API_KEY && result.domain && !jobsOnly) {
       parallelTasks.push((async () => {
         try {
           console.log('[enrich] Apollo org enrichment for domain:', result.domain);
@@ -1364,8 +1378,8 @@ Deno.serve(async (req) => {
       })());
     }
 
-    // ── Task F: Apollo News Articles ──
-    if (APOLLO_API_KEY && apolloOrgId) {
+    // ── Task F: Apollo News Articles (skip in jobs_only mode) ──
+    if (APOLLO_API_KEY && apolloOrgId && !jobsOnly) {
       parallelTasks.push((async () => {
         try {
           console.log('[enrich] Apollo news articles for org:', apolloOrgId);
@@ -1498,7 +1512,7 @@ Deno.serve(async (req) => {
     result.signals = buildSignals(apolloOrg, result);
     console.log(`[enrich] Jobs: ${result.openRoles.length}, Signals: ${result.signals.length}, elapsed: ${Date.now() - startTime}ms`);
 
-    // ── Perplexity fallback for company insights (funding, news, headcount) ──
+    // ── Perplexity fallback for company insights (skip in jobs_only mode) ──
     const recentNewsArticles = selectRecentNewsArticles(result.newsArticles, { maxAgeMonths: 15, includeUndated: false });
     if (recentNewsArticles.length !== result.newsArticles.length) {
       result.newsArticles = recentNewsArticles;
@@ -1509,7 +1523,7 @@ Deno.serve(async (req) => {
     const needsHeadcountData = !result.departmentalHeadcount;
     const elapsedBeforeFallback = Date.now() - startTime;
 
-    if (PERPLEXITY_API_KEY && LOVABLE_API_KEY && (needsFundingData || needsNewsData || needsHeadcountData) && elapsedBeforeFallback < 40000) {
+    if (!jobsOnly && PERPLEXITY_API_KEY && LOVABLE_API_KEY && (needsFundingData || needsNewsData || needsHeadcountData) && elapsedBeforeFallback < 40000) {
       try {
         console.log('[enrich] Perplexity company insights fallback for:', result.name);
         const companyHint = result.domain ? ` (${result.domain})` : '';
@@ -1612,7 +1626,7 @@ Sois factuel, ne spécule pas. Si une info n'est pas disponible, dis "non dispon
       }
     }
 
-    if (!result.newsArticles.length && PERPLEXITY_API_KEY && LOVABLE_API_KEY && Date.now() - startTime < 45000) {
+    if (!jobsOnly && !result.newsArticles.length && PERPLEXITY_API_KEY && LOVABLE_API_KEY && Date.now() - startTime < 45000) {
       try {
         console.log('[enrich] Perplexity broad news fallback for:', result.name);
         const { content } = await perplexitySearch(
@@ -1690,7 +1704,7 @@ Sois factuel, ne spécule pas. Si une info n'est pas disponible, dis "non dispon
     const timeRemaining = 55000 - elapsed;
     const insightsTimeout = Math.min(timeRemaining - 3000, 20000); // Leave 3s buffer for cache write
 
-    if (LOVABLE_API_KEY && insightsTimeout > 5000 && (result.description || result.industry)) {
+    if (!jobsOnly && LOVABLE_API_KEY && insightsTimeout > 5000 && (result.description || result.industry)) {
       try {
         const prompt = `Entreprise : ${result.name}
 Industrie : ${result.industry || 'inconnue'}
