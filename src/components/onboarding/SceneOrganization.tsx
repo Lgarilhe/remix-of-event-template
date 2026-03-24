@@ -81,7 +81,7 @@ interface ApolloCandidate {
 }
 
 const SCAN_SOURCES: Source[] = [
-  { id: 'apollo', label: 'Apollo', done: false },
+  { id: 'apollo', label: 'Base entreprises', done: false },
   { id: 'linkedin', label: 'LinkedIn', done: false },
   { id: 'web', label: 'Web', done: false },
   { id: 'wttj', label: 'WTTJ', done: false },
