@@ -70,7 +70,7 @@ export const SceneOrgDetails: React.FC<Props> = ({ orgType, onSubmit, onBack }) 
 
   const canSubmit = teamSize && specializations.length > 0 && discoverySource && (!isFreelance || freelanceMode);
 
-  const canSubmit = teamSize && annualHires && discoverySource && (!isFreelance || freelanceMode);
+  
 
   return (
     <div className="w-full max-w-lg mx-auto flex flex-col gap-5">
