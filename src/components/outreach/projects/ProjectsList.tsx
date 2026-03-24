@@ -245,7 +245,10 @@ export const ProjectsList: React.FC<ProjectsListProps> = ({ onResumeSearch }) =>
 
         <div className="flex items-center gap-0">
           <button
-            onClick={() => setShowImportModal(true)}
+            onClick={() => {
+              setCreateInitialTab('import');
+              setShowCreateModal(true);
+            }}
             className="relative overflow-hidden flex items-center gap-2 h-[34px] px-4 text-xs font-medium uppercase tracking-wider border border-foreground bg-background text-foreground shrink-0 group"
           >
             <span className="relative z-10">📥 Importer</span>
@@ -259,6 +262,7 @@ export const ProjectsList: React.FC<ProjectsListProps> = ({ onResumeSearch }) =>
                 });
                 return;
               }
+              setCreateInitialTab(undefined);
               setShowCreateModal(true);
             }}
             className="relative overflow-hidden flex items-center gap-2 h-[34px] px-4 text-xs font-medium uppercase tracking-wider border border-foreground border-l-0 bg-foreground text-background shrink-0 group"
