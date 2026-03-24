@@ -257,6 +257,7 @@ export const SceneProfile: React.FC<Props> = ({ onNext, onBack, orgType, savedSt
             { label: 'RPO / Embarqué', color: 'var(--skalr-purple)', desc: 'Intégré chez le client' },
             { label: 'Cabinet', color: 'var(--skalr-green)', desc: 'Chasse & conseil' },
             { label: 'Direct', color: 'var(--skalr-pink)', desc: 'Recrutement interne' },
+            { label: 'Autre', color: 'var(--foreground)', desc: 'Hors recrutement' },
           ].map(item => (
             <div key={item.label} className="flex items-center gap-1.5">
               <span className="w-2.5 h-2.5 border border-foreground/20" style={{ background: `hsl(${item.color} / 0.3)` }} />
