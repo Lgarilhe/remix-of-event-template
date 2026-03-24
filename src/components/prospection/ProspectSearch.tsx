@@ -453,7 +453,7 @@ export function ProspectSearch({ selectedICP, onSelectICP, onResults, searching,
             <Search className="w-3.5 h-3.5" />
           </div>
           <span className="text-[10px] font-bold uppercase tracking-widest text-foreground">Filtres</span>
-          <Badge variant="outline" className="text-[9px] border-foreground/40 font-normal bg-background/80 ml-auto">PDL + Apollo</Badge>
+          <Badge variant="outline" className="text-[9px] border-foreground/40 font-normal bg-background/80 ml-auto">Recherche avancée</Badge>
         </div>
 
         {/* ICP selector */}
