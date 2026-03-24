@@ -500,6 +500,10 @@ export const ProjectsList: React.FC<ProjectsListProps> = ({ onResumeSearch }) =>
         open={showCreateModal}
         onOpenChange={setShowCreateModal}
       />
+      <ImportJobsModal
+        open={showImportModal}
+        onClose={() => setShowImportModal(false)}
+      />
 
       {selectedProject && (
         <ProjectDetailView
