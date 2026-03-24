@@ -121,11 +121,18 @@ const Onboarding = () => {
     const orgIndex = flow.indexOf('org');
     if (orgIndex >= 0) markCompleted(orgIndex);
 
-    // Update org_type in DB
+    // Update org_type + extra data in DB
     if (organizationId && orgType) {
       supabase
         .from('organizations')
-        .update({ org_type: orgType } as any)
+        .update({
+          org_type: orgType,
+          ...(orgExtraData ? {
+            team_size: orgExtraData.teamSize,
+            annual_hires: orgExtraData.annualHires,
+            discovery_source: orgExtraData.discoverySource,
+          } : {}),
+        } as any)
         .eq('id', organizationId);
     }
 
