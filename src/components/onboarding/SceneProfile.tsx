@@ -222,16 +222,22 @@ export const SceneProfile: React.FC<Props> = ({ onNext, onBack, orgType, savedSt
   // --- CLASSIFY STEP ---
   if (profileStep === 'classify' && scanResult) {
     const typeOptions = [
-      { value: 'rpo' as const, label: 'RPO', emoji: '🏢', color: 'var(--skalr-purple)', desc: 'Embarqué chez le client' },
-      { value: 'cabinet' as const, label: 'Cabinet', emoji: '🎯', color: 'var(--skalr-green)', desc: 'Chasse & conseil' },
-      { value: 'direct' as const, label: 'Direct', emoji: '🏠', color: 'var(--skalr-pink)', desc: 'Recrutement interne' },
-      { value: 'other' as const, label: 'Autre', emoji: '📁', color: 'var(--foreground)', desc: 'Hors recrutement' },
+      { value: 'rpo' as const, label: 'RPO', color: 'var(--skalr-purple)' },
+      { value: 'cabinet' as const, label: 'Cabinet', color: 'var(--skalr-green)' },
+      { value: 'direct' as const, label: 'Direct', color: 'var(--skalr-pink)' },
+      { value: 'other' as const, label: 'Autre', color: 'var(--muted-foreground)' },
     ];
 
     const classifiedCount = expClassifications.filter(c => c.type !== null).length;
 
     return (
-      <div className="w-full max-w-2xl mx-auto flex flex-col gap-6">
+      <motion.div
+        className="w-full max-w-lg mx-auto flex flex-col gap-5"
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4 }}
+      >
+        {/* Header */}
         <div className="text-center space-y-2">
           <span
             className="skalr-gradient-text text-[11px] uppercase tracking-[0.2em] font-semibold"
@@ -240,74 +246,47 @@ export const SceneProfile: React.FC<Props> = ({ onNext, onBack, orgType, savedSt
             Classification
           </span>
           <h2 className="font-editorial italic text-3xl md:text-4xl">Classez vos expériences</h2>
-          <p className="text-muted-foreground text-sm max-w-md mx-auto">
-            Pour chaque poste, indiquez le contexte de recrutement. Cela permet de générer un résumé fidèle à votre parcours.
+          <p className="text-muted-foreground text-sm max-w-sm mx-auto">
+            Pour chaque poste, indiquez le contexte de recrutement.
           </p>
         </div>
 
-        {/* Type legend as horizontal pills */}
-        <div className="flex flex-wrap justify-center gap-2">
-          {typeOptions.map(opt => (
-            <div
-              key={opt.value}
-              className="flex items-center gap-1.5 px-3 py-1.5 border border-foreground/10 text-[10px]"
-              style={{ background: `hsl(${opt.color} / 0.06)` }}
-            >
-              <span>{opt.emoji}</span>
-              <span className="font-bold uppercase tracking-wider">{opt.label}</span>
-              <span className="text-muted-foreground hidden sm:inline">— {opt.desc}</span>
-            </div>
-          ))}
-        </div>
-
-        {/* Progress indicator */}
-        <div className="flex items-center justify-center gap-2 text-[11px] text-muted-foreground">
-          <div className="h-1.5 flex-1 max-w-[200px] bg-muted overflow-hidden border border-foreground/5">
-            <div
-              className="h-full transition-all duration-500 ease-out"
-              style={{
-                width: `${expClassifications.length ? (classifiedCount / expClassifications.length) * 100 : 0}%`,
-                background: 'linear-gradient(90deg, hsl(var(--skalr-purple)), hsl(var(--skalr-pink)))',
-              }}
+        {/* Progress */}
+        <div className="flex items-center gap-3">
+          <div className="h-1 flex-1 bg-border overflow-hidden">
+            <motion.div
+              className="h-full"
+              style={{ background: 'linear-gradient(90deg, hsl(var(--skalr-purple)), hsl(var(--skalr-pink)))' }}
+              initial={{ width: 0 }}
+              animate={{ width: `${expClassifications.length ? (classifiedCount / expClassifications.length) * 100 : 0}%` }}
+              transition={{ duration: 0.4, ease: 'easeOut' }}
             />
           </div>
-          <span className="font-mono">{classifiedCount}/{expClassifications.length}</span>
+          <span className="text-[11px] text-muted-foreground" style={{ fontFamily: "'Space Mono', monospace" }}>
+            {classifiedCount}/{expClassifications.length}
+          </span>
         </div>
 
-        {/* Experience cards */}
-        <div className="flex flex-col gap-3">
+        {/* Experience list — single container */}
+        <div
+          className="border-2 border-foreground/10 divide-y divide-foreground/5 overflow-hidden"
+          style={{ boxShadow: '3px 3px 0px 0px hsl(var(--brutal-accent) / 0.15)' }}
+        >
           {expClassifications.map((exp, i) => {
-            const label = [exp.title, exp.company].filter(Boolean).join(' @ ');
-            if (!label) return null;
+            if (!exp.title && !exp.company) return null;
             const isClassified = exp.type !== null;
             const activeOpt = typeOptions.find(o => o.value === exp.type);
 
             return (
-              <div
-                key={i}
-                className={`relative border-2 transition-all duration-200 ${
-                  isClassified
-                    ? 'border-foreground/20'
-                    : 'border-foreground/8 hover:border-foreground/15'
-                }`}
-                style={
-                  isClassified && activeOpt
-                    ? {
-                        boxShadow: `3px 3px 0px 0px hsl(${activeOpt.color} / 0.25)`,
-                        borderColor: `hsl(${activeOpt.color} / 0.3)`,
-                      }
-                    : { boxShadow: '2px 2px 0px 0px hsl(var(--foreground) / 0.04)' }
-                }
-              >
-                {/* Top section: company info */}
+              <div key={i} className="group">
                 <div className="flex items-center gap-3 px-4 py-3">
-                  {/* Company avatar */}
-                  <div className="relative">
+                  {/* Avatar */}
+                  <div className="relative shrink-0">
                     {exp.logoUrl ? (
                       <img
                         src={exp.logoUrl}
                         alt={exp.company}
-                        className="w-9 h-9 shrink-0 border border-foreground/10 object-contain bg-white p-1"
+                        className="w-8 h-8 border border-foreground/10 object-contain bg-white p-0.5"
                         onError={(e) => {
                           const img = e.target as HTMLImageElement;
                           img.style.display = 'none';
@@ -316,86 +295,78 @@ export const SceneProfile: React.FC<Props> = ({ onNext, onBack, orgType, savedSt
                       />
                     ) : null}
                     <div
-                      className={`w-9 h-9 shrink-0 border border-foreground/10 flex items-center justify-center text-xs font-bold text-foreground/50 ${exp.logoUrl ? 'hidden' : ''}`}
-                      style={{ background: `hsl(var(--skalr-purple) / ${0.06 + (i % 4) * 0.03})` }}
+                      className={`w-8 h-8 border border-foreground/10 flex items-center justify-center text-[10px] font-bold text-muted-foreground ${exp.logoUrl ? 'hidden' : ''}`}
+                      style={{ background: `hsl(var(--skalr-purple) / ${0.05 + (i % 3) * 0.03})` }}
                     >
                       {exp.company?.charAt(0)?.toUpperCase() || '?'}
                     </div>
-                    {isClassified && (
+                    {isClassified && activeOpt && (
                       <div
-                        className="absolute -top-1 -right-1 w-4 h-4 flex items-center justify-center text-[8px] border border-background"
-                        style={{ background: `hsl(${activeOpt?.color} / 0.9)`, color: 'white' }}
+                        className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 flex items-center justify-center text-[7px] text-white border border-background"
+                        style={{ background: `hsl(${activeOpt.color})` }}
                       >
                         ✓
                       </div>
                     )}
                   </div>
 
+                  {/* Info */}
                   <div className="flex-1 min-w-0">
-                    <p className="text-xs font-bold text-foreground truncate">{exp.title || 'Poste non renseigné'}</p>
-                    <p className="text-[11px] text-muted-foreground truncate">{exp.company || 'Entreprise inconnue'}</p>
+                    <p className="text-[13px] font-semibold text-foreground truncate leading-tight">
+                      {exp.title || 'Poste non renseigné'}
+                    </p>
+                    <p className="text-[11px] text-muted-foreground truncate">
+                      {exp.company || 'Entreprise inconnue'}
+                    </p>
                   </div>
 
-                  {/* Selected type badge (visible when classified) */}
-                  {isClassified && activeOpt && (
-                    <span
-                      className="text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 shrink-0"
-                      style={{
-                        background: `hsl(${activeOpt.color} / 0.12)`,
-                        color: `hsl(${activeOpt.color})`,
-                        border: `1px solid hsl(${activeOpt.color} / 0.2)`,
-                      }}
-                    >
-                      {activeOpt.emoji} {activeOpt.label}
-                    </span>
-                  )}
-                </div>
-
-                {/* Bottom section: type selector */}
-                <div
-                  className="flex border-t border-foreground/5"
-                  style={{ background: 'hsl(var(--muted) / 0.3)' }}
-                >
-                  {typeOptions.map((opt) => {
-                    const isActive = exp.type === opt.value;
-                    return (
-                      <button
-                        key={opt.value}
-                        type="button"
-                        onClick={() => {
-                          setExpClassifications(prev =>
-                            prev.map((c, idx) =>
-                              idx === i ? { ...c, type: c.type === opt.value ? null : opt.value } : c
-                            )
-                          );
-                        }}
-                        className={`flex-1 py-2 text-[10px] font-bold uppercase tracking-wider transition-all border-r last:border-r-0 border-foreground/5 ${
-                          isActive
-                            ? 'text-foreground'
-                            : 'text-muted-foreground/40 hover:text-muted-foreground/70 hover:bg-foreground/[0.02]'
-                        }`}
-                        style={
-                          isActive
-                            ? { background: `hsl(${opt.color} / 0.12)`, color: `hsl(${opt.color})` }
-                            : {}
-                        }
-                      >
-                        <span className="hidden sm:inline">{opt.emoji} </span>{opt.label}
-                      </button>
-                    );
-                  })}
+                  {/* Type pills */}
+                  <div className="flex gap-1 shrink-0">
+                    {typeOptions.map((opt) => {
+                      const isActive = exp.type === opt.value;
+                      return (
+                        <button
+                          key={opt.value}
+                          type="button"
+                          onClick={() => {
+                            setExpClassifications(prev =>
+                              prev.map((c, idx) =>
+                                idx === i ? { ...c, type: c.type === opt.value ? null : opt.value } : c
+                              )
+                            );
+                          }}
+                          className={`px-2 py-1 text-[9px] font-bold uppercase tracking-wider border transition-all ${
+                            isActive
+                              ? 'border-current'
+                              : 'border-transparent text-muted-foreground/30 hover:text-muted-foreground/60 hover:border-foreground/10'
+                          }`}
+                          style={
+                            isActive
+                              ? {
+                                  background: `hsl(${opt.color} / 0.12)`,
+                                  color: `hsl(${opt.color})`,
+                                  borderColor: `hsl(${opt.color} / 0.3)`,
+                                }
+                              : {}
+                          }
+                        >
+                          {opt.label}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
             );
           })}
         </div>
 
-        <p className="text-[10px] text-muted-foreground/60 text-center italic">
-          Laissez non classées les expériences hors recrutement, ou marquez-les « Autre ».
+        <p className="text-[10px] text-muted-foreground text-center">
+          Vous pouvez laisser certaines expériences non classées si elles ne sont pas liées au recrutement.
         </p>
 
         {/* Navigation */}
-        <div className="flex items-center justify-between pt-1">
+        <div className="flex items-center justify-between pt-2">
           <Button
             type="button"
             variant="outline"
@@ -419,7 +390,7 @@ export const SceneProfile: React.FC<Props> = ({ onNext, onBack, orgType, savedSt
             {generatingBio ? 'Génération...' : 'Générer ma bio'}
           </Button>
         </div>
-      </div>
+      </motion.div>
     );
   }
 
