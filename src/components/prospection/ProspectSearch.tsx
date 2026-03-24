@@ -479,11 +479,11 @@ export function ProspectSearch({ selectedICP, onSelectICP, onResults, searching,
       </div>
 
       {/* Intent signals — always visible */}
-      <div className="border border-border/60 p-3 space-y-2">
+      <div className="border border-foreground p-3 space-y-2">
         <div className="flex items-center gap-2">
           <Zap className="w-3.5 h-3.5 text-amber-500" />
-          <span className="text-[10px] font-bold uppercase tracking-widest text-foreground">Signaux d'intention</span>
-          {intentCount > 0 && <span className="text-[9px] font-bold bg-foreground text-background px-1.5 py-0.5 ml-auto">{intentCount}</span>}
+          <span className="text-sm font-semibold uppercase tracking-wide text-foreground">Signaux d'intention</span>
+          {intentCount > 0 && <Badge variant="secondary" className="h-5 px-1.5 text-xs bg-foreground/10 text-foreground ml-auto">{intentCount}</Badge>}
         </div>
         <div className="flex flex-wrap gap-1.5">
           <ChipToggle label="🔄 Job change" active={intentJobChange} onClick={() => setIntentJobChange(!intentJobChange)} />
