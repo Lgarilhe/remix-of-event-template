@@ -43,6 +43,7 @@ export interface ExperienceClassification {
   company: string;
   title: string;
   type: ExperienceType;
+  logoUrl?: string | null;
 }
 
 export interface ProfileFormState {
