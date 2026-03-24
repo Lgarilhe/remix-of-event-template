@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useOrganization } from '@/hooks/useOrganization';
+import { supabase } from '@/integrations/supabase/client';
 import { InvitationBanner } from '@/components/InvitationBanner';
 import { OnboardingLayout } from '@/components/onboarding/OnboardingLayout';
 import { SceneWelcome } from '@/components/onboarding/SceneWelcome';
@@ -10,12 +11,13 @@ import { SceneOrganization } from '@/components/onboarding/SceneOrganization';
 import { SceneAudit } from '@/components/onboarding/SceneAudit';
 import { SceneProfile } from '@/components/onboarding/SceneProfile';
 import { SceneIntegrations } from '@/components/onboarding/SceneIntegrations';
+import { SceneOrgType } from '@/components/onboarding/SceneOrgType';
 import { SceneTeam } from '@/components/onboarding/SceneTeam';
 import { SceneLaunch } from '@/components/onboarding/SceneLaunch';
 
-// Step indices: 0=Welcome, 1=Org, 2=Audit, 3=Profile, 4=Integrations, 5=Team, 6=Launch
-const STEP_COUNT = 7;
-const TRACKABLE_STEPS = [0, 1, 2, 3, 4, 5] as const;
+// Step indices: 0=Welcome, 1=Org, 2=Audit, 3=Profile, 4=Integrations, 5=OrgType, 6=Team, 7=Launch
+const STEP_COUNT = 8;
+const TRACKABLE_STEPS = [0, 1, 2, 3, 4, 5, 6] as const;
 
 // Company data passed from SceneOrganization → SceneAudit via lifted state
 export interface OnboardingCompanyData {
@@ -25,12 +27,15 @@ export interface OnboardingCompanyData {
   careersUrl: string | null;
 }
 
+type OrgType = 'enterprise' | 'agency' | 'freelance';
+
 const Onboarding = () => {
-  const [step, setStep] = useState(0); // Always start at Welcome
+  const [step, setStep] = useState(0);
   const [direction, setDirection] = useState(1);
   const [orgCreated, setOrgCreated] = useState(false);
   const [completedSet, setCompletedSet] = useState<Set<number>>(new Set());
   const [companyData, setCompanyData] = useState<OnboardingCompanyData | null>(null);
+  const [orgType, setOrgType] = useState<OrgType | null>(null);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { organization, organizationId } = useOrganization();
@@ -44,8 +49,6 @@ const Onboarding = () => {
     });
   }, []);
 
-  // If org gets created/detected while on step 1, mark it but DON'T auto-advance
-  // (advancing is handled by handleOrgCreated which also sets companyData)
   useEffect(() => {
     if (organization && !orgCreated) {
       setOrgCreated(true);
@@ -58,7 +61,6 @@ const Onboarding = () => {
     setStep((s) => Math.min((s ?? 0) + 1, STEP_COUNT - 1));
   }, []);
 
-
   const completeAndNext = useCallback((stepIndex: number) => {
     markCompleted(stepIndex);
     goNext();
@@ -69,6 +71,12 @@ const Onboarding = () => {
     setStep((s) => Math.max(0, (s ?? 0) - 1));
   }, []);
 
+  // Special goBack for Team that skips OrgType when going back (since OrgType is already completed)
+  const goBackFromTeam = useCallback(() => {
+    setDirection(-1);
+    setStep(5); // Go back to OrgType
+  }, []);
+
   const handleOrgCreated = useCallback((data: OnboardingCompanyData) => {
     setOrgCreated(true);
     setCompanyData(data);
@@ -76,8 +84,30 @@ const Onboarding = () => {
     goNext();
   }, [goNext, markCompleted]);
 
-  const handleFinish = useCallback(async () => {
+  const handleOrgTypeSelected = useCallback(async (type: OrgType) => {
+    setOrgType(type);
     markCompleted(5);
+
+    // Update org_type in the database
+    if (organizationId) {
+      await supabase
+        .from('organizations')
+        .update({ org_type: type } as any)
+        .eq('id', organizationId);
+    }
+
+    if (type === 'freelance') {
+      // Skip team step for freelancers
+      markCompleted(6);
+      setDirection(1);
+      setStep(7); // Jump to Launch
+    } else {
+      goNext(); // Go to Team step
+    }
+  }, [organizationId, markCompleted, goNext]);
+
+  const handleFinish = useCallback(async () => {
+    markCompleted(6);
     await queryClient.invalidateQueries({ queryKey: ['active-organization'] });
     await queryClient.refetchQueries({ queryKey: ['active-organization'] });
     navigate('/dashboard', { replace: true });
@@ -133,13 +163,19 @@ const Onboarding = () => {
             {step === 3 && <SceneProfile onNext={() => completeAndNext(3)} onBack={goBack} />}
             {step === 4 && <SceneIntegrations onNext={() => completeAndNext(4)} onBack={goBack} />}
             {step === 5 && (
-              <SceneTeam
-                organizationId={organizationId}
-                onFinish={() => { markCompleted(5); goNext(); }}
+              <SceneOrgType
+                onSelect={handleOrgTypeSelected}
                 onBack={goBack}
               />
             )}
             {step === 6 && (
+              <SceneTeam
+                organizationId={organizationId}
+                onFinish={() => { markCompleted(6); goNext(); }}
+                onBack={goBackFromTeam}
+              />
+            )}
+            {step === 7 && (
               <SceneLaunch
                 completedSet={completedSet}
                 totalSteps={TRACKABLE_STEPS.length}
