@@ -66,7 +66,8 @@ Deno.serve(async (req) => {
       entity_id,
       query,
       chunk_types,
-      limit = 15,
+      limit = 8,
+      min_similarity = 0.3,
       include_related = false,
     } = body;
 
