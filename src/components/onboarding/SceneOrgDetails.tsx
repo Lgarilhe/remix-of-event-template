@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft, ArrowRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Slider } from '@/components/ui/slider';
 import { Badge } from '@/components/ui/badge';
@@ -88,7 +87,8 @@ export const SceneOrgDetails: React.FC<Props> = ({ orgType, onSubmit, onBack }) 
   const [specializations, setSpecializations] = useState<string[]>([]);
   const [discoverySource, setDiscoverySource] = useState('');
   const [freelanceMode, setFreelanceMode] = useState('');
-  const [tjm, setTjm] = useState([400, 600]);
+  const [tjmMin, setTjmMin] = useState(400);
+  const [tjmMax, setTjmMax] = useState(600);
 
   const toggleSpec = (value: string) => {
     setSpecializations(prev =>
@@ -150,26 +150,47 @@ export const SceneOrgDetails: React.FC<Props> = ({ orgType, onSubmit, onBack }) 
               initial={{ opacity: 0, height: 0 }}
               animate={{ opacity: 1, height: 'auto' }}
               exit={{ opacity: 0, height: 0 }}
-              className="space-y-3"
+              className="space-y-4"
             >
               <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
                 Fourchette TJM indicative
               </label>
-              <div className="px-1">
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between text-[11px] font-semibold">
+                  <span className="text-foreground">Min</span>
+                  <span className="text-foreground">{tjmMin}€ / jour</span>
+                </div>
                 <Slider
-                  value={tjm}
-                  onValueChange={(val: number[]) => setTjm(val)}
+                  value={[tjmMin]}
+                  onValueChange={(values) => setTjmMin(Math.min(values[0] ?? 400, tjmMax))}
                   min={200}
                   max={1500}
                   step={50}
                   className="w-full"
                 />
               </div>
-              <div className="flex justify-between text-xs text-muted-foreground">
-                <span className="font-semibold text-foreground">{tjm[0]}€</span>
-                <span className="text-[10px]">par jour</span>
-                <span className="font-semibold text-foreground">{tjm[1]}€</span>
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between text-[11px] font-semibold">
+                  <span className="text-foreground">Max</span>
+                  <span className="text-foreground">{tjmMax}€ / jour</span>
+                </div>
+                <Slider
+                  value={[tjmMax]}
+                  onValueChange={(values) => setTjmMax(Math.max(values[0] ?? 600, tjmMin))}
+                  min={200}
+                  max={1500}
+                  step={50}
+                  className="w-full"
+                />
               </div>
+
+              <div className="flex items-center justify-between rounded-md border border-border/60 bg-muted/30 px-3 py-2 text-xs">
+                <span className="text-muted-foreground">Sélection</span>
+                <span className="font-semibold text-foreground">{tjmMin}€ — {tjmMax}€ / jour</span>
+              </div>
+
               <p className="text-[10px] text-muted-foreground">Facultatif — à titre indicatif uniquement.</p>
             </motion.div>
           )}
@@ -250,7 +271,7 @@ export const SceneOrgDetails: React.FC<Props> = ({ orgType, onSubmit, onBack }) 
           <ArrowLeft className="w-4 h-4" /> Retour
         </Button>
         <Button
-          onClick={() => canSubmit && onSubmit({ teamSize, specializations, discoverySource, freelanceMode: isFreelance ? freelanceMode : undefined, tjm: (freelanceMode === 'rpo' || freelanceMode === 'both') ? `${tjm[0]}-${tjm[1]}` : undefined })}
+          onClick={() => canSubmit && onSubmit({ teamSize, specializations, discoverySource, freelanceMode: isFreelance ? freelanceMode : undefined, tjm: (freelanceMode === 'rpo' || freelanceMode === 'both') ? `${tjmMin}-${tjmMax}` : undefined })}
           disabled={!canSubmit}
           className="gap-2 border-2 border-foreground bg-foreground text-background hover:bg-foreground/90 text-sm px-6"
           style={{ boxShadow: '3px 3px 0px 0px hsl(var(--brutal-accent))' }}
