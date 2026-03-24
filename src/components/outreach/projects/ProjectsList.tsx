@@ -503,10 +503,7 @@ export const ProjectsList: React.FC<ProjectsListProps> = ({ onResumeSearch }) =>
       <CreateProjectModal
         open={showCreateModal}
         onOpenChange={setShowCreateModal}
-      />
-      <ImportJobsModal
-        open={showImportModal}
-        onClose={() => setShowImportModal(false)}
+        initialTab={createInitialTab}
       />
 
       {selectedProject && (
