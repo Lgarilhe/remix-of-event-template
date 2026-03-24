@@ -2,20 +2,11 @@ import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { ArrowRight, Building2, Users, UserCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 type OrgType = 'enterprise' | 'agency' | 'freelance';
 
-export interface OrgTypeData {
-  orgType: OrgType;
-  teamSize: string;
-  annualHires: string;
-  discoverySource: string;
-  freelanceMode?: string;
-}
-
 interface Props {
-  onSelect: (data: OrgTypeData) => void;
+  onSelect: (orgType: OrgType) => void;
   onBack: () => void;
 }
 
@@ -40,44 +31,8 @@ const ORG_TYPE_OPTIONS: { value: OrgType; icon: React.ElementType; title: string
   },
 ];
 
-const TEAM_SIZES = [
-  { value: '1', label: 'Moi seul' },
-  { value: '2-5', label: '2 – 5 personnes' },
-  { value: '6-20', label: '6 – 20 personnes' },
-  { value: '21-50', label: '21 – 50 personnes' },
-  { value: '50+', label: '50+' },
-];
-
-const ANNUAL_HIRES = [
-  { value: '1-5', label: '1 – 5 recrutements' },
-  { value: '6-20', label: '6 – 20 recrutements' },
-  { value: '21-50', label: '21 – 50 recrutements' },
-  { value: '50+', label: '50+ recrutements' },
-];
-
-const DISCOVERY_SOURCES = [
-  { value: 'linkedin', label: 'LinkedIn' },
-  { value: 'google', label: 'Google' },
-  { value: 'word-of-mouth', label: 'Bouche-à-oreille' },
-  { value: 'event', label: 'Événement / Salon' },
-  { value: 'blog', label: 'Article / Blog' },
-  { value: 'other', label: 'Autre' },
-];
-
-const FREELANCE_MODES = [
-  { value: 'rpo', label: 'RPO (embedded)' },
-  { value: 'success', label: 'Au succès' },
-  { value: 'both', label: 'Les deux' },
-];
-
 export const SceneOrgType: React.FC<Props> = ({ onSelect }) => {
   const [selected, setSelected] = useState<OrgType | null>(null);
-  const [teamSize, setTeamSize] = useState('');
-  const [annualHires, setAnnualHires] = useState('');
-  const [discoverySource, setDiscoverySource] = useState('');
-  const [freelanceMode, setFreelanceMode] = useState('');
-
-  const canSubmit = selected && teamSize && annualHires && discoverySource && (selected !== 'freelance' || freelanceMode);
 
   return (
     <div className="w-full max-w-lg mx-auto flex flex-col gap-5">
@@ -90,10 +45,10 @@ export const SceneOrgType: React.FC<Props> = ({ onSelect }) => {
           01 — Votre activité
         </span>
         <h2 className="font-editorial italic text-3xl md:text-4xl">
-          Parlez-nous de vous
+          Quel est votre profil ?
         </h2>
         <p className="text-muted-foreground text-sm">
-          Ces infos nous aident à personnaliser votre expérience.
+          Choisissez ce qui vous correspond le mieux.
         </p>
       </div>
 
@@ -107,10 +62,7 @@ export const SceneOrgType: React.FC<Props> = ({ onSelect }) => {
             <motion.button
               key={option.value}
               type="button"
-              onClick={() => {
-                setSelected(option.value);
-                if (option.value === 'freelance') setTeamSize('1');
-              }}
+              onClick={() => setSelected(option.value)}
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.1 + index * 0.08, duration: 0.35 }}
@@ -154,88 +106,6 @@ export const SceneOrgType: React.FC<Props> = ({ onSelect }) => {
         })}
       </div>
 
-      {/* Extra fields — appear after selection */}
-      {selected && (
-        <motion.div
-          initial={{ opacity: 0, height: 0 }}
-          animate={{ opacity: 1, height: 'auto' }}
-          transition={{ duration: 0.3 }}
-          className="space-y-4 border-t-2 border-foreground/10 pt-4"
-        >
-          {/* Team size (hidden for freelance since auto-set to "1") */}
-          {selected !== 'freelance' && (
-            <div className="space-y-1.5">
-              <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                Taille de l'équipe recrutement
-              </label>
-              <Select value={teamSize} onValueChange={setTeamSize}>
-                <SelectTrigger className="border-2 border-foreground/20 h-10 text-sm">
-                  <SelectValue placeholder="Sélectionnez" />
-                </SelectTrigger>
-                <SelectContent>
-                  {TEAM_SIZES.filter(s => s.value !== '1').map(s => (
-                    <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          )}
-
-          {/* Annual hires */}
-          <div className="space-y-1.5">
-            <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-              Combien de recrutements par an ?
-            </label>
-            <Select value={annualHires} onValueChange={setAnnualHires}>
-              <SelectTrigger className="border-2 border-foreground/20 h-10 text-sm">
-                <SelectValue placeholder="Sélectionnez" />
-              </SelectTrigger>
-              <SelectContent>
-                {ANNUAL_HIRES.map(s => (
-                  <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          {/* Freelance mode */}
-          {selected === 'freelance' && (
-            <div className="space-y-1.5">
-              <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                Quel est votre mode d'intervention ?
-              </label>
-              <Select value={freelanceMode} onValueChange={setFreelanceMode}>
-                <SelectTrigger className="border-2 border-foreground/20 h-10 text-sm">
-                  <SelectValue placeholder="Sélectionnez" />
-                </SelectTrigger>
-                <SelectContent>
-                  {FREELANCE_MODES.map(s => (
-                    <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          )}
-
-          {/* Discovery source */}
-          <div className="space-y-1.5">
-            <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-              Comment avez-vous découvert Konekt ?
-            </label>
-            <Select value={discoverySource} onValueChange={setDiscoverySource}>
-              <SelectTrigger className="border-2 border-foreground/20 h-10 text-sm">
-                <SelectValue placeholder="Sélectionnez" />
-              </SelectTrigger>
-              <SelectContent>
-                {DISCOVERY_SOURCES.map(s => (
-                  <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </motion.div>
-      )}
-
       {/* Navigation */}
       <motion.div
         className="flex items-center justify-end pt-2"
@@ -244,8 +114,8 @@ export const SceneOrgType: React.FC<Props> = ({ onSelect }) => {
         transition={{ delay: 0.4 }}
       >
         <Button
-          onClick={() => canSubmit && onSelect({ orgType: selected, teamSize, annualHires, discoverySource, freelanceMode: selected === 'freelance' ? freelanceMode : undefined })}
-          disabled={!canSubmit}
+          onClick={() => selected && onSelect(selected)}
+          disabled={!selected}
           className="gap-2 border-2 border-foreground bg-foreground text-background hover:bg-foreground/90 text-sm px-6"
           style={{ boxShadow: '3px 3px 0px 0px hsl(var(--brutal-accent))' }}
         >
