@@ -130,6 +130,7 @@ export const SceneProfile: React.FC<Props> = ({ onNext, onBack, orgType, savedSt
         const classifications = data.experienceDetails.map((exp: any) => ({
           company: exp.company || '',
           title: exp.title || '',
+          logo: exp.logo || null,
           type: null as ExperienceType,
         }));
         setExpClassifications(classifications);
