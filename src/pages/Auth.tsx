@@ -197,6 +197,17 @@ const Auth = () => {
     }
   };
 
+  // Show collaborator welcome screen
+  if (collaboratorWelcome) {
+    return (
+      <CollaboratorWelcome
+        orgName={collaboratorWelcome.orgName}
+        onCreateWorkspace={() => navigate('/onboarding', { replace: true })}
+        onSkip={() => navigate('/dashboard', { replace: true })}
+      />
+    );
+  }
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-background px-4">
       <SEOHead 
