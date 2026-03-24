@@ -213,7 +213,13 @@ const Onboarding = () => {
               />
             )}
             {currentScene === 'profile' && (
-              <SceneProfile onNext={() => completeAndNext(step)} onBack={goBack} orgType={orgType} />
+              <SceneProfile
+                onNext={() => completeAndNext(step)}
+                onBack={goBack}
+                orgType={orgType}
+                savedState={profileState}
+                onStateChange={setProfileState}
+              />
             )}
             {currentScene === 'integrations' && (
               <SceneIntegrations onNext={() => completeAndNext(step)} onBack={goBack} />
