@@ -575,7 +575,9 @@ Deno.serve(async (req) => {
       });
     }
 
-    const { company_name, country, force_refresh, selected_apollo_id } = await req.json();
+    const { company_name, country, force_refresh, selected_apollo_id, mode, website_url } = await req.json();
+    const jobsOnly = mode === 'jobs_only';
+
     if (!company_name || company_name.trim().length < 2) {
       return new Response(JSON.stringify({ success: false, error: 'company_name required' }), {
         status: 400,
