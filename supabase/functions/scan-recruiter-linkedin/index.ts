@@ -115,31 +115,34 @@ serve(async (req) => {
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) throw new Error("Clé AI manquante");
 
-    const prompt = `Tu es un rédacteur spécialisé en personal branding pour les recruteurs.
+    const prompt = `Tu es un copywriter expert en personal branding pour recruteurs indépendants.
 
-Voici le profil LinkedIn d'un recruteur :
+Tu dois rédiger une bio qui donne envie à un potentiel client (entreprise, DRH, hiring manager) de travailler avec ce recruteur. Le lecteur doit se dire "cette personne connaît MON marché, je veux bosser avec elle".
+
+Voici les données du profil :
 
 Nom : ${name}
 Titre : ${headline}
 À propos : ${about}
 
-Expériences :
+Parcours :
 ${experiences.join("\n")}
 
 Formation :
 ${education.join("\n")}
 
-Compétences : ${skills.join(", ")}
+Compétences/secteurs : ${skills.join(", ")}
+Années d'expérience : ${yearsExperience > 0 ? yearsExperience : "non renseigné"}
 
-Rédige une présentation professionnelle percutante de ce recruteur en 3-4 phrases courtes (max 500 caractères).
-Le ton doit être professionnel mais humain, à la troisième personne.
-Mets en avant :
-- Son expertise sectorielle et ses domaines de spécialisation
-- Son expérience et sa valeur ajoutée
-- Ce qui le différencie
-
-Ne mentionne PAS de dates, d'entreprises spécifiques ou de chiffres inventés.
-Réponds uniquement avec le texte de la bio, sans guillemets ni introduction.`;
+CONSIGNES STRICTES :
+- Écris à la PREMIÈRE PERSONNE ("Je", "Mon", "J'ai")
+- 3-4 phrases max, ~400-500 caractères
+- Ton direct, concret, orienté résultats — pas de blabla corporate
+- Mentionne les VRAIS noms d'entreprises et secteurs où la personne a travaillé (ceux visibles dans le parcours ci-dessus)
+- Mentionne le nombre d'années d'expérience si disponible
+- Termine par une phrase qui indique clairement le type de missions/profils sur lesquels tu interviens
+- PAS de formules bateau ("passionné", "expert reconnu", "à votre écoute")
+- PAS de guillemets, PAS d'introduction, juste le texte brut de la bio`;
 
     const aiRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
