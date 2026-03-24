@@ -5,14 +5,28 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 
 const SPECIALIZATIONS = [
-  'Cloud & Infra',
-  'DevOps / SRE',
-  'Datacenter',
-  'Cybersécurité',
-  'Data & IA',
-  'Développement',
-  'Réseau',
-  'Management IT',
+  { value: 'tech', label: 'Tech / IT' },
+  { value: 'data', label: 'Data / IA / ML' },
+  { value: 'product', label: 'Product / Design' },
+  { value: 'finance', label: 'Finance / Compta' },
+  { value: 'sales', label: 'Sales / Business Dev' },
+  { value: 'marketing', label: 'Marketing / Com' },
+  { value: 'engineering', label: 'Ingénierie / Industrie' },
+  { value: 'health', label: 'Santé / Pharma / Biotech' },
+  { value: 'legal', label: 'Juridique / Compliance' },
+  { value: 'hr', label: 'RH / People' },
+  { value: 'executive', label: 'Executive / C-level' },
+  { value: 'supply-chain', label: 'Supply Chain / Logistique' },
+  { value: 'construction', label: 'BTP / Immobilier' },
+  { value: 'retail', label: 'Retail / E-commerce' },
+  { value: 'hospitality', label: 'Hôtellerie / Restauration' },
+  { value: 'education', label: 'Éducation / Formation' },
+  { value: 'public-sector', label: 'Secteur public / ESS' },
+  { value: 'media', label: 'Média / Édition / Créatif' },
+  { value: 'energy', label: 'Énergie / Environnement' },
+  { value: 'telecom', label: 'Télécom / Réseaux' },
+  { value: 'generalist', label: 'Généraliste' },
+  { value: 'other', label: 'Autre' },
 ];
 
 const DISCOVERY_SOURCES = [
@@ -102,12 +116,12 @@ export const SceneDiscovery: React.FC<Props> = ({ onSubmit, onBack, savedValue, 
         </label>
         <div className="flex flex-wrap gap-2 justify-center">
           {SPECIALIZATIONS.map((spec) => {
-            const active = selectedSpecs.has(spec);
+            const active = selectedSpecs.has(spec.value);
             return (
               <button
-                key={spec}
+                key={spec.value}
                 type="button"
-                onClick={() => toggleSpec(spec)}
+                onClick={() => toggleSpec(spec.value)}
                 className={`px-3 py-1.5 text-xs font-semibold border-2 transition-all duration-200 ${
                   active
                     ? 'border-foreground text-foreground'
@@ -119,7 +133,7 @@ export const SceneDiscovery: React.FC<Props> = ({ onSubmit, onBack, savedValue, 
                     : {}
                 }
               >
-                {spec}
+                {spec.label}
               </button>
             );
           })}
