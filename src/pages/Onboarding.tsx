@@ -152,7 +152,7 @@ const Onboarding = () => {
           org_type: orgType,
           team_size: orgDetailsData.teamSize,
           specializations: orgDetailsData.specializations,
-          discovery_source: orgDetailsData.discoverySource,
+          discovery_source: discoverySource,
           freelance_mode: orgDetailsData.freelanceMode,
         } as any)
         .eq('id', organizationId);
