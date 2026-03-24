@@ -383,7 +383,7 @@ export function ProspectResults({ results, searching }: ProspectResultsProps) {
             </div>
             <h3 className="text-sm font-semibold text-foreground mb-1 uppercase tracking-wider">Aucun prospect</h3>
             <p className="text-xs text-muted-foreground max-w-xs mx-auto">
-              Utilisez les filtres à gauche pour lancer une recherche PDL + Apollo
+              Utilisez les filtres à gauche pour lancer une recherche
             </p>
           </div>
         )}
