@@ -41,6 +41,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { CreateProjectModal } from './CreateProjectModal';
 import { ProjectDetailView } from './ProjectDetailView';
+import { ImportJobsModal } from '@/components/missions/ImportJobsModal';
 import { useOrganization } from '@/hooks/useOrganization';
 import { supabase } from '@/integrations/supabase/client';
 import {
