@@ -20,6 +20,7 @@ export interface OrganizationMember {
   organization_id: string;
   user_id: string;
   role: 'owner' | 'admin' | 'member';
+  // Extended roles stored in DB but not in this union
   created_at: string;
 }
 
@@ -146,6 +147,7 @@ export const useOrganization = () => {
     userRole: data?.role || null,
     isOwner: data?.role === 'owner',
     isAdmin: data?.role === 'owner' || data?.role === 'admin',
+    isCollaborator: (data?.role as string) === 'collaborator',
     isLoading,
     needsOnboarding: !isLoading && data === null,
     createOrganization: createOrgMutation.mutateAsync,
@@ -199,7 +201,7 @@ export const useOrganizationMembers = (orgId: string | null) => {
         .order('created_at');
 
       if (error) throw error;
-      return data as OrganizationMember[];
+      return data as unknown as OrganizationMember[];
     },
     enabled: !!orgId,
   });

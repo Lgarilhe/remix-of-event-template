@@ -54,7 +54,7 @@ export default function Outreach() {
   const [loading, setLoading] = useState(true);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   
-  const { isAdmin, isOwner, organizationId } = useOrganization();
+  const { isAdmin, isOwner, isCollaborator, organizationId } = useOrganization();
   const { mappings, getUserLinkedAccountId } = useMemberLinkedInAccounts();
   
   const validTabs = ['projects', 'sourcing', 'sequences', 'nurturing'];
@@ -92,14 +92,14 @@ export default function Outreach() {
   const allAccounts = useMemo(() => rawAccounts.map(applySubscriptionOverrides), [rawAccounts]);
 
   const accounts = useMemo(() => {
-    if (isAdmin || isOwner) return allAccounts;
+    if ((isAdmin || isOwner) && !isCollaborator) return allAccounts;
     if (!currentUserId) return allAccounts;
     
     const linkedAccountId = getUserLinkedAccountId(currentUserId);
     if (!linkedAccountId) return allAccounts;
     
     return allAccounts.filter(a => a.id === linkedAccountId);
-  }, [allAccounts, isAdmin, isOwner, currentUserId, mappings, getUserLinkedAccountId]);
+  }, [allAccounts, isAdmin, isOwner, isCollaborator, currentUserId, mappings, getUserLinkedAccountId]);
 
   const handleResumeSearch = useCallback((project: SourcingProject) => {
     setActiveProject(project);

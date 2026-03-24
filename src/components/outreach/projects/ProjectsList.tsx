@@ -41,6 +41,16 @@ import {
 import { Button } from '@/components/ui/button';
 import { CreateProjectModal } from './CreateProjectModal';
 import { ProjectDetailView } from './ProjectDetailView';
+import { useOrganization } from '@/hooks/useOrganization';
+import { supabase } from '@/integrations/supabase/client';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Eye as EyeIcon, Globe, Users as UsersIcon } from 'lucide-react';
 
 interface ProjectsListProps {
   onResumeSearch: (project: SourcingProject) => void;
@@ -62,10 +72,16 @@ const priorityConfig: Record<string, { label: string; color: string }> = {
   low: { label: 'Basse', color: 'bg-blue-100 text-blue-700' },
 };
 
+const visibilityConfig: Record<string, { label: string; color: string; icon: typeof EyeIcon }> = {
+  collaborator: { label: 'Collaborateurs', color: 'bg-blue-100 text-blue-700 border-blue-200', icon: UsersIcon },
+  public: { label: 'Marketplace', color: 'bg-green-100 text-green-700 border-green-200', icon: Globe },
+};
+
 export const ProjectsList: React.FC<ProjectsListProps> = ({ onResumeSearch }) => {
   const { projects: sourcingProjects, isLoading: spLoading, deleteProject, updateProject, isDeleting } = useSourcingProjects();
   const { data: notionJobs = [], isLoading: jobsLoading } = useNotionJobs();
   const { canCreateJob, limits, jobCount } = useQuotaGate();
+  const { isAdmin: canManageVisibility } = useOrganization();
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -316,6 +332,18 @@ export const ProjectsList: React.FC<ProjectsListProps> = ({ onResumeSearch }) =>
                           {prioConf.label}
                         </Badge>
                       )}
+                      {/* Visibility badge */}
+                      {(() => {
+                        const vis = (project.sourcingProject as any)?.visibility as string | undefined;
+                        const conf = vis ? visibilityConfig[vis] : null;
+                        if (!conf) return null;
+                        return (
+                          <Badge variant="outline" className={`text-[10px] border ${conf.color}`}>
+                            <conf.icon className="w-3 h-3 mr-1" />
+                            {conf.label}
+                          </Badge>
+                        );
+                      })()}
                     </div>
 
                     {/* Meta row */}

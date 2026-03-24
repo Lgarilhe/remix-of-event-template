@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Building2, Users, Crown, Shield, User, Trash2, Plug, Check, Loader2, Pencil, UserCircle, CreditCard, Sparkles } from 'lucide-react';
+import { UserCog } from 'lucide-react';
 import iconBuilding3d from '@/assets/icon-building-3d.png';
 import iconProfile3d from '@/assets/icon-profile-3d.png';
 import iconTeam3d from '@/assets/icon-team-3d.png';
@@ -35,17 +36,19 @@ const roleIcons = {
   owner: Crown,
   admin: Shield,
   member: User,
+  collaborator: UserCog,
 };
 
 const roleLabels = {
   owner: 'Propriétaire',
   admin: 'Admin',
   member: 'Membre',
+  collaborator: 'Collaborateur',
 };
 
 const Settings = () => {
   const [searchParams] = useSearchParams();
-  const { organization, organizationId, isOwner, isAdmin } = useOrganization();
+  const { organization, organizationId, isOwner, isAdmin, isCollaborator } = useOrganization();
   const { members, isLoading, pendingInvitations, inviteMember, isInviting, resendInvitation, isResendingInvitation, cancelInvitation, updateRole, removeMember } = useOrganizationMembers(organizationId);
 
   const [editingName, setEditingName] = useState(false);
@@ -101,10 +104,10 @@ const Settings = () => {
   const tabs = [
     { value: 'general', label: 'Général', icon3d: iconBuilding3d },
     { value: 'account', label: 'Mon compte', icon3d: iconProfile3d },
-    { value: 'team', label: 'Équipe', icon3d: iconTeam3d },
+    ...(!isCollaborator ? [{ value: 'team', label: 'Équipe', icon3d: iconTeam3d }] : []),
     ...(isAdmin ? [{ value: 'billing', label: 'Abonnement', icon3d: iconBilling3d }] : []),
     { value: 'credits', label: 'Crédits IA', icon3d: iconCredits3d },
-    { value: 'connectors', label: 'Connecteurs', icon3d: iconIntegrations3d },
+    ...(!isCollaborator ? [{ value: 'connectors', label: 'Connecteurs', icon3d: iconIntegrations3d }] : []),
     ...(isAdmin ? [{ value: 'integrations', label: 'Intégrations', icon3d: iconIntegrations3d }] : []),
   ];
 
@@ -279,6 +282,7 @@ const Settings = () => {
                                     <SelectContent>
                                       <SelectItem value="admin">Admin</SelectItem>
                                       <SelectItem value="member">Membre</SelectItem>
+                                      <SelectItem value="collaborator">Collaborateur</SelectItem>
                                     </SelectContent>
                                   </Select>
                                   <Button
@@ -305,7 +309,7 @@ const Settings = () => {
                       isResending={isResendingInvitation}
                     />
 
-                    {isAdmin && (
+                    {isAdmin && !isCollaborator && (
                       <InviteMemberForm
                         onInvite={async (email, role) => { await inviteMember({ email, role }); }}
                         isLoading={isInviting}
