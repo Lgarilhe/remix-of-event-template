@@ -141,7 +141,7 @@ export const ImportJobsModal: React.FC<ImportJobsModalProps> = ({ open, onClose,
         force_refresh: true,
       };
       if (inputMode === 'url') {
-        body.website_url = url;
+        body.careers_url = url;
         body.company_name = new URL(url).hostname.replace('www.', '').split('.')[0];
       } else {
         body.company_name = name;
