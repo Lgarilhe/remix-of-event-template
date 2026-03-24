@@ -638,14 +638,31 @@ Deno.serve(async (req) => {
       });
     }
 
-    const { company_name, country, force_refresh, selected_apollo_id, mode, website_url } = await req.json();
+    const body = await req.json();
+    const { country, force_refresh, selected_apollo_id, mode, website_url, careers_url } = body;
+    let company_name = body.company_name;
     const jobsOnly = mode === 'jobs_only';
 
+    // If careers_url is provided but no company_name, try to extract it from the URL
+    if ((!company_name || company_name.trim().length < 2) && careers_url) {
+      const extracted = extractCompanyNameFromUrl(careers_url);
+      if (extracted) {
+        company_name = extracted;
+        console.log(`[enrich] Extracted company name from URL: "${company_name}"`);
+      }
+    }
+
     if (!company_name || company_name.trim().length < 2) {
-      return new Response(JSON.stringify({ success: false, error: 'company_name required' }), {
-        status: 400,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+      // If we have a careers_url but couldn't extract a name, use a fallback
+      if (careers_url) {
+        company_name = 'Entreprise inconnue';
+        console.log('[enrich] Using fallback company name — could not extract from URL');
+      } else {
+        return new Response(JSON.stringify({ success: false, error: 'company_name required' }), {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
     }
 
     if (jobsOnly) console.log('[enrich] jobs_only mode — skipping insights, decision makers, news');
