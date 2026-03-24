@@ -28,7 +28,7 @@ type SceneKey = 'orgtype' | 'org' | 'audit' | 'profile' | 'integrations' | 'team
 const FLOWS: Record<OrgType, SceneKey[]> = {
   enterprise: ['orgtype', 'org', 'audit', 'profile', 'integrations', 'team', 'launch'],
   agency:     ['orgtype', 'org', 'audit', 'profile', 'integrations', 'team', 'launch'],
-  freelance:  ['orgtype', 'org', 'profile', 'integrations', 'launch'],
+  freelance:  ['orgtype', 'profile', 'integrations', 'launch'],
 };
 
 // Before orgType is chosen, show the full flow length
