@@ -995,74 +995,78 @@ Deno.serve(async (req) => {
       let scrapingFailed = false;
       const companyDomain = result.domain || normalizeDomain(result.websiteUrl);
 
-      if (companyDomain) {
-        try {
-          const homepageHtml = await fetchPageText(`https://${companyDomain}`, 6000);
-          const ATS_DOMAINS = /taleez\.com|lever\.co|greenhouse\.io|workable\.com|recruitee\.com|smartrecruiters\.com|breezy\.hr|ashbyhq\.com|jobs\.lever\.co|teamtailor\.com|welcomekit\.co|flatchr\.io|jobaffinity\.fr/i;
-          const CAREER_PATH_REGEX = /(?:^|\/)(carri[eè]res?|careers?|jobs|recrutement|join(?:-us)?|talent|nous-rejoindre|hiring|openings|rejoignez|postuler|offres-emploi|emploi)(?:\/|$|#|\?)/i;
-
-          const hrefRegex = /href=["']([^"']+)["']/gi;
-          let hrefMatch;
-          const candidateUrls: string[] = [];
-
-          while ((hrefMatch = hrefRegex.exec(homepageHtml)) !== null) {
-            const href = hrefMatch[1];
-            if (ATS_DOMAINS.test(href)) {
-              careersUrl = href.startsWith('http') ? href : `https://${companyDomain}${href.startsWith('/') ? '' : '/'}${href}`;
-              break;
-            }
-
-            const pathOnly = href.replace(/^https?:\/\/[^\/]+/, '').split('?')[0].split('#')[0];
-            if (CAREER_PATH_REGEX.test(pathOnly)) {
-              candidateUrls.push(href);
-            }
-          }
-
-          if (!careersUrl && candidateUrls.length > 0) {
-            const best = candidateUrls[0];
-            careersUrl = best.startsWith('http') ? best : `https://${companyDomain}${best.startsWith('/') ? '' : '/'}${best}`;
-          }
-
-          if (!result.description && homepageHtml.length > 200) {
-            const metaDesc = homepageHtml.match(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)["']/i);
-            if (metaDesc) result.description = metaDesc[1].slice(0, 300);
-          }
-        } catch (e) {
-          console.warn('[enrich] Homepage fetch failed:', e);
-        }
-      }
-
-      if (!careersUrl && result.name) {
-        const slug = result.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-        const atsProbes = [
-          `https://${slug}.taleez.com`,
-          `https://${slug}.welcomekit.co`,
-          `https://jobs.lever.co/${slug}`,
-          `https://boards.greenhouse.io/${slug}`,
-          `https://${slug}.recruitee.com`,
-          `https://apply.workable.com/${slug}`,
-          `https://${slug}.teamtailor.com`,
-        ];
-
-        for (const probeUrl of atsProbes) {
+      // Skip discovery when careers_url was provided directly
+      if (!careersUrl) {
+        if (companyDomain) {
           try {
-            // Use GET instead of HEAD to verify content belongs to the right company
-            const probeRes = await fetchWithTimeout(probeUrl, { method: 'GET', redirect: 'follow' }, 5000);
-            if (probeRes.ok) {
-              const probeText = await readResponseTextWithTimeout(probeRes, 3000);
-              const companyToken = normalizeTextToken(result.name);
-              const pageToken = normalizeTextToken(probeText.slice(0, 3000));
-              if (pageToken.includes(companyToken)) {
-                careersUrl = probeUrl;
+            const homepageHtml = await fetchPageText(`https://${companyDomain}`, 6000);
+            const ATS_DOMAINS = /taleez\.com|lever\.co|greenhouse\.io|workable\.com|recruitee\.com|smartrecruiters\.com|breezy\.hr|ashbyhq\.com|jobs\.lever\.co|teamtailor\.com|welcomekit\.co|flatchr\.io|jobaffinity\.fr/i;
+            const CAREER_PATH_REGEX = /(?:^|\/)(carri[eè]res?|careers?|jobs|recrutement|join(?:-us)?|talent|nous-rejoindre|hiring|openings|rejoignez|postuler|offres-emploi|emploi)(?:\/|$|#|\?)/i;
+
+            const hrefRegex = /href=["']([^"']+)["']/gi;
+            let hrefMatch;
+            const candidateUrls: string[] = [];
+
+            while ((hrefMatch = hrefRegex.exec(homepageHtml)) !== null) {
+              const href = hrefMatch[1];
+              if (ATS_DOMAINS.test(href)) {
+                careersUrl = href.startsWith('http') ? href : `https://${companyDomain}${href.startsWith('/') ? '' : '/'}${href}`;
                 break;
-              } else {
-                console.warn(`[enrich] ATS probe ${probeUrl} returned 200 but company name not found — skipping`);
+              }
+
+              const pathOnly = href.replace(/^https?:\/\/[^\/]+/, '').split('?')[0].split('#')[0];
+              if (CAREER_PATH_REGEX.test(pathOnly)) {
+                candidateUrls.push(href);
               }
             }
-          } catch {
-            // noop
+
+            if (!careersUrl && candidateUrls.length > 0) {
+              const best = candidateUrls[0];
+              careersUrl = best.startsWith('http') ? best : `https://${companyDomain}${best.startsWith('/') ? '' : '/'}${best}`;
+            }
+
+            if (!result.description && homepageHtml.length > 200) {
+              const metaDesc = homepageHtml.match(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)["']/i);
+              if (metaDesc) result.description = metaDesc[1].slice(0, 300);
+            }
+          } catch (e) {
+            console.warn('[enrich] Homepage fetch failed:', e);
           }
         }
+
+        if (!careersUrl && result.name) {
+          const slug = result.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+          const atsProbes = [
+            `https://${slug}.taleez.com`,
+            `https://${slug}.welcomekit.co`,
+            `https://jobs.lever.co/${slug}`,
+            `https://boards.greenhouse.io/${slug}`,
+            `https://${slug}.recruitee.com`,
+            `https://apply.workable.com/${slug}`,
+            `https://${slug}.teamtailor.com`,
+          ];
+
+          for (const probeUrl of atsProbes) {
+            try {
+              const probeRes = await fetchWithTimeout(probeUrl, { method: 'GET', redirect: 'follow' }, 5000);
+              if (probeRes.ok) {
+                const probeText = await readResponseTextWithTimeout(probeRes, 3000);
+                const companyToken = normalizeTextToken(result.name);
+                const pageToken = normalizeTextToken(probeText.slice(0, 3000));
+                if (pageToken.includes(companyToken)) {
+                  careersUrl = probeUrl;
+                  break;
+                } else {
+                  console.warn(`[enrich] ATS probe ${probeUrl} returned 200 but company name not found — skipping`);
+                }
+              }
+            } catch {
+              // noop
+            }
+          }
+        }
+      } else {
+        console.log('[enrich] Skipping careers discovery — direct URL provided');
       }
 
       if (careersUrl) {
