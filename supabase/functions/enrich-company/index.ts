@@ -1692,7 +1692,7 @@ Sois factuel, ne spécule pas. Si une info n'est pas disponible, dis "non dispon
     const timeRemaining = 55000 - elapsed;
     const insightsTimeout = Math.min(timeRemaining - 3000, 20000); // Leave 3s buffer for cache write
 
-    if (LOVABLE_API_KEY && insightsTimeout > 5000 && (result.description || result.industry)) {
+    if (!jobsOnly && LOVABLE_API_KEY && insightsTimeout > 5000 && (result.description || result.industry)) {
       try {
         const prompt = `Entreprise : ${result.name}
 Industrie : ${result.industry || 'inconnue'}
