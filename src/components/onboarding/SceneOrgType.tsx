@@ -11,6 +11,7 @@ export interface OrgTypeData {
   teamSize: string;
   annualHires: string;
   discoverySource: string;
+  freelanceMode?: string;
 }
 
 interface Props {
@@ -63,13 +64,20 @@ const DISCOVERY_SOURCES = [
   { value: 'other', label: 'Autre' },
 ];
 
+const FREELANCE_MODES = [
+  { value: 'rpo', label: 'RPO (embedded)' },
+  { value: 'success', label: 'Au succès' },
+  { value: 'both', label: 'Les deux' },
+];
+
 export const SceneOrgType: React.FC<Props> = ({ onSelect }) => {
   const [selected, setSelected] = useState<OrgType | null>(null);
   const [teamSize, setTeamSize] = useState('');
   const [annualHires, setAnnualHires] = useState('');
   const [discoverySource, setDiscoverySource] = useState('');
+  const [freelanceMode, setFreelanceMode] = useState('');
 
-  const canSubmit = selected && teamSize && annualHires && discoverySource;
+  const canSubmit = selected && teamSize && annualHires && discoverySource && (selected !== 'freelance' || freelanceMode);
 
   return (
     <div className="w-full max-w-lg mx-auto flex flex-col gap-5">
@@ -190,6 +198,25 @@ export const SceneOrgType: React.FC<Props> = ({ onSelect }) => {
             </Select>
           </div>
 
+          {/* Freelance mode */}
+          {selected === 'freelance' && (
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                Quel est votre mode d'intervention ?
+              </label>
+              <Select value={freelanceMode} onValueChange={setFreelanceMode}>
+                <SelectTrigger className="border-2 border-foreground/20 h-10 text-sm">
+                  <SelectValue placeholder="Sélectionnez" />
+                </SelectTrigger>
+                <SelectContent>
+                  {FREELANCE_MODES.map(s => (
+                    <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
           {/* Discovery source */}
           <div className="space-y-1.5">
             <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
@@ -217,7 +244,7 @@ export const SceneOrgType: React.FC<Props> = ({ onSelect }) => {
         transition={{ delay: 0.4 }}
       >
         <Button
-          onClick={() => canSubmit && onSelect({ orgType: selected, teamSize, annualHires, discoverySource })}
+          onClick={() => canSubmit && onSelect({ orgType: selected, teamSize, annualHires, discoverySource, freelanceMode: selected === 'freelance' ? freelanceMode : undefined })}
           disabled={!canSubmit}
           className="gap-2 border-2 border-foreground bg-foreground text-background hover:bg-foreground/90 text-sm px-6"
           style={{ boxShadow: '3px 3px 0px 0px hsl(var(--brutal-accent))' }}
