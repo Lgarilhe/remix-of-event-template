@@ -42,7 +42,6 @@ export type ExperienceType = 'rpo' | 'cabinet' | 'direct' | 'other' | null;
 export interface ExperienceClassification {
   company: string;
   title: string;
-  logo?: string | null;
   type: ExperienceType;
 }
 

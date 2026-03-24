@@ -386,11 +386,10 @@ serve(async (req) => {
     const experienceDetails = employmentHistory.slice(0, 8).map((e: any) => ({
       title: e.title || null,
       company: e.organization_name || e.company_name || null,
-      logo: e.organization_logo_url || e.logo_url || e.company_logo_url || null,
       location: e.location || null,
       startDate: e.start_date || null,
       endDate: e.end_date || null,
-      current: e.current || false,
+      current: e.current || (!e.end_date),
     }));
 
     const education = educationHistory.slice(0, 3).map((e: any) =>
