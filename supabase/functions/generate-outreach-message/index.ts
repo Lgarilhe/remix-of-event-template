@@ -217,11 +217,15 @@ async function fetchRecentPosts(
   profileId: string,
   maxPosts = 5,
   maxAgeDays = 90,
+  unipileCreds?: { dsn: string; apiKey: string } | null,
 ): Promise<{ text: string; date: string; reactions?: number }[]> {
-  const UNIPILE_DSN = Deno.env.get("UNIPILE_DSN");
-  const UNIPILE_API_KEY = Deno.env.get("UNIPILE_API_KEY");
+  const creds = unipileCreds || (() => {
+    const d = Deno.env.get("UNIPILE_DSN");
+    const k = Deno.env.get("UNIPILE_API_KEY");
+    return d && k ? { dsn: d, apiKey: k } : null;
+  })();
 
-  if (!UNIPILE_DSN || !UNIPILE_API_KEY || !accountId || !profileId) {
+  if (!creds || !accountId || !profileId) {
     return [];
   }
 
