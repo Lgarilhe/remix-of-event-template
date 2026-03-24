@@ -399,27 +399,14 @@ Deno.serve(async (req: Request) => {
 
     // Action: status - Get queue status for current user
     if (action === "status") {
-      // Try to get user, but allow anonymous access for status view
-      let userId: string | null = null;
-      try {
-        const user = await validateUser();
-        userId = user.id;
-      } catch (authErr) {
-        // Allow unauthenticated status check - show recent items
-        console.warn('[process-inmail-queue] Status auth check failed (non-blocking):', authErr);
-      }
+      const user = await validateUser();
 
-      const query = supabase
+      const { data: queueItems, error: fetchError } = await supabase
         .from("inmail_queue")
         .select("*")
+        .eq("created_by", user.id)
         .order("created_at", { ascending: false })
         .limit(100);
-
-      if (userId) {
-        query.eq("created_by", userId);
-      }
-
-      const { data: queueItems, error: fetchError } = await query;
 
       if (fetchError) throw fetchError;
 
