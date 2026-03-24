@@ -7,6 +7,7 @@ import { useToast } from '@/hooks/use-toast';
 import { SEOHead } from '@/components/SEOHead';
 import { lovable } from '@/integrations/lovable/index';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
+import { CollaboratorWelcome } from '@/components/onboarding/CollaboratorWelcome';
 
 const PENDING_INVITATION_STORAGE_KEY = 'pending-team-invitation-token';
 const DEFAULT_APP_ORIGIN = 'https://id-preview--08a19073-7da4-47fa-92af-b78fed96739f.lovable.app';
@@ -26,6 +27,7 @@ const Auth = () => {
   const [isForgotPassword, setIsForgotPassword] = useState(false);
   const [isResettingPassword, setIsResettingPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [collaboratorWelcome, setCollaboratorWelcome] = useState<{ orgName: string } | null>(null);
   const navigate = useNavigate();
   const location = useLocation();
   const { toast } = useToast();
@@ -85,6 +87,25 @@ const Auth = () => {
       const invitationAccepted = await acceptPendingInvitation();
 
       if (invitationAccepted) {
+        // Check if the user was invited as a collaborator
+        const token = sessionStorage.getItem(PENDING_INVITATION_STORAGE_KEY) || invitationTokenRef.current;
+        
+        // Try to get invitation details to check role
+        try {
+          const { data: invData } = await supabase
+            .from('organization_invitations')
+            .select('role, organizations!inner(name)')
+            .or(`token.eq.${token},id.eq.${token}`)
+            .single();
+          
+          if (invData?.role === 'collaborator' && (invData as any)?.organizations?.name) {
+            setCollaboratorWelcome({ orgName: (invData as any).organizations.name });
+            return;
+          }
+        } catch {
+          // If we can't fetch invitation details, continue normally
+        }
+
         toast({
           title: 'Invitation acceptée',
           description: 'Vous avez bien rejoint votre équipe.',
@@ -175,6 +196,17 @@ const Auth = () => {
       setLoading(false);
     }
   };
+
+  // Show collaborator welcome screen
+  if (collaboratorWelcome) {
+    return (
+      <CollaboratorWelcome
+        orgName={collaboratorWelcome.orgName}
+        onCreateWorkspace={() => navigate('/onboarding', { replace: true })}
+        onSkip={() => navigate('/dashboard', { replace: true })}
+      />
+    );
+  }
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background px-4">

@@ -2,7 +2,7 @@ import React from 'react';
 import { motion } from 'framer-motion';
 import skalrLogo from '@/assets/skalr-logo-concept-3.png';
 
-const STEP_COUNT = 7;
+const STEP_COUNT = 8;
 
 interface OnboardingLayoutProps {
   currentStep: number;

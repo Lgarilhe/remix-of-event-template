@@ -190,7 +190,7 @@ export const SceneTeam: React.FC<Props> = ({ organizationId, onFinish, onBack })
           className="skalr-gradient-text text-[11px] uppercase tracking-[0.2em] font-semibold"
           style={{ fontFamily: "'Space Mono', monospace" }}
         >
-          05 — Votre équipe
+          06 — Votre équipe
         </span>
         <h2 className="font-editorial italic text-3xl md:text-4xl">Invitez vos collaborateurs</h2>
         <p className="text-muted-foreground text-sm">Le recrutement est un sport d'équipe.</p>
