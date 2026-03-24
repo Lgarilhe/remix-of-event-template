@@ -91,7 +91,6 @@ serve(async (req) => {
     const skills = Array.from(new Set([
       ...(Array.isArray(profile.skills) ? profile.skills.map((s: any) => typeof s === "string" ? s : s?.name) : []),
       ...(Array.isArray(profile.organization?.keywords) ? profile.organization.keywords : []),
-      ...(Array.isArray(profile.organization?.technology_names) ? profile.organization.technology_names : []),
     ].filter(Boolean)));
     const experiences = employmentHistory.slice(0, 8).map((e: any) => {
       const parts = [e.title, e.organization_name || e.company_name, e.location].filter(Boolean);
@@ -110,6 +109,34 @@ serve(async (req) => {
     const yearsExperience = earliestStart
       ? Math.max(1, Math.round((Date.now() - earliestStart) / (1000 * 60 * 60 * 24 * 365)))
       : 0;
+
+    // Extract rich metadata
+    const seniority = profile.seniority || null;
+    const currentCompany = profile.organization_name || profile.organization?.name || employmentHistory[0]?.organization_name || null;
+    const currentTitle = profile.title || employmentHistory[0]?.title || null;
+    const location = [profile.city, profile.state, profile.country].filter(Boolean).join(", ") || null;
+    const industry = profile.organization?.industry || null;
+    const photoUrl = profile.photo_url || null;
+    const email = profile.email || null;
+    const phoneNumbers = (profile.phone_numbers || []).map((p: any) => p.sanitized_number || p.raw_number).filter(Boolean);
+
+    // Extract all unique companies worked at
+    const companies = Array.from(new Set(
+      employmentHistory.map((e: any) => e.organization_name || e.company_name).filter(Boolean)
+    )).slice(0, 10) as string[];
+
+    // Extract industries from org data
+    const industries = Array.from(new Set([
+      ...(Array.isArray(profile.organization?.industries) ? profile.organization.industries : []),
+      ...(industry ? [industry] : []),
+    ].filter(Boolean))) as string[];
+
+    // Build tags from various sources
+    const tags = Array.from(new Set([
+      ...(seniority ? [seniority] : []),
+      ...(industries.slice(0, 3)),
+      ...(profile.organization?.technology_names?.slice(0, 5) || []),
+    ].filter(Boolean))) as string[];
 
     // Generate AI bio
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
@@ -133,6 +160,8 @@ ${education.join("\n")}
 
 Compétences/secteurs : ${skills.join(", ")}
 Années d'expérience : ${yearsExperience > 0 ? yearsExperience : "non renseigné"}
+Localisation : ${location || "non renseignée"}
+Entreprise actuelle : ${currentCompany || "non renseignée"}
 
 CONSIGNES STRICTES :
 - Écris à la PREMIÈRE PERSONNE ("Je", "Mon", "J'ai")
@@ -201,6 +230,15 @@ CONSIGNES STRICTES :
         yearsExperience,
         slug,
         name,
+        seniority,
+        currentCompany,
+        currentTitle,
+        location,
+        industries,
+        tags,
+        companies,
+        photoUrl,
+        education: education.slice(0, 3),
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
