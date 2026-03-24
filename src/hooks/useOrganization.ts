@@ -34,6 +34,12 @@ interface OrganizationInvitation {
   accepted_at?: string | null;
 }
 
+interface SendInvitationResult {
+  success: boolean;
+  invitation_id?: string | null;
+  invitation_token?: string | null;
+}
+
 export const useOrganization = () => {
   const queryClient = useQueryClient();
 
@@ -249,8 +255,9 @@ export const useOrganizationMembers = (orgId: string | null) => {
         role,
         organization_id: orgId,
       });
-      if (error || !data?.success) throw new Error(data?.error || 'Erreur lors de l\'envoi');
-      return data;
+      const result = (data ?? null) as SendInvitationResult | null;
+      if (error || !result?.success) throw new Error((data as { error?: string } | null)?.error || 'Erreur lors de l\'envoi');
+      return result;
     },
     onSuccess: async (data, variables) => {
       const optimisticInvitation: OrganizationInvitation = {
