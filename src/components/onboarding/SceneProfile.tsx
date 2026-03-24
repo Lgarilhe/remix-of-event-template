@@ -121,7 +121,7 @@ export const SceneProfile: React.FC<Props> = ({ onNext, onBack, orgType, savedSt
           user_id: user.id,
           display_name: displayName.trim() || null,
           job_title: isFreelance ? 'Recruteur indépendant' : (jobTitle.trim() || null),
-          specializations: Array.from(selectedSpecs),
+          specializations: savedState?.selectedSpecs ?? [],
           linkedin_url: linkedinUrl.trim() || null,
         } as any,
         { onConflict: 'user_id' }
