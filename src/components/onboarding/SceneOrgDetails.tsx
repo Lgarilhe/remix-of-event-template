@@ -58,9 +58,17 @@ const FREELANCE_MODES = [
 export const SceneOrgDetails: React.FC<Props> = ({ orgType, onSubmit, onBack }) => {
   const isFreelance = orgType === 'freelance';
   const [teamSize, setTeamSize] = useState(isFreelance ? '1' : '');
-  const [annualHires, setAnnualHires] = useState('');
+  const [specializations, setSpecializations] = useState<string[]>([]);
   const [discoverySource, setDiscoverySource] = useState('');
   const [freelanceMode, setFreelanceMode] = useState('');
+
+  const toggleSpec = (value: string) => {
+    setSpecializations(prev =>
+      prev.includes(value) ? prev.filter(v => v !== value) : [...prev, value]
+    );
+  };
+
+  const canSubmit = teamSize && specializations.length > 0 && discoverySource && (!isFreelance || freelanceMode);
 
   const canSubmit = teamSize && annualHires && discoverySource && (!isFreelance || freelanceMode);
 
