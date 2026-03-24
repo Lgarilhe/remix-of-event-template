@@ -650,7 +650,7 @@ export function ProspectSearch({ selectedICP, onSelectICP, onResults, searching,
       </CollapsibleFilterGroup>
 
       {/* ═══ ENTREPRISE SECTIONS ═══ */}
-      <div className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground pt-2">🏢 Entreprise</div>
+      <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground pt-2 px-1">🏢 Entreprise</div>
 
       <CollapsibleFilterGroup title="Identité" emoji="🏷️" count={idCount}>
         <FilterSection label="Nom" icon={<Building2 className="w-3 h-3" />}>
