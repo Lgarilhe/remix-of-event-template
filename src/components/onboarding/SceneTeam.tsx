@@ -333,6 +333,7 @@ export const SceneTeam: React.FC<Props> = ({ organizationId, onFinish, onBack })
               <SelectContent>
                 <SelectItem value="admin">Admin</SelectItem>
                 <SelectItem value="member">Membre</SelectItem>
+                <SelectItem value="collaborator">Collaborateur externe</SelectItem>
               </SelectContent>
             </Select>
             <Button

@@ -28,7 +28,7 @@ export const InvitationBanner = () => {
           <div className="flex items-center gap-2 text-sm">
             <UserPlus className="w-4 h-4 text-primary" />
             <span>
-              Vous êtes invité à rejoindre <strong>{inv.organization?.name || 'une organisation'}</strong> en tant que {inv.role === 'admin' ? 'Admin' : 'Membre'}
+              Vous êtes invité à rejoindre <strong>{inv.organization?.name || 'une organisation'}</strong> en tant que {inv.role === 'admin' ? 'Admin' : inv.role === 'collaborator' ? 'Collaborateur' : 'Membre'}
             </span>
           </div>
           <Button

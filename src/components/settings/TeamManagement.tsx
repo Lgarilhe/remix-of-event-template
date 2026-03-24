@@ -4,7 +4,7 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
   Briefcase, Sliders, ChevronDown, X, Plus, Save, Loader2,
-  Mail, MessageSquare, Search, Eye, Gauge, Link2, Unlink,
+  Mail, MessageSquare, Search, Eye, Gauge, Link2, Unlink, UserCog,
 } from 'lucide-react';
 import linkedinLogo from '@/assets/linkedin-logo.png';
 import { useJobAssignments } from '@/hooks/useJobAssignments';
@@ -137,7 +137,15 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
                     {getDisplayName(member.user_id).charAt(0)}
                   </div>
                   <div className="text-left min-w-0">
-                    <p className="text-sm font-medium text-foreground truncate">{getDisplayName(member.user_id)}</p>
+                    <div className="flex items-center gap-1.5">
+                      <p className="text-sm font-medium text-foreground truncate">{getDisplayName(member.user_id)}</p>
+                      {(member.role as string) === 'collaborator' && (
+                        <Badge variant="outline" className="text-[9px] px-1.5 py-0 border-blue-400 text-blue-600 font-semibold uppercase tracking-wider">
+                          <UserCog className="w-2.5 h-2.5 mr-0.5" />
+                          Externe
+                        </Badge>
+                      )}
+                    </div>
                     <div className="flex items-center gap-2 mt-0.5">
                       {linkedInMapping ? (
                         <span className="inline-flex items-center gap-1 text-[10px] text-muted-foreground">
