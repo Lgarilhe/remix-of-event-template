@@ -299,7 +299,7 @@ export const ProjectsList: React.FC<ProjectsListProps> = ({ onResumeSearch }) =>
                 Si vos postes sont dans Notion, ils apparaîtront automatiquement.
               </p>
               <button
-                onClick={() => setShowCreateModal(true)}
+                onClick={() => { setCreateInitialTab(undefined); setShowCreateModal(true); }}
                 className="relative overflow-hidden h-[34px] px-6 bg-foreground text-background border border-foreground text-xs font-medium uppercase tracking-wider group"
               >
                 <span className="relative z-10">Créer une mission</span>
