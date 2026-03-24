@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft, ArrowRight, Loader2, Linkedin, Sparkles, CheckCircle2, MapPin, Building2, Briefcase, GraduationCap, Tag, Quote } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Loader2, Sparkles, CheckCircle2, MapPin, Building2, Briefcase, GraduationCap, Tag, Quote } from 'lucide-react';
+import linkedinLogo from '@/assets/linkedin-logo.png';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { supabase } from '@/integrations/supabase/client';
@@ -215,7 +216,7 @@ export const SceneProfile: React.FC<Props> = ({ onNext, onBack, orgType, savedSt
         {/* LinkedIn URL + Scan */}
         <div className="space-y-2">
           <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-            <Linkedin className="w-3.5 h-3.5" />
+            <img src={linkedinLogo} alt="LinkedIn" className="w-4 h-4 object-contain" />
             Profil LinkedIn
           </label>
           <div className="flex gap-2">
