@@ -244,7 +244,7 @@ export const SceneOrgType: React.FC<Props> = ({ onSelect }) => {
         transition={{ delay: 0.4 }}
       >
         <Button
-          onClick={() => canSubmit && onSelect({ orgType: selected, teamSize, annualHires, discoverySource })}
+          onClick={() => canSubmit && onSelect({ orgType: selected, teamSize, annualHires, discoverySource, freelanceMode: selected === 'freelance' ? freelanceMode : undefined })}
           disabled={!canSubmit}
           className="gap-2 border-2 border-foreground bg-foreground text-background hover:bg-foreground/90 text-sm px-6"
           style={{ boxShadow: '3px 3px 0px 0px hsl(var(--brutal-accent))' }}
