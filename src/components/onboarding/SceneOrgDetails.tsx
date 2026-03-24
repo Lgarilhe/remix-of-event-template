@@ -76,7 +76,7 @@ const DISCOVERY_SOURCES = [
 
 const FREELANCE_MODES = [
   { value: 'rpo', label: 'RPO (embedded)' },
-  { value: 'success', label: 'Au succès' },
+  { value: 'success', label: 'Au succès / Missions ponctuelles' },
   { value: 'both', label: 'Les deux' },
 ];
 
