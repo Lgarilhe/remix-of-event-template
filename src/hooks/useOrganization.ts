@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { toast } from 'sonner';
 
 export interface Organization {
@@ -207,26 +208,17 @@ export const useOrganizationMembers = (orgId: string | null) => {
     mutationFn: async ({ email, role }: { email: string; role: string }) => {
       if (!orgId) throw new Error('No organization');
 
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Not authenticated');
-
-      const { error } = await supabase
-        .from('organization_invitations')
-        .insert({
-          organization_id: orgId,
-          email: email.toLowerCase(),
-          role,
-          invited_by: user.id,
-        });
-
-      if (error) {
-        if (error.code === '23505') throw new Error('Une invitation est déjà en cours pour cet email');
-        throw error;
-      }
+      const { data, error } = await invokeEdgeFunction('send-team-invitation', {
+        email: email.toLowerCase(),
+        role,
+        organization_id: orgId,
+      });
+      if (error || !data?.success) throw new Error(data?.error || 'Erreur lors de l\'envoi');
+      return data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['org-invitations', orgId] });
-      toast.success('Invitation envoyée');
+      toast.success('Invitation envoyée par email');
     },
     onError: (err: Error) => {
       toast.error(err.message);
