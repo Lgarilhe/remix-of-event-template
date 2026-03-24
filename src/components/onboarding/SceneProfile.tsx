@@ -510,13 +510,14 @@ export const SceneProfile: React.FC<Props> = ({ onNext, onBack, orgType, savedSt
               {/* Classifications summary */}
               {expClassifications.some(c => c.type) && (
                 <div className="flex flex-wrap gap-1.5">
-                  {(['rpo', 'cabinet', 'direct'] as const).map(type => {
+                  {(['rpo', 'cabinet', 'direct', 'other'] as const).map(type => {
                     const count = expClassifications.filter(c => c.type === type).length;
                     if (!count) return null;
                     const config = {
                       rpo: { label: 'RPO', color: 'var(--skalr-purple)' },
                       cabinet: { label: 'Cabinet', color: 'var(--skalr-green)' },
                       direct: { label: 'Direct', color: 'var(--skalr-pink)' },
+                      other: { label: 'Autre', color: 'var(--foreground)' },
                     }[type];
                     return (
                       <span key={type} className="px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider border-2 border-foreground/20"
