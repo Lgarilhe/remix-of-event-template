@@ -131,6 +131,7 @@ export const SceneProfile: React.FC<Props> = ({ onNext, onBack, orgType, savedSt
           company: exp.company || '',
           title: exp.title || '',
           type: null as ExperienceType,
+          logoUrl: exp.logoUrl || null,
         }));
         setExpClassifications(classifications);
         setProfileStep('classify');
