@@ -233,12 +233,19 @@ export const SceneProfile: React.FC<Props> = ({ onNext, onBack, orgType }) => {
             >
               {/* Header with photo */}
               <div className="flex items-start gap-3">
-                {scanResult.photoUrl && (
+                {scanResult.photoUrl ? (
                   <img
                     src={scanResult.photoUrl}
                     alt={scanResult.name}
                     className="w-12 h-12 border-2 border-foreground/20 object-cover shrink-0"
                   />
+                ) : (
+                  <div
+                    className="w-12 h-12 border-2 border-foreground/20 shrink-0 flex items-center justify-center text-sm font-bold text-white"
+                    style={{ background: 'linear-gradient(135deg, hsl(var(--skalr-purple)), hsl(var(--skalr-pink)))' }}
+                  >
+                    {scanResult.name?.split(/\s+/).slice(0, 2).map(w => w[0]?.toUpperCase()).join('') || '?'}
+                  </div>
                 )}
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
