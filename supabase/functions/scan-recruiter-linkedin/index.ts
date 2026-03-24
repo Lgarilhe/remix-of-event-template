@@ -39,8 +39,38 @@ serve(async (req) => {
     const UNIPILE_API_KEY = Deno.env.get("UNIPILE_API_KEY");
     if (!UNIPILE_DSN || !UNIPILE_API_KEY) throw new Error("Configuration manquante");
 
+    // Get user's organization to find their LinkedIn account
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("active_organization_id")
+      .eq("user_id", user.id)
+      .single();
+
+    let accountId: string | null = null;
+    if (profile?.active_organization_id) {
+      const { data: linkedAccounts } = await supabase
+        .from("member_linkedin_accounts")
+        .select("linkedin_account_id")
+        .eq("organization_id", profile.active_organization_id)
+        .eq("user_id", user.id)
+        .limit(1);
+      if (linkedAccounts?.length) accountId = linkedAccounts[0].linkedin_account_id;
+    }
+
+    // If no linked account, try to find any account in the org
+    if (!accountId && profile?.active_organization_id) {
+      const { data: anyAccount } = await supabase
+        .from("member_linkedin_accounts")
+        .select("linkedin_account_id")
+        .eq("organization_id", profile.active_organization_id)
+        .limit(1);
+      if (anyAccount?.length) accountId = anyAccount[0].linkedin_account_id;
+    }
+
+    if (!accountId) throw new Error("Aucun compte LinkedIn connecté. Connectez d'abord votre compte LinkedIn dans les paramètres.");
+
     const profileRes = await fetch(
-      `https://${UNIPILE_DSN}/api/v1/users/${identifier}?linkedin_sections=experience,about,skills,education`,
+      `https://${UNIPILE_DSN}/api/v1/users/${identifier}?account_id=${accountId}&linkedin_sections=experience,about,skills,education`,
       { headers: { "X-API-KEY": UNIPILE_API_KEY, Accept: "application/json" } }
     );
 
