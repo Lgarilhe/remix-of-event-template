@@ -198,6 +198,25 @@ export const SceneOrgType: React.FC<Props> = ({ onSelect }) => {
             </Select>
           </div>
 
+          {/* Freelance mode */}
+          {selected === 'freelance' && (
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                Quel est votre mode d'intervention ?
+              </label>
+              <Select value={freelanceMode} onValueChange={setFreelanceMode}>
+                <SelectTrigger className="border-2 border-foreground/20 h-10 text-sm">
+                  <SelectValue placeholder="Sélectionnez" />
+                </SelectTrigger>
+                <SelectContent>
+                  {FREELANCE_MODES.map(s => (
+                    <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
           {/* Discovery source */}
           <div className="space-y-1.5">
             <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
