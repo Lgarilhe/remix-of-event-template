@@ -1366,8 +1366,8 @@ Deno.serve(async (req) => {
       })());
     }
 
-    // ── Task F: Apollo News Articles ──
-    if (APOLLO_API_KEY && apolloOrgId) {
+    // ── Task F: Apollo News Articles (skip in jobs_only mode) ──
+    if (APOLLO_API_KEY && apolloOrgId && !jobsOnly) {
       parallelTasks.push((async () => {
         try {
           console.log('[enrich] Apollo news articles for org:', apolloOrgId);
