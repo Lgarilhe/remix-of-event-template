@@ -6,6 +6,38 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+// ── In-memory embedding cache (avoids re-embedding the same job query) ──
+const embeddingCache = new Map<string, { embedding: number[]; timestamp: number }>();
+const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+function getCachedEmbedding(queryHash: string): number[] | null {
+  const entry = embeddingCache.get(queryHash);
+  if (!entry) return null;
+  if (Date.now() - entry.timestamp > CACHE_TTL_MS) {
+    embeddingCache.delete(queryHash);
+    return null;
+  }
+  return entry.embedding;
+}
+
+function setCachedEmbedding(queryHash: string, embedding: number[]): void {
+  // Evict expired entries periodically (keep cache small)
+  if (embeddingCache.size > 100) {
+    const now = Date.now();
+    for (const [k, v] of embeddingCache) {
+      if (now - v.timestamp > CACHE_TTL_MS) embeddingCache.delete(k);
+    }
+  }
+  embeddingCache.set(queryHash, { embedding, timestamp: Date.now() });
+}
+
+async function hashQuery(query: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(query);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+  return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, "0")).join("");
+}
+
 function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -34,7 +66,8 @@ Deno.serve(async (req) => {
       entity_id,
       query,
       chunk_types,
-      limit = 15,
+      limit = 8,
+      min_similarity = 0.3,
       include_related = false,
     } = body;
 
@@ -145,36 +178,45 @@ Deno.serve(async (req) => {
       );
     }
 
-    // ── 3. Embed the query via OpenAI ──────────────────────────
+    // ── 3. Embed the query via OpenAI (with cache) ───────────
     const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
     if (!OPENAI_API_KEY) {
       throw new Error("OPENAI_API_KEY not configured");
     }
 
-    const embeddingRes = await fetchWithTimeout(
-      "https://api.openai.com/v1/embeddings",
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${OPENAI_API_KEY}`,
-          "Content-Type": "application/json",
+    const queryText = query.substring(0, 8000);
+    const queryHash = await hashQuery(queryText);
+    let queryEmbedding = getCachedEmbedding(queryHash);
+
+    if (queryEmbedding) {
+      console.log("retrieve-context: embedding cache HIT");
+    } else {
+      const embeddingRes = await fetchWithTimeout(
+        "https://api.openai.com/v1/embeddings",
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${OPENAI_API_KEY}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            model: "text-embedding-3-small",
+            input: queryText,
+          }),
         },
-        body: JSON.stringify({
-          model: "text-embedding-3-small",
-          input: query.substring(0, 8000),
-        }),
-      },
-      15000,
-    );
+        15000,
+      );
 
-    if (!embeddingRes.ok) {
-      const errBody = await embeddingRes.text();
-      console.error(`OpenAI API error [${embeddingRes.status}]:`, errBody);
-      throw new Error(`OpenAI embedding error: ${embeddingRes.status}`);
+      if (!embeddingRes.ok) {
+        const errBody = await embeddingRes.text();
+        console.error(`OpenAI API error [${embeddingRes.status}]:`, errBody);
+        throw new Error(`OpenAI embedding error: ${embeddingRes.status}`);
+      }
+
+      const embeddingData = await embeddingRes.json();
+      queryEmbedding = embeddingData.data[0].embedding;
+      setCachedEmbedding(queryHash, queryEmbedding);
     }
-
-    const embeddingData = await embeddingRes.json();
-    const queryEmbedding = embeddingData.data[0].embedding;
 
     // ── 4. Call the RPC ────────────────────────────────────────
     const svc = createClient(
@@ -233,7 +275,7 @@ Deno.serve(async (req) => {
         console.error("retrieve_context_multi RPC error:", error);
         throw new Error(`RPC error: ${error.message}`);
       }
-      chunks = data ?? [];
+      chunks = (data ?? []).filter((c: any) => typeof c.similarity === 'number' && c.similarity >= min_similarity);
     } else {
       // Call retrieve_context (single entity)
       const embeddingStr = `[${queryEmbedding.join(",")}]`;
@@ -250,7 +292,7 @@ Deno.serve(async (req) => {
         console.error("retrieve_context RPC error:", error);
         throw new Error(`RPC error: ${error.message}`);
       }
-      chunks = data ?? [];
+      chunks = (data ?? []).filter((c: any) => typeof c.similarity === 'number' && c.similarity >= min_similarity);
     }
 
     // ── 5. Format context for prompt injection ─────────────────
