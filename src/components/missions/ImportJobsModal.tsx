@@ -141,7 +141,7 @@ export const ImportJobsModal: React.FC<ImportJobsModalProps> = ({ open, onClose,
         force_refresh: true,
       };
       if (inputMode === 'url') {
-        body.website_url = url;
+        body.careers_url = url;
         body.company_name = new URL(url).hostname.replace('www.', '').split('.')[0];
       } else {
         body.company_name = name;
@@ -157,6 +157,8 @@ export const ImportJobsModal: React.FC<ImportJobsModalProps> = ({ open, onClose,
           location: string | null;
           careersUrl: string | null;
           openRoles: OpenRole[];
+          scrapingFailed?: boolean;
+          scrapingMessage?: string;
         };
       }>('enrich-company', body);
 
@@ -174,6 +176,10 @@ export const ImportJobsModal: React.FC<ImportJobsModalProps> = ({ open, onClose,
         const roles = company.openRoles || [];
         // Deduce sources used from roles
         const usedSources = [...new Set(roles.map(r => r.source).filter(Boolean))];
+
+        if (company.scrapingFailed && roles.length === 0) {
+          toast.warning(company.scrapingMessage || "Impossible de scraper cette page. Essayez de copier-coller les postes manuellement.");
+        }
 
         setResult({
           name: company.name || name || 'Entreprise',
