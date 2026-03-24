@@ -434,146 +434,6 @@ serve(async (req) => {
       ...(profile.organization?.technology_names?.slice(0, 5) || []),
     ].filter(Boolean))) as string[];
 
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) throw new Error("Clé AI manquante");
-
-    const hasExperiences = experiences.length > 0;
-    const hasAbout = about.length > 10;
-    const hasSkills = skills.length > 0;
-    const hasHeadline = headline.length > 5;
-
-    console.log("Apollo data summary:", JSON.stringify({
-      source: profile.__source || "apollo",
-      name,
-      headline: headline.slice(0, 50),
-      aboutLen: about.length,
-      experiencesCount: experiences.length,
-      skillsCount: skills.length,
-      companiesCount: companies.length,
-      hasExperiences,
-      hasAbout,
-      hasSkills,
-      hasHeadline,
-    }));
-
-    if (!hasExperiences && !hasAbout && !hasSkills && !hasHeadline) {
-      const slugBase = name
-        .toLowerCase()
-        .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
-        .replace(/[^a-z0-9]+/g, "-")
-        .replace(/^-|-$/g, "")
-        .slice(0, 40);
-      const slug = `${slugBase}-${Date.now().toString(36).slice(-4)}`;
-
-      await supabase
-        .from("profiles")
-        .update({
-          linkedin_url: matchedUrl,
-          recruiter_headline: headline,
-          public_slug: slug,
-        })
-        .eq("user_id", user.id);
-
-      return new Response(
-        JSON.stringify({
-          bio: "",
-          headline,
-          skills: [],
-          yearsExperience: 0,
-          slug,
-          name,
-          seniority,
-          currentCompany,
-          currentTitle,
-          location,
-          industries,
-          tags,
-          companies,
-          photoUrl,
-          education: [],
-          recommendations: [],
-          experienceDetails: [],
-          warning: "Profil LinkedIn trop limité pour générer une bio. Vous pouvez la rédiger manuellement.",
-        }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    const richPrompt = `Tu es un copywriter expert en personal branding pour recruteurs indépendants.
-
-Tu dois rédiger une bio qui donne envie à un potentiel client (entreprise, DRH, hiring manager) de travailler avec ce recruteur. Le lecteur doit se dire "cette personne connaît MON marché, je veux bosser avec elle".
-
-Voici les données du profil :
-
-Nom : ${name}
-Titre : ${headline}
-À propos : ${about}
-
-Parcours :
-${experiences.join("\n")}
-
-Formation :
-${education.join("\n")}
-
-Compétences/secteurs : ${skills.join(", ")}
-Années d'expérience : ${yearsExperience > 0 ? yearsExperience : "non renseigné"}
-Localisation : ${location || "non renseignée"}
-Entreprise actuelle : ${currentCompany || "non renseignée"}
-
-CONSIGNES STRICTES :
-- Écris à la PREMIÈRE PERSONNE ("Je", "Mon", "J'ai")
-- 3-4 phrases max, ~400-500 caractères
-- Ton direct, concret, orienté résultats — pas de blabla corporate
-- Mentionne les VRAIS noms d'entreprises et secteurs où la personne a travaillé (ceux visibles dans le parcours ci-dessus)
-- Mentionne le nombre d'années d'expérience si disponible
-- Termine par une phrase qui indique clairement le type de missions/profils sur lesquels tu interviens
-- PAS de formules bateau ("passionné", "expert reconnu", "à votre écoute")
-- PAS de guillemets, PAS d'introduction, juste le texte brut de la bio
-- INTERDICTION ABSOLUE d'utiliser des crochets [comme ceci] ou des placeholders. N'écris QUE des informations réelles tirées des données ci-dessus. Si une info manque, ne la mentionne pas plutôt que de mettre un placeholder.`;
-
-    const lightPrompt = `Tu es un copywriter expert en personal branding pour recruteurs indépendants.
-
-Tu dois rédiger une bio courte à la première personne pour un profil LinkedIn partiellement renseigné.
-
-Données disponibles :
-Nom : ${name}
-Titre : ${headline}
-Entreprise actuelle : ${currentCompany || "non renseignée"}
-Localisation : ${location || "non renseignée"}
-Organisations visibles : ${companies.join(", ")}
-
-CONSIGNES STRICTES :
-- Écris à la PREMIÈRE PERSONNE ("Je", "Mon", "J'ai")
-- 2-3 phrases max, ton direct et crédible
-- Appuie-toi UNIQUEMENT sur les informations disponibles ci-dessus
-- N'invente aucun parcours passé, aucun chiffre, aucun secteur absent des données
-- Si une info manque, ne la mentionne pas
-- PAS de crochets, PAS de placeholders, PAS de guillemets`; 
-
-    const prompt = hasExperiences || hasAbout || hasSkills ? richPrompt : lightPrompt;
-
-    const aiRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-3-flash-preview",
-        messages: [{ role: "user", content: prompt }],
-      }),
-    });
-
-    if (!aiRes.ok) {
-      console.error("AI error:", aiRes.status);
-      throw new Error("Erreur lors de la génération du résumé");
-    }
-
-    const aiData = await aiRes.json();
-    const bio = aiData.choices?.[0]?.message?.content?.trim() || "";
-
-    if (!bio) throw new Error("Résumé vide généré");
-
     const slugBase = name
       .toLowerCase()
       .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
@@ -582,11 +442,11 @@ CONSIGNES STRICTES :
       .slice(0, 40);
     const slug = `${slugBase}-${Date.now().toString(36).slice(-4)}`;
 
-    const { error: updateError } = await supabase
+    // Save basic profile data (no bio yet - bio generated after classification)
+    await supabase
       .from("profiles")
       .update({
         linkedin_url: matchedUrl,
-        recruiter_bio: bio,
         recruiter_headline: headline,
         linkedin_skills: skills.slice(0, 20),
         years_experience: yearsExperience,
@@ -594,14 +454,8 @@ CONSIGNES STRICTES :
       })
       .eq("user_id", user.id);
 
-    if (updateError) {
-      console.error("Update error:", updateError);
-      throw new Error("Erreur lors de la sauvegarde");
-    }
-
     return new Response(
       JSON.stringify({
-        bio,
         headline,
         skills: skills.slice(0, 20),
         yearsExperience,
@@ -618,6 +472,8 @@ CONSIGNES STRICTES :
         education: education.slice(0, 3),
         recommendations,
         experienceDetails,
+        about,
+        experiences,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
