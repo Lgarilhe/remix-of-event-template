@@ -11,6 +11,7 @@ export interface OrgTypeData {
   teamSize: string;
   annualHires: string;
   discoverySource: string;
+  freelanceMode?: string;
 }
 
 interface Props {
