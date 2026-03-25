@@ -1,5 +1,5 @@
-import React, { useState, useMemo, useEffect } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useSourcingProjects, SourcingProject } from '@/hooks/useSourcingProjects';
 import { useQuotaGate } from '@/hooks/useQuotaGate';
 import { useNotionJobs } from '@/hooks/useNotionJobs';
@@ -29,6 +29,7 @@ import {
   Briefcase,
   Star,
   Wrench,
+  ArrowRight,
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { fr } from 'date-fns/locale';
