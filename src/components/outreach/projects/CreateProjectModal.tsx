@@ -538,60 +538,207 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                 animate={{ opacity: 1, y: 0 }}
                 className="space-y-6"
               >
-                <div className="text-center">
-                  <div className="text-4xl mb-3">📋</div>
-                  <h3 className="text-lg font-bold text-foreground uppercase tracking-wide mb-1">
-                    Collez votre brief
-                  </h3>
-                  <p className="text-sm text-muted-foreground">
-                    Collez la description du poste et l'IA créera la mission automatiquement
-                  </p>
-                </div>
+                {!briefAnalysis ? (
+                  <>
+                    {/* ── Phase 1: Saisie du brief ── */}
+                    <div className="text-center">
+                      <div className="text-4xl mb-3">📋</div>
+                      <h3 className="text-lg font-bold text-foreground uppercase tracking-wide mb-1">
+                        Décrivez le poste
+                      </h3>
+                      <p className="text-sm text-muted-foreground">
+                        Collez la fiche de poste ou décrivez le profil recherché — l'IA génère l'ICP et les filtres
+                      </p>
+                    </div>
 
-                <div className="space-y-3">
-                  <Label className="text-xs font-medium uppercase tracking-wider">
-                    Description du poste / brief
-                  </Label>
-                  <Textarea
-                    value={briefText}
-                    onChange={(e) => setBriefText(e.target.value)}
-                    placeholder={"Collez ici la fiche de poste, le brief client, ou une URL de page carrières...\n\nExemple :\nRecherche d'un Lead Developer React/Node.js à Paris, 5+ ans d'expérience, télétravail partiel, salaire 60-75K€..."}
-                    rows={10}
-                    className="border-foreground rounded-none resize-none"
-                    autoFocus
-                  />
-                </div>
+                    <div className="space-y-3">
+                      <Textarea
+                        value={briefText}
+                        onChange={(e) => setBriefText(e.target.value)}
+                        placeholder={"Collez ici la fiche de poste, le brief client, ou une URL de page carrières...\n\nExemple :\nRecherche d'un Lead Developer React/Node.js à Paris, 5+ ans d'expérience, télétravail partiel, salaire 60-75K€..."}
+                        rows={10}
+                        className="border-foreground rounded-none resize-none"
+                        autoFocus
+                      />
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] text-muted-foreground uppercase tracking-wider">
+                          {briefText.length > 0 ? `${briefText.length} caractères` : 'Min 20 caractères'}
+                        </span>
+                      </div>
+                    </div>
 
-                {/* URL suggestion banner */}
-                {urlSuggestion && (
-                  <motion.div
-                    initial={{ opacity: 0, height: 0 }}
-                    animate={{ opacity: 1, height: 'auto' }}
-                    className="border border-foreground p-3 bg-muted flex items-center justify-between gap-3"
-                  >
-                    <p className="text-xs text-foreground">
-                      🔗 URL de page carrières détectée. Voulez-vous importer les postes depuis cette page ?
-                    </p>
+                    {/* URL suggestion banner */}
+                    {urlSuggestion && (
+                      <motion.div
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: 'auto' }}
+                        className="border border-foreground p-3 bg-muted flex items-center justify-between gap-3"
+                      >
+                        <p className="text-xs text-foreground">
+                          🔗 URL de page carrières détectée. Voulez-vous importer les postes depuis cette page ?
+                        </p>
+                        <button
+                          onClick={handleAcceptUrlSuggestion}
+                          className="shrink-0 h-[28px] px-3 text-[10px] font-medium uppercase tracking-wider border border-foreground bg-foreground text-background"
+                        >
+                          Importer
+                        </button>
+                      </motion.div>
+                    )}
+
                     <button
-                      onClick={handleAcceptUrlSuggestion}
-                      className="shrink-0 h-[28px] px-3 text-[10px] font-medium uppercase tracking-wider border border-foreground bg-foreground text-background"
+                      onClick={handleBriefAnalyze}
+                      disabled={!briefText.trim() || briefText.trim().length < 20 || briefAnalyzing}
+                      className="relative overflow-hidden w-full h-[42px] text-xs font-bold uppercase tracking-wider border border-foreground bg-foreground text-background disabled:opacity-40 disabled:cursor-not-allowed group"
                     >
-                      Importer
+                      <span className="relative z-10 flex items-center justify-center gap-2">
+                        {briefAnalyzing ? <Loader2 className="w-4 h-4 animate-spin" /> : '🤖'}
+                        {briefAnalyzing ? 'Analyse en cours...' : 'Analyser avec l\'IA'}
+                      </span>
+                      <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
                     </button>
-                  </motion.div>
-                )}
+                  </>
+                ) : (
+                  <>
+                    {/* ── Phase 2: Résultats de l'analyse ── */}
+                    <div className="text-center">
+                      <div className="text-4xl mb-3">✅</div>
+                      <h3 className="text-lg font-bold text-foreground uppercase tracking-wide mb-1">
+                        Analyse terminée
+                      </h3>
+                      <p className="text-sm text-muted-foreground">
+                        Vérifiez l'ICP et les filtres générés, puis créez la mission
+                      </p>
+                    </div>
 
-                <button
-                  onClick={handleBriefSubmit}
-                  disabled={!briefText.trim() || briefAnalyzing}
-                  className="relative overflow-hidden w-full h-[42px] text-xs font-bold uppercase tracking-wider border border-foreground bg-foreground text-background disabled:opacity-40 disabled:cursor-not-allowed group"
-                >
-                  <span className="relative z-10 flex items-center justify-center gap-2">
-                    {briefAnalyzing ? <Loader2 className="w-4 h-4 animate-spin" /> : '🚀'}
-                    Créer la mission
-                  </span>
-                  <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
-                </button>
+                    {/* Nom + Client */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div className="space-y-1">
+                        <Label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Nom de la mission</Label>
+                        <Input
+                          value={briefName}
+                          onChange={(e) => setBriefName(e.target.value)}
+                          className="border-foreground rounded-none h-[34px] text-sm"
+                          placeholder="Ex: Lead DevOps — Numspot"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Client (optionnel)</Label>
+                        <Input
+                          value={briefClientName}
+                          onChange={(e) => setBriefClientName(e.target.value)}
+                          className="border-foreground rounded-none h-[34px] text-sm"
+                          placeholder="Ex: Numspot"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Stratégie */}
+                    {briefAnalysis.analysis.search_rationale && (
+                      <div className="border-l-4 border-brutal-accent p-4 bg-muted/20">
+                        <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1">🎯 Stratégie</p>
+                        <p className="text-sm text-foreground">{briefAnalysis.analysis.search_rationale}</p>
+                      </div>
+                    )}
+
+                    {/* ICP tags */}
+                    <div className="space-y-2">
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">👤 Profil idéal (ICP)</p>
+
+                      {briefAnalysis.analysis.role_keywords.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5">
+                          <span className="text-[10px] text-muted-foreground uppercase tracking-wider mr-1 self-center">Titres:</span>
+                          {briefAnalysis.analysis.role_keywords.map((kw, i) => (
+                            <span key={i} className="px-2 py-0.5 bg-foreground text-background text-[10px] font-medium uppercase tracking-wider">
+                              {kw}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+
+                      {briefAnalysis.filters.skills_keywords?.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5">
+                          <span className="text-[10px] text-muted-foreground uppercase tracking-wider mr-1 self-center">Skills:</span>
+                          {briefAnalysis.filters.skills_keywords.map((skill: string, i: number) => (
+                            <span key={i} className="px-2 py-0.5 border border-foreground/30 text-foreground text-[10px] font-medium uppercase tracking-wider">
+                              {skill}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] text-muted-foreground uppercase tracking-wider">Expérience:</span>
+                        <span className="px-2 py-0.5 border border-foreground/30 text-foreground text-[10px] font-medium">
+                          {briefAnalysis.filters.years_of_experience_min ?? '?'} - {briefAnalysis.filters.years_of_experience_max ?? '?'} ans
+                        </span>
+                        {briefAnalysis.analysis.experience_rationale && (
+                          <span className="text-[10px] text-muted-foreground italic">
+                            ({briefAnalysis.analysis.experience_rationale})
+                          </span>
+                        )}
+                      </div>
+
+                      {briefAnalysis.filters.location_keywords?.length > 0 && (
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] text-muted-foreground uppercase tracking-wider">Zone:</span>
+                          {briefAnalysis.filters.location_keywords.map((loc: string, i: number) => (
+                            <span key={i} className="px-2 py-0.5 border border-foreground/30 text-foreground text-[10px] font-medium">
+                              {loc}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+
+                      {briefAnalysis.analysis.domain_expertise.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5">
+                          <span className="text-[10px] text-muted-foreground uppercase tracking-wider mr-1 self-center">Domaines:</span>
+                          {briefAnalysis.analysis.domain_expertise.map((d, i) => (
+                            <span key={i} className="px-2 py-0.5 border border-foreground/10 bg-muted text-muted-foreground text-[10px] font-medium uppercase tracking-wider">
+                              {d}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Boolean */}
+                    {briefAnalysis.filters.keywords && (
+                      <div>
+                        <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1">🔍 Boolean généré</p>
+                        <code className="block text-[11px] text-foreground/80 bg-muted p-3 border border-foreground/10 break-all">
+                          {briefAnalysis.filters.keywords}
+                        </code>
+                        {briefAnalysis.analysis.keyword_rationale && (
+                          <p className="text-[10px] text-muted-foreground mt-1 italic">
+                            {briefAnalysis.analysis.keyword_rationale}
+                          </p>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Action buttons */}
+                    <div className="flex gap-2">
+                      <button
+                        onClick={handleBriefCreate}
+                        disabled={isCreating}
+                        className="relative overflow-hidden flex-1 h-[42px] text-xs font-bold uppercase tracking-wider border border-foreground bg-foreground text-background disabled:opacity-40 group"
+                      >
+                        <span className="relative z-10 flex items-center justify-center gap-2">
+                          {isCreating ? <Loader2 className="w-4 h-4 animate-spin" /> : '🚀'}
+                          Créer la mission & lancer le sourcing
+                        </span>
+                      </button>
+                      <button
+                        onClick={() => { setBriefAnalysis(null); }}
+                        className="relative overflow-hidden h-[42px] px-4 text-xs font-bold uppercase tracking-wider border border-foreground bg-background text-foreground group"
+                      >
+                        <span className="relative z-10">Modifier</span>
+                        <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
+                      </button>
+                    </div>
+                  </>
+                )}
               </motion.div>
             )}
 
