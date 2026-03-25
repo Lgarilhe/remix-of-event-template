@@ -1,6 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { LinkedInProfile } from './types';
 import { useCandidateHistory, NotionShortlistHistoryItem } from '@/hooks/useCandidateHistory';
+import { computeLikelyToSwitch } from '@/hooks/linkedin/likelyToSwitch';
+import { LikelyToSwitchBadge } from './LikelyToSwitchBadge';
 import { CandidateHistoryPanel } from './CandidateHistoryPanel';
 import { useNotionShortlist } from '@/hooks/useNotionCandidates';
 import { JobScoreDisplay, JobMatchResult } from './JobScoreDisplay';
