@@ -4,6 +4,7 @@ import { LinkedInFiltersState, LinkedInProfile, INITIAL_FILTERS } from '@/compon
 import { useUnipileQuota } from '@/hooks/useUnipileQuota';
 import { useJobCandidateStatus } from '@/hooks/useJobCandidateStatus';
 import { useSourcingProjects, SourcingProject } from '@/hooks/useSourcingProjects';
+import { invokeUnipile } from '@/lib/invokeUnipile';
 
 import { Job } from '@/types/jobs';
 import { JobMatchResult } from '@/components/outreach/JobScoreDisplay';
