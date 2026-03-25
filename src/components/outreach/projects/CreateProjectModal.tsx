@@ -225,12 +225,9 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
     setBriefAnalysis(null);
 
     try {
-      const firstLine = briefText.trim().split('\n')[0].slice(0, 80);
-      if (!briefName) setBriefName(firstLine);
-
       const syntheticJob = {
         id: 'draft',
-        title: firstLine,
+        title: briefText.trim().split('\n')[0].slice(0, 80),
         description: briefText.trim(),
         client: briefClientName ? { name: briefClientName } : null,
         location: null,
@@ -244,6 +241,20 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
 
       if (response.error) throw new Error(response.error.message || 'Erreur IA');
       if (!response.data?.success) throw new Error('Analyse échouée');
+
+      // Use AI-generated title instead of raw first line
+      const aiTitle = response.data.analysis?.suggested_title;
+      if (aiTitle && !briefName) {
+        setBriefName(aiTitle);
+      } else if (!briefName) {
+        // Fallback: build from role_keywords + location
+        const roles = response.data.analysis?.role_keywords || [];
+        const loc = response.data.analysis?.location_hint;
+        const fallbackTitle = roles[0] 
+          ? `${roles[0]}${loc ? ` — ${loc}` : ''}`
+          : briefText.trim().split('\n')[0].slice(0, 50);
+        setBriefName(fallbackTitle);
+      }
 
       setBriefAnalysis({
         filters: response.data.filters,
