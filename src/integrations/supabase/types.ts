@@ -2583,6 +2583,8 @@ export type Database = {
           airtable_base_id: string | null
           airtable_base_id_2: string | null
           airtable_connected: boolean
+          anthropic_api_key: string | null
+          apollo_api_key: string | null
           calendly_api_key: string | null
           calendly_connected: boolean
           created_at: string
@@ -2593,6 +2595,7 @@ export type Database = {
           notion_postes_db_id: string | null
           notion_shortlist_db_id: string | null
           organization_id: string
+          pdl_api_key: string | null
           unipile_api_key: string | null
           unipile_connected: boolean
           unipile_dsn: string | null
@@ -2606,6 +2609,8 @@ export type Database = {
           airtable_base_id?: string | null
           airtable_base_id_2?: string | null
           airtable_connected?: boolean
+          anthropic_api_key?: string | null
+          apollo_api_key?: string | null
           calendly_api_key?: string | null
           calendly_connected?: boolean
           created_at?: string
@@ -2616,6 +2621,7 @@ export type Database = {
           notion_postes_db_id?: string | null
           notion_shortlist_db_id?: string | null
           organization_id: string
+          pdl_api_key?: string | null
           unipile_api_key?: string | null
           unipile_connected?: boolean
           unipile_dsn?: string | null
@@ -2629,6 +2635,8 @@ export type Database = {
           airtable_base_id?: string | null
           airtable_base_id_2?: string | null
           airtable_connected?: boolean
+          anthropic_api_key?: string | null
+          apollo_api_key?: string | null
           calendly_api_key?: string | null
           calendly_connected?: boolean
           created_at?: string
@@ -2639,6 +2647,7 @@ export type Database = {
           notion_postes_db_id?: string | null
           notion_shortlist_db_id?: string | null
           organization_id?: string
+          pdl_api_key?: string | null
           unipile_api_key?: string | null
           unipile_connected?: boolean
           unipile_dsn?: string | null
@@ -3960,6 +3969,8 @@ export type Database = {
           airtable_base_id: string | null
           airtable_base_id_2: string | null
           airtable_connected: boolean
+          anthropic_api_key: string | null
+          apollo_api_key: string | null
           calendly_api_key: string | null
           calendly_connected: boolean
           created_at: string
@@ -3970,6 +3981,7 @@ export type Database = {
           notion_postes_db_id: string | null
           notion_shortlist_db_id: string | null
           organization_id: string
+          pdl_api_key: string | null
           unipile_api_key: string | null
           unipile_connected: boolean
           unipile_dsn: string | null

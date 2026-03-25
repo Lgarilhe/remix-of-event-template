@@ -28,6 +28,7 @@ const ScorecardFullPage = lazy(() => import("./pages/ScorecardFullPage"));
 const CandidatePortal = lazy(() => import("./pages/CandidatePortal"));
 const Onboarding = lazy(() => import("./pages/Onboarding"));
 const Settings = lazy(() => import("./pages/Settings"));
+const MissionWorkspace = lazy(() => import("./pages/MissionWorkspace"));
 
 const Pricing = lazy(() => import("./pages/Pricing"));
 const UnsubscribePage = lazy(() => import("./pages/Unsubscribe"));
@@ -99,6 +100,7 @@ const AppContent = () => {
           <Route path="/candidates" element={<ProtectedRoute><OrganizationGuard><Candidates /></OrganizationGuard></ProtectedRoute>} />
           {/* New canonical routes */}
           <Route path="/missions" element={<ProtectedRoute><OrganizationGuard><Outreach /></OrganizationGuard></ProtectedRoute>} />
+          <Route path="/missions/:id" element={<ProtectedRoute><OrganizationGuard><MissionWorkspace /></OrganizationGuard></ProtectedRoute>} />
           <Route path="/pipeline" element={<ProtectedRoute><OrganizationGuard><ATS /></OrganizationGuard></ProtectedRoute>} />
           {/* Legacy redirects */}
           <Route path="/outreach" element={<Navigate to="/missions" replace />} />

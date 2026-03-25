@@ -3,7 +3,7 @@
  * Reads per-org credentials from organization_integrations, falls back to Deno.env.
  *
  * Usage:
- *   import { resolveUnipileCredentials, resolveNotionCredentials } from '../_shared/resolve-org-credentials.ts';
+ *   import { resolveUnipileCredentials, resolveNotionCredentials, resolveApolloCredentials, resolvePDLCredentials, resolveAnthropicCredentials } from '../_shared/resolve-org-credentials.ts';
  */
 
 import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check";
@@ -22,14 +22,32 @@ export interface NotionCredentials {
   postesDbId: string | null;
 }
 
-// ─── Internal cache ──────────────────────────────────────────────────────────
+export interface ApolloCredentials {
+  apiKey: string;
+}
+
+export interface PDLCredentials {
+  apiKey: string;
+}
+
+export interface AnthropicCredentials {
+  apiKey: string;
+}
+
+// ─── Internal caches ─────────────────────────────────────────────────────────
 
 const unipileCache = new Map<string, UnipileCredentials | null>();
 const notionCache = new Map<string, NotionCredentials | null>();
+const apolloCache = new Map<string, ApolloCredentials | null>();
+const pdlCache = new Map<string, PDLCredentials | null>();
+const anthropicCache = new Map<string, AnthropicCredentials | null>();
 
 export function clearCredentialCaches() {
   unipileCache.clear();
   notionCache.clear();
+  apolloCache.clear();
+  pdlCache.clear();
+  anthropicCache.clear();
 }
 
 // ─── Service client singleton ────────────────────────────────────────────────
@@ -53,16 +71,10 @@ function normalizeDsn(raw: string): string {
   return `https://${cleaned}`;
 }
 
-/**
- * Resolve Unipile credentials for an organization.
- * Tries organization_integrations first, then falls back to Deno.env.
- * Returns null if neither source has valid credentials.
- */
 export async function resolveUnipileCredentials(
   organizationId?: string | null,
   supabaseClient?: SupabaseClient
 ): Promise<UnipileCredentials | null> {
-  // Try org-specific
   if (organizationId) {
     const cached = unipileCache.get(organizationId);
     if (cached !== undefined) return cached;
@@ -88,11 +100,9 @@ export async function resolveUnipileCredentials(
       console.warn(`[resolve-creds] Failed to resolve org Unipile credentials:`, e);
     }
 
-    // Mark as checked but not found — will fall through to env
     unipileCache.set(organizationId, null);
   }
 
-  // Fallback to env
   const envKey = Deno.env.get("UNIPILE_API_KEY");
   const envDsn = Deno.env.get("UNIPILE_DSN");
   if (envKey && envDsn) {
@@ -104,16 +114,10 @@ export async function resolveUnipileCredentials(
 
 // ─── Notion ──────────────────────────────────────────────────────────────────
 
-/**
- * Resolve Notion credentials for an organization.
- * Tries organization_integrations first, then falls back to Deno.env.
- * Returns null if neither source has a valid API key.
- */
 export async function resolveNotionCredentials(
   organizationId?: string | null,
   supabaseClient?: SupabaseClient
 ): Promise<NotionCredentials | null> {
-  // Try org-specific
   if (organizationId) {
     const cached = notionCache.get(organizationId);
     if (cached !== undefined) return cached;
@@ -144,7 +148,6 @@ export async function resolveNotionCredentials(
     notionCache.set(organizationId, null);
   }
 
-  // Fallback to env
   const envKey = Deno.env.get("NOTION_API_KEY");
   if (envKey) {
     return {
@@ -158,10 +161,113 @@ export async function resolveNotionCredentials(
   return null;
 }
 
-/**
- * Resolve organization_id from a user's profile.
- * Useful when only the user JWT is available.
- */
+// ─── Apollo ──────────────────────────────────────────────────────────────────
+
+export async function resolveApolloCredentials(
+  organizationId?: string | null,
+  supabaseClient?: SupabaseClient
+): Promise<ApolloCredentials | null> {
+  if (organizationId) {
+    const cached = apolloCache.get(organizationId);
+    if (cached !== undefined) return cached;
+
+    try {
+      const sb = supabaseClient ?? getServiceClient();
+      const { data } = await sb
+        .from("organization_integrations")
+        .select("apollo_api_key")
+        .eq("organization_id", organizationId)
+        .single();
+
+      if (data?.apollo_api_key) {
+        const creds: ApolloCredentials = { apiKey: data.apollo_api_key };
+        console.log(`[resolve-creds] Using org-specific Apollo credentials for org ${organizationId}`);
+        apolloCache.set(organizationId, creds);
+        return creds;
+      }
+    } catch (e) {
+      console.warn(`[resolve-creds] Failed to resolve org Apollo credentials:`, e);
+    }
+    apolloCache.set(organizationId, null);
+  }
+
+  const envKey = Deno.env.get("APOLLO_API_KEY");
+  if (envKey) return { apiKey: envKey };
+  return null;
+}
+
+// ─── PDL (PeopleDataLabs) ────────────────────────────────────────────────────
+
+export async function resolvePDLCredentials(
+  organizationId?: string | null,
+  supabaseClient?: SupabaseClient
+): Promise<PDLCredentials | null> {
+  if (organizationId) {
+    const cached = pdlCache.get(organizationId);
+    if (cached !== undefined) return cached;
+
+    try {
+      const sb = supabaseClient ?? getServiceClient();
+      const { data } = await sb
+        .from("organization_integrations")
+        .select("pdl_api_key")
+        .eq("organization_id", organizationId)
+        .single();
+
+      if (data?.pdl_api_key) {
+        const creds: PDLCredentials = { apiKey: data.pdl_api_key };
+        console.log(`[resolve-creds] Using org-specific PDL credentials for org ${organizationId}`);
+        pdlCache.set(organizationId, creds);
+        return creds;
+      }
+    } catch (e) {
+      console.warn(`[resolve-creds] Failed to resolve org PDL credentials:`, e);
+    }
+    pdlCache.set(organizationId, null);
+  }
+
+  const envKey = Deno.env.get("PDL_API_KEY");
+  if (envKey) return { apiKey: envKey };
+  return null;
+}
+
+// ─── Anthropic ───────────────────────────────────────────────────────────────
+
+export async function resolveAnthropicCredentials(
+  organizationId?: string | null,
+  supabaseClient?: SupabaseClient
+): Promise<AnthropicCredentials | null> {
+  if (organizationId) {
+    const cached = anthropicCache.get(organizationId);
+    if (cached !== undefined) return cached;
+
+    try {
+      const sb = supabaseClient ?? getServiceClient();
+      const { data } = await sb
+        .from("organization_integrations")
+        .select("anthropic_api_key")
+        .eq("organization_id", organizationId)
+        .single();
+
+      if (data?.anthropic_api_key) {
+        const creds: AnthropicCredentials = { apiKey: data.anthropic_api_key };
+        console.log(`[resolve-creds] Using org-specific Anthropic credentials for org ${organizationId}`);
+        anthropicCache.set(organizationId, creds);
+        return creds;
+      }
+    } catch (e) {
+      console.warn(`[resolve-creds] Failed to resolve org Anthropic credentials:`, e);
+    }
+    anthropicCache.set(organizationId, null);
+  }
+
+  const envKey = Deno.env.get("ANTHROPIC_API_KEY");
+  if (envKey) return { apiKey: envKey };
+  return null;
+}
+
+// ─── Resolve org from user ───────────────────────────────────────────────────
+
 export async function resolveOrgIdFromUser(
   userId: string,
   supabaseClient?: SupabaseClient
