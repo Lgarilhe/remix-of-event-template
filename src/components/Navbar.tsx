@@ -191,7 +191,7 @@ export const Navbar: React.FC = () => {
               <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out"></span>
             </Link>
             <Link 
-              to="/missions?tab=messages" 
+              to="/inbox" 
               className="relative overflow-hidden glass text-foreground h-[34px] px-3 flex items-center text-[11px] font-medium uppercase border-l-0 border border-foreground leading-none group"
             >
               <span className="relative z-10">MESSAGES</span>
@@ -299,7 +299,7 @@ export const Navbar: React.FC = () => {
                   PIPELINE
                 </Link>
                 <Link 
-                  to="/missions?tab=messages" 
+                  to="/inbox" 
                   onClick={() => setIsMobileMenuOpen(false)}
                   className="flex-1 flex items-center justify-center gap-2 bg-background text-foreground text-[17px] font-medium uppercase border-b border-foreground tracking-[-0.34px] animate-fade-in"
                   style={{ animationDelay: '0.35s', animationFillMode: 'both' }}
