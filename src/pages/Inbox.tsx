@@ -44,7 +44,7 @@ export default function Inbox() {
       <SEOHead title="Messages — Skalr" description="Messagerie LinkedIn unifiée" />
       <Navbar />
       <div className="flex-1 min-h-0 px-3 pt-[57px] sm:px-6 lg:px-8">
-        <div className="mx-auto h-full max-w-[1600px]">
+        <div className="mx-auto h-full max-w-[1600px] md:px-[34px]">
           <AttendeePicturesProvider organizationId={organizationId || null}>
             <MessagesInbox
               accounts={accounts}
