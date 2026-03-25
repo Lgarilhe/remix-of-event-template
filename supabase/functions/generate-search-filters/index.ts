@@ -617,7 +617,23 @@ ${transversal.bodyContent ? `Contenu détaillé critères transverses:\n${transv
     console.log("[generate-search-filters] Generated filters:", JSON.stringify(filters, null, 2));
 
     return new Response(
-      JSON.stringify({ success: true, filters }),
+      JSON.stringify({
+        success: true,
+        filters,
+        analysis: {
+          search_rationale: parsed.search_rationale || null,
+          keyword_rationale: parsed.keyword_rationale || null,
+          experience_rationale: parsed.experience_rationale || null,
+          role_keywords: parsed.role_keywords || [],
+          skills_to_search: parsed.skills_to_search || [],
+          certifications: parsed.certifications || [],
+          domain_expertise: parsed.domain_expertise || [],
+          location_hint: parsed.location_hint || null,
+          job_category: parsed.job_category || 'other',
+          years_experience_min: parsed.years_experience_min ?? null,
+          years_experience_max: parsed.years_experience_max ?? null,
+        },
+      }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error) {
