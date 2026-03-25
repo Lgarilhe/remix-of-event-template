@@ -13,6 +13,7 @@ import { MissionPipeline } from '@/components/missions/MissionPipeline';
 import { MissionOutreach } from '@/components/missions/MissionOutreach';
 import { MissionInsights } from '@/components/missions/MissionInsights';
 import { MissionCopilot } from '@/components/missions/MissionCopilot';
+import { SectionErrorBoundary } from '@/components/SectionErrorBoundary';
 
 // ── Status config ──
 
@@ -165,29 +166,34 @@ const MissionWorkspace = () => {
             })}
           </div>
 
-          {/* Brief tab — real component */}
           <div className={cn("mt-0 min-w-0", activeTab !== 'brief' && 'hidden')}>
-            <MissionBrief project={project} />
+            <SectionErrorBoundary fallbackTitle="Erreur dans le Brief">
+              <MissionBrief project={project} />
+            </SectionErrorBoundary>
           </div>
 
-          {/* Sourcing tab — real component */}
           <div className={cn("mt-0 min-w-0", activeTab !== 'sourcing' && 'hidden')}>
-            <MissionSourcing project={project} />
+            <SectionErrorBoundary fallbackTitle="Erreur dans le Sourcing">
+              <MissionSourcing project={project} />
+            </SectionErrorBoundary>
           </div>
 
-          {/* Pipeline tab — real component */}
           <div className={cn("mt-0 min-w-0", activeTab !== 'pipeline' && 'hidden')}>
-            <MissionPipeline project={project} />
+            <SectionErrorBoundary fallbackTitle="Erreur dans le Pipeline">
+              <MissionPipeline project={project} />
+            </SectionErrorBoundary>
           </div>
 
-          {/* Outreach tab — real component */}
           <div className={cn("mt-0 min-w-0", activeTab !== 'outreach' && 'hidden')}>
-            <MissionOutreach project={project} />
+            <SectionErrorBoundary fallbackTitle="Erreur dans l'Outreach">
+              <MissionOutreach project={project} />
+            </SectionErrorBoundary>
           </div>
 
-          {/* Insights tab — real component */}
           <div className={cn("mt-0 min-w-0", activeTab !== 'insights' && 'hidden')}>
-            <MissionInsights project={project} />
+            <SectionErrorBoundary fallbackTitle="Erreur dans les Insights">
+              <MissionInsights project={project} />
+            </SectionErrorBoundary>
           </div>
         </div>
       </main>
