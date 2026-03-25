@@ -54,6 +54,23 @@ interface ScanSource { id: string; label: string; done: boolean; }
 interface AgentBubble { id: number; text: string; }
 type ImportPhase = 'idle' | 'scanning' | 'results';
 
+interface BriefAnalysisResult {
+  filters: Record<string, any>;
+  analysis: {
+    search_rationale: string | null;
+    keyword_rationale: string | null;
+    experience_rationale: string | null;
+    role_keywords: string[];
+    skills_to_search: string[];
+    certifications: string[];
+    domain_expertise: string[];
+    location_hint: string | null;
+    job_category: string;
+    years_experience_min: number | null;
+    years_experience_max: number | null;
+  };
+}
+
 /* ─── Constants ─── */
 const TABS = [
   { value: 'brief', label: 'Brief IA', emoji: '📋' },
