@@ -79,6 +79,46 @@ const visibilityConfig: Record<string, { label: string; color: string; icon: typ
   public: { label: 'Marketplace', color: 'bg-green-100 text-green-700 border-green-200', icon: Globe },
 };
 
+function computeCardInsight(
+  project: UnifiedProject,
+  stats: ProjectStats
+): { icon: string; text: string } | null {
+  const sp = project.sourcingProject;
+  const lastSearchAt = sp?.last_search_at || project.lastSearchAt;
+  const daysSinceLastSearch = lastSearchAt
+    ? Math.floor((Date.now() - new Date(lastSearchAt).getTime()) / (1000 * 60 * 60 * 24))
+    : null;
+  const daysSinceCreation = Math.floor(
+    (Date.now() - new Date(project.createdAt).getTime()) / (1000 * 60 * 60 * 24)
+  );
+
+  if (daysSinceLastSearch === null && daysSinceCreation > 7) {
+    return { icon: '⏸️', text: `Aucune activité depuis ${daysSinceCreation} jours` };
+  }
+  if (daysSinceLastSearch !== null && daysSinceLastSearch > 7) {
+    return { icon: '⏸️', text: `Inactive depuis ${daysSinceLastSearch} jours` };
+  }
+  if (stats.total > 0 && stats.total < 5 && daysSinceCreation > 2) {
+    return { icon: '⚡', text: `Peu de résultats (${stats.total}). Élargissez vos filtres.` };
+  }
+  if (stats.untreated > 3) {
+    return { icon: '💡', text: `${stats.untreated} profils sourcés non contactés` };
+  }
+  if (stats.messaged >= 5 && stats.shortlisted > 0) {
+    const rate = Math.round((stats.shortlisted / stats.messaged) * 100);
+    if (rate >= 25) {
+      return { icon: '🔥', text: `Taux de réponse excellent (${rate}%)` };
+    }
+    if (rate < 8) {
+      return { icon: '⚠️', text: `Taux de réponse bas (${rate}%). Changez d'angle.` };
+    }
+  }
+  if (stats.total >= 10 && stats.dismissed > stats.total * 0.5) {
+    return { icon: '📊', text: `${Math.round((stats.dismissed / stats.total) * 100)}% de profils écartés. Affinez les critères.` };
+  }
+  return null;
+}
+
 export const ProjectsList: React.FC<ProjectsListProps> = () => {
   const { projects: sourcingProjects, isLoading: spLoading, deleteProject, updateProject, createProject, isDeleting } = useSourcingProjects();
   const { data: notionJobs = [], isLoading: jobsLoading } = useNotionJobs();
