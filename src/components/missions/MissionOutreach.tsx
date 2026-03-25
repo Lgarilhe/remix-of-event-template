@@ -8,6 +8,7 @@ import { useOrganization } from '@/hooks/useOrganization';
 import { useMemberLinkedInAccounts } from '@/hooks/useMemberLinkedInAccounts';
 import { SequencesList } from '@/components/outreach/SequencesList';
 import { InvitationsPanel } from '@/components/outreach/InvitationsPanel';
+import { MessagesInbox } from '@/components/outreach/MessagesInbox';
 import { BrutalLoader } from '@/components/ui/brutal-loader';
 import { supabase } from '@/integrations/supabase/client';
 import { Users, Settings } from 'lucide-react';
@@ -57,7 +58,7 @@ export const MissionOutreach = ({ project }: MissionOutreachProps) => {
   const { getUserLinkedAccountId } = useMemberLinkedInAccounts();
   const [selectedAccount, setSelectedAccount] = useState<string | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
-  const [outreachTab, setOutreachTab] = useState<'sequences' | 'invitations'>('sequences');
+  const [outreachTab, setOutreachTab] = useState<'sequences' | 'invitations' | 'messages'>('sequences');
 
   // Enrollment stats
   const [enrollmentStats, setEnrollmentStats] = useState({ active: 0, completed: 0, replied: 0, total: 0 });
@@ -121,6 +122,7 @@ export const MissionOutreach = ({ project }: MissionOutreachProps) => {
   const subTabs = [
     { value: 'sequences', label: 'Séquences', emoji: '⚡' },
     { value: 'invitations', label: 'Invitations', emoji: '📨' },
+    { value: 'messages', label: 'Messages', emoji: '💬' },
   ];
 
   if (accountsLoading) {
@@ -178,7 +180,7 @@ export const MissionOutreach = ({ project }: MissionOutreachProps) => {
         {subTabs.map((sub, idx) => (
           <button
             key={sub.value}
-            onClick={() => setOutreachTab(sub.value as 'sequences' | 'invitations')}
+            onClick={() => setOutreachTab(sub.value as 'sequences' | 'invitations' | 'messages')}
             className={cn(
               "relative overflow-hidden flex items-center gap-1 h-[30px] px-3 text-[10px] font-medium uppercase tracking-wider border border-foreground transition-colors group shrink-0",
               idx > 0 && "border-l-0",
@@ -211,6 +213,15 @@ export const MissionOutreach = ({ project }: MissionOutreachProps) => {
           selectedAccount={selectedAccount}
           onAccountChange={setSelectedAccount}
           organizationId={organizationId || null}
+        />
+      </div>
+
+      {/* Messages sub-tab */}
+      <div className={cn("", outreachTab !== 'messages' && 'hidden')}>
+        <MessagesInbox
+          accounts={accounts}
+          selectedAccount={selectedAccount}
+          onAccountChange={setSelectedAccount}
         />
       </div>
     </div>
