@@ -109,9 +109,12 @@ export const useSourcingProjects = () => {
   // Update project mutation
   const updateMutation = useMutation({
     mutationFn: async ({ id, ...input }: UpdateProjectInput) => {
+      const { job_details, ...rest } = input;
+      const payload: Record<string, any> = { ...rest };
+      if (job_details !== undefined) payload.job_details = job_details as any;
       const { data, error } = await supabase
         .from('sourcing_projects')
-        .update(input)
+        .update(payload)
         .eq('id', id)
         .select()
         .single();
