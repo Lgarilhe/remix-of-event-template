@@ -42,7 +42,6 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Button } from '@/components/ui/button';
 import { CreateProjectModal } from './CreateProjectModal';
-import { ProjectDetailView } from './ProjectDetailView';
 
 import { useOrganization } from '@/hooks/useOrganization';
 import { supabase } from '@/integrations/supabase/client';
