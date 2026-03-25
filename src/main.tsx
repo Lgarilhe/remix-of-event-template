@@ -25,6 +25,9 @@ window.addEventListener('load', () => sessionStorage.removeItem('chunk-reload'))
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
+      staleTime: 2 * 60 * 1000,
+      gcTime: 10 * 60 * 1000,
+      refetchOnWindowFocus: false,
       retry: (failureCount, error) => {
         // Don't retry auth errors or 4xx errors
         const msg = (error as Error)?.message?.toLowerCase() || '';

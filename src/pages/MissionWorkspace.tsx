@@ -13,6 +13,7 @@ import { MissionPipeline } from '@/components/missions/MissionPipeline';
 import { MissionOutreach } from '@/components/missions/MissionOutreach';
 import { MissionInsights } from '@/components/missions/MissionInsights';
 import { MissionCopilot } from '@/components/missions/MissionCopilot';
+import { SectionErrorBoundary } from '@/components/SectionErrorBoundary';
 
 // ── Status config ──
 
