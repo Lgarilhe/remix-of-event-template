@@ -54,7 +54,7 @@ export const MessagesInbox: React.FC<MessagesInboxProps> = (props) => {
 
 const MessagesInboxInner: React.FC<
   MessagesInboxProps & { selectedAccount: string }
-> = ({ selectedAccount, onUnreadCountChange, initialChatId, onChatChange }) => {
+> = ({ selectedAccount, onUnreadCountChange, initialChatId, onChatChange, fullHeight }) => {
   const inbox = useMessagesInbox({
     selectedAccount,
     onUnreadCountChange,
