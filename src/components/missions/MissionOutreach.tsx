@@ -94,10 +94,10 @@ export const MissionOutreach = ({ project }: MissionOutreachProps) => {
   useEffect(() => {
     if (!project.id) return;
     const fetchStats = async () => {
-      const { data: sequences } = await supabase
+      const { data: sequences } = await (supabase
         .from('outreach_sequences')
-        .select('id')
-        .eq('project_id' as any, project.id);
+        .select('id') as any)
+        .eq('project_id', project.id);
 
       if (!sequences?.length) return;
 
@@ -209,6 +209,8 @@ export const MissionOutreach = ({ project }: MissionOutreachProps) => {
         <InvitationsPanel
           accounts={accounts}
           selectedAccount={selectedAccount}
+          onAccountChange={setSelectedAccount}
+          organizationId={null}
         />
       </div>
     </div>
