@@ -51,7 +51,7 @@ export const OnboardingLayout: React.FC<OnboardingLayoutProps> = ({
       {/* Top bar */}
       <div className="sticky top-0 z-20 flex items-center justify-between px-3 sm:px-6 py-3 backdrop-blur-sm bg-background/60">
         <div className="flex items-center gap-2 shrink-0">
-          <img src={skalrLogo} alt="Konekt" className="h-6 sm:h-7 w-auto" />
+          <img src={skalrLogo} alt="Skalr" className="h-6 sm:h-7 w-auto" />
           {orgName && (
             <span className="text-xs text-muted-foreground truncate max-w-[80px] sm:max-w-[140px] hidden sm:inline">{orgName}</span>
           )}

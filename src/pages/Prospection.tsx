@@ -43,7 +43,7 @@ export default function Prospection() {
   return (
     <div className="min-h-screen w-full max-w-full bg-background">
       <SEOHead
-        title="Prospection | Konekt"
+        title="Prospection | Skalr"
         description="Découvrez et qualifiez des prospects grâce à l'enrichissement de données et aux signaux d'intention"
       />
       <Navbar />

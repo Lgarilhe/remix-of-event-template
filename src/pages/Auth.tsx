@@ -176,7 +176,7 @@ const Auth = () => {
       } else if (isLogin) {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
-        toast({ title: 'Success', description: 'Logged in successfully' });
+        toast({ title: 'Connexion réussie', description: 'Bienvenue sur Skalr' });
       } else {
         const { error } = await supabase.auth.signUp({
           email, password,
@@ -191,7 +191,7 @@ const Auth = () => {
         });
       }
     } catch (error: any) {
-      toast({ title: 'Error', description: error.message, variant: 'destructive' });
+      toast({ title: 'Erreur', description: error.message, variant: 'destructive' });
     } finally {
       setLoading(false);
     }
@@ -217,14 +217,14 @@ const Auth = () => {
       <div className="w-full max-w-md space-y-8">
         <div>
           <h2 className="text-2xl sm:text-4xl font-normal text-foreground tracking-[-0.02em] uppercase">
-            {isResettingPassword ? 'Nouveau mot de passe' : isForgotPassword ? 'Mot de passe oublié' : isLogin ? 'Sign In' : 'Sign Up'}
+            {isResettingPassword ? 'Nouveau mot de passe' : isForgotPassword ? 'Mot de passe oublié' : isLogin ? 'Connexion' : 'Inscription'}
           </h2>
           <p className="mt-2 text-sm text-muted-foreground">
             {isResettingPassword
               ? 'Entrez votre nouveau mot de passe'
               : isForgotPassword 
                 ? 'Entrez votre email pour recevoir un lien de réinitialisation'
-                : isLogin ? 'Sign in to manage events' : 'Create an account to manage events'}
+                : isLogin ? 'Connectez-vous pour accéder à votre espace recrutement' : 'Créez votre compte pour commencer à recruter'}
           </p>
         </div>
         <form onSubmit={handleSubmit} className="space-y-6">
@@ -256,7 +256,7 @@ const Auth = () => {
                 <div>
                   <Input
                     type="password"
-                    placeholder="Password"
+                    placeholder="Mot de passe"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     required
@@ -272,7 +272,7 @@ const Auth = () => {
             className="relative overflow-hidden w-full h-[44px] bg-foreground text-background border border-foreground text-xs font-medium uppercase tracking-wider group disabled:opacity-50"
           >
             <span className="relative z-10">
-              {loading ? 'Loading...' : isResettingPassword ? 'Mettre à jour' : isForgotPassword ? 'Envoyer le lien' : isLogin ? 'Sign In' : 'Sign Up'}
+              {loading ? 'Chargement...' : isResettingPassword ? 'Mettre à jour' : isForgotPassword ? 'Envoyer le lien' : isLogin ? 'Connexion' : 'Inscription'}
             </span>
             <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
           </button>
@@ -324,7 +324,7 @@ const Auth = () => {
               onClick={() => { setIsLogin(!isLogin); setIsForgotPassword(false); }}
               className="text-sm text-foreground hover:opacity-70 transition-opacity"
             >
-              {isForgotPassword ? 'Retour à la connexion' : isLogin ? "Don't have an account? Sign up" : 'Already have an account? Sign in'}
+              {isForgotPassword ? 'Retour à la connexion' : isLogin ? "Pas encore de compte ? S'inscrire" : 'Déjà un compte ? Se connecter'}
             </button>
           </div>
         )}

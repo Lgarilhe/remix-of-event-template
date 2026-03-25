@@ -10,16 +10,16 @@ const NotFound = () => {
   }, [location.pathname]);
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gray-100">
-      <SEOHead 
-        title="404 - Page Not Found"
-        description="The page you're looking for doesn't exist. Return to discover events and community calendars."
+    <div className="flex min-h-screen items-center justify-center bg-background">
+      <SEOHead
+        title="404 — Page introuvable | Skalr"
+        description="La page que vous cherchez n'existe pas."
       />
       <div className="text-center">
-        <h1 className="mb-4 text-4xl font-bold">404</h1>
-        <p className="mb-4 text-xl text-gray-600">Oops! Page not found</p>
-        <a href="/" className="text-blue-500 underline hover:text-blue-700">
-          Return to Home
+        <h1 className="mb-4 text-4xl font-bold text-foreground uppercase tracking-wider">404</h1>
+        <p className="mb-4 text-xl text-muted-foreground">Page introuvable</p>
+        <a href="/" className="text-foreground underline hover:opacity-70 transition-opacity text-sm uppercase tracking-wider">
+          Retour à l'accueil
         </a>
       </div>
     </div>

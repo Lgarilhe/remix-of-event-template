@@ -907,7 +907,7 @@ function EnrichedContactSheet({ contact, enrichment, open, onOpenChange, onCopyM
                         <div className="border-2 border-foreground bg-foreground text-background p-3 flex items-center gap-3">
                           <Clock className="w-5 h-5 shrink-0 text-[hsl(var(--brutal-accent))]" />
                           <div>
-                            <div className="text-[9px] uppercase tracking-widest text-background/50">Dernier échange avec Konekt</div>
+                            <div className="text-[9px] uppercase tracking-widest text-background/50">Dernier échange avec Skalr</div>
                             <div className="text-sm font-bold">{relativeTime(careerAnalysis.lastInteractionDate)}</div>
                           </div>
                           {careerAnalysis.roleAtLastInteraction && (
@@ -1191,8 +1191,8 @@ function VivierFilterBar({ searchInput, setSearchInput, onSearch, filters, updat
           <SelectTrigger className="w-[140px] h-8 text-[10px] border-border/60 shrink-0"><SelectValue placeholder="Base" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Toutes les bases</SelectItem>
-            <SelectItem value="konekt">Konekt</SelectItem>
-            <SelectItem value="konekt_prospect">Konekt Prospect</SelectItem>
+            <SelectItem value="konekt">Skalr</SelectItem>
+            <SelectItem value="konekt_prospect">Skalr Prospect</SelectItem>
           </SelectContent>
         </Select>
         <Select value={String(filters.min_shortlists)} onValueChange={v => updateFilters({ min_shortlists: Number(v) })}>
