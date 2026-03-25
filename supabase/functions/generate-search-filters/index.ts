@@ -629,6 +629,7 @@ ${transversal.bodyContent ? `Contenu détaillé critères transverses:\n${transv
           job_category: parsed.job_category || 'other',
           years_experience_min: parsed.years_experience_min ?? null,
           years_experience_max: parsed.years_experience_max ?? null,
+          suggested_title: parsed.suggested_title || null,
         },
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
