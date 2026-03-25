@@ -57,6 +57,7 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
   const [isAnalyzing, setIsAnalyzing] = useState(false);
 
   const profileData = useProfileData(profile);
+  const switchResult = useMemo(() => computeLikelyToSwitch(profile), [profile]);
   const {
     fullName, initials, currentCompany, currentRole, currentJobTenure,
     networkDistance, profileUrl, skills, education, educationPreview,
@@ -345,6 +346,9 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
                   <Users className="w-3.5 h-3.5" />
                   {connectionsCount.toLocaleString()} connexions
                 </span>
+              )}
+              {switchResult.score > 0 && (
+                <LikelyToSwitchBadge result={switchResult} />
               )}
             </div>
 
