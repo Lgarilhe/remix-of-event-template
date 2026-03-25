@@ -219,22 +219,69 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
   }, [briefText]);
 
   // ── Brief IA handlers ──
-  const handleBriefSubmit = async () => {
-    if (!briefText.trim()) return;
+  const handleBriefAnalyze = async () => {
+    if (!briefText.trim() || briefText.trim().length < 20) return;
     setBriefAnalyzing(true);
+    setBriefAnalysis(null);
+
     try {
-      const project = await createProject({
-        name: briefText.trim().split('\n')[0].slice(0, 80) || 'Mission depuis brief',
+      const firstLine = briefText.trim().split('\n')[0].slice(0, 80);
+      if (!briefName) setBriefName(firstLine);
+
+      const syntheticJob = {
+        id: 'draft',
+        title: firstLine,
         description: briefText.trim(),
+        client: briefClientName ? { name: briefClientName } : null,
+        location: null,
+        skills: [],
+        seniority: null,
+      };
+
+      const response = await invokeEdgeFunction<any>('generate-search-filters', {
+        job: syntheticJob,
       });
+
+      if (response.error) throw new Error(response.error.message || 'Erreur IA');
+      if (!response.data?.success) throw new Error('Analyse échouée');
+
+      setBriefAnalysis({
+        filters: response.data.filters,
+        analysis: response.data.analysis,
+      });
+
+      toast.success('Analyse terminée — vérifiez et créez la mission');
+    } catch (err: any) {
+      toast.error(err.message || "Erreur lors de l'analyse");
+    } finally {
+      setBriefAnalyzing(false);
+    }
+  };
+
+  const handleBriefCreate = async () => {
+    try {
+      const projectInput: CreateProjectInput = {
+        name: briefName || briefText.trim().split('\n')[0].slice(0, 80) || 'Mission depuis brief',
+        description: briefText.trim(),
+        client_name: briefClientName || undefined,
+      };
+
+      if (briefAnalysis) {
+        projectInput.filters_snapshot = {
+          ...briefAnalysis.filters,
+          generated_at: new Date().toISOString(),
+          brief_text: briefText.trim(),
+        };
+      }
+
+      const project = await createProject(projectInput);
       onOpenChange(false);
       if (project?.id) {
-        navigate(`/missions/${project.id}?tab=brief`);
+        const tab = briefAnalysis ? 'sourcing' : 'brief';
+        navigate(`/missions/${project.id}?tab=${tab}`);
       }
     } catch {
       // handled by hook
-    } finally {
-      setBriefAnalyzing(false);
     }
   };
 
