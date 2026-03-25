@@ -28,6 +28,7 @@ const ScorecardFullPage = lazy(() => import("./pages/ScorecardFullPage"));
 const CandidatePortal = lazy(() => import("./pages/CandidatePortal"));
 const Onboarding = lazy(() => import("./pages/Onboarding"));
 const Settings = lazy(() => import("./pages/Settings"));
+const MissionWorkspace = lazy(() => import("./pages/MissionWorkspace"));
 
 const Pricing = lazy(() => import("./pages/Pricing"));
 const UnsubscribePage = lazy(() => import("./pages/Unsubscribe"));
