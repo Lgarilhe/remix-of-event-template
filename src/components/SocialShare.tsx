@@ -46,14 +46,14 @@ export const SocialShare: React.FC<SocialShareProps> = ({
       await navigator.clipboard.writeText(url);
       setCopied(true);
       toast({
-        title: 'Link copied!',
-        description: 'Event link has been copied to clipboard.',
+        title: 'Lien copié !',
+        description: 'Le lien a été copié dans le presse-papiers.',
       });
       setTimeout(() => setCopied(false), 2000);
     } catch (err) {
       toast({
-        title: 'Failed to copy',
-        description: 'Please try again.',
+        title: 'Erreur de copie',
+        description: 'Veuillez réessayer.',
         variant: 'destructive',
       });
     }
@@ -62,9 +62,9 @@ export const SocialShare: React.FC<SocialShareProps> = ({
   return (
     <section className="flex flex-col items-start gap-4 self-stretch relative">
       <div className="flex flex-col items-start gap-5 self-stretch relative">
-        <hr className="h-px self-stretch relative bg-[#1A1A1A] border-0" />
-        <h2 className="self-stretch text-[#1A1A1A] text-[11px] font-normal uppercase relative">
-          SHARE EVENT
+        <hr className="h-px self-stretch relative bg-foreground border-0" />
+        <h2 className="self-stretch text-foreground text-[11px] font-normal uppercase relative">
+          PARTAGER
         </h2>
       </div>
       <div className="flex items-center gap-4">
@@ -75,7 +75,7 @@ export const SocialShare: React.FC<SocialShareProps> = ({
             target="_blank"
             rel="noopener noreferrer"
             aria-label={`Share on ${name}`}
-            className={`p-2 border border-[#1A1A1A] text-[#1A1A1A] transition-colors ${color} hover:border-current`}
+            className={`p-2 border border-foreground text-foreground transition-colors ${color} hover:border-current`}
           >
             <Icon size={18} strokeWidth={1.5} />
           </a>

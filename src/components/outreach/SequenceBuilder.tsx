@@ -301,7 +301,7 @@ const isTrigger = (actionType: string) => TRIGGERS.some(t => t.value === actionT
 const needsMessage = (type: string) => ['inmail', 'connection_request', 'message', 'smart_message'].includes(type);
 const needsSubject = (type: string) => type === 'inmail';
 
-export const SequenceBuilder: React.FC<SequenceBuilderProps> = ({
+export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
   isOpen,
   onClose,
   onSave,
@@ -967,4 +967,4 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = ({
       </DialogContent>
     </Dialog>
   );
-};
+});

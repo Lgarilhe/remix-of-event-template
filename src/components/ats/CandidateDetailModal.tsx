@@ -236,10 +236,11 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
   const handleAddNote = async (content: string) => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) throw new Error('Not authenticated');
-    await supabase.from('candidate_notes').insert({
+    const { error: insertErr } = await supabase.from('candidate_notes').insert({
       candidate_id: candidate.candidateId, shortlist_id: candidate.notionShortlistId || null,
       content, created_by: user.id,
     });
+    if (insertErr) { toast.error('Erreur lors de l\'ajout de la note'); return; }
     const { data } = await supabase.from('candidate_notes').select('*').eq('candidate_id', candidate.candidateId).order('created_at', { ascending: false });
     setNotes(data || []);
     toast.success('Note ajoutée');
@@ -247,7 +248,8 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
   };
 
   const handleDeleteNote = async (id: string) => {
-    await supabase.from('candidate_notes').delete().eq('id', id);
+    const { error: delErr } = await supabase.from('candidate_notes').delete().eq('id', id);
+    if (delErr) { toast.error('Erreur lors de la suppression'); return; }
     setNotes(prev => prev.filter(n => n.id !== id));
     toast.success('Note supprimée');
     onRefresh();
@@ -256,12 +258,13 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
   const handleAddReminder = async (title: string, date: string) => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) throw new Error('Not authenticated');
-    await supabase.from('candidate_reminders').insert({
+    const { error: insertErr } = await supabase.from('candidate_reminders').insert({
       candidate_id: candidate.candidateId, candidate_name: candidate.name,
       shortlist_id: candidate.notionShortlistId || null, job_id: candidate.jobId,
       job_title: candidate.jobTitle, title,
       due_at: new Date(date).toISOString(), created_by: user.id,
     });
+    if (insertErr) { toast.error('Erreur lors de la création du rappel'); return; }
     const { data } = await supabase.from('candidate_reminders').select('*').eq('candidate_id', candidate.candidateId).order('due_at', { ascending: true });
     setReminders(data || []);
     toast.success('Rappel créé');
@@ -269,7 +272,8 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
   };
 
   const handleDeleteReminder = async (id: string) => {
-    await supabase.from('candidate_reminders').delete().eq('id', id);
+    const { error: delErr } = await supabase.from('candidate_reminders').delete().eq('id', id);
+    if (delErr) { toast.error('Erreur lors de la suppression'); return; }
     setReminders(prev => prev.filter(r => r.id !== id));
     toast.success('Rappel supprimé');
     onRefresh();
@@ -294,7 +298,7 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
         })
         .select('token')
         .single();
-      if (insertError) throw insertError;
+      if (insertError || !tokenData) throw insertError || new Error('Impossible de créer le token');
       const url = `${window.location.origin}/portal/${tokenData.token}`;
       await navigator.clipboard.writeText(url);
       toast.success('Lien portail copié !');

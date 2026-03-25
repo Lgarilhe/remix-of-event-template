@@ -103,7 +103,7 @@ const Admin = () => {
 
     if (error) {
       toast({
-        title: 'Error',
+        title: 'Erreur',
         description: error.message,
         variant: 'destructive',
       });
@@ -169,12 +169,12 @@ const Admin = () => {
       setSelectedEvent({ ...selectedEvent, background_image_url: publicUrl });
       
       toast({
-        title: 'Success',
+        title: 'Succès',
         description: 'Image uploaded successfully',
       });
     } catch (error: any) {
       toast({
-        title: 'Error',
+        title: 'Erreur',
         description: error.message,
         variant: 'destructive',
       });
@@ -206,7 +206,7 @@ const Admin = () => {
     } catch (validationError) {
       if (validationError instanceof z.ZodError) {
         toast({
-          title: 'Validation Error',
+          title: 'Erreur de validation',
           description: validationError.errors[0].message,
           variant: 'destructive',
         });
@@ -230,13 +230,13 @@ const Admin = () => {
 
     if (error) {
       toast({
-        title: 'Error',
+        title: 'Erreur',
         description: error.message,
         variant: 'destructive',
       });
     } else {
       toast({
-        title: 'Success',
+        title: 'Succès',
         description: 'Event updated successfully',
       });
       fetchEvents();
@@ -244,7 +244,7 @@ const Admin = () => {
   };
 
   if (loading) {
-    return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
+    return <div className="min-h-screen flex items-center justify-center">Chargement...</div>;
   }
 
   if (!isAdmin) {
@@ -254,8 +254,8 @@ const Admin = () => {
   return (
     <div className="min-h-screen bg-white p-8">
       <SEOHead 
-        title="Admin Dashboard"
-        description="Manage events and content for your event platform"
+        title="Administration | Skalr"
+        description="Administration de la plateforme Skalr"
       />
       <div className="max-w-4xl mx-auto">
         <div className="flex justify-between items-center mb-8">

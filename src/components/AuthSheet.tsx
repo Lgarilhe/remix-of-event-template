@@ -84,12 +84,12 @@ export const AuthSheet: React.FC<AuthSheetProps> = ({ isOpen, onClose }) => {
         {/* Content */}
         <div className="flex flex-col h-full px-10 pt-24 pb-10">
           <h2 className="text-white text-4xl font-medium mb-2">
-            {isSignUp ? 'Create Account' : 'Sign In'}
+            {isSignUp ? 'Créer un compte' : 'Connexion'}
           </h2>
-          <p className="text-gray-400 text-sm mb-8">
-            {isSignUp 
-              ? 'Join us to create and manage your events' 
-              : 'Welcome back! Please sign in to continue'}
+          <p className="text-muted-foreground text-sm mb-8">
+            {isSignUp
+              ? 'Rejoignez Skalr pour piloter vos recrutements'
+              : 'Content de vous revoir ! Connectez-vous pour continuer'}
           </p>
 
           <form onSubmit={handleAuth} className="flex flex-col gap-6">
@@ -103,14 +103,14 @@ export const AuthSheet: React.FC<AuthSheetProps> = ({ isOpen, onClose }) => {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
-                className="w-full bg-white/10 border border-white/20 text-white px-4 py-3 focus:outline-none focus:border-[#FA76FF] transition-colors"
-                placeholder="your@email.com"
+                className="w-full bg-white/10 border border-white/20 text-white px-4 py-3 focus:outline-none focus:border-brutal-accent transition-colors"
+                placeholder="votre@email.com"
               />
             </div>
 
             <div>
               <label htmlFor="password" className="block text-white text-sm font-medium mb-2 uppercase tracking-wide">
-                Password
+                Mot de passe
               </label>
               <input
                 id="password"
@@ -119,7 +119,7 @@ export const AuthSheet: React.FC<AuthSheetProps> = ({ isOpen, onClose }) => {
                 onChange={(e) => setPassword(e.target.value)}
                 required
                 minLength={6}
-                className="w-full bg-white/10 border border-white/20 text-white px-4 py-3 focus:outline-none focus:border-[#FA76FF] transition-colors"
+                className="w-full bg-white/10 border border-white/20 text-white px-4 py-3 focus:outline-none focus:border-brutal-accent transition-colors"
                 placeholder="••••••••"
               />
             </div>
@@ -127,20 +127,20 @@ export const AuthSheet: React.FC<AuthSheetProps> = ({ isOpen, onClose }) => {
             <button
               type="submit"
               disabled={loading}
-              className="w-full bg-[#FA76FF] text-black font-medium py-3 px-6 uppercase text-sm border border-black hover:bg-[#ff8fff] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full bg-brutal-accent text-foreground font-medium py-3 px-6 uppercase text-sm border border-foreground hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {loading ? 'Please wait...' : isSignUp ? 'Create Account' : 'Sign In'}
+              {loading ? 'Chargement...' : isSignUp ? 'Créer un compte' : 'Connexion'}
             </button>
           </form>
 
           <div className="mt-6 text-center">
             <button
               onClick={() => setIsSignUp(!isSignUp)}
-              className="text-gray-400 hover:text-white transition-colors text-sm"
+              className="text-muted-foreground hover:text-white transition-colors text-sm"
             >
-              {isSignUp 
-                ? 'Already have an account? Sign in' 
-                : "Don't have an account? Create one"}
+              {isSignUp
+                ? 'Déjà un compte ? Se connecter'
+                : "Pas encore de compte ? S'inscrire"}
             </button>
           </div>
         </div>

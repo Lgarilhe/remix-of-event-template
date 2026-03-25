@@ -167,7 +167,7 @@ export default function Candidates() {
   return (
     <div className="min-h-screen bg-background">
       <SEOHead
-        title="Gestion des candidats | Konekt"
+        title="Gestion des candidats | Skalr"
         description="Gérez vos candidats et suivez leur progression dans le pipeline de recrutement"
       />
       <Navbar />

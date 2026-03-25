@@ -19,7 +19,7 @@ export default function Dashboard() {
   return (
     <div className="min-h-screen bg-background">
       <SEOHead
-        title="Dashboard | Konekt"
+        title="Dashboard | Skalr"
         description="Vue d'ensemble de votre activité recrutement"
       />
       <Navbar />
@@ -64,7 +64,7 @@ export default function Dashboard() {
               <div className="flex items-start gap-4">
                 <div className="text-4xl">👋</div>
                 <div>
-                  <h2 className="text-lg font-bold uppercase tracking-wider">Bienvenue sur Konekt</h2>
+                  <h2 className="text-lg font-bold uppercase tracking-wider">Bienvenue sur Skalr</h2>
                   <p className="text-sm text-muted-foreground mt-1">
                     Voici les 3 étapes pour démarrer :
                   </p>

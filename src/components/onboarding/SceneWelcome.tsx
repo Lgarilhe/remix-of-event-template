@@ -54,7 +54,7 @@ export const SceneWelcome: React.FC<Props> = ({ onNext }) => {
         animate={{ y: 0, opacity: 1 }}
         transition={{ delay: 0.3, duration: 0.5 }}
       >
-        Bienvenue sur <span className="skalr-gradient-text">Konekt</span>
+        Bienvenue sur <span className="skalr-gradient-text">Skalr</span>
       </motion.h1>
 
       {/* Subtitle */}

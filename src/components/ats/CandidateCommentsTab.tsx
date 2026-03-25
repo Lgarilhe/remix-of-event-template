@@ -190,7 +190,8 @@ export const CandidateCommentsTab: React.FC<CandidateCommentsTabProps> = ({
           }));
         
         if (notifications.length > 0) {
-          await supabase.from('notifications').insert(notifications);
+          const { error: notifErr } = await supabase.from('notifications').insert(notifications);
+          if (notifErr) console.warn('Failed to send notifications:', notifErr);
         }
       }
 

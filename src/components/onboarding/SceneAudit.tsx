@@ -447,7 +447,7 @@ export const SceneAudit: React.FC<Props> = ({ companyData, onNext, onBack }) => 
               </div>
             )}
 
-            {/* Konekt insight card */}
+            {/* Skalr insight card */}
             <div
               className="border-2 border-foreground/15 p-4"
               style={{
@@ -456,7 +456,7 @@ export const SceneAudit: React.FC<Props> = ({ companyData, onNext, onBack }) => 
             >
               <p className="text-xs text-foreground/70 leading-relaxed">
                 <strong className="text-foreground">{improvementCount} axes d'amélioration identifiés.</strong>{' '}
-                Konekt vous aide à travailler ces piliers en profondeur pour atteindre en moyenne{' '}
+                Skalr vous aide à travailler ces piliers en profondeur pour atteindre en moyenne{' '}
                 <span className="font-semibold text-foreground">-30% de time-to-hire</span> et{' '}
                 <span className="font-semibold text-foreground">×2 candidatures qualifiées</span>.
               </p>

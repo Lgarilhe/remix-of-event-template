@@ -65,6 +65,14 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({ onClose }) => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, streamingContent, thinkingPhases]);
 
+  const pendingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (pendingTimerRef.current) clearTimeout(pendingTimerRef.current);
+    };
+  }, []);
+
   const handleNewConversation = useCallback(async (job?: Job | null) => {
     const id = await createConversation(job);
     if (id) {
@@ -73,8 +81,10 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({ onClose }) => {
       setShowList(false);
       setJobSentForConv(null);
       if (job) {
-        setTimeout(async () => {
-          await sendMessage(
+        if (pendingTimerRef.current) clearTimeout(pendingTimerRef.current);
+        pendingTimerRef.current = setTimeout(() => {
+          pendingTimerRef.current = null;
+          sendMessage(
             `Analyse cette fiche de poste et propose-moi un plan de recherche LinkedIn optimisé.`,
             job, id
           );
@@ -137,7 +147,11 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({ onClose }) => {
       setConversationId(id);
       setShowList(false);
       setJobSentForConv(null);
-      setTimeout(() => sendMessage(prompt, null, id), 100);
+      if (pendingTimerRef.current) clearTimeout(pendingTimerRef.current);
+      pendingTimerRef.current = setTimeout(() => {
+        pendingTimerRef.current = null;
+        sendMessage(prompt, null, id);
+      }, 100);
     }
   }, [createConversation, sendMessage]);
 

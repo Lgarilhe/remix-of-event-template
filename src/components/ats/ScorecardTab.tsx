@@ -261,7 +261,8 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
             interview_stage: ev.interviewStage || null,
           };
           if (ev.id) {
-            await supabase.from('candidate_evaluations').update(payload).eq('id', ev.id);
+            const { error: saveErr } = await supabase.from('candidate_evaluations').update(payload).eq('id', ev.id);
+            if (saveErr) console.warn('Auto-save failed:', saveErr);
           }
         };
         save().catch(console.warn);
@@ -547,10 +548,11 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
                         interview_stage: activeEval.interviewStage || null,
                       };
                       if (activeEval.id) {
-                        await supabase.from('candidate_evaluations').update(payload).eq('id', activeEval.id);
+                        const { error: updErr } = await supabase.from('candidate_evaluations').update(payload).eq('id', activeEval.id);
+                        if (updErr) console.warn('Save before fullscreen failed:', updErr);
                       } else {
-                        const { data } = await supabase.from('candidate_evaluations').insert(payload).select('id').single();
-                        if (data) updateActiveEval(ev => ({ ...ev, id: data.id }));
+                        const { data, error: insErr } = await supabase.from('candidate_evaluations').insert(payload).select('id').single();
+                        if (data && !insErr) updateActiveEval(ev => ({ ...ev, id: data.id }));
                       }
                     }
                   } catch (e) { console.warn('Auto-save before fullscreen failed:', e); }
