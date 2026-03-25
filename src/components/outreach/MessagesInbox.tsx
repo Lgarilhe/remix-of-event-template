@@ -29,7 +29,7 @@ export const MessagesInbox: React.FC<MessagesInboxProps> = (props) => {
   if (!selectedAccount) {
     if (props.loading) {
       return (
-        <div className="flex items-center justify-center h-96 text-muted-foreground border border-foreground bg-background">
+         <div className="flex items-center justify-center h-full text-muted-foreground bg-background">
           <div className="text-center">
             <div className="w-5 h-5 border-2 border-foreground/20 border-t-foreground rounded-full animate-spin mx-auto mb-4" />
             <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Chargement des comptes...</p>
@@ -38,7 +38,7 @@ export const MessagesInbox: React.FC<MessagesInboxProps> = (props) => {
       );
     }
     return (
-      <div className="flex items-center justify-center h-96 text-muted-foreground border border-foreground bg-background">
+      <div className="flex items-center justify-center h-full text-muted-foreground bg-background">
         <div className="text-center">
           <div className="h-14 w-14 bg-foreground text-background flex items-center justify-center mx-auto mb-4">
             <MessageSquare className="w-6 h-6" />
