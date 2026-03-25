@@ -122,6 +122,7 @@ export const MissionOutreach = ({ project }: MissionOutreachProps) => {
   const subTabs = [
     { value: 'sequences', label: 'Séquences', emoji: '⚡' },
     { value: 'invitations', label: 'Invitations', emoji: '📨' },
+    { value: 'messages', label: 'Messages', emoji: '💬' },
   ];
 
   if (accountsLoading) {
