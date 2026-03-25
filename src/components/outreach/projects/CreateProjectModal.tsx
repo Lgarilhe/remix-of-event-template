@@ -162,6 +162,9 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
         setActiveTab(initialTab || 'brief');
         setBriefText('');
         setBriefAnalyzing(false);
+        setBriefAnalysis(null);
+        setBriefName('');
+        setBriefClientName('');
         setUrlSuggestion(null);
         setName('');
         setDescription('');
