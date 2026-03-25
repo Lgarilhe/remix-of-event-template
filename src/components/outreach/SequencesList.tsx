@@ -130,7 +130,7 @@ export const SequencesList: React.FC<SequencesListProps> = ({
       let seqQuery = supabase
         .from('outreach_sequences')
         .select('*')
-        .order('created_at', { ascending: false });
+        .order('created_at', { ascending: false }) as any;
 
       if (projectId) {
         seqQuery = seqQuery.eq('project_id', projectId);
