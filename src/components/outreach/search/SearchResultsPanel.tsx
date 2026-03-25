@@ -581,33 +581,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
               </div>
             )}
 
-            {/* Prominent batch scoring summary */}
-            {batchStatsData && !scoringInProgress && (
-              <div className="mx-3 sm:mx-4 mt-3 p-3 bg-background border border-foreground">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-4 text-sm">
-                    <span className="flex items-center gap-1.5 font-semibold text-green-600">
-                      <CheckCircle2 className="w-4 h-4" />
-                      {statusCounts.scored_go} Go
-                    </span>
-                    <span className="flex items-center gap-1.5 font-medium text-amber-600">
-                      {statusCounts.scored_maybe} Maybe
-                    </span>
-                    <span className="flex items-center gap-1.5 text-muted-foreground">
-                      {batchStatsData.hardFiltered + batchStatsData.llmSkipped} Skip
-                    </span>
-                  </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="text-xs"
-                    onClick={() => onSetStatusFilter('scored_go')}
-                  >
-                    Voir les Go uniquement
-                  </Button>
-                </div>
-              </div>
-            )}
+            {/* Batch summary removed — report below is sufficient */}
 
             {/* Batch scoring report */}
             {batchReport && batchReport.length > 0 && (
