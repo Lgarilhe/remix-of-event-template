@@ -218,14 +218,11 @@ export const MissionOutreach = ({ project }: MissionOutreachProps) => {
 
       {/* Messages sub-tab */}
       <div className={cn("", outreachTab !== 'messages' && 'hidden')}>
-        {selectedAccount && (
-          <MessagesInbox selectedAccount={selectedAccount} />
-        )}
-        {!selectedAccount && (
-          <div className="p-8 text-center text-sm text-muted-foreground">
-            Sélectionnez un compte LinkedIn pour voir les messages.
-          </div>
-        )}
+        <MessagesInbox
+          accounts={accounts}
+          selectedAccount={selectedAccount}
+          onAccountChange={setSelectedAccount}
+        />
       </div>
     </div>
   );
