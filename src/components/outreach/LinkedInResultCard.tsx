@@ -28,6 +28,7 @@ import { LinkedInResultCardProps } from './result-card/types';
 interface ExtendedResultCardProps extends LinkedInResultCardProps {
   onOpenDetail?: () => void;
   isBatchScoring?: boolean;
+  onFindSimilar?: (profile: LinkedInProfile) => void;
 }
 
 export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
@@ -48,6 +49,7 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
   notionMatch,
   onOpenDetail,
   isBatchScoring = false,
+  onFindSimilar,
 }) => {
   const [isScoring, setIsScoring] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -299,6 +301,7 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
                   onArchive={onArchive}
                   onSequenceEnroll={onSequenceEnroll}
                   onProfileTreated={onProfileTreated}
+                  onFindSimilar={onFindSimilar ? () => onFindSimilar(profile) : undefined}
                 />
               </div>
             </div>
@@ -426,6 +429,7 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
                 onArchive={onArchive}
                 onSequenceEnroll={onSequenceEnroll}
                 onProfileTreated={onProfileTreated}
+                onFindSimilar={onFindSimilar ? () => onFindSimilar(profile) : undefined}
                 compact
               />
             </div>
