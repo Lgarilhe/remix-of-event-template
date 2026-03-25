@@ -166,7 +166,7 @@ export const StructuredBriefForm: React.FC<StructuredBriefFormProps> = ({ jobDet
       const [head, ...rest] = keys;
       return { [head]: buildPatch(rest, val) };
     };
-    onUpdate(buildPatch(parts, value || undefined));
+    onUpdate(buildPatch(parts, value !== '' && value != null ? value : undefined));
   }, [onUpdate]);
 
   return (

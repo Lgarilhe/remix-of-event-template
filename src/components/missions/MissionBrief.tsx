@@ -73,6 +73,8 @@ export const MissionBrief = ({ project }: MissionBriefProps) => {
   // Auto-save job_details on each field change (debounced)
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingPatchRef = useRef<Partial<JobDetails>>({});
+  const latestJobDetailsRef = useRef(project.job_details || {});
+  latestJobDetailsRef.current = project.job_details || {};
 
   // Cleanup pending timer on unmount
   useEffect(() => {
@@ -88,16 +90,17 @@ export const MissionBrief = ({ project }: MissionBriefProps) => {
     // Debounce save (800ms)
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(() => {
-      const merged = deepMerge(project.job_details || {}, pendingPatchRef.current);
+      // Use ref to always read latest job_details (avoids stale closure)
+      const merged = deepMerge(latestJobDetailsRef.current, pendingPatchRef.current);
       updateProject({ id: project.id, job_details: merged } as any);
       pendingPatchRef.current = {};
     }, 800);
-  }, [project.id, project.job_details, updateProject]);
+  }, [project.id, updateProject]);
 
   const handleAnalyze = async () => {
     // Use structured data if available, otherwise fall back to text
-    const jd = deepMerge(project.job_details || {}, pendingPatchRef.current) as JobDetails;
-    const descText = jd.mission_description || jd.raw_brief || briefText;
+    const jd = deepMerge(latestJobDetailsRef.current, pendingPatchRef.current) as JobDetails;
+    const descText = jd.mission_description || jd.raw_brief || briefText || '';
     if (descText.trim().length < 20 && !jd.title) {
       toast.error('Remplissez au moins le titre ou la description pour analyser');
       return;
