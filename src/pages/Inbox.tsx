@@ -40,16 +40,17 @@ export default function Inbox() {
   }, [accounts, selectedAccount]);
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="h-screen flex flex-col bg-background">
       <SEOHead title="Messages — Skalr" description="Messagerie LinkedIn unifiée" />
       <Navbar />
-      <div className="pt-[57px]">
+      <div className="flex-1 min-h-0 pt-[57px]">
         <AttendeePicturesProvider organizationId={organizationId || null}>
           <MessagesInbox
             accounts={accounts}
             selectedAccount={selectedAccount}
             onAccountChange={setSelectedAccount}
             loading={accountsLoading}
+            fullHeight
           />
         </AttendeePicturesProvider>
       </div>

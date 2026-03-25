@@ -20,6 +20,7 @@ interface MessagesInboxProps {
   initialChatId?: string | null;
   onChatChange?: (chatId: string | null) => void;
   loading?: boolean;
+  fullHeight?: boolean;
 }
 
 export const MessagesInbox: React.FC<MessagesInboxProps> = (props) => {
@@ -134,7 +135,7 @@ const MessagesInboxInner: React.FC<
       )}
 
       {/* Desktop layout + mobile chat list */}
-      <div className="flex h-[calc(100dvh-160px)] md:h-[calc(100dvh-280px)] min-h-[300px] md:min-h-[500px] bg-background border border-foreground overflow-hidden relative">
+      <div className={cn("flex bg-background border border-foreground overflow-hidden relative", props.fullHeight ? "h-full" : "h-[calc(100dvh-160px)] md:h-[calc(100dvh-280px)] min-h-[300px] md:min-h-[500px]")}>
         {/* Chat List Sidebar */}
         <ChatListSidebar
           chats={inbox.chats}
