@@ -3677,6 +3677,7 @@ export type Database = {
           filters_snapshot: Json
           icp_id: string | null
           id: string
+          job_details: Json | null
           job_id: string | null
           job_title: string | null
           last_search_at: string | null
@@ -3700,6 +3701,7 @@ export type Database = {
           filters_snapshot?: Json
           icp_id?: string | null
           id?: string
+          job_details?: Json | null
           job_id?: string | null
           job_title?: string | null
           last_search_at?: string | null
@@ -3723,6 +3725,7 @@ export type Database = {
           filters_snapshot?: Json
           icp_id?: string | null
           id?: string
+          job_details?: Json | null
           job_id?: string | null
           job_title?: string | null
           last_search_at?: string | null
