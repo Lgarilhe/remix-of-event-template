@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useSourcingProjects, SourcingProject } from '@/hooks/useSourcingProjects';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
@@ -73,6 +73,13 @@ export const MissionBrief = ({ project }: MissionBriefProps) => {
   // Auto-save job_details on each field change (debounced)
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingPatchRef = useRef<Partial<JobDetails>>({});
+
+  // Cleanup pending timer on unmount
+  useEffect(() => {
+    return () => {
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    };
+  }, []);
 
   const handleJobDetailsUpdate = useCallback((patch: Partial<JobDetails>) => {
     // Merge patch into pending changes
@@ -367,21 +374,24 @@ export const MissionBrief = ({ project }: MissionBriefProps) => {
   );
 };
 
-/** Deep merge two objects (non-recursive for arrays — replaces them) */
+/** Deep merge two objects (arrays are replaced, not concatenated) */
 function deepMerge(target: any, source: any): any {
+  if (!source || typeof source !== 'object') return target;
   const result = { ...target };
   for (const key of Object.keys(source)) {
+    const sv = source[key];
+    const tv = target?.[key];
     if (
-      source[key] &&
-      typeof source[key] === 'object' &&
-      !Array.isArray(source[key]) &&
-      target[key] &&
-      typeof target[key] === 'object' &&
-      !Array.isArray(target[key])
+      sv != null &&
+      typeof sv === 'object' &&
+      !Array.isArray(sv) &&
+      tv != null &&
+      typeof tv === 'object' &&
+      !Array.isArray(tv)
     ) {
-      result[key] = deepMerge(target[key], source[key]);
+      result[key] = deepMerge(tv, sv);
     } else {
-      result[key] = source[key];
+      result[key] = sv;
     }
   }
   return result;

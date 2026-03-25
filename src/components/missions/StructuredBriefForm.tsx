@@ -105,8 +105,9 @@ const TagInput = ({ label, tags, onChange, color, placeholder }: TagInputProps) 
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addTag(); } }}
+            onBlur={() => { if (input.trim()) addTag(); }}
             placeholder={placeholder || 'Ajouter...'}
-            className="h-[24px] w-32 px-2 text-[11px] border border-dashed border-foreground/20 bg-transparent text-foreground focus:border-foreground/50 focus:outline-none"
+            className="h-[30px] w-32 px-2 text-[11px] border border-dashed border-foreground/20 bg-transparent text-foreground focus:border-foreground/50 focus:outline-none"
           />
           <button onClick={addTag} className="text-muted-foreground hover:text-foreground">
             <Plus className="w-3.5 h-3.5" />
@@ -158,23 +159,15 @@ export const StructuredBriefForm: React.FC<StructuredBriefFormProps> = ({ jobDet
   const d = jobDetails;
 
   const updateField = useCallback((path: string, value: any) => {
-    // Supports nested paths like "client.name"
+    // Recursive nested path builder: "client.hiring_manager.name" → { client: { hiring_manager: { name: value } } }
     const parts = path.split('.');
-    if (parts.length === 1) {
-      onUpdate({ [path]: value || undefined });
-    } else if (parts.length === 2) {
-      const [parent, child] = parts;
-      onUpdate({ [parent]: { ...(d as any)[parent], [child]: value || undefined } });
-    } else if (parts.length === 3) {
-      const [p1, p2, p3] = parts;
-      onUpdate({
-        [p1]: {
-          ...(d as any)[p1],
-          [p2]: { ...((d as any)[p1]?.[p2] || {}), [p3]: value || undefined },
-        },
-      });
-    }
-  }, [d, onUpdate]);
+    const buildPatch = (keys: string[], val: any): any => {
+      if (keys.length === 1) return { [keys[0]]: val };
+      const [head, ...rest] = keys;
+      return { [head]: buildPatch(rest, val) };
+    };
+    onUpdate(buildPatch(parts, value || undefined));
+  }, [onUpdate]);
 
   return (
     <div className="space-y-3">
@@ -251,28 +244,28 @@ export const StructuredBriefForm: React.FC<StructuredBriefFormProps> = ({ jobDet
             label="🔴 Must-have (indispensable)"
             tags={d.skills_must_have || []}
             onChange={(tags) => onUpdate({ skills_must_have: tags })}
-            color="bg-red-50 border-red-300 text-red-700"
+            color="bg-red-600 border-red-600 text-white"
             placeholder="Skill obligatoire"
           />
           <TagInput
             label="🟡 Should-have (important)"
             tags={d.skills_should_have || []}
             onChange={(tags) => onUpdate({ skills_should_have: tags })}
-            color="bg-yellow-50 border-yellow-300 text-yellow-700"
+            color="bg-amber-500 border-amber-500 text-white"
             placeholder="Skill important"
           />
           <TagInput
             label="🟢 Nice-to-have (bonus)"
             tags={d.skills_nice_to_have || []}
             onChange={(tags) => onUpdate({ skills_nice_to_have: tags })}
-            color="bg-green-50 border-green-300 text-green-700"
+            color="bg-emerald-600 border-emerald-600 text-white"
             placeholder="Skill bonus"
           />
           <TagInput
             label="⛔ À éviter"
             tags={d.skills_to_avoid || []}
             onChange={(tags) => onUpdate({ skills_to_avoid: tags })}
-            color="bg-muted border-foreground/20 text-muted-foreground"
+            color="bg-foreground/10 border-foreground/30 text-foreground line-through"
             placeholder="Trait à éviter"
           />
         </div>
