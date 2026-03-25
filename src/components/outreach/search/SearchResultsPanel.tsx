@@ -90,6 +90,7 @@ interface SearchResultsPanelProps {
   onArchive: (profile: LinkedInProfile) => Promise<void>;
   onMessageSent: () => void;
   onSequenceEnrollSuccess: () => void;
+  onFindSimilar?: (profile: LinkedInProfile) => void;
   
   // Refine
   onRefineSearch: (direction: 'expand' | 'narrow') => void;
@@ -161,6 +162,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
   onArchive,
   onMessageSent,
   onSequenceEnrollSuccess,
+  onFindSimilar,
   onRefineSearch,
   refineLoading,
   batchReport,
@@ -651,6 +653,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
                 airtableMatch={getAirtableMatch(getCanonicalProfileUrl(profile))}
                 notionMatch={getNotionMatch({ url: getCanonicalProfileUrl(profile), name: getProfileDisplayName(profile) })}
                 onOpenDetail={() => openProfileDetail(profile)}
+                onFindSimilar={onFindSimilar}
               />
             ))}
 
