@@ -9,6 +9,7 @@ import { ArrowLeft, Play, Pause, CheckCircle, Archive } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { MissionBrief } from '@/components/missions/MissionBrief';
 import { MissionSourcing } from '@/components/missions/MissionSourcing';
+import { MissionPipeline } from '@/components/missions/MissionPipeline';
 
 // ── Status config ──
 
@@ -171,8 +172,13 @@ const MissionWorkspace = () => {
             <MissionSourcing project={project} />
           </div>
 
+          {/* Pipeline tab — real component */}
+          <div className={cn("mt-0 min-w-0", activeTab !== 'pipeline' && 'hidden')}>
+            <MissionPipeline project={project} />
+          </div>
+
           {/* Other tabs — placeholders */}
-          {tabs.filter(t => t.value !== 'brief' && t.value !== 'sourcing').map((tab) => (
+          {tabs.filter(t => !['brief', 'sourcing', 'pipeline'].includes(t.value)).map((tab) => (
             <div key={tab.value} className={cn("mt-0 min-w-0", activeTab !== tab.value && 'hidden')}>
               <div className="bg-background border border-foreground border-t-0 p-6 sm:p-8">
                 <div className="flex flex-col items-center justify-center py-12 text-center">
