@@ -9,6 +9,7 @@ import { ArrowLeft, Play, Pause, CheckCircle, Archive } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { MissionBrief } from '@/components/missions/MissionBrief';
 import { MissionSourcing } from '@/components/missions/MissionSourcing';
+import { MissionPipeline } from '@/components/missions/MissionPipeline';
 
 // ── Status config ──
 
