@@ -80,16 +80,16 @@ const visibilityConfig: Record<string, { label: string; color: string; icon: typ
 };
 
 export const ProjectsList: React.FC<ProjectsListProps> = ({ onResumeSearch }) => {
-  const { projects: sourcingProjects, isLoading: spLoading, deleteProject, updateProject, isDeleting } = useSourcingProjects();
+  const { projects: sourcingProjects, isLoading: spLoading, deleteProject, updateProject, createProject, isDeleting } = useSourcingProjects();
   const { data: notionJobs = [], isLoading: jobsLoading } = useNotionJobs();
   const { canCreateJob, limits, jobCount } = useQuotaGate();
   const { isAdmin: canManageVisibility } = useOrganization();
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [createInitialTab, setCreateInitialTab] = useState<string | undefined>(undefined);
-  const [selectedProjectKey, setSelectedProjectKey] = useState<string | null>(null);
 
   // Auto-open create dialog from ?create= query param
   useEffect(() => {
