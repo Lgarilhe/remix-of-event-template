@@ -128,6 +128,9 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
   // ── Brief IA state ──
   const [briefText, setBriefText] = useState('');
   const [briefAnalyzing, setBriefAnalyzing] = useState(false);
+  const [briefAnalysis, setBriefAnalysis] = useState<BriefAnalysisResult | null>(null);
+  const [briefName, setBriefName] = useState('');
+  const [briefClientName, setBriefClientName] = useState('');
   const [urlSuggestion, setUrlSuggestion] = useState<string | null>(null);
 
   // ── Manual state ──
