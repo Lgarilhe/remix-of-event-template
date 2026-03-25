@@ -4,6 +4,7 @@ import { LinkedInFiltersState, LinkedInProfile, INITIAL_FILTERS } from '@/compon
 import { useUnipileQuota } from '@/hooks/useUnipileQuota';
 import { useJobCandidateStatus } from '@/hooks/useJobCandidateStatus';
 import { useSourcingProjects, SourcingProject } from '@/hooks/useSourcingProjects';
+import { invokeUnipile } from '@/lib/invokeUnipile';
 
 import { Job } from '@/types/jobs';
 import { JobMatchResult } from '@/components/outreach/JobScoreDisplay';
@@ -223,13 +224,92 @@ export function useLinkedInSearch({
     if (activeProject) {
       const savedFilters = activeProject.filters_snapshot;
       if (savedFilters && Object.keys(savedFilters).length > 0) {
-        setFilters({ ...INITIAL_FILTERS, ...savedFilters });
+        // Detect AI-generated format (has skills_keywords / location_keywords / role array)
+        // and transform to LinkedInFiltersState format
+        const isAIFormat = savedFilters.skills_keywords || savedFilters.location_keywords || (Array.isArray(savedFilters.role) && savedFilters.role[0]?.keywords);
+        
+        if (isAIFormat) {
+          const transformed: Partial<typeof INITIAL_FILTERS> = {
+            keywords: savedFilters.keywords || '',
+            role: Array.isArray(savedFilters.role) ? savedFilters.role.map((r: any) => ({
+              keywords: r.keywords,
+              priority: r.priority || 'MUST_HAVE',
+              scope: r.scope || 'CURRENT',
+            })) : [],
+            calculated_experience_min: savedFilters.years_of_experience_min ?? null,
+            calculated_experience_max: savedFilters.years_of_experience_max ?? null,
+            years_of_experience_min: null,
+            years_of_experience_max: null,
+            company_keywords: Array.isArray(savedFilters.company_keywords) ? savedFilters.company_keywords.map((c: any) => ({
+              keywords: c.keywords,
+              priority: c.priority || 'DOESNT_HAVE',
+              scope: c.scope || 'CURRENT_OR_PAST',
+            })) : [],
+            school: Array.isArray(savedFilters.school) ? savedFilters.school.map((s: any) => ({
+              id: s.id,
+              name: s.name,
+              priority: s.priority || 'CAN_HAVE',
+            })) : [],
+            location_within_area: savedFilters.location_within_area ?? null,
+            spotlight: savedFilters.spotlight || '',
+            open_to_work: savedFilters.open_to_work ?? null,
+          };
+          setFilters({ ...INITIAL_FILTERS, ...transformed });
+          
+          // Async: resolve location keywords to IDs
+          const locationKeyword = savedFilters.location_keywords?.[0]?.trim();
+          if (locationKeyword && selectedAccount) {
+            void (async () => {
+              try {
+                const { data } = await invokeUnipile({
+                  body: {
+                    action: 'get_parameters',
+                    account_id: selectedAccount,
+                    type: 'LOCATION',
+                    keywords: locationKeyword,
+                    service: 'RECRUITER',
+                  },
+                });
+                if (!data?.success || !Array.isArray(data?.items) || data.items.length === 0) return;
+                const normalized = locationKeyword.toLowerCase();
+                const best =
+                  data.items.find((it: any) => String(it.title || '').toLowerCase() === normalized) ||
+                  data.items.find((it: any) => String(it.title || '').toLowerCase().includes(normalized)) ||
+                  data.items[0];
+                if (!best?.id || !best?.title) return;
+                setFilters(curr => ({
+                  ...curr,
+                  location: curr.location.length ? curr.location : [{
+                    id: String(best.id),
+                    name: String(best.title),
+                    priority: 'MUST_HAVE' as const,
+                    scope: 'CURRENT_OR_OPEN_TO_RELOCATE' as const,
+                  }],
+                }));
+              } catch (e) {
+                console.error('[ProjectFilters] Failed to resolve location:', e);
+              }
+            })();
+          }
+        } else {
+          setFilters({ ...INITIAL_FILTERS, ...savedFilters });
+        }
         toast.info(`Filtres du projet "${activeProject.name}" chargés`);
       }
+      
       if (activeProject.job_id && activeProject.job_title) {
         setSelectedJob({
           id: activeProject.job_id,
           title: activeProject.job_title,
+          client: activeProject.client_name ? { name: activeProject.client_name } : undefined,
+        } as Job);
+      } else if (activeProject.name) {
+        // Brief-based project without a real job — create a synthetic job
+        // so the search button is enabled and scoring can reference the project
+        setSelectedJob({
+          id: `project:${activeProject.id}`,
+          title: activeProject.name,
+          description: activeProject.description || '',
           client: activeProject.client_name ? { name: activeProject.client_name } : undefined,
         } as Job);
       }
