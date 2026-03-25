@@ -256,40 +256,14 @@ export function useLinkedInSearch({
           };
           setFilters({ ...INITIAL_FILTERS, ...transformed });
           
-          // Async: resolve location keywords to IDs
+          // Store pending location for deferred resolution
           const locationKeyword = savedFilters.location_keywords?.[0]?.trim();
-          if (locationKeyword && selectedAccount) {
-            void (async () => {
-              try {
-                const { data } = await invokeUnipile({
-                  body: {
-                    action: 'get_parameters',
-                    account_id: selectedAccount,
-                    type: 'LOCATION',
-                    keywords: locationKeyword,
-                    service: 'RECRUITER',
-                  },
-                });
-                if (!data?.success || !Array.isArray(data?.items) || data.items.length === 0) return;
-                const normalized = locationKeyword.toLowerCase();
-                const best =
-                  data.items.find((it: any) => String(it.title || '').toLowerCase() === normalized) ||
-                  data.items.find((it: any) => String(it.title || '').toLowerCase().includes(normalized)) ||
-                  data.items[0];
-                if (!best?.id || !best?.title) return;
-                setFilters(curr => ({
-                  ...curr,
-                  location: curr.location.length ? curr.location : [{
-                    id: String(best.id),
-                    name: String(best.title),
-                    priority: 'MUST_HAVE' as const,
-                    scope: 'CURRENT_OR_OPEN_TO_RELOCATE' as const,
-                  }],
-                }));
-              } catch (e) {
-                console.error('[ProjectFilters] Failed to resolve location:', e);
-              }
-            })();
+          if (locationKeyword) {
+            pendingLocationRef.current = locationKeyword;
+            // Try resolving now if account is available
+            if (selectedAccount) {
+              resolveLocation(locationKeyword, selectedAccount);
+            }
           }
         } else {
           setFilters({ ...INITIAL_FILTERS, ...savedFilters });
