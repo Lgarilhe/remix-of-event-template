@@ -1,6 +1,7 @@
 import React from 'react';
 import { CheckCircle2, XCircle, AlertCircle, Target, MapPin, Briefcase, TrendingUp, TrendingDown, DollarSign, AlertTriangle, Search, Ban } from 'lucide-react';
 import { ScoringBreakdown } from './ScoringBreakdown';
+import { CriteriaIndicators } from './CriteriaIndicators';
 import { cn } from '@/lib/utils';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 
@@ -206,7 +207,7 @@ export const JobScoreDisplay: React.FC<JobScoreDisplayProps> = ({ result, jobTit
     return (
       <div className="flex items-center gap-3 p-2 border border-foreground/10 bg-muted/20 rounded-none">
         <ScoreRing score={result.match_score} size={40} />
-        <div className="flex-1 min-w-0">
+        <div className="flex-1 min-w-0 space-y-1">
           <div className="flex items-center gap-1.5 flex-wrap">
             <RecommendationPill rec={result.recommendation} />
             {confidenceBadge}
@@ -218,6 +219,9 @@ export const JobScoreDisplay: React.FC<JobScoreDisplayProps> = ({ result, jobTit
               <span className="text-[10px] text-muted-foreground">+{result.matching_skills.length - 2}</span>
             )}
           </div>
+          {result.dimensions && Object.values(result.dimensions).some(v => v != null) && (
+            <CriteriaIndicators dimensions={result.dimensions} compact />
+          )}
         </div>
       </div>
     );
@@ -251,6 +255,11 @@ export const JobScoreDisplay: React.FC<JobScoreDisplayProps> = ({ result, jobTit
           </div>
         </div>
       </div>
+
+      {/* Criteria indicators */}
+      {result.dimensions && Object.values(result.dimensions).some(v => v != null) && (
+        <CriteriaIndicators dimensions={result.dimensions} />
+      )}
 
       {/* Skills — unified row */}
       {allSkills.length > 0 && (
