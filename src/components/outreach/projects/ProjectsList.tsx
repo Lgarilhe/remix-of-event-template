@@ -55,7 +55,7 @@ import {
 import { Eye as EyeIcon, Globe, Users as UsersIcon } from 'lucide-react';
 
 interface ProjectsListProps {
-  onResumeSearch: (project: SourcingProject) => void;
+  onResumeSearch?: (project: SourcingProject) => void;
 }
 
 const statusConfig = {
@@ -79,7 +79,7 @@ const visibilityConfig: Record<string, { label: string; color: string; icon: typ
   public: { label: 'Marketplace', color: 'bg-green-100 text-green-700 border-green-200', icon: Globe },
 };
 
-export const ProjectsList: React.FC<ProjectsListProps> = ({ onResumeSearch }) => {
+export const ProjectsList: React.FC<ProjectsListProps> = () => {
   const { projects: sourcingProjects, isLoading: spLoading, deleteProject, updateProject, createProject, isDeleting } = useSourcingProjects();
   const { data: notionJobs = [], isLoading: jobsLoading } = useNotionJobs();
   const { canCreateJob, limits, jobCount } = useQuotaGate();
