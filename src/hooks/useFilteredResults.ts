@@ -5,7 +5,8 @@ import { Job } from '@/types/jobs';
 import { JobCandidateStatus } from '@/hooks/useJobCandidateStatus';
 import { calculatePreScore } from '@/hooks/linkedin/preScoring';
 
-export type ScoredSortBy = 'score_desc' | 'score_asc' | 'recent' | 'name';
+export type ScoredSortBy = 'score_desc' | 'score_asc' | 'recent' | 'name'
+  | 'tech_desc' | 'xp_desc' | 'domain_desc' | 'fit_desc' | 'soft_desc';
 
 interface FilteredResultsOptions {
   results: LinkedInProfile[];
@@ -231,6 +232,31 @@ export function useFilteredResults({
             const nameA = (a.name || `${a.first_name || ''} ${a.last_name || ''}`).trim().toLowerCase();
             const nameB = (b.name || `${b.first_name || ''} ${b.last_name || ''}`).trim().toLowerCase();
             return nameA.localeCompare(nameB);
+          }
+          case 'tech_desc': {
+            const dimA = jobScores[a.id]?.dimensions?.tech_stack?.score ?? jobScores[a.id]?.dimensions?.tech_fit_llm?.score ?? -1;
+            const dimB = jobScores[b.id]?.dimensions?.tech_stack?.score ?? jobScores[b.id]?.dimensions?.tech_fit_llm?.score ?? -1;
+            return dimB - dimA;
+          }
+          case 'xp_desc': {
+            const dimA = jobScores[a.id]?.dimensions?.seniority?.score ?? -1;
+            const dimB = jobScores[b.id]?.dimensions?.seniority?.score ?? -1;
+            return dimB - dimA;
+          }
+          case 'domain_desc': {
+            const dimA = jobScores[a.id]?.dimensions?.domain?.score ?? -1;
+            const dimB = jobScores[b.id]?.dimensions?.domain?.score ?? -1;
+            return dimB - dimA;
+          }
+          case 'fit_desc': {
+            const dimA = jobScores[a.id]?.dimensions?.company_fit?.score ?? -1;
+            const dimB = jobScores[b.id]?.dimensions?.company_fit?.score ?? -1;
+            return dimB - dimA;
+          }
+          case 'soft_desc': {
+            const dimA = jobScores[a.id]?.dimensions?.soft_skills?.score ?? jobScores[a.id]?.dimensions?.soft_skills_llm?.score ?? -1;
+            const dimB = jobScores[b.id]?.dimensions?.soft_skills?.score ?? jobScores[b.id]?.dimensions?.soft_skills_llm?.score ?? -1;
+            return dimB - dimA;
           }
           default:
             return 0;
