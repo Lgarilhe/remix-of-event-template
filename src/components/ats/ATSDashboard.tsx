@@ -89,7 +89,7 @@ function Section({ title, subtitle, icon: Icon, children, action, className }: {
   );
 }
 
-export function ATSDashboard({ candidates, stages, onCandidateClick, onJobClick }: ATSDashboardProps) {
+export const ATSDashboard = React.memo(function ATSDashboard({ candidates, stages, onCandidateClick, onJobClick }: ATSDashboardProps) {
   const navigate = useNavigate();
   const [period, setPeriod] = useState<7 | 30 | 90>(30);
   const { data: scheduledMessages = [], isLoading: loadingMessages } = useTodayScheduledMessages();
@@ -1013,7 +1013,7 @@ export function ATSDashboard({ candidates, stages, onCandidateClick, onJobClick 
       </Section>
     </div>
   );
-}
+});
 
 // ─── Pipeline conversion rows ───
 const STAGE_ORDER_CONV = ['Nouveau', 'Contacté', 'Répondu', 'Pré-qualif', 'CV envoyé', 'ITW en cours', 'Offre', 'Gagné'];

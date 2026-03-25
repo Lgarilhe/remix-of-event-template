@@ -31,7 +31,7 @@ const Auth = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { toast } = useToast();
-  const from = (location.state as any)?.from || '/outreach';
+  const from = (location.state as any)?.from || '/missions';
   const invitationTokenFromUrl = useMemo(
     () => new URLSearchParams(location.search).get('invitation'),
     [location.search]
@@ -210,9 +210,9 @@ const Auth = () => {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background px-4">
-      <SEOHead 
-        title={isLogin ? 'Sign In' : 'Sign Up'}
-        description={isLogin ? 'Sign in to manage your events and registrations' : 'Create an account to manage events and register for upcoming events'}
+      <SEOHead
+        title={isLogin ? 'Connexion — Skalr' : 'Inscription — Skalr'}
+        description={isLogin ? 'Connectez-vous à Skalr pour gérer vos recrutements' : 'Créez votre compte Skalr pour piloter vos recrutements'}
       />
       <div className="w-full max-w-md space-y-8">
         <div>

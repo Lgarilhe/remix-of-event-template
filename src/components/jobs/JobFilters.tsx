@@ -15,13 +15,15 @@ export const JobFilters: React.FC<JobFiltersProps> = ({ filters, setFilters, job
   const isMobile = useIsMobile();
   const [isOpen, setIsOpen] = useState(!isMobile);
 
-  // Extract unique values for filters
-  const statuses = [...new Set(jobs.map(j => j.status).filter(Boolean))];
-  const contractTypes = [...new Set(jobs.map(j => j.contractType).filter(Boolean))];
-  const remoteOptions = [...new Set(jobs.map(j => j.remote).filter(Boolean))];
-  const sectors = [...new Set(jobs.map(j => j.client?.sector).filter(Boolean))] as string[];
-  const priorities = [...new Set(jobs.map(j => j.priority).filter(Boolean))];
-  const seniorities = [...new Set(jobs.map(j => j.seniority).filter(Boolean))];
+  // Extract unique values for filters (memoized to avoid re-computation on every render)
+  const { statuses, contractTypes, remoteOptions, sectors, priorities, seniorities } = useMemo(() => ({
+    statuses: [...new Set(jobs.map(j => j.status).filter(Boolean))],
+    contractTypes: [...new Set(jobs.map(j => j.contractType).filter(Boolean))],
+    remoteOptions: [...new Set(jobs.map(j => j.remote).filter(Boolean))],
+    sectors: [...new Set(jobs.map(j => j.client?.sector).filter(Boolean))] as string[],
+    priorities: [...new Set(jobs.map(j => j.priority).filter(Boolean))],
+    seniorities: [...new Set(jobs.map(j => j.seniority).filter(Boolean))],
+  }), [jobs]);
   
   // Extract all unique skills from jobs
   const allSkills = useMemo(() => {

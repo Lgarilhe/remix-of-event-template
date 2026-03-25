@@ -114,6 +114,20 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
   const speakerColor = (speaker: number) => speaker === 0 ? 'text-blue-600' : 'text-emerald-600';
   const COACH_INTERVAL_MS = 12000;
 
+  // Cleanup timer and media on unmount
+  useEffect(() => {
+    return () => {
+      if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
+      if (mediaRecorderRef.current) {
+        mediaRecorderRef.current.stop();
+        mediaRecorderRef.current.stream.getTracks().forEach(t => t.stop());
+      }
+      if (socketRef.current?.readyState === WebSocket.OPEN) {
+        socketRef.current.close();
+      }
+    };
+  }, []);
+
   // Auto-scroll transcript within its own ScrollArea only
   useEffect(() => {
     if (transcriptEndRef.current) {
