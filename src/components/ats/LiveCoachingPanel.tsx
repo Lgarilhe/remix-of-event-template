@@ -259,7 +259,7 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
         .select('id')
         .single();
 
-      if (sessionError) { stream.getTracks().forEach(t => t.stop()); throw sessionError; }
+      if (sessionError || !session) { stream.getTracks().forEach(t => t.stop()); throw sessionError || new Error('Failed to create session'); }
       setSessionId(session.id);
 
       // Generate personalized intro as the first nextTopic (non-blocking)

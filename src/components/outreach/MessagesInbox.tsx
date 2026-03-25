@@ -264,7 +264,8 @@ const PreloadAttendeePictures: React.FC<{ chats: import('@/hooks/useMessagesInbo
   useEffect(() => {
     const ids = chats
       .filter((c) => !getChatAvatar(c) && c.attendees?.[0]?.id)
-      .map((c) => c.attendees![0]!.id!)
+      .map((c) => c.attendees?.[0]?.id)
+      .filter((id): id is string => !!id)
       .slice(0, 20);
     if (ids.length > 0) {
       preloadPictures(ids);
