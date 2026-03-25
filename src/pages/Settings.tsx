@@ -120,7 +120,7 @@ const Settings = () => {
       <Navbar />
 
       <main className="pt-16 sm:pt-20 pb-8">
-        <div className="max-w-[1800px] mx-auto px-3 sm:px-6 lg:px-8">
+        <div className="max-w-[1600px] mx-auto px-3 sm:px-6 lg:px-8">
           {/* Header brutal */}
           <div className="flex items-center gap-2 min-w-0 mb-4">
             <div className="h-8 w-8 flex items-center justify-center shrink-0">
