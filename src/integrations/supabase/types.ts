@@ -2862,6 +2862,7 @@ export type Database = {
           is_active: boolean
           name: string
           organization_id: string | null
+          project_id: string | null
           updated_at: string
         }
         Insert: {
@@ -2872,6 +2873,7 @@ export type Database = {
           is_active?: boolean
           name: string
           organization_id?: string | null
+          project_id?: string | null
           updated_at?: string
         }
         Update: {
@@ -2882,6 +2884,7 @@ export type Database = {
           is_active?: boolean
           name?: string
           organization_id?: string | null
+          project_id?: string | null
           updated_at?: string
         }
         Relationships: [
@@ -2890,6 +2893,13 @@ export type Database = {
             columns: ["organization_id"]
             isOneToOne: false
             referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "outreach_sequences_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "sourcing_projects"
             referencedColumns: ["id"]
           },
         ]

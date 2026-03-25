@@ -73,7 +73,8 @@ interface SequencesListProps {
   selectedProfiles?: LinkedInProfile[];
   selectedJob?: any;
   onClearSelection?: () => void;
-  isVisible?: boolean; // Added to trigger refetch when tab becomes visible
+  isVisible?: boolean;
+  projectId?: string | null;
 }
 
 // Emoji pour les séquences
@@ -86,6 +87,7 @@ export const SequencesList: React.FC<SequencesListProps> = ({
   selectedJob,
   onClearSelection,
   isVisible = true,
+  projectId,
 }) => {
   const [sequences, setSequences] = useState<SequenceWithStats[]>([]);
   const [loading, setLoading] = useState(true);
@@ -125,10 +127,16 @@ export const SequencesList: React.FC<SequencesListProps> = ({
 
   const fetchSequences = async () => {
     try {
-      const { data: seqData, error: seqError } = await supabase
+      let seqQuery = supabase
         .from('outreach_sequences')
         .select('*')
-        .order('created_at', { ascending: false });
+        .order('created_at', { ascending: false }) as any;
+
+      if (projectId) {
+        seqQuery = seqQuery.eq('project_id', projectId);
+      }
+
+      const { data: seqData, error: seqError } = await seqQuery;
 
       if (seqError) throw seqError;
 
@@ -192,7 +200,7 @@ export const SequencesList: React.FC<SequencesListProps> = ({
     if (isVisible) {
       fetchSequences();
     }
-  }, [isVisible]);
+  }, [isVisible, projectId]);
 
   const handleSaveSequence = async (sequence: Sequence) => {
     try {
@@ -290,7 +298,8 @@ export const SequencesList: React.FC<SequencesListProps> = ({
             description: sequence.description,
             is_active: sequence.isActive,
             created_by: user.id,
-          })
+            project_id: projectId || null,
+          } as any)
           .select()
           .single();
 
