@@ -11,6 +11,12 @@ import { cn } from '@/lib/utils';
 import { ICP } from '@/hooks/useICPs';
 import { ProspectProfile } from '@/types/prospects';
 
+const tabs = [
+  { value: 'search', label: 'Recherche', emoji: '🔍' },
+  { value: 'vivier', label: 'Vivier', emoji: '📋' },
+  { value: 'icp', label: 'ICP', emoji: '🎯' },
+] as const;
+
 export default function Prospection() {
   const [searchParams, setSearchParams] = useSearchParams();
   const validTabs = tabs.map(t => t.value) as string[];
