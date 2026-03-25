@@ -12,6 +12,7 @@ import { MissionSourcing } from '@/components/missions/MissionSourcing';
 import { MissionPipeline } from '@/components/missions/MissionPipeline';
 import { MissionOutreach } from '@/components/missions/MissionOutreach';
 import { MissionInsights } from '@/components/missions/MissionInsights';
+import { MissionCopilot } from '@/components/missions/MissionCopilot';
 
 // ── Status config ──
 
@@ -191,15 +192,7 @@ const MissionWorkspace = () => {
         </div>
       </main>
 
-      {/* Copilot bar — placeholder */}
-      <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-foreground bg-foreground text-background px-4 py-2.5">
-        <div className="max-w-[1600px] mx-auto flex items-center gap-3">
-          <span className="text-xs">🤖</span>
-          <span className="text-[10px] font-medium uppercase tracking-wider flex-1">
-            Copilot bientôt disponible pour cette mission
-          </span>
-        </div>
-      </div>
+      <MissionCopilot project={project} activeTab={activeTab} onTabChange={setActiveTab} />
     </div>
   );
 };
