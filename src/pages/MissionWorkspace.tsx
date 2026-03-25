@@ -7,6 +7,7 @@ import { BrutalLoader } from '@/components/ui/brutal-loader';
 import { Badge } from '@/components/ui/badge';
 import { ArrowLeft, Play, Pause, CheckCircle, Archive } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { MissionBrief } from '@/components/missions/MissionBrief';
 
 // ── Status config ──
 
@@ -159,8 +160,13 @@ const MissionWorkspace = () => {
             })}
           </div>
 
-          {/* Tab contents — placeholders */}
-          {tabs.map((tab) => (
+          {/* Brief tab — real component */}
+          <div className={cn("mt-0 min-w-0", activeTab !== 'brief' && 'hidden')}>
+            <MissionBrief project={project} />
+          </div>
+
+          {/* Other tabs — placeholders */}
+          {tabs.filter(t => t.value !== 'brief').map((tab) => (
             <div key={tab.value} className={cn("mt-0 min-w-0", activeTab !== tab.value && 'hidden')}>
               <div className="bg-background border border-foreground border-t-0 p-6 sm:p-8">
                 <div className="flex flex-col items-center justify-center py-12 text-center">
