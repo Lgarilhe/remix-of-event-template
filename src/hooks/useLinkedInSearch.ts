@@ -1,4 +1,4 @@
-import { useCallback, useRef, useEffect, useReducer } from 'react';
+import { useCallback, useRef, useEffect, useReducer, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { LinkedInFiltersState, LinkedInProfile, INITIAL_FILTERS } from '@/components/outreach/types';
 import { useUnipileQuota } from '@/hooks/useUnipileQuota';
@@ -141,6 +141,8 @@ export function useLinkedInSearch({
   });
   const { filters, results, loading, loadingMore, cursor, hasMoreResults, total, hasSearched, selectedJob, selectedProfiles, jobScores, scoringInProgress, sortByScore } = searchState;
   const filtersRef = useRef<LinkedInFiltersState>(INITIAL_FILTERS);
+  const pendingLocationRef = useRef<string | null>(null);
+
 
   // Backward-compatible wrappers for search state (support both direct values and updater functions)
   const setFilters = useCallback((fOrUpdater: LinkedInFiltersState | ((prev: LinkedInFiltersState) => LinkedInFiltersState)) => {
@@ -150,6 +152,41 @@ export function useLinkedInSearch({
       searchDispatch({ type: 'SET_FILTERS', filters: fOrUpdater });
     }
   }, []);
+
+  // Helper: resolve a location keyword string to a LinkedIn location ID
+  const resolveLocation = useCallback(async (keyword: string, accountId: string) => {
+    try {
+      const { data } = await invokeUnipile({
+        body: {
+          action: 'get_parameters',
+          account_id: accountId,
+          type: 'LOCATION',
+          keywords: keyword,
+          service: 'RECRUITER',
+        },
+      });
+      if (!data?.success || !Array.isArray(data?.items) || data.items.length === 0) return;
+      const normalized = keyword.toLowerCase();
+      const best =
+        data.items.find((it: any) => String(it.title || '').toLowerCase() === normalized) ||
+        data.items.find((it: any) => String(it.title || '').toLowerCase().includes(normalized)) ||
+        data.items[0];
+      if (!best?.id || !best?.title) return;
+      pendingLocationRef.current = null;
+      setFilters(curr => ({
+        ...curr,
+        location: curr.location.length ? curr.location : [{
+          id: String(best.id),
+          name: String(best.title),
+          priority: 'MUST_HAVE' as const,
+          scope: 'CURRENT_OR_OPEN_TO_RELOCATE' as const,
+        }],
+      }));
+    } catch (e) {
+      console.error('[ProjectFilters] Failed to resolve location:', e);
+    }
+  }, [setFilters]);
+
   const setResults = useCallback((rOrUpdater: LinkedInProfile[] | ((prev: LinkedInProfile[]) => LinkedInProfile[])) => {
     if (typeof rOrUpdater === 'function') {
       searchDispatch({ type: 'UPDATE_RESULTS', updater: rOrUpdater });
@@ -256,40 +293,14 @@ export function useLinkedInSearch({
           };
           setFilters({ ...INITIAL_FILTERS, ...transformed });
           
-          // Async: resolve location keywords to IDs
+          // Store pending location for deferred resolution
           const locationKeyword = savedFilters.location_keywords?.[0]?.trim();
-          if (locationKeyword && selectedAccount) {
-            void (async () => {
-              try {
-                const { data } = await invokeUnipile({
-                  body: {
-                    action: 'get_parameters',
-                    account_id: selectedAccount,
-                    type: 'LOCATION',
-                    keywords: locationKeyword,
-                    service: 'RECRUITER',
-                  },
-                });
-                if (!data?.success || !Array.isArray(data?.items) || data.items.length === 0) return;
-                const normalized = locationKeyword.toLowerCase();
-                const best =
-                  data.items.find((it: any) => String(it.title || '').toLowerCase() === normalized) ||
-                  data.items.find((it: any) => String(it.title || '').toLowerCase().includes(normalized)) ||
-                  data.items[0];
-                if (!best?.id || !best?.title) return;
-                setFilters(curr => ({
-                  ...curr,
-                  location: curr.location.length ? curr.location : [{
-                    id: String(best.id),
-                    name: String(best.title),
-                    priority: 'MUST_HAVE' as const,
-                    scope: 'CURRENT_OR_OPEN_TO_RELOCATE' as const,
-                  }],
-                }));
-              } catch (e) {
-                console.error('[ProjectFilters] Failed to resolve location:', e);
-              }
-            })();
+          if (locationKeyword) {
+            pendingLocationRef.current = locationKeyword;
+            // Try resolving now if account is available
+            if (selectedAccount) {
+              resolveLocation(locationKeyword, selectedAccount);
+            }
           }
         } else {
           setFilters({ ...INITIAL_FILTERS, ...savedFilters });
@@ -315,6 +326,13 @@ export function useLinkedInSearch({
       }
     }
   }, [activeProject?.id]);
+
+  // Deferred location resolution: when selectedAccount becomes available and we have a pending location
+  useEffect(() => {
+    if (selectedAccount && pendingLocationRef.current) {
+      resolveLocation(pendingLocationRef.current, selectedAccount);
+    }
+  }, [selectedAccount, resolveLocation]);
 
   // Seed jobScores from DB statuses (so pool profiles show their scores without re-scoring)
   useEffect(() => {
