@@ -88,10 +88,12 @@ Deno.serve(async (req) => {
 
     const adminClient = createClient(supabaseUrl, supabaseServiceRoleKey);
 
-    const { data: { user }, error: authError } = await userClient.auth.getUser();
-    if (authError || !user) {
+    const token = authHeader!.replace('Bearer ', '');
+    const { data: claimsData, error: claimsError } = await userClient.auth.getClaims(token);
+    if (claimsError || !claimsData?.claims?.sub) {
       throw new HttpError(401, 'Unauthorized');
     }
+    const user = { id: claimsData.claims.sub as string };
 
     let organizationId = typeof requestedOrgId === 'string' ? requestedOrgId : null;
 
