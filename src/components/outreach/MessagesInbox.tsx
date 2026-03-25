@@ -135,7 +135,7 @@ const MessagesInboxInner: React.FC<
       )}
 
       {/* Desktop layout + mobile chat list */}
-      <div className={cn("flex bg-background overflow-hidden relative", fullHeight ? "h-full border-t border-foreground" : "h-[calc(100dvh-160px)] md:h-[calc(100dvh-280px)] min-h-[300px] md:min-h-[500px] border border-foreground")}>
+      <div className={cn("flex bg-background overflow-hidden relative", fullHeight ? "h-full border-x border-t border-foreground" : "h-[calc(100dvh-160px)] md:h-[calc(100dvh-280px)] min-h-[300px] md:min-h-[500px] border border-foreground")}>
         {/* Chat List Sidebar */}
         <ChatListSidebar
           chats={inbox.chats}
