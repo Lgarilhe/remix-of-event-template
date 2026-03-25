@@ -9,7 +9,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { Search, Target, Loader2, Building2, MapPin, Briefcase, Code, Zap, Globe, Users, Cpu, TrendingUp, DollarSign, GraduationCap, Mail, Clock, Sparkles, Languages, Award, Heart, FileText, Hash, Landmark, BadgeDollarSign, SlidersHorizontal, ChevronDown } from 'lucide-react';
 import { useICPs, ICP } from '@/hooks/useICPs';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
-import { ProspectProfile } from '@/pages/Prospection';
+import { ProspectProfile } from '@/types/prospects';
 import { ProspectResults } from './ProspectResults';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';

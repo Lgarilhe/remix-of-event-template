@@ -8,7 +8,7 @@ import {
   ExternalLink, TrendingUp, GraduationCap, ChevronDown, ChevronUp,
   Globe, Copy, Check, Loader2, Search,
 } from 'lucide-react';
-import { ProspectProfile } from '@/pages/Prospection';
+import { ProspectProfile } from '@/types/prospects';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { motion } from 'framer-motion';
