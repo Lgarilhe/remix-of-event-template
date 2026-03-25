@@ -91,15 +91,13 @@ export const BatchScoringReport: React.FC<BatchScoringReportProps> = ({
 
       {expanded && (
         <>
-          {/* Stats row */}
+          {/* Stats row — compact single line */}
           {stats && (
-            <div className="grid grid-cols-2 sm:grid-cols-5 gap-y-1 gap-x-4 text-[10px] text-muted-foreground px-3 py-1.5 border-t border-border bg-muted/20 font-medium uppercase tracking-wider">
-              <span>🚫 {stats.hardFiltered} éliminés par filtres</span>
-              <span>⚡ {stats.llmSkipped} sans IA</span>
-              <span>🧠 {stats.llmCalled} scorés par IA</span>
+            <div className="flex items-center gap-4 text-[10px] text-muted-foreground px-3 py-1.5 border-t border-border bg-muted/20 font-medium uppercase tracking-wider">
+              <span>🧠 {stats.llmCalled} scorés</span>
               <span>📊 Moy: <span className="font-bold text-foreground">{stats.avgScore}/100</span></span>
-              {stats.totalTokens > 0 && (
-                <span>🪙 {stats.totalTokens.toLocaleString()} tokens</span>
+              {stats.llmCalled > 0 && (
+                <span>✦ {stats.llmCalled} crédit{stats.llmCalled > 1 ? 's' : ''} IA</span>
               )}
             </div>
           )}
