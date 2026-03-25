@@ -8,7 +8,7 @@ import { useOrganization } from '@/hooks/useOrganization';
 import { useMemberLinkedInAccounts } from '@/hooks/useMemberLinkedInAccounts';
 import { SequencesList } from '@/components/outreach/SequencesList';
 import { InvitationsPanel } from '@/components/outreach/InvitationsPanel';
-import { MessagesInbox } from '@/components/outreach/MessagesInbox';
+
 import { BrutalLoader } from '@/components/ui/brutal-loader';
 import { supabase } from '@/integrations/supabase/client';
 import { Users, Settings } from 'lucide-react';
