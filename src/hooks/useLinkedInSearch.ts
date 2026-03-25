@@ -327,6 +327,13 @@ export function useLinkedInSearch({
     }
   }, [activeProject?.id]);
 
+  // Deferred location resolution: when selectedAccount becomes available and we have a pending location
+  useEffect(() => {
+    if (selectedAccount && pendingLocationRef.current) {
+      resolveLocation(pendingLocationRef.current, selectedAccount);
+    }
+  }, [selectedAccount, resolveLocation]);
+
   // Seed jobScores from DB statuses (so pool profiles show their scores without re-scoring)
   useEffect(() => {
     if (!candidateStatus.statuses || candidateStatus.statuses.size === 0) return;
