@@ -53,7 +53,7 @@ const EmptyAccountState = () => {
 export const MissionOutreach = ({ project }: MissionOutreachProps) => {
   const navigate = useNavigate();
   const { accounts: rawAccounts, loading: accountsLoading } = useLinkedInAccounts();
-  const { isAdmin, isOwner, isCollaborator } = useOrganization();
+  const { isAdmin, isOwner, isCollaborator, organizationId } = useOrganization();
   const { getUserLinkedAccountId } = useMemberLinkedInAccounts();
   const [selectedAccount, setSelectedAccount] = useState<string | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
@@ -210,7 +210,7 @@ export const MissionOutreach = ({ project }: MissionOutreachProps) => {
           accounts={accounts}
           selectedAccount={selectedAccount}
           onAccountChange={setSelectedAccount}
-          organizationId={null}
+          organizationId={organizationId || null}
         />
       </div>
     </div>
