@@ -55,7 +55,6 @@ import {
 import { Eye as EyeIcon, Globe, Users as UsersIcon } from 'lucide-react';
 
 interface ProjectsListProps {
-  onResumeSearch?: (project: SourcingProject) => void;
 }
 
 const statusConfig = {
