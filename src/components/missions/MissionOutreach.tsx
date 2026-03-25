@@ -58,7 +58,7 @@ export const MissionOutreach = ({ project }: MissionOutreachProps) => {
   const { getUserLinkedAccountId } = useMemberLinkedInAccounts();
   const [selectedAccount, setSelectedAccount] = useState<string | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
-  const [outreachTab, setOutreachTab] = useState<'sequences' | 'invitations'>('sequences');
+  const [outreachTab, setOutreachTab] = useState<'sequences' | 'invitations' | 'messages'>('sequences');
 
   // Enrollment stats
   const [enrollmentStats, setEnrollmentStats] = useState({ active: 0, completed: 0, replied: 0, total: 0 });
