@@ -66,10 +66,14 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const authHeader = req.headers.get('Authorization');
-    if (!authHeader) {
-      throw new HttpError(401, 'Missing authorization header');
+    // ===== AUTH CHECK =====
+    let auth;
+    try {
+      auth = await requireAuth(req, corsHeaders);
+    } catch (authResponse) {
+      return authResponse as Response;
     }
+    if (!auth.userId) throw new HttpError(401, 'User authentication required');
 
     const body = await req.json();
     const { action, organization_id: requestedOrgId, ...params } = body ?? {};
@@ -79,21 +83,11 @@ Deno.serve(async (req) => {
     }
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
     const supabaseServiceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-
-    const userClient = createClient(supabaseUrl, supabaseAnonKey, {
-      global: { headers: { Authorization: authHeader } },
-    });
 
     const adminClient = createClient(supabaseUrl, supabaseServiceRoleKey);
 
-    const token = authHeader!.replace('Bearer ', '');
-    const { data: claimsData, error: claimsError } = await userClient.auth.getClaims(token);
-    if (claimsError || !claimsData?.claims?.sub) {
-      throw new HttpError(401, 'Unauthorized');
-    }
-    const user = { id: claimsData.claims.sub as string };
+    const user = { id: auth.userId as string };
 
     let organizationId = typeof requestedOrgId === 'string' ? requestedOrgId : null;
 

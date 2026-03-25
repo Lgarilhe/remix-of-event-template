@@ -1,5 +1,6 @@
 // Deno.serve used directly
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check";
+import { requireAuth } from "../_shared/require-auth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -71,42 +72,27 @@ Deno.serve(async (req) => {
       include_related = false,
     } = body;
 
-    // ── 1. Auth — dual mode ────────────────────────────────────
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader?.startsWith("Bearer ")) {
-      return new Response(
-        JSON.stringify({ error: "Unauthorized" }),
-        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
+    // ── 1. Auth — dual mode (requireAuth) ─────────────────────
+    let auth;
+    try {
+      auth = await requireAuth(req, corsHeaders);
+    } catch (authResponse) {
+      return authResponse as Response;
     }
 
     let organizationId: string | null = null;
-    let isInternalCall = false;
+    const isInternalCall = auth.method === "service_role";
 
-    // Try Mode A — frontend JWT via getClaims
-    const _supabaseAuth = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_ANON_KEY")!,
-      { global: { headers: { Authorization: authHeader } } },
-    );
-
-    const { data: claimsData, error: claimsError } = await _supabaseAuth.auth.getClaims(
-      authHeader.replace("Bearer ", ""),
-    );
-
-    if (!claimsError && claimsData?.claims?.sub) {
+    if (!isInternalCall && auth.userId) {
       // Mode A — authenticated user
-      const userId = claimsData.claims.sub;
-
-      // Service client for DB operations
-      const svc = createClient(
+      const svcAuth = createClient(
         Deno.env.get("SUPABASE_URL")!,
         Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
       );
 
       // Rate limit
-      const { data: allowed } = await svc.rpc("check_rate_limit", {
-        p_user_id: userId,
+      const { data: allowed } = await svcAuth.rpc("check_rate_limit", {
+        p_user_id: auth.userId,
         p_action: "retrieve_context",
         p_max_requests: 60,
         p_window_seconds: 60,
@@ -118,13 +104,11 @@ Deno.serve(async (req) => {
         );
       }
 
-      // Resolve organization from profile (or body override if user is member)
       if (bodyOrgId) {
-        // Verify the user belongs to this org
-        const { data: membership } = await svc
+        const { data: membership } = await svcAuth
           .from("organization_members")
           .select("id")
-          .eq("user_id", userId)
+          .eq("user_id", auth.userId)
           .eq("organization_id", bodyOrgId)
           .maybeSingle();
         if (!membership) {
@@ -135,20 +119,18 @@ Deno.serve(async (req) => {
         }
         organizationId = bodyOrgId;
       } else {
-        const { data: profile } = await svc
+        const { data: profile } = await svcAuth
           .from("profiles")
           .select("active_organization_id")
-          .eq("user_id", userId)
+          .eq("user_id", auth.userId)
           .maybeSingle();
         organizationId = profile?.active_organization_id ?? null;
       }
     } else if (bodyOrgId) {
-      // Mode B — internal call (SUPABASE_ANON_KEY, getClaims failed)
-      isInternalCall = true;
+      // Mode B — internal call (service_role)
       organizationId = bodyOrgId;
       console.log("retrieve-context: internal call mode for org", organizationId);
     } else {
-      // getClaims failed AND no organization_id in body → reject
       return new Response(
         JSON.stringify({ error: "Unauthorized" }),
         { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } },
