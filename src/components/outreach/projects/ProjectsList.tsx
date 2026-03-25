@@ -1,5 +1,5 @@
-import React, { useState, useMemo, useEffect } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useSourcingProjects, SourcingProject } from '@/hooks/useSourcingProjects';
 import { useQuotaGate } from '@/hooks/useQuotaGate';
 import { useNotionJobs } from '@/hooks/useNotionJobs';
@@ -29,6 +29,7 @@ import {
   Briefcase,
   Star,
   Wrench,
+  ArrowRight,
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -41,7 +42,6 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Button } from '@/components/ui/button';
 import { CreateProjectModal } from './CreateProjectModal';
-import { ProjectDetailView } from './ProjectDetailView';
 
 import { useOrganization } from '@/hooks/useOrganization';
 import { supabase } from '@/integrations/supabase/client';
@@ -80,16 +80,16 @@ const visibilityConfig: Record<string, { label: string; color: string; icon: typ
 };
 
 export const ProjectsList: React.FC<ProjectsListProps> = ({ onResumeSearch }) => {
-  const { projects: sourcingProjects, isLoading: spLoading, deleteProject, updateProject, isDeleting } = useSourcingProjects();
+  const { projects: sourcingProjects, isLoading: spLoading, deleteProject, updateProject, createProject, isDeleting } = useSourcingProjects();
   const { data: notionJobs = [], isLoading: jobsLoading } = useNotionJobs();
   const { canCreateJob, limits, jobCount } = useQuotaGate();
   const { isAdmin: canManageVisibility } = useOrganization();
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [createInitialTab, setCreateInitialTab] = useState<string | undefined>(undefined);
-  const [selectedProjectKey, setSelectedProjectKey] = useState<string | null>(null);
 
   // Auto-open create dialog from ?create= query param
   useEffect(() => {
@@ -111,11 +111,30 @@ export const ProjectsList: React.FC<ProjectsListProps> = ({ onResumeSearch }) =>
     [notionJobs, sourcingProjects]
   );
 
-  // Keep detail panel project in sync with live query data
-  const selectedProject = useMemo(
-    () => (selectedProjectKey ? unifiedProjects.find((p) => p.key === selectedProjectKey) || null : null),
-    [selectedProjectKey, unifiedProjects]
-  );
+  // Navigate to workspace — create sourcing_project on the fly for Notion jobs
+  const navigateToWorkspace = useCallback(async (project: UnifiedProject, tab?: string) => {
+    let spId = project.sourcingProject?.id;
+
+    if (!spId && project.source === 'notion' && project.job) {
+      try {
+        const newProject = await createProject({
+          name: project.job.title,
+          job_id: project.job.id,
+          job_title: project.job.title,
+          client_name: project.job.client?.name,
+          description: project.description || undefined,
+        });
+        spId = newProject?.id;
+      } catch {
+        const { toast } = await import('sonner');
+        toast.error('Impossible de créer la mission');
+        return;
+      }
+    }
+
+    if (!spId) return;
+    navigate(`/missions/${spId}${tab ? `?tab=${tab}` : ''}`);
+  }, [createProject, navigate]);
 
   // Get sourcing project IDs for batch stats
   const spIds = useMemo(
@@ -336,7 +355,7 @@ export const ProjectsList: React.FC<ProjectsListProps> = ({ onResumeSearch }) =>
               <div
                 key={project.key}
                 className="bg-background border border-foreground p-4 sm:p-5 shadow-[3px_3px_0px_0px_hsl(var(--brutal-accent))] hover:translate-x-[1px] hover:translate-y-[1px] hover:shadow-[1px_1px_0px_0px_hsl(var(--brutal-accent))] transition-all cursor-pointer"
-                onClick={() => setSelectedProjectKey(project.key)}
+                onClick={() => navigateToWorkspace(project)}
               >
                 <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
                   {/* Left: Main info */}
@@ -445,12 +464,12 @@ export const ProjectsList: React.FC<ProjectsListProps> = ({ onResumeSearch }) =>
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
-                          onResumeSearch(toSourcingProject(project));
+                          navigateToWorkspace(project, 'sourcing');
                         }}
                         className="relative overflow-hidden flex items-center gap-1.5 h-[28px] px-3 text-[10px] font-medium uppercase tracking-wider border border-foreground bg-foreground text-background group"
                       >
-                        <Play className="w-3 h-3 relative z-10" />
-                        <span className="relative z-10">Sourcer</span>
+                        <ArrowRight className="w-3 h-3 relative z-10" />
+                        <span className="relative z-10">Ouvrir</span>
                       </button>
 
                       {hasSourcingProject && (
@@ -522,17 +541,6 @@ export const ProjectsList: React.FC<ProjectsListProps> = ({ onResumeSearch }) =>
         initialTab={createInitialTab}
       />
 
-      {selectedProject && (
-        <ProjectDetailView
-          project={selectedProject}
-          open={Boolean(selectedProject)}
-          onOpenChange={(open) => !open && setSelectedProjectKey(null)}
-          onResumeSearch={() => {
-            onResumeSearch(toSourcingProject(selectedProject));
-            setSelectedProjectKey(null);
-          }}
-        />
-      )}
     </div>
   );
 };

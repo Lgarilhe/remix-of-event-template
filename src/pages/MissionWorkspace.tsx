@@ -1,231 +1,190 @@
-import React, { useState, useEffect } from "react";
-import { useParams, useNavigate } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
-import { Navbar } from "@/components/Navbar";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Button } from "@/components/ui/button";
-import { ArrowLeft, FileText, Search, Users, BarChart3, Sparkles } from "lucide-react";
-import { Input } from "@/components/ui/input";
-import { toast } from "sonner";
+import React, { useMemo, useCallback } from 'react';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
+import { Navbar } from '@/components/Navbar';
+import { SEOHead } from '@/components/SEOHead';
+import { useSourcingProjects, SourcingProject } from '@/hooks/useSourcingProjects';
+import { BrutalLoader } from '@/components/ui/brutal-loader';
+import { Badge } from '@/components/ui/badge';
+import { ArrowLeft, Play, Pause, CheckCircle, Archive } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
-// ── Tab components (stubs for now, will be fleshed out) ──
+// ── Status config ──
 
-const BriefTab = ({ project }: { project: any }) => (
-  <div className="space-y-6 p-6">
-    <h2 className="text-xl font-semibold">Brief de la mission</h2>
-    <div className="grid gap-4 md:grid-cols-2">
-      <div className="rounded-lg border border-border p-4 space-y-2">
-        <p className="text-sm text-muted-foreground">Titre</p>
-        <p className="font-medium">{project?.title || "—"}</p>
-      </div>
-      <div className="rounded-lg border border-border p-4 space-y-2">
-        <p className="text-sm text-muted-foreground">Entreprise</p>
-        <p className="font-medium">{project?.company || "—"}</p>
-      </div>
-      <div className="rounded-lg border border-border p-4 space-y-2">
-        <p className="text-sm text-muted-foreground">Localisation</p>
-        <p className="font-medium">{project?.location || "—"}</p>
-      </div>
-      <div className="rounded-lg border border-border p-4 space-y-2">
-        <p className="text-sm text-muted-foreground">Statut</p>
-        <p className="font-medium capitalize">{project?.status || "—"}</p>
-      </div>
-    </div>
-    {project?.description && (
-      <div className="rounded-lg border border-border p-4 space-y-2">
-        <p className="text-sm text-muted-foreground">Description</p>
-        <p className="text-sm whitespace-pre-wrap">{project.description}</p>
-      </div>
-    )}
-  </div>
-);
-
-const SourcingTab = ({ projectId }: { projectId: string }) => (
-  <div className="p-6 space-y-4">
-    <h2 className="text-xl font-semibold">Sourcing</h2>
-    <p className="text-muted-foreground text-sm">
-      Lancez des recherches et ajoutez des candidats à cette mission.
-    </p>
-    <div className="flex items-center justify-center h-48 border border-dashed border-border rounded-lg">
-      <div className="text-center space-y-2">
-        <Search className="w-8 h-8 mx-auto text-muted-foreground" />
-        <p className="text-sm text-muted-foreground">Recherche LinkedIn, Apollo, PDL…</p>
-        <Button variant="outline" size="sm">Lancer une recherche</Button>
-      </div>
-    </div>
-  </div>
-);
-
-const PipelineTab = ({ projectId }: { projectId: string }) => (
-  <div className="p-6 space-y-4">
-    <h2 className="text-xl font-semibold">Pipeline</h2>
-    <p className="text-muted-foreground text-sm">
-      Suivez la progression des candidats dans le processus de recrutement.
-    </p>
-    <div className="flex items-center justify-center h-48 border border-dashed border-border rounded-lg">
-      <div className="text-center space-y-2">
-        <Users className="w-8 h-8 mx-auto text-muted-foreground" />
-        <p className="text-sm text-muted-foreground">Aucun candidat dans le pipeline</p>
-      </div>
-    </div>
-  </div>
-);
-
-const InsightsTab = ({ projectId }: { projectId: string }) => (
-  <div className="p-6 space-y-4">
-    <h2 className="text-xl font-semibold">Insights</h2>
-    <p className="text-muted-foreground text-sm">
-      Statistiques et analyses de cette mission.
-    </p>
-    <div className="flex items-center justify-center h-48 border border-dashed border-border rounded-lg">
-      <div className="text-center space-y-2">
-        <BarChart3 className="w-8 h-8 mx-auto text-muted-foreground" />
-        <p className="text-sm text-muted-foreground">Données insuffisantes pour afficher les insights</p>
-      </div>
-    </div>
-  </div>
-);
-
-// ── Copilot Bar ──
-
-const CopilotBar = ({ projectId, projectTitle }: { projectId: string; projectTitle: string }) => {
-  const [query, setQuery] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!query.trim()) return;
-    toast.info("Copilot en cours de développement", {
-      description: `Requête : "${query}" pour la mission "${projectTitle}"`,
-    });
-    setQuery("");
-  };
-
-  return (
-    <form
-      onSubmit={handleSubmit}
-      className="fixed bottom-0 left-0 right-0 z-40 border-t border-border bg-background/95 backdrop-blur-sm px-4 py-3"
-    >
-      <div className="max-w-4xl mx-auto flex items-center gap-3">
-        <Sparkles className="w-4 h-4 text-primary shrink-0" />
-        <Input
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder={`Demandez au Copilot… (mission : ${projectTitle})`}
-          className="flex-1 border-none bg-muted/50 focus-visible:ring-1"
-          disabled={isLoading}
-        />
-        <Button type="submit" size="sm" disabled={!query.trim() || isLoading}>
-          Envoyer
-        </Button>
-      </div>
-    </form>
-  );
+const statusConfig: Record<SourcingProject['status'], { label: string; color: string; icon: typeof Play }> = {
+  active: { label: 'Actif', color: 'bg-green-100 text-green-700', icon: Play },
+  paused: { label: 'En pause', color: 'bg-yellow-100 text-yellow-700', icon: Pause },
+  completed: { label: 'Terminé', color: 'bg-blue-100 text-blue-700', icon: CheckCircle },
+  archived: { label: 'Archivé', color: 'bg-gray-100 text-gray-500', icon: Archive },
 };
 
-// ── Main page ──
+// ── Tabs config ──
+
+const tabs = [
+  { value: 'brief', label: 'Brief', emoji: '📋', description: "Analysez le poste avec l'IA, définissez l'ICP et la stratégie d'approche." },
+  { value: 'sourcing', label: 'Sourcing', emoji: '🔍', description: 'Lancez des recherches LinkedIn, Apollo ou PDL pour trouver les meilleurs candidats.' },
+  { value: 'pipeline', label: 'Pipeline', emoji: '📊', description: 'Suivez la progression des candidats dans le processus de recrutement.' },
+  { value: 'outreach', label: 'Outreach', emoji: '🚀', description: 'Gérez vos séquences de messages et suivez les réponses.' },
+  { value: 'insights', label: 'Insights', emoji: '💡', description: 'Statistiques et analyses de performance de cette mission.' },
+];
+
+const validTabs = tabs.map(t => t.value);
+
+// ── Main component ──
 
 const MissionWorkspace = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const [project, setProject] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState("brief");
+  const [searchParams, setSearchParams] = useSearchParams();
 
-  useEffect(() => {
-    if (!id) return;
+  const { projects, isLoading } = useSourcingProjects();
 
-    const fetchProject = async () => {
-      setLoading(true);
-      const { data, error } = await supabase
-        .from("sourcing_projects")
-        .select("*")
-        .eq("id", id)
-        .maybeSingle();
+  const project = useMemo(
+    () => projects.find(p => p.id === id) || null,
+    [projects, id]
+  );
 
-      if (error || !data) {
-        toast.error("Mission introuvable");
-        navigate("/missions");
-        return;
-      }
-      setProject(data);
-      setLoading(false);
-    };
+  const tabFromUrl = searchParams.get('tab');
+  const activeTab = validTabs.includes(tabFromUrl || '') ? tabFromUrl! : 'brief';
 
-    fetchProject();
-  }, [id, navigate]);
+  const setActiveTab = useCallback((tab: string) => {
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev);
+      next.set('tab', tab);
+      return next;
+    }, { replace: true });
+  }, [setSearchParams]);
 
-  if (loading) {
+  // Loading
+  if (isLoading) {
     return (
-      <div className="min-h-screen bg-background">
+      <div className="min-h-screen w-full max-w-full bg-background">
+        <SEOHead title="Mission | Konekt" description="Espace de travail mission" />
         <Navbar />
-        <div className="flex items-center justify-center h-[60vh]">
-          <div className="w-5 h-5 border-2 border-foreground/20 border-t-foreground rounded-full animate-spin" />
-        </div>
+        <main className="pt-20 pb-14 w-full max-w-full">
+          <div className="max-w-[1600px] mx-auto w-full min-w-0 px-3 sm:px-6 lg:px-8">
+            <BrutalLoader variant="default" rows={3} messages={['Chargement de la mission…', 'Récupération des données…']} />
+          </div>
+        </main>
       </div>
     );
   }
 
-  return (
-    <div className="min-h-screen bg-background pb-16">
-      <Navbar />
-      <div className="max-w-6xl mx-auto px-4 pt-4">
-        {/* Header */}
-        <div className="flex items-center gap-3 mb-4">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => navigate("/missions")}
-            className="shrink-0"
-          >
-            <ArrowLeft className="w-4 h-4" />
-          </Button>
-          <div className="min-w-0">
-            <h1 className="text-lg font-semibold truncate">{project?.title || "Mission"}</h1>
-            {project?.company && (
-              <p className="text-sm text-muted-foreground truncate">{project.company}</p>
-            )}
+  // Not found
+  if (!project) {
+    return (
+      <div className="min-h-screen w-full max-w-full bg-background">
+        <SEOHead title="Mission introuvable | Konekt" description="Mission introuvable" />
+        <Navbar />
+        <main className="pt-20 pb-14 w-full max-w-full">
+          <div className="max-w-[1600px] mx-auto w-full min-w-0 px-3 sm:px-6 lg:px-8">
+            <div className="bg-background border border-foreground p-12 text-center">
+              <div className="text-4xl mb-4">🔍</div>
+              <h2 className="text-sm font-bold uppercase tracking-wider mb-2">Mission introuvable</h2>
+              <p className="text-xs text-muted-foreground mb-6">
+                Cette mission n'existe pas ou a été supprimée.
+              </p>
+              <button
+                onClick={() => navigate('/missions')}
+                className="relative overflow-hidden h-[34px] px-6 bg-foreground text-background border border-foreground text-xs font-medium uppercase tracking-wider group"
+              >
+                <span className="relative z-10">Retour aux missions</span>
+                <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
+              </button>
+            </div>
           </div>
-        </div>
-
-        {/* Tabs */}
-        <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="w-full justify-start">
-            <TabsTrigger value="brief" className="gap-1.5">
-              <FileText className="w-3.5 h-3.5" />
-              Brief
-            </TabsTrigger>
-            <TabsTrigger value="sourcing" className="gap-1.5">
-              <Search className="w-3.5 h-3.5" />
-              Sourcing
-            </TabsTrigger>
-            <TabsTrigger value="pipeline" className="gap-1.5">
-              <Users className="w-3.5 h-3.5" />
-              Pipeline
-            </TabsTrigger>
-            <TabsTrigger value="insights" className="gap-1.5">
-              <BarChart3 className="w-3.5 h-3.5" />
-              Insights
-            </TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="brief">
-            <BriefTab project={project} />
-          </TabsContent>
-          <TabsContent value="sourcing">
-            <SourcingTab projectId={id!} />
-          </TabsContent>
-          <TabsContent value="pipeline">
-            <PipelineTab projectId={id!} />
-          </TabsContent>
-          <TabsContent value="insights">
-            <InsightsTab projectId={id!} />
-          </TabsContent>
-        </Tabs>
+        </main>
       </div>
+    );
+  }
 
-      {/* Copilot Bar */}
-      <CopilotBar projectId={id!} projectTitle={project?.title || "Mission"} />
+  const StatusIcon = statusConfig[project.status].icon;
+
+  return (
+    <div className="min-h-screen w-full max-w-full bg-background">
+      <SEOHead title={`${project.name} | Konekt`} description={`Mission ${project.name}`} />
+      <Navbar />
+      <main className="pt-20 pb-14 w-full max-w-full">
+        <div className="max-w-[1600px] mx-auto w-full min-w-0 px-3 sm:px-6 lg:px-8">
+          {/* Header */}
+          <div className="flex items-center justify-between mb-4 sm:mb-6">
+            <div className="flex items-center gap-3 min-w-0">
+              <button
+                onClick={() => navigate('/missions')}
+                className="relative overflow-hidden flex items-center gap-1.5 h-[30px] px-3 text-[10px] font-medium uppercase tracking-wider border border-foreground bg-background text-foreground group shrink-0"
+              >
+                <ArrowLeft className="w-3 h-3 relative z-10" />
+                <span className="relative z-10">Missions</span>
+                <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
+              </button>
+              <div className="min-w-0">
+                <h1 className="text-xl sm:text-2xl font-bold text-foreground tracking-tight uppercase truncate">
+                  {project.name}
+                </h1>
+                {project.client_name && (
+                  <p className="text-xs text-muted-foreground truncate">{project.client_name}</p>
+                )}
+              </div>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <Badge className={statusConfig[project.status].color}>
+                <StatusIcon className="w-3 h-3 mr-1" />
+                {statusConfig[project.status].label}
+              </Badge>
+            </div>
+          </div>
+
+          {/* Tabs — brutal style */}
+          <div className="flex gap-0 w-full min-w-0 overflow-x-auto no-scrollbar">
+            {tabs.map((tab, index) => {
+              const isActive = activeTab === tab.value;
+              return (
+                <button
+                  key={tab.value}
+                  onClick={() => setActiveTab(tab.value)}
+                  className={cn(
+                    "relative overflow-hidden flex items-center justify-center gap-1 h-[34px] px-2 sm:px-4 text-[10px] sm:text-xs font-medium uppercase tracking-wider border border-foreground transition-colors duration-200 group shrink-0",
+                    index > 0 && "border-l-0",
+                    isActive
+                      ? "bg-brutal-accent text-foreground"
+                      : "bg-background text-foreground"
+                  )}
+                >
+                  <span className="text-sm shrink-0 relative z-10">{tab.emoji}</span>
+                  <span className="relative z-10 whitespace-nowrap">{tab.label}</span>
+                  {!isActive && (
+                    <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
+                  )}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Tab contents — placeholders */}
+          {tabs.map((tab) => (
+            <div key={tab.value} className={cn("mt-0 min-w-0", activeTab !== tab.value && 'hidden')}>
+              <div className="bg-background border border-foreground border-t-0 p-6 sm:p-8">
+                <div className="flex flex-col items-center justify-center py-12 text-center">
+                  <span className="text-3xl mb-3">{tab.emoji}</span>
+                  <h2 className="text-sm font-bold uppercase tracking-wider mb-2">{tab.label}</h2>
+                  <p className="text-xs text-muted-foreground max-w-md">
+                    {tab.description}
+                  </p>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </main>
+
+      {/* Copilot bar — placeholder */}
+      <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-foreground bg-foreground text-background px-4 py-2.5">
+        <div className="max-w-[1600px] mx-auto flex items-center gap-3">
+          <span className="text-xs">🤖</span>
+          <span className="text-[10px] font-medium uppercase tracking-wider flex-1">
+            Copilot bientôt disponible pour cette mission
+          </span>
+        </div>
+      </div>
     </div>
   );
 };
