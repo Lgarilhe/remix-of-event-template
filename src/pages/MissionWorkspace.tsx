@@ -58,7 +58,7 @@ const MissionWorkspace = () => {
   if (isLoading) {
     return (
       <div className="min-h-screen w-full max-w-full bg-background">
-        <SEOHead title="Mission | Konekt" />
+        <SEOHead title="Mission | Konekt" description="Espace de travail mission" />
         <Navbar />
         <main className="pt-20 pb-14 w-full max-w-full">
           <div className="max-w-[1600px] mx-auto w-full min-w-0 px-3 sm:px-6 lg:px-8">
@@ -73,7 +73,7 @@ const MissionWorkspace = () => {
   if (!project) {
     return (
       <div className="min-h-screen w-full max-w-full bg-background">
-        <SEOHead title="Mission introuvable | Konekt" />
+        <SEOHead title="Mission introuvable | Konekt" description="Mission introuvable" />
         <Navbar />
         <main className="pt-20 pb-14 w-full max-w-full">
           <div className="max-w-[1600px] mx-auto w-full min-w-0 px-3 sm:px-6 lg:px-8">
@@ -101,7 +101,7 @@ const MissionWorkspace = () => {
 
   return (
     <div className="min-h-screen w-full max-w-full bg-background">
-      <SEOHead title={`${project.name} | Konekt`} />
+      <SEOHead title={`${project.name} | Konekt`} description={`Mission ${project.name}`} />
       <Navbar />
       <main className="pt-20 pb-14 w-full max-w-full">
         <div className="max-w-[1600px] mx-auto w-full min-w-0 px-3 sm:px-6 lg:px-8">
