@@ -143,39 +143,6 @@ export function useLinkedInSearch({
   const filtersRef = useRef<LinkedInFiltersState>(INITIAL_FILTERS);
   const pendingLocationRef = useRef<string | null>(null);
 
-  // Helper: resolve a location keyword string to a LinkedIn location ID
-  const resolveLocation = useCallback(async (keyword: string, accountId: string) => {
-    try {
-      const { data } = await invokeUnipile({
-        body: {
-          action: 'get_parameters',
-          account_id: accountId,
-          type: 'LOCATION',
-          keywords: keyword,
-          service: 'RECRUITER',
-        },
-      });
-      if (!data?.success || !Array.isArray(data?.items) || data.items.length === 0) return;
-      const normalized = keyword.toLowerCase();
-      const best =
-        data.items.find((it: any) => String(it.title || '').toLowerCase() === normalized) ||
-        data.items.find((it: any) => String(it.title || '').toLowerCase().includes(normalized)) ||
-        data.items[0];
-      if (!best?.id || !best?.title) return;
-      pendingLocationRef.current = null;
-      setFilters(curr => ({
-        ...curr,
-        location: curr.location.length ? curr.location : [{
-          id: String(best.id),
-          name: String(best.title),
-          priority: 'MUST_HAVE' as const,
-          scope: 'CURRENT_OR_OPEN_TO_RELOCATE' as const,
-        }],
-      }));
-    } catch (e) {
-      console.error('[ProjectFilters] Failed to resolve location:', e);
-    }
-  }, [setFilters]);
 
   // Backward-compatible wrappers for search state (support both direct values and updater functions)
   const setFilters = useCallback((fOrUpdater: LinkedInFiltersState | ((prev: LinkedInFiltersState) => LinkedInFiltersState)) => {
