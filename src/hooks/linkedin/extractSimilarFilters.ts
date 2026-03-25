@@ -114,7 +114,11 @@ export function traitsToFilters(traits: ExtractedTraits): Partial<LinkedInFilter
   }
 
   if (traits.skills.length > 0) {
-    filters.skills_keywords = traits.skills.slice(0, 8);
+    filters.skills = traits.skills.slice(0, 8).map(s => ({
+      id: s,
+      name: s,
+      priority: 'CAN_HAVE' as const,
+    }));
   }
 
   if (traits.currentCompany) {
