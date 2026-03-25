@@ -528,6 +528,19 @@ export const ProjectsList: React.FC<ProjectsListProps> = () => {
                     </div>
                   </div>
                 </div>
+                {/* AI Insight */}
+                {(() => {
+                  const insight = computeCardInsight(project, stats);
+                  if (!insight) return null;
+                  return (
+                    <div className="mt-3 pt-2.5 border-t border-foreground/10 flex items-center gap-2">
+                      <span className="text-xs shrink-0">{insight.icon}</span>
+                      <span className="text-[10px] text-muted-foreground truncate">
+                        {insight.text}
+                      </span>
+                    </div>
+                  );
+                })()}
               </div>
             );
           })}
