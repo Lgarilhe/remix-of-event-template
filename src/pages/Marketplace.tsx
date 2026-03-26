@@ -6,7 +6,7 @@ import { useOrganization } from '@/hooks/useOrganization';
 import { hasFeature, getOrgTypeEmoji, getOrgTypeLabel } from '@/lib/featureGates';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { Search, Target, MapPin, DollarSign, Clock, Users, Lock } from 'lucide-react';
+import { Search, Target, MapPin, DollarSign, Clock, Users, Lock, Calendar, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { formatDistanceToNow } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -68,7 +68,11 @@ export default function Marketplace() {
     });
   }, [missions, search, filterContract, filterRemote]);
 
+  const [applyingId, setApplyingId] = useState<string | null>(null);
+
   const handleApply = async (missionId: string) => {
+    if (applyingId) return;
+    setApplyingId(missionId);
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
@@ -81,7 +85,7 @@ export default function Marketplace() {
           status: 'pending',
         });
       if (error) {
-        if (error.message.includes('duplicate') || error.message.includes('unique')) {
+        if (error.code === '23505' || error.message?.includes('duplicate') || error.message?.includes('unique')) {
           toast.error('Vous avez déjà postulé à cette mission');
         } else {
           throw error;
@@ -90,7 +94,9 @@ export default function Marketplace() {
       }
       toast.success('Candidature envoyée !');
     } catch (err: any) {
-      toast.error(err.message || 'Erreur lors de la candidature');
+      toast.error(err?.message || 'Erreur lors de la candidature');
+    } finally {
+      setApplyingId(null);
     }
   };
 
@@ -257,6 +263,11 @@ export default function Marketplace() {
                           <span className="flex items-center gap-0.5">
                             <Clock className="w-3 h-3" /> {formatDistanceToNow(new Date(mission.created_at), { addSuffix: true, locale: fr })}
                           </span>
+                          {mission.hunt_deadline && (
+                            <span className="flex items-center gap-0.5 text-amber-600">
+                              <Calendar className="w-3 h-3" /> Deadline {new Date(mission.hunt_deadline).toLocaleDateString('fr-FR')}
+                            </span>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -265,10 +276,21 @@ export default function Marketplace() {
                     <div className="border-t border-foreground/10 p-3">
                       <button
                         onClick={() => handleApply(mission.id)}
-                        className="relative overflow-hidden w-full h-[34px] bg-foreground text-background border border-foreground text-[10px] font-medium uppercase tracking-wider group"
+                        disabled={applyingId === mission.id}
+                        className={cn(
+                          "relative overflow-hidden w-full h-[34px] border border-foreground text-[10px] font-medium uppercase tracking-wider group",
+                          applyingId === mission.id
+                            ? "bg-muted text-muted-foreground"
+                            : "bg-foreground text-background"
+                        )}
                       >
-                        <span className="relative z-10">Postuler</span>
-                        <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
+                        <span className="relative z-10 flex items-center justify-center gap-1.5">
+                          {applyingId === mission.id && <Loader2 className="w-3 h-3 animate-spin" />}
+                          {applyingId === mission.id ? 'Envoi...' : 'Postuler'}
+                        </span>
+                        {applyingId !== mission.id && (
+                          <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
+                        )}
                       </button>
                     </div>
                   </div>

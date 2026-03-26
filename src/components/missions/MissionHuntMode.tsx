@@ -42,36 +42,56 @@ export const MissionHuntMode: React.FC<MissionHuntModeProps> = ({ project }) => 
   const huntStatus = project.hunt_status || 'draft';
 
   const handleToggle = async () => {
-    const newMode = !isEnabled;
-    await updateProject({
-      id: project.id,
-      hunt_mode: newMode,
-      hunt_status: newMode ? 'draft' : null,
-    } as any);
-    toast.success(newMode ? 'Mode chasse activé' : 'Mode chasse désactivé');
+    try {
+      const newMode = !isEnabled;
+      await updateProject({
+        id: project.id,
+        hunt_mode: newMode,
+        hunt_status: newMode ? 'draft' : null,
+      });
+      toast.success(newMode ? 'Mode chasse activé' : 'Mode chasse désactivé');
+    } catch (err: any) {
+      toast.error(err?.message || 'Erreur lors de la mise à jour');
+    }
   };
 
   const handlePublish = async () => {
-    if (!bounty || bounty < 5) {
-      toast.error('Le bounty doit être d\'au moins 5%');
+    if (!bounty || bounty < 5 || bounty > 30) {
+      toast.error('Le bounty doit être entre 5% et 30%');
       return;
     }
-    await updateProject({
-      id: project.id,
-      hunt_bounty_percent: bounty,
-      hunt_max_recruiters: maxRecruiters,
-      hunt_deadline: deadline ? new Date(deadline).toISOString() : null,
-      hunt_status: 'published',
-    } as any);
-    toast.success('Mission publiée sur la marketplace !');
+    if (maxRecruiters < 1 || maxRecruiters > 10) {
+      toast.error('Le nombre de recruteurs doit être entre 1 et 10');
+      return;
+    }
+    if (deadline && new Date(deadline) < new Date()) {
+      toast.error('La date limite doit être dans le futur');
+      return;
+    }
+    try {
+      await updateProject({
+        id: project.id,
+        hunt_bounty_percent: bounty,
+        hunt_max_recruiters: maxRecruiters,
+        hunt_deadline: deadline ? new Date(deadline).toISOString() : null,
+        hunt_status: 'published',
+      });
+      toast.success('Mission publiée sur la marketplace !');
+    } catch (err: any) {
+      toast.error(err?.message || 'Erreur lors de la publication');
+    }
   };
 
   const handleUnpublish = async () => {
-    await updateProject({
-      id: project.id,
-      hunt_status: 'draft',
-    } as any);
-    toast.success('Mission retirée de la marketplace');
+    try {
+      await updateProject({
+        id: project.id,
+        hunt_status: 'draft',
+      });
+      toast.success('Mission retirée de la marketplace');
+    } catch (err: any) {
+      toast.error(err?.message || 'Erreur lors du retrait');
+    }
   };
 
   return (

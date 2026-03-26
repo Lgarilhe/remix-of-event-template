@@ -333,15 +333,25 @@ export const Navbar: React.FC = () => {
                 >
                   PARAMÈTRES
                 </Link>
+                {hasFeature(orgType, 'marketplace_browse') && (
+                  <Link
+                    to="/marketplace"
+                    onClick={() => setIsMobileMenuOpen(false)}
+                    className="flex-1 flex items-center justify-center bg-background text-foreground text-[17px] font-medium uppercase border-b border-foreground tracking-[-0.34px] animate-fade-in"
+                    style={{ animationDelay: '0.45s', animationFillMode: 'both' }}
+                  >
+                    MARKETPLACE
+                  </Link>
+                )}
                 <button
                   onClick={async () => {
                     await supabase.auth.signOut();
                     setIsMobileMenuOpen(false);
                   }}
                   className="flex-1 flex items-center justify-center text-foreground text-[17px] font-medium uppercase tracking-[-0.34px] animate-fade-in"
-                  style={{ animationDelay: '0.4s', animationFillMode: 'both' }}
+                  style={{ animationDelay: '0.5s', animationFillMode: 'both' }}
                 >
-                  SIGN OUT
+                  DÉCONNEXION
                 </button>
               </>
             ) : (
