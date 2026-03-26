@@ -4554,6 +4554,14 @@ export type Database = {
         Args: { p_action: string }
         Returns: undefined
       }
+      is_mission_team_member: {
+        Args: { _project_id: string; _user_id: string }
+        Returns: boolean
+      }
+      is_mission_team_member_for_project: {
+        Args: { _project_id: string; _user_id: string }
+        Returns: boolean
+      }
       is_org_member: {
         Args: { _org_id: string; _user_id: string }
         Returns: boolean
