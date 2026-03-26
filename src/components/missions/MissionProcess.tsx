@@ -5,7 +5,7 @@ import { useMissionInvitations } from '@/hooks/useMissionInvitations';
 import { useOrganizationMembers } from '@/hooks/useOrganization';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { GripVertical, Plus, Trash2, Zap, Clock, User, ChevronDown, Users, Sparkles, Loader2, FileText, Mail, X } from 'lucide-react';
+import { GripVertical, Plus, Trash2, Zap, Clock, User, ChevronDown, Users, Sparkles, Loader2, FileText, Mail, X, Link2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import type { JobDetails } from '@/types/jobDetails';
@@ -258,12 +258,13 @@ interface MissionTeamSectionProps {
   getMemberName: (userId: string) => string;
   orgMembers: any[];
   projectId: string;
+  projectName: string;
   onAdd: (input: { user_id: string; role: string }) => Promise<any>;
   onRemove: (id: string) => Promise<any>;
 }
 
 const MissionTeamSection: React.FC<MissionTeamSectionProps> = ({
-  team, loadingTeam, readOnly, getMemberName, orgMembers, projectId, onAdd, onRemove,
+  team, loadingTeam, readOnly, getMemberName, orgMembers, projectId, projectName, onAdd, onRemove,
 }) => {
   const { invitations, sendInvitation, isSending, cancelInvitation } = useMissionInvitations(projectId);
   const [showAssign, setShowAssign] = useState(false);
@@ -410,7 +411,7 @@ const MissionTeamSection: React.FC<MissionTeamSectionProps> = ({
                   if (e.key === 'Enter') {
                     e.preventDefault();
                     if (inviteEmail.trim()) {
-                      sendInvitation({ email: inviteEmail.trim(), role: 'freelance' })
+                      sendInvitation({ email: inviteEmail.trim(), role: 'freelance', missionName: projectName })
                         .then(() => { setInviteEmail(''); setShowInvite(false); })
                         .catch(() => {});
                     }
@@ -420,7 +421,7 @@ const MissionTeamSection: React.FC<MissionTeamSectionProps> = ({
               <button
                 onClick={() => {
                   if (inviteEmail.trim()) {
-                    sendInvitation({ email: inviteEmail.trim(), role: 'freelance' })
+                    sendInvitation({ email: inviteEmail.trim(), role: 'freelance', missionName: projectName })
                       .then(() => { setInviteEmail(''); setShowInvite(false); })
                       .catch(() => {});
                   }
@@ -456,13 +457,30 @@ const MissionTeamSection: React.FC<MissionTeamSectionProps> = ({
                     {inv.status === 'pending' ? 'En attente' : inv.status === 'accepted' ? 'Acceptée' : inv.status === 'rejected' ? 'Refusée' : 'Expirée'}
                   </span>
                   {inv.status === 'pending' && (
-                    <button
-                      onClick={() => cancelInvitation(inv.id)}
-                      className="text-muted-foreground hover:text-red-500 transition-colors shrink-0"
-                      title="Annuler l'invitation"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
+                    <>
+                      <button
+                        onClick={async () => {
+                          const url = `${window.location.origin}/mission-invite/${inv.token}`;
+                          try {
+                            await navigator.clipboard.writeText(url);
+                            toast.success('Lien d\'invitation copié');
+                          } catch {
+                            toast.error('Lien : ' + url);
+                          }
+                        }}
+                        className="text-muted-foreground hover:text-foreground transition-colors shrink-0"
+                        title="Copier le lien d'invitation"
+                      >
+                        <Link2 className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onClick={() => cancelInvitation(inv.id)}
+                        className="text-muted-foreground hover:text-red-500 transition-colors shrink-0"
+                        title="Annuler l'invitation"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </>
                   )}
                 </div>
               ))}
@@ -710,6 +728,7 @@ export const MissionProcess: React.FC<MissionProcessProps> = ({ project, readOnl
         getMemberName={getMemberName}
         orgMembers={orgMembers}
         projectId={project.id}
+        projectName={project.name}
         onAdd={addTeamMember}
         onRemove={removeTeamMember}
       />

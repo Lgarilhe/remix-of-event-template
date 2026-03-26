@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useOrganization } from '@/hooks/useOrganization';
+import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { toast } from 'sonner';
 
 const db = supabase as any;
@@ -42,11 +43,12 @@ export const useMissionInvitations = (projectId: string | undefined) => {
   });
 
   const sendInvitation = useMutation({
-    mutationFn: async (input: { email: string; role?: string; message?: string }) => {
+    mutationFn: async (input: { email: string; role?: string; message?: string; missionName?: string }) => {
       if (!projectId || !organizationId) throw new Error('Missing context');
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
+      // 1. Create invitation record in DB
       const { data, error } = await db
         .from('mission_invitations')
         .insert({
@@ -66,11 +68,39 @@ export const useMissionInvitations = (projectId: string | undefined) => {
         }
         throw error;
       }
-      return data as MissionInvitation;
+
+      const invitation = data as MissionInvitation;
+
+      // 2. Get inviter profile name + org name for the email
+      const { data: profile } = await supabase.from('profiles').select('display_name').eq('user_id', user.id).maybeSingle();
+      const { data: org } = await supabase.from('organizations').select('name').eq('id', organizationId).maybeSingle();
+
+      // 3. Send email via send-transactional-email edge function
+      const inviteUrl = `${window.location.origin}/mission-invite/${invitation.token}`;
+      try {
+        await invokeEdgeFunction('send-transactional-email', {
+          templateName: 'mission-invitation',
+          recipientEmail: input.email.toLowerCase().trim(),
+          idempotencyKey: `mission-invite-${invitation.id}`,
+          templateData: {
+            inviterName: profile?.display_name || user.email,
+            organizationName: org?.name || null,
+            missionName: input.missionName || 'Recrutement',
+            role: input.role || 'freelance',
+            message: input.message || null,
+            inviteUrl,
+          },
+        });
+      } catch (emailErr) {
+        // Email failed but invitation was created — don't fail the whole operation
+        console.warn('Mission invitation email failed:', emailErr);
+      }
+
+      return invitation;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['mission-invitations', projectId] });
-      toast.success('Invitation envoyée');
+      toast.success('Invitation envoyée par email');
     },
     onError: (err: Error) => toast.error(err.message),
   });
