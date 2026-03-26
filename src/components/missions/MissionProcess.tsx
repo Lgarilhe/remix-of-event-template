@@ -589,6 +589,36 @@ export const MissionProcess: React.FC<MissionProcessProps> = ({ project, readOnl
           </span>
         </div>
       )}
+      {/* Process header stats */}
+      {steps.length > 0 && (
+        <div className="flex flex-wrap items-center gap-4 mb-4 pb-4 border-b border-foreground/10">
+          <div className="flex items-center gap-6">
+            <div>
+              <p className="text-lg font-bold text-foreground">{steps.length}</p>
+              <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Étapes</p>
+            </div>
+            <div>
+              <p className="text-lg font-bold text-foreground">{steps.reduce((sum, s) => sum + s.duration_minutes, 0)} min</p>
+              <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Durée totale</p>
+            </div>
+            <div>
+              <p className="text-lg font-bold text-foreground">{steps.filter(s => s.is_eliminatory).length}</p>
+              <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Éliminatoires</p>
+            </div>
+          </div>
+          {!readOnly && (
+            <button
+              onClick={handleAISuggestion}
+              disabled={suggestingAI}
+              className="ml-auto flex items-center gap-1.5 h-[30px] px-3 text-[10px] font-medium uppercase tracking-wider border border-foreground/20 text-muted-foreground hover:text-foreground hover:border-foreground transition-colors"
+            >
+              {suggestingAI ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
+              Réoptimiser avec l'IA
+            </button>
+          )}
+        </div>
+      )}
+
       {/* Steps timeline */}
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
@@ -652,33 +682,39 @@ export const MissionProcess: React.FC<MissionProcessProps> = ({ project, readOnl
           )}
         </div>
       ) : (
-        <div className="space-y-2">
-          {/* Fixed first step: Submit candidate */}
-          <div className="flex items-center gap-3 px-4 py-3 border border-foreground/10 bg-muted/20">
-            <div className="flex items-center justify-center w-7 h-7 bg-muted text-muted-foreground text-[11px] font-bold shrink-0">→</div>
-            <span className="text-sm font-bold uppercase tracking-wider text-muted-foreground">Candidat soumis</span>
-          </div>
+        <div className="relative">
+          {/* Vertical connector line */}
+          <div className="absolute left-[30px] top-[28px] bottom-[28px] w-[2px] bg-foreground/10" />
 
-          {/* Draggable steps */}
-          {steps.map((step, index) => (
-            <StepCard
-              key={step.id}
-              step={step}
-              index={index}
-              onUpdate={updateStep}
-              onDelete={deleteStep}
-              onDragStart={setDragIndex}
-              onDragOver={setDragOverIndex}
-              onDragEnd={handleDragEnd}
-              isDragging={dragIndex === index}
-              isDragTarget={dragOverIndex === index}
-            />
-          ))}
+          <div className="relative space-y-0">
+            {/* Fixed first step: Submit candidate */}
+            <div className="flex items-center gap-3 px-4 py-3 relative z-10">
+              <div className="flex items-center justify-center w-7 h-7 bg-muted border border-foreground/20 text-muted-foreground text-[11px] font-bold shrink-0">→</div>
+              <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Candidat soumis</span>
+            </div>
 
-          {/* Fixed last step: Hired */}
-          <div className="flex items-center gap-3 px-4 py-3 border border-foreground/10 bg-brutal-accent/10">
-            <div className="flex items-center justify-center w-7 h-7 bg-brutal-accent text-background text-[11px] font-bold shrink-0">✓</div>
-            <span className="text-sm font-bold uppercase tracking-wider text-foreground">Embauché</span>
+            {/* Draggable steps */}
+            {steps.map((step, index) => (
+              <div key={step.id} className="relative z-10">
+                <StepCard
+                  step={step}
+                  index={index}
+                  onUpdate={updateStep}
+                  onDelete={deleteStep}
+                  onDragStart={setDragIndex}
+                  onDragOver={setDragOverIndex}
+                  onDragEnd={handleDragEnd}
+                  isDragging={dragIndex === index}
+                  isDragTarget={dragOverIndex === index}
+                />
+              </div>
+            ))}
+
+            {/* Fixed last step: Hired */}
+            <div className="flex items-center gap-3 px-4 py-3 relative z-10">
+              <div className="flex items-center justify-center w-7 h-7 bg-brutal-accent text-background text-[11px] font-bold shrink-0">✓</div>
+              <span className="text-[11px] font-bold uppercase tracking-wider text-foreground">Embauché</span>
+            </div>
           </div>
         </div>
       )}
