@@ -7,6 +7,7 @@ import type { JobDetails } from '@/types/jobDetails';
 
 export interface SourcingProject {
   id: string;
+  organization_id: string;
   name: string;
   description: string | null;
   job_id: string | null;
