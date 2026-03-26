@@ -128,10 +128,10 @@ export const useSourcingProjects = () => {
         .update(payload)
         .eq('id', id)
         .select()
-        .single();
+        .maybeSingle();
 
       if (error) throw error;
-      return data as SourcingProject;
+      return (data || { id, ...payload }) as SourcingProject;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['sourcing-projects'] });

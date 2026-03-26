@@ -15,6 +15,7 @@ import { MissionPipeline } from '@/components/missions/MissionPipeline';
 import { MissionOutreach } from '@/components/missions/MissionOutreach';
 import { MissionInsights } from '@/components/missions/MissionInsights';
 import { MissionProcess } from '@/components/missions/MissionProcess';
+import { MissionConfig } from '@/components/missions/MissionConfig';
 import { MissionCopilot } from '@/components/missions/MissionCopilot';
 import { SectionErrorBoundary } from '@/components/SectionErrorBoundary';
 
@@ -36,6 +37,7 @@ const tabs = [
   { value: 'pipeline', label: 'Pipeline', emoji: '📊', description: 'Suivez la progression des candidats dans le processus de recrutement.' },
   { value: 'outreach', label: 'Outreach', emoji: '🚀', description: 'Gérez vos séquences de messages et suivez les réponses.' },
   { value: 'insights', label: 'Insights', emoji: '💡', description: 'Statistiques et analyses de performance de cette mission.' },
+  { value: 'config', label: 'Config', emoji: '⚙️', description: 'Paramètres de la mission, marketplace et portail client.' },
 ];
 
 const validTabs = tabs.map(t => t.value);
@@ -209,6 +211,12 @@ const MissionWorkspace = () => {
           <div className={cn("mt-0 min-w-0", activeTab !== 'insights' && 'hidden')}>
             <SectionErrorBoundary fallbackTitle="Erreur dans les Insights">
               <MissionInsights project={project} />
+            </SectionErrorBoundary>
+          </div>
+
+          <div className={cn("mt-0 min-w-0", activeTab !== 'config' && 'hidden')}>
+            <SectionErrorBoundary fallbackTitle="Erreur dans la Config">
+              <MissionConfig project={project} readOnly={!canEditBrief} />
             </SectionErrorBoundary>
           </div>
         </div>
