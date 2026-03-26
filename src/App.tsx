@@ -33,10 +33,11 @@ const Inbox = lazy(() => import("./pages/Inbox"));
 
 const Pricing = lazy(() => import("./pages/Pricing"));
 const Marketplace = lazy(() => import("./pages/Marketplace"));
+const ClientPortalPage = lazy(() => import("./pages/ClientPortal"));
 const UnsubscribePage = lazy(() => import("./pages/Unsubscribe"));
 const RecruiterPublicProfile = lazy(() => import("./pages/RecruiterPublicProfile"));
 
-const PUBLIC_ROUTES = ['/', '/auth', '/portal'];
+const PUBLIC_ROUTES = ['/', '/auth', '/portal', '/client'];
 
 const AppContent = () => {
   const [sessionExpired, setSessionExpired] = useState(false);
@@ -117,6 +118,7 @@ const AppContent = () => {
           <Route path="/pricing" element={<ProtectedRoute><OrganizationGuard><Pricing /></OrganizationGuard></ProtectedRoute>} />
           <Route path="/marketplace" element={<ProtectedRoute><OrganizationGuard><Marketplace /></OrganizationGuard></ProtectedRoute>} />
           <Route path="/portal/:token" element={<CandidatePortal />} />
+          <Route path="/client/:token" element={<ClientPortalPage />} />
           <Route path="/unsubscribe" element={<Suspense fallback={null}><UnsubscribePage /></Suspense>} />
           <Route path="/r/:slug" element={<RecruiterPublicProfile />} />
           <Route path="*" element={<NotFound />} />

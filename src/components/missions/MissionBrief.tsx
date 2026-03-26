@@ -8,6 +8,7 @@ import { toast } from 'sonner';
 import { StructuredBriefForm } from './StructuredBriefForm';
 import { VoiceDictation } from './VoiceDictation';
 import { MissionHuntMode } from './MissionHuntMode';
+import { MissionClientPortal } from './MissionClientPortal';
 import type { JobDetails } from '@/types/jobDetails';
 
 interface AnalysisResult {
@@ -438,6 +439,13 @@ export const MissionBrief = ({ project, readOnly = false }: MissionBriefProps) =
       {!readOnly && (
         <div className="mt-6">
           <MissionHuntMode project={project} />
+        </div>
+      )}
+
+      {/* Client portal — share access with hiring manager */}
+      {!readOnly && (
+        <div className="mt-6">
+          <MissionClientPortal project={project} />
         </div>
       )}
     </div>
