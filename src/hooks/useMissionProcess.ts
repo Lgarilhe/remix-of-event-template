@@ -135,15 +135,25 @@ export const useMissionProcess = (projectId: string | undefined) => {
     onError: (err: Error) => toast.error(err.message),
   });
 
-  // Reorder steps
+  // Reorder steps — sequential with temp orders to avoid UNIQUE constraint violation
   const reorderStepsMutation = useMutation({
     mutationFn: async (orderedIds: string[]) => {
-      const updates = orderedIds.map((id, i) =>
-        supabase.from('mission_process_steps').update({ step_order: i + 1 }).eq('id', id)
-      );
-      const results = await Promise.all(updates);
-      const failed = results.find(r => r.error);
-      if (failed?.error) throw failed.error;
+      // Phase 1: set all to negative temp values to avoid UNIQUE(project_id, step_order) conflicts
+      for (let i = 0; i < orderedIds.length; i++) {
+        const { error } = await supabase
+          .from('mission_process_steps')
+          .update({ step_order: -(i + 1) })
+          .eq('id', orderedIds[i]);
+        if (error) throw error;
+      }
+      // Phase 2: set to final positive values
+      for (let i = 0; i < orderedIds.length; i++) {
+        const { error } = await supabase
+          .from('mission_process_steps')
+          .update({ step_order: i + 1 })
+          .eq('id', orderedIds[i]);
+        if (error) throw error;
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['mission-process-steps', projectId] });
