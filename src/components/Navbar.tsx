@@ -205,11 +205,20 @@ export const Navbar: React.FC = () => {
               )}
               <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out"></span>
             </Link>
-            <Link 
-              to="/settings" 
+            {hasFeature(orgType, 'marketplace_browse') && (
+              <Link
+                to="/marketplace"
+                className="relative overflow-hidden glass text-foreground h-[34px] px-3 flex items-center text-[11px] font-medium uppercase border-l-0 border border-foreground leading-none group"
+              >
+                <span className="relative z-10">MARKETPLACE</span>
+                <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out"></span>
+              </Link>
+            )}
+            <Link
+              to="/settings"
               className="relative overflow-hidden glass text-foreground h-[34px] px-3 flex items-center text-[11px] font-medium uppercase border-l-0 border border-foreground leading-none group"
             >
-              <span className="relative z-10">SETTINGS</span>
+              <span className="relative z-10">PARAMÈTRES</span>
               <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out"></span>
             </Link>
             {/* Spacer */}
@@ -322,17 +331,27 @@ export const Navbar: React.FC = () => {
                   className="flex-1 flex items-center justify-center bg-background text-foreground text-[17px] font-medium uppercase border-b border-foreground tracking-[-0.34px] animate-fade-in"
                   style={{ animationDelay: '0.4s', animationFillMode: 'both' }}
                 >
-                  SETTINGS
+                  PARAMÈTRES
                 </Link>
-                <button 
+                {hasFeature(orgType, 'marketplace_browse') && (
+                  <Link
+                    to="/marketplace"
+                    onClick={() => setIsMobileMenuOpen(false)}
+                    className="flex-1 flex items-center justify-center bg-background text-foreground text-[17px] font-medium uppercase border-b border-foreground tracking-[-0.34px] animate-fade-in"
+                    style={{ animationDelay: '0.45s', animationFillMode: 'both' }}
+                  >
+                    MARKETPLACE
+                  </Link>
+                )}
+                <button
                   onClick={async () => {
                     await supabase.auth.signOut();
                     setIsMobileMenuOpen(false);
                   }}
                   className="flex-1 flex items-center justify-center text-foreground text-[17px] font-medium uppercase tracking-[-0.34px] animate-fade-in"
-                  style={{ animationDelay: '0.4s', animationFillMode: 'both' }}
+                  style={{ animationDelay: '0.5s', animationFillMode: 'both' }}
                 >
-                  SIGN OUT
+                  DÉCONNEXION
                 </button>
               </>
             ) : (

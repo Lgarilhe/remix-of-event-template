@@ -190,7 +190,7 @@ export const MissionPipeline = ({ project }: MissionPipelineProps) => {
     if (steps.length === 0) return STATIC_COLUMNS;
     return [
       { key: 'sourced', label: 'Sourcé' },
-      ...steps.map(s => ({ key: s.name, label: s.name, isProcessStep: true })),
+      ...steps.map(s => ({ key: s.id, label: s.name, isProcessStep: true })),
       { key: 'hired', label: 'Embauché' },
     ];
   }, [steps]);
