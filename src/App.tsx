@@ -32,6 +32,7 @@ const MissionWorkspace = lazy(() => import("./pages/MissionWorkspace"));
 const Inbox = lazy(() => import("./pages/Inbox"));
 
 const Pricing = lazy(() => import("./pages/Pricing"));
+const Marketplace = lazy(() => import("./pages/Marketplace"));
 const UnsubscribePage = lazy(() => import("./pages/Unsubscribe"));
 const RecruiterPublicProfile = lazy(() => import("./pages/RecruiterPublicProfile"));
 
@@ -114,6 +115,7 @@ const AppContent = () => {
           <Route path="/ats/scorecard/:candidateId" element={<ProtectedRoute><OrganizationGuard><ScorecardFullPage /></OrganizationGuard></ProtectedRoute>} />
           <Route path="/settings" element={<ProtectedRoute><OrganizationGuard><Settings /></OrganizationGuard></ProtectedRoute>} />
           <Route path="/pricing" element={<ProtectedRoute><OrganizationGuard><Pricing /></OrganizationGuard></ProtectedRoute>} />
+          <Route path="/marketplace" element={<ProtectedRoute><OrganizationGuard><Marketplace /></OrganizationGuard></ProtectedRoute>} />
           <Route path="/portal/:token" element={<CandidatePortal />} />
           <Route path="/unsubscribe" element={<Suspense fallback={null}><UnsubscribePage /></Suspense>} />
           <Route path="/r/:slug" element={<RecruiterPublicProfile />} />

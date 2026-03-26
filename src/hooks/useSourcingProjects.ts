@@ -26,6 +26,11 @@ export interface SourcingProject {
   stats_shortlisted: number;
   calendly_link: string | null;
   job_details: JobDetails;
+  hunt_mode: boolean;
+  hunt_bounty_percent: number | null;
+  hunt_max_recruiters: number | null;
+  hunt_deadline: string | null;
+  hunt_status: 'draft' | 'published' | 'in_progress' | 'filled' | 'cancelled' | null;
 }
 
 export interface CreateProjectInput {

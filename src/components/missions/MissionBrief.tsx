@@ -7,6 +7,7 @@ import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { StructuredBriefForm } from './StructuredBriefForm';
 import { VoiceDictation } from './VoiceDictation';
+import { MissionHuntMode } from './MissionHuntMode';
 import type { JobDetails } from '@/types/jobDetails';
 
 interface AnalysisResult {
@@ -432,6 +433,13 @@ export const MissionBrief = ({ project, readOnly = false }: MissionBriefProps) =
           />
         </div>
       </div>
+
+      {/* Hunt mode — marketplace publish */}
+      {!readOnly && (
+        <div className="mt-6">
+          <MissionHuntMode project={project} />
+        </div>
+      )}
     </div>
   );
 };
