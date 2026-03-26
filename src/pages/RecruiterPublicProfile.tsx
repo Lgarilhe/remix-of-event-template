@@ -49,7 +49,7 @@ const RecruiterPublicProfile: React.FC = () => {
         if (error || !data || !data.recruiter_bio) {
           setNotFound(true);
         } else {
-          setProfile(data as RecruiterProfile);
+          setProfile(data as unknown as RecruiterProfile);
         }
         setLoading(false);
       });
