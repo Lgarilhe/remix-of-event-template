@@ -77,6 +77,51 @@ export const useMissionProcess = (projectId: string | undefined) => {
     staleTime: 5 * 60 * 1000,
   });
 
+  // Add team member
+  const addTeamMemberMutation = useMutation({
+    mutationFn: async (input: { user_id: string; role: TeamMember['role'] }) => {
+      if (!projectId) throw new Error('Missing project');
+      const { data, error } = await db
+        .from('mission_team')
+        .insert({
+          project_id: projectId,
+          user_id: input.user_id,
+          role: input.role,
+        })
+        .select()
+        .single();
+      if (error) throw error;
+      return data as TeamMember;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['mission-team', projectId] });
+      toast.success('Membre assigné à la mission');
+    },
+    onError: (err: Error) => {
+      if (err.message?.includes('duplicate') || err.message?.includes('unique')) {
+        toast.error('Ce membre est déjà assigné à cette mission');
+      } else {
+        toast.error(err.message);
+      }
+    },
+  });
+
+  // Remove team member
+  const removeTeamMemberMutation = useMutation({
+    mutationFn: async (memberId: string) => {
+      const { error } = await db
+        .from('mission_team')
+        .delete()
+        .eq('id', memberId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['mission-team', projectId] });
+      toast.success('Membre retiré de la mission');
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
   // Add step
   const addStepMutation = useMutation({
     mutationFn: async (input: Partial<ProcessStep> & { name: string }) => {
@@ -163,18 +208,20 @@ export const useMissionProcess = (projectId: string | undefined) => {
     onError: (err: Error) => toast.error(err.message),
   });
 
-  // Initialize with default steps
-  const initializeDefaultSteps = async () => {
+  // Initialize with steps from a template
+  const initializeFromTemplate = async (templateSteps: typeof DEFAULT_STEPS) => {
     if (!projectId || !organizationId) return;
     try {
-      for (const step of DEFAULT_STEPS) {
+      for (const step of templateSteps) {
         await addStepMutation.mutateAsync({ ...step } as any);
       }
-      toast.success('Process par défaut créé');
+      toast.success('Process créé');
     } catch {
       // Individual step errors already toasted by mutation onError
     }
   };
+
+  const initializeDefaultSteps = () => initializeFromTemplate(DEFAULT_STEPS);
 
   return {
     steps,
@@ -186,6 +233,9 @@ export const useMissionProcess = (projectId: string | undefined) => {
     deleteStep: deleteStepMutation.mutateAsync,
     reorderSteps: reorderStepsMutation.mutateAsync,
     initializeDefaultSteps,
+    initializeFromTemplate,
+    addTeamMember: addTeamMemberMutation.mutateAsync,
+    removeTeamMember: removeTeamMemberMutation.mutateAsync,
     isAdding: addStepMutation.isPending,
   };
 };

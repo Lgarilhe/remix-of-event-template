@@ -28,6 +28,8 @@ import { BillingSettings } from '@/components/settings/BillingSettings';
 import { AICreditsSettings } from '@/components/settings/AICreditsSettings';
 import { OrgLogoEditor } from '@/components/settings/OrgLogoEditor';
 import { ConnectorSettings } from '@/components/settings/ConnectorSettings';
+import { AgencySettings } from '@/components/settings/AgencySettings';
+import { MarketplaceActivation } from '@/components/settings/MarketplaceActivation';
 import { toast } from 'sonner';
 import { BrutalLoader } from '@/components/ui/brutal-loader';
 import iconSettings3d from '@/assets/icon-settings-3d.png';
@@ -48,7 +50,7 @@ const roleLabels = {
 
 const Settings = () => {
   const [searchParams] = useSearchParams();
-  const { organization, organizationId, isOwner, isAdmin, isCollaborator } = useOrganization();
+  const { organization, organizationId, isOwner, isAdmin, isCollaborator, isAgency } = useOrganization();
   const { members, isLoading, pendingInvitations, inviteMember, isInviting, resendInvitation, isResendingInvitation, cancelInvitation, updateRole, removeMember } = useOrganizationMembers(organizationId);
 
   const [editingName, setEditingName] = useState(false);
@@ -109,6 +111,8 @@ const Settings = () => {
     { value: 'credits', label: 'Crédits IA', icon3d: iconCredits3d },
     ...(!isCollaborator ? [{ value: 'connectors', label: 'Connecteurs', icon3d: iconIntegrations3d }] : []),
     ...(isAdmin ? [{ value: 'integrations', label: 'Intégrations', icon3d: iconIntegrations3d }] : []),
+    ...(isAgency ? [{ value: 'agency', label: 'Agence', icon3d: iconTeam3d }] : []),
+    { value: 'marketplace', label: 'Marketplace', icon3d: iconIntegrations3d },
   ];
 
   return (
@@ -342,6 +346,12 @@ const Settings = () => {
 
             {activeTab === 'integrations' && isAdmin && (
               <IntegrationsSettings />
+            )}
+            {activeTab === 'agency' && isAgency && (
+              <AgencySettings />
+            )}
+            {activeTab === 'marketplace' && (
+              <MarketplaceActivation />
             )}
           </div>
         </div>

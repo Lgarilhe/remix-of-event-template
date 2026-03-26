@@ -64,7 +64,7 @@ const Auth = () => {
 
   const acceptPendingInvitation = useCallback(async () => {
     const token = invitationTokenRef.current || sessionStorage.getItem(PENDING_INVITATION_STORAGE_KEY);
-    if (!token) return false;
+    if (!token) return { accepted: false, token: null };
 
     const { data, error } = await invokeEdgeFunction('accept-invitation', {
       invitation_token: token,
@@ -76,7 +76,7 @@ const Auth = () => {
 
     sessionStorage.removeItem(PENDING_INVITATION_STORAGE_KEY);
     invitationTokenRef.current = null;
-    return true;
+    return { accepted: true, token };
   }, []);
 
   const handleAuthenticatedUser = useCallback(async (accessToken: string) => {
@@ -84,18 +84,16 @@ const Auth = () => {
     handledAccessTokenRef.current = accessToken;
 
     try {
-      const invitationAccepted = await acceptPendingInvitation();
+      const { accepted: invitationAccepted, token: acceptedToken } = await acceptPendingInvitation();
 
-      if (invitationAccepted) {
-        // Check if the user was invited as a collaborator
-        const token = sessionStorage.getItem(PENDING_INVITATION_STORAGE_KEY) || invitationTokenRef.current;
+      if (invitationAccepted && acceptedToken) {
         
         // Try to get invitation details to check role
         try {
           const { data: invData } = await supabase
             .from('organization_invitations')
             .select('role, organizations!inner(name)')
-            .or(`token.eq.${token},id.eq.${token}`)
+            .or(`token.eq.${acceptedToken},id.eq.${acceptedToken}`)
             .single();
           
           if (invData?.role === 'collaborator' && (invData as any)?.organizations?.name) {
