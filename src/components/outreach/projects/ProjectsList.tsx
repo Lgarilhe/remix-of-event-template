@@ -270,6 +270,11 @@ export const ProjectsList: React.FC<ProjectsListProps> = () => {
       stats_shortlisted: 0,
       calendly_link: null,
       job_details: {},
+      hunt_mode: false,
+      hunt_bounty_percent: null,
+      hunt_max_recruiters: null,
+      hunt_deadline: null,
+      hunt_status: 'draft',
     };
   };
 
