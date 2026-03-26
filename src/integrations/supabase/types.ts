@@ -1575,6 +1575,53 @@ export type Database = {
           },
         ]
       }
+      client_portal_tokens: {
+        Row: {
+          client_email: string | null
+          client_name: string
+          created_at: string | null
+          expires_at: string | null
+          id: string
+          last_accessed_at: string | null
+          organization_id: string
+          permissions: Json | null
+          project_ids: string[] | null
+          token: string
+        }
+        Insert: {
+          client_email?: string | null
+          client_name: string
+          created_at?: string | null
+          expires_at?: string | null
+          id?: string
+          last_accessed_at?: string | null
+          organization_id: string
+          permissions?: Json | null
+          project_ids?: string[] | null
+          token?: string
+        }
+        Update: {
+          client_email?: string | null
+          client_name?: string
+          created_at?: string | null
+          expires_at?: string | null
+          id?: string
+          last_accessed_at?: string | null
+          organization_id?: string
+          permissions?: Json | null
+          project_ids?: string[] | null
+          token?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "client_portal_tokens_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       connector_instances: {
         Row: {
           config: Json | null
@@ -1858,6 +1905,113 @@ export type Database = {
           title?: string
         }
         Relationships: []
+      }
+      feature_activations: {
+        Row: {
+          checklist: Json | null
+          contract_document_url: string | null
+          contract_signed_at: string | null
+          created_at: string | null
+          feature: string
+          id: string
+          organization_id: string
+          payment_method_added: boolean | null
+          status: string | null
+          updated_at: string | null
+          validated_at: string | null
+          validated_by: string | null
+        }
+        Insert: {
+          checklist?: Json | null
+          contract_document_url?: string | null
+          contract_signed_at?: string | null
+          created_at?: string | null
+          feature: string
+          id?: string
+          organization_id: string
+          payment_method_added?: boolean | null
+          status?: string | null
+          updated_at?: string | null
+          validated_at?: string | null
+          validated_by?: string | null
+        }
+        Update: {
+          checklist?: Json | null
+          contract_document_url?: string | null
+          contract_signed_at?: string | null
+          created_at?: string | null
+          feature?: string
+          id?: string
+          organization_id?: string
+          payment_method_added?: boolean | null
+          status?: string | null
+          updated_at?: string | null
+          validated_at?: string | null
+          validated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "feature_activations_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      hunt_applications: {
+        Row: {
+          created_at: string | null
+          id: string
+          invited_by: string | null
+          match_score: number | null
+          message: string | null
+          project_id: string
+          recruiter_org_id: string | null
+          recruiter_user_id: string
+          status: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          invited_by?: string | null
+          match_score?: number | null
+          message?: string | null
+          project_id: string
+          recruiter_org_id?: string | null
+          recruiter_user_id: string
+          status?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          invited_by?: string | null
+          match_score?: number | null
+          message?: string | null
+          project_id?: string
+          recruiter_org_id?: string | null
+          recruiter_user_id?: string
+          status?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "hunt_applications_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "sourcing_projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hunt_applications_recruiter_org_id_fkey"
+            columns: ["recruiter_org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       inmail_queue: {
         Row: {
@@ -2417,6 +2571,113 @@ export type Database = {
           },
         ]
       }
+      mission_process_steps: {
+        Row: {
+          created_at: string | null
+          description: string | null
+          duration_minutes: number | null
+          evaluation_criteria: Json | null
+          id: string
+          interviewer_name: string | null
+          interviewer_type: string | null
+          interviewer_user_id: string | null
+          is_eliminatory: boolean | null
+          name: string
+          objectives: string[] | null
+          organization_id: string
+          project_id: string
+          step_order: number
+          template_source: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          description?: string | null
+          duration_minutes?: number | null
+          evaluation_criteria?: Json | null
+          id?: string
+          interviewer_name?: string | null
+          interviewer_type?: string | null
+          interviewer_user_id?: string | null
+          is_eliminatory?: boolean | null
+          name: string
+          objectives?: string[] | null
+          organization_id: string
+          project_id: string
+          step_order: number
+          template_source?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          description?: string | null
+          duration_minutes?: number | null
+          evaluation_criteria?: Json | null
+          id?: string
+          interviewer_name?: string | null
+          interviewer_type?: string | null
+          interviewer_user_id?: string | null
+          is_eliminatory?: boolean | null
+          name?: string
+          objectives?: string[] | null
+          organization_id?: string
+          project_id?: string
+          step_order?: number
+          template_source?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mission_process_steps_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mission_process_steps_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "sourcing_projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mission_team: {
+        Row: {
+          created_at: string | null
+          id: string
+          permissions: Json | null
+          project_id: string
+          role: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          permissions?: Json | null
+          project_id: string
+          role: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          permissions?: Json | null
+          project_id?: string
+          role?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mission_team_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "sourcing_projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       notifications: {
         Row: {
           body: string | null
@@ -2813,6 +3074,7 @@ export type Database = {
           id: string
           logo_url: string | null
           name: string
+          org_type: string | null
           slug: string
           specializations: string[] | null
           team_size: string | null
@@ -2829,6 +3091,7 @@ export type Database = {
           id?: string
           logo_url?: string | null
           name: string
+          org_type?: string | null
           slug: string
           specializations?: string[] | null
           team_size?: string | null
@@ -2845,6 +3108,7 @@ export type Database = {
           id?: string
           logo_url?: string | null
           name?: string
+          org_type?: string | null
           slug?: string
           specializations?: string[] | null
           team_size?: string | null
@@ -2904,54 +3168,116 @@ export type Database = {
           },
         ]
       }
+      process_templates: {
+        Row: {
+          created_at: string | null
+          description: string | null
+          id: string
+          is_default: boolean | null
+          job_category: string | null
+          name: string
+          organization_id: string
+          steps: Json
+        }
+        Insert: {
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          is_default?: boolean | null
+          job_category?: string | null
+          name: string
+          organization_id: string
+          steps?: Json
+        }
+        Update: {
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          is_default?: boolean | null
+          job_category?: string | null
+          name?: string
+          organization_id?: string
+          steps?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "process_templates_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           active_organization_id: string | null
+          avg_time_to_fill_days: number | null
           created_at: string
           display_name: string | null
           experience_classifications: Json | null
+          first_round_rate: number | null
           id: string
+          intro_video_url: string | null
           job_title: string | null
           linkedin_skills: string[] | null
           linkedin_url: string | null
+          mid_round_rate: number | null
+          placements_count: number | null
           public_slug: string | null
+          rating: number | null
           recruiter_bio: string | null
           recruiter_headline: string | null
           specializations: string[] | null
+          testimonials: Json | null
           updated_at: string
           user_id: string
           years_experience: number | null
         }
         Insert: {
           active_organization_id?: string | null
+          avg_time_to_fill_days?: number | null
           created_at?: string
           display_name?: string | null
           experience_classifications?: Json | null
+          first_round_rate?: number | null
           id?: string
+          intro_video_url?: string | null
           job_title?: string | null
           linkedin_skills?: string[] | null
           linkedin_url?: string | null
+          mid_round_rate?: number | null
+          placements_count?: number | null
           public_slug?: string | null
+          rating?: number | null
           recruiter_bio?: string | null
           recruiter_headline?: string | null
           specializations?: string[] | null
+          testimonials?: Json | null
           updated_at?: string
           user_id: string
           years_experience?: number | null
         }
         Update: {
           active_organization_id?: string | null
+          avg_time_to_fill_days?: number | null
           created_at?: string
           display_name?: string | null
           experience_classifications?: Json | null
+          first_round_rate?: number | null
           id?: string
+          intro_video_url?: string | null
           job_title?: string | null
           linkedin_skills?: string[] | null
           linkedin_url?: string | null
+          mid_round_rate?: number | null
+          placements_count?: number | null
           public_slug?: string | null
+          rating?: number | null
           recruiter_bio?: string | null
           recruiter_headline?: string | null
           specializations?: string[] | null
+          testimonials?: Json | null
           updated_at?: string
           user_id?: string
           years_experience?: number | null
@@ -3675,6 +4001,11 @@ export type Database = {
           created_by: string
           description: string | null
           filters_snapshot: Json
+          hunt_bounty_percent: number | null
+          hunt_deadline: string | null
+          hunt_max_recruiters: number | null
+          hunt_mode: boolean | null
+          hunt_status: string | null
           icp_id: string | null
           id: string
           job_details: Json | null
@@ -3699,6 +4030,11 @@ export type Database = {
           created_by: string
           description?: string | null
           filters_snapshot?: Json
+          hunt_bounty_percent?: number | null
+          hunt_deadline?: string | null
+          hunt_max_recruiters?: number | null
+          hunt_mode?: boolean | null
+          hunt_status?: string | null
           icp_id?: string | null
           id?: string
           job_details?: Json | null
@@ -3723,6 +4059,11 @@ export type Database = {
           created_by?: string
           description?: string | null
           filters_snapshot?: Json
+          hunt_bounty_percent?: number | null
+          hunt_deadline?: string | null
+          hunt_max_recruiters?: number | null
+          hunt_mode?: boolean | null
+          hunt_status?: string | null
           icp_id?: string | null
           id?: string
           job_details?: Json | null
